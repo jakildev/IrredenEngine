@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_glitch_state.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/glitch.hpp>
+#include <irreden/render/glitch_subject.hpp>
 #include <irreden/render/active_canvas.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_render_bindings.hpp>
@@ -19,6 +20,7 @@
 
 #include <sol/sol.hpp>
 
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -294,6 +296,129 @@ TEST_F(LuaRenderBindingsTest, GlitchRejectsBadInputWithoutChangingState) {
         EXPECT_DOUBLE_EQ(after.phaseSeconds_, before.phaseSeconds_) << call;
         EXPECT_EQ(after.seed_, before.seed_) << call;
         EXPECT_EQ(after.holdDivisor_, before.holdDivisor_) << call;
+    }
+}
+
+// ---- canvas glitch subjects --------------------------------------------------
+
+TEST_F(LuaRenderBindingsTest, GlitchSubjectSurfaceBound) {
+    EXPECT_TRUE(isFunction("IRRender.setGlitchSubject"));
+    EXPECT_TRUE(isFunction("IRRender.clearGlitchSubject"));
+    EXPECT_TRUE(isFunction("IRRender.glitchSubject"));
+}
+
+TEST_F(LuaRenderBindingsTest, GlitchSubjectSetReadsBackAndClears) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+    m_lua.lua()["subjectId"] = static_cast<double>(entity);
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        local before = IRRender.glitchSubject(subjectId)
+        IRRender.setGlitchSubject(subjectId, { weight = 0.5, tear = 1, hold = 0.25, split = 0.75,
+                                               echo = 0.125, dissolve = 1, spill = 4,
+                                               depthNear = -12, depthFar = 30 })
+        local g = IRRender.glitchSubject(subjectId)
+        return before == nil, g.weight, g.tear, g.hold, g.split, g.echo, g.dissolve, g.spill,
+               g.depthNear, g.depthFar
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_TRUE(result.get<bool>(0)) << "an unmarked entity reads nil";
+    EXPECT_DOUBLE_EQ(result.get<double>(1), 0.5);
+    EXPECT_DOUBLE_EQ(result.get<double>(2), 1.0);
+    EXPECT_DOUBLE_EQ(result.get<double>(3), 0.25);
+    EXPECT_DOUBLE_EQ(result.get<double>(4), 0.75);
+    EXPECT_DOUBLE_EQ(result.get<double>(5), 0.125);
+    EXPECT_DOUBLE_EQ(result.get<double>(6), 1.0);
+    EXPECT_EQ(result.get<int>(7), 4);
+    EXPECT_EQ(result.get<int>(8), -12);
+    EXPECT_EQ(result.get<int>(9), 30);
+    const IRComponents::C_GlitchSubject *stored = IRPrefab::Glitch::subjectOrNull(entity);
+    ASSERT_NE(stored, nullptr);
+    EXPECT_TRUE(stored->depthEnabled_);
+
+    auto cleared = m_lua.lua().safe_script(
+        R"lua(
+        IRRender.clearGlitchSubject(subjectId)
+        return IRRender.glitchSubject(subjectId) == nil
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(cleared.valid()) << cleared.get<sol::error>().what();
+    EXPECT_TRUE(cleared.get<bool>());
+    EXPECT_EQ(IRPrefab::Glitch::subjectOrNull(entity), nullptr);
+}
+
+TEST_F(LuaRenderBindingsTest, GlitchSubjectReplacesTheWholeConfiguration) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+    m_lua.lua()["subject"] = IRScript::LuaEntity{entity};
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        IRRender.setGlitchSubject(subject, { hold = 1, spill = 3, depthNear = 1, depthFar = 2 })
+        IRRender.setGlitchSubject(subject, { tear = 0.5 })
+        local g = IRRender.glitchSubject(subject)
+        return g.weight, g.tear, g.hold, g.spill, g.depthNear == nil
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_DOUBLE_EQ(result.get<double>(0), 1.0) << "omitted keys take the defaults";
+    EXPECT_DOUBLE_EQ(result.get<double>(1), 0.5);
+    EXPECT_DOUBLE_EQ(result.get<double>(2), 0.0);
+    EXPECT_EQ(result.get<int>(3), 0);
+    EXPECT_TRUE(result.get<bool>(4)) << "the depth band is cleared too";
+    EXPECT_FALSE(IRPrefab::Glitch::subjectOrNull(entity)->depthEnabled_);
+}
+
+TEST_F(LuaRenderBindingsTest, GlitchSubjectSetterAssertsOnAnInvalidSubject) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+    IRComponents::C_GlitchSubject invalid;
+    invalid.spill_ = IRPrefab::Glitch::kSubjectMaxSpill + 1;
+    EXPECT_THROW(IRPrefab::Glitch::setSubject(entity, invalid), std::runtime_error);
+    EXPECT_EQ(IRPrefab::Glitch::subjectOrNull(entity), nullptr);
+}
+
+// Every rejected call raises before the stored subject changes.
+TEST_F(LuaRenderBindingsTest, GlitchSubjectRejectsBadInputWithoutChangingState) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+    m_lua.lua()["subjectId"] = static_cast<double>(entity);
+    auto setup = m_lua.lua().safe_script(
+        "IRRender.setGlitchSubject(subjectId, { tear = 0.5, spill = 2 })",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(setup.valid()) << setup.get<sol::error>().what();
+
+    for (const char *call : {
+             "IRRender.setGlitchSubject(subjectId)",
+             "IRRender.setGlitchSubject(subjectId, 1)",
+             "IRRender.setGlitchSubject(subjectId, { teer = 1 })",
+             "IRRender.setGlitchSubject(subjectId, { [1] = 1 })",
+             "IRRender.setGlitchSubject(subjectId, { tear = 'all' })",
+             "IRRender.setGlitchSubject(subjectId, { tear = 0/0 })",
+             "IRRender.setGlitchSubject(subjectId, { weight = 1.5 })",
+             "IRRender.setGlitchSubject(subjectId, { echo = -0.25 })",
+             "IRRender.setGlitchSubject(subjectId, { spill = 5 })",
+             "IRRender.setGlitchSubject(subjectId, { spill = 1.5 })",
+             "IRRender.setGlitchSubject(subjectId, { spill = -1 })",
+             "IRRender.setGlitchSubject(subjectId, { depthNear = 3 })",
+             "IRRender.setGlitchSubject(subjectId, { depthFar = 3 })",
+             "IRRender.setGlitchSubject(subjectId, { depthNear = 4, depthFar = 3 })",
+             "IRRender.setGlitchSubject(subjectId, { depthNear = 0.5, depthFar = 3 })",
+             "IRRender.setGlitchSubject(subjectId, { depthNear = -math.huge, depthFar = 3 })",
+             "IRRender.setGlitchSubject(999999, { tear = 1 })",
+             "IRRender.setGlitchSubject(0, { tear = 1 })",
+             "IRRender.setGlitchSubject('entity', { tear = 1 })",
+             "IRRender.clearGlitchSubject(999999)",
+             "IRRender.glitchSubject(999999)",
+         }) {
+        auto result = m_lua.lua().safe_script(call, sol::script_pass_on_error);
+        EXPECT_FALSE(result.valid()) << call << " did not raise";
+        const IRComponents::C_GlitchSubject *after = IRPrefab::Glitch::subjectOrNull(entity);
+        ASSERT_NE(after, nullptr) << call;
+        EXPECT_FLOAT_EQ(after->tearWeight_, 0.5f) << call;
+        EXPECT_FLOAT_EQ(after->weight_, 1.0f) << call;
+        EXPECT_EQ(after->spill_, 2) << call;
+        EXPECT_FALSE(after->depthEnabled_) << call;
     }
 }
 

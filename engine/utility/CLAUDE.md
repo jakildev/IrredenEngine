@@ -30,6 +30,8 @@ functions for reading files and composing paths. Used by `asset/`,
   for a caller-supplied path that must stay under a root (`IRFile`, the
   launcher catalog, tool spawns). `containedPathRejection(path)` is its
   lexical half, for a parser that has no base to resolve against.
+- `IRUtility::findOnPath(name, suffixes)` — resolve the first regular file
+  for a command name using an explicit suffix preference.
 - `IRUtility::envFlagSet(name)` — true iff env var `name` is set and
   non-empty (both "unset" and "present but empty" read as false). The one
   place a boolean env toggle is read; e.g. `IR_PERSIST_DUMP` gates the world

@@ -1,17 +1,18 @@
 # Period-quantised glitch passes
 
 A tempo-locked scene wants its picture to tear, freeze and flash on a musical
-division, not on frame time. The glitch passes take no scene data: they read a
-composed image plus one world-scoped singleton, `C_GlitchState`, which any
-creation drives from C++ (`IRPrefab::Glitch::setState`) or Lua
-(`IRRender.setGlitch{...}`).
+division, not on frame time. The glitch passes read a composed image plus one
+world-scoped singleton, `C_GlitchState`, which any creation drives from C++
+(`IRPrefab::Glitch::setState`) or Lua (`IRRender.setGlitch{...}`). The
+canvas-space pass also reads which entities carry `C_GlitchSubject`, so a
+glitch can belong to an object (see [Subjects](#subjects)).
 
 ## Insertion points
 
 | Pass | Slot | Reads | Status |
 |---|---|---|---|
 | `FRAMEBUFFER_GLITCH` | RENDER, after every main-framebuffer producer (`TRIXEL_TO_FRAMEBUFFER`, `VIEWPORT_TO_FRAMEBUFFER`, framebuffer debug overlays), immediately before `FRAMEBUFFER_TO_SCREEN` | main framebuffer colour + depth, one history image | shipped |
-| `TRIXEL_GLITCH` | the `TRIXEL_TO_TRIXEL` slot, per entity in canvas space | canvas colour, distance and entity-id textures | follow-up, consumes this contract |
+| `TRIXEL_GLITCH` | RENDER, after every main-canvas colour producer (`LIGHTING_TO_TRIXEL`, `FOG_TO_TRIXEL` when registered), immediately before `TRIXEL_TO_FRAMEBUFFER` | the main canvas's colour, distance and entity-id planes, a tick-start history | shipped |
 | World-space jumps | none | — | creation-authored whole-voxel `TRANSFORM_TRANSLATION` modifiers from Lua, keyed off the same `IRRender.glitch().tick` |
 
 ## Clock
@@ -162,6 +163,162 @@ A GUI composited *into* the main framebuffer (a pixelated GUI canvas,
 world. Sprites and the on-screen GUI composite (`GUI_CANVAS_TO_SCREEN`) draw
 after the pass and stay clean. This is deliberate and not special-cased.
 
+## Subjects
+
+`TRIXEL_GLITCH` glitches the trixels of the entities that carry
+`C_GlitchSubject`, on the main canvas, before the composite. It shares the
+clock: it reads `periodSeconds`, `phaseSeconds` and `seed` from
+`C_GlitchState` (the off default when there is no singleton) and keys every
+choice on the same period tick `FRAMEBUFFER_GLITCH` uses. Framebuffer
+`intensity`, its effect weights and `holdDivisor` neither gate nor retime
+subjects.
+
+### The subject contract
+
+| Field | Lua key | Meaning |
+|---|---|---|
+| `weight_` | `weight` | [0, 1], default 1; scales every effect weight below |
+| `tearWeight_` | `tear` | whole-trixel x shifts of hashed row bands; a displaced read is accepted only from the subject's own trixels |
+| `holdWeight_` | `hold` | hashed row bands re-show the tick-start history |
+| `splitWeight_` | `split` | red and blue read whole trixels to either side, from the subject's own trixels only |
+| `echoWeight_` | `echo` | two offset copies of the subject's one-trixel silhouette edge, tinted |
+| `dissolveWeight_` | `dissolve` | hashed 1-3 trixel cells of the subject's own texels drop out (transparent colour) |
+| `spill_` | `spill` | integer [0, 4]: Chebyshev radius in canvas trixels around the silhouette that the subject's glitch reaches |
+| `depthEnabled_`, `depthNear_`, `depthFar_` | `depthNear`, `depthFar` | optional inclusive band of decoded single-canvas iso-depth (`decodeDepthSingle`, smaller is nearer) that confines tear and hold |
+
+A subject is active when `weight > 0` and some effect weight is positive.
+Effect weights are independent and are not normalized. Every spatial offset is
+a whole canvas trixel and every colour operation is 8-bit integer arithmetic,
+so the two backends and the CPU twin agree bit for bit.
+
+The id a trixel carries is the entity that stamped it: the voxel set (child
+sets stamp their own ids) or the shape. A multi-set object marks each set.
+
+**Lua.** `IRRender.setGlitchSubject(entity, table)` replaces the whole
+configuration: omitted keys take the defaults above. An unknown key, a dead
+entity, a non-finite or out-of-range weight, a non-integral or out-of-range
+`spill`, a lone depth bound or `depthNear > depthFar` raises before anything
+changes. `IRRender.clearGlitchSubject(entity)` removes the mark;
+`IRRender.glitchSubject(entity)` returns a fresh table, or `nil` when the
+entity is unmarked. Entities are a `LuaEntity` or an integer id. Adding or
+removing the mark is a structural change, so call these outside a system tick
+or through `IREntity.deferredCall`; replacing an existing mark is not.
+
+### Spill and interference
+
+For each canvas texel the kernel finds the two nearest distinct subjects whose
+spill reaches it: Chebyshev distance from a subject silhouette texel, at most
+that subject's `spill`, ties broken by ascending entity id. A subject's own
+texel is at distance zero. With one influence the texel takes that subject's
+effects. With two, the pair (ordered by id) hashes
+`(seed, tick, low and high words of both ids)` once per tick and picks one
+interference mode: `ROWS` (each canvas row takes one subject's effects),
+`MIX` (the two blend half and half) or `CROSS` (each subject's tear and split
+read the other subject's trixels; the results blend). Proximity therefore
+changes the glitch only where both spill bands overlap, and a texel never
+weighs more than two subjects.
+
+Every id is decoded through the carrier mask (`decodeEntityId`) before lookup
+or equality, so priority, fog and analytic-surface carrier bits never split
+one entity in two.
+
+### Hold and history
+
+The main canvas owns history planes of colour and entity id. They are copied
+from the live planes when an active subject reads history (`hold > 0`) and the
+snapshot is missing, stale after a frame with no hold subject, or from an
+earlier period tick. Hold therefore freezes a subject to its pose at the start
+of the current tick: inside a hold band a texel shows history colour where the
+history id is the subject, or where the subject now stands on texels that were
+empty at the tick start. It never shows history whose id was another entity. A
+subject that does not move within its tick shows no hold. Showing a ghost of
+the previous tick would need a second history pair; it is not built.
+
+### Resources and cadence
+
+The main canvas (`C_TriangleCanvasTextures`) owns three glitch images, created
+by the pass on its first enabled frame and destroyed by a canvas resize, so
+they return at the new size, and by `onDestroy`: an RGBA8 scratch colour
+destination, the RGBA8 history colour and the RG32UI history id. Other
+canvases never get them.
+
+An enabled frame uploads the subject buffer, takes the two history copies when
+due, runs one 16x16 compute dispatch over the whole canvas, then swaps the
+scratch plane in as the live colour after the barrier. The kernel reads the
+live planes and history and writes every scratch texel, so it never reads what
+it writes. Distance and entity id are never written or swapped. Effects never
+accumulate frame over frame: each frame starts from the producers' fresh
+colour, and history is always pre-glitch.
+
+The subject buffer is one SSBO of `uvec4` words: a header (seed, tick words,
+count; table mask, table base, record base, max spill), an open-addressed id
+-> slot table of power-of-two capacity at or below half load (the null id is
+the empty sentinel, linear probing), and five words per subject holding every
+per-tick choice the CPU evaluated (`trixel_glitch_math.hpp`). Subjects are
+sorted by id, so a slot is the rank of its id and upload order never depends
+on archetype iteration. The buffer grows by doubling and is reused.
+
+Each 16x16 workgroup stages the subject slots of a 26x26 tile (a five-texel
+halo: spill reaches four, and the echo edge test reads one beyond an echo
+offset of up to four) in threadgroup memory. A tile with no subject copies
+its texels straight through.
+
+**Bindings.** Images 0-2 are the live colour, distance and entity-id planes
+(read), 3-4 the history colour and id (read), 5 the scratch colour (write).
+The subject buffer borrows storage slot 8 (`kBufferIndex_TrixelGlitchSubjects`,
+the voxel active mask's slot) and the pass rebinds `VoxelActiveMaskBuffer`
+there after its dispatch, as `FOG_TO_TRIXEL`'s per-axis path does. A
+storage-table slot matters on Metal, where the uniform and storage tables are
+flushed into one buffer table at each dispatch and a stale storage entry
+would shadow a uniform binding at the same index. The kernel is registered at
+16x16 in `threadgroupSizeForFunctionName`.
+
+**Off.** With no active subject the pass uploads, copies, dispatches, swaps
+and allocates nothing and writes the live `trixelGlitch` timing row to zero.
+`IRShapeDebug --glitch-subject-test standard-off` proves it byte-identical
+against the standing references.
+
+### Limits
+
+- **Main canvas only.** Detached, viewport, entity and GUI canvases are
+  untouched.
+- **Smooth camera yaw.** While `C_PerAxisTrixelCanvases::isAllocated()` is
+  true, voxels are drawn from the per-axis canvases, not the main canvas, so
+  voxel subjects show no glitch while the camera rotates; SDF and text
+  subjects still do. Per-axis coverage is a follow-up; its open question is
+  what a whole-trixel x offset means on an axis face plane.
+- **Shape probe and shape lighting gather modes** relight a glitched texel
+  from the shape geometry sample at its destination, so a moved shape texel
+  survives but takes its new position's lighting.
+
+### Cost
+
+The pass shades canvas texels, not output pixels, so its cost follows the
+main canvas size and not the output scale. Budget: eight subjects, every
+effect at weight 1, `spill = 4`, at the committed 1x take preset:
+
+    UCB95(trixelGlitch per-run means, --glitch-subject-test all)  <  0.40 ms
+
+Executor: five quiet runs of `fleet-run IRShapeDebug --glitch-subject-test all
+--auto-profile 300 --config-preset configs/perf/glitch-1x.lua`, read from the
+GPU stage table in `save_files/profile_report.txt`, interleaved with
+`--glitch-subject-test off` runs whose `trixelGlitch` row collects no sample.
+
+Measured on an Apple M4 Max (macOS Metal, 1280x720 output at scale 1, main
+canvas 642x722, one dispatch per frame and two history copies per period
+tick): per-run means 0.240, 0.227, 0.231, 0.229 and 0.232 ms, mean 0.232 ms,
+spread 0.013 ms, UCB95 0.237 ms. CPU cost per frame is about 0.017 ms. The
+fixture's canvas probes run only under `--auto-screenshot`; their readbacks
+stall the queue and must not ride a profiled run.
+
+### Choreography
+
+Both passes read one period tick, so a creation alternates them by tick
+parity: mark the subject on tick N with the framebuffer state off, then clear
+the subject (or zero its weight) and enable a framebuffer tear on tick N + 1.
+A world-space jump is the creation's own whole-voxel `TRANSFORM_TRANSLATION`
+modifier for the same tick; this pass draws the glitch wherever the entity is.
+
 ## Evidence fixture
 
 `IRShapeDebug --glitch-test <mode>` captures one shot per effect at a fixed
@@ -186,3 +343,15 @@ Every capturing mode also spawns a one-colour sentinel sprite. Sprites draw
 after the pass, so the sentinel's pixel set (`sentinelPx`, `sentinelRect`,
 `sentinelHash`) must be identical in every capture. A pass that drew or
 cleared after the sprites would erase it.
+
+`IRShapeDebug --glitch-subject-test <mode>` is the subject pass's fixture: two
+striped voxel subjects in empty sky at a fixed seed and phase, one shot per
+effect plus far/near spill controls and a two-shot choreography. On each
+capture frame `[glitch-subject-probe]` reads the canvas back (glitched colour,
+the pre-glitch input left in the scratch plane, ids, distances, history),
+replays the kernel through the CPU twin and reports `cpuMismatch` (zero on
+every mode) and the per-effect counts. The spill modes pose subject B far and
+near on two earlier frames of the same tick, a pure horizontal canvas shift at
+unchanged depth, and the oracle checks that the far and near effect masks,
+B's part shifted by its measured displacement, differ only inside the near
+pair-overlap band.

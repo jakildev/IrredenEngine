@@ -103,6 +103,7 @@ add_executable(IrredenEngineTest
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
   render/fog_carrier_policy_test.cpp
+  render/font_maker_source_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_ghost_policy_test.cpp
   render/fog_line_of_sight_test.cpp
@@ -119,6 +120,7 @@ add_executable(IrredenEngineTest
   render/per_axis_surface_lighting_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/glitch_math_test.cpp
+  render/trixel_glitch_math_test.cpp
   render/gizmo_drag_reset_test.cpp
   render/gizmo_ring_orientation_test.cpp
   render/gizmo_view_clearance_test.cpp
@@ -156,6 +158,7 @@ add_executable(IrredenEngineTest
   render/widget_list_scroll_test.cpp
   render/widget_theme_singleton_test.cpp
   render/widget_hit_region_test.cpp
+  render/widget_image_test.cpp
   render/widget_tab_focus_test.cpp
   script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp
@@ -179,6 +182,7 @@ add_executable(IrredenEngineTest
   script/lua_entity_events_test.cpp
   script/lua_widget_hit_region_test.cpp
   script/lua_widget_values_test.cpp
+  script/lua_widget_image_test.cpp
   script/lua_voxel_seam_test.cpp
   script/lua_hierarchy_test.cpp
   script/lua_enum_register_test.cpp
@@ -191,6 +195,7 @@ add_executable(IrredenEngineTest
   script/lua_fog_revealed_test.cpp
   script/lua_fog_bindings_test.cpp
   script/lua_engine_hand_off_test.cpp
+  script/lua_spawn_tool_test.cpp
   script/lua_file_bindings_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
@@ -232,6 +237,7 @@ add_executable(IrredenEngineTest
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp
   world/hand_off_test.cpp
+  world/tool_spawn_test.cpp
   world/field_chunk_persistence_test.cpp
   world/fog_explored_decay_test.cpp
   world/fog_world_field_test.cpp
@@ -282,6 +288,7 @@ target_compile_definitions(IrredenEngineTest PRIVATE
     IR_FLOWER_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
     IR_CREATION_MANIFEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/asset/fixtures/creation_manifest"
     IR_CATALOG_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/catalog/fixtures"
+    IR_CREATION_MANIFEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/asset/fixtures/creation_manifest"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua
@@ -355,6 +362,14 @@ target_include_directories(IrredenEngineTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${googletest_SOURCE_DIR}/googletest/include
     ${googletest_SOURCE_DIR}/googlemock/include
+)
+
+# render/font_maker_source_test.cpp drives the font maker's header source
+# model on copies of the shipped font headers, then compiles the saved copies.
+target_include_directories(IrredenEngineTest PRIVATE ${CMAKE_SOURCE_DIR}/creations/editors)
+target_compile_definitions(IrredenEngineTest PRIVATE
+    IR_TEST_FONT_HEADER_DIR="${CMAKE_SOURCE_DIR}/engine/render/include/irreden/render"
+    IR_TEST_CXX_COMPILER="${CMAKE_CXX_COMPILER}"
 )
 
 # Ensure runtime DLL dependencies are available for test discovery/execution.

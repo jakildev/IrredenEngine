@@ -9,7 +9,8 @@ triangle, odd a RIGHT-pointing one; a texel is two framebuffer pixels wide and
 one tall, so a triangle is W x W pixels for texel width W.
 
 Modes:
-  smooth     anti-aliased triangles, what the screen composite shows
+  smooth     exact GUI_CANVAS_TO_SCREEN sampling at --gui-scale and
+             --output-scale, optionally nearest-magnified with --upscale
   pixelated  the gather's pixel-centre sampling at --fb-scale framebuffer px per
              texel width, nearest-upscaled: the gui_pixelated path at
              gui_scale = fb-scale / 2
@@ -25,11 +26,13 @@ Usage:
       engine/render/include/irreden/render/trixel_font_small.hpp --out small.png
   python3 scripts/trixel-font-preview.py <header> --text 'HELLO' --out hello.png
 """
+
 import argparse
 import math
-import re
 import sys
 from pathlib import Path
+
+from trixel_font_util import parse_font_header, sample_position, triangle_owner_and_across
 
 try:
     from PIL import Image, ImageDraw
@@ -43,43 +46,10 @@ STEP_X, STEP_Y = 8, 14
 SET_PREFIX = {"large": "", "small": "Small"}
 
 
-def read_constants(src: str, prefix: str = ""):
-    """Pull k<prefix>GlyphWidth / Height / spacing out of the header so the
-    layout here never drifts from the engine's."""
-    global GLYPH_W, GLYPH_H, STEP_X, STEP_Y
-    vals = {}
-    for field in ("Width", "Height", "SpacingX", "SpacingY"):
-        m = re.search(rf"constexpr int k{prefix}Glyph{field} = (\d+);", src)
-        if m:
-            vals[field] = int(m.group(1))
-    GLYPH_W = vals.get("Width", GLYPH_W)
-    GLYPH_H = vals.get("Height", GLYPH_H)
-    STEP_X = GLYPH_W + vals.get("SpacingX", STEP_X - GLYPH_W)
-    STEP_Y = GLYPH_H + vals.get("SpacingY", STEP_Y - GLYPH_H)
-
-
 def parse_font(path: Path, glyph_set: str = "large"):
+    global GLYPH_W, GLYPH_H, STEP_X, STEP_Y
     prefix = SET_PREFIX[glyph_set]
-    src = path.read_text()
-    read_constants(src, prefix)
-    glyphs = {}
-    block = re.compile(
-        rf"k{prefix}Glyph_(\w+)\s*=\s*make{prefix}Glyph\(\s*((?:\s*\"[^\"]*\"\s*)+)\)"
-    )
-    for m in block.finditer(src):
-        name = m.group(1)
-        rows = re.findall(r"\"([^\"]*)\"", m.group(2))
-        if len(rows) != GLYPH_H or any(len(r) != GLYPH_W for r in rows):
-            print(f"warning: {name} has bad shape {len(rows)} rows", file=sys.stderr)
-            continue
-        glyphs[name] = [[ch in "X#" for ch in r] for r in rows]
-    char_map = {}
-    cases = re.compile(
-        rf"((?:case\s+'(?:\\.|[^'])+'\s*:\s*)+)return\s+&k{prefix}Glyph_(\w+);"
-    )
-    for m in cases.finditer(src):
-        for c in re.findall(r"case\s+'((?:\\.|[^'])+)'", m.group(1)):
-            char_map[c.encode().decode("unicode_escape")] = m.group(2)
+    glyphs, char_map, GLYPH_W, GLYPH_H, STEP_X, STEP_Y = parse_font_header(path, prefix)
     return glyphs, char_map
 
 
@@ -101,43 +71,55 @@ def layout_text(text, glyphs, char_map, origin=(0, 0)):
         cx += STEP_X
 
 
-def tri_vertices(tx, ty, parity_even):
-    if parity_even:  # left-pointing
-        return [(tx + 1, ty), (tx + 1, ty + 2), (tx, ty + 1)]
-    return [(tx, ty), (tx, ty + 2), (tx + 1, ty + 1)]
+def composite_sample(px, py, sx, sy, origin_modifier=0):
+    """Return (owner, across-edge neighbour, owner coverage) for one pixel."""
+    p = ((px + 0.5) / sx, (py + 0.5) / sy)
+    owner, across, nearest = triangle_owner_and_across(*p, sx, sy, origin_modifier)
+    effective_display_scale = min(0.5 * sx, sy)
+    coverage = 1.0 if effective_display_scale <= 1.0 else max(0.0, min(nearest + 0.5, 1.0))
+    return owner, across, coverage
 
 
-def render_smooth(texels, size_texels, texel_w, ss=4, bg=(18, 20, 28), fg=(224, 228, 236)):
-    W, H = size_texels
-    img = Image.new("RGB", (W * texel_w * ss, (H * texel_w // 2) * ss), bg)
-    d = ImageDraw.Draw(img)
-    sx, sy = texel_w * ss, texel_w * ss / 2
-    for (tx, ty) in texels:
-        pts = [(x * sx, y * sy) for x, y in tri_vertices(tx, ty, (tx + ty) % 2 == 0)]
-        d.polygon(pts, fill=fg)
-    return img.resize((W * texel_w, H * texel_w // 2), Image.LANCZOS)
+def render_smooth(
+    texels,
+    size_texels,
+    gui_scale=1.0,
+    output_scale=1.0,
+    upscale=1,
+    bg=(18, 20, 28),
+    fg=(224, 228, 236),
+):
+    """Render the screen composite's pixel-centre resolve exactly."""
+    width_texels, height_texels = size_texels
+    sx = 2.0 * gui_scale * output_scale
+    sy = gui_scale * output_scale
+    width = round(width_texels * sx)
+    height = round(height_texels * sy)
+    lit = set(texels)
+    img = Image.new("RGB", (width, height), bg)
+    pixels = img.load()
+    for py in range(height):
+        for px in range(width):
+            owner, across, coverage = composite_sample(px, py, sx, sy)
+            owner_color = fg if owner in lit else bg
+            across_color = fg if across in lit else bg
+            pixels[px, py] = tuple(
+                round(across_color[channel] * (1.0 - coverage) + owner_color[channel] * coverage)
+                for channel in range(3)
+            )
+    if upscale != 1:
+        img = img.resize((width * upscale, height * upscale), Image.NEAREST)
+    return img
 
 
 def render_rect(texels, size_texels, texel_w, bg=(18, 20, 28), fg=(224, 228, 236)):
     W, H = size_texels
     img = Image.new("RGB", (W * texel_w, H * texel_w // 2), bg)
     d = ImageDraw.Draw(img)
-    for (tx, ty) in texels:
+    for tx, ty in texels:
         x0, y0 = tx * texel_w, ty * texel_w // 2
         d.rectangle([x0, y0, x0 + texel_w - 1, y0 + texel_w // 2 - 1], fill=fg)
     return img
-
-
-def sample_position(ox, oy, origin_modifier):
-    """GLSL trixelFramebufferSamplePosition on (ox, oy) in texel units."""
-    fx, fy = math.floor(ox), math.floor(oy)
-    frx, fry = ox - fx, oy - fy
-    if (fx + fy + origin_modifier) % 2 == 1:
-        if fry < frx:
-            oy -= 1.0
-    elif fry < 1.0 - frx:
-        oy -= 1.0
-    return ox, oy
 
 
 def render_pixelated(
@@ -173,7 +155,13 @@ def main():
     ap.add_argument("--text", default=None, help="text to render (default: full glyph sheet)")
     ap.add_argument("--mode", choices=["smooth", "pixelated", "rect"], default="smooth")
     ap.add_argument(
-        "--texel-w", type=int, default=24, help="smooth/rect: output px per texel width"
+        "--gui-scale", type=float, default=1.0, help="smooth: engine gui_scale (default: 1)"
+    )
+    ap.add_argument(
+        "--output-scale",
+        type=float,
+        default=1.0,
+        help="smooth: framebuffer/game output scale (default: 1)",
     )
     ap.add_argument(
         "--fb-scale",
@@ -181,7 +169,9 @@ def main():
         default=2,
         help="pixelated: framebuffer px per texel width (2 = gui_scale 1)",
     )
-    ap.add_argument("--upscale", type=int, default=8, help="pixelated: nearest upscale factor")
+    ap.add_argument(
+        "--upscale", type=int, default=8, help="nearest-neighbour preview magnification"
+    )
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--cols", type=int, default=13, help="glyphs per row of the sheet")
     args = ap.parse_args()
@@ -191,7 +181,7 @@ def main():
         sys.exit(f"no {args.set} glyphs found in {args.font}")
     if args.text is None:
         order = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;!?-_/\\()[]=+@#*%|<>~'\""
-        lines = [order[i:i + args.cols] for i in range(0, len(order), args.cols)]
+        lines = [order[i : i + args.cols] for i in range(0, len(order), args.cols)]
         text = "\n".join(lines)
     else:
         text = args.text.replace("\\n", "\n")
@@ -200,10 +190,21 @@ def main():
     W = max(len(line) for line in lines) * STEP_X + 2
     H = len(lines) * STEP_Y + 2
     texels = list(layout_text(text, glyphs, char_map, origin=(2, 2)))
+    if args.gui_scale <= 0 or args.output_scale <= 0 or args.upscale <= 0:
+        ap.error("scales and upscale must be positive")
     if args.mode == "smooth":
-        img = render_smooth(texels, (W + 2, H + 2), args.texel_w)
+        img = render_smooth(
+            texels,
+            (W + 2, H + 2),
+            args.gui_scale,
+            args.output_scale,
+            args.upscale,
+        )
     elif args.mode == "rect":
-        img = render_rect(texels, (W + 2, H + 2), args.texel_w)
+        texel_w = max(2, round(2 * args.gui_scale * args.output_scale))
+        img = render_rect(texels, (W + 2, H + 2), texel_w)
+        if args.upscale != 1:
+            img = img.resize((img.width * args.upscale, img.height * args.upscale), Image.NEAREST)
     else:
         img = render_pixelated(texels, (W + 2, H + 2), args.fb_scale, args.upscale)
     img.save(args.out)

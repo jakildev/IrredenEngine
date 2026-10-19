@@ -1,13 +1,20 @@
 #include <irreden/world/hand_off.hpp>
 
+#include <irreden/asset/creation_manifest.hpp>
+#include <irreden/asset/json_reader.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/utility/path_utils.hpp>
+#include <irreden/world/tool_spawn.hpp>
 
 #include <sol/sol.hpp>
 
 #include <string_view>
+#include <fstream>
+#include <filesystem>
+#include <iterator>
+#include <ranges>
 #include <utility>
 
 namespace IREngine {
@@ -22,6 +29,27 @@ bool requestsProfile(const std::vector<std::string> &argv) {
         }
     }
     return false;
+}
+
+std::optional<std::string> readVerdict(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+    const std::string text(
+        (std::istreambuf_iterator<char>(input)),
+        std::istreambuf_iterator<char>()
+    );
+    const auto json = IRAsset::parseJson(text);
+    if (!json.has_value()) {
+        return std::nullopt;
+    }
+    const IRAsset::JsonValue *verdict = json->find("verdict");
+    if (verdict == nullptr) {
+        return std::nullopt;
+    }
+    const std::string *value = verdict->asString();
+    return value == nullptr ? std::nullopt : std::optional<std::string>{*value};
 }
 
 std::vector<std::string> wrapperCommand(
@@ -117,6 +145,16 @@ HandOffRequest parseRequest(const sol::object &arg) {
         raise("expects a table { argv = {...}, resume = true }");
     }
     const sol::table options = arg.as<sol::table>();
+    for (const auto &[key, value] : options) {
+        (void)value;
+        if (key.get_type() != sol::type::string) {
+            raise("request keys must be strings");
+        }
+        const std::string name = key.as<std::string>();
+        if (name != "argv" && name != "resume") {
+            raise("unknown key '" + name + "'");
+        }
+    }
     HandOffRequest request;
     request.argv_ = parseArgv(options["argv"]);
     const sol::object resume = options["resume"];
@@ -147,7 +185,10 @@ HandOffEnvironment HandOffEnvironment::fromProcess() {
 }
 
 HandOffOutcome runHandOff(
-    const HandOffRequest &request, const HandOffEnvironment &environment, HandOffPlatform &platform
+    const HandOffRequest &request,
+    const HandOffEnvironment &environment,
+    HandOffPlatform &platform,
+    const std::optional<std::filesystem::path> &toolRoot
 ) {
     HandOffOutcome outcome;
     HandOffResult &result = outcome.result_;
@@ -163,6 +204,10 @@ HandOffOutcome runHandOff(
     result.supported_ = true;
     if (request.argv_.empty()) {
         result.error_ = "argv is empty";
+        return outcome;
+    }
+    if (!IRAsset::isTargetName(request.argv_.front())) {
+        result.error_ = "argv[0] is not a valid target name";
         return outcome;
     }
     // The OS receives each argument NUL-terminated, so an embedded NUL would
@@ -183,6 +228,25 @@ HandOffOutcome runHandOff(
         return outcome;
     }
 
+    const std::optional<std::filesystem::path> buildDir =
+        toolRoot.has_value() ? std::optional<std::filesystem::path>{*toolRoot / "build"}
+                             : std::nullopt;
+    std::optional<std::filesystem::path> resultFile;
+    if (buildDir.has_value()) {
+        resultFile = *buildDir / "ir-run-results" / (request.argv_.front() + ".last.json");
+        std::error_code error;
+        std::filesystem::create_directories(resultFile->parent_path(), error);
+        if (error) {
+            result.error_ = "could not create the result-file directory";
+            return outcome;
+        }
+        std::filesystem::remove(*resultFile, error);
+        if (error) {
+            result.error_ = "could not remove the previous result file";
+            return outcome;
+        }
+    }
+
     IRE_LOG_INFO("IREngine.handOff: suspending for {}", request.argv_.front());
     platform.drainGpu();
     outcome.suspended_ = true;
@@ -199,10 +263,22 @@ HandOffOutcome runHandOff(
         IRE_LOG_INFO("IREngine.handOff: released the gpu lease");
     }
 
+    std::vector<std::string> runArgs;
+    if (buildDir.has_value()) {
+        runArgs.insert(runArgs.end(), {"--build-dir", buildDir->string()});
+    }
+    if (resultFile.has_value()) {
+        runArgs.insert(runArgs.end(), {"--result-file", resultFile->string()});
+    }
+    runArgs.push_back("--");
+    runArgs.insert(runArgs.end(), request.argv_.begin(), request.argv_.end());
     const ChildExit child =
-        platform.runToExit(wrapperCommand(environment, environment.wrapperPath_, request.argv_));
+        platform.runToExit(wrapperCommand(environment, environment.wrapperPath_, runArgs));
     if (child.started_) {
         result.exitCode_ = child.exitCode_;
+        if (resultFile.has_value()) {
+            result.verdict_ = readVerdict(*resultFile);
+        }
     }
 
     if (holdsLease) {
@@ -231,6 +307,18 @@ HandOffOutcome runHandOff(
     return outcome;
 }
 
+HandOffOutcome runHandOff(
+    const HandOffRequest &request,
+    const HandOffEnvironment &environment,
+    HandOffPlatform &platform,
+    ToolService &toolService
+) {
+    if (toolService.live()) {
+        throw std::runtime_error("IREngine.handOff: a tool is still running");
+    }
+    return runHandOff(request, environment, platform, toolService.root());
+}
+
 void bindHandOffLua(
     IRScript::LuaScript &script, HandOffInvoker invoker, std::function<bool()> isMainThread
 ) {
@@ -250,6 +338,9 @@ void bindHandOffLua(
             out["supported"] = result.supported_;
             if (result.exitCode_.has_value()) {
                 out["exitCode"] = *result.exitCode_;
+            }
+            if (result.verdict_.has_value()) {
+                out["verdict"] = *result.verdict_;
             }
             if (!result.error_.empty()) {
                 out["error"] = result.error_;

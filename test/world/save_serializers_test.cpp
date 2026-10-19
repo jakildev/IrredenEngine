@@ -1067,6 +1067,58 @@ TEST(SaveSerializers, WidgetCheckboxRoundTrips) {
     expectOutOfRangeTextSizeIsRejected(checkbox, 2);
 }
 
+TEST(SaveSerializers, WidgetImageRoundTrips) {
+    C_WidgetImage image{};
+    image.path_ = "data/thumb.png";
+    image.texelSize_ = IRMath::ivec2(3, 2);
+    image.texels_.assign(6, IRMath::Color{1, 2, 3, 255});
+    image.texels_[4] = IRMath::Color{200, 100, 50, 128};
+    image.loaded_ = false;
+    image.error_ = "failed to load image 'data/thumb.png': can't fopen";
+    const C_WidgetImage restored = roundTrip(image);
+    EXPECT_EQ(restored.path_, image.path_);
+    EXPECT_EQ(restored.texelSize_, image.texelSize_);
+    ASSERT_EQ(restored.texels_.size(), 6u);
+    EXPECT_EQ(restored.texels_[4].toPackedRGBA(), image.texels_[4].toPackedRGBA());
+    EXPECT_FALSE(restored.loaded_);
+    EXPECT_EQ(restored.error_, image.error_);
+    expectConsumesAllBytes(image);
+}
+
+// WIDGET_RENDER_IMAGE copies rows of texelSize_.x texels, so an extent that
+// promises more texels than are on disk must not load.
+TEST(SaveSerializers, WidgetImageRejectsExtentTexelMismatch) {
+    C_WidgetImage image{};
+    image.path_ = "p";
+    image.texelSize_ = IRMath::ivec2(2, 2);
+    image.texels_.assign(4, IRMath::Color{0, 0, 0, 255});
+    std::vector<std::uint8_t> bytes = serialize(image);
+    // Layout: varuint path length (1 byte), "p", then texelSize_.x as i32.
+    ASSERT_GE(bytes.size(), 3u);
+    ASSERT_EQ(bytes[2], 2u) << "expected texelSize_.x at this offset";
+    bytes[2] = 3u;
+
+    IRAsset::Result<C_WidgetImage> restored = deserialize<C_WidgetImage>(bytes);
+    EXPECT_FALSE(restored.ok());
+    EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+    EXPECT_NE(restored.status_.message_.find("disagree with the extent"), std::string::npos)
+        << restored.status_.message_;
+}
+
+#ifndef IR_RELEASE
+TEST(SaveSerializers, SavingAWidgetImageWithAShortTexelArrayAsserts) {
+    C_WidgetImage image{};
+    image.texelSize_ = IRMath::ivec2(2, 2);
+    image.texels_.assign(3, IRMath::Color{0, 0, 0, 255});
+    IRAsset::MemoryBinaryWriter writer;
+    EXPECT_THROW(IRWorld::SaveSerialize<C_WidgetImage>::write(writer, image), std::runtime_error);
+
+    image.texels_.push_back(IRMath::Color{0, 0, 0, 255});
+    IRAsset::MemoryBinaryWriter consistent;
+    EXPECT_NO_THROW(IRWorld::SaveSerialize<C_WidgetImage>::write(consistent, image));
+}
+#endif
+
 TEST(SaveSerializers, WidgetListRoundTrips) {
     C_WidgetList list{};
     list.items_ = {"alpha", "", "gamma"}; // includes an empty-string element

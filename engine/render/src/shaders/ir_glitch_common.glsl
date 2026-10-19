@@ -37,6 +37,21 @@ const int kGlitchDepthProbeCount = 16;
 const uint kGlitchCellHashX = 0x8DA6B343u;
 const uint kGlitchCellHashY = 0xD8163841u;
 
+// Canvas-space subject glitch (TRIXEL_GLITCH); CPU mirror in
+// trixel_glitch_math.hpp.
+const uint kGlitchEffectSubjectTear = 6u;
+const uint kGlitchEffectSubjectHold = 7u;
+const uint kGlitchEffectSubjectDissolve = 8u;
+const uint kGlitchEffectSubjectPair = 9u;
+const uint kGlitchSubjectTableTag = 0x2C1B3C6Du;
+const uint kGlitchPairModeCount = 3u;
+const int kGlitchSubjectMaxSpill = 4;
+const int kGlitchSubjectHalo = 5;
+const int kGlitchSubjectTileSize = 26;
+const uint kGlitchSubjectRecordWords = 5u;
+const int kGlitchSubjectEmptyDistance = 65535;
+const int kGlitchSubjectTintPaletteSize = 4;
+
 uint glitchHash(uint seed, uvec2 tickWords, uint effect, uint lane) {
     return hash3(hash3(seed, tickWords.x, tickWords.y), effect, lane);
 }
@@ -80,4 +95,25 @@ vec3 glitchBarColour(int index) {
         return vec3(1.0, 0.9, 0.1);
     }
     return vec3(0.3, 1.0, 0.2);
+}
+
+// A nonzero signed offset in [-maxOffset, maxOffset].
+int glitchSignedOffset(uint hash, int maxOffset) {
+    int offset = int(hash % uint(2 * maxOffset + 1)) - maxOffset;
+    return offset == 0 ? maxOffset : offset;
+}
+
+// Additive tints the subject echo copies take, as 8-bit channels.
+uvec4 glitchSubjectTint(int index) {
+    int slot = index % kGlitchSubjectTintPaletteSize;
+    if (slot == 0) {
+        return uvec4(255u, 64u, 214u, 255u);
+    }
+    if (slot == 1) {
+        return uvec4(64u, 240u, 255u, 255u);
+    }
+    if (slot == 2) {
+        return uvec4(255u, 230u, 64u, 255u);
+    }
+    return uvec4(120u, 255u, 90u, 255u);
 }

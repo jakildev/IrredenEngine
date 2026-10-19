@@ -76,10 +76,9 @@ Name them `read` / `write` to match `BinaryReader::readU32`; no `encode` /
 
 Tree-wide, through `fleet-rules-sweep` (exit **1** = clean pass, **0** =
 violations, **2** = scope resolved to zero files). `rg` cannot cover this
-scope at any root or glob: three tracked files under `creations/` sit in
-re-ignored directories (`creations/bazel_test/`,
-`creations/editors/font_maker/`) that ripgrep never walks, and `--no-ignore`
-would pull in the private `creations/game` clone.
+scope at any root or glob: two tracked files under `creations/` sit in a
+re-ignored directory (`creations/bazel_test/`) that ripgrep never walks, and
+`--no-ignore` would pull in the private `creations/game` clone.
 
 ```
 fleet-rules-sweep \

@@ -3,9 +3,11 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/entity/entity_manager.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/render/glitch.hpp>
+#include <irreden/render/glitch_subject.hpp>
 #include <irreden/render/lod_utils.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -27,7 +29,7 @@ namespace IRScript::detail {
 //
 // Render-glue setters (sun direction / intensity / ambient, sky color /
 // intensity), the main-camera zoom and its policy, the LOD tier read, the
-// framebuffer glitch state, and a
+// framebuffer glitch state, per-entity canvas glitch subjects, and a
 // minimal GUI-canvas shape-draw primitive
 // (filled disc, line). Bound by `bindLuaDrivenEcs()` so every creation on the Lua-first
 // authoring path gets them without re-declaring per-creation pass-throughs
@@ -142,6 +144,129 @@ inline IRComponents::C_GlitchState glitchCandidateFromLua(sol::table settings) {
     return candidate;
 }
 
+// `IRRender.setGlitchSubject` keys. A key outside this list raises.
+inline constexpr std::array<std::string_view, 9> kGlitchSubjectKeys{
+    "weight",
+    "tear",
+    "hold",
+    "split",
+    "echo",
+    "dissolve",
+    "spill",
+    "depthNear",
+    "depthFar",
+};
+
+// A live entity named by a LuaEntity or an integer id; raises otherwise.
+inline IREntity::EntityId glitchSubjectEntity(const sol::object &value, const char *function) {
+    const auto fail = [function](const char *reason) {
+        return sol::error{std::string("IRRender.") + function + ": entity " + reason};
+    };
+    IREntity::EntityId entity = IREntity::kNullEntity;
+    if (value.is<IRScript::LuaEntity>()) {
+        entity = value.as<IRScript::LuaEntity>().entity;
+    } else if (value.get_type() == sol::type::number) {
+        constexpr double kLargestEntityId = 4294967295.0;
+        const double number = value.as<double>();
+        if (!(number >= 1.0 && number <= kLargestEntityId) || number != IRMath::floor(number)) {
+            throw fail("must be a positive integer id");
+        }
+        entity = static_cast<IREntity::EntityId>(number);
+    } else {
+        throw fail("must be an entity id or LuaEntity");
+    }
+    const IREntity::EntityRecord *record = IREntity::getEntityManager().findRecord(entity);
+    if (record == nullptr || record->archetypeNode == nullptr) {
+        throw fail("is not a live, placed entity");
+    }
+    return entity;
+}
+
+// The full subject a `setGlitchSubject` table describes: omitted keys take
+// the component defaults. Raises on the first bad key or value.
+inline IRComponents::C_GlitchSubject glitchSubjectFromLua(sol::table settings) {
+    for (const auto &entry : settings) {
+        const sol::object &key = entry.first;
+        if (key.get_type() != sol::type::string || std::find(
+                                                       kGlitchSubjectKeys.begin(),
+                                                       kGlitchSubjectKeys.end(),
+                                                       key.as<std::string_view>()
+                                                   ) == kGlitchSubjectKeys.end()) {
+            throw sol::error{
+                "IRRender.setGlitchSubject: unknown key (expected weight, tear, hold, split, "
+                "echo, dissolve, spill, depthNear or depthFar)"
+            };
+        }
+    }
+    const auto number = [&settings](const char *key, double &out) {
+        const sol::object value = settings[key];
+        if (!value.valid()) {
+            return false;
+        }
+        if (value.get_type() != sol::type::number || !IRMath::isFinite(value.as<double>())) {
+            throw sol::error{
+                std::string("IRRender.setGlitchSubject: ") + key + " must be a finite number"
+            };
+        }
+        out = value.as<double>();
+        return true;
+    };
+    const auto unit = [&number](const char *key, float &field) {
+        double value = 0.0;
+        if (!number(key, value)) {
+            return;
+        }
+        if (value < 0.0 || value > 1.0) {
+            throw sol::error{
+                std::string("IRRender.setGlitchSubject: ") + key + " must be in [0, 1]"
+            };
+        }
+        field = static_cast<float>(value);
+    };
+    const auto integer = [&number](const char *key, double lo, double hi, int &field) {
+        double value = 0.0;
+        if (!number(key, value)) {
+            return false;
+        }
+        if (value != IRMath::floor(value) || value < lo || value > hi) {
+            throw sol::error{
+                std::string("IRRender.setGlitchSubject: ") + key + " must be an integer in [" +
+                std::to_string(static_cast<long long>(lo)) + ", " +
+                std::to_string(static_cast<long long>(hi)) + "]"
+            };
+        }
+        field = static_cast<int>(value);
+        return true;
+    };
+
+    IRComponents::C_GlitchSubject candidate;
+    unit("weight", candidate.weight_);
+    unit("tear", candidate.tearWeight_);
+    unit("hold", candidate.holdWeight_);
+    unit("split", candidate.splitWeight_);
+    unit("echo", candidate.echoWeight_);
+    unit("dissolve", candidate.dissolveWeight_);
+    integer(
+        "spill",
+        0.0,
+        static_cast<double>(IRPrefab::Glitch::kSubjectMaxSpill),
+        candidate.spill_
+    );
+    constexpr double kDepthMin = static_cast<double>(std::numeric_limits<int>::min());
+    constexpr double kDepthMax = static_cast<double>(std::numeric_limits<int>::max());
+    const bool hasNear = integer("depthNear", kDepthMin, kDepthMax, candidate.depthNear_);
+    const bool hasFar = integer("depthFar", kDepthMin, kDepthMax, candidate.depthFar_);
+    if (hasNear != hasFar) {
+        throw sol::error{"IRRender.setGlitchSubject: depthNear and depthFar go together"};
+    }
+    candidate.depthEnabled_ = hasNear;
+    const std::string error = IRPrefab::Glitch::validateSubject(candidate);
+    if (!error.empty()) {
+        throw sol::error{"IRRender.setGlitchSubject: " + error};
+    }
+    return candidate;
+}
+
 inline void bindRenderGlue(LuaScript &script) {
     sol::state &lua = script.lua();
 
@@ -228,6 +353,41 @@ inline void bindRenderGlue(LuaScript &script) {
             throw sol::error{"IRRender.setGlitch: " + error};
         }
         IRPrefab::Glitch::setState(candidate);
+    };
+    // Per-entity canvas glitch. `setGlitchSubject` replaces the whole
+    // configuration; adding the mark is a structural change, so call it
+    // outside a system tick or from `IREntity.deferredCall`.
+    lua["IRRender"]["setGlitchSubject"] = [](sol::object entity, sol::object settings) {
+        const IREntity::EntityId target = glitchSubjectEntity(entity, "setGlitchSubject");
+        if (settings.get_type() != sol::type::table) {
+            throw sol::error{"IRRender.setGlitchSubject: expected a table"};
+        }
+        IRPrefab::Glitch::setSubject(target, glitchSubjectFromLua(settings.as<sol::table>()));
+    };
+    lua["IRRender"]["clearGlitchSubject"] = [](sol::object entity) {
+        IRPrefab::Glitch::clearSubject(glitchSubjectEntity(entity, "clearGlitchSubject"));
+    };
+    lua["IRRender"]["glitchSubject"] = [](sol::object entity,
+                                          sol::this_state state) -> sol::object {
+        const IRComponents::C_GlitchSubject *subject =
+            IRPrefab::Glitch::subjectOrNull(glitchSubjectEntity(entity, "glitchSubject"));
+        sol::state_view view{state};
+        if (subject == nullptr) {
+            return sol::make_object(view, sol::lua_nil);
+        }
+        sol::table out = view.create_table();
+        out["weight"] = subject->weight_;
+        out["tear"] = subject->tearWeight_;
+        out["hold"] = subject->holdWeight_;
+        out["split"] = subject->splitWeight_;
+        out["echo"] = subject->echoWeight_;
+        out["dissolve"] = subject->dissolveWeight_;
+        out["spill"] = subject->spill_;
+        if (subject->depthEnabled_) {
+            out["depthNear"] = subject->depthNear_;
+            out["depthFar"] = subject->depthFar_;
+        }
+        return out;
     };
     lua["IRRender"]["glitch"] = [](sol::this_state state) {
         sol::state_view view{state};

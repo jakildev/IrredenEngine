@@ -23,6 +23,7 @@
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_triangles_only_set.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_serialize_common.hpp>
 #include <irreden/world/save_migration.hpp>
@@ -962,6 +963,64 @@ template <> struct SaveSerialize<IRComponents::C_WidgetNumberField> {
         }
         value.editBuffer_.clear();
         value.editing_ = false;
+        return Res::success(std::move(value));
+    }
+};
+
+// The texels are saved, not re-decoded on load: the snapshot restores what
+// was drawn even when the PNG has since moved or changed.
+template <> struct SaveSerialize<IRComponents::C_WidgetImage> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetImage &value) {
+        IR_ASSERT(
+            value.texelSize_.x >= 0 && value.texelSize_.y >= 0,
+            "C_WidgetImage: saving a negative texel extent {}x{}; read will reject this file",
+            value.texelSize_.x,
+            value.texelSize_.y
+        );
+        IR_ASSERT(
+            static_cast<std::int64_t>(value.texels_.size()) ==
+                static_cast<std::int64_t>(value.texelSize_.x) *
+                    static_cast<std::int64_t>(value.texelSize_.y),
+            "C_WidgetImage: saving {} texels for the extent {}x{}; read will reject this file",
+            value.texels_.size(),
+            value.texelSize_.x,
+            value.texelSize_.y
+        );
+        w.writeString(value.path_);
+        IRMath::BinaryIO::writeIVec2(w, value.texelSize_);
+        detail::writeTrivialVector(w, value.texels_);
+        w.writeU8(value.loaded_ ? 1 : 0);
+        w.writeString(value.error_);
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetImage> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_WidgetImage>;
+        IRComponents::C_WidgetImage value{};
+        IR_SAVE_READ(value.path_, r.readString());
+        IR_SAVE_READ(value.texelSize_, IRMath::BinaryIO::readIVec2(r));
+        IR_SAVE_READ_STATUS(detail::readTrivialVector(r, value.texels_));
+        IR_SAVE_READ_BOOL(value.loaded_, r.readU8());
+        IR_SAVE_READ(value.error_, r.readString());
+
+        // WIDGET_RENDER_IMAGE copies rows of `texelSize_.x` texels out of
+        // `texels_`, so a negative extent or a short array reads out of bounds.
+        if (value.texelSize_.x < 0 || value.texelSize_.y < 0) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetImage: negative texel extent " + std::to_string(value.texelSize_.x) + "x" +
+                    std::to_string(value.texelSize_.y) + " is not indexable"
+            );
+        }
+        const std::int64_t expectedTexels = static_cast<std::int64_t>(value.texelSize_.x) *
+                                            static_cast<std::int64_t>(value.texelSize_.y);
+        if (static_cast<std::int64_t>(value.texels_.size()) != expectedTexels) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetImage: " + std::to_string(value.texels_.size()) +
+                    " texels disagree with the extent " + std::to_string(value.texelSize_.x) + "x" +
+                    std::to_string(value.texelSize_.y)
+            );
+        }
         return Res::success(std::move(value));
     }
 };

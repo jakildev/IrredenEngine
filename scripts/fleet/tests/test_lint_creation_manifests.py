@@ -15,7 +15,11 @@ TRACKED_DOC = "/".join(("docs", "design", "voxel-and-sdf-rendering.md"))
 
 class CreationManifestLintTest(unittest.TestCase):
     def fixture(self, root: Path) -> None:
-        for directory in ("creations/demos/valid", "creations/editors/voxel_editor"):
+        for directory in (
+            "creations/demos/valid",
+            "creations/editors/font_maker",
+            "creations/editors/voxel_editor",
+        ):
             path = root / directory
             path.mkdir(parents=True)
             (path / "creation.json").write_text(
@@ -95,6 +99,42 @@ class CreationManifestLintTest(unittest.TestCase):
             )
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unknown build target: IRValid", result.stderr)
+
+    def test_tracked_editor_without_a_manifest_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.fixture(root)
+            result = self.run_lint(root)
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("creation manifests: 3/3", result.stdout)
+            (root / "creations/editors/font_maker/creation.json").unlink()
+            missing = self.run_lint(root)
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn("font_maker: missing creation.json", missing.stderr)
+
+    def test_editor_build_target_resolves(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "root"
+            root.mkdir()
+            self.fixture(root)
+            manifest = root / "creations/editors/font_maker/creation.json"
+            data = json.loads(manifest.read_text())
+            data["targets"][0]["name"] = "EditorValid"
+            manifest.write_text(json.dumps(data))
+            bin_dir = Path(temporary) / "bin"
+            bin_dir.mkdir()
+            cmake = bin_dir / "cmake"
+            cmake.write_text("#!/bin/sh\nprintf '%s\\n' '... IRValid' '... EditorValid'\n")
+            cmake.chmod(0o755)
+            environment = os.environ | {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
+            result = subprocess.run(
+                ["python3", str(SCRIPT), "--root", str(root), "--build-dir", "."],
+                text=True,
+                capture_output=True,
+                check=False,
+                env=environment,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_shared_manifest_corpus(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

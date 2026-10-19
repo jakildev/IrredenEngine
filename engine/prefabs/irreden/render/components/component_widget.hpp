@@ -36,6 +36,8 @@ enum class WidgetKind : int {
     // swatch strip on another canvas) into one hover / click target.
     HIT_REGION = 11,
     NUMBER_FIELD = 12,
+    // A PNG box-filtered into the widget's trixel rect; data on C_WidgetImage.
+    IMAGE = 13,
 };
 
 // Z-order bias WIDGET_APPLY_DROPDOWN adds to a dropdown for as long as it is

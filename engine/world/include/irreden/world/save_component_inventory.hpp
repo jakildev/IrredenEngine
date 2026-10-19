@@ -85,6 +85,7 @@
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/render/components/component_geometric_shape.hpp>
 #include <irreden/render/components/component_glitch_state.hpp>
+#include <irreden/render/components/component_glitch_subject.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/render/components/component_gpu_particle_pool.hpp>
 #include <irreden/render/components/component_gui_canvas_display.hpp>
@@ -119,6 +120,7 @@
 #include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/components/component_widget_theme.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
@@ -405,6 +407,7 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetButton, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetCheckbox, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetColorSwatch, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetDropdown, 2)
+IR_SAVE_OPT_IN(IRComponents::C_WidgetImage, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetLabel, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetList, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetNumberField, 1)
@@ -434,6 +437,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_PerAxisSurfaceLighting)
 // every run; a snapshot taken mid-glitch must not glitch a session that never
 // turned it on.
 IR_SAVE_OPT_OUT(IRComponents::C_GlitchState)
+// C_GlitchSubject: OPT-OUT — same reasoning: a per-entity presentation mark
+// the creation re-establishes every run.
+IR_SAVE_OPT_OUT(IRComponents::C_GlitchSubject)
 // C_GuiCanvasDisplay: OPT-OUT — applied from the creation's world config
 // (`gui_pixelated`) on every run; a snapshot would only shadow that setting.
 IR_SAVE_OPT_OUT(IRComponents::C_GuiCanvasDisplay)
@@ -636,6 +642,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetCheckbox,
     IRComponents::C_WidgetColorSwatch,
     IRComponents::C_WidgetDropdown,
+    IRComponents::C_WidgetImage,
     IRComponents::C_WidgetLabel,
     IRComponents::C_WidgetList,
     IRComponents::C_WidgetNumberField,
@@ -650,6 +657,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_SettingsMenuState,
     IRComponents::C_PerAxisSurfaceLighting,
     IRComponents::C_GlitchState,
+    IRComponents::C_GlitchSubject,
     IRComponents::C_GuiCanvasDisplay,
     IRComponents::C_SettingsRegistry,
     IRComponents::C_Splitter,

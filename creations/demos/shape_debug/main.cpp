@@ -19,6 +19,7 @@
 #include <irreden/script/prefab_api.hpp>
 
 #include "glitch_fixture.hpp"
+#include "glitch_subject_fixture.hpp"
 #include "lod_scene.hpp"
 #include "sdf_voxel_scene.hpp"
 
@@ -227,6 +228,7 @@ constexpr IRVideo::AutoScreenshotShot kMovingCasterShots[] = {
 };
 bool g_movingCaster = false;
 IRShapeDebug::GlitchFixture::Mode g_glitchMode = IRShapeDebug::GlitchFixture::Mode::NONE;
+IRShapeDebug::GlitchSubjectFixture g_glitchSubject;
 IREntity::EntityId g_movingCasterEntity = IREntity::kNullEntity;
 
 // A cube assembled from single-voxel entities emits every interior face, so
@@ -582,6 +584,7 @@ constexpr IRVideo::AutoScreenshotShot kViewportLodSwapShots[] = {
 // the full character sheet as fontSize-1 free text, then a label, a button, a
 // slider with its readout, a checkbox and an open dropdown in that size.
 bool g_textSizeSample = false;
+ivec2 g_requestedFramebufferSize{0};
 constexpr IRVideo::AutoScreenshotShot kTextSizeSampleShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "text_size_sample"},
 };
@@ -1574,6 +1577,27 @@ void registerCliArgs() {
          "all"},
         "none"
     );
+    args.enumValue(
+        "--glitch-subject-test",
+        "Canvas-space subject glitch fixture (none|standard-off|off|tear|hold|split|echo|dissolve|"
+        "depth|spill-far-off|spill-far-on|spill-near-off|spill-near-on|choreography|all)",
+        {"none",
+         "standard-off",
+         "off",
+         "tear",
+         "hold",
+         "split",
+         "echo",
+         "dissolve",
+         "depth",
+         "spill-far-off",
+         "spill-far-on",
+         "spill-near-off",
+         "spill-near-on",
+         "choreography",
+         "all"},
+        "none"
+    );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
     args.enumValue(
@@ -1684,6 +1708,11 @@ void registerCliArgs() {
         "Replace the scene + capture table with both GUI glyph sets side by side: the character "
         "sheet and one of each text widget per size, over an empty world"
     );
+    args.numbers(
+        "--framebuffer-size",
+        "Resize the logical window to produce the requested framebuffer width and height",
+        2
+    );
     args.flag(
         "--viewport-lod-swap",
         "With --viewport-portrait: the subject is a coarse/fine pair on disjoint LOD bands; the "
@@ -1727,6 +1756,8 @@ void readCliArgs() {
     g_voxelEntityCube = args.getFlag("--voxel-entity-cube");
     g_movingCaster = args.getFlag("--moving-caster");
     g_glitchMode = IRShapeDebug::GlitchFixture::info(args.getEnum("--glitch-test")).mode_;
+    g_glitchSubject.mode_ =
+        IRShapeDebug::GlitchSubjectFixture::info(args.getEnum("--glitch-subject-test")).mode_;
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
@@ -1737,6 +1768,13 @@ void readCliArgs() {
     g_lodScene = args.getFlag("--lod-scene");
     g_viewportPortrait = args.getFlag("--viewport-portrait");
     g_textSizeSample = args.getFlag("--text-size-sample");
+    if (args.wasProvided("--framebuffer-size")) {
+        const std::vector<float> &size = args.getFloats("--framebuffer-size");
+        if (size[0] > 0.0f && size[1] > 0.0f && IRMath::floor(size[0]) == size[0] &&
+            IRMath::floor(size[1]) == size[1]) {
+            g_requestedFramebufferSize = ivec2(size[0], size[1]);
+        }
+    }
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
     g_continuousZoomGuiTest = args.getFlag("--continuous-zoom-gui-test");
@@ -1788,18 +1826,80 @@ void readCliArgs() {
     g_spinShapeVoxel = args.getFlag("--spin-shape-voxel");
 }
 
+bool resizeWindowForFramebuffer(ivec2 requestedSize) {
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        ivec2 windowSize{0};
+        ivec2 framebufferSize{0};
+        IRWindow::getWindowSize(windowSize);
+        IRWindow::getFramebufferSize(framebufferSize);
+        if (framebufferSize == requestedSize) {
+            IR_LOG_INFO(
+                "Framebuffer fixture size: {}x{} (window {}x{})",
+                framebufferSize.x,
+                framebufferSize.y,
+                windowSize.x,
+                windowSize.y
+            );
+            return true;
+        }
+        if (windowSize.x <= 0 || windowSize.y <= 0 || framebufferSize.x <= 0 ||
+            framebufferSize.y <= 0) {
+            break;
+        }
+        const ivec2 correctedWindowSize{
+            IRMath::max(
+                1,
+                IRMath::round(
+                    static_cast<float>(requestedSize.x) * static_cast<float>(windowSize.x) /
+                    static_cast<float>(framebufferSize.x)
+                )
+            ),
+            IRMath::max(
+                1,
+                IRMath::round(
+                    static_cast<float>(requestedSize.y) * static_cast<float>(windowSize.y) /
+                    static_cast<float>(framebufferSize.y)
+                )
+            ),
+        };
+        glfwSetWindowSize(
+            IRWindow::getWindow().getRawWindow(),
+            correctedWindowSize.x,
+            correctedWindowSize.y
+        );
+        IRWindow::getWindow().pollEvents();
+    }
+
+    ivec2 framebufferSize{0};
+    IRWindow::getFramebufferSize(framebufferSize);
+    IR_LOG_ERROR(
+        "Could not produce requested framebuffer fixture size {}x{}; got {}x{}",
+        requestedSize.x,
+        requestedSize.y,
+        framebufferSize.x,
+        framebufferSize.y
+    );
+    return false;
+}
+
 } // namespace
 
 void initSystems();
 void initCommands();
 void initEntities();
 void initGlitchFixture();
+void initGlitchSubjectFixture();
 void registerDemoSettings();
 
 int main(int argc, char **argv) {
     registerCliArgs();
     IREngine::args().parse(argc, argv);
     readCliArgs();
+    if (IREngine::args().wasProvided("--framebuffer-size") &&
+        g_requestedFramebufferSize == ivec2(0)) {
+        IR_LOG_ERROR("--framebuffer-size requires two positive integer dimensions");
+        return 2;
+    }
     const bool sdfVoxelScene = IREngine::args().getEnum("--sdf-voxel-scene") != "off";
     if (((IREngine::args().getFlag("--sdf-voxel-blockers") ||
           IREngine::args().getEnum("--sdf-voxel-pose") != "rest") &&
@@ -1861,6 +1961,10 @@ int main(int argc, char **argv) {
         }
     });
     IREngine::init(argv[0]);
+    if (g_requestedFramebufferSize != ivec2(0) &&
+        !resizeWindowForFramebuffer(g_requestedFramebufferSize)) {
+        return 2;
+    }
 
     // --spin-yaw + --auto-screenshot: reinterpret the screenshot value as
     // "shots across one rotation", and use a small internal warmup. This is
@@ -1884,6 +1988,7 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
     initGlitchFixture();
+    initGlitchSubjectFixture();
     // After initEntities: the tint setters re-apply over the shapes it created.
     registerDemoSettings();
     if (g_zoomContinuous) {
@@ -3709,6 +3814,45 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_GLITCH>()
         );
     }
+    if (g_glitchSubject.mode_ != IRShapeDebug::GlitchSubjectFixture::Mode::NONE) {
+        // Immediately before the composite: shape_debug registers no fog, so
+        // lighting is the last main-canvas colour producer.
+        const auto trixelGlitch = renderPipeline.insert(
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
+            IRSystem::createSystem<IRSystem::TRIXEL_GLITCH>()
+        );
+        // Capture runs only: the probes read the canvas back, which a profiled
+        // run must not pay for.
+        if (g_glitchSubject.captures() && g_autoWarmupFrames > 0) {
+            renderPipeline.insert(
+                trixelGlitch,
+                IRSystem::createSystem<IRComponents::C_GlitchSubject>(
+                    "ShapeDebugGlitchSubjectPreProbe",
+                    [](const IRComponents::C_GlitchSubject &) {},
+                    []() { g_glitchSubject.preGlitchFrame(); }
+                )
+            );
+            renderPipeline.insert(
+                std::next(trixelGlitch),
+                IRSystem::createSystem<IRComponents::C_GlitchSubject>(
+                    "ShapeDebugGlitchSubjectPostProbe",
+                    [](const IRComponents::C_GlitchSubject &) {},
+                    []() { g_glitchSubject.postGlitchFrame(); }
+                )
+            );
+        }
+        if (g_glitchSubject.mode_ == IRShapeDebug::GlitchSubjectFixture::Mode::CHOREOGRAPHY &&
+            IRSystem::findSystem(IRSystem::FRAMEBUFFER_GLITCH) == IRSystem::kNullSystemId) {
+            renderPipeline.insert(
+                std::find(
+                    renderPipeline.begin(),
+                    renderPipeline.end(),
+                    IRSystem::findSystem(IRSystem::FRAMEBUFFER_TO_SCREEN)
+                ),
+                IRSystem::createSystem<IRSystem::FRAMEBUFFER_GLITCH>()
+            );
+        }
+    }
     // The interactive minimap is not part of captures or timed scene work.
     IRRender::setCullingMinimapEnabled(
         g_autoWarmupFrames == 0 && g_autoRecordFrames == 0 && g_autoProfileFrames == 0
@@ -3722,6 +3866,7 @@ void initSystems() {
                 ++g_autoProfileCount;
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IRShapeDebug::GlitchFixture::logProbe("profile-end", false);
+                    g_glitchSubject.logSystemLine("profile-end");
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
                     IRWindow::closeWindow();
                 }
@@ -4215,6 +4360,12 @@ void initSystems() {
             cfg.onCaptureFrame_ = [](int) {
                 IRShapeDebug::GlitchFixture::logProbe("capture", true);
             };
+        } else if (g_glitchSubject.captures()) {
+            cfg.shots_ = g_glitchSubject.shots(cfg.numShots_);
+            if (cfg.numShots_ == 1) {
+                cfg.settleFrames_ = IRShapeDebug::GlitchSubjectFixture::kSettleFrames;
+            }
+            cfg.onCaptureFrame_ = [](int shotIndex) { g_glitchSubject.logCapture(shotIndex); };
         } else if (g_lodScene) {
             IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::LodScene::shots_);
             cfg.settleFrames_ = IRConstants::kPrefabPartsTierSettleTicks + 12;
@@ -5059,6 +5210,33 @@ void initGlitchFixture() {
                 IREntity::getComponent<C_LocalTransform>(mover).translation_ =
                     GlitchFixture::moverPosition();
             }
+        ),
+        IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+    );
+}
+
+// Every capturing subject mode adds two striped voxel subjects (eight for
+// `all`) and a RENDER controller ahead of the voxel raster that poses and
+// configures them each tick.
+void initGlitchSubjectFixture() {
+    using IRShapeDebug::GlitchSubjectFixture;
+    if (!g_glitchSubject.captures()) {
+        return;
+    }
+    IRPrefab::Glitch::setState(GlitchSubjectFixture::clockState(g_glitchSubject.mode_));
+    g_glitchSubject.spawn();
+    for (int i = 0; i < g_glitchSubject.subjectCount_; ++i) {
+        IRPrefab::Glitch::setSubject(
+            g_glitchSubject.subjects_[static_cast<std::size_t>(i)],
+            GlitchSubjectFixture::inactive()
+        );
+    }
+    IRSystem::insertIntoPipelineBefore(
+        IRTime::Events::RENDER,
+        IRSystem::createSystem<IRComponents::C_GlitchState>(
+            "ShapeDebugGlitchSubjectControl",
+            [](const IRComponents::C_GlitchState &) {},
+            []() { g_glitchSubject.controlFrame(); }
         ),
         IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
     );

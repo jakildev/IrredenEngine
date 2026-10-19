@@ -11,11 +11,15 @@ from pathlib import Path
 KINDS = {"demo", "editor", "game", "tool", "test"}
 TARGET_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
 WINDOWS_DEVICE_PATTERN = re.compile(r"^(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$")
+# The editors .gitignore tracks; every other creations/editors/* is private.
+TRACKED_EDITORS = ("font_maker", "voxel_editor")
+# Prefixes of the build targets a manifest may name.
+TARGET_PREFIXES = ("IR", "Demo", "Editor")
 
 
 def creation_dirs(root: Path) -> list[Path]:
     demos = sorted(path for path in (root / "creations/demos").iterdir() if path.is_dir())
-    return demos + [root / "creations/editors/voxel_editor"]
+    return demos + [root / "creations/editors" / editor for editor in TRACKED_EDITORS]
 
 
 def fail(path: Path, message: str) -> None:
@@ -159,7 +163,7 @@ def build_targets(build_dir: Path) -> set[str]:
     names = set()
     for line in result.stdout.splitlines():
         name = line.strip().removeprefix("...").strip().split(maxsplit=1)[0]
-        if name.startswith(("IR", "Demo")):
+        if name.startswith(TARGET_PREFIXES):
             names.add(name)
     return names
 

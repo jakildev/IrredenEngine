@@ -31,6 +31,7 @@
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/time/time_manager.hpp>
 #include <irreden/render/glitch.hpp>
+#include <irreden/render/glitch_subject.hpp>
 #include <irreden/render/help_overlay.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/settings_menu.hpp>
@@ -523,6 +524,283 @@ TEST_F(GlitchScheduleProbeTest, OffFrameLeavesTheScreenBaseToTheOrdinaryBlit) {
     ) << "the snapshot from before the off tick is stale";
     EXPECT_EQ(m_encoder.liveImages_, 1);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 2u);
+}
+
+// ---- TRIXEL_GLITCH ------------------------------------------------------------
+//
+// The canvas pass's real `beginTick` / `tick` gather, `prepareFrame` decision
+// and `encodeFrame` schedule run against a recording encoder that models the
+// main canvas's glitch images as handles: the live colour plane starts as 1
+// and the scratch destination as 2, and every swap exchanges them. The
+// recording device catches any device call made outside the encoder.
+
+using TrixelGlitchSystem = IRSystem::System<IRSystem::TRIXEL_GLITCH>;
+
+IRSystem::SystemId registerTrixelGlitchParamsOnly() {
+    return IRSystem::registerSystem<IRSystem::TRIXEL_GLITCH, IRComponents::C_GlitchSubject>(
+        "TrixelGlitch"
+    );
+}
+
+class TrixelGlitchRecordingEncoder final : public IRSystem::TrixelGlitchEncoder {
+  public:
+    explicit TrixelGlitchRecordingEncoder(RenderOpLog &log)
+        : m_log{log} {}
+
+    void createImages() override {
+        if (liveImages_ > 0) {
+            m_log.push_back("trixel:destroyImages");
+        }
+        m_log.push_back("trixel:createImages");
+        liveImages_ = 3;
+        liveColour_ = 1;
+        scratchColour_ = 2;
+    }
+    void uploadSubjects(std::span<const IRMath::uvec4> words) override {
+        m_log.push_back("trixel:upload");
+        lastWords_.assign(words.begin(), words.end());
+    }
+    void copyHistoryColors() override {
+        EXPECT_EQ(liveImages_, 3) << "a copy needs the history images";
+        m_log.push_back("trixel:copyHistoryColors");
+    }
+    void copyHistoryEntityIds() override {
+        EXPECT_EQ(liveImages_, 3);
+        m_log.push_back("trixel:copyHistoryEntityIds");
+    }
+    void dispatch() override {
+        EXPECT_EQ(liveImages_, 3) << "the dispatch needs its destination";
+        m_log.push_back(
+            "trixel:dispatch read=" + std::to_string(liveColour_) +
+            " write=" + std::to_string(scratchColour_)
+        );
+    }
+    void swapColors() override {
+        m_log.push_back("trixel:swap");
+        std::swap(liveColour_, scratchColour_);
+    }
+
+    int liveImages_ = 0;
+    int liveColour_ = 0;
+    int scratchColour_ = 0;
+    std::vector<IRMath::uvec4> lastWords_;
+
+  private:
+    RenderOpLog &m_log;
+};
+
+class TrixelGlitchScheduleProbeTest : public PrefabSystemProbeTest {
+  protected:
+    TrixelGlitchScheduleProbeTest()
+        : m_encoder{m_log}
+        , m_device{m_log} {
+        m_previousDevice = IRRender::g_renderDevice;
+        IRRender::setDevice(&m_device);
+        m_trixel = IRSystem::getSystemParams<TrixelGlitchSystem>(registerTrixelGlitchParamsOnly());
+    }
+    ~TrixelGlitchScheduleProbeTest() override {
+        IRRender::setDevice(m_previousDevice);
+    }
+
+    // One RENDER tick of the pass over `m_subjects`. An off frame runs the
+    // real `endTick`, which must return before resolving the canvas; an
+    // enabled one hands `encodeFrame` the recorder, with the images present
+    // unless @p resized dropped them. @p tickAdvance moves the period tick.
+    RenderOpLog renderFrame(bool resized = false, std::int64_t tickAdvance = 0) {
+        m_log.clear();
+        m_trixel->beginTick();
+        m_trixel->clock_.tick_ += m_tickOffset + tickAdvance;
+        m_tickOffset += tickAdvance;
+        for (const auto &[entity, subject] : m_subjects) {
+            m_trixel->tick(entity, subject);
+        }
+        if (m_trixel->prepareFrame()) {
+            if (resized) {
+                m_encoder.liveImages_ = 0;
+            }
+            m_trixel->encodeFrame(m_encoder, m_encoder.liveImages_ == 3);
+        } else {
+            m_trixel->endTick();
+        }
+        return m_log;
+    }
+
+    static IRComponents::C_GlitchSubject holdSubject() {
+        IRComponents::C_GlitchSubject subject;
+        subject.holdWeight_ = 1.0f;
+        subject.spill_ = 2;
+        return subject;
+    }
+
+    RenderOpLog m_log;
+    TrixelGlitchRecordingEncoder m_encoder;
+    RecordingRenderDevice m_device;
+    IRRender::RenderDevice *m_previousDevice = nullptr;
+    TrixelGlitchSystem *m_trixel = nullptr;
+    std::vector<std::pair<IREntity::EntityId, IRComponents::C_GlitchSubject>> m_subjects;
+    std::int64_t m_tickOffset = 0;
+};
+
+TEST_F(TrixelGlitchScheduleProbeTest, NoActiveSubjectDoesNoWorkAndZeroesItsTimingRow) {
+    IRRender::gpuStageTiming().trixelGlitchMs_ = 0.37f;
+    EXPECT_EQ(renderFrame(), RenderOpLog{}) << "no subject: no upload, copy, dispatch or swap";
+    EXPECT_FLOAT_EQ(IRRender::gpuStageTiming().trixelGlitchMs_, 0.0f);
+
+    IRComponents::C_GlitchSubject parked = holdSubject();
+    parked.weight_ = 0.0f;
+    m_subjects = {{41u, parked}, {42u, IRComponents::C_GlitchSubject{}}};
+    IRRender::gpuStageTiming().trixelGlitchMs_ = 0.37f;
+    EXPECT_EQ(renderFrame(), RenderOpLog{}) << "a zero weight or no effect is inactive";
+    EXPECT_FLOAT_EQ(IRRender::gpuStageTiming().trixelGlitchMs_, 0.0f);
+    EXPECT_FALSE(m_trixel->enabledThisFrame_);
+    EXPECT_EQ(m_trixel->frameUploads_, 0);
+    EXPECT_EQ(m_trixel->frameDispatches_, 0);
+    EXPECT_EQ(m_trixel->frameSwaps_, 0);
+    EXPECT_EQ(m_encoder.liveImages_, 0)
+        << "the canvas gets no glitch image before the first enabled frame";
+}
+
+TEST_F(
+    TrixelGlitchScheduleProbeTest, HoldSubjectCopiesHistoryOncePerPeriodTickAndAlternatesColour
+) {
+    m_subjects = {{57u, holdSubject()}};
+    EXPECT_EQ(
+        renderFrame(),
+        (RenderOpLog{
+            "trixel:createImages",
+            "trixel:upload",
+            "trixel:copyHistoryColors",
+            "trixel:copyHistoryEntityIds",
+            "trixel:dispatch read=1 write=2",
+            "trixel:swap"
+        })
+    ) << "first enabled frame: three canvas images, both history planes, one dispatch and swap";
+    EXPECT_EQ(m_encoder.liveImages_, 3);
+    EXPECT_EQ(m_trixel->frameHistoryCopies_, 2);
+    EXPECT_TRUE(m_trixel->historyValid_);
+
+    EXPECT_EQ(
+        renderFrame(),
+        (RenderOpLog{"trixel:upload", "trixel:dispatch read=2 write=1", "trixel:swap"})
+    ) << "the same period tick copies nothing; the colour planes alternate";
+
+    EXPECT_EQ(
+        renderFrame(false, 1),
+        (RenderOpLog{
+            "trixel:upload",
+            "trixel:copyHistoryColors",
+            "trixel:copyHistoryEntityIds",
+            "trixel:dispatch read=1 write=2",
+            "trixel:swap"
+        })
+    ) << "the next period tick re-snapshots once";
+
+    EXPECT_EQ(
+        renderFrame(true),
+        (RenderOpLog{
+            "trixel:createImages",
+            "trixel:upload",
+            "trixel:copyHistoryColors",
+            "trixel:copyHistoryEntityIds",
+            "trixel:dispatch read=1 write=2",
+            "trixel:swap"
+        })
+    ) << "a canvas resize drops the images; they return and history reseeds on the same tick";
+    EXPECT_EQ(m_trixel->imageCreationCount_, 2u);
+    EXPECT_EQ(m_trixel->historyCopyCount_, 6u);
+    EXPECT_EQ(m_trixel->dispatchCount_, 4u);
+}
+
+TEST_F(TrixelGlitchScheduleProbeTest, HistoryFollowsTheHoldSubjectsOnly) {
+    IRComponents::C_GlitchSubject tear;
+    tear.tearWeight_ = 1.0f;
+    m_subjects = {{57u, tear}};
+    EXPECT_EQ(
+        renderFrame(),
+        (RenderOpLog{
+            "trixel:createImages",
+            "trixel:upload",
+            "trixel:dispatch read=1 write=2",
+            "trixel:swap"
+        })
+    ) << "no hold subject: no history copy";
+    EXPECT_FALSE(m_trixel->historyValid_);
+
+    m_subjects.push_back({58u, holdSubject()});
+    EXPECT_EQ(
+        renderFrame(),
+        (RenderOpLog{
+            "trixel:upload",
+            "trixel:copyHistoryColors",
+            "trixel:copyHistoryEntityIds",
+            "trixel:dispatch read=2 write=1",
+            "trixel:swap"
+        })
+    ) << "hold turning on mid-tick takes a snapshot";
+
+    m_subjects.clear();
+    EXPECT_EQ(renderFrame(), RenderOpLog{});
+    EXPECT_FALSE(m_trixel->historyValid_) << "an off frame voids the snapshot";
+    EXPECT_EQ(m_encoder.liveImages_, 3) << "an off frame keeps the images";
+
+    m_subjects = {{58u, holdSubject()}};
+    EXPECT_EQ(
+        renderFrame(),
+        (RenderOpLog{
+            "trixel:upload",
+            "trixel:copyHistoryColors",
+            "trixel:copyHistoryEntityIds",
+            "trixel:dispatch read=1 write=2",
+            "trixel:swap"
+        })
+    ) << "the snapshot from before the off frame is stale";
+}
+
+TEST_F(TrixelGlitchScheduleProbeTest, SubjectsUploadSortedByIdWithTheirSlots) {
+    IRComponents::C_GlitchSubject tear;
+    tear.tearWeight_ = 1.0f;
+    m_subjects = {{90u, tear}, {12u, holdSubject()}, {55u, tear}};
+    renderFrame();
+    const std::vector<IRMath::uvec4> &words = m_encoder.lastWords_;
+    ASSERT_FALSE(words.empty());
+    EXPECT_EQ(words[0].w, 3u);
+    EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 12u), 0);
+    EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 55u), 1);
+    EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 90u), 2);
+}
+
+// Both glitch passes resolve one period tick from one `C_GlitchState`, so a
+// creation can put a subject glitch on tick N and a screen tear on tick N + 1.
+TEST_F(PrefabSystemProbeTest, GlitchPassesResolveTheSamePeriodTick) {
+    auto *framebuffer = IRSystem::getSystemParams<GlitchSystem>(registerGlitchParamsOnly());
+    auto *trixel = IRSystem::getSystemParams<TrixelGlitchSystem>(registerTrixelGlitchParamsOnly());
+    auto &state = IREntity::singleton<IRComponents::C_GlitchState>();
+    state.periodSeconds_ = 0.25;
+    state.phaseSeconds_ = -1.3;
+    state.seed_ = 9u;
+    state.intensity_ = 1.0f;
+    state.tearWeight_ = 1.0f;
+
+    framebuffer->beginTick();
+    trixel->beginTick();
+    ASSERT_TRUE(framebuffer->enabledThisFrame_);
+    EXPECT_EQ(framebuffer->clock_.tick_, 5) << "floor((0 + 1.3) / 0.25)";
+    EXPECT_EQ(trixel->clock_.tick_, framebuffer->clock_.tick_);
+
+    IRComponents::C_GlitchSubject subject;
+    subject.tearWeight_ = 1.0f;
+    trixel->tick(7u, subject);
+    ASSERT_TRUE(trixel->prepareFrame());
+    const IRPrefab::Glitch::TickWords words = IRPrefab::Glitch::toTickWords(5);
+    EXPECT_EQ(trixel->words_[0], IRMath::uvec4(9u, words.low_, words.high_, 1u))
+        << "the subject buffer carries the framebuffer pass's seed and tick words";
+
+    state.intensity_ = 0.0f;
+    framebuffer->beginTick();
+    trixel->beginTick();
+    EXPECT_FALSE(framebuffer->enabledThisFrame_);
+    EXPECT_EQ(trixel->clock_.tick_, IRPrefab::Glitch::clock().tick_)
+        << "the subject pass keeps the clock while the screen pass is off";
 }
 
 } // namespace

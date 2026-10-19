@@ -77,6 +77,10 @@ TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
         static_cast<int>(IRSystem::FRAMEBUFFER_GLITCH)
     );
     EXPECT_EQ(
+        lua.script("return IRSystem.SystemName.TRIXEL_GLITCH").get<int>(),
+        static_cast<int>(IRSystem::TRIXEL_GLITCH)
+    );
+    EXPECT_EQ(
         lua.script("return IRSystem.SystemName.PROPAGATE_CANVAS_PARTS").get<int>(),
         static_cast<int>(IRSystem::PROPAGATE_CANVAS_PARTS)
     );
@@ -108,6 +112,7 @@ TEST_F(LuaPipelineRegisterTest, WidgetRenderSystemNamesBound) {
         IR_WIDGET_ROW(WIDGET_RENDER_NUMBER_FIELD),
         IR_WIDGET_ROW(WIDGET_RENDER_SCROLL),
         IR_WIDGET_ROW(WIDGET_RENDER_COLOR_SWATCH),
+        IR_WIDGET_ROW(WIDGET_RENDER_IMAGE),
         IR_WIDGET_ROW(WIDGET_RENDER_SPLITTER),
         IR_WIDGET_ROW(WIDGET_RENDER_DOCK_PREVIEW),
     };

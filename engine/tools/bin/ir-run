@@ -103,6 +103,7 @@ BUILD_DIR=""
 BUILD_MODE="debug"
 TIMEOUT=""
 TIMEOUT_EXPLICIT=0
+RESULT_FILE="${IR_RUN_RESULT_FILE:-}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --release)
@@ -132,6 +133,14 @@ while [[ $# -gt 0 ]]; do
             fi
             TIMEOUT="$2"
             TIMEOUT_EXPLICIT=1
+            shift 2
+            ;;
+        --result-file)
+            if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+                echo "ir-run: --result-file requires a path" >&2
+                exit 2
+            fi
+            RESULT_FILE="$2"
             shift 2
             ;;
         --targets)
@@ -191,6 +200,9 @@ Run mode
                        probe switches such as IR_SHAPE_PROBE=1.
     --build-dir <dir>   CMake build directory (must contain the built binary).
                         Default: see "Build directory" below.
+    --result-file <path>
+                        Write the printed RESULT verdict as JSON. The
+                        IR_RUN_RESULT_FILE environment variable is the fallback.
     --timeout N | -t N  Run under a watchdog: kill after N whole seconds.
                         Exit 0 if still running at timeout (treat as healthy
                         for smoke tests). Exit 1 if the process died early
@@ -339,6 +351,7 @@ fi
 
 EXE_NAME="$1"
 shift
+RESULT_ARGV=("$EXE_NAME" "$@")
 
 # Remaining "$@" is the program's args. Detect --auto-screenshot,
 # --auto-record, or --auto-profile — bare or in the inline `=N` form the
@@ -506,6 +519,63 @@ ir_exit_signal_name() {
 
 ir_lower() {
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+ir_json_escape() {
+    local value="$1"
+    local escaped=""
+    local char code encoded
+    local index
+    for ((index = 0; index < ${#value}; ++index)); do
+        char="${value:index:1}"
+        case "$char" in
+            '"') escaped+='\"' ;;
+            '\\') escaped+='\\\\' ;;
+            $'\b') escaped+='\b' ;;
+            $'\f') escaped+='\f' ;;
+            $'\n') escaped+='\n' ;;
+            $'\r') escaped+='\r' ;;
+            $'\t') escaped+='\t' ;;
+            *)
+                printf -v code '%d' "'$char"
+                if ((code < 32)); then
+                    printf -v encoded '\\u%04x' "$code"
+                    escaped+="$encoded"
+                else
+                    escaped+="$char"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$escaped"
+}
+
+ir_write_result() {
+    local verdict="$1"
+    local rc="$2"
+    local signal_name="${3:-}"
+    [[ -n "$RESULT_FILE" ]] || return 0
+    local parent
+    parent="$(dirname "$RESULT_FILE")"
+    mkdir -p "$parent"
+    local argv_json=""
+    local arg escaped
+    for arg in "${RESULT_ARGV[@]}"; do
+        escaped="$(ir_json_escape "$arg")"
+        [[ -z "$argv_json" ]] || argv_json+=","
+        argv_json+="\"$escaped\""
+    done
+    local signal_json="null"
+    if [[ -n "$signal_name" && "$signal_name" != "none" ]]; then
+        signal_json="\"$(ir_json_escape "$signal_name")\""
+    fi
+    local at
+    at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local json
+    json="{\"verdict\":\"$(ir_json_escape "$verdict")\",\"exe\":\"$(ir_json_escape "$EXE_NAME")\",\"exit\":$rc,\"signal\":$signal_json,\"argv\":[$argv_json],\"at\":\"$at\"}"
+    local temporary="${RESULT_FILE}.tmp.$$"
+    printf '%s\n' "$json" > "$temporary"
+    mv "$temporary" "$RESULT_FILE"
 }
 
 # Wall-clock epoch seconds, sub-second where the host can say so.
@@ -768,20 +838,24 @@ ir_report_result() {
     fi
     if [[ "$quiet" == "refused" || $rc -eq 75 ]]; then
         echo "ir-run: RESULT=HOST-NOT-QUIET exe=$EXE_NAME exit=75" >&2
+        ir_write_result "HOST-NOT-QUIET" 75
         return
     fi
     if [[ "$quiet" == "breach" || $rc -eq 76 ]]; then
         echo "ir-run: RESULT=CONTAMINATED exe=$EXE_NAME exit=76" >&2
+        ir_write_result "CONTAMINATED" 76
         return
     fi
     if [[ $rc -eq 0 ]]; then
         echo "ir-run: RESULT=CLEAN exe=$EXE_NAME exit=0"
+        ir_write_result "CLEAN" 0
         return
     fi
     local at
     at="$(ir_host_closed_event)"
     if [[ -n "$at" ]]; then
         echo "ir-run: RESULT=HOST-CLOSED exe=$EXE_NAME exit=$rc event=Application-Hang/1002 at=$at" >&2
+        ir_write_result "HOST-CLOSED" "$rc"
         echo "ir-run: Windows hang handling closed this Not Responding window" \
              "— host interference, not a demo failure and not a green run." \
              "Re-run it (docs/agents/FLEET.md §\"Clean-exit policy\")." >&2
@@ -790,6 +864,7 @@ ir_report_result() {
     local sig
     sig="$(ir_exit_signal_name "$rc")"
     echo "ir-run: RESULT=CRASH exe=$EXE_NAME exit=$rc signal=$sig" >&2
+    ir_write_result "CRASH" "$rc" "$sig"
     echo "ir-run: this run FAILED the clean-exit policy — outputs saved" \
          "before the crash do not make it green. Fix the crash before" \
          "shipping, whoever introduced it (docs/agents/FLEET.md" \
@@ -805,7 +880,7 @@ ir_report_result() {
 # mode (no verb, no timeout) keeps the exec path so signals and stdin
 # pass straight through to the human-supervised process.
 if [[ -z "$TIMEOUT" ]]; then
-    if [[ -n "$acquire_verb" ]]; then
+    if [[ -n "$acquire_verb" || -n "$RESULT_FILE" ]]; then
         echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $*$WINDOW_MODE_NOTE"
         cd "$EXE_DIR"
         launch=("./$EXE_RUN" "$@")
@@ -872,6 +947,7 @@ while true; do
             echo "ir-run: RESULT=LOCK-FAILED exe=$EXE_NAME exit=$exit_code" \
                  "— ir-acquire ${acquire_verb} did not grant its lock" \
                  "(see its message above); the exe never ran" >&2
+            ir_write_result "LOCK-FAILED" "$exit_code"
             exit 1
         fi
         if [[ $exit_code -eq 0 ]]; then
@@ -904,4 +980,5 @@ KILL_PID="$PID"
 kill "$KILL_PID" 2>/dev/null
 wait "$PID" 2>/dev/null || true
 echo "ir-run: RESULT=ALIVE-TIMEOUT exe=$EXE_NAME — ran for ${TIMEOUT}s without crashing, killed by watchdog"
+ir_write_result "ALIVE-TIMEOUT" 0
 exit 0

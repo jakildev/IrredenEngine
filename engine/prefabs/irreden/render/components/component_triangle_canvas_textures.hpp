@@ -144,6 +144,15 @@ struct C_TriangleCanvasTextures {
     // stamp lifecycle as renderedSubdivisions_ (0 when no voxel pool rastered).
     int anyPerTrixelPriority_ = 0;
 
+    // TRIXEL_GLITCH's images, allocated by that pass on the main canvas's first
+    // enabled frame and dropped by a resize so they return at the new size:
+    // the colour destination it swaps with textureTriangleColors_ after each
+    // dispatch, and the colour and entity-id planes as they stood at the start
+    // of the current period tick. Null on every other canvas.
+    std::pair<ResourceId, Texture2D *> glitchScratchColors_{0, nullptr};
+    std::pair<ResourceId, Texture2D *> glitchHistoryColors_{0, nullptr};
+    std::pair<ResourceId, Texture2D *> glitchHistoryEntityIds_{0, nullptr};
+
     C_TriangleCanvasTextures(ivec2 size)
         : size_{size}
         , textureTriangleColors_{detail::makeCanvasColorTexture(size)}
@@ -184,6 +193,26 @@ struct C_TriangleCanvasTextures {
                 &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
             );
         }
+    }
+
+    bool hasGlitchImages() const {
+        return glitchScratchColors_.second != nullptr;
+    }
+
+    // Replaces the three glitch images with ones at the canvas's size, in the
+    // live planes' formats so the colour swap and history copies match.
+    void createGlitchImages() {
+        destroyGlitchImages();
+        glitchScratchColors_ = detail::makeCanvasColorTexture(size_);
+        glitchHistoryColors_ = detail::makeCanvasColorTexture(size_);
+        glitchHistoryEntityIds_ = detail::makeCanvasEntityIdTexture(size_);
+    }
+
+    // Publishes the glitch output as the live colour plane; the previous live
+    // plane becomes the next destination. Both are owned here either way.
+    void swapGlitchScratchColors() {
+        IR_ASSERT(hasGlitchImages(), "swapGlitchScratchColors: no glitch images");
+        std::swap(textureTriangleColors_, glitchScratchColors_);
     }
 
     // Number of downsampled Hi-Z levels (levels 1..N). Level 0 is
@@ -309,31 +338,13 @@ struct C_TriangleCanvasTextures {
     // priority / fog carrier bits still set), row-major over the whole canvas.
     // One full-texture GPU readback: for probes and tests, never per frame.
     void readEntityIdCarriers(std::vector<uvec2> &out) const {
-        out.resize(static_cast<std::size_t>(size_.x) * static_cast<std::size_t>(size_.y));
-        textureTriangleEntityIds_.second->getSubImage2D(
-            0,
-            0,
-            size_.x,
-            size_.y,
-            PixelDataFormat::RG_INTEGER,
-            PixelDataType::UINT32,
-            out.data()
-        );
+        readEntityIdTexture(textureTriangleEntityIds_.second, out);
     }
 
     // RGBA8 colour texels, row-major over the whole canvas — the same
     // full-texture readback contract as readEntityIdCarriers.
     void readColors(std::vector<Color> &out) const {
-        out.resize(static_cast<std::size_t>(size_.x) * static_cast<std::size_t>(size_.y));
-        textureTriangleColors_.second->getSubImage2D(
-            0,
-            0,
-            size_.x,
-            size_.y,
-            PixelDataFormat::RGBA,
-            PixelDataType::UNSIGNED_BYTE,
-            out.data()
-        );
+        readColorTexture(textureTriangleColors_.second, out);
     }
 
     // readColors after a full GPU flush, so a read issued mid-frame (a probe
@@ -361,6 +372,21 @@ struct C_TriangleCanvasTextures {
         );
     }
 
+    // TRIXEL_GLITCH's readbacks, same contract as readColors. Right after an
+    // enabled frame's swap the scratch plane holds that frame's pre-glitch
+    // colour, which is the kernel's input.
+    void readGlitchInputColors(std::vector<Color> &out) const {
+        readColorTexture(glitchScratchColors_.second, out);
+    }
+
+    void readGlitchHistoryColors(std::vector<Color> &out) const {
+        readColorTexture(glitchHistoryColors_.second, out);
+    }
+
+    void readGlitchHistoryEntityIdCarriers(std::vector<uvec2> &out) const {
+        readEntityIdTexture(glitchHistoryEntityIds_.second, out);
+    }
+
     void clearDistances() const {
         shapeGeometry_.invalidateSamples();
         textureTriangleDistances_.second->clear(
@@ -380,6 +406,43 @@ struct C_TriangleCanvasTextures {
         for (const auto &mip : hiZMips_) {
             IRRender::destroyResource<Texture2D>(mip.first);
         }
+        destroyGlitchImages();
+    }
+
+    void destroyGlitchImages() {
+        for (auto *image :
+             {&glitchScratchColors_, &glitchHistoryColors_, &glitchHistoryEntityIds_}) {
+            if (image->second != nullptr) {
+                IRRender::destroyResource<Texture2D>(image->first);
+            }
+            *image = {0, nullptr};
+        }
+    }
+
+    void readEntityIdTexture(const Texture2D *texture, std::vector<uvec2> &out) const {
+        out.resize(static_cast<std::size_t>(size_.x) * static_cast<std::size_t>(size_.y));
+        texture->getSubImage2D(
+            0,
+            0,
+            size_.x,
+            size_.y,
+            PixelDataFormat::RG_INTEGER,
+            PixelDataType::UINT32,
+            out.data()
+        );
+    }
+
+    void readColorTexture(const Texture2D *texture, std::vector<Color> &out) const {
+        out.resize(static_cast<std::size_t>(size_.x) * static_cast<std::size_t>(size_.y));
+        texture->getSubImage2D(
+            0,
+            0,
+            size_.x,
+            size_.y,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            out.data()
+        );
     }
 
     // Clears to kTrixelDistanceMaxDistance - 1 (= 65534) rather than

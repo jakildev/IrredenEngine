@@ -79,7 +79,7 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_compute_voxel_ao_shapes_smooth_yaw") {
         return MTL::Size(16, 16, 1);
     }
-    if (functionName == "c_fog_to_trixel") {
+    if (functionName == "c_fog_to_trixel" || functionName == "c_trixel_glitch") {
         return MTL::Size(16, 16, 1);
     }
     if (functionName == "c_build_distance_hiz") {

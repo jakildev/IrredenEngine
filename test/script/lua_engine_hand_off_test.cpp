@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../common/counting_hand_off_platform.hpp"
+
 #include <string>
 #include <vector>
 
@@ -67,6 +69,15 @@ TEST_F(LuaEngineHandOffTest, ExplicitResumeTrueMatchesTheDefault) {
     EXPECT_EQ(m_requests.size(), 2u);
 }
 
+TEST_F(LuaEngineHandOffTest, ReturnsVerdict) {
+    m_next.verdict_ = "CLEAN";
+    const sol::protected_function_result result = run(R"lua(
+        local r = IREngine.handOff{ argv = { "IRDemo" } }
+        assert(r.verdict == "CLEAN")
+    )lua");
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
+}
+
 TEST_F(LuaEngineHandOffTest, ChildFailureReportsExitCodeAndError) {
     m_next = HandOffResult{false, true, 3, "the child exited with 3"};
     const sol::protected_function_result result = run(R"lua(
@@ -106,6 +117,11 @@ TEST_F(LuaEngineHandOffTest, MalformedInputRaisesBeforeTheHandOff) {
     );
     expectRaises("IREngine.handOff{ argv = { string.char(0) } }", "argv[1] contains a NUL byte");
     expectRaises("IREngine.handOff{ argv = { 'IRDemo' }, resume = 1 }", "boolean");
+    expectRaises("IREngine.handOff{ argv = { 'IRDemo' }, cwd = '.' }", "unknown key");
+    expectRaises(
+        "IREngine.handOff{ argv = { 'IRDemo' }, buildDir = '.claude/worktrees/pool-1/build' }",
+        "unknown key"
+    );
     EXPECT_TRUE(m_requests.empty());
 }
 
@@ -123,17 +139,7 @@ TEST_F(LuaEngineHandOffTest, OffTheMainThreadRaises) {
 // The binding in front of the real controller: outside ir-run the call is
 // inert — no drain, no child, no lease verb.
 TEST(LuaEngineHandOffUnsupportedTest, OutsideTheWrapperStartsNothing) {
-    struct CountingPlatform : IREngine::HandOffPlatform {
-        void drainGpu() override {
-            ++drains_;
-        }
-        IREngine::ChildExit runToExit(const std::vector<std::string> &) override {
-            ++launches_;
-            return {true, 0, ""};
-        }
-        int drains_ = 0;
-        int launches_ = 0;
-    } platform;
+    IRTest::CountingHandOffPlatform platform;
     IRScript::LuaScript lua;
     IREngine::bindHandOffLua(
         lua,

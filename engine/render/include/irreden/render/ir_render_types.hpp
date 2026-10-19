@@ -1469,6 +1469,12 @@ constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightO
 // and rebound by the next frame's stage 1. Same non-overlapping-stage safety as
 // the slot-28 aliases; the relight binds it explicitly before its own dispatch.
 constexpr std::uint32_t kBufferIndex_OverflowLightingScratch = kBufferIndex_VoxelActiveMask;
+// TRIXEL_GLITCH's subject SSBO (header, id -> slot table, per-subject
+// records) borrows the active-mask slot too: VOXEL_TO_TRIXEL_STAGE_1 is done
+// with it for the frame, and the pass rebinds `VoxelActiveMaskBuffer` there
+// after its dispatch, as FOG_TO_TRIXEL's per-axis path does. A storage-table
+// slot, so the borrow never shadows a uniform binding on Metal.
+constexpr std::uint32_t kBufferIndex_TrixelGlitchSubjects = kBufferIndex_VoxelActiveMask;
 // The per-axis empty-cell pass compacts each canvas's occupied cells into an
 // indirect instanced draw, so the scatter rasterizes only non-empty cells instead of sweeping the
 // whole worst-case-sized per-axis grid (~12x the cardinal area, mostly empty).
