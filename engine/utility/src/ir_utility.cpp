@@ -112,6 +112,37 @@ std::string envString(const char *name) {
     return value != nullptr ? std::string{value} : std::string{};
 }
 
+std::optional<std::filesystem::path>
+findOnPath(std::string_view name, std::initializer_list<std::string_view> suffixes) {
+    const std::string path = envString("PATH");
+    if (path.empty()) {
+        return std::nullopt;
+    }
+#ifdef _WIN32
+    constexpr char separator = ';';
+#else
+    constexpr char separator = ':';
+#endif
+    std::size_t begin = 0;
+    while (begin <= path.size()) {
+        const std::size_t end = path.find(separator, begin);
+        const std::filesystem::path directory = path.substr(begin, end - begin);
+        for (const std::string_view suffix : suffixes) {
+            std::error_code error;
+            const std::filesystem::path candidate =
+                directory / (std::string{name} + std::string{suffix});
+            if (std::filesystem::is_regular_file(candidate, error) && !error) {
+                return std::filesystem::weakly_canonical(candidate, error);
+            }
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+    return std::nullopt;
+}
+
 std::string formatNumberedFilename(
     const std::string &prefix, int index, int width, const std::string &extension
 ) {

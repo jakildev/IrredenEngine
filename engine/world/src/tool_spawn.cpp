@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdlib>
 #include <deque>
 #include <ranges>
 #include <stdexcept>
@@ -25,39 +24,6 @@ constexpr std::size_t kMaxBufferedLines = 2048;
 constexpr std::size_t kMaxBufferedLineBytes = 64 * 1024;
 constexpr std::size_t kMaxDrainBytesPerTick = 64 * 1024;
 
-std::optional<std::filesystem::path> findOnPath(std::string_view name) {
-    const char *rawPath = std::getenv("PATH");
-    if (rawPath == nullptr) {
-        return std::nullopt;
-    }
-#ifdef _WIN32
-    constexpr char separator = ';';
-    static constexpr std::string_view suffixes[] = {"", ".exe", ".cmd", ".bat"};
-#else
-    constexpr char separator = ':';
-    static constexpr std::string_view suffixes[] = {""};
-#endif
-    std::string path{rawPath};
-    std::size_t begin = 0;
-    while (begin <= path.size()) {
-        const std::size_t end = path.find(separator, begin);
-        const std::filesystem::path directory = path.substr(begin, end - begin);
-        for (const std::string_view suffix : suffixes) {
-            std::error_code error;
-            const std::filesystem::path candidate =
-                directory / (std::string{name} + std::string{suffix});
-            if (std::filesystem::is_regular_file(candidate, error) && !error) {
-                return std::filesystem::weakly_canonical(candidate, error);
-            }
-        }
-        if (end == std::string::npos) {
-            break;
-        }
-        begin = end + 1;
-    }
-    return std::nullopt;
-}
-
 std::optional<std::filesystem::path> fixedTool(std::string_view name) {
     const std::string wrapper = IRUtility::envString("IR_RUN_WRAPPER");
     if (!wrapper.empty()) {
@@ -70,7 +36,7 @@ std::optional<std::filesystem::path> fixedTool(std::string_view name) {
             return beside;
         }
     }
-    return findOnPath(name);
+    return IRUtility::findOnPath(name, {""});
 }
 
 #ifdef _WIN32
@@ -82,11 +48,6 @@ bool isCommandScript(const std::filesystem::path &path) {
     return extension == ".cmd" || extension == ".bat";
 }
 
-std::string commandScriptInvocation(
-    const std::filesystem::path &script, const std::filesystem::path &argument
-) {
-    return "call \"" + script.string() + "\" \"" + argument.string() + "\"";
-}
 #endif
 
 [[noreturn]] void raise(const std::string &message) {
@@ -303,17 +264,24 @@ std::expected<ToolHandle, std::string> ToolService::spawn(const ToolSpawnRequest
         }
         std::optional<std::filesystem::path> tool;
         if (request.tool_ == ToolName::EDITOR) {
-            tool = findOnPath("cursor");
+#ifdef _WIN32
+            tool = IRUtility::findOnPath("cursor", {".exe", ".cmd", ".bat"});
             if (!tool.has_value()) {
-                tool = findOnPath("code");
+                tool = IRUtility::findOnPath("code", {".exe", ".cmd", ".bat"});
             }
+#else
+            tool = IRUtility::findOnPath("cursor", {""});
+            if (!tool.has_value()) {
+                tool = IRUtility::findOnPath("code", {""});
+            }
+#endif
         } else {
 #ifdef _WIN32
-            tool = findOnPath("explorer");
+            tool = IRUtility::findOnPath("explorer", {".exe", ".cmd", ".bat"});
 #elif defined(__APPLE__)
-            tool = findOnPath("open");
+            tool = IRUtility::findOnPath("open", {""});
 #else
-            tool = findOnPath("xdg-open");
+            tool = IRUtility::findOnPath("xdg-open", {""});
 #endif
         }
         if (!tool.has_value()) {
@@ -329,13 +297,13 @@ std::expected<ToolHandle, std::string> ToolService::spawn(const ToolSpawnRequest
             if (commandInterpreter.empty()) {
                 commandInterpreter = "cmd.exe";
             }
-            child.argv_ = {
-                std::move(commandInterpreter),
-                "/d",
-                "/s",
-                "/c",
-                commandScriptInvocation(*tool, *resolved)
-            };
+            const auto commandLine =
+                detail::windowsCommandScriptLine(commandInterpreter, *tool, *resolved);
+            if (!commandLine.has_value()) {
+                return std::unexpected(commandLine.error());
+            }
+            child.argv_ = {std::move(commandInterpreter)};
+            child.verbatimWindowsCommandLine_ = *commandLine;
         } else {
             child.argv_ = {tool->string(), resolved->string()};
         }

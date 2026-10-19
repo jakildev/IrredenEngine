@@ -1,6 +1,7 @@
 #ifndef PROCESS_SPAWN_H
 #define PROCESS_SPAWN_H
 
+#include <expected>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -31,9 +32,16 @@ struct SpawnChildRequest {
     std::vector<std::string> argv_;
     std::filesystem::path cwd_;
     std::vector<std::pair<std::string, std::optional<std::string>>> environment_;
+    std::optional<std::string> verbatimWindowsCommandLine_;
     bool pipeOutput_ = false;
     bool processTree_ = false;
 };
+
+std::expected<std::string, std::string> windowsCommandScriptLine(
+    const std::filesystem::path &commandInterpreter,
+    const std::filesystem::path &script,
+    const std::filesystem::path &argument
+);
 
 ChildProcess spawnChild(const SpawnChildRequest &request);
 std::string readChildOutput(

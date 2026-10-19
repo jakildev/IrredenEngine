@@ -1,3 +1,6 @@
+#include "../../engine/process_spawn.hpp"
+
+#include <irreden/utility/path_utils.hpp>
 #include <irreden/world/hand_off.hpp>
 #include <irreden/world/tool_spawn.hpp>
 
@@ -118,6 +121,42 @@ class ToolSpawnTest : public testing::Test {
 
 static_assert(!std::is_move_constructible_v<IREngine::ToolService>);
 static_assert(!std::is_move_assignable_v<IREngine::ToolService>);
+
+TEST_F(ToolSpawnTest, NativeEditorSuffixesTakePriorityOverShellShims) {
+    IRTest::writeExecutableFile(m_root / "bin" / "cursor", "shell shim\n");
+    IRTest::writeExecutableFile(m_root / "bin" / "cursor.cmd", "command shim\n");
+
+    const auto resolved = IRUtility::findOnPath("cursor", {".exe", ".cmd", ".bat"});
+
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(*resolved, std::filesystem::weakly_canonical(m_root / "bin" / "cursor.cmd"));
+}
+
+TEST_F(ToolSpawnTest, BuildsVerbatimWindowsCommandScriptLine) {
+    const auto line = IREngine::detail::windowsCommandScriptLine(
+        "C:\\Windows\\System32\\cmd.exe",
+        "C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd",
+        "C:\\root\\creations\\game"
+    );
+
+    ASSERT_TRUE(line.has_value()) << line.error();
+    EXPECT_EQ(
+        *line,
+        "C:\\Windows\\System32\\cmd.exe /d /s /c \"\"C:\\Program Files\\Microsoft VS "
+        "Code\\bin\\code.cmd\" \"C:\\root\\creations\\game\"\""
+    );
+}
+
+TEST_F(ToolSpawnTest, RefusesPercentExpansionInWindowsCommandScriptArgument) {
+    const auto line = IREngine::detail::windowsCommandScriptLine(
+        "cmd.exe",
+        "C:\\bin\\code.cmd",
+        "C:\\root\\%TEMP%\\game"
+    );
+
+    ASSERT_FALSE(line.has_value());
+    EXPECT_EQ(line.error(), "path contains '%' and cannot be passed safely to cmd.exe");
+}
 
 TEST_F(ToolSpawnTest, PollAcrossChunks) {
     auto spawned = m_service->spawn({IREngine::ToolName::IR_BUILD, "Lines", ""});

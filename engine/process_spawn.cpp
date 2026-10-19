@@ -174,6 +174,18 @@ int decodeStatus(int status) {
 
 } // namespace
 
+std::expected<std::string, std::string> windowsCommandScriptLine(
+    const std::filesystem::path &commandInterpreter,
+    const std::filesystem::path &script,
+    const std::filesystem::path &argument
+) {
+    if (argument.string().find('%') != std::string::npos) {
+        return std::unexpected("path contains '%' and cannot be passed safely to cmd.exe");
+    }
+    return windowsCommandLine({commandInterpreter.string()}) + " /d /s /c \"\"" + script.string() +
+           "\" \"" + argument.string() + "\"\"";
+}
+
 ChildProcess spawnChild(const SpawnChildRequest &request) {
     ChildProcess child;
     if (request.argv_.empty()) {
@@ -203,7 +215,8 @@ ChildProcess spawnChild(const SpawnChildRequest &request) {
     startup.hStdOutput = request.pipeOutput_ ? outputWrite : GetStdHandle(STD_OUTPUT_HANDLE);
     startup.hStdError = request.pipeOutput_ ? outputWrite : GetStdHandle(STD_ERROR_HANDLE);
     PROCESS_INFORMATION process{};
-    std::wstring command = widen(windowsCommandLine(request.argv_));
+    std::wstring command =
+        widen(request.verbatimWindowsCommandLine_.value_or(windowsCommandLine(request.argv_)));
     std::wstring cwd = request.cwd_.empty() ? std::wstring{} : request.cwd_.wstring();
     std::vector<wchar_t> environment = environmentBlock(request.environment_);
     const DWORD flags = CREATE_UNICODE_ENVIRONMENT |
