@@ -164,9 +164,9 @@ ROUTING_ADAPTER = r"""
 #include <cstdio>
 #include <cstring>
 #include <optional>
-enum System {COMPUTE_SUN_SHADOW,TRIXEL_TO_FRAMEBUFFER,FOG_TO_TRIXEL};
+enum System {COMPUTE_SUN_SHADOW,TRIXEL_TO_FRAMEBUFFER,FOG_TO_TRIXEL,TRIXEL_GLITCH};
 constexpr int kNullSystemId=-1;
-bool systems[3];
+bool systems[4];
 int findSystem(System s){return systems[s]?int(s):kNullSystemId;}
 enum class DebugOverlayMode {NONE,AO};
 namespace IRRender {
@@ -180,10 +180,12 @@ namespace IREntity {
 C_TrixelCanvasRenderBehavior behavior;
 C_PerAxisSurfaceLighting surfaceLighting;
 bool hasBehavior,hasSurfaceLighting;
+int behaviorLookups=0;
 template<class T>T* singletonOrNull(){
     return hasSurfaceLighting?&surfaceLighting:nullptr;
 }
 template<class T>std::optional<T*> getComponentOptional(int){
+    ++behaviorLookups;
     return hasBehavior?std::optional<T*>(&behavior):std::nullopt;
 }
 }
@@ -191,9 +193,11 @@ struct Axes {bool allocated;bool isAllocated()const{return allocated;}};
 struct Program {int calls=0;void use(){++calls;}};
 struct Producer {
     bool perAxisSurfaceLightingEligible_=false,perAxisSurfaceLightingReady_=false;
+    bool cardinalSurfaceLightingEligible_=false;
     Axes* perAxisCanvases_=nullptr;
     const int *mainCanvasTextures_=nullptr,*mainCanvasAO_=nullptr;
     const int *mainCanvasSunShadow_=nullptr,*mainCanvasLightVolume_=nullptr;
+    const int *mainVoxelPool_=nullptr;
     int perAxisCanvasEntity_=7,dispatches=0;
     Program* program_;
     void dispatchPerAxisLighting(Axes&,int,int,int){++dispatches;}
@@ -207,6 +211,7 @@ int main(){
         if(enabledFromEnv(value)!=expected){std::fprintf(stderr,"explicit opt-in\n");return 1;}
     }
     int resource=1;
+    for(bool glitch:{false,true})for(bool voxelPool:{false,true})
     for(unsigned bits=0;bits<(1u<<15);++bits){
         const auto on=[bits](unsigned bit){return (bits&(1u<<bit))!=0;};
         Axes axes{on(2)};Program program;Producer producer;
@@ -218,12 +223,20 @@ int main(){
         producer.mainCanvasAO_=on(4)?&resource:nullptr;
         producer.mainCanvasSunShadow_=on(5)?&resource:nullptr;
         producer.mainCanvasLightVolume_=on(6)?&resource:nullptr;
+        producer.mainVoxelPool_=voxelPool?&resource:nullptr;
         systems[0]=on(7);systems[1]=on(8);systems[2]=!on(9);
+        systems[3]=glitch;
         IRRender::overlay=!on(10);IRRender::depth=!on(11);
         IREntity::hasBehavior=on(12);IREntity::behavior.useCameraPositionIso_=on(13);
         producer.perAxisSurfaceLightingEligible_=true;
         producer.perAxisSurfaceLightingReady_=true;
+        IREntity::behaviorLookups=0;
         producer.begin();
+        const bool commonResources=on(3)&&on(4)&&on(5)&&on(6);
+        const bool commonPipeline=on(7)&&on(8)&&on(9)&&on(10)&&on(11);
+        if(IREntity::behaviorLookups!=int(commonResources&&commonPipeline)){
+            std::fprintf(stderr,"shared behavior lookup\n");return 8;
+        }
         const bool expectedEligible=bits==(1u<<15)-1;
         if(producer.perAxisSurfaceLightingEligible_!=expectedEligible){
             std::fprintf(stderr,"eligibility %u\n",bits);return 2;
@@ -248,7 +261,7 @@ int main(){
         }
     }
     if(consume(nullptr)){std::fprintf(stderr,"missing producer\n");return 7;}
-    std::printf("32768 readiness combinations\n");
+    std::printf("131072 readiness combinations\n");
 }
 """
 
@@ -260,11 +273,12 @@ def routing_harness(variant):
     begin = functions(producer, "beginTick")
     reset = "\n".join(re.findall(
         r"perAxisSurfaceLighting(?:Eligible|Ready)_\s*=\s*false\s*;", begin))
-    state = re.search(r"const C_PerAxisSurfaceLighting\s*\*\s*surfaceLighting\s*=[^;]+;", begin)[0]
-    gate = braced_block(begin, r"if\s*\(\s*surfaceLighting\s*!=\s*nullptr")
+    gate = re.search(r"bool worldSurfaceLightingEligible = false;.*?"
+                     r"perAxisSurfaceLightingEligible_\s*=[^;]+;", begin, re.DOTALL)[0]
     tick = functions(producer, "tick")
     skip_detached = braced_block(tick, r"if\s*\(\s*!behavior\.useCameraPositionIso_\b")
-    publish = braced_block(tick, r"if\s*\(\s*entity\s*==\s*perAxisCanvasEntity_\b")
+    publish = braced_block(
+        tick, r"if\s*\(\s*entity\s*==\s*perAxisCanvasEntity_\s*&&\s*perAxisCanvases_")
     consume = re.search(r"scatterLightingEnabled_\s*=\s*[^;]+;",
                         functions(consumer, "beginTick"))[0]
     enabled = re.search(
@@ -282,7 +296,14 @@ def routing_harness(variant):
         publish = re.sub(r"if\s*\(perAxisSurfaceLightingEligible_\)", "if (false)", publish)
     elif variant == "presence-enables":
         enabled = "surfaceLighting != nullptr"
-    return (ROUTING_ADAPTER + "void begin(){" + reset + state + gate + "}\n"
+    elif variant == "per-axis-glitch-gate":
+        gate = gate.replace("perAxisSurfaceLightingEligible_ =",
+                            "perAxisSurfaceLightingEligible_ = "
+                            "findSystem(TRIXEL_GLITCH) == kNullSystemId &&")
+    elif variant == "per-axis-voxel-pool":
+        gate = gate.replace("perAxisSurfaceLightingEligible_ =",
+                            "perAxisSurfaceLightingEligible_ = mainVoxelPool_ != nullptr &&")
+    return (ROUTING_ADAPTER + "void begin(){" + reset + gate + "}\n"
             "void tick(int entity,const int* shadow){int canvasTextures=0,ao=0;"
             "const auto& behavior=IREntity::behavior;" + skip_detached + publish + "}\n};\n"
             "bool consume(const Producer* lighting_){bool scatterLightingEnabled_=false;"
@@ -466,7 +487,8 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
     def test_albedo_producer_consumer_readiness(self):
         original = routing_harness("production")
         for variant in ("production", "stale-ready", "ready-before-tick", "consumer-eligibility",
-                        "fog-accepted", "relight-eligible", "presence-enables"):
+                        "fog-accepted", "relight-eligible", "presence-enables",
+                        "per-axis-glitch-gate", "per-axis-voxel-pool"):
             with self.subTest(variant=variant), tempfile.TemporaryDirectory() as temporary:
                 path = Path(temporary)
                 source = routing_harness(variant)
@@ -480,9 +502,9 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
                 result = subprocess.run([str(executable)], capture_output=True, text=True)
                 if variant == "production":
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn("32768 readiness combinations", result.stdout)
+                    self.assertIn("131072 readiness combinations", result.stdout)
                 else:
-                    self.assertIn(result.returncode, range(1, 8), result.stderr)
+                    self.assertIn(result.returncode, range(1, 9), result.stderr)
 
 
 if __name__ == "__main__":

@@ -150,7 +150,8 @@ def harness(backend):
     shaders = shader_directory(backend)
     common = (shaders / f"ir_iso_common.{backend}").read_text()
     producer = (shaders / f"c_voxel_to_trixel_stage_1_body.{backend}").read_text()
-    receiver = cpp((shaders / f"ir_cardinal_voxel_receiver.{backend}").read_text())
+    receiver = cpp(functions((shaders / f"ir_cardinal_voxel_receiver.{backend}").read_text(),
+                             "cardinalVoxelSurfaceCenter"))
     constants = "\n".join(re.findall(
         r"^(?:const|constant) (?:int|vec3|float3) (?:k\w+Face\w*|kFace\w+|"
         r"kDepthEncodeShift|kVoxelRasterCellAnchor) = [^;]+;", common, re.MULTILINE))
@@ -497,6 +498,66 @@ class CardinalVoxelReceiverTest(unittest.TestCase):
                 with self.subTest(backend=backend, shape_receiver=shape_receiver):
                     source, mutations = routing_harness(backend, shape_receiver)
                     self.check_harness(backend, source, mutations, "route contract:")
+
+    def test_fragment_ray_intersects_the_published_plane(self):
+        for backend in ("glsl", "metal"):
+            with self.subTest(backend=backend):
+                source, _ = harness(backend)
+                point = cpp(functions((shader_directory(backend) /
+                                      f"ir_cardinal_voxel_receiver.{backend}").read_text(),
+                                      "cardinalVoxelSurfacePoint"))
+                point = point.replace("point += vec3(dot(center - point, axis));",
+                                      "point = point + vec3(dot(center - point, axis));")
+                # Project independent cube-face vertices to a continuous canvas ray.
+                checks = r"""
+     for(float fu : {-.9f,-.49f,-.23f,0.f,.19f,.49f,.9f})
+     for(float fv : {-.9f,-.49f,0.f,.49f,.9f}) {
+      vec3 expectedPoint=expected;
+      const int eu=axis==0?1:0,ev=axis==2?1:2;
+      for(int w=0;w<3;++w)
+       expectedPoint[w]+=(basis[cardinal][w][eu]*fu+basis[cardinal][w][ev]*fv)/samples;
+      double view[3]={0,0,0};
+      for(int a=0;a<3;++a)for(int w=0;w<3;++w)
+       view[a]+=basis[cardinal][w][a]*expectedPoint[w];
+      const vec2 query(
+       float((-view[0]+view[1])*samples+trixelCanvasOffsetZ1.x+
+             std::floor(frameCanvasOffset.x*samples)+1),
+       float((-view[0]-view[1]+2*view[2])*samples+trixelCanvasOffsetZ1.y+
+             std::floor(frameCanvasOffset.y*samples)+1));
+      const vec3 actualPoint=cardinalVoxelSurfacePoint(query,taps[i].pixel,taps[i].encoded,
+        trixelCanvasOffsetZ1,frameCanvasOffset,voxelRenderOptions,cardinal);
+      if(std::abs(actualPoint.x-expectedPoint.x)>8.e-5f ||
+         std::abs(actualPoint.y-expectedPoint.y)>8.e-5f ||
+         std::abs(actualPoint.z-expectedPoint.z)>8.e-5f)
+       return fail("fragment plane intersection",actualPoint,expectedPoint);
+     }
+"""
+                point = ("vec2 operator/(vec2 a,float b){return {a.x/b,a.y/b};}\n"
+                         "float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}\n" + point)
+                source = source.replace(CHECKS, point + CHECKS.replace(
+                    "     const float worldDepth=", checks + "     const float worldDepth="))
+                variants = (source,
+                            source.replace("- vec2(1.0)) / density", ") / density"),
+                            source.replace("dot(center - point, axis)", "0.0"),
+                            source.replace("return rotateCardinalZInv(point, cardinalIndex);",
+                                           "for(int c=0;c<3;++c)point[c]="
+                                           "std::max(center[c]-.5f/density,"
+                                           "std::min(center[c]+.5f/density,point[c]));"
+                                           "return rotateCardinalZInv(point, cardinalIndex);"))
+                for number, variant in enumerate(variants):
+                    with tempfile.TemporaryDirectory() as directory:
+                        path = Path(directory)
+                        (path / "point.cpp").write_text(variant)
+                        build = subprocess.run([COMPILER, "-std=c++17", "-O2",
+                                                str(path / "point.cpp"), "-o", str(path / "point")],
+                                               capture_output=True, text=True)
+                        self.assertEqual(build.returncode, 0, build.stderr)
+                        run = subprocess.run([str(path / "point")], capture_output=True, text=True)
+                        if number == 0:
+                            self.assertEqual(run.returncode, 0, run.stderr)
+                        else:
+                            self.assertNotEqual(run.returncode, 0)
+                            self.assertIn("fragment plane intersection", run.stderr)
 
     def test_production_publication_to_finite_face_center(self):
         for backend in ("glsl", "metal"):

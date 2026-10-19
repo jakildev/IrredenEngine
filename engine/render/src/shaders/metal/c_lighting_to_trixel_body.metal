@@ -142,6 +142,10 @@ kernel void IR_LIGHTING_KERNEL_NAME(
         return;
     }
 
+    if (frameData.normalOptions.y != 0 && !sourceMode && voxelFrameData.perAxisRoute == 0 &&
+        voxelFrameData.isDetachedCanvas == 0.0 && voxelFrameData.residualYaw == 0.0 &&
+        decodeEntityIdCardinalVoxel(trixelEntityIds.read(uint2(pixel)).xy) && !decodeCutFace(trixelEntityIds.read(uint2(pixel)).xy)) return;
+
     const float4 sourceColor = sourceMode ? sourceFaces.faces[sourceIndex].color : trixelColors.read(uint2(pixel));
     // A detached re-voxelize canvas is lit by AO + directional sun + sky
     // only by DEFAULT; the opt-in world-placed path

@@ -162,6 +162,8 @@ struct FrameDataTrixelToFramebuffer {
     /// For SOURCE_FACES, the adjacent slot holds the camera view-to-world quaternion;
     /// camera scatter ignores both.
     /// Preserve offsets 144 / 160 so framebuffer resolution remains at 176.
+    /// Cardinal gather aliases this as camera iso XY, subdivision mode, and density;
+    /// scatterDebugMode_ carries its albedo-ready flag and perAxisBase_ its Z1 origin.
     vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
     vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};
     /// Per-axis scatter framebuffer extent (.xy) and visibility-pass flags (.z).

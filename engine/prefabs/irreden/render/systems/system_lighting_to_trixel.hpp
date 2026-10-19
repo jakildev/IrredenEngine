@@ -102,6 +102,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // (entries stay albedo-only) — the A/B kill switch for the lit-vs-albedo
     // screenshot pair and GPU-delta diagnostics.
     bool overflowLightingDisabled_ = false;
+    // Readiness requires an executed main-canvas tick preserving voxel albedo.
+    bool cardinalSurfaceLightingEligible_ = false;
+    bool cardinalSurfaceLightingReady_ = false;
     // Opt-in presentation lighting keeps the existing per-axis colors and
     // overflow entries as albedo. Publish readiness only after the main tick
     // skips their in-place relight; an eligible frame may have no main tick.
@@ -194,6 +197,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                                       shapeGeometry.samplesValid();
         (useShapeReceiver ? shapeProgram_ : program_)->use();
         frameData_.normalOptions_.x = entity == perAxisCanvasEntity_ ? 1 : 0;
+        frameData_.normalOptions_.y =
+            entity == perAxisCanvasEntity_ && cardinalSurfaceLightingEligible_ ? 1 : 0;
         frameData_.shapeReceiverOptions_ = useShapeReceiver
                                                ? ivec4(
                                                      shapeGeometry.frameData_.shapeCount,
@@ -367,6 +372,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
 
+        if (entity == perAxisCanvasEntity_) {
+            cardinalSurfaceLightingReady_ = cardinalSurfaceLightingEligible_;
+        }
         if (sourceFaces) {
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             voxelActiveMaskBuf_->bindBase(
@@ -511,6 +519,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     }
 
     void beginTick() {
+        cardinalSurfaceLightingEligible_ = false;
+        cardinalSurfaceLightingReady_ = false;
         perAxisSurfaceLightingEligible_ = false;
         perAxisSurfaceLightingReady_ = false;
         if (animationParamsBuf_ == nullptr && findSystem(SHAPES_TO_TRIXEL) != kNullSystemId) {
@@ -588,11 +598,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         );
         // Fog still consumes lit colors. Debug modes and incomplete pipelines
         // retain the compute path; presentation must never mistake them for albedo.
-        const C_PerAxisSurfaceLighting *surfaceLighting =
-            IREntity::singletonOrNull<C_PerAxisSurfaceLighting>();
-        if (surfaceLighting != nullptr && surfaceLighting->enabled_ &&
-            perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated() &&
-            mainCanvasTextures_ != nullptr && mainCanvasAO_ != nullptr &&
+        bool worldSurfaceLightingEligible = false;
+        if (mainCanvasTextures_ != nullptr && mainCanvasAO_ != nullptr &&
             mainCanvasSunShadow_ != nullptr && mainCanvasLightVolume_ != nullptr &&
             findSystem(COMPUTE_SUN_SHADOW) != kNullSystemId &&
             findSystem(TRIXEL_TO_FRAMEBUFFER) != kNullSystemId &&
@@ -601,9 +608,19 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             !IRRender::getDepthColorDebugMode()) {
             auto behavior =
                 IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(perAxisCanvasEntity_);
-            perAxisSurfaceLightingEligible_ =
+            worldSurfaceLightingEligible =
                 behavior.has_value() && behavior.value()->useCameraPositionIso_;
         }
+        cardinalSurfaceLightingEligible_ =
+            worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&
+            (perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated()) &&
+            findSystem(TRIXEL_GLITCH) == kNullSystemId;
+        const C_PerAxisSurfaceLighting *surfaceLighting =
+            IREntity::singletonOrNull<C_PerAxisSurfaceLighting>();
+        perAxisSurfaceLightingEligible_ = worldSurfaceLightingEligible &&
+                                          surfaceLighting != nullptr && surfaceLighting->enabled_ &&
+                                          perAxisCanvases_ != nullptr &&
+                                          perAxisCanvases_->isAllocated();
     }
 
     // Restore the main world canvas's voxel frame data so FOG_TO_TRIXEL /

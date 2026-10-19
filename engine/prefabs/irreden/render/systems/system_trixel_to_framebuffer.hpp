@@ -55,6 +55,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     Buffer *sunDepthBuf_ = nullptr;
     bool shapeProbeEnabled_ = false;
     ShaderProgram *shapeLightingProgram_ = nullptr;
+    ShaderProgram *cardinalLightingProgram_ = nullptr;
+    bool cardinalLightingEnabled_ = false;
     System<LIGHTING_TO_TRIXEL> *lighting_ = nullptr;
     const C_CanvasAOTexture *surfaceAO_ = nullptr;
     const C_CanvasLightVolume *surfaceLightVolume_ = nullptr;
@@ -88,8 +90,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // allocated (camera at a non-cardinal residual yaw). When set, the main
     // canvas uses a three-pass depth composite of the X/Y/Z per-axis canvases
     // (see drawPerAxisScatter). At a
-    // cardinal these are released, this is null, and the byte-identical
-    // single-canvas fast path runs.
+    // cardinal these are released, this is null, and the single-canvas gather runs.
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     // The GUI canvas while GUI_CANVAS_TO_SCREEN composites it at screen
     // resolution; kNullEntity when it composites here, into the framebuffer.
@@ -251,7 +252,19 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             );
         }
 
-        if ((shapeProbeEnabled_ || shapeLightingEnabled_) && entity == perAxisCanvasEntity_)
+        const bool cardinalLighting = cardinalLightingEnabled_ && entity == perAxisCanvasEntity_;
+        frameData.frameData_.scatterDebugMode_ = cardinalLighting ? 1 : 0;
+        if (cardinalLighting) {
+            const auto &voxelFrame = lighting_->scratchVoxelFrame_;
+            frameData.frameData_.perAxisBase_ = voxelFrame.trixelCanvasOffsetZ1_;
+            frameData.frameData_.detachedResidual_ =
+                vec4(voxelFrame.cameraTrixelOffset_, vec2(voxelFrame.voxelRenderOptions_));
+            frameData.frameData_.perAxisStoreFrame_.z =
+                static_cast<int>(IRMath::rasterYawCardinalIndex(voxelFrame.rasterYaw_));
+            frameData.frameData_.visualYaw_ = voxelFrame.rasterYaw_;
+        }
+        if ((shapeProbeEnabled_ || shapeLightingEnabled_ || cardinalLighting) &&
+            entity == perAxisCanvasEntity_)
             frameData.frameData_.detachedDepthAxis_ = IRPrefab::Camera::getRotationQuat();
         frameData.updateFrameData(frameDataBuf_);
 
@@ -264,11 +277,14 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                                triangleCanvasTextures.shapeGeometry_.samplesValid();
             if (probe) {
                 bindShapeProbe(triangleCanvasTextures);
-                if (shapeLightingEnabled_) {
-                    bindSurfaceLightingResources();
-                    surfaceAO_->getTexture()->bind(4);
-                }
                 (shapeLightingEnabled_ ? shapeLightingProgram_ : shapeProbeProgram_)->use();
+            } else if (cardinalLighting) {
+                bindSunShadowResources();
+                cardinalLightingProgram_->use();
+            }
+            if ((probe && shapeLightingEnabled_) || cardinalLighting) {
+                bindSurfaceLightingResources();
+                surfaceAO_->getTexture()->bind(4);
             }
             triangleCanvasTextures.bind(0, 1, 2);
             IRRender::device()->setPolygonMode(PolygonMode::FILL);
@@ -278,12 +294,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IndexType::UNSIGNED_SHORT
             );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-            if (probe) {
-                if (shapeLightingEnabled_)
-                    restoreSurfaceLightingResources();
+            if ((probe && shapeLightingEnabled_) || cardinalLighting)
+                restoreSurfaceLightingResources();
+            if (probe)
                 restoreShapeProbe();
+            if (probe || cardinalLighting)
                 program_->use();
-            }
         }
     }
 
@@ -674,7 +690,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // currently allocated (camera rotating) — VOXEL_TO_TRIXEL_STAGE_1's
         // beginTick already ran the per-frame allocate/release sync, so the
         // allocation state is current. At a cardinal these are released → the
-        // tick takes the byte-identical single-canvas path.
+        // tick takes the single-canvas gather path.
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
         if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
@@ -706,7 +722,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // The producer owns eligibility and publishes only after preserving
         // this frame's albedo. Do not infer readiness from consumer resources.
         scatterLightingEnabled_ = lighting_ != nullptr && lighting_->perAxisSurfaceLightingReady_;
-        if (scatterLightingEnabled_) {
+        cardinalLightingEnabled_ = lighting_ != nullptr && lighting_->cardinalSurfaceLightingReady_;
+        if (scatterLightingEnabled_ || cardinalLightingEnabled_) {
             surfaceAO_ = lighting_->mainCanvasAO_;
             surfaceLightVolume_ = lighting_->mainCanvasLightVolume_;
         }
@@ -735,7 +752,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
         }
         if ((scatterProbeEnabled_ || scatterLightingEnabled_ || shapeProbeEnabled_ ||
-             shapeLightingEnabled_) &&
+             shapeLightingEnabled_ || cardinalLightingEnabled_) &&
             sunFrameBuf_ == nullptr) {
             sunFrameBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
             sunDepthBuf_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
@@ -752,6 +769,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
     static SystemId create() {
         IRPrefab::GuiCanvas::ensureDisplaySingleton();
+        IRRender::createNamedResource<ShaderProgram>(
+            "CanvasCardinalLightingProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileVertTrixelToFramebuffer, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragTrixelToFramebufferLitVoxels, ShaderType::FRAGMENT}
+            }
+        );
         IRRender::createNamedResource<ShaderProgram>(
             "CanvasShapeLightingProgram",
             std::vector{
@@ -835,6 +859,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+        sys->cardinalLightingProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("CanvasCardinalLightingProgram");
         sys->shapeLightingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("CanvasShapeLightingProgram");
         sys->shapeProbeProgram_ =
