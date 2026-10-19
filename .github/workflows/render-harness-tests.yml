@@ -38,6 +38,7 @@ on:
     paths:
       - 'scripts/*.py'
       - 'scripts/perf/compare_perf_runs.py'
+      - 'scripts/perf/sun_query_probe.py'
       - 'scripts/tests/**'
       - 'engine/render/src/shaders/**'
       - 'engine/render/include/irreden/render/ir_render_types.hpp'
@@ -51,6 +52,7 @@ on:
     paths:
       - 'scripts/*.py'
       - 'scripts/perf/compare_perf_runs.py'
+      - 'scripts/perf/sun_query_probe.py'
       - 'scripts/tests/**'
       - 'engine/render/src/shaders/**'
       - 'engine/render/include/irreden/render/ir_render_types.hpp'

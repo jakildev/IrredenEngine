@@ -64,8 +64,19 @@ now covers rounded tile boundaries and independently compiled receiver arithmeti
 Its finite projected envelope retains thin geometry while preventing near-cardinal
 box faces from occupying every tile. The [grazing controls](../pr-screenshots/codex/4523-finite-shadow-envelope/README.md)
 retain ordinary images and measure index-build cost separately from receiver cost.
-Keep rejection-heavy 64/256-candidate GPU cost, dense local overflow and native
-OpenGL qualification on the TODO; this is not closure of all shared voxel shadow defects.
+The [native query probe](../perf/sun-query-probe/README.md) checks all receivers
+and diagnostic counters for complete 64/256-candidate lists with isolated miss
+and blocker cases. Its initial short-warmup timings drift substantially; the
+guarded AC repeat after longer warmup measures roughly 3.8× cost for four times
+as many candidates, with first-blocker cost nearly unchanged. These coherent
+single-tile controls select hypotheses, not a qualified frame baseline.
+Keep diverse-tile rejection-heavy GPU cost, dense local
+overflow and native OpenGL qualification on the TODO; this is not closure of all
+shared voxel shadow defects. Use these controls to select candidate-reduction
+hypotheses, then measure index construction and full-frame cost before adoption.
+Proposed next experiment: a conservative per-tile candidate mask before full
+geometry loads, retaining the shared finite-envelope containment proof and
+complete-list/fallback semantics. Do not adopt it without measured net benefit.
 
 The apparent hole in the [tilted baked-shape control](../pr-screenshots/codex/sdf-baked-transform-controls/README.md)
 is a real channel between the cylinder and torus shadows, made into an isolated

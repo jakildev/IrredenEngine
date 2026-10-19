@@ -8,6 +8,41 @@ it holds `ir-acquire benchmark` around the whole matrix, captures an
 `ir-host-probe` fingerprint (`host_slug`) — into the manifest.
 `compare_perf_runs.py` diffs two runs; `check_regression.py` is the gate.
 
+## Native finite-shadow query probe
+
+On macOS:
+
+```bash
+IR_QUIET_REPORT_FILE=/tmp/sun-query-probe.quiet ir-acquire benchmark -- python3 scripts/perf/sun_query_probe.py --output /tmp/sun-query-probe
+```
+
+This measures the production cascade sampler against
+complete 64-entry inline and 256-entry spill lists. Five controlled cases
+separate envelope misses, footprint misses, behind-receiver faces, and first/
+last blockers. Every receiver's shadow result is checked; a separate diagnostic
+dispatch checks every visit/miss/blocker counter. Timed shaders disable counters.
+
+The reported time is the GPU span of an eight-dispatch command buffer divided
+by eight, including dispatch ordering. Exhausted queries also execute empty-map
+fallback. These are specialized, coherent single-tile samples: fixed normal,
+basis, scale, throw and receiver kind permit compiler simplification. They do
+not measure index construction, rasterization, cache diversity or frame rate.
+Use them to select hypotheses, then qualify changes in native demo workloads.
+Warmup runs for at least three seconds and two full fixture rounds; all rounds
+alternate forward/reverse case order. `--warmup-seconds` adjusts the duration.
+Inspect sample order for drift even when the quiet-window check passes. Output
+retains every sample, expanded shader/launcher source and hashes; the directory
+must be empty. Portable fixture and corruption controls live in
+`scripts/tests/test_sun_query_probe.py`. Preserve the wrapper exit status and
+quiet report alongside results: the wrapper checks coverage after the probe
+exits. Only a zero wrapper exit with `GUARDED` qualifies quiet-host evidence;
+a results file alone does not.
+
+For native correctness without performance measurement, use `ir-acquire gpu --
+python3 scripts/perf/sun_query_probe.py --validate-only --output
+/tmp/sun-query-validation`. This checks both shader variants and all ten cells,
+but records no timing samples and makes no quiet-host claim.
+
 ## Verdicts are per fingerprint
 
 `check_regression.py <baseline_root> <head_dir>` resolves
