@@ -119,6 +119,7 @@
 #include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_focus_request.hpp>
 #include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/components/component_widget_theme.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
@@ -421,6 +422,9 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetState, 1)
 // at runtime today, so a world snapshot would add nothing. Revisit if a
 // theme editor makes this user-authored state.
 IR_SAVE_OPT_OUT(IRComponents::C_WidgetTheme)
+// C_WidgetFocusRequest: OPT-OUT — transient input state WIDGET_INPUT
+// consumes at its next beginTick, never authored world state.
+IR_SAVE_OPT_OUT(IRComponents::C_WidgetFocusRequest)
 // C_HelpOverlayState: OPT-OUT — a transient debug-overlay toggle, not
 // authored state. Restoring a snapshot with the overlay open would paste a
 // developer's momentary view onto someone else's session.
@@ -649,6 +653,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetTextInput,
     IRComponents::C_WidgetState,
     IRComponents::C_WidgetTheme,
+    IRComponents::C_WidgetFocusRequest,
     IRComponents::C_HelpOverlayState,
     IRComponents::C_SettingsMenuState,
     IRComponents::C_PerAxisSurfaceLighting,
