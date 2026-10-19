@@ -201,34 +201,40 @@ inline float sampleCascadeShadow(
             int2 px = base + int2(dx, dy);
             if (px.x < 0 || px.x >= kSunShadowMapDim ||
                 px.y < 0 || px.y >= kSunShadowMapDim) continue;
-            uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
-            if (!surfaceReceiver && hasSourceFaces)
-                stored = min(stored, sunDepthBuf[kSourceFaceFallbackOffset + bufferOffset + px.y * kSunShadowMapDim + px.x]);
-            if (stored == 0xFFFFFFFFu || (surfaceReceiver && sunWriteIsSurface(stored))) continue;
-            float nearestZ = unpackSunDepth(stored);
             float weight = mix(1.0f - frac.x, frac.x, float(dx))
                          * mix(1.0f - frac.y, frac.y, float(dy));
-            // Far shadow-throw window — raw sun-Z gap, on BOTH tap regimes.
-            // maxShadowThrow == the feeder / bake sweep (kSunShadowMaxDistance) so
-            // a baked caster is receivable at its full throw. Mirrors the GLSL twin.
-            float depthDiff = sunZ - nearestZ;
-            if (depthDiff - bias >= maxShadowThrow) continue;
+            // Range and plane rejection are per layer; a nearer invalid tap
+            // cannot erase a valid blocker retained in the other layer.
+            const int layerCount = !surfaceReceiver && hasSourceFaces ? 2 : 1;
+            for (int layer = 0; layer < layerCount; ++layer) {
+                uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x
+                    + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
+                if (stored == 0xFFFFFFFFu || (surfaceReceiver && sunWriteIsSurface(stored))) continue;
+                float nearestZ = unpackSunDepth(stored);
+                // Far shadow-throw window — raw sun-Z gap, on BOTH tap regimes.
+                // maxShadowThrow == the feeder / bake sweep (kSunShadowMaxDistance) so
+                // a baked caster is receivable at its full throw. Mirrors the GLSL twin.
+                float depthDiff = sunZ - nearestZ;
+                if (depthDiff - bias >= maxShadowThrow) continue;
 
-            if (sunWriteIsDirect(stored) || sunWriteIsSurface(stored)) {
-                // Direct and finite surface writes compare depth without splat-origin recovery.
-                if (depthDiff > bias) shadowAccum += weight;
-            } else {
-                // Coverage-SPLAT neighbour: reconstruct the write's origin
-                // and reject an occluder that lies in the RECEIVER's own plane
-                // (a same-face self-hit → h ~ 0 → lit at any splat distance); a
-                // genuine cast sits far above the plane (h ~ caster height → shadow
-                // at the base tolerance, no widening → no erosion). Mirrors GLSL.
-                int2 offset = unpackSunSplatOffset(stored);
-                int2 originTexel = px - offset;
-                float2 originUV = origin + (float2(originTexel) + 0.5f) * texelSz;
-                float expectedZ = sunZ + dot(gradUV, originUV - sunUV);
-                float h = expectedZ - nearestZ;
-                if (h > bias) shadowAccum += weight;
+                if (sunWriteIsDirect(stored) || sunWriteIsSurface(stored)) {
+                    // Direct and finite surface writes compare depth without splat-origin recovery.
+                    if (depthDiff <= bias) continue;
+                } else {
+                    // Coverage-SPLAT neighbour: reconstruct the write's origin
+                    // and reject an occluder that lies in the RECEIVER's own plane
+                    // (a same-face self-hit → h ~ 0 → lit at any splat distance); a
+                    // genuine cast sits far above the plane (h ~ caster height → shadow
+                    // at the base tolerance, no widening → no erosion). Mirrors GLSL.
+                    int2 offset = unpackSunSplatOffset(stored);
+                    int2 originTexel = px - offset;
+                    float2 originUV = origin + (float2(originTexel) + 0.5f) * texelSz;
+                    float expectedZ = sunZ + dot(gradUV, originUV - sunUV);
+                    float h = expectedZ - nearestZ;
+                    if (h <= bias) continue;
+                }
+                shadowAccum += weight;
+                break;
             }
         }
     }

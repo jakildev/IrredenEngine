@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shader_contract_helpers import extract_function
+from shader_contract_helpers import extract_block, extract_function
 
 SHADERS = Path(__file__).resolve().parents[2] / "engine/render/src/shaders"
 COMPILER = shutil.which("c++")
@@ -50,6 +50,11 @@ vec2 operator*(vec2 a,vec2 b){return {a.x*b.x,a.y*b.y};}
 vec2 operator/(vec2 a,vec2 b){return {a.x/b.x,a.y/b.y};}
 vec2 operator/(vec2 a,float b){return {a.x/b,a.y/b};}
 vec2 operator+(vec2 a,float b){return {a.x+b,a.y+b};}
+vec2 operator-(vec2 a,float b){return {a.x-b,a.y-b};}
+vec2& operator+=(vec2& a,vec2 b){a=a+b;return a;}
+ivec2 operator+(ivec2 a,ivec2 b){return {a.x+b.x,a.y+b.y};}
+ivec2 operator-(ivec2 a,ivec2 b){return {a.x-b.x,a.y-b.y};}
+float mix(float a,float b,float t){return a*(1-t)+b*t;}
 bool operator>=(ivec2 a,ivec2 b){return a.x>=b.x && a.y>=b.y;}
 bool operator<(ivec2 a,ivec2 b){return a.x<b.x && a.y<b.y;}
 bool greaterThanEqual(ivec2 a,ivec2 b){return a>=b;}
@@ -345,7 +350,8 @@ int main(){
 """
 
 
-def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_stats=False):
+def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_stats=False,
+                include_pcf=False):
     sampler = (SHADERS / directory / f"ir_sun_shadow_sample.{suffix}").read_text()
     layout = (SHADERS / directory / f"ir_sun_face_query_layout.{suffix}").read_text()
     geometry = (SHADERS / directory / f"ir_projected_face.{suffix}").read_text()
@@ -353,12 +359,19 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
     projection = (SHADERS / directory / f"ir_sun_projection.{suffix}").read_text()
     helpers = "\n".join(extract_function(projection, name) for name in (
         "sunWriteIsSurface", "sunVoxelFaceId", "sunVoxelFaceViewAligned", "unpackSunDepth"))
+    if include_pcf:
+        helpers += extract_function(projection, "sunWriteIsDirect")
+        offset_type = "int2" if suffix == "metal" else "ivec2"
+        helpers += extract_block(projection, f"{offset_type} unpackSunSplatOffset(")
+        helpers += "\n".join(re.findall(
+            r"const(?:ant)? float kShadowBias(?:SlopeMin|TexelScale) = [^;]+;", sampler))
     constants = re.search(
         r"#ifndef IR_SUN_FACE_OVERFLOW_REFERENCE.*?Budget = \d+u;", sampler, re.DOTALL)
     if constants is None:
         raise ValueError("missing overflow reference switch and query budget")
     body = extract_function(sampler, "sampleCascadeShadow")
-    body = body[:body.index("    float slope =")] + "    return 0.0;\n}\n"
+    if not include_pcf:
+        body = body[:body.index("    float slope =")] + "    return 0.0;\n}\n"
     if mutation:
         old, new = mutation
         if old not in body:
@@ -379,7 +392,8 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
     if query_stats:
         code += "SunQueryStats sunQueryStats{};\n"
     code += cases.replace("SAMPLE_CALL", call)
-    return (code.replace("constant uint", "const uint")
+    return (code.replace("constant uint", "const uint").replace("constant float", "const float")
+            .replace("pcfOffset.xy", "vec2(pcfOffset)")
             .replace("inout SunQueryStats sunQueryStats", "SunQueryStats &sunQueryStats")
             .replace("thread SunQueryStats &sunQueryStats", "SunQueryStats &sunQueryStats")
             .replace("device const uint *sunDepthBuf", "BoundBuffer& sunDepthBuf")
