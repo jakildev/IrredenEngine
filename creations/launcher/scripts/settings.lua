@@ -72,19 +72,26 @@ function M.save(settings)
     return IRSave.save(store)
 end
 
--- The fixed editor table entry the editor tool runs, or nil when none of
--- them is on PATH.
-function M.effectiveEditor(settings)
+-- The index in `editors` (IREngine.toolEditors() rows) of the entry the
+-- editor tool runs for the stored name `stored`: that entry when it is found
+-- on PATH, else the first found entry, else nil.
+function M.editorChoice(editors, stored)
     local first
-    for _, entry in ipairs(IREngine.toolEditors()) do
+    for index, entry in ipairs(editors) do
         if entry.found then
-            if entry.name == settings.editor then
-                return entry.name
+            if entry.name == stored then
+                return index
             end
-            first = first or entry.name
+            first = first or index
         end
     end
     return first
+end
+
+function M.effectiveEditor(settings)
+    local editors = IREngine.toolEditors()
+    local index = M.editorChoice(editors, settings.editor)
+    return index and editors[index].name
 end
 
 function M.report(settings)
@@ -115,18 +122,19 @@ function M.show(app, settings)
     add(settings, IRGui.makeLabel(L.settings.editorLabel.x, L.settings.editorLabel.y,
         "EDITOR FOR OPEN IN IDE", nil, SMALL))
     settings.editors = IREngine.toolEditors()
-    local items, selected = {}, 1
+    local items = {}
     for index, entry in ipairs(settings.editors) do
         items[index] = entry.name .. (entry.found and "" or " (NOT FOUND)")
-        if entry.name == settings.editor then
-            selected = index
-        end
     end
+    -- 0 (nothing selected) when no entry is on PATH: the stored name stays.
+    local selected = M.editorChoice(settings.editors, settings.editor) or 0
     local e = L.settings.editor
     settings.dropdown = add(settings,
         IRGui.makeDropdown(e.x, e.y, e.w, e.h, items, selected, e.h, SMALL))
     settings.selected = selected
-    settings.editor = settings.editors[selected].name
+    if selected > 0 then
+        settings.editor = settings.editors[selected].name
+    end
     settings.favouritesLabel = add(settings, IRGui.makeLabel(L.settings.favourites.x,
         L.settings.favourites.y, "", nil, SMALL))
     M.refreshFavourites(settings)
@@ -140,6 +148,7 @@ function M.show(app, settings)
     add(settings, IRGui.makeButton(c.x, c.y, c.w, c.h, "CLOSE", function()
         app.closeSettings()
     end, SMALL))
+    M.report(settings)
 end
 
 function M.refreshFavourites(settings)

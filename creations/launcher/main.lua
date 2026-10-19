@@ -299,10 +299,13 @@ if failedLog then
     end, SMALL)
 end
 
--- Keyboard: Enter runs the selected target's preset, B builds it, Escape
--- clears the filter and the selection. A focused text input captures keys,
--- so typing into the filter never fires these.
+-- Keyboard: / focuses the filter, Enter runs the selected target's preset, B
+-- builds it, Escape clears the filter and the selection. A focused text input
+-- captures keys, so typing into the filter never fires these.
 local KEY, PRESSED = IRInput.InputType.KEY_MOUSE, IRInput.ButtonStatus.PRESSED
+IRCommand.createCommand(KEY, PRESSED, IRInput.Key.SLASH, function()
+    IRGui.focus(app.tree.filter)
+end, nil, nil, "Filter", "Focus the catalog filter")
 IRCommand.createCommand(KEY, PRESSED, IRInput.Key.ENTER, function()
     app.run(app.selectedTarget)
 end, nil, nil, "Run", "Run the selected target with its current preset")

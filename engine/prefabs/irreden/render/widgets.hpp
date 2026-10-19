@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_gui_hover_state.hpp>
+#include <irreden/render/components/component_widget_focus_request.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/widget_theme.hpp>
@@ -215,6 +216,28 @@ inline float sliderValue(IREntity::EntityId widget) {
 
 inline bool checkboxState(IREntity::EntityId widget) {
     return IREntity::getComponent<IRComponents::C_WidgetCheckbox>(widget).checked_;
+}
+
+// WIDGET_INPUT::create() calls this, so the singleton's first-use
+// createEntity never runs from a focus() made inside a system tick.
+inline void ensureFocusRequestSingleton() {
+    IREntity::singleton<IRComponents::C_WidgetFocusRequest>();
+}
+
+// Moves keyboard focus to `widget` at the next WIDGET_INPUT beginTick, as a
+// pointer click on it would, so a key command can focus a text input without
+// typing its own key into it. The latest request in a frame wins.
+inline void focus(IREntity::EntityId widget) {
+    IREntity::singleton<IRComponents::C_WidgetFocusRequest>().widget_ = widget;
+}
+
+// The pending focus() request, cleared by the read; kNullEntity when none.
+inline IREntity::EntityId takeFocusRequest() {
+    auto *request = IREntity::singletonOrNull<IRComponents::C_WidgetFocusRequest>();
+    if (request == nullptr) {
+        return IREntity::kNullEntity;
+    }
+    return std::exchange(request->widget_, IREntity::kNullEntity);
 }
 
 // Hovered-widget export. Create one C_GuiHoverState singleton per

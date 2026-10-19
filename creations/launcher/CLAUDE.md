@@ -30,7 +30,8 @@ checkout's sources on PATH first, or an `ir-run` that knows `--result-file`.
 - `scripts/catalog_view.lua`, `details.lua`, `log_panel.lua`, `settings.lua` —
   one zone each.
 - `test/fixture_root/` — the catalog the sessions and the reference show;
-  `test/stub_bin/ir-build` — the build tool `details_build` runs.
+  `test/stub_bin/ir-build` — the build tool `details_build` runs;
+  `test/stub_editors/` — the whole PATH `settings_roundtrip` sees (`code` only).
 
 ## Gotchas
 

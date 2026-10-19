@@ -171,6 +171,7 @@ local function report(app, view)
     end
     IRTest.report("tree", table.concat(parts, "|"))
     IRTest.report("treeCreations", tostring(count))
+    IRTest.report("filter", view.needle)
 end
 
 function M.new(app)

@@ -14,14 +14,15 @@
 //
 // Sessions (python3 scripts/gui-verify.py IRLauncher -- --gui-session <name>
 // --catalog-root creations/launcher/test/fixture_root):
-//   * catalog_tree — the fixture groups, a fold, and a filter that narrows
-//     the tree to one creation.
+//   * catalog_tree — the fixture groups, a fold, a filter that narrows the
+//     tree to one creation, and `/` focusing the filter with no click.
 //   * details_build — Build on the fixture's stub target streams the stub
 //     tool's three lines into the log and reports exit 0.
 //   * run_hand_off — Run hands off to IRLuaWidgetsDemo's screenshot take
 //     (built in <root>/build first) and shows its CLEAN verdict.
-//   * settings_roundtrip — the editor entry and a favourite survive a save, a
-//     local change and a revert from disk.
+//   * settings_roundtrip — with only a stub `code` on PATH, opening settings
+//     falls back from the missing `cursor` to `code`; the editor entry and a
+//     favourite then survive a save, a local change and a revert from disk.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_input.hpp>
@@ -105,22 +106,33 @@ void setEnvVar(const char *name, const char *value) {
 #endif
 }
 
+std::filesystem::path stubDir(const char *name) {
+    return std::filesystem::path{IR_LAUNCHER_ROOT} / "creations" / "launcher" / "test" / name;
+}
+
 // The details_build session's seam: the tool table's `ir-build` resolves
 // beside IR_RUN_WRAPPER first, then on PATH, so dropping the first and
 // putting the fixed stub directory under the tool root ahead of the second
 // makes Build run the stub. Selected by the session, never by a Lua value.
 void useStubBuildTool() {
-    const std::filesystem::path stubDir =
-        std::filesystem::path{IR_LAUNCHER_ROOT} / "creations" / "launcher" / "test" / "stub_bin";
 #if defined(_WIN32)
     constexpr char kPathSeparator = ';';
 #else
     constexpr char kPathSeparator = ':';
 #endif
     const char *path = std::getenv("PATH");
-    const std::string augmented = stubDir.string() + kPathSeparator + (path == nullptr ? "" : path);
+    const std::string augmented =
+        stubDir("stub_bin").string() + kPathSeparator + (path == nullptr ? "" : path);
     setEnvVar("PATH", augmented.c_str());
     setEnvVar("IR_RUN_WRAPPER", nullptr);
+}
+
+// The settings_roundtrip session's seam: PATH becomes a fixed directory under
+// the tool root holding only a `code` stub, so `cursor` is missing and `code`
+// is found on every host. The session spawns no tool, so nothing else needs
+// PATH; the dynamic loaders do not search it.
+void useStubEditors() {
+    setEnvVar("PATH", stubDir("stub_editors").string().c_str());
 }
 
 std::string formatTime(double seconds) {
@@ -198,6 +210,11 @@ constexpr Event release(int frame, IRMath::ivec2 at, IRInput::KeyMouseButtons bu
         release((frame) + 2, at, IRInput::kMouseButtonLeft)
 #define IR_LAUNCHER_KEY(frame, key) press(frame, kFilter, key), release((frame) + 1, kFilter, key)
 
+constexpr IRMath::ivec2 kAwayFromWidgets{640, 650};
+
+#define IR_LAUNCHER_KEY_AWAY(frame, key)                                                           \
+    press(frame, kAwayFromWidgets, key), release((frame) + 1, kAwayFromWidgets, key)
+
 constexpr Event kTreeFoldEvents[] = {IR_LAUNCHER_CLICK(0, treeRow(1))};
 constexpr Event kTreeFilterEvents[] = {
     IR_LAUNCHER_CLICK(0, treeRow(1)),
@@ -206,6 +223,16 @@ constexpr Event kTreeFilterEvents[] = {
     IR_LAUNCHER_KEY(10, IRInput::kKeyButtonE),
     IR_LAUNCHER_KEY(12, IRInput::kKeyButtonT),
     IR_LAUNCHER_KEY(14, IRInput::kKeyButtonA),
+};
+// Enter drops the filter's focus, Escape (now uncaptured) clears it, and `/`
+// focuses it again with the pointer away from every widget.
+constexpr Event kTreeSlashFocusEvents[] = {
+    IR_LAUNCHER_KEY_AWAY(0, IRInput::kKeyButtonEnter),
+    IR_LAUNCHER_KEY_AWAY(4, IRInput::kKeyButtonEscape),
+    IR_LAUNCHER_KEY_AWAY(8, IRInput::kKeyButtonSlash),
+    IR_LAUNCHER_KEY_AWAY(12, IRInput::kKeyButtonA),
+    IR_LAUNCHER_KEY_AWAY(14, IRInput::kKeyButtonL),
+    IR_LAUNCHER_KEY_AWAY(16, IRInput::kKeyButtonP),
 };
 constexpr Event kBuildEvents[] = {
     IR_LAUNCHER_CLICK(0, treeRow(2)),
@@ -221,6 +248,7 @@ constexpr Event kFavouriteEvents[] = {
     IR_LAUNCHER_CLICK(0, treeRow(2)),
     IR_LAUNCHER_CLICK(6, kFavourite),
 };
+constexpr Event kOpenSettingsEvents[] = {IR_LAUNCHER_CLICK(0, kSettings)};
 constexpr Event kSaveEvents[] = {
     IR_LAUNCHER_CLICK(0, kSettings),
     IR_LAUNCHER_CLICK(6, kEditorHeader),
@@ -240,6 +268,7 @@ constexpr Event kRevertEvents[] = {
 
 #undef IR_LAUNCHER_CLICK
 #undef IR_LAUNCHER_KEY
+#undef IR_LAUNCHER_KEY_AWAY
 
 constexpr IRVideo::GuiTestShot shot(const char *label) {
     return {{1.0f, IRMath::vec2(0.0f), 0.0f, label}, nullptr, 0};
@@ -254,11 +283,13 @@ constexpr IRVideo::GuiTestShot kCatalogTreeShots[] = {
     shot("catalog_tree_groups"),
     shot("catalog_tree_fold", kTreeFoldEvents),
     shot("catalog_tree_filter", kTreeFilterEvents),
+    shot("catalog_tree_slash_focus", kTreeSlashFocusEvents),
 };
 constexpr IRVideo::GuiTestShot kDetailsBuildShots[] = {shot("details_build", kBuildEvents)};
 constexpr IRVideo::GuiTestShot kRunHandOffShots[] = {shot("run_hand_off", kRunEvents)};
 constexpr IRVideo::GuiTestShot kSettingsShots[] = {
     shot("settings_favourite", kFavouriteEvents),
+    shot("settings_editor_fallback", kOpenSettingsEvents),
     shot("settings_save", kSaveEvents),
     shot("settings_mutate", kMutateEvents),
     shot("settings_revert", kRevertEvents),
@@ -320,6 +351,8 @@ const ReportCheck kTreeFolded{
 };
 const ReportCheck kTreeFiltered{"tree", "G:fixture|G:two|C:Beta"};
 const ReportCheck kOneCreation{"treeCreations", "1"};
+const ReportCheck kTreeSlashFiltered{"tree", "G:fixture|G:one|C:Alpha"};
+const ReportCheck kSlashNotTyped{"filter", "alp"};
 const ReportCheck kStubLines[] = {
     {"log", "IR_LAUNCHER_STUB line 1 --target IRLauncherStub", true},
     {"log", "IR_LAUNCHER_STUB line 2 --target IRLauncherStub", true},
@@ -345,6 +378,9 @@ const ShotAssertions kCatalogTreeAssertions[] = {
     {predicate(&reportMatches, &kTreeFolded, "tree_fold")},
     {predicate(&reportMatches, &kTreeFiltered, "tree_filter"),
      predicate(&reportMatches, &kOneCreation, "filter_narrows_to_one")},
+    {predicate(&reportMatches, &kSlashNotTyped, "slash_focuses_filter"),
+     predicate(&reportMatches, &kTreeSlashFiltered, "slash_filter_narrows"),
+     predicate(&reportMatches, &kOneCreation, "slash_filter_narrows_to_one")},
 };
 const ShotAssertions kDetailsBuildAssertions[] = {
     {predicate(&reportMatches, &kStubLines[0], "stub_line_1"),
@@ -360,6 +396,7 @@ const ShotAssertions kRunHandOffAssertions[] = {
 const ShotAssertions kSettingsAssertions[] = {
     {predicate(&reportMatches, &kFavouriteAdded, "favourite_added"),
      predicate(&reportMatches, &kFavouritesGroup, "favourites_group")},
+    {predicate(&reportMatches, &kSaved, "editor_falls_back_to_found")},
     {predicate(&reportMatches, &kSaved, "saved")},
     {predicate(&reportMatches, &kChangedLocally, "changed_locally")},
     {predicate(&reportMatches, &kSaved, "reverted_from_disk"),
@@ -435,6 +472,8 @@ int main(int argc, char **argv) {
     IRLauncher::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     if (IRLauncher::g_session == IRLauncher::Session::DETAILS_BUILD) {
         IRLauncher::useStubBuildTool();
+    } else if (IRLauncher::g_session == IRLauncher::Session::SETTINGS_ROUNDTRIP) {
+        IRLauncher::useStubEditors();
     }
     initSystems();
     IREngine::runScript("main.lua");
