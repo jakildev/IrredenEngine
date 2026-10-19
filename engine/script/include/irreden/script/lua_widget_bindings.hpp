@@ -357,9 +357,8 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
     // builds the widget, drawn as a placeholder hatch; `imageError` then
     // returns the reason, naming the path. Drawing needs WIDGET_RENDER_IMAGE
     // in RENDER.
-    gui["makeImage"] = [canonicalImageBase](
-                           int x, int y, int w, int h, const std::string &path
-                       ) -> lua_Integer {
+    gui["makeImage"] =
+        [canonicalImageBase](int x, int y, int w, int h, const std::string &path) -> lua_Integer {
         if (w <= 0 || h <= 0) {
             throw sol::error{"IRGui.makeImage: w and h must be positive"};
         }

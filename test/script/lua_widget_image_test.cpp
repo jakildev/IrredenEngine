@@ -33,7 +33,7 @@ void writeFixturePng(const fs::path &path) {
     IRRender::writePNG(path.string().c_str(), 2, 1, 4, rgba.data());
 }
 
-// A fresh `<tmp>/<name>/base` run directory holding `thumb.png`, with
+// A fresh `<tmp>/<name>/base` image base holding `thumb.png`, with
 // `<tmp>/<name>/outside.png` and `<tmp>/<name>/base2/thumb.png` beside it.
 struct FixtureTree {
     explicit FixtureTree(const char *name)
