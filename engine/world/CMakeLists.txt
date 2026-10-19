@@ -7,6 +7,8 @@ add_library(IrredenEngineWorld STATIC
     src/world_snapshot_relations.cpp
     src/world_default_registry.cpp
     src/hand_off.cpp
+    src/tool_spawn.cpp
+    ../process_spawn.cpp
 )
 
 target_link_libraries(IrredenEngineWorld PUBLIC
@@ -28,4 +30,8 @@ target_link_libraries(IrredenEngineWorld PUBLIC
 
 target_include_directories(IrredenEngineWorld PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_include_directories(IrredenEngineWorld PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
 )

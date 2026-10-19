@@ -193,6 +193,7 @@ add_executable(IrredenEngineTest
   script/lua_fog_revealed_test.cpp
   script/lua_fog_bindings_test.cpp
   script/lua_engine_hand_off_test.cpp
+  script/lua_spawn_tool_test.cpp
   script/lua_file_bindings_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
@@ -234,6 +235,7 @@ add_executable(IrredenEngineTest
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp
   world/hand_off_test.cpp
+  world/tool_spawn_test.cpp
   world/field_chunk_persistence_test.cpp
   world/fog_explored_decay_test.cpp
   world/fog_world_field_test.cpp
@@ -284,6 +286,7 @@ target_compile_definitions(IrredenEngineTest PRIVATE
     IR_FLOWER_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
     IR_CREATION_MANIFEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/asset/fixtures/creation_manifest"
     IR_CATALOG_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/catalog/fixtures"
+    IR_CREATION_MANIFEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/asset/fixtures/creation_manifest"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua

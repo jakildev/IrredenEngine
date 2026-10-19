@@ -2,6 +2,7 @@
 #define IR_UTILITY_PATH_UTILS_H
 
 #include <filesystem>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -36,6 +37,9 @@ bool envFlagSet(const char *name);
 
 /// The env var's value, or empty when it is unset or empty.
 std::string envString(const char *name);
+
+std::optional<std::filesystem::path>
+findOnPath(std::string_view name, std::initializer_list<std::string_view> suffixes);
 
 /// Why @p path cannot name a location inside a base directory by its spelling
 /// alone, or nullopt when it can. Rejected: empty, a NUL byte, absolute (`/x`,

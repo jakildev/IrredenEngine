@@ -458,6 +458,9 @@ int main(int argc, char **argv) {
     );
     registerLuaBindings();
     IREngine::init(argc, argv, "config.lua");
+    if (IREngine::args().getEnum("--hand-off-fixture") != "off") {
+        IREngine::setToolRoot(IR_LUA_WIDGETS_TOOL_ROOT);
+    }
     IRLuaWidgets::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     IREngine::runScript("main.lua"); // builds widgets + registers onClick / poll system
