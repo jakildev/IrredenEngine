@@ -1,0 +1,17 @@
+lower: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+near-1: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+near-128: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+far-1: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+far-8: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+far-16: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+far-128: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+far-128-repeat: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+boundary-36: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+boundary-40: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+boundary-44: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+lower-unlit: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+near-unlit: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+far-unlit: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+boundary-36-unlit: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+boundary-40-unlit: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+boundary-44-unlit: ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

@@ -1,0 +1,1632 @@
+{
+  "head": "afdbc93e891c1e325f0734b84a20034354e3a534",
+  "cases": {
+    "lower": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/lower/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "023dd8595d08410a34117639030d438a18207d15f2c79dee4e2a7b2b89c5472d",
+      "index": {
+        "face_records_requested": 1708,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 0,
+            "max_counter": 50
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 0,
+            "max_counter": 60
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 0,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 50,
+            "complete": true
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 56,
+            "complete": true
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 0
+    },
+    "near-1": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/near-1/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "1",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "0"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "601a238a28880c52a5cc620c7e3cb25750e7129b2910b27f194328d17500cf61",
+      "index": {
+        "face_records_requested": 1735,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 0,
+            "max_counter": 70
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 0,
+            "max_counter": 77
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 22,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 65,
+            "complete": true
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 77,
+            "complete": true
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 0
+    },
+    "near-128": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/near-128/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "0"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "26efde95ea2c41bf2c5a831270a20d37f570b2a85c51afac7c3ad9d42141090b",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 288
+    },
+    "far-1": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/far-1/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "1",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "046c23cd5c2f9779dafc0de5c16cfeae6e8307f212b6e71165d3d40d26bafcd7",
+      "index": {
+        "face_records_requested": 1735,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 0,
+            "max_counter": 70
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 0,
+            "max_counter": 77
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 22,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 65,
+            "complete": true
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 77,
+            "complete": true
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 0
+    },
+    "far-8": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/far-8/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "8",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "046c23cd5c2f9779dafc0de5c16cfeae6e8307f212b6e71165d3d40d26bafcd7",
+      "index": {
+        "face_records_requested": 1924,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 0,
+            "max_counter": 210
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 0,
+            "max_counter": 224
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 572,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 170,
+            "complete": true
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 224,
+            "complete": true
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 0
+    },
+    "far-16": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/far-16/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "16",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "766b4fd338f1117c303538cbbde7376a246f75c65238ab91c0044db0204dd132",
+      "index": {
+        "face_records_requested": 2140,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 2,
+            "max_counter": 370
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 2,
+            "max_counter": 392
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 968,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 290,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 392,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 288
+    },
+    "far-128": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/far-128/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "076ccb693eaae6a9dfad6213e069168576cbe8db0c386f3843989935844c3c82",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 528
+    },
+    "far-128-repeat": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/far-128-repeat/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "076ccb693eaae6a9dfad6213e069168576cbe8db0c386f3843989935844c3c82",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 528
+    },
+    "boundary-36": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/boundary-36/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-36"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "2dcbd8f010b53f2902dd8d6a00967a1b9312de77d181e0424e3b39754c9523fe",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 336
+    },
+    "boundary-40": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/boundary-40/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-40"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "df8f52e1a3251a6cb60869ba7bc058156a53dc7dd2bbeb473ab276aea0645128",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 528
+    },
+    "boundary-44": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/boundary-44/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-44"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "b5af61831076c9593238d46ee7ba0acaf4ae520888c363ce09fa1be35a522f0b",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ],
+      "brightened_receiver_pixels": 528
+    },
+    "lower-unlit": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/lower-unlit/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--debug-overlay",
+        "unlit"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "65f8f8c457ce24f411b950a30597a9780930bfb587b37757cbaec668ab35ec65",
+      "index": {
+        "face_records_requested": 1708,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 0,
+            "max_counter": 50
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 0,
+            "max_counter": 60
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 0,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 50,
+            "complete": true
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 56,
+            "complete": true
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ]
+    },
+    "near-unlit": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/near-unlit/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "0",
+        "--debug-overlay",
+        "unlit"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "55fb37e12453758694f799f4429b3f1162161da486d45d2170625820d24b1af7",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ]
+    },
+    "far-unlit": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/far-unlit/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--debug-overlay",
+        "unlit"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "ef3ab13e97a26c56e4e65651dc4591ed53679047c8e073324b344ad8909bfeaf",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ]
+    },
+    "boundary-36-unlit": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/boundary-36-unlit/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-36",
+        "--debug-overlay",
+        "unlit"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "a7c399eaf6cec0122eeaf560e3164c3987bed013327393c4ccb153e1a5afb23f",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ]
+    },
+    "boundary-40-unlit": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/boundary-40-unlit/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-40",
+        "--debug-overlay",
+        "unlit"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "201a2f029686ca9f46fd0912c1f573a21d379c3006b1d6765dcfb95dd160b16d",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ]
+    },
+    "boundary-44-unlit": {
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "180",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/codex-crowded-shadow-final/boundary-44-unlit/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--sun-face-index-probe",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-44",
+        "--debug-overlay",
+        "unlit"
+      ],
+      "result": "CLEAN",
+      "capture_sha256": "6489202c6f4102e00e8864507ca7c30e005e0b0a8e0eb46e026444f56aceeb47",
+      "index": {
+        "face_records_requested": 5164,
+        "face_record_capacity": 65536,
+        "tile_capacity": 256,
+        "cascades": [
+          {
+            "occupied_tiles": 121,
+            "incomplete_tiles": 4,
+            "max_counter": 2610
+          },
+          {
+            "occupied_tiles": 90,
+            "incomplete_tiles": 4,
+            "max_counter": 2744
+          }
+        ],
+        "tile_inline_capacity": 64,
+        "spill_node_capacity": 262144,
+        "spill_nodes_requested": 1536,
+        "buffer_bytes": 30146568,
+        "sun_uv": [
+          0.0,
+          0.0
+        ],
+        "point_tiles": [
+          {
+            "cascade": 0,
+            "x": 76,
+            "y": 51,
+            "counter": 1970,
+            "complete": false
+          },
+          {
+            "cascade": 1,
+            "x": 64,
+            "y": 64,
+            "counter": 2744,
+            "complete": false
+          }
+        ]
+      },
+      "receiver_roi": [
+        1100,
+        700,
+        1450,
+        820
+      ]
+    }
+  },
+  "binary_sha256": "27467bafea5895612750c555cbb2ef6e669fa822b16142c6556076d60ab21151",
+  "receiver_geometry_control": "identical",
+  "monotone": false
+}
