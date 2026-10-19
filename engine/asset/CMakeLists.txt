@@ -4,6 +4,8 @@ add_library(IrredenEngineAsset STATIC
     src/chunk_header.cpp
     src/name_table.cpp
     src/json_sidecar.cpp
+    src/json_reader.cpp
+    src/creation_manifest.cpp
     src/voxel_set_format.cpp
     src/rig_format.cpp
     src/key_value_store.cpp

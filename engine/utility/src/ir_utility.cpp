@@ -19,6 +19,25 @@ std::string normalizedExtension(std::string extension) {
     return extension;
 }
 
+bool isAsciiLetter(char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
+bool isWithinDirectory(
+    const std::filesystem::path &directory, const std::filesystem::path &candidate
+) {
+    auto directoryPart = directory.begin();
+    auto candidatePart = candidate.begin();
+    while (directoryPart != directory.end() && candidatePart != candidate.end()) {
+        if (*directoryPart != *candidatePart) {
+            return false;
+        }
+        ++directoryPart;
+        ++candidatePart;
+    }
+    return directoryPart == directory.end();
+}
+
 } // namespace
 
 std::string readFileAsString(const std::string &filepath) {
@@ -103,6 +122,45 @@ std::string formatNumberedFilename(
     }
     filename << index << normalizedExtension(extension);
     return filename.str();
+}
+
+std::optional<std::string_view> containedPathRejection(std::string_view path) {
+    if (path.empty()) {
+        return "must not be empty";
+    }
+    if (path.find('\0') != std::string_view::npos) {
+        return "must not contain a NUL byte";
+    }
+    const bool hasDrive = path.size() >= 2 && isAsciiLetter(path[0]) && path[1] == ':';
+    if (path.front() == '/' || path.front() == '\\' || hasDrive) {
+        return "must be a relative path";
+    }
+    std::size_t componentStart = 0;
+    while (componentStart <= path.size()) {
+        std::size_t componentEnd = path.find_first_of("/\\", componentStart);
+        if (componentEnd == std::string_view::npos) {
+            componentEnd = path.size();
+        }
+        if (path.substr(componentStart, componentEnd - componentStart) == "..") {
+            return "must not contain a '..' component";
+        }
+        componentStart = componentEnd + 1;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::filesystem::path>
+resolveContainedPath(const std::filesystem::path &canonicalBase, std::string_view path) {
+    if (containedPathRejection(path)) {
+        return std::nullopt;
+    }
+    std::error_code error;
+    const std::filesystem::path resolved =
+        std::filesystem::weakly_canonical(canonicalBase / std::filesystem::path(path), error);
+    if (error || !isWithinDirectory(canonicalBase, resolved)) {
+        return std::nullopt;
+    }
+    return resolved;
 }
 
 } // namespace IRUtility

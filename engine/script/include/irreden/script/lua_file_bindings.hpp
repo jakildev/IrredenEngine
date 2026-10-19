@@ -2,6 +2,7 @@
 #define LUA_FILE_BINDINGS_H
 
 #include <irreden/script/lua_script.hpp>
+#include <irreden/utility/path_utils.hpp>
 
 #include <sol/sol.hpp>
 
@@ -15,34 +16,9 @@
 
 namespace IRScript::detail {
 
-inline bool
-isWithinDirectory(const std::filesystem::path &directory, const std::filesystem::path &candidate) {
-    auto directoryPart = directory.begin();
-    auto candidatePart = candidate.begin();
-    while (directoryPart != directory.end() && candidatePart != candidate.end()) {
-        if (*directoryPart != *candidatePart) {
-            return false;
-        }
-        ++directoryPart;
-        ++candidatePart;
-    }
-    return directoryPart == directory.end();
-}
-
 inline std::optional<std::filesystem::path>
 resolveRunPath(const std::filesystem::path &runDirectory, const std::string &path) {
-    const std::filesystem::path relativePath(path);
-    if (relativePath.empty() || relativePath.is_absolute() || relativePath.has_root_name()) {
-        return std::nullopt;
-    }
-
-    std::error_code error;
-    const std::filesystem::path resolved =
-        std::filesystem::weakly_canonical(runDirectory / relativePath, error);
-    if (error || !isWithinDirectory(runDirectory, resolved)) {
-        return std::nullopt;
-    }
-    return resolved;
+    return IRUtility::resolveContainedPath(runDirectory, path);
 }
 
 inline void bindFiles(LuaScript &script, const std::filesystem::path &runDirectory) {

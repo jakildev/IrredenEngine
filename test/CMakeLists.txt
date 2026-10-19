@@ -3,6 +3,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(IrredenEngineTest
   asset/binary_io_test.cpp
+  asset/creation_manifest_test.cpp
+  asset/json_reader_test.cpp
   asset/json_sidecar_test.cpp
   asset/key_value_store_test.cpp
   asset/name_table_test.cpp
@@ -215,6 +217,7 @@ add_executable(IrredenEngineTest
   time/time_manager_hand_off_test.cpp
   job/ir_job_test.cpp
   job/worker_block_queue_test.cpp
+  utility/contained_path_test.cpp
   utility/ir_utility_test.cpp
   video/auto_screenshot_helpers_test.cpp
   video/auto_record_pacing_test.cpp
@@ -274,6 +277,7 @@ target_compile_definitions(IrredenEngineTest PRIVATE
     IR_LUA_VOXEL_ASSET_PATH="${CMAKE_SOURCE_DIR}/assets/voxel/entities/rock.vxs"
     IR_FLOWER_PREFAB_PATH="${CMAKE_SOURCE_DIR}/assets/prefabs/flower.prefab.lua"
     IR_FLOWER_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
+    IR_CREATION_MANIFEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/asset/fixtures/creation_manifest"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua

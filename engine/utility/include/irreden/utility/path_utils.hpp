@@ -1,7 +1,10 @@
 #ifndef IR_UTILITY_PATH_UTILS_H
 #define IR_UTILITY_PATH_UTILS_H
 
+#include <filesystem>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace IRUtility {
 
@@ -33,6 +36,22 @@ bool envFlagSet(const char *name);
 
 /// The env var's value, or empty when it is unset or empty.
 std::string envString(const char *name);
+
+/// Why @p path cannot name a location inside a base directory by its spelling
+/// alone, or nullopt when it can. Rejected: empty, a NUL byte, absolute (`/x`,
+/// a drive `C:`, root-relative `\x`, UNC `\\host`), and any `..` component.
+/// Both separators count on every host, so a path vetted on macOS is vetted the
+/// way Windows will read it.
+std::optional<std::string_view> containedPathRejection(std::string_view path);
+
+/// @p path joined to @p canonicalBase with every existing component resolved
+/// (symlinks, junctions), or nullopt when `containedPathRejection` rejects it
+/// or the result is neither @p canonicalBase nor beneath it. Containment is
+/// compared component by component, so `<base>2` is not inside `<base>`.
+/// @p canonicalBase must already be canonical. This is the one check for every
+/// caller-supplied path that must stay under a root.
+std::optional<std::filesystem::path>
+resolveContainedPath(const std::filesystem::path &canonicalBase, std::string_view path);
 
 } // namespace IRUtility
 
