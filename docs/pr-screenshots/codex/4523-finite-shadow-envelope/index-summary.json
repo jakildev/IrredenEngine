@@ -1,0 +1,36 @@
+{
+  "parent": {
+    "active": "1",
+    "face_records_requested": "387",
+    "face_record_capacity": "65536",
+    "spill_nodes_requested": "1445840",
+    "spill_node_capacity": "262144",
+    "tile_inline_capacity": "64",
+    "buffer_bytes": "30146568",
+    "tile_capacity": "256",
+    "tiles_per_axis": "128",
+    "cascade_count": "2",
+    "basis_u": "0.49999994,-4.37113883e-08,-0.866025448",
+    "basis_v": "4.37113883e-08,-1,7.57103393e-08",
+    "occupied_tiles": 32768,
+    "incomplete_tiles": 32768,
+    "peak_count": 478
+  },
+  "candidate": {
+    "active": "1",
+    "face_records_requested": "387",
+    "face_record_capacity": "65536",
+    "spill_nodes_requested": "3198",
+    "spill_node_capacity": "262144",
+    "tile_inline_capacity": "64",
+    "buffer_bytes": "30146568",
+    "tile_capacity": "256",
+    "tiles_per_axis": "128",
+    "cascade_count": "2",
+    "basis_u": "0.49999994,-4.37113883e-08,-0.866025448",
+    "basis_v": "4.37113883e-08,-1,7.57103393e-08",
+    "occupied_tiles": 1067,
+    "incomplete_tiles": 6,
+    "peak_count": 325
+  }
+}

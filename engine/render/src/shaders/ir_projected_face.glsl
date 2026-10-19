@@ -12,6 +12,18 @@ vec2 projectedFaceCoordinates(vec2 delta, vec2 edgeU, vec2 edgeV, float determin
                 (edgeU.x * delta.y - edgeU.y * delta.x) / determinant);
 }
 
+// The sun-query envelope preserves exact represented faces at every orientation.
+// Its arithmetic margin and the producer enclosure in sourceFaceIndexBounds
+// are coupled; the derivation is in docs/design/sun-face-index-coverage.md.
+bool sourceFaceWithinProjectedBounds(float point, float corner, float edgeU, float edgeV) {
+    const float relativeMargin = 0.00000095367431640625;
+    const float absoluteMargin = 3.7615819226313200255e-37;
+    const float padding = relativeMargin * (abs(corner) + abs(edgeU) + abs(edgeV)) + absoluteMargin;
+    const float low = corner + (edgeU < 0.0 ? edgeU : 0.0) + (edgeV < 0.0 ? edgeV : 0.0) - padding;
+    const float high = corner + (edgeU > 0.0 ? edgeU : 0.0) + (edgeV > 0.0 ? edgeV : 0.0) + padding;
+    return !(point < low || point > high);
+}
+
 // Conservative closed-edge predicates for independently rounded projected
 // inputs and finite normal binary32 arithmetic. gamma(7) bounds input rounding,
 // subtraction and two-product edge functions, not upstream projection error.

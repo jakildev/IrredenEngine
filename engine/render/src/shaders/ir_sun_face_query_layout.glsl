@@ -52,7 +52,9 @@ float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, v
 #endif
 ) {
     const float determinant = projectedFaceDeterminant(vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y));
-    if (abs(determinant) < 0.000001) {
+    if (abs(determinant) < 0.000001 ||
+        !sourceFaceWithinProjectedBounds(sunUV.x, corner.x, edgeU.x, edgeV.x) ||
+        !sourceFaceWithinProjectedBounds(sunUV.y, corner.y, edgeU.y, edgeV.y)) {
 #if IR_SUN_QUERY_STATS
         sunQueryStats.counts[kSunQueryFaceMisses] += 1u;
 #endif
