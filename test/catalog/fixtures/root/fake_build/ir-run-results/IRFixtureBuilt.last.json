@@ -1,0 +1,8 @@
+{
+  "verdict": "CLEAN",
+  "exe": "IRFixtureBuilt",
+  "exit": 0,
+  "signal": null,
+  "argv": ["IRFixtureBuilt", "--fixture"],
+  "at": "2026-10-17T12:00:00Z"
+}

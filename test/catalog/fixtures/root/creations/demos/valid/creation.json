@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "Fixture creation",
+  "description": "Catalog fixture",
+  "group": "tests/catalog",
+  "tags": ["fixture", "catalog"],
+  "kind": "test",
+  "thumbnail": "thumbnail.png",
+  "docs": ["docs/design/x.md"],
+  "targets": [
+    {
+      "name": "IRFixtureBuilt",
+      "display": "Built fixture",
+      "description": "Has a fake executable",
+      "presets": [{"name": "Interactive", "args": ["--fixture"]}]
+    },
+    {
+      "name": "IRFixtureMissing",
+      "display": "Missing fixture"
+    }
+  ]
+}

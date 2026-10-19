@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "mode": "DENSE",
+  "bounds": {"min": [0, 1, 2], "max": [3, 4, 5]},
+  "frame_count": 6
+}
