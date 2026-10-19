@@ -215,6 +215,30 @@
       }
     },
     {
+      "name": "text_scale1_legibility",
+      "demo_args": [
+        "--config-preset",
+        "configs/gui_text_scale1.lua",
+        "--framebuffer-size",
+        "1280",
+        "960",
+        "--text-size-sample"
+      ],
+      "shots": ["text_size_sample"],
+      "capture_offset": 0,
+      "structural_only": ["text_size_sample"],
+      "structural": {
+        "text_size_sample": [
+          {
+            "metric": "text-stroke-contrast",
+            "min_stroke_coverage": 0.95,
+            "max_halo_coverage": 0.05,
+            "min_stroke_to_halo_ratio": 10.0
+          }
+        ]
+      }
+    },
+    {
       "name": "glitch_standard_off",
       "demo_args": ["--glitch-test", "standard-off"],
       "shots": [

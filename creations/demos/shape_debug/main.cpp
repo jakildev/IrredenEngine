@@ -584,6 +584,7 @@ constexpr IRVideo::AutoScreenshotShot kViewportLodSwapShots[] = {
 // the full character sheet as fontSize-1 free text, then a label, a button, a
 // slider with its readout, a checkbox and an open dropdown in that size.
 bool g_textSizeSample = false;
+ivec2 g_requestedFramebufferSize{0};
 constexpr IRVideo::AutoScreenshotShot kTextSizeSampleShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "text_size_sample"},
 };
@@ -1707,6 +1708,11 @@ void registerCliArgs() {
         "Replace the scene + capture table with both GUI glyph sets side by side: the character "
         "sheet and one of each text widget per size, over an empty world"
     );
+    args.numbers(
+        "--framebuffer-size",
+        "Resize the logical window to produce the requested framebuffer width and height",
+        2
+    );
     args.flag(
         "--viewport-lod-swap",
         "With --viewport-portrait: the subject is a coarse/fine pair on disjoint LOD bands; the "
@@ -1762,6 +1768,13 @@ void readCliArgs() {
     g_lodScene = args.getFlag("--lod-scene");
     g_viewportPortrait = args.getFlag("--viewport-portrait");
     g_textSizeSample = args.getFlag("--text-size-sample");
+    if (args.wasProvided("--framebuffer-size")) {
+        const std::vector<float> &size = args.getFloats("--framebuffer-size");
+        if (size[0] > 0.0f && size[1] > 0.0f && IRMath::floor(size[0]) == size[0] &&
+            IRMath::floor(size[1]) == size[1]) {
+            g_requestedFramebufferSize = ivec2(size[0], size[1]);
+        }
+    }
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
     g_continuousZoomGuiTest = args.getFlag("--continuous-zoom-gui-test");
@@ -1813,6 +1826,62 @@ void readCliArgs() {
     g_spinShapeVoxel = args.getFlag("--spin-shape-voxel");
 }
 
+bool resizeWindowForFramebuffer(ivec2 requestedSize) {
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        ivec2 windowSize{0};
+        ivec2 framebufferSize{0};
+        IRWindow::getWindowSize(windowSize);
+        IRWindow::getFramebufferSize(framebufferSize);
+        if (framebufferSize == requestedSize) {
+            IR_LOG_INFO(
+                "Framebuffer fixture size: {}x{} (window {}x{})",
+                framebufferSize.x,
+                framebufferSize.y,
+                windowSize.x,
+                windowSize.y
+            );
+            return true;
+        }
+        if (windowSize.x <= 0 || windowSize.y <= 0 || framebufferSize.x <= 0 ||
+            framebufferSize.y <= 0) {
+            break;
+        }
+        const ivec2 correctedWindowSize{
+            IRMath::max(
+                1,
+                IRMath::round(
+                    static_cast<float>(requestedSize.x) * static_cast<float>(windowSize.x) /
+                    static_cast<float>(framebufferSize.x)
+                )
+            ),
+            IRMath::max(
+                1,
+                IRMath::round(
+                    static_cast<float>(requestedSize.y) * static_cast<float>(windowSize.y) /
+                    static_cast<float>(framebufferSize.y)
+                )
+            ),
+        };
+        glfwSetWindowSize(
+            IRWindow::getWindow().getRawWindow(),
+            correctedWindowSize.x,
+            correctedWindowSize.y
+        );
+        IRWindow::getWindow().pollEvents();
+    }
+
+    ivec2 framebufferSize{0};
+    IRWindow::getFramebufferSize(framebufferSize);
+    IR_LOG_ERROR(
+        "Could not produce requested framebuffer fixture size {}x{}; got {}x{}",
+        requestedSize.x,
+        requestedSize.y,
+        framebufferSize.x,
+        framebufferSize.y
+    );
+    return false;
+}
+
 } // namespace
 
 void initSystems();
@@ -1826,6 +1895,11 @@ int main(int argc, char **argv) {
     registerCliArgs();
     IREngine::args().parse(argc, argv);
     readCliArgs();
+    if (IREngine::args().wasProvided("--framebuffer-size") &&
+        g_requestedFramebufferSize == ivec2(0)) {
+        IR_LOG_ERROR("--framebuffer-size requires two positive integer dimensions");
+        return 2;
+    }
     const bool sdfVoxelScene = IREngine::args().getEnum("--sdf-voxel-scene") != "off";
     if (((IREngine::args().getFlag("--sdf-voxel-blockers") ||
           IREngine::args().getEnum("--sdf-voxel-pose") != "rest") &&
@@ -1887,6 +1961,10 @@ int main(int argc, char **argv) {
         }
     });
     IREngine::init(argv[0]);
+    if (g_requestedFramebufferSize != ivec2(0) &&
+        !resizeWindowForFramebuffer(g_requestedFramebufferSize)) {
+        return 2;
+    }
 
     // --spin-yaw + --auto-screenshot: reinterpret the screenshot value as
     // "shots across one rotation", and use a small internal warmup. This is

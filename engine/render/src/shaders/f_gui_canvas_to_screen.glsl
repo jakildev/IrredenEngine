@@ -3,10 +3,9 @@
 #include "ir_iso_common.glsl"
 
 // Screen-resolution composite of the GUI canvas. Each texel displays as the
-// lattice triangle localTrixelFramebufferSamplePosition selects, and every
-// triangle edge is anti-aliased analytically against the texel across it, so
-// the triangles stay crisp at any output scale instead of inheriting the
-// game-resolution pixel grid.
+// lattice triangle localTrixelFramebufferSamplePosition selects. Minimum-
+// footprint samples use hard ownership; larger footprints anti-alias against
+// the texel across each edge instead of inheriting the game-resolution grid.
 
 in vec2 CanvasPositionFromCenter;
 
@@ -31,6 +30,14 @@ vec4 texelPremultiplied(ivec2 t, ivec2 canvasSize) {
     }
     vec4 c = texelFetch(canvasColors, t, 0);
     return vec4(c.rgb * c.a, c.a);
+}
+
+float trixelEdgeCoverage(float nearest, vec2 texelScreenPx) {
+    float effectiveDisplayScale = min(0.5 * texelScreenPx.x, texelScreenPx.y);
+    if (effectiveDisplayScale <= 1.0) {
+        return 1.0;
+    }
+    return clamp(nearest + 0.5, 0.0, 1.0);
 }
 
 void main() {
@@ -75,9 +82,9 @@ void main() {
             nearest = distLower;
             across = ivec2(t.x, t.y + 1);
         }
-        // Box-filter coverage of this triangle along its nearest edge; the
-        // remainder of the pixel shows the texel across that edge.
-        float coverage = clamp(nearest + 0.5, 0.0, 1.0);
+        // A minimum-footprint triangle owns only two pixel samples. Fractional
+        // coverage there leaves neither the triangle nor its neighbour solid.
+        float coverage = trixelEdgeCoverage(nearest, texelScreenPx);
         color = mix(texelPremultiplied(across, canvasSize), texelPremultiplied(t, canvasSize), coverage);
     }
     if (color.a < 1.0 / 255.0) {

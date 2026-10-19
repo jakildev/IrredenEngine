@@ -50,11 +50,22 @@ onto the default framebuffer after `FRAMEBUFFER_TO_SCREEN` and
 (`resolutionPlusBuffer × outputScale`, viewport-centred, no camera sub-pixel
 residual). GUI trixel coordinates, hit testing and `guiTrixelToScreenPx` are
 unchanged; only the resolution the triangles are rasterized at differs. The
-fragment selects the display triangle for its canvas position, computes the
-signed screen-pixel distance to the triangle's three edges, and box-filters
-coverage along the nearest edge against the texel across it, in premultiplied
-colour. Edges are therefore anti-aliased at any output scale, and two adjacent
-texels of the same colour show no seam. The main gather skips the GUI canvas
+fragment selects the display triangle for its canvas position and computes the
+signed screen-pixel distance to the triangle's three edges. Above effective
+display scale 1 it box-filters coverage along the nearest edge against the
+texel across it, in premultiplied colour. Effective display scale is
+`min(texelScreenPx.x / 2, texelScreenPx.y)`, so anisotropic STRETCH output uses
+the limiting axis.
+
+At effective scale 1 or below, the selected lattice triangle receives full
+coverage. A scale-1 texel covers 2x1 screen pixels and its triangle is 2x2;
+there are only two owned pixel centres. Nearest-edge filtering would make each
+exposed owned sample about 0.724 foreground and the adjacent sample about
+0.276 foreground, leaving neither a solid stroke nor a clean neighbour. Hard
+ownership is the minimum-footprint resolve: it retains the lattice and makes
+one-texel strokes solid. Scale 2 and larger retain the box filter unchanged.
+Two adjacent texels of the same colour show no seam in either branch. The main
+gather skips the GUI canvas
 whenever this pass is registered, so a creation that never registers it keeps
 the framebuffer path below.
 
@@ -140,7 +151,9 @@ notch); for SMALL, an odd-row texel in column 0 or 3 with no lit vertical
 neighbour; and a non-empty bitmap two characters share.
 
 `scripts/trixel-font-preview.py` renders the header's glyphs exactly as the
-screen composite displays them (`--mode smooth`), as the framebuffer path
-shows them at a given `gui_scale` (`--mode pixelated --fb-scale 2·guiScale`),
-or as plain texels (`--mode rect`); run it before and after editing a glyph.
-`--set small` reads `trixel_font_small.hpp`.
+screen composite displays them (`--mode smooth --gui-scale 1 --output-scale
+1`; both scales default to 1 and `--upscale` only nearest-magnifies the
+result), as the framebuffer path shows them at a given `gui_scale` (`--mode
+pixelated --fb-scale 2·guiScale`), or as plain texels (`--mode rect`); run it
+before and after editing a glyph. `--set small` reads
+`trixel_font_small.hpp`.
