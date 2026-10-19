@@ -18,6 +18,7 @@
 #include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/update/components/component_angular_velocity.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
@@ -71,6 +72,7 @@ using IRComponents::C_VoxelSetNew;
 using IRComponents::C_WidgetButton;
 using IRComponents::C_WidgetCheckbox;
 using IRComponents::C_WidgetDropdown;
+using IRComponents::C_WidgetImage;
 using IRComponents::C_WidgetLabel;
 using IRComponents::C_WidgetNumberField;
 using IRComponents::C_WidgetSlider;
@@ -634,6 +636,13 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsHeapOwningComponents) {
     label.colorOverride_ = IRMath::Color{9, 8, 7, 240};
     const EntityId widget = m_entity_manager.createEntity(label);
 
+    C_WidgetImage image{};
+    image.path_ = "data/thumb.png";
+    image.texelSize_ = IRMath::ivec2(2, 1);
+    image.texels_ = {IRMath::Color{10, 20, 30, 255}, IRMath::Color{40, 50, 60, 255}};
+    image.loaded_ = true;
+    const EntityId imageWidget = m_entity_manager.createEntity(image);
+
     C_Skeleton skeleton{};
     skeleton.joints_ = {101, IREntity::kNullEntity, 103};
     skeleton.bindPose_.resize(3);
@@ -658,6 +667,14 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsHeapOwningComponents) {
     EXPECT_EQ(reloadedLabel.text_, "Frames/sec");
     EXPECT_EQ(reloadedLabel.colorOverride_.red_, 9);
     EXPECT_EQ(reloadedLabel.colorOverride_.alpha_, 240);
+
+    ASSERT_TRUE(m_entity_manager.entityExists(imageWidget));
+    const C_WidgetImage &reloadedImage = m_entity_manager.getComponent<C_WidgetImage>(imageWidget);
+    EXPECT_EQ(reloadedImage.path_, "data/thumb.png");
+    EXPECT_EQ(reloadedImage.texelSize_, IRMath::ivec2(2, 1));
+    ASSERT_EQ(reloadedImage.texels_.size(), 2u);
+    EXPECT_EQ(reloadedImage.texels_[1].blue_, 60);
+    EXPECT_TRUE(reloadedImage.loaded_);
 
     ASSERT_TRUE(m_entity_manager.entityExists(rig));
     const C_Skeleton &reloadedRig = m_entity_manager.getComponent<C_Skeleton>(rig);

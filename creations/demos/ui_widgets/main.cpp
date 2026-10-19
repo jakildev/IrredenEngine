@@ -1,9 +1,10 @@
 // Trixel-rendered UI widget primitives demo.
 //
 // Shows the widget set: panel, label, button, slider, number field, checkbox,
-// list, dropdown, radio, text input, and scroll. The render harness fires
-// `--auto-screenshot` if requested so the demo doubles as a visual-regression
-// canary for the widget framework.
+// list, dropdown, radio, text input, scroll, and image, plus a missing-file
+// image's placeholder. `--auto-screenshot` runs the GUI-test shot table, so one
+// capture serves render-verify (the references and the image-widget probe
+// metric) and gui-verify (the image and number-field assertions).
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
@@ -35,6 +36,7 @@
 #include <irreden/render/systems/system_widget_apply_number_field.hpp>
 #include <irreden/render/systems/system_widget_apply_scroll.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
+#include <irreden/render/systems/system_widget_render_image.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
 #include <irreden/render/systems/system_widget_render_slider.hpp>
@@ -54,6 +56,7 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstdio>
+#include <iterator>
 #include <list>
 #include <string>
 
@@ -81,6 +84,20 @@ IREntity::EntityId g_radioMed = IREntity::kNullEntity;
 IREntity::EntityId g_radioHigh = IREntity::kNullEntity;
 IREntity::EntityId g_textInput = IREntity::kNullEntity;
 IREntity::EntityId g_scroll = IREntity::kNullEntity;
+
+// Image widgets. The probe PNG's quadrants are 1-px patterns whose box-filter
+// averages differ from any single source pixel, which is what
+// scripts/render-image-widget-metric.py samples; its geometry defaults mirror
+// kImagePos / kImageSize and the probe's layout. `--image-path` swaps the PNG
+// for the metric's negative control.
+constexpr const char *kImageProbePath = "data/ui_widgets/image_widget_probe.png";
+constexpr const char *kImageMissingPath = "data/ui_widgets/no_such_image.png";
+const IRMath::ivec2 kImagePos(32, 350);
+const IRMath::ivec2 kImageSize(96, 64);
+const IRMath::ivec2 kImageMissingPos(136, 350);
+IREntity::EntityId g_image = IREntity::kNullEntity;
+IREntity::EntityId g_imageMissing = IREntity::kNullEntity;
+std::string g_imagePath = kImageProbePath;
 
 int g_clickCount = 0;
 int g_resetCount = 0;
@@ -181,12 +198,60 @@ const IRPrefab::GuiTest::Assertion kCancelledAssertions[] = {
     IRPrefab::GuiTest::predicate(&numberFieldState, &kCancelledExpected, "number_field_cancelled"),
 };
 
+bool imageLoaded(const void *, std::string &actual) {
+    const std::string &error = IRPrefab::Widget::imageError(g_image);
+    actual = error.empty() ? "loaded" : error;
+    return IRPrefab::Widget::imageLoaded(g_image) && error.empty();
+}
+
+bool missingImageErrorNamesPath(const void *, std::string &actual) {
+    const std::string &error = IRPrefab::Widget::imageError(g_imageMissing);
+    actual = error.empty() ? "no-error" : error;
+    return !IRPrefab::Widget::imageLoaded(g_imageMissing) &&
+           error.find(kImageMissingPath) != std::string::npos;
+}
+
+// The placeholder is what WIDGET_RENDER_IMAGE writes: every texel of the
+// missing image's array matches the hatch in the theme's disabled colours.
+bool missingImageDrawsPlaceholder(const void *, std::string &actual) {
+    const auto &image = IREntity::getComponent<IRComponents::C_WidgetImage>(g_imageMissing);
+    const IRPrefab::Widget::WidgetTheme &theme = IRPrefab::Widget::defaultTheme();
+    if (image.texelSize_ != kImageSize ||
+        image.texels_.size() != static_cast<std::size_t>(kImageSize.x) * kImageSize.y) {
+        actual = "texel-array-size-mismatch";
+        return false;
+    }
+    int mismatches = 0;
+    for (int y = 0; y < kImageSize.y; ++y) {
+        for (int x = 0; x < kImageSize.x; ++x) {
+            const bool line = (x + y) % IRPrefab::Widget::detail::kImageHatchPeriod <
+                              IRPrefab::Widget::detail::kImageHatchWidth;
+            const IRMath::Color expected = line ? theme.textDisabled_ : theme.backgroundDisabled_;
+            const IRMath::Color got = image.texels_[static_cast<std::size_t>(y) * kImageSize.x + x];
+            if (got.toPackedRGBA() != expected.toPackedRGBA()) {
+                ++mismatches;
+            }
+        }
+    }
+    actual = "mismatched-texels=" + std::to_string(mismatches);
+    return mismatches == 0;
+}
+
+const IRPrefab::GuiTest::Assertion kIdleAssertions[] = {
+    IRPrefab::GuiTest::predicate(&imageLoaded, nullptr, "image_loaded"),
+    IRPrefab::GuiTest::predicate(&missingImageErrorNamesPath, nullptr, "missing_error_names_path"),
+    IRPrefab::GuiTest::predicate(&missingImageDrawsPlaceholder, nullptr, "missing_placeholder"),
+};
+
 IRPrefab::GuiTest::LatchState g_guiLatch;
 
 void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     const IRPrefab::GuiTest::Assertion *assertions = nullptr;
     int count = 0;
-    if (shotIndex == 3) {
+    if (shotIndex == 0) {
+        assertions = kIdleAssertions;
+        count = static_cast<int>(std::size(kIdleAssertions));
+    } else if (shotIndex == 3) {
         assertions = kFocusedAssertions;
         count = static_cast<int>(std::size(kFocusedAssertions));
     } else if (shotIndex == 4) {
@@ -217,8 +282,14 @@ void initEntities();
 
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: ui_widgets");
+    IREngine::args().string(
+        "--image-path",
+        "PNG the image widget shows (run-dir relative)",
+        IRWidgetsDemo::kImageProbePath
+    );
     IREngine::init(argc, argv);
     IRWidgetsDemo::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    IRWidgetsDemo::g_imagePath = IREngine::args().getString("--image-path");
     initSystems();
     initCommands();
     initEntities();
@@ -328,6 +399,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_IMAGE>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
@@ -515,5 +587,19 @@ void initEntities() {
         /*contentSize*/ 800,
         IRComponents::C_WidgetScroll::Axis::HORIZONTAL,
         /*initialScroll*/ 200
+    );
+
+    // ---- Image widgets (left column, below the Phase 0 set) --------------
+    IRPrefab::Widget::makeLabel(IRWidgetsDemo::kImagePos - ivec2(0, 20), "IMAGE");
+    IRPrefab::Widget::makeLabel(IRWidgetsDemo::kImageMissingPos - ivec2(0, 20), "MISSING");
+    IRWidgetsDemo::g_image = IRPrefab::Widget::makeImage(
+        IRWidgetsDemo::kImagePos,
+        IRWidgetsDemo::kImageSize,
+        IRWidgetsDemo::g_imagePath
+    );
+    IRWidgetsDemo::g_imageMissing = IRPrefab::Widget::makeImage(
+        IRWidgetsDemo::kImageMissingPos,
+        IRWidgetsDemo::kImageSize,
+        IRWidgetsDemo::kImageMissingPath
     );
 }

@@ -17,6 +17,9 @@
 //       zOrder = 0, onHover = fn(id), onUnhover = fn(id), onClick = fn(id),
 //   })                                                -- every key optional
 //   IRGui.destroyWidget(region)
+//   local image  = IRGui.makeImage(x, y, w, h, path)   -- path: image-base relative
+//   IRGui.setImagePath(image, path)
+//   local err    = IRGui.imageError(image)       -- nil when the PNG decoded
 //   local gx, gy = IRGui.glyphStep(size?)
 //   local w, h   = IRRender.getGuiCanvasSize()
 //
@@ -53,6 +56,7 @@
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/lua_text_bindings.hpp>
+#include <irreden/utility/path_utils.hpp>
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
@@ -61,6 +65,9 @@
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -173,11 +180,40 @@ inline float finiteNumber(const sol::object &value, const char *caller, const ch
     return number;
 }
 
+// An image path from Lua, resolved inside @p imageBase, which must already be
+// canonical. IRGui is an engine-wide table, so the image widget must not become
+// a host-file read for whatever script calls it: a path that
+// `IRUtility::resolveContainedPath` refuses raises before the file is opened.
+// The widget gets the resolved path, never the Lua string.
+inline std::string containedImagePath(
+    const std::filesystem::path &imageBase, const std::string &path, const char *caller
+) {
+    const std::optional<std::filesystem::path> resolved =
+        IRUtility::resolveContainedPath(imageBase, path);
+    if (!resolved) {
+        throw sol::error{
+            std::string(caller) + ": path '" + path +
+            "' must be relative to the image base and stay inside it (no absolute path, "
+            "no '..', no symlink out)"
+        };
+    }
+    return resolved->string();
+}
+
 inline constexpr std::array<std::string_view, 4> kHitRegionOptionKeys{
     "zOrder", "onHover", "onUnhover", "onClick"
 };
 
-inline void bindWidgets(LuaScript &script) {
+// @p imageBase confines every `makeImage` / `setImagePath` path; it is
+// canonicalized once here, and a base that cannot be resolved throws.
+inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBase) {
+    std::error_code error;
+    const std::filesystem::path canonicalImageBase =
+        std::filesystem::weakly_canonical(imageBase, error);
+    if (error) {
+        throw std::invalid_argument("bindWidgets requires a valid image base");
+    }
+
     sol::state &lua = script.lua();
     // Pointer to the live map (not a snapshot): the closure resolves the
     // dispatch system at call time, by which point the creation has
@@ -313,6 +349,40 @@ inline void bindWidgets(LuaScript &script) {
     gui["setLabelText"] = [](lua_Integer id, std::string text) {
         requireWidget<IRComponents::C_WidgetLabel>(id, "IRGui.setLabelText", "label")->text_ =
             std::move(text);
+    };
+
+    // The PNG decodes and resamples during the call (main-thread setup work,
+    // never a tick). `path` is relative to the image base; one that could
+    // leave the base raises. A missing or undecodable file inside it still
+    // builds the widget, drawn as a placeholder hatch; `imageError` then
+    // returns the reason, naming the path. Drawing needs WIDGET_RENDER_IMAGE
+    // in RENDER.
+    gui["makeImage"] =
+        [canonicalImageBase](int x, int y, int w, int h, const std::string &path) -> lua_Integer {
+        if (w <= 0 || h <= 0) {
+            throw sol::error{"IRGui.makeImage: w and h must be positive"};
+        }
+        return static_cast<lua_Integer>(IRPrefab::Widget::makeImage(
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            containedImagePath(canonicalImageBase, path, "IRGui.makeImage")
+        ));
+    };
+    gui["setImagePath"] = [canonicalImageBase](lua_Integer id, const std::string &path) {
+        requireWidget<IRComponents::C_WidgetImage>(id, "IRGui.setImagePath", "makeImage widget");
+        IRPrefab::Widget::setImagePath(
+            static_cast<IREntity::EntityId>(id),
+            containedImagePath(canonicalImageBase, path, "IRGui.setImagePath")
+        );
+    };
+    gui["imageError"] = [](lua_Integer id) -> sol::optional<std::string> {
+        const std::string &error =
+            requireWidget<IRComponents::C_WidgetImage>(id, "IRGui.imageError", "makeImage widget")
+                ->error_;
+        if (error.empty()) {
+            return sol::nullopt;
+        }
+        return error;
     };
 
     gui["wasClicked"] = [](lua_Integer id) -> bool {
@@ -548,6 +618,16 @@ inline void bindWidgets(LuaScript &script) {
             IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas).size_;
         return std::make_tuple(size.x, size.y);
     };
+}
+
+// The image base defaults to the run directory, the tree `IRFile` reads.
+inline void bindWidgets(LuaScript &script) {
+    std::error_code error;
+    const std::filesystem::path runDirectory = std::filesystem::current_path(error);
+    if (error) {
+        throw std::runtime_error("bindWidgets could not resolve the run directory");
+    }
+    bindWidgets(script, runDirectory);
 }
 
 } // namespace IRScript::detail
