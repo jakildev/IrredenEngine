@@ -76,6 +76,46 @@ TEST(CatalogScanTest, FixtureTree) {
     EXPECT_FALSE(unsorted->error_.has_value());
 }
 
+TEST(CatalogScanTest, MtimeIsUnixSeconds) {
+    const auto base = std::filesystem::temp_directory_path() / "ir_catalog_mtime_test";
+    std::error_code error;
+    std::filesystem::remove_all(base, error);
+
+    writeText(base / "docs/design/x.md", "fixture");
+    writeText(base / "creations/demos/timed/thumbnail.png", "thumbnail");
+    writeText(
+        base / "creations/demos/timed/creation.json",
+        manifestWithPaths("thumbnail.png", "docs/design/x.md")
+    );
+    writeText(base / "creations/demos/timed/data/readme.txt", "asset");
+    const auto executable = base / "build/IRPathFixture.exe";
+    writeText(executable, "exe");
+    std::filesystem::permissions(
+        executable,
+        std::filesystem::perms::owner_exec,
+        std::filesystem::perm_options::add,
+        error
+    );
+    ASSERT_FALSE(error);
+
+    const IRCatalog::CatalogService service(base);
+    const auto catalog = service.scan(".", "build");
+    const auto assets = service.assets();
+    const double now =
+        std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    const auto *timed = findCreation(catalog, "creations/demos/timed");
+    ASSERT_NE(timed, nullptr);
+    ASSERT_EQ(timed->targets_.size(), 1u);
+    ASSERT_TRUE(timed->targets_[0].built_);
+    EXPECT_NEAR(timed->targets_[0].mtime_, now, 86400.0);
+
+    ASSERT_EQ(assets.entries_.size(), 1u);
+    EXPECT_NEAR(assets.entries_[0].mtime_, now, 86400.0);
+
+    std::filesystem::remove_all(base, error);
+}
+
 TEST(CatalogScanTest, RefusesPathsOutsideToolRoot) {
     const IRCatalog::CatalogService service(kFixtureRoot);
     EXPECT_THROW(service.scan("../root", "build"), std::invalid_argument);
