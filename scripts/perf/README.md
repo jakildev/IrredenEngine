@@ -130,6 +130,28 @@ from worker threads are unsupported, and `IR_RELEASE` compiles the macro out.
 Executor: `fleet-run IRPerfGrid --auto-profile 120 --no-overlay` with a
 temporary scope, then `grep -A30 'CPU phase timing' save_files/profile_report.txt`.
 
+## Repeat-profile an `IRShapeDebug` comparison
+
+`repeat_profile.py --target IRShapeDebug --output <dir> --repeats N -- <args>`
+runs the fixed-pose SDF comparison N times and writes `summary.md`: each
+metric's mean and min–max over the per-run means, and a one-sided 95% upper bound
+on that mean (mean + t(0.95, N−1) · sd / √N; `n/a` at one repeat). Only these ShapeDebug
+profile arguments are accepted; any other flag fails with `unsupported ShapeDebug
+profile argument`:
+
+- required: `--auto-profile <frames>`, `--yaw`, `--zoom`,
+  `--sdf-voxel-scene direct|baked`, `--config-preset configs/perf/sdf-on.lua|sdf-off.lua`
+- optional: `--sdf-voxel-blockers`, `--no-ao`, `--no-shadows`
+- optional fixture: `--glitch-test <mode>` (`standard-off`, `off`, `tear`, `hold`,
+  `split`, `bars`, `cells`, `depth-tear`, `depth-hold`, `hold-divisor`, `all`).
+  The mode is recorded in the manifest's `configuration_sha256` block, so runs of
+  different fixtures never compare.
+
+Executor: `python3 scripts/perf/repeat_profile.py --target IRShapeDebug --output <dir>
+--repeats 2 -- --glitch-test all --auto-profile 60 --yaw 0 --zoom 4
+--sdf-voxel-scene direct --config-preset configs/perf/sdf-on.lua`; the summary then
+carries a `GPU framebufferGlitch` row.
+
 ## Same-runner Linux diagnostic
 
 When a historical CI comparison cannot isolate a change, dispatch `Perf Gate`
