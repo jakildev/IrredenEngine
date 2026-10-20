@@ -62,9 +62,50 @@ int main(){
 }
 """
 
+COMPLETE_CONTROLS = overflow.CASES[:overflow.CASES.index("int main(){")] + r"""
+int main(){
+    const uint empty=0xffffffffu;
+    const Face low{{2,3,2},{1,0,0},{0,1,0}};
+    uint comparisons=0;
+    for(uint cascade:{0u,1u})for(uint count:{64u,65u,256u}){
+        for(float high:{1.0f,-53.99f,-54.0f,-54.01f,-120.0f}){
+            reset(count,count,cascade);
+            fill(count-1,{{2,3,high},{1,0,0},{0,1,0}});
+            writeFace(low);
+            fallback(cascade,empty,depth(high));
+            require(oracle({2.9f,3.5f},10,64),"lower caster lies in finite interval");
+            require(sample({2.9f,3.5f},10,cascade,true,{0,0,1},64)==1,
+                    "complete query lost lower caster behind upper depths");
+            ++comparisons;
+        }
+        reset(count,count,cascade);
+        fill(count,{{2,3,-120},{1,0,0},{0,1,0}});
+        fallback(cascade,empty,depth(-120));
+        require(!oracle({2.9f,3.5f},10,64),"distant-only oracle misses");
+        require(sample({2.9f,3.5f},10,cascade,true,{0,0,1},64)==0,
+                "distant-only complete query respects finite throw");
+    }
+    std::cout<<comparisons<<" complete overlap queries plus distant-only controls\n";
+}
+"""
+
 
 @unittest.skipUnless(overflow.COMPILER, "shadow layer controls require a C++ compiler")
 class ShadowLayerUnionTest(unittest.TestCase):
+    def test_complete_queries_preserve_same_layer_blockers(self):
+        harness = overflow.SourceFaceOverflowTest()
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            with self.subTest(backend=suffix):
+                run = harness.compile_and_run(overflow.host_source(
+                    suffix, directory, False, cases=COMPLETE_CONTROLS, include_pcf=True))
+                self.assertEqual(run.returncode, 0, run.stderr)
+                print(f"{suffix}: {run.stdout}", end="")
+                mutant = harness.compile_and_run(overflow.host_source(
+                    suffix, directory, False, cases=COMPLETE_CONTROLS, include_pcf=True,
+                    mutation=("sourceQueryComplete && dot(normal, sunDir) > 0.0", "false")))
+                self.assertNotEqual(mutant.returncode, 0)
+                self.assertIn("complete query lost lower caster behind upper depths", mutant.stderr)
+
     def test_independent_caster_layers(self):
         harness = overflow.SourceFaceOverflowTest()
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):

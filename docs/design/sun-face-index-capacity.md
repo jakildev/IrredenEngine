@@ -75,3 +75,41 @@ throw limit and allocation-order independence. The moving-block report also
 needs native Windows scene reproduction; this mechanism alone does not identify
 every visible speckle. [Sampler controls and scene evidence](../pr-screenshots/codex/overlapping-caster-shadow/README.md)
 separate the corrected cross-layer case from that remaining limitation.
+
+The [crowded overlap fixture](../pr-screenshots/codex/crowded-shadow-overlap/README.md)
+now reproduces the remaining loss in native Metal. One and eight coincident
+upper casters keep complete tiles and preserve the floor shadow; sixteen and
+128 create incomplete tiles and lose coverage, without exhausting either global
+pool. Nearby upper casters produce edge loss; distant ones additionally open a
+central hole. Every distinct upper pose has an identical unlit floor control.
+The fixture is deliberately a known-failing diagnostic, not a blessed image.
+
+### Ordered follow-up
+
+1. Run the public overlap diagnostic on Windows/OpenGL, then compare the moving
+   scene with index-completeness witnesses. Do not infer a platform cause from
+   the original report or certify the scene from the Metal reproduction.
+2. Prototype a depth-preserving query representation against the complete finite
+   geometry oracle. Depth-only interval existence and finite face/plane coverage
+   are distinct requirements; preserve both. Measure bytes cleared, append work,
+   candidate reads and GPU query time before selecting a layout.
+3. Cover nearby and distant overlapping casters, duplicate/insertion-order
+   invariance, exact throw boundaries, oblique light, mixed source/GRID/revoxelized
+   modes, both cascades and pool exhaustion. Then sweep height in a running scene.
+
+A bounded depth-slab prototype is worth evaluating for **depth-only** samples:
+partition depth into slabs no wider than the query interval. A query's lower
+boundary slab needs its maximum, its upper boundary slab its minimum, and fully
+contained slabs need occupancy. Both endpoints cannot lie strictly inside one
+slab, so these extrema answer interval existence without retaining every point.
+Atomic min/max are independent of insertion order. Endpoint equality still needs
+strict-boundary tests. A dense layout over the full encoded depth range can be
+too expensive; include storage and clear bandwidth in the comparison.
+
+That proof does not cover payload-dependent splat rejection, reconstructed plane
+tests or a finite footprint away from the stored tap. Keeping only extrema may
+still discard the valid candidate after another rejection. It is not a complete
+fallback design. A spatial/depth hierarchy retaining finite geometry is the
+alternative to evaluate; another nearest-K cache, an enlarged unconditional
+scan, or accepting whichever partial records won allocation does not establish
+the required invariant.
