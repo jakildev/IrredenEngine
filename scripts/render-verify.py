@@ -110,6 +110,21 @@ def _manifest_roots(worktree: Path) -> list[Path]:
     return [creations / "demos", creations / "editors"]
 
 
+# Tracked creations that sit directly under creations/ rather than in a
+# manifest root. Named one by one: a creations/* glob would reach the
+# gitignored private creations beside them.
+STANDALONE_CREATIONS = ("launcher",)
+
+
+def _manifest_paths(worktree: Path) -> list[Path]:
+    """Every reference manifest the tree ships, in a stable sorted order."""
+    paths = [path for root in _manifest_roots(worktree)
+             for path in root.glob(MANIFEST_GLOB)]
+    paths += [manifest for name in STANDALONE_CREATIONS
+              if (manifest := _manifest_path(worktree / "creations" / name)).is_file()]
+    return sorted(paths)
+
+
 def _manifest_path(demo_dir: Path) -> Path:
     return demo_dir / REFERENCES_SUBDIR / MANIFEST_NAME
 
@@ -129,12 +144,7 @@ def _declared_targets(worktree: Path) -> dict[str, str]:
     """
     creations_root = worktree / "creations"
     mapping: dict[str, str] = {}
-    paths = sorted(
-        path
-        for root in _manifest_roots(worktree)
-        for path in root.glob(MANIFEST_GLOB)
-    )
-    for path in paths:
+    for path in _manifest_paths(worktree):
         creation_dir = path.parents[2]
         creation = creation_dir.relative_to(creations_root).as_posix()
         try:

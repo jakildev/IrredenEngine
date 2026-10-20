@@ -7,6 +7,7 @@
 #include <irreden/render/components/component_text_style_lua.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/trixel_font.hpp>
+#include <irreden/render/widgets.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <sol/sol.hpp>
@@ -188,6 +189,24 @@ TEST_F(LuaWidgetValues, TextInputRejectsNegativeLengthBeforeCreation) {
         std::string::npos
     );
     EXPECT_EQ(m_entityManager.getLiveEntityCount(), before);
+}
+
+// The queue half of IRGui.focus; WIDGET_INPUT::beginTick consumes the request.
+TEST_F(LuaWidgetValues, FocusQueuesOneRequestTheLatestWins) {
+    EXPECT_EQ(IRPrefab::Widget::takeFocusRequest(), IREntity::kNullEntity);
+    run(R"lua(
+        first = IRGui.makeTextInput(0, 0, 40, 12)
+        second = IRGui.makeTextInput(0, 20, 40, 12)
+        IRGui.focus(first)
+        IRGui.focus(second)
+    )lua");
+    EXPECT_EQ(IRPrefab::Widget::takeFocusRequest(), entity("second"));
+    EXPECT_EQ(IRPrefab::Widget::takeFocusRequest(), IREntity::kNullEntity);
+}
+
+TEST_F(LuaWidgetValues, FocusRejectsANonWidgetAndQueuesNothing) {
+    EXPECT_NE(error("IRGui.focus(12345)").find("is not a live widget"), std::string::npos);
+    EXPECT_EQ(IRPrefab::Widget::takeFocusRequest(), IREntity::kNullEntity);
 }
 
 TEST_F(LuaWidgetValues, NumberFieldBuildsReadsClampsAndSnaps) {

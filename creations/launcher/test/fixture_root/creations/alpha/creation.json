@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Alpha",
+  "description": "Fixture creation whose target is the stub build tool's.",
+  "group": "fixture/one",
+  "tags": ["fixture", "stub"],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRLauncherStub",
+      "display": "Stub target",
+      "presets": [{ "name": "Default", "args": [] }]
+    }
+  ]
+}

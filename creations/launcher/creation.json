@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Launcher",
+  "description": "Browses, builds and runs the creations of the checkout it was built from.",
+  "group": "tools",
+  "tags": ["launcher", "tool"],
+  "kind": "tool",
+  "docs": ["docs/design/engine-launcher.md"],
+  "targets": [
+    {
+      "name": "IRLauncher",
+      "display": "Launcher",
+      "description": "Run it through ir-launcher, which installs and updates it.",
+      "presets": [{ "name": "Interactive", "args": [] }]
+    }
+  ]
+}

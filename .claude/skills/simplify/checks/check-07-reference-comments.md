@@ -12,10 +12,10 @@ carry every extension of the six comment families:
 `.lua`, `.py/.bzl/.bazel`, `.sh/.bash/.zsh`, `.ps1`, `.cmake` /
 `CMakeLists.txt`, plus the extensionless interpreter executables under
 `scripts/` and `engine/tools/bin/` (most of the primary tool surface has no
-extension). The `Check07Scope` suite in
-`scripts/fleet/tests/test_lint_comment_refs.py` pins the two scopes
-together. Tests are in scope: a regression test's header states the
-property it locks, not the change history.
+extension) and the launcher's PATH stubs under `creations/launcher/test/`.
+The `Check07Scope` suite in `scripts/fleet/tests/test_lint_comment_refs.py`
+pins the two scopes together. Tests are in scope: a regression test's
+header states the property it locks, not the change history.
 
 `CLAUDE-BASELINE.md` §Style bans comments referencing the current task
 ("added for the #NNN flow") and block-level motivation prose ("Before
@@ -30,8 +30,9 @@ Grep tool with:
 ```
 
 The `--` alternative is Lua's comment marker. Run the pattern again with
-`glob: 'scripts/**'` and with `glob: 'engine/tools/bin/**'` — those arms
-reach the extensionless executables.
+`glob: 'scripts/**'`, with `glob: 'engine/tools/bin/**'`, and with
+`glob: 'creations/launcher/test/**'` — those arms reach the extensionless
+executables.
 
 Flag only `+` lines. Any issue or PR number inside a comment is a defect —
 there is no sanctioned backref form (`.claude/rules/comments.md`). The

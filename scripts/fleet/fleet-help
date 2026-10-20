@@ -204,6 +204,11 @@ Engine build / run (everyday dev)
   fleet-run --targets [...]    alias of fleet-run-targets (list names)
   fleet-run-targets [...]        --built | --plan | --plain | --build-dir
 
+  ir-launcher [--update]
+      Builds IRLauncher into <checkout>/build-launcher, runs the installed
+      copy and applies its "Update launcher" requests. docs/agents/BUILD.md
+      "Launcher".
+
   Per-tool:  fleet-help fleet-run
               fleet-help fleet-build
               fleet-help fleet-debug

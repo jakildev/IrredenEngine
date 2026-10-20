@@ -49,6 +49,8 @@ creations/*
 !creations/editors/font_maker/**
 !creations/editors/voxel_editor/
 !creations/editors/voxel_editor/**
+!creations/launcher/
+!creations/launcher/**
 
 # claude code: share skills + roles + path-scoped rules + worker subagents + project-level settings, ignore worktrees and per-session local state
 .claude/*

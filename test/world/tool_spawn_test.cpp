@@ -323,6 +323,32 @@ TEST_F(ToolSpawnTest, ResolvesInRootSymlinksAndRemovesBuildDirectoryForEditor) {
 #endif
 }
 
+TEST_F(ToolSpawnTest, RunsTheNamedEditorAndRefusesNamesOutsideTheTable) {
+    const auto unknown = m_service->spawn({IREngine::ToolName::EDITOR, "", "creations", "vim"});
+    ASSERT_FALSE(unknown.has_value());
+    EXPECT_EQ(unknown.error(), "unknown editor 'vim'");
+    EXPECT_FALSE(m_service->spawn({IREngine::ToolName::EDITOR, "", "creations", "/usr/bin/cursor"})
+                     .has_value());
+    ASSERT_EQ(IREngine::editorNames().size(), 2);
+    EXPECT_EQ(IREngine::editorNames()[0], "cursor");
+    EXPECT_EQ(IREngine::editorNames()[1], "code");
+    EXPECT_FALSE(IREngine::editorAvailable("vim"));
+#ifndef _WIN32
+    EXPECT_TRUE(IREngine::editorAvailable("cursor"));
+    auto spawned = m_service->spawn({IREngine::ToolName::EDITOR, "", "creations/inside", "cursor"});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    for (int attempt = 0; attempt < 100 && !spawned->exitCode().has_value(); ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const std::vector<std::string> lines = spawned->poll();
+    ASSERT_EQ(lines.size(), 2);
+    EXPECT_EQ(
+        std::filesystem::weakly_canonical(lines[0]),
+        std::filesystem::weakly_canonical(m_root / "creations" / "inside")
+    );
+#endif
+}
+
 TEST_F(ToolSpawnTest, RemovesBuildDirectoryForFolderOpener) {
 #ifdef _WIN32
     GTEST_SKIP() << "POSIX stub executable test";

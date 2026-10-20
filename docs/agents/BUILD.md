@@ -323,6 +323,18 @@ runtime DLLs next to the `.exe`. The MinGW runtime (`libgcc_s_seh-1.dll`,
 `PATH`. Each creation typically defines an `IR<Name>Run` target that builds
 and launches with the correct working directory.
 
+## Launcher
+
+`ir-launcher` builds and runs `IRLauncher`, the GUI hub for this checkout
+(`--update` rebuilds and reinstalls without launching; non-zero on failure).
+- It builds into `build-launcher/`, apart from `build/`, and runs the copy
+  `build-launcher/installed/current` names; a build is installed only after it
+  succeeds, and the old copy goes only once the new one is live.
+- "Update launcher" exits the app; the script rebuilds and relaunches. A failed
+  update relaunches the old copy with a banner and `build-launcher/update.log`.
+- One launcher per checkout: a second `ir-launcher` prints the holder's pid and
+  exits 1. Design: [`engine-launcher.md`](../design/engine-launcher.md) §D6.
+
 ## Packaging a distributable bundle
 
 A creation wired with `irreden_package_target(<target> ...)`

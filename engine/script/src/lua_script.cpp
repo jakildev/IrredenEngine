@@ -1044,6 +1044,10 @@ void LuaScript::bindLuaCatalog(const std::filesystem::path &toolRoot) {
     detail::bindCatalog(*this, toolRoot);
 }
 
+void LuaScript::bindLuaSave(const std::filesystem::path &directory) {
+    detail::bindPersistenceApi(*this, directory.string());
+}
+
 void LuaScript::bindLuaInput() {
     detail::bindKeyMouseButtonEnum(*this);
     detail::bindButtonStatusesEnum(*this);
