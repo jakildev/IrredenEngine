@@ -76,3 +76,26 @@ lines).
 
 `IRShapeDebug --voxel-text-sample --auto-screenshot` captures every facing,
 explicit and shaded face colours, two sizes and a centred two-line block.
+
+## Superseded approach — world-space titles (PR #4588 first revision, `9d4865c75`)
+
+The first revision of the PR that landed this document built the feature as
+world-space titles: `IRPrefab::VoxelText::create` made one GRID voxel-set
+letter per character on the lattice plane facing the camera (8-way yaw
+snap), laid along a world-axis path, a heading list or a polyline, with
+`IRText.createVoxel` / `IRText.removeVoxel`, the `VoxelTextPlacement.*` and
+`LuaVoxelText.*` tests, three yaw render-verify rows and a `voxel_title.lua`
+example in `IRCreationDefault`. That head was approved and conflict-resolved
+against master `d1b6abe33` before the feature was redirected to the GUI form
+above. The world-space builder is not queued work; nothing on master
+references it.
+
+If a scene-space title (text made of lit, shadowed world voxels) is ever
+wanted, start from `9d4865c75` rather than from scratch: its placement
+helpers (reading direction, default heading, path-point placement), both
+test files, the `--voxel-text-yaw` fixture with its clip-gated manifest rows,
+and the world-space decisions of that revision's `voxel-text.md` carry over.
+The glyph set in `voxel_font.hpp` is shared with the GUI form, so the builder
+consumes it unchanged, and the GUI contract in this document does not change.
+`IRPrefab::Camera::getYaw()` and `IREntity.destroyTree` still back the yaw
+snap and `removeVoxel`.
