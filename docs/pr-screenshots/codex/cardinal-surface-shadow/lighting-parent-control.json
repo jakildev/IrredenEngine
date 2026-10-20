@@ -1,0 +1,27 @@
+[
+  {
+    "shot": "hover_h000",
+    "parent_sha256": "3f871ff7f36ec1258bbda9c474868a8b6ec62d0f6aad9130dee894b34287e3fc",
+    "after_sha256": "3f871ff7f36ec1258bbda9c474868a8b6ec62d0f6aad9130dee894b34287e3fc"
+  },
+  {
+    "shot": "hover_h008",
+    "parent_sha256": "50fdf36d9799b723a5f29f4ea7fc2e4fd87bec4bdff38258c99a0467015ccb50",
+    "after_sha256": "50fdf36d9799b723a5f29f4ea7fc2e4fd87bec4bdff38258c99a0467015ccb50"
+  },
+  {
+    "shot": "hover_h016",
+    "parent_sha256": "cd7bc485c842e9b725705dfaf965691fde4840e059411c8ec021aea122368ae4",
+    "after_sha256": "cd7bc485c842e9b725705dfaf965691fde4840e059411c8ec021aea122368ae4"
+  },
+  {
+    "shot": "hover_h024",
+    "parent_sha256": "fd76874cabf58535c3abd6db5b20676fe07df03818a7f429a0e1b9863ce3c229",
+    "after_sha256": "fd76874cabf58535c3abd6db5b20676fe07df03818a7f429a0e1b9863ce3c229"
+  },
+  {
+    "shot": "hover_h032",
+    "parent_sha256": "05c8c0d4f32dfcf60a5aed49ede2626dec611da885ccecfaab59daf7e0191e9f",
+    "after_sha256": "05c8c0d4f32dfcf60a5aed49ede2626dec611da885ccecfaab59daf7e0191e9f"
+  }
+]

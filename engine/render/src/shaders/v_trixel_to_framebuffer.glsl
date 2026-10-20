@@ -32,9 +32,9 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     // two blocks in lockstep.
     ivec2 perAxisBase;
     float visualYaw;
-    int scatterDebugMode;
+    int cardinalLightingEnabled;
     ivec4 visibleFaceIds;
-    vec4 _detachedResidualPad;
+    vec4 cardinalReceiver;
     vec4 casterViewToWorld;
     vec4 scatterFbResolution;
     int depthColorMode;

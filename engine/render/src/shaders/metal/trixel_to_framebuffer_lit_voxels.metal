@@ -1,0 +1,3 @@
+#define IR_TRIXEL_FRAGMENT_NAME f_trixel_to_framebuffer_lit_voxels
+#define IR_CARDINAL_LIGHTING 1
+#include "ir_trixel_to_framebuffer_body.metal"

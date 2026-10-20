@@ -28,4 +28,22 @@ inline float3 cardinalVoxelSurfaceCenter(
         cardinalIndex);
 }
 
+// Intersect the displayed fragment ray with the stored face plane. Rectangular
+// storage approximates the silhouette; do not clamp to a micro-square and tear
+// an otherwise continuous coplanar receiver into separate shadow samples.
+float3 cardinalVoxelSurfacePoint(
+    float2 canvasPixel, int2 ownerPixel, int encoded, int2 z1, float2 cameraOffset,
+    int2 renderOptions, int cardinalIndex
+) {
+    const float3 center = cardinalVoxelSurfaceCenter(
+        ownerPixel, encoded, z1, cameraOffset, renderOptions, 0);
+    const float density = float(effectiveTrixelSubdivisionScale(renderOptions));
+    const float2 iso = (canvasPixel - float2(trixelFrameOffset(z1, cameraOffset, renderOptions))
+                      - float2(1.0)) / density;
+    float3 point = isoPositionToPos3D(iso, 0.0);
+    const float3 axis = faceOutOfPlaneUnitAxis(decodeSlot(encoded));
+    point += float3(dot(center - point, axis));
+    return rotateCardinalZInv(point, cardinalIndex);
+}
+
 #endif

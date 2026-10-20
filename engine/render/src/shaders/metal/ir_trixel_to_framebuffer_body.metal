@@ -8,11 +8,19 @@ using namespace metal;
 #include "ir_shape_data.metal"
 #include "ir_shape_receiver.metal"
 #include "ir_selected_shape_receiver.metal"
+#endif
+#if IR_SHAPE_RECEIVER || IR_CARDINAL_LIGHTING
 #include "ir_sun_face_query_layout.metal"
 #include "ir_sun_shadow_sample.metal"
+#endif
+#if IR_SHAPE_LIGHTING || IR_CARDINAL_LIGHTING
+#include "ir_world_surface_lighting.metal"
+#endif
 #if IR_SHAPE_LIGHTING
 #include "ir_shape_surface_lighting.metal"
 #endif
+#if IR_CARDINAL_LIGHTING
+#include "ir_cardinal_voxel_receiver.metal"
 #endif
 
 struct VertexIn {
@@ -37,9 +45,10 @@ struct FrameDataIsoTriangles {
     // byte 160 as the camera-to-world quaternion for view-aligned caster faces.
     int2 perAxisBase;
     float visualYaw;
-    int scatterDebugMode;
+    int cardinalLightingEnabled;
     int4 visibleFaceIds;
-    float4 _detachedResidualPad;
+    // Gather alias of the detached residual: camera iso XY, subdivision mode, density.
+    float4 cardinalReceiver;
     float4 casterViewToWorld;
     float4 scatterFbResolution;
     int depthColorMode;
@@ -105,9 +114,12 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     device const ShapeDescriptor *receiverShapes [[buffer(20)]],
     device const uint *receiverOwners [[buffer(22)]],
     device const ShapeTileDescriptor *receiverTiles [[buffer(30)]],
+#endif
+#if IR_SHAPE_RECEIVER || IR_CARDINAL_LIGHTING
     constant FrameDataSun &sunFrameData [[buffer(29)]],
     device const uint *sunDepthBuf [[buffer(28)]],
-#if IR_SHAPE_LIGHTING
+#endif
+#if IR_SHAPE_LIGHTING || IR_CARDINAL_LIGHTING
     constant FrameDataLightingToTrixel &lighting [[buffer(27)]],
     constant LightVolumeParams &volumeParams [[buffer(7)]],
     device const GPULightSource *lights [[buffer(4)]],
@@ -115,7 +127,6 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     texture2d<float> surfaceAO [[texture(4)]],
     texture3d<float> lightVolume [[texture(5)]],
     texture3d<float, access::read> lightVolumeId [[texture(7)]],
-#endif
 #endif
     device HoveredEntityIdBuffer& hovered [[buffer(14)]]
 ) {
@@ -171,6 +182,22 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
                 shapeCanvasIsoDepth(position, receiverFrame), frameData.casterViewToWorld, color.rgb, receiverShapes, receiverOwners, receiverTiles,
                 lighting, volumeParams, sunFrameData, sunDepthBuf, lights,
                 paletteLUT, surfaceAO, lightVolume, lightVolumeId);
+    }
+#endif
+
+#if IR_CARDINAL_LIGHTING
+    if (color.a >= 0.1 && lighting.lightingEnabled != 0 && frameData.cardinalLightingEnabled != 0 &&
+        decodeEntityIdCardinalVoxel(triangleEntityIds.read(sampleCoord).rg) && !decodeCutFace(triangleEntityIds.read(sampleCoord).rg)) {
+        const float3 position = cardinalVoxelSurfacePoint(
+            originRaw, int2(sampleCoord), rawDist, frameData.perAxisBase,
+            frameData.cardinalReceiver.xy, int2(frameData.cardinalReceiver.zw),
+            frameData.perAxisStoreFrame.z);
+        const float3 normal = rotateCardinalZInv(
+            faceOutwardNormal(decodeSlot(rawDist)) * (decodeFlipSingle(rawDist) != 0 ? -1.0 : 1.0),
+            frameData.perAxisStoreFrame.z);
+        const float3 localLightPosition = trixelCanvasPixelToWorld3D(int2(sampleCoord), decodeDepthSingle(rawDist), frameData.perAxisBase, frameData.cardinalReceiver.xy, int2(frameData.cardinalReceiver.zw), frameData.visualYaw);
+        color.rgb = worldSurfaceLighting(color.rgb, surfaceAO.read(sampleCoord).r, position, normal,
+            frameData.casterViewToWorld, localLightPosition, lighting, volumeParams, sunFrameData, sunDepthBuf, lights, paletteLUT, lightVolume, lightVolumeId);
     }
 #endif
 

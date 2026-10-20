@@ -25,6 +25,8 @@ const char *const kFileFragGuiCanvasToScreen = "shaders/f_gui_canvas_to_screen.g
 
 const char *const kFileVertTrixelToFramebuffer = "shaders/v_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffer.glsl";
+const char *const kFileFragTrixelToFramebufferLitVoxels =
+    "shaders/f_trixel_to_framebuffer_lit_voxels.glsl";
 const char *const kFileFragTrixelToFramebufferLitShapes =
     "shaders/f_trixel_to_framebuffer_lit_shapes.glsl";
 const char *const kFileFragTrixelToFramebufferShapes =

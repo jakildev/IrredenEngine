@@ -69,7 +69,8 @@ struct Adapter {
  Buffer *shapeProbeFallbackBuf_=nullptr,*shapeProducerFrameBuf_=nullptr;
  Buffer *animationParamsBuf_=nullptr;
  bool scatterProbeEnabled_=false,shapeProbeEnabled_=false,shapeLightingEnabled_=false;
- bool scatterLightingEnabled_=false,visibilityPrepass=false,visibilityStatsEnabled_=false;
+ bool scatterLightingEnabled_=false,cardinalLightingEnabled_=false;
+ bool visibilityPrepass=false,visibilityStatsEnabled_=false;
  int perAxisCanvasEntity_=-1;
  Axes *perAxisCanvases_=nullptr;
  ShaderProgram beauty{1},probe{2},surfaceLighting{3},visibleLighting{4},queryStats{5};

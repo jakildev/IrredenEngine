@@ -15,10 +15,21 @@
 #include "ir_shape_data.glsl"
 #include "ir_shape_receiver.glsl"
 #include "ir_selected_shape_receiver.glsl"
+#endif
+#if IR_SHAPE_RECEIVER || IR_CARDINAL_LIGHTING
 #include "ir_sun_face_query_layout.glsl"
 #include "ir_sun_shadow_sample.glsl"
+#endif
+#if IR_SHAPE_LIGHTING || IR_CARDINAL_LIGHTING
+#include "ir_world_surface_lighting.glsl"
+#endif
 #if IR_SHAPE_LIGHTING
 #include "ir_shape_surface_lighting.glsl"
+#endif
+#if IR_CARDINAL_LIGHTING
+#include "ir_cardinal_voxel_receiver.glsl"
+#if !IR_SHAPE_LIGHTING
+layout(binding = 4) uniform sampler2D surfaceAO;
 #endif
 #endif
 
@@ -44,9 +55,10 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     // byte 160 as the camera-to-world quaternion for view-aligned caster faces.
     ivec2 perAxisBase;
     float visualYaw;
-    int scatterDebugMode;
+    int cardinalLightingEnabled;
     ivec4 visibleFaceIds;
-    vec4 _detachedResidualPad;
+    // Gather alias of the detached residual: camera iso XY, subdivision mode, density.
+    vec4 cardinalReceiver;
     vec4 casterViewToWorld;
     vec4 scatterFbResolution;
     int depthColorMode;
@@ -121,6 +133,22 @@ void main() {
                                      position, normal))
             color.rgb = shapeSurfaceLighting(sampleCoord, textureSize.x, position, normal,
                 shapeCanvasIsoDepth(position, receiverFrame), casterViewToWorld, color.rgb);
+    }
+#endif
+
+#if IR_CARDINAL_LIGHTING
+    if (color.a >= 0.1 && lightingEnabled != 0 && cardinalLightingEnabled != 0 &&
+        decodeEntityIdCardinalVoxel(texelFetch(triangleEntityIds, sampleCoord, 0).rg) && !decodeCutFace(texelFetch(triangleEntityIds, sampleCoord, 0).rg)) {
+        const vec3 position = cardinalVoxelSurfacePoint(
+            originRaw, ivec2(sampleCoord), rawDist, perAxisBase,
+            cardinalReceiver.xy, ivec2(cardinalReceiver.zw),
+            perAxisStoreFrame.z);
+        const vec3 normal = rotateCardinalZInv(
+            faceOutwardNormal(decodeSlot(rawDist)) * (decodeFlipSingle(rawDist) != 0 ? -1.0 : 1.0),
+            perAxisStoreFrame.z);
+        const vec3 localLightPosition = trixelCanvasPixelToWorld3D(ivec2(sampleCoord), decodeDepthSingle(rawDist), perAxisBase, cardinalReceiver.xy, ivec2(cardinalReceiver.zw), visualYaw);
+        color.rgb = worldSurfaceLighting(color.rgb, texelFetch(surfaceAO, sampleCoord, 0).r, position, normal,
+            casterViewToWorld, localLightPosition);
     }
 #endif
 

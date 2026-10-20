@@ -40,6 +40,44 @@ offsets. Carrier tests cover identity and existing flag preservation. The
 records the matched 720-frame sweep and rerun box, roof and staircase controls.
 The historical captures below validate the earlier detached work only.
 
+## Cardinal presentation receivers
+
+Eligible main-world cardinal voxels retain albedo through the lighting compute
+pass, then use the same `worldSurfaceLighting` composition and finite shadow
+query as continuous per-axis faces. The gather reconstructs a continuous point
+with `cardinalVoxelSurfacePoint`, rather than displaying one shadow sample across
+both stored halves. The quad and its depth/identity sampling stay unchanged.
+
+For a fragment's canvas coordinate, subtract the producer frame offset and the
+one-texel storage-origin shift, then divide by effective density. Invert that
+iso coordinate at depth zero to obtain a view ray point `p`. Let `c` be the
+existing exact face-sample center and `a` the slot's unsigned unit axis. The
+intersection is `p + dot(c-p,a) * (1,1,1)`, followed by inverse cardinal rotation.
+Adding the same scalar to XYZ preserves iso projection and places the point on
+the stored plane. Polarity affects the normal and stored plane, not the ray.
+Do not clamp this receiver point to the owning micro-square: rectangular storage
+can select it beyond that square, and clamping creates discontinuities across a
+coplanar surface. This extrapolation is a receiver raster contract, not permission
+to extrapolate finite caster footprints.
+
+The producer publishes readiness only after the main canvas tick. Consumer
+resources alone cannot establish that color is albedo. Both stages require the
+cardinal-voxel carrier and exclude cut faces, which retain their fully lit
+cross-section behavior. Missing lighting resources, debug/depth views, fog and
+trixel-glitch pipelines retain compute lighting. The latter two consume lit
+canvas colors and need a separate presentation-composition design. Secondary,
+detached, and shape-owned pixels keep their existing routes. A combined shader
+handles mixed shape/voxel canvases; a voxel-only specialization needs no retained
+shape owners. No extra texture, map capacity, blur, or subdivision is introduced.
+
+`test_render_cardinal_voxel_receiver.py` checks points on and beyond each
+micro-square against independent projected cube-face vertices, across densities,
+cardinals, both halves, and polarities. Phase, plane, and micro-square-clamping
+mutations fail. `test_render_cardinal_surface_lighting.py` executes the production
+handoff and shader gates, including missing ticks, cut faces, disabled lighting,
+and mixed shader selection. Native evidence and its limitations are recorded in
+[cardinal presentation captures](../pr-screenshots/codex/cardinal-surface-shadow/README.md).
+
 ## Detached receivers and finite fallback
 
 Normal revoxelized canvases carry their actual raster phase through presentation,
@@ -142,7 +180,8 @@ its indexed map layer is ignored after an exact miss. Eligible analytical
 sphere, cylinder, cone and torus casters also publish typed finite records;
 other casters stay in the independent primary layer. Incomplete tiles use the
 indexed fallback layer, which preserves world/camera face markers for the plane-agreement calculation
-above. Raster-origin receivers retain the minimum of both depth layers.
+above. Raster-origin receivers test each depth layer independently before
+combining occlusion, so an out-of-range depth in one cannot erase the other.
 
 Only faces overlapping at least one cascade consume records. All voxel bases
 share the [bounded index](sun-face-index-capacity.md): 65,536 records, 64 inline
@@ -156,8 +195,9 @@ Native sparse-scene acceptance and outstanding limits are recorded in the
 - [Finite defaults](finite-shadow-defaults.md) cover shape-only and non-main
   producer lifecycles; particle pipelines retain legacy casting.
 - Preserve both the four GRID cubes and detached/attached entities in sweeps.
-- Cardinal and per-axis voxel receivers use face-sample centers. Continuous
-  fragment receiving and finite edge coverage crossing a display triangle remain
-  separate work; do not fix them with a larger blur.
+- Cardinal fog/trixel-glitch pipelines and detached local triangles still use
+  sampled receiver lighting. Unify their presentation composition without
+  blurring or changing the geometry; eligible cardinal and per-axis presentation
+  receivers already use continuous surface points.
 - OpenGL execution still requires a suitable host; shader changes are mirrored.
 - Profile GPU stages and CPU update costs with repeated runs before optimizing.
