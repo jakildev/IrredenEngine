@@ -209,11 +209,11 @@ its argv shape, working directory and environment, and takes only the typed
 fields listed below; any other key raises, and so does a field that fails
 its check. Every failure happens before a child is started.
 
-| Tool | Lua fields | Child |
-|---|---|---|
-| `ir-build` | `target` | `ir-build --target <target>`, cwd `<root>`, `IRREDEN_BUILD_DIR=<root>/build` |
-| `editor` | `path` | `<editor> <resolved path>`, cwd `<root>` (D8) |
-| `open-folder` | `path` | `open` / `explorer` / `xdg-open` `<resolved path>`, cwd `<root>` |
+| Tool | Shape | Lua fields | Child |
+|---|---|---|---|
+| `ir-build` | work | `target` | `ir-build --target <target>`, cwd `<root>`, `IRREDEN_BUILD_DIR=<root>/build` |
+| `editor` | hand-off | `path`, `editor` (optional, a name from the fixed list) | `<editor> <resolved path>`, cwd `<root>` (D8) |
+| `open-folder` | hand-off | `path` | `open` / `explorer` / `xdg-open` `<resolved path>`, cwd `<root>` |
 
 - **The root is trusted state, never a Lua value.** `<root>` is the checkout
   the launcher was built from (D7). CMake defines `IR_LAUNCHER_ROOT` on the
@@ -289,7 +289,22 @@ its check. Every failure happens before a child is started.
   checkout's `.claude/worktrees/pool-1/build`, so neither service takes a
   build dir from Lua.
 
-**Ownership and shutdown.** No tool child outlives the engine.
+**Ownership and shutdown.** The service owns exactly what it must be able
+to stop. A tool table entry has one of two shapes:
+
+- **Work** (`ir-build`) is tree-contained. Its descendants (`cmake`, Ninja,
+  the compilers) are the run, so `kill()` and teardown take the whole tree,
+  and no work child outlives the engine.
+- **Hand-off** (`editor`, `open-folder`) runs a launcher CLI (`cursor` /
+  `code`, `open`, `explorer`, `xdg-open`) whose job is to pass the path to a
+  desktop application and exit. The service owns the direct child only: it
+  holds the tool slot until that child exits, drains and reaps it like any
+  run, and `kill()` or teardown stop that child alone. Its descendants
+  belong to the desktop session and outlive the call. There is no process
+  group on POSIX and no job on Windows.
+
+In both shapes the service holds the same handle, pipe, reap and slot for
+the direct child. Only the kill set differs.
 
 - **The service owns everything a run holds:** the child, its process tree,
   the output pipe and the line buffer. `ToolService` is a member of `World`.
@@ -304,9 +319,9 @@ its check. Every failure happens before a child is started.
   reports. Lines wait in a bounded buffer whose oldest lines are dropped and
   counted. A script that stops polling cannot stall the child on a full
   pipe, and there is never a thread to join.
-- **A kill takes the whole tree.** `ir-build` runs `cmake`, which runs
+- **A work kill takes the whole tree.** `ir-build` runs `cmake`, which runs
   Ninja and the compilers, so killing the wrapper alone would leave them
-  running.
+  running. A hand-off kill signals the direct child only.
   - On POSIX the child starts as the leader of a new process group, with
     stdin on `/dev/null` so a read cannot stop it with `SIGTTIN`. `kill()`
     sends `SIGTERM` to the group, waits up to 2 s for the child to be reaped
@@ -318,9 +333,10 @@ its check. Every failure happens before a child is started.
     `kill()` is `TerminateJobObject` followed by the wait.
   - `exit()` after a kill reports the signal (or the job's exit code).
 - **Teardown kills a live run.** `World::end()` destroys the service before
-  any manager it could reach. A live run gets the same kill, the child is
-  reaped, and the pipe and job handles close. The bound is the 2 s grace
-  plus one `SIGKILL` round trip. Nothing is detached or abandoned.
+  any manager it could reach. A live run gets the same kill for its shape,
+  the child is reaped, and the pipe and job handles close. The bound is the
+  2 s grace plus one `SIGKILL` round trip. Nothing is detached or abandoned
+  from the service's view of its direct child.
 - **One child at a time, across both services.** `handOff` raises while a
   tool run is live. Run would otherwise block the main loop with a build
   still writing into the pipe, or start an executable the build is about to
@@ -328,7 +344,15 @@ its check. Every failure happens before a child is started.
 - **Stated limit.** If the launcher process itself crashes on POSIX, no
   destructor runs. The orphaned group finishes its build under the init
   process, and `ir-acquire` releases the cpu lock when the build ends. On
-  Windows the job handle closes with the process, which kills the tree.
+  Windows the job handle closes with the process, which kills the tree. A
+  hand-off child has no group or job and keeps running.
+- **Stated limit: an opener that execs.** An opener that execs the
+  application instead of forking it (an `xdg-open` fallback with no desktop
+  opener) makes the window the direct child. That window closes with the
+  launcher, because the direct child is the one thing a hand-off kill stops.
+- **Stated limit: a descendant on the pipe.** A hand-off descendant may keep
+  the pipe's write end open. That is harmless: nothing waits on end of file,
+  and the slot frees when the direct child exits.
 
 The launcher's own update is not a tool run (D6); it happens after the
 engine has exited.
@@ -575,7 +599,9 @@ tool (D4) runs one entry of a fixed C++ list (`cursor`, `code`) resolved on
 outside the list falls back to the first entry found. A stored string is
 never run as a command, because `.irkv` is writable from Lua. `open-folder`
 runs the host's `open` / `explorer` / `xdg-open`. Both take one D4-checked
-`path`: the creation directory or a docs file.
+`path`: the creation directory or a docs file. Both are hand-offs (D4): the
+editor window outlives the call, so Open in IDE followed by Build, and
+closing the launcher, leave it open.
 
 ### D9 — Previews: live viewports for voxels, a trixelized image widget for PNGs
 

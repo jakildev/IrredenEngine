@@ -44,6 +44,7 @@ struct ChildProcessState {
 #else
     pid_t pid_ = -1;
     int output_ = -1;
+    bool leadsGroup_ = false;
 #endif
     std::optional<int> exitCode_;
 
@@ -346,6 +347,7 @@ ChildProcess spawnChild(const SpawnChildRequest &request) {
     }
     auto state = std::make_unique<ChildProcessState>();
     state->pid_ = pid;
+    state->leadsGroup_ = request.processTree_;
     state->output_ = request.pipeOutput_ ? outputPipe[0] : -1;
     if (state->output_ >= 0) {
         const int flags = fcntl(state->output_, F_GETFL, 0);
@@ -477,15 +479,19 @@ int killChild(ChildProcess &child) {
         TerminateProcess(child.state_->process_, 1);
     }
 #else
-    kill(-child.state_->pid_, SIGTERM);
+    // A hand-off child shares the engine's group, so its pid names no group of its own.
+    const bool leadsGroup = child.state_->leadsGroup_;
+    const pid_t target = leadsGroup ? -child.state_->pid_ : child.state_->pid_;
+    kill(target, SIGTERM);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < deadline) {
-        if (pollChildExit(child).has_value() && !processGroupAlive(child.state_->pid_)) {
+        if (pollChildExit(child).has_value() &&
+            (!leadsGroup || !processGroupAlive(child.state_->pid_))) {
             return *child.state_->exitCode_;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    kill(-child.state_->pid_, SIGKILL);
+    kill(target, SIGKILL);
 #endif
     return waitChild(child);
 }

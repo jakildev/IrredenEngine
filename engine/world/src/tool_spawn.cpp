@@ -276,7 +276,6 @@ std::expected<ToolHandle, std::string> ToolService::spawn(const ToolSpawnRequest
     detail::SpawnChildRequest child;
     child.cwd_ = *m_impl->root_;
     child.pipeOutput_ = true;
-    child.processTree_ = true;
     auto addScript = [&](const std::filesystem::path &script) {
 #ifdef _WIN32
         const std::string shell = IRUtility::envString("IR_RUN_BASH");
@@ -288,6 +287,7 @@ std::expected<ToolHandle, std::string> ToolService::spawn(const ToolSpawnRequest
     };
 
     if (request.tool_ == ToolName::IR_BUILD) {
+        child.processTree_ = true;
         if (request.target_.find('\0') != std::string::npos) {
             return std::unexpected("target contains a NUL byte");
         }
