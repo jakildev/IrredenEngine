@@ -233,6 +233,10 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
   coupled stack merge.
 - `human:re-review` — **human** pushed commits and wants a re-review;
   cleared by the verdict edge.
+- `human:hold` — **human**, on a PR: `fleet-automerge` never merges it;
+  never removed by an agent ([`auto-merge-lane.md`](../design/auto-merge-lane.md)).
+- `fleet:auto-merged` — **`fleet-automerge`**, after its squash merge; the
+  permanent audit trail, never removed, refuses a second pass.
 - `fleet:merger-cooldown` — **merger** touched the PR; skip until the next
   iteration.
 - `fleet:sweep-cooldown` — **`fleet-claim cleanup --gh`** removed the PR's

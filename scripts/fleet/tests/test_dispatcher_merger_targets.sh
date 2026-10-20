@@ -20,6 +20,10 @@
 #       dropped rather than blocking the lane; the next line launches
 #   T7: the per-target dispatch cap parks a target that keeps being launched
 #   T7b: the next tick after the park does not re-launch it
+#   T8: with fleet-automerge on PATH the tier-0 chain runs it BEFORE
+#       fleet-rebase, passing no class and no environment override
+#   T9: a failing or absent fleet-automerge still hands the tick to
+#       fleet-rebase (the chain is `;`, never `&&`)
 #
 # tmux, pgrep, gh, fleet-claim and fleet-rebase are PATH stubs (hermetic, per
 # scripts/fleet/CLAUDE.md); the fleet-rebase stub only records that it was
@@ -209,6 +213,32 @@ out=$(PATH="$STUB_BIN:$PYTHON_DIR:/usr/bin:/bin" tick)   # no ~/bin: the install
 assert_contains "$out" "no fleet-rebase on PATH and no target line; standing down" "stand-down logged"
 assert_absent "$out" "dispatching merger" "no launch without a classifier"
 mv "$STUB_BIN/fleet-rebase.off" "$STUB_BIN/fleet-rebase"
+
+echo "T8: fleet-automerge on PATH runs first in the tier-0 chain, with no class or env override"
+reset_state
+cat > "$STUB_BIN/fleet-automerge" <<'AUTOEOF'
+#!/usr/bin/env bash
+printf 'fleet-automerge %s classes_env=%s\n' "$*" "${FLEET_AUTOMERGE_CLASSES:-unset}" >> "$STUB_LOG"
+exit 0
+AUTOEOF
+chmod +x "$STUB_BIN/fleet-automerge"
+: > "$TRIGGER"
+out=$(tick)
+assert_contains "$out" "merger: tier-0 auto-merge pass runs first (fleet-automerge --auto)" "auto-merge pass logged"
+assert_contains "$out" "merger: spawned tier-0 fleet-rebase" "tier-0 spawn still logged (the line other suites key on)"
+spawned_tier0 && ok "fleet-rebase --auto --rearm-trigger was spawned after the auto-merge pass" || bad "fleet-rebase not spawned: $(cat "$STUB_LOG")"
+assert_eq "$(grep -c '^fleet-automerge --auto --repo jakildev/IrredenEngine classes_env=unset$' "$STUB_LOG")" "1" "fleet-automerge --auto ran once, engine-only, with no class in its environment"
+first_line=$(head -1 "$STUB_LOG")
+[[ "$first_line" == fleet-automerge* ]] && ok "fleet-automerge ran before fleet-rebase" || bad "order wrong: $(cat "$STUB_LOG")"
+[[ -e "$TRIGGER" ]] && bad "trigger consumed with the chain" || ok "trigger consumed with the chain"
+
+echo "T9: a failing fleet-automerge still hands the tick to fleet-rebase"
+reset_state
+printf '#!/usr/bin/env bash\nprintf "fleet-automerge %%s\\n" "$*" >> "$STUB_LOG"\nexit 1\n' > "$STUB_BIN/fleet-automerge"
+: > "$TRIGGER"
+out=$(tick)
+spawned_tier0 && ok "fleet-rebase spawned despite the auto-merge failure" || bad "fleet-rebase not spawned after a failing auto-merge: $(cat "$STUB_LOG")"
+rm -f "$STUB_BIN/fleet-automerge"
 
 echo "T6: under provider routing an unroutable line is dropped, not a standing block"
 reset_state
