@@ -93,6 +93,19 @@ for i in $(seq 101); do LONG=$(git -C "$AUTH" commit-tree "$TREE" -p "$LONG" -m 
 git -C "$AUTH" update-ref refs/heads/long "$LONG"
 push master feat-u feat-c stack-g stack-p stack-c long
 
+# (h) an open PR's head on master but off a non-master base: open PR 61's head
+# reaches master through a merge commit, and 62, based on a branch cut before
+# that, inherits it.
+branch mbase master
+git -C "$AUTH" checkout -q master
+branch mx master
+MX1=$(commit mx1)
+git -C "$AUTH" checkout -q master
+git -C "$AUTH" merge -q --no-ff -m "merge mx" mx
+branch nfork master
+commit n1 >/dev/null
+push master mbase mx nfork
+
 sha() { git -C "$AUTH" rev-parse "$1"; }
 
 # PR records plus the commit set GitHub associates with each: an open PR's
@@ -117,6 +130,8 @@ prs = [
     pr(42, "stack-p", "stack-g", sha="$(sha stack-p)"),
     pr(43, "stack-c", "stack-p", sha="$(sha stack-c)"),
     pr(51, "long", "master", sha="$LONG"),
+    pr(61, "mx", "master", sha="$MX1"),
+    pr(62, "nfork", "mbase", sha="$(sha nfork)"),
 ]
 for p in prs:
     p["commits"] = subprocess.run(
@@ -154,7 +169,11 @@ path, flags = args[1], args[2:]
 if path == f"repos/{slug}/pulls?state=open&per_page=100" and flags == ["--paginate"]:
     if os.environ.get("STUB_FAIL") == "list":
         fail("HTTP 502", 1)
-    print(json.dumps([rest(p) for p in prs if not p["merged_at"]]))
+    # Past one 100-PR page: gh --paginate merges the pages into one array.
+    pad = [{"number": 1000 + i, "state": "open", "merged_at": None,
+            "head": {"ref": f"pad-{i}", "sha": f"{i:040x}"},
+            "base": {"ref": "master"}} for i in range(150)]
+    print(json.dumps(pad + [rest(p) for p in prs if not p["merged_at"]]))
     sys.exit(0)
 m = re.fullmatch(rf"repos/{slug}/commits/([0-9a-f]{{40}})/pulls\?per_page=100", path)
 if m and not flags:
@@ -211,6 +230,10 @@ echo "T5: (d) native-stack child is not a fork of its own stack ancestors"
 expect "(d)" 43 "fork-of: none
 merged-parent: none"
 expect "(d) parent" 42 "fork-of: none
+merged-parent: none"
+
+echo "T5b: (h) an open head on master still forks a non-master-based PR"
+expect "(h)" 62 "fork-of: 61 mx $MX1
 merged-parent: none"
 
 echo "T6: (e) association endpoint failure fails closed"

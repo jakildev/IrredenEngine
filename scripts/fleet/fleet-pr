@@ -319,6 +319,8 @@ def gh_json_or_fail(cmd, what):
 
 def fork_of_verdict(slug, pr_number):
     """Return the two output lines, or raise ForkOfError."""
+    # `gh --paginate` merges JSON array pages into one array; `--slurp` would
+    # nest them instead.
     open_prs = gh_json_or_fail(
         ["api", f"repos/{slug}/pulls?state=open&per_page=100", "--paginate"],
         "open-PR list",
@@ -342,14 +344,21 @@ def fork_of_verdict(slug, pr_number):
             f"{head_sha}: wrong clone for {slug}, or a push landed mid-run"
         )
 
-    # Commits on the PR's own base are not inherited baggage. Neither are
-    # commits already on master: no open PR's head and no squash-merged
-    # parent's boundary can sit there.
-    commits = git_out(
-        "rev-list", "--topo-order", f"origin/{head_ref}",
-        f"^origin/{base_ref}", "^origin/master",
+    # Commits on the PR's own base are not inherited baggage. Only the walk
+    # also drops master: a squash-merged parent's boundary is never on master,
+    # but an open PR's head can be (a merge-commit merge of a containing
+    # branch), and a non-master-based PR still inherits it.
+    branch_unique = git_out(
+        "rev-list", "--topo-order", f"origin/{head_ref}", f"^origin/{base_ref}",
     ).split()
-    position = {sha: i for i, sha in enumerate(commits)}
+    position = {sha: i for i, sha in enumerate(branch_unique)}
+    if base_ref == "master":
+        commits = branch_unique
+    else:
+        commits = git_out(
+            "rev-list", "--topo-order", f"origin/{head_ref}",
+            f"^origin/{base_ref}", "^origin/master",
+        ).split()
 
     upstreams = sorted(
         (position[p["head"]["sha"]], p["number"], p)
