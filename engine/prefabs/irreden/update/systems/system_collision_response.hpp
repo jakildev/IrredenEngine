@@ -2,6 +2,7 @@
 #define SYSTEM_COLLISION_RESPONSE_H
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_job.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_system.hpp>
@@ -256,6 +257,10 @@ template <> struct System<COLLISION_RESPONSE> {
     float contactTolUlps_ = kCollisionContactTolUlps;
     float deltaTime_ = 0.0f;
     std::vector<detail::CollisionSolid> solids_;
+    // Candidate scratch per executor, indexed by IRJob::workerId() (0 = main
+    // thread). A body's candidates are a subset of solids_, so beginTick
+    // reserving solids_.size() in every slot keeps the tick allocation-free.
+    std::vector<std::vector<detail::CollisionCandidate>> candidatesByWorker_;
 
     void beginTick() {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
@@ -282,6 +287,13 @@ template <> struct System<COLLISION_RESPONSE> {
                 );
             }
         }
+        const std::size_t slots = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
+        if (candidatesByWorker_.size() < slots) {
+            candidatesByWorker_.resize(slots);
+        }
+        for (std::vector<detail::CollisionCandidate> &candidates : candidatesByWorker_) {
+            candidates.reserve(solids_.size());
+        }
     }
 
     void tick(
@@ -292,7 +304,8 @@ template <> struct System<COLLISION_RESPONSE> {
         const C_CollisionLayer &layer,
         C_CollisionResponse &response
     ) {
-        static thread_local std::vector<detail::CollisionCandidate> candidates;
+        std::vector<detail::CollisionCandidate> &candidates =
+            candidatesByWorker_[static_cast<std::size_t>(IRJob::workerId())];
         const vec3 integrated = worldTransform.translation_;
         detail::resolveCollisionBody(
             worldTransform.translation_,

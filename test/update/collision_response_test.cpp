@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_job.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
+#include <irreden/job/job_manager.hpp>
 #include <irreden/time/time_manager.hpp>
 
 #include <irreden/common/components/component_local_transform.hpp>
@@ -19,6 +21,8 @@
 #include <irreden/update/systems/system_velocity.hpp>
 
 #include <cstdint>
+#include <cstdio>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -365,10 +369,15 @@ TEST_F(CollisionResponseTest, SlideCrossesAFlushSeam) {
 // rounding allowance: B must not read as a wall.
 class CollisionResponseSeamTest : public CollisionResponseTest {
   protected:
-    // Returns the number of the 64 slides that kept 6 blocks/s on every tick
-    // and crossed the seam.
-    int crossings() {
-        int crossed = 0;
+    struct SeamOutcome {
+        // Kept 6 blocks/s on every tick and crossed the seam.
+        int crossed_ = 0;
+        // Ended at rest in x, flush against box B's -x face.
+        int stoppedAtSeam_ = 0;
+    };
+
+    SeamOutcome slideOverSeams() {
+        SeamOutcome outcome;
         for (int i = 0; i < 64; ++i) {
             m_entity_manager.destroyAllEntities();
             const float topA = 8.3f + 0.0371f * static_cast<float>(i);
@@ -389,6 +398,10 @@ class CollisionResponseSeamTest : public CollisionResponseTest {
             const vec3 boxB(6.0f, 0.0f, (builtTopA - 0.5f * tol) + 0.3f);
             EXPECT_LT(boxTop(boxB, boxHalfB), builtTopA) << "fixture " << i;
             EXPECT_GT(boxTop(boxB, boxHalfB), builtTopA - tol) << "fixture " << i;
+            // The body translation x that puts its +x face on B's -x face,
+            // in the system's operation order.
+            const float seamStopX =
+                (boxB - boxHalfB).x - (spec.centerOffset_ + spec.halfExtents_).x;
 
             makeBox(boxA, boxHalfA);
             makeBox(boxB, boxHalfB);
@@ -399,20 +412,31 @@ class CollisionResponseSeamTest : public CollisionResponseTest {
                 keptSpeed = keptSpeed && velocity(body).x == 6.0f;
             }
             if (keptSpeed && translation(body).x - 0.3f > 2.0f) {
-                ++crossed;
+                ++outcome.crossed_;
+            }
+            if (velocity(body).x == 0.0f && translation(body).x == seamStopX) {
+                ++outcome.stoppedAtSeam_;
             }
         }
-        return crossed;
+        std::printf(
+            "[seam] crossed %d/64, stopped at seam %d/64\n",
+            outcome.crossed_,
+            outcome.stoppedAtSeam_
+        );
+        return outcome;
     }
 };
 
 TEST_F(CollisionResponseSeamTest, SlideCrossesSeamsBetweenTopsBuiltDifferently) {
-    EXPECT_EQ(crossings(), 64);
+    const SeamOutcome outcome = slideOverSeams();
+    EXPECT_EQ(outcome.crossed_, 64);
+    EXPECT_EQ(outcome.stoppedAtSeam_, 0);
 }
 
 TEST_F(CollisionResponseSeamTest, ExactIntervalsHitAGhostWallAtSuchSeams) {
     setTolUlps(0.0f);
-    EXPECT_LT(crossings(), 64);
+    const SeamOutcome outcome = slideOverSeams();
+    EXPECT_GE(outcome.stoppedAtSeam_, 1);
 }
 
 // ---- Rest on non-dyadic tops -------------------------------------------------
@@ -493,6 +517,47 @@ TEST_F(CollisionResponseTest, BodyBelowTheFloorIsLiftedOntoIt) {
     const EntityId body = makeBody(spec);
     tick();
     EXPECT_EQ(z(body), kFloorZ - (spec.centerOffset_.z + spec.halfExtents_.z));
+}
+
+// ---- Candidate scratch -------------------------------------------------------
+
+// A body's candidates are a subset of the solids, so beginTick reserving the
+// solid count in every executor's slot keeps the parallel tick from growing a
+// buffer.
+class CollisionResponseScratchTest : public CollisionResponseTest {
+  protected:
+    CollisionResponseScratchTest()
+        : m_jobs{std::make_unique<IRJob::JobManager>(2)} {}
+
+    void expectEverySlotHoldsEverySolid() {
+        const auto *system =
+            IRSystem::getSystemParams<IRSystem::System<IRSystem::COLLISION_RESPONSE>>(m_response);
+        ASSERT_EQ(
+            system->candidatesByWorker_.size(),
+            static_cast<std::size_t>(IRJob::workerCount()) + 1u
+        );
+        for (const auto &slot : system->candidatesByWorker_) {
+            EXPECT_GE(slot.capacity(), system->solidCount());
+        }
+    }
+
+    std::unique_ptr<IRJob::JobManager> m_jobs;
+};
+
+TEST_F(CollisionResponseScratchTest, EveryWorkerSlotIsReservedForEverySolid) {
+    for (int i = 0; i < 4; ++i) {
+        makeBox(vec3(3.0f * static_cast<float>(i), 0.0f, 1.0f), vec3(1.0f, 1.0f, 0.5f));
+    }
+    BodySpec spec;
+    makeBody(spec);
+    tick();
+    expectEverySlotHoldsEverySolid();
+
+    for (int i = 0; i < 60; ++i) {
+        makeBox(vec3(3.0f * static_cast<float>(i), 9.0f, 1.0f), vec3(1.0f, 1.0f, 0.5f));
+    }
+    tick();
+    expectEverySlotHoldsEverySolid();
 }
 
 // ---- Swept -------------------------------------------------------------------
