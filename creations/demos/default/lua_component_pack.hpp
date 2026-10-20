@@ -2,6 +2,7 @@
 #define CREATIONS_DEFAULT_LUA_COMPONENT_PACK_H
 
 #include <irreden/common/components/component_local_transform_lua.hpp>
+#include <irreden/common/components/component_world_transform_lua.hpp>
 #include <irreden/update/components/component_velocity_3d_lua.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
 #include <irreden/update/components/component_periodic_idle_lua.hpp>
@@ -20,6 +21,7 @@ inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
     using namespace IRComponents;
     luaScript.registerTypesFromTraits<
         C_LocalTransform,
+        C_WorldTransform,
         C_Velocity3D,
         C_VoxelSetNew,
         PeriodStage,

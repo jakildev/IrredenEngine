@@ -33,6 +33,12 @@ A missing parent transform means identity. A relation change after propagation
 takes effect next frame. Any RENDER-phase writer of `C_LocalTransform` must
 also update `C_WorldTransform`, because propagation has already run.
 
+`component_world_transform_lua.hpp` binds `C_WorldTransform` to Lua like the
+local binding. A world-transform write survives only until the next
+`PROPAGATE_TRANSFORM`, so a render-only offset is written after it (and after
+the collision systems) and before `UPDATE_VOXEL_SET_CHILDREN` bakes voxel
+positions.
+
 `C_LocalTransform::unbounded_` permits sub-trixel translation only with
 `RotationMode::DETACHED`; GRID entities still snap to world cells.
 
