@@ -100,8 +100,9 @@ each input, replays every readback check, and compares each capture's result to
 the preceding exact oracle. No GPU is needed for that replay. Native generated
 executables are not committed.
 
-Remaining before production adoption: GPU spatial ordering; separately timed
-clear/build/query paths with reference work disabled; mixed analytic/raster-only
+The [spatial-ordering follow-up](../sun-spatial-hierarchy/README.md) evaluates
+GPU sorting and separately timed build/query paths with reference work disabled.
+Remaining before production adoption: mixed analytic/raster-only
 layers; exhausted record-pool behavior; engine dispatch/lifetime integration;
 native OpenGL parity; moving-height and full-frame visual checks. The current
 record pool only represents geometry admitted by its cascade domains.

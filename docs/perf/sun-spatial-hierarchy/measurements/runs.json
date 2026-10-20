@@ -1,0 +1,117 @@
+{
+  "runs": [
+    {
+      "file": "single-forward-far-128-spatial.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "7fd14913fa030124a3e0da47a2e1029746f737332ebfc78a9aac59a8bbbcf5b8"
+    },
+    {
+      "file": "single-forward-far-128-unsorted.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "1091d0dbad7d8ff4624d50769199f44f19d3645ee65452fabe2e42fcf5beb3b0"
+    },
+    {
+      "file": "single-forward-lower-spatial.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "a9011fb0d248989207ece7e3aaf7e5f6a72d15c9ef0f9b2babd427ff9ea4ed83"
+    },
+    {
+      "file": "single-forward-lower-unsorted.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "6a3ba1a51da0cbc7b6f62b824b894f093b0308e152ade7b44aec1b90cbf1f90a"
+    },
+    {
+      "file": "single-forward-oblique-far-128-spatial.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "7e918e1055a75b4d69fd0451147d61269cf0769162418b1c5d855a10fb39e66f"
+    },
+    {
+      "file": "single-forward-oblique-far-128-unsorted.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "13c03b24660cee45e8e2cbc0a6036b4df93ac57141101c667f71e4dccbf33e15"
+    },
+    {
+      "file": "single-reverse-far-128-spatial.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "dc489b8dff91f488e9d1e621284efcd11c1a355e75db0400000a3805891e71e4"
+    },
+    {
+      "file": "single-reverse-far-128-unsorted.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "d9d9e663df68336aeefb6884862c645381933907b1be02a406b5bbb0cd612b5a"
+    },
+    {
+      "file": "single-reverse-lower-spatial.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "017b41812792707d08cd5fcd94205c609b3eb5c0eda30637fad68cd7f54d9fd4"
+    },
+    {
+      "file": "single-reverse-lower-unsorted.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "868eb22ea3ef97f10d1fc691b2d89b85a79ef77ba5e9131daad9858796c510d0"
+    },
+    {
+      "file": "single-reverse-oblique-far-128-spatial.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "42f7939103c284589046c4085d01cd2a44532ba2610b7f4612045e449da9078c"
+    },
+    {
+      "file": "single-reverse-oblique-far-128-unsorted.json.gz",
+      "status": "exploratory-no-retained-quiet-report",
+      "wrapper_exit": 0,
+      "uncompressed_sha256": "acefce3b5a4b54c41300b356b11b1f74a842c58ce2777a31bed02045bc59156d"
+    },
+    {
+      "file": "batched-breach-far-128-spatial.json.gz",
+      "status": "rejected-quiet-breach",
+      "wrapper_exit": 76,
+      "uncompressed_sha256": "6912b6ad87709847105d31594db86ebce82a7e121e3bbd74218dad4b7424fa8e"
+    },
+    {
+      "file": "batched-breach-far-128-unsorted.json.gz",
+      "status": "rejected-quiet-breach",
+      "wrapper_exit": 76,
+      "uncompressed_sha256": "242b49a4edd21876851409d0a966200b98d8f5008db5e9230a4aa21c7acfa5f2"
+    },
+    {
+      "file": "batched-breach-lower-spatial.json.gz",
+      "status": "rejected-quiet-breach",
+      "wrapper_exit": 76,
+      "uncompressed_sha256": "371a67522f1dbe47dc5ff0a19b53decd7bb3a4198e88126cc987bbcdf3f02314"
+    },
+    {
+      "file": "batched-breach-lower-unsorted.json.gz",
+      "status": "rejected-quiet-breach",
+      "wrapper_exit": 76,
+      "uncompressed_sha256": "fab4758d33a26940aef358706a7441babe579af124e207c029b765707758ec09"
+    },
+    {
+      "file": "batched-breach-oblique-far-128-spatial.json.gz",
+      "status": "rejected-quiet-breach",
+      "wrapper_exit": 76,
+      "uncompressed_sha256": "df03edfe0e3ed58bbcd2daf0b0e12319d540dac8c8df7a8cad727fc3d1ee4524"
+    },
+    {
+      "file": "batched-breach-oblique-far-128-unsorted.json.gz",
+      "status": "rejected-quiet-breach",
+      "wrapper_exit": 76,
+      "uncompressed_sha256": "5236cb0eec5dfe6170b256c175a3da4feaeb5547c16b8d9539dda2644d4d6021"
+    }
+  ],
+  "guarded_retry": {
+    "status": "not-run",
+    "wrapper_exit": 1,
+    "reason": "timeout waiting for GPU lock after 600 seconds"
+  }
+}

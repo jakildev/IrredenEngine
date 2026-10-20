@@ -1,0 +1,490 @@
+{
+  "capture": null,
+  "capture_sha256": null,
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "cases": {
+    "empty": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 0,
+          "mismatches": 0,
+          "records": 0,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            false
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 0,
+          "mismatches": 0,
+          "records": 0,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            false
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 0.0,
+            "max": 0
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "86d14fa6df6ec4cb65695f40123b550dfdf3e52eb1735658d4e369e8bd32119f"
+    },
+    "lower-first": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 513,
+          "leaves": 128,
+          "tree_bytes": 8192,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 9.0,
+            "max": 9
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 513,
+          "leaves": 128,
+          "tree_bytes": 8192,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 9.0,
+            "max": 9
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "f3a21a507c3dfa75a5415ed2d8bb52e030a3841953dfc9a626cc3f0c3ac405e4"
+    },
+    "lower-last": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 513,
+          "leaves": 128,
+          "tree_bytes": 8192,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 9.0,
+            "max": 9
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 513,
+          "leaves": 128,
+          "tree_bytes": 8192,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 9.0,
+            "max": 9
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "b9d1e1fd8efc1cc76d0585e84764489a0f6f2df73990c4e71b7b257d9cfa0b94"
+    },
+    "distant-only": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 0,
+          "mismatches": 0,
+          "records": 512,
+          "leaves": 64,
+          "tree_bytes": 4096,
+          "coverage": [
+            false
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 0.0,
+            "max": 0
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 0,
+          "mismatches": 0,
+          "records": 512,
+          "leaves": 64,
+          "tree_bytes": 4096,
+          "coverage": [
+            false
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 0.0,
+            "max": 0
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "52ebc319842d8ad3e009019ba044d6dbbc5e7575bd4cf01011d07568be2a9aef"
+    },
+    "capacity": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 65536,
+          "leaves": 8192,
+          "tree_bytes": 524288,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 27.0,
+            "max": 27
+          },
+          "quad_tests": {
+            "mean": 8.0,
+            "max": 8
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 65536,
+          "leaves": 8192,
+          "tree_bytes": 524288,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 27.0,
+            "max": 27
+          },
+          "quad_tests": {
+            "mean": 8.0,
+            "max": 8
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "af27a21d013503756714353c42933bc5c19a97132aced180b3864ade74e2a682"
+    },
+    "footprint-miss": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 0,
+          "mismatches": 0,
+          "records": 512,
+          "leaves": 64,
+          "tree_bytes": 4096,
+          "coverage": [
+            false
+          ],
+          "node_visits": {
+            "mean": 127.0,
+            "max": 127
+          },
+          "quad_tests": {
+            "mean": 512.0,
+            "max": 512
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 0,
+          "mismatches": 0,
+          "records": 512,
+          "leaves": 64,
+          "tree_bytes": 4096,
+          "coverage": [
+            false
+          ],
+          "node_visits": {
+            "mean": 127.0,
+            "max": 127
+          },
+          "quad_tests": {
+            "mean": 512.0,
+            "max": 512
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "9be4dd4b3c6c4ccc246a0b585c4ea35616ed8031762b334d26db27b607b85169"
+    },
+    "boundaries": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 6,
+          "blocked": 4,
+          "mismatches": 0,
+          "records": 1,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            true,
+            true,
+            false,
+            false,
+            true,
+            true
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        },
+        "precise": {
+          "queries": 6,
+          "blocked": 4,
+          "mismatches": 0,
+          "records": 1,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            true,
+            true,
+            false,
+            false,
+            true,
+            true
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "34e50ae2ba4cb56c8ac79b06685df2d216f76de981759138a424ae2867fe2ea9"
+    },
+    "subnormal": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 1,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 1,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "875d25ca64bbe407cca1b9f6480afc04a49ecd5f79787b844de58cc4ca7138a6"
+    },
+    "reversed-face": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 1,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 1,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "2779a082971c54d9a63d4c9d844e296539e6b55332090a50cd0a1bb125934f1f"
+    },
+    "spatial-octants": {
+      "device": "Apple M4 Max",
+      "results": {
+        "fast": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 8,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        },
+        "precise": {
+          "queries": 1,
+          "blocked": 1,
+          "mismatches": 0,
+          "records": 8,
+          "leaves": 1,
+          "tree_bytes": 64,
+          "coverage": [
+            true
+          ],
+          "node_visits": {
+            "mean": 1.0,
+            "max": 1
+          },
+          "quad_tests": {
+            "mean": 1.0,
+            "max": 1
+          }
+        }
+      },
+      "timing": null,
+      "input_sha256": "2f54a0303bd57f2e52d2a25c757f57a2056b461fce64da8a3dac580c697b4bc8"
+    }
+  },
+  "head": "ddec443441d3d379c0bb2586dd9779a8f3d846ca",
+  "changes": " M .github/workflows/render-harness-tests.yml\n M docs/design/rendering-audit-todo.md\n M docs/design/sun-face-index-capacity.md\n M docs/perf/sun-hierarchy-gpu/README.md\n M scripts/perf/README.md\n M scripts/perf/sun_hierarchy_probe.py\n M scripts/tests/test_sun_hierarchy_probe.py\n?? docs/perf/sun-spatial-hierarchy/\n",
+  "hashes": {
+    "probe.metal": "048cd22999f2fc4703e8a4b9952ba2378b62855a606e2909fe298a1c0515364c",
+    "timed.metal": "3400ab9463f59bb92840362cdd650df0032afa25be77004c9cb772780cdc0b25",
+    "native.mm": "7c4bfcb983ff1ea3e99fd31eb058097ded498915dc4fce9cf99cf51383ca3d43",
+    "native": "d8eba2efd86cfada54d3332357e8ebe27305afb249598a152ed306a5792321c1",
+    "sun_hierarchy_probe.py": "004767190db5b0af3d2c2916f4c1861dcb031b586a8e46ba850e56b26b97793e"
+  },
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+  "command": [
+    "scripts/perf/sun_hierarchy_probe.py",
+    "--self-test",
+    "--spatial",
+    "--output",
+    "/tmp/sun-spatial-publish/controls"
+  ],
+  "spatial": true,
+  "measurement": false,
+  "repeat_queries": 1,
+  "power_before": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t100%; charged; 0:00 remaining present: true",
+  "power_after": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t100%; charged; 0:00 remaining present: true",
+  "scope": "GPU hierarchy microbenchmark; excludes frame and geometry production"
+}

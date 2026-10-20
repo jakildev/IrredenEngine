@@ -78,6 +78,16 @@ python3 scripts/perf/sun_query_probe.py --validate-only --output
 /tmp/sun-query-validation`. This checks both shader variants and all ten cells,
 but records no timing samples and makes no quiet-host claim.
 
+## Finite-shadow hierarchy probe
+
+`sun_hierarchy_probe.py` validates GPU construction and traversal over captured
+finite-quad pools. `--spatial` adds GPU Morton ordering through the shared
+per-axis sorter; `--measure` times construction and reference-free queries
+separately and requires `ir-acquire benchmark`. The
+[experiment and replay instructions](../../docs/perf/sun-spatial-hierarchy/README.md)
+describe the controls, batching and limits. This diagnostic does not change
+production shadow routing or qualify frame throughput.
+
 ## Verdicts are per fingerprint
 
 `check_regression.py <baseline_root> <head_dir>` resolves
