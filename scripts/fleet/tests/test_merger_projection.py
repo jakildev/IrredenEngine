@@ -9,7 +9,10 @@ sees the projection hash flip, scout fires the merger again, repeat.
 This harness locks in the behavior:
   - Same durable state -> same hash, regardless of cooldown labels.
   - The one action-relevant transition (a conflict arising on an
-    approved PR, or such a PR appearing) DOES change the hash.
+    approved PR, such a PR appearing, or a conflicting native-stack root
+    becoming visible) DOES change the hash.
+  - A stack-root conflict row is stable across merger-set labels and leaves
+    when the PR resolves, merges, or is parked.
   - Merge-ready churn does not: an approved MERGEABLE PR appearing, or
     leaving the list when the human merges it, is not merger work and
     must never arm the lane.
@@ -54,7 +57,7 @@ def _state_eng_game(engine_prs, game_prs):
 
 
 def _pr(num, *, labels=None, mergeable="MERGEABLE", base="master",
-        head="claude/feat", author="bot", checks=None):
+        head="claude/feat", author="bot", checks=None, stack_position=None):
     pr = {
         "number": num,
         "title": f"T-{num}: feat",
@@ -63,6 +66,7 @@ def _pr(num, *, labels=None, mergeable="MERGEABLE", base="master",
         "labels": sorted(labels or []),
         "mergeable": mergeable,
         "author": author,
+        "stack_position": stack_position,
     }
     if checks is not None:
         pr["checks"] = checks
@@ -131,6 +135,75 @@ class ActionableTransitionsFlipHash(unittest.TestCase):
         after = _state([_pr(101, labels=["fleet:approved"], mergeable="CONFLICTING")])
         self.assertNotEqual(_hash(before), _hash(after))
         self.assertEqual(project_merger(after)[0]["signal"], "needs-resolve")
+
+
+class StackRootConflictWake(unittest.TestCase):
+    ROW = [{"repo": "engine", "pr": 102, "signal": "stack-root-conflict"}]
+
+    def _position_root(self, **overrides):
+        values = {"labels": [], "mergeable": "CONFLICTING",
+                  "stack_position": 2}
+        values.update(overrides)
+        return _pr(102, **values)
+
+    def test_parent_merge_retargets_leaf_child_and_flips_hash(self):
+        before = _state([
+            _pr(101, labels=["fleet:approved"], head="claude/parent"),
+            _pr(102, labels=[], base="claude/parent", stack_position=2),
+        ])
+        after = _state([self._position_root()])
+        self.assertEqual(project_merger(before), [])
+        self.assertEqual(project_merger(after), self.ROW)
+        self.assertNotEqual(_hash(before), _hash(after))
+
+    def test_open_child_marks_position_one_root(self):
+        root = self._position_root(stack_position=1, head="claude/root")
+        child = _pr(103, base="claude/root", stack_position=2)
+        self.assertEqual(project_merger(_state([root, child])), self.ROW)
+        self.assertEqual(project_merger(_state([root])), [])
+
+    def test_merger_set_labels_leave_row_and_hash_unchanged(self):
+        before = _state([self._position_root()])
+        for label in ("fleet:merger-cooldown", "fleet:changes-made",
+                      "fleet:semantic-conflict"):
+            with self.subTest(label=label):
+                after = _state([self._position_root(labels=[label])])
+                self.assertEqual(project_merger(after), self.ROW)
+                self.assertEqual(_hash(before), _hash(after))
+
+    def test_row_leaves_when_resolved_merged_or_parked(self):
+        active = _state([self._position_root()])
+        self.assertEqual(project_merger(active), self.ROW)
+        self.assertEqual(project_merger(_state([
+            self._position_root(mergeable="MERGEABLE")
+        ])), [])
+        self.assertEqual(project_merger(_state([])), [])
+        labels = list(_mod._MERGER_PROJECTION_SKIP_LABELS)
+        labels.extend(prefix + "x" for prefix in _mod._MERGER_LLM_SKIP_PREFIXES)
+        for label in labels:
+            with self.subTest(label=label):
+                parked = _state([self._position_root(labels=[label])])
+                self.assertEqual(project_merger(parked), [])
+
+    def test_non_stack_conflict_stays_absent(self):
+        pr = _pr(102, labels=[], mergeable="CONFLICTING")
+        self.assertEqual(project_merger(_state([pr])), [])
+
+    def test_child_still_based_on_parent_stays_absent(self):
+        parent = _pr(101, head="claude/parent")
+        child = self._position_root(base="claude/parent", stack_position=3)
+        self.assertEqual(project_merger(_state([parent, child])), [])
+
+    def test_mergeable_retargeted_child_stays_absent(self):
+        self.assertEqual(project_merger(_state([
+            self._position_root(mergeable="MERGEABLE")
+        ])), [])
+
+    def test_approved_conflict_has_only_needs_resolve_row(self):
+        pr = self._position_root(labels=["fleet:approved"])
+        self.assertEqual(project_merger(_state([pr])), [
+            {"repo": "engine", "pr": 102, "signal": "needs-resolve"},
+        ])
 
 
 class MergeReadyChurnDoesNotArm(unittest.TestCase):

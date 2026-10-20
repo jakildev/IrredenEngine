@@ -187,6 +187,36 @@ class ReviewerClaimDropRearms(RoleTriggerTempCase):
         self.assertTrue((_mod.TRIGGERS_DIR / "opus-reviewer").exists())
 
 
+class StackRootConflictRearmsMerger(RoleTriggerTempCase):
+    @staticmethod
+    def _pr(number, **overrides):
+        pr = {"number": number, "headRefName": f"claude/{number}-x",
+              "baseRefName": "master", "labels": [],
+              "mergeable": "MERGEABLE", "stack_position": None}
+        pr.update(overrides)
+        return pr
+
+    def test_row_appearance_touches_trigger_but_cooldown_does_not(self):
+        before = _mod.project_merger({"repos": {"engine": {"prs": [
+            self._pr(1, headRefName="claude/parent",
+                     labels=["fleet:approved"]),
+            self._pr(2, baseRefName="claude/parent", stack_position=2),
+        ]}}})
+        after_pr = self._pr(2, mergeable="CONFLICTING", stack_position=2)
+        after = _mod.project_merger({"repos": {"engine": {"prs": [after_pr]}}})
+
+        self.assertFalse(_mod.update_role_trigger("merger", before))
+        self.assertTrue(_mod.update_role_trigger("merger", after))
+        trigger = _mod.TRIGGERS_DIR / "merger"
+        self.assertTrue(trigger.exists())
+
+        trigger.unlink()
+        after_pr["labels"] = ["fleet:merger-cooldown"]
+        toggled = _mod.project_merger({"repos": {"engine": {"prs": [after_pr]}}})
+        self.assertFalse(_mod.update_role_trigger("merger", toggled))
+        self.assertFalse(trigger.exists())
+
+
 class UpdateRoleTriggerStalledRearm(unittest.TestCase):
     """An unchanged non-empty projection eventually regains a wake edge."""
 
