@@ -319,11 +319,15 @@ BinaryStatus saveKeyValueStore(const std::string &path, const KeyValueStore &sto
 }
 
 Result<KeyValueStore> loadKeyValueStore(const std::string &path) {
+    // Checked before the reader is built: FileBinaryReader logs at error on any
+    // fopen failure, and a missing store is the ordinary first-launch case.
+    std::error_code existsEc;
+    if (!std::filesystem::exists(path, existsEc) && !existsEc) {
+        IRE_LOG_INFO("No key-value store at {} (using defaults)", path);
+        return Result<KeyValueStore>::error(BinaryIOError::OpenFailed, "failed to open " + path);
+    }
     FileBinaryReader r(path);
     if (!r.ok()) {
-        // Missing file is the common first-launch case — log at info, not
-        // error, so a fresh install doesn't look broken in the logs.
-        IRE_LOG_INFO("No key-value store at {} (using defaults)", path);
         return Result<KeyValueStore>::error(BinaryIOError::OpenFailed, "failed to open " + path);
     }
     auto storeR = readKeyValueStore(r);
