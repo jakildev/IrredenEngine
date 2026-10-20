@@ -30,7 +30,7 @@ constexpr int kComponentListItemHeight = 13;
 
 constexpr int kComponentControlsY = kComponentsPanelPos.y + 74;
 constexpr IRMath::ivec2 kComponentRootTogglePos{kComponentsPanelPos.x + 4, kComponentControlsY};
-constexpr IRMath::ivec2 kComponentRootToggleSize{54, 14};
+constexpr IRMath::ivec2 kComponentRootToggleSize{56, 14};
 constexpr IRMath::ivec2 kComponentAttachPos{kComponentsPanelPos.x + 64, kComponentControlsY};
 constexpr IRMath::ivec2 kComponentDetachPos{kComponentsPanelPos.x + 116, kComponentControlsY};
 constexpr IRMath::ivec2 kComponentButtonSize{50, 14};

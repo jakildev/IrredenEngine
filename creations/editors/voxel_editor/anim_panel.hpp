@@ -26,11 +26,13 @@ struct SliderGeometry {
     IRMath::ivec2 size_;
 };
 
+// An odd width keeps the right-aligned value readout inside the slider at
+// either text parity: its run is always an even number of trixels wide.
 constexpr SliderGeometry kScrubberSliderGeometry{
-    IRMath::ivec2(kAnimPanelPos.x + 4, kAnimPanelPos.y + 22), IRMath::ivec2(112, 14)
+    IRMath::ivec2(kAnimPanelPos.x + 4, kAnimPanelPos.y + 22), IRMath::ivec2(111, 14)
 };
 constexpr SliderGeometry kFpsSliderGeometry{
-    IRMath::ivec2(kAnimPanelPos.x + 4, kAnimPanelPos.y + 38), IRMath::ivec2(112, 14)
+    IRMath::ivec2(kAnimPanelPos.x + 4, kAnimPanelPos.y + 38), IRMath::ivec2(111, 14)
 };
 
 // The scrubber's range tracks the live animation's frame count

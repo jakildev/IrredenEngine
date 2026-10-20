@@ -58,6 +58,11 @@ struct C_Widget {
     WidgetKind kind_ = WidgetKind::PANEL;
     IRMath::ivec2 size_ = IRMath::ivec2(0, 0);
     bool disabled_ = false;
+    // Declared cover: the GUI layout audit drops an overlap or text-over-widget
+    // finding against this widget's covering surface — a panel's background, a
+    // dropdown's open strip, the whole rect of any other kind. A panel's title
+    // and a dropdown's header are never covering.
+    bool coversBelow_ = false;
     int zOrder_ = 0; // higher = drawn on top; wins hover when widgets overlap
 
     C_Widget() = default;

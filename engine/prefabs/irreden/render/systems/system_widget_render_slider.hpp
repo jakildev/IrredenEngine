@@ -11,9 +11,9 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/trixel_rect.hpp>
 
-#include <cstdio>
 #include <string>
 
 namespace IRSystem {
@@ -45,23 +45,16 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
             return;
 
         // Top half is the optional label, bottom half is track + thumb.
-        const int labelH =
-            slider.label_.empty() ? 0 : IRRender::glyphMetrics(slider.textSize_).stepY_;
+        const int labelH = IRPrefab::WidgetText::sliderLabelHeight(slider);
         const int trackY = guiPos.pos_.y + labelH + (H - labelH - theme_.sliderTrackThickness_) / 2;
         const int trackX = guiPos.pos_.x;
 
-        if (!slider.label_.empty()) {
-            IRPrefab::Widget::detail::queueLeftText(
-                textCmds_,
-                canvas_->size_,
-                slider.label_,
-                guiPos.pos_,
-                labelH,
-                IRPrefab::Widget::detail::stateText(theme_, widget),
-                IRPrefab::Widget::detail::kWidgetTextFontSize,
-                slider.textSize_
-            );
-        }
+        IRPrefab::WidgetText::queue(
+            textCmds_,
+            IRPrefab::WidgetText::sliderLabel(slider, guiPos.pos_),
+            canvas_->size_,
+            IRPrefab::Widget::detail::stateText(theme_, widget)
+        );
 
         // Track
         IRRender::fillRect(
@@ -95,23 +88,14 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
             scratch_
         );
 
-        // Value text right-aligned within the label row [pos.x, pos.x + W).
         if (!slider.label_.empty()) {
-            char buf[16];
-            std::snprintf(buf, sizeof(buf), "%.2f", slider.currentValue_);
-            IRPrefab::GuiText::queueGuiText(
+            const IRPrefab::WidgetText::SliderValueText value =
+                IRPrefab::WidgetText::sliderValueText(slider);
+            IRPrefab::WidgetText::queue(
                 textCmds_,
-                buf,
-                guiPos.pos_,
+                IRPrefab::WidgetText::sliderValue(widget, slider, guiPos.pos_, value),
                 canvas_->size_,
-                IRPrefab::Widget::detail::stateText(theme_, widget),
-                IRPrefab::Widget::detail::kWidgetTextFontSize,
-                IRComponents::TextAlignH::RIGHT,
-                IRComponents::TextAlignV::CENTER,
-                W,
-                labelH,
-                0,
-                slider.textSize_
+                IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }
     }

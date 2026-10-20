@@ -36,6 +36,8 @@
 
 #include <sol/sol.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -71,6 +73,7 @@ using IRComponents::C_Skeleton;
 using IRComponents::C_TextStyle;
 using IRComponents::C_Voxel;
 using IRComponents::C_VoxelSetNew;
+using IRComponents::C_Widget;
 using IRComponents::C_WidgetButton;
 using IRComponents::C_WidgetCheckbox;
 using IRComponents::C_WidgetDropdown;
@@ -470,6 +473,73 @@ TEST_F(LuaWorldSnapshotTest, MigratesVersionOneTextRowsAsLarge) {
     EXPECT_EQ(label.text_, "Frames/sec");
     EXPECT_EQ(label.colorOverride_.alpha_, 240);
     EXPECT_EQ(label.textSize_, TextSize::LARGE);
+}
+
+// The layout-audit cover flag survives a save and load through the Lua
+// surface, and a version-1 raw image takes its kind's builder default.
+TEST_F(LuaWorldSnapshotTest, WidgetCoverRoundTripsAndMigratesFromVersionOne) {
+    C_Widget covering{IRComponents::WidgetKind::BUTTON, IRMath::ivec2(40, 14)};
+    covering.coversBelow_ = true;
+    C_Widget uncovered{IRComponents::WidgetKind::PANEL, IRMath::ivec2(100, 60)};
+    const EntityId coveringEntity = m_entity_manager.createEntity(covering);
+    const EntityId uncoveredEntity = m_entity_manager.createEntity(uncovered);
+    const std::string currentPath = tempPath("widget_v2");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + currentPath + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + currentPath + "'))"));
+    EXPECT_TRUE(m_entity_manager.getComponent<C_Widget>(coveringEntity).coversBelow_);
+    EXPECT_FALSE(m_entity_manager.getComponent<C_Widget>(uncoveredEntity).coversBelow_);
+
+    m_entity_manager.destroyAllEntities();
+    struct LegacyWidget {
+        IRComponents::WidgetKind kind_;
+        IRMath::ivec2 size_;
+        bool disabled_;
+        int zOrder_;
+    };
+    static_assert(std::is_trivially_copyable_v<LegacyWidget>);
+    static_assert(sizeof(LegacyWidget) == 20);
+    for (const IRComponents::WidgetKind kind :
+         {IRComponents::WidgetKind::DROPDOWN, IRComponents::WidgetKind::SLIDER}) {
+        std::array<std::uint8_t, sizeof(LegacyWidget)> image{};
+        image.fill(0xFF);
+        const LegacyWidget legacy{kind, IRMath::ivec2(90, 18), false, 2};
+        std::memcpy(image.data(), &legacy.kind_, sizeof(legacy.kind_));
+        std::memcpy(
+            image.data() + offsetof(LegacyWidget, size_),
+            &legacy.size_,
+            sizeof(legacy.size_)
+        );
+        std::memcpy(
+            image.data() + offsetof(LegacyWidget, disabled_),
+            &legacy.disabled_,
+            sizeof(legacy.disabled_)
+        );
+        std::memcpy(
+            image.data() + offsetof(LegacyWidget, zOrder_),
+            &legacy.zOrder_,
+            sizeof(legacy.zOrder_)
+        );
+        const EntityId entity = 1004;
+        const std::string oldPath = tempPath("widget_v1");
+        ASSERT_NO_FATAL_FAILURE(writeSingleColumnSnapshot(
+            oldPath,
+            entity,
+            "IRComponents::C_Widget",
+            1,
+            std::vector<std::uint8_t>(image.begin(), image.end())
+        ));
+        ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + oldPath + "'))"));
+        ASSERT_TRUE(m_entity_manager.entityExists(entity));
+        const C_Widget &migrated = m_entity_manager.getComponent<C_Widget>(entity);
+        EXPECT_EQ(migrated.kind_, kind);
+        EXPECT_EQ(migrated.size_, IRMath::ivec2(90, 18));
+        EXPECT_FALSE(migrated.disabled_);
+        EXPECT_EQ(migrated.zOrder_, 2);
+        EXPECT_EQ(migrated.coversBelow_, kind == IRComponents::WidgetKind::DROPDOWN);
+        m_entity_manager.destroyAllEntities();
+    }
 }
 
 // The core W-9 acceptance: a non-trivial world (multiple archetypes +

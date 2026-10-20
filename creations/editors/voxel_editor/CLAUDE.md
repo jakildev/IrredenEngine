@@ -6,7 +6,7 @@ Design log, findings and the authoring-session history:
 
 ## Validators
 
-- `python3 scripts/gui-verify.py IRVoxelEditor` — the standing GUI shot table.
+- `python3 scripts/gui-verify.py IRVoxelEditor` — the standing GUI shot table; `-- --gui-layout-check` also fails any GUI layout finding (every shot is clean).
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` — one
   scripted session: `face_pick` and `drag_probe` prove the picking contract
   against the full reference scene, `place_below` the Alt modifier,

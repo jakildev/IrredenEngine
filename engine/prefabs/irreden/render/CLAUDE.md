@@ -156,8 +156,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   it over content drawn elsewhere; like any GUI hitbox it shadows world picks beneath it. `topmostHoveredWidget()` owns hover routing.
   `makeImage` decodes and box-filters its PNG into `C_WidgetImage::texels_` at build / `setImagePath` / `setImageSize`, never in a tick; `WIDGET_RENDER_IMAGE` (after `WIDGET_RENDER_PANEL`) only copies them. Mutate the `C_WidgetTheme` singleton (`widget_theme.hpp::defaultTheme()`) once at init, before building widgets. Opt-in hover
   publication: `makeGuiHoverState()` creates the `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
-- Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers); read a list's first row
-  from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
+- Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers), and every widget's text placement one (`widget_text_layout.hpp`: renderers queue through it,
+  the layout audit `gui_layout_audit.hpp` measures it — declare a deliberate overlay with `setCoversBelow`); read a list's first row from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
   `WIDGET_RENDER_DROPDOWN` paints open strips in `endTick`, after the headers' text dispatch, so a strip covers the headers below it.
 - The wheel scrolls the hovered list; `setListSelectedIndex` reveals the row only when the index
   changes, so a caller that mirrors its state into the list every frame never fights the wheel.

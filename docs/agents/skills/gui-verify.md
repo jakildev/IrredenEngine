@@ -59,6 +59,7 @@ python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session drag_probe  # forwa
 | `--warmup-frames N` | 10 | Warmup frames for `--auto-screenshot N`. |
 | `--no-build` | off | Skip the build step. |
 | `--timeout S` | 120 | Watchdog: kill the process after S seconds. |
+| `--allow-layout-findings` | off | With `-- --gui-layout-check`, report layout findings without failing. |
 | `-- ARG ...` | none | Everything after `--` is forwarded to the target. |
 
 The runner builds (`<build tool> --target <target>` unless `--no-build`),
@@ -69,6 +70,36 @@ lines, prints a shot / label / kind / name / result / actual table with a
 `Failing assertions:` list, and exits non-zero on any FAIL or a non-zero
 binary exit. A binary that exits 0 with no `GUI-ASSERT` lines is
 mis-wired; the runner warns.
+
+## Layout check
+
+`-- --gui-layout-check` arms the GUI layout audit (`IRPrefab::GuiAudit`,
+`engine/prefabs/irreden/render/gui_layout_audit.hpp`) on every capture frame:
+widget rects and the glyph cells the renderers queue, decided without a human
+reading a screenshot. A creation wires it by registering
+`GuiAudit::kLayoutCheckFlag` on `IREngine::args()` before init and arming
+`GuiTest::LatchState::layoutCheck_` from it; an unwired target rejects the
+flag (exit 2). The voxel editor is wired. Each capture frame logs:
+
+```
+GUI-LAYOUT <kind> <idA> <idB> <x> <y> <w> <h> shot=<i> label=<shot>
+GUI-LAYOUT-SUMMARY <n> shot=<i> label=<shot>
+```
+
+Kinds: `overlap` (two hitboxes), `text-over-widget` (a run crosses another
+widget or run), `text-clipped` (a run passes its own widget or the canvas),
+`outside-parent` (a widget leaves the panel holding its origin), `offscreen`.
+The runner fails a shot with a non-zero summary, and a run where an announced
+shot logs no summary, unless `--allow-layout-findings`.
+
+A finding is **intent** only when the cover is the design — a deliberate
+overlay sitting over what it hides. Declare it on the covering widget
+(`IRPrefab::Widget::setCoversBelow`, `IRGui.setCoversBelow`); panels and open
+dropdown strips declare theirs. Everything else is a **bug**: fix the layout
+(a position or size constant). A text run's origin can shift right by one
+trixel for lattice parity, so size a box for its text with a trixel to spare,
+and give a right-aligned readout an odd box width. Never declare a cover to
+silence a real collision.
 
 ## Adding a first GUI test to a creation
 

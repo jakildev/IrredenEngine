@@ -21,13 +21,13 @@ constexpr float kLodTierSliderMin = static_cast<float>(IRRender::LodLevel::LOD_0
 constexpr float kLodTierSliderMax = static_cast<float>(IRRender::LodLevel::LOD_4);
 
 constexpr SliderGeometry kLodFineSliderGeometry{
-    IRMath::ivec2(kLodPanelPos.x + 4, kLodPanelPos.y + 20), IRMath::ivec2(112, 14)
+    IRMath::ivec2(kLodPanelPos.x + 4, kLodPanelPos.y + 20), IRMath::ivec2(111, 14)
 };
 constexpr SliderGeometry kLodCoarseSliderGeometry{
-    IRMath::ivec2(kLodPanelPos.x + 4, kLodPanelPos.y + 38), IRMath::ivec2(112, 14)
+    IRMath::ivec2(kLodPanelPos.x + 4, kLodPanelPos.y + 38), IRMath::ivec2(111, 14)
 };
 constexpr SliderGeometry kLodTierSliderGeometry{
-    IRMath::ivec2(kLodPanelPos.x + 4, kLodPanelPos.y + 56), IRMath::ivec2(112, 14)
+    IRMath::ivec2(kLodPanelPos.x + 4, kLodPanelPos.y + 56), IRMath::ivec2(111, 14)
 };
 constexpr IRMath::ivec2 kLodFollowCheckboxPos{kLodPanelPos.x + 4, kLodPanelPos.y + 76};
 constexpr IRMath::ivec2 kLodFollowCheckboxSize{112, 14};

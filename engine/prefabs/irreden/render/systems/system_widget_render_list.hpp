@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/trixel_rect.hpp>
 
 namespace IRSystem {
@@ -95,12 +96,10 @@ template <> struct System<WIDGET_RENDER_LIST> {
                 );
             }
 
-            IRPrefab::Widget::detail::queueLeftText(
+            IRPrefab::WidgetText::queue(
                 textCmds_,
+                IRPrefab::WidgetText::listRow(list, guiPos.pos_, theme_, row, idx),
                 canvas_->size_,
-                list.items_[static_cast<std::size_t>(idx)],
-                IRMath::ivec2(rowPos.x + theme_.padding_ * 2, rowPos.y),
-                itemH,
                 IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }

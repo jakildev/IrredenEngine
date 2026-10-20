@@ -23,6 +23,14 @@
 //   local err    = IRGui.imageError(image)       -- nil when the PNG decoded
 //   local gx, gy = IRGui.glyphStep(size?)
 //   local w, h   = IRRender.getGuiCanvasSize()
+//   IRGui.setCoversBelow(id, true)                 -- a deliberate overlay
+//   for _, f in ipairs(IRGui.layoutReport(w?, h?)) do
+//       -- f.kind == IRGui.LayoutKind.OVERLAP, f.a, f.b, f.x, f.y, f.w, f.h
+//   end
+//
+// `layoutReport` is `IRPrefab::GuiAudit::report` (gui_layout_audit.hpp):
+// against the live "gui" canvas, or an explicit canvas size for a headless
+// test that has none.
 //
 // `onClick` / `onHover` / `onUnhover` are stored in WIDGET_LUA_DISPATCH's
 // state, NOT a component:
@@ -60,6 +68,7 @@
 #include <irreden/utility/path_utils.hpp>
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/gui_layout_audit.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/widgets.hpp>
@@ -609,6 +618,56 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
     gui["isPressed"] = [](lua_Integer id) -> bool {
         requireWidget<IRComponents::C_WidgetState>(id, "IRGui.isPressed", "widget");
         return IRPrefab::Widget::isPressed(static_cast<IREntity::EntityId>(id));
+    };
+
+    // ── Layout audit ─────────────────────────────────────────────────────────
+    sol::table layoutKind = lua.create_table();
+#define IR_BIND_LAYOUT_KIND(name)                                                                  \
+    layoutKind[#name] = static_cast<lua_Integer>(IRPrefab::GuiAudit::FindingKind::name)
+    IR_BIND_LAYOUT_KIND(OVERLAP);
+    IR_BIND_LAYOUT_KIND(TEXT_OVER_WIDGET);
+    IR_BIND_LAYOUT_KIND(TEXT_CLIPPED);
+    IR_BIND_LAYOUT_KIND(OUTSIDE_PARENT);
+    IR_BIND_LAYOUT_KIND(OFFSCREEN);
+#undef IR_BIND_LAYOUT_KIND
+    gui["LayoutKind"] = layoutKind;
+
+    gui["setCoversBelow"] = [](lua_Integer id, bool covers) {
+        requireWidget<IRComponents::C_Widget>(id, "IRGui.setCoversBelow", "widget");
+        IRPrefab::Widget::setCoversBelow(static_cast<IREntity::EntityId>(id), covers);
+    };
+    gui["layoutReport"] =
+        [](sol::this_state state, sol::optional<int> w, sol::optional<int> h) -> sol::table {
+        if (w.has_value() != h.has_value()) {
+            throw sol::error{
+                "IRGui.layoutReport: pass both the canvas width and height, or neither"
+            };
+        }
+        const std::vector<IRPrefab::GuiAudit::Finding> findings =
+            w.has_value() ? IRPrefab::GuiAudit::report(IRMath::ivec2(*w, *h))
+                          : IRPrefab::GuiAudit::report();
+        sol::state_view view{state};
+        sol::table out = view.create_table(static_cast<int>(findings.size()), 0);
+        for (std::size_t i = 0; i < findings.size(); ++i) {
+            const IRPrefab::GuiAudit::Finding &finding = findings[i];
+            out[i + 1] = view.create_table_with(
+                "kind",
+                static_cast<lua_Integer>(finding.kind_),
+                "a",
+                static_cast<lua_Integer>(finding.a_),
+                "b",
+                static_cast<lua_Integer>(finding.b_),
+                "x",
+                finding.pos_.x,
+                "y",
+                finding.pos_.y,
+                "w",
+                finding.size_.x,
+                "h",
+                finding.size_.y
+            );
+        }
+        return out;
     };
 
     // Extend (never replace) IRRender so the render-glue setters bound earlier

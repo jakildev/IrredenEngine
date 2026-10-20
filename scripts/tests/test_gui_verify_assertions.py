@@ -140,5 +140,89 @@ class GuiVerifyEmptyPolicyTest(unittest.TestCase):
         self.assertIn("shots with zero GUI-ASSERT lines: 0, 1", output)
 
 
+def _layout_shot(shot: int, total: int, findings: int) -> str:
+    lines = [
+        f"GuiTest {shot + 1}/{total}: shot-{shot}\n",
+        _coverage_line(shot, 1),
+        _assert_line(shot),
+    ]
+    lines += [
+        f"[info] GUI-LAYOUT overlap {10 + i} {20 + i} 4 6 8 2 shot={shot} label=shot-{shot}\n"
+        for i in range(findings)
+    ]
+    lines.append(f"[info] GUI-LAYOUT-SUMMARY {findings} shot={shot} label=shot-{shot}\n")
+    return "".join(lines)
+
+
+class GuiVerifyLayoutPolicyTest(unittest.TestCase):
+    def run_main(self, *args: str, output: str) -> tuple[str, int | None]:
+        argv = ["gui-verify.py", "IRVoxelEditor", "--no-build", *args]
+        with patch.object(sys, "argv", argv), \
+                patch.object(verify_common, "run_capture", return_value=(0, output)), \
+                redirect_stdout(io.StringIO()) as captured:
+            try:
+                gui_verify.main()
+            except SystemExit as exc:
+                return captured.getvalue(), exc.code
+        return captured.getvalue(), None
+
+    def test_parses_findings_and_summaries(self) -> None:
+        findings, summaries = verify_common.parse_gui_layout(
+            _layout_shot(0, 2, 2) + _layout_shot(1, 2, 0))
+
+        self.assertEqual(len(findings), 2)
+        self.assertEqual(findings[0]["kind"], "overlap")
+        self.assertEqual((findings[0]["a"], findings[0]["b"]), ("10", "20"))
+        self.assertEqual(summaries, {0: 2, 1: 0})
+
+    def test_a_nonzero_summary_fails_the_run(self) -> None:
+        output, exit_code = self.run_main(
+            "--", "--gui-layout-check", output=_layout_shot(0, 1, 2))
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("GUI-LAYOUT shot=0 label=shot-0 overlap 10 20", output)
+        self.assertIn("use --allow-layout-findings", output)
+
+    def test_allow_layout_findings_reports_without_failing(self) -> None:
+        output, exit_code = self.run_main(
+            "--allow-layout-findings", "--", "--gui-layout-check",
+            output=_layout_shot(0, 1, 2))
+
+        self.assertIsNone(exit_code)
+        self.assertIn("2 layout finding(s) over 1 shot(s)", output)
+
+    def test_clean_summaries_pass(self) -> None:
+        output, exit_code = self.run_main(
+            "--", "--gui-layout-check",
+            output="".join(_layout_shot(shot, 3, 0) for shot in range(3)))
+
+        self.assertIsNone(exit_code)
+        self.assertIn("0 layout finding(s) over 3 shot(s)", output)
+
+    def test_requested_check_with_no_summary_lines_fails(self) -> None:
+        output, exit_code = self.run_main(
+            "--", "--gui-layout-check",
+            output=_coverage_line(0, 1) + _assert_line(0))
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("no GUI-LAYOUT-SUMMARY line was logged", output)
+
+    def test_a_shot_missing_its_summary_fails(self) -> None:
+        shots = [_layout_shot(shot, 3, 0) for shot in range(3)]
+        shots[1] = shots[1].replace("GUI-LAYOUT-SUMMARY 0 shot=1", "")
+
+        output, exit_code = self.run_main(
+            "--", "--gui-layout-check", output="".join(shots))
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("shots with no GUI-LAYOUT-SUMMARY line: 1", output)
+
+    def test_without_the_flag_layout_lines_are_ignored(self) -> None:
+        output, exit_code = self.run_main(output=_layout_shot(0, 1, 2))
+
+        self.assertIsNone(exit_code)
+        self.assertNotIn("layout finding", output)
+
+
 if __name__ == "__main__":
     unittest.main()

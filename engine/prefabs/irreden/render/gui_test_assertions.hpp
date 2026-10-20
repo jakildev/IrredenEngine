@@ -8,6 +8,7 @@
 
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_widget_image.hpp>
+#include <irreden/render/gui_layout_audit.hpp>
 #include <irreden/render/picking.hpp>
 #include <irreden/render/widgets.hpp>
 
@@ -196,6 +197,9 @@ inline Assertion predicate(
 struct LatchState {
     std::unordered_set<IREntity::EntityId> firedWidgets_;
     std::vector<IREntity::EntityId> hoveredIds_; // one entry per live frame, oldest first
+    // Logs the GUI layout audit (`GuiAudit::logReport`) on every capture
+    // frame; the creation arms it from `GuiAudit::kLayoutCheckFlag`.
+    bool layoutCheck_ = false;
 };
 
 namespace detail {
@@ -362,7 +366,8 @@ inline void evaluate(
 
 // Per-frame driver wired to GuiTestConfig::onAssertFrame_. Latches one-frame
 // pulses every live frame; on the capture frame, evaluates + logs all of the
-// shot's assertions, then clears the latch so the next shot starts clean.
+// shot's assertions (and the layout audit when armed), then clears the latch
+// so the next shot starts clean.
 inline void onFrame(
     LatchState &latch,
     int shotIndex,
@@ -372,8 +377,11 @@ inline void onFrame(
     int count
 ) {
     if (count == 0) {
-        if (isCaptureFrame)
+        if (isCaptureFrame) {
             evaluate(latch, shotIndex, shotLabel, assertions, count);
+            if (latch.layoutCheck_)
+                GuiAudit::logReport(shotIndex, shotLabel);
+        }
         return;
     }
     detail::latchFires(latch);
@@ -381,6 +389,8 @@ inline void onFrame(
     if (!isCaptureFrame)
         return;
     evaluate(latch, shotIndex, shotLabel, assertions, count);
+    if (latch.layoutCheck_)
+        GuiAudit::logReport(shotIndex, shotLabel);
     latch.firedWidgets_.clear();
     latch.hoveredIds_.clear();
 }

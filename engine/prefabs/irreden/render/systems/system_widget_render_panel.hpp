@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/trixel_rect.hpp>
 
 namespace IRSystem {
@@ -52,7 +53,7 @@ template <> struct System<WIDGET_RENDER_PANEL> {
         );
 
         if (!panel.title_.empty()) {
-            const int titleBarH = IRRender::kGlyphStepY + theme_.padding_ * 2;
+            const int titleBarH = IRPrefab::WidgetText::panelTitleBarHeight(theme_);
             IRRender::fillRect(
                 *canvas_,
                 guiPos.pos_,
@@ -61,12 +62,10 @@ template <> struct System<WIDGET_RENDER_PANEL> {
                 IRRender::kWidgetBorderDistance,
                 scratch_
             );
-            IRPrefab::Widget::detail::queueCenteredText(
+            IRPrefab::WidgetText::queue(
                 textCmds_,
+                IRPrefab::WidgetText::panelTitle(widget, panel, guiPos.pos_, theme_),
                 canvas_->size_,
-                panel.title_,
-                guiPos.pos_,
-                IRMath::ivec2(widget.size_.x, titleBarH),
                 IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }

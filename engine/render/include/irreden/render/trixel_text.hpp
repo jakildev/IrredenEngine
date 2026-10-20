@@ -5,6 +5,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 #include <string>
+#include <string_view>
 
 using namespace IRMath;
 using namespace IRComponents;
@@ -57,7 +58,7 @@ renderGlyph(C_TriangleCanvasTextures &canvas, const Glyph &glyph, ivec2 position
 }
 
 // Measures the width (in trixels) of the next word starting at position i.
-inline int nextWordWidth(const std::string &text, size_t i, TextSize size = TextSize::LARGE) {
+inline int nextWordWidth(std::string_view text, size_t i, TextSize size = TextSize::LARGE) {
     const int stepX = glyphMetrics(size).stepX_;
     int width = 0;
     while (i < text.size() && text[i] != ' ' && text[i] != '\n') {

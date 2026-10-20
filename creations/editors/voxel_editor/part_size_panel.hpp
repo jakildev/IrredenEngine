@@ -22,7 +22,7 @@ constexpr IRMath::ivec2 kPartSizePanelSize{120, 96};
 
 constexpr int kPartSizeAxisCount = 3;
 constexpr int kPartSizeSliderPitch = 18;
-constexpr IRMath::ivec2 kPartSizeSliderSize{112, 14};
+constexpr IRMath::ivec2 kPartSizeSliderSize{111, 14};
 constexpr IRMath::ivec2 kPartSizeReadoutPos{kPartSizePanelPos.x + 4, kPartSizePanelPos.y + 78};
 
 // Track geometry for axis 0 (W, x), 1 (H, y) or 2 (D, z).

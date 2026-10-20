@@ -56,6 +56,20 @@ GUI_ASSERT_COVERAGE_RE = re.compile(r"GUI-ASSERT-COVERAGE\s+shot=(\d+)\b")
 # complete table even when a later shot exits before producing an assertion.
 GUI_TEST_SHOT_RE = re.compile(r"GuiTest\s+(\d+)/(\d+):")
 
+# The GUI layout audit (IRPrefab::GuiAudit::logReport), armed by a creation's
+# --gui-layout-check: one line per finding, then one summary per capture frame,
+# logged with a count of 0 too:
+#   GUI-LAYOUT <kind> <idA> <idB> <x> <y> <w> <h> shot=<i> label=<shot>
+#   GUI-LAYOUT-SUMMARY <n> shot=<i> label=<shot>
+GUI_LAYOUT_CHECK_FLAG = "--gui-layout-check"
+GUI_LAYOUT_RE = re.compile(
+    r"GUI-LAYOUT\s+"
+    r"(\S+)\s+(\d+)\s+(\d+)\s+"
+    r"(-?\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+"
+    r"shot=(\d+)\s+label=(\S*)"
+)
+GUI_LAYOUT_SUMMARY_RE = re.compile(r"GUI-LAYOUT-SUMMARY\s+(\d+)\s+shot=(\d+)\b")
+
 # Full-frame captures are ``screenshot_<6-digit-index>.png``. ROI crop files
 # share that prefix but append ``_<shotLabel>__crop_<crop>.png`` and land in the
 # same directory (see VideoManager::writePendingRoiCrops). A bare
@@ -191,14 +205,17 @@ def parse_gui_asserts(output: str) -> list[dict[str, str]]:
     return rows
 
 
+def announced_shot_count(output: str) -> int:
+    """The shot-table size the ``GuiTest i/N:`` lines announce; 0 with none."""
+    return max((int(total) for _, total in GUI_TEST_SHOT_RE.findall(output)), default=0)
+
+
 def missing_gui_assert_shots(output: str,
                              assertions: list[dict[str, str]]) -> list[int]:
     """Zero-based shot indices that never reached assertion evaluation."""
-    announcements = [tuple(map(int, m.groups()))
-                     for m in GUI_TEST_SHOT_RE.finditer(output)]
-    if not announcements:
+    shot_count = announced_shot_count(output)
+    if not shot_count:
         return []
-    shot_count = max(total for _, total in announcements)
     covered_shots = {int(row["shot"]) for row in assertions
                      if row["shot"].isdigit()}
     covered_shots.update(int(m.group(1))
@@ -258,6 +275,47 @@ def report_gui_asserts(output: str, prefix: str = "",
         missing = ", ".join(map(str, missing_shots))
         print(f"\n{prefix}shots with zero GUI-ASSERT lines: {missing}")
     return assertions, hung, failures, missing_shots
+
+
+def parse_gui_layout(output: str) -> tuple[list[dict[str, str]], dict[int, int]]:
+    """Extract the layout audit's finding rows and its per-shot summary counts."""
+    findings = [
+        dict(kind=kind, a=a, b=b, x=x, y=y, w=w, h=h, shot=shot, label=label)
+        for kind, a, b, x, y, w, h, shot, label in GUI_LAYOUT_RE.findall(output)
+    ]
+    summaries = {int(shot): int(count)
+                 for count, shot in GUI_LAYOUT_SUMMARY_RE.findall(output)}
+    return findings, summaries
+
+
+def report_gui_layout(output: str, prefix: str = "",
+                      allow_findings: bool = False) -> bool:
+    """Print the layout audit's findings and return True when the run fails it.
+
+    Fails when no shot logged a summary, when a shot announced by ``GuiTest
+    i/N:`` logged none (it never reached the audit), and, unless
+    ``allow_findings``, when any summary counts a finding."""
+    findings, summaries = parse_gui_layout(output)
+    missing = sorted(set(range(announced_shot_count(output))) - set(summaries))
+    print()
+    for row in findings:
+        print(f"{prefix}GUI-LAYOUT shot={row['shot']} label={row['label']} {row['kind']} "
+              f"{row['a']} {row['b']} at ({row['x']},{row['y']}) {row['w']}x{row['h']}")
+    total = sum(summaries.values())
+    print(f"{prefix}{total} layout finding(s) over {len(summaries)} shot(s)")
+    if not summaries:
+        print(f"{prefix}{GUI_LAYOUT_CHECK_FLAG} requested but no GUI-LAYOUT-SUMMARY line "
+              "was logged (does the target wire the check?)")
+        return True
+    if missing:
+        print(f"{prefix}shots with no GUI-LAYOUT-SUMMARY line: "
+              f"{', '.join(map(str, missing))}")
+        return True
+    if total and not allow_findings:
+        print(f"{prefix}layout findings fail the run (use --allow-layout-findings to report "
+              "them only)")
+        return True
+    return False
 
 
 def detect_worktree_root(start: Path) -> Path:

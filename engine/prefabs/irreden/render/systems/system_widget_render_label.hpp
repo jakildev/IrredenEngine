@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/trixel_text.hpp>
 
 namespace IRSystem {
@@ -37,19 +38,11 @@ template <> struct System<WIDGET_RENDER_LABEL> {
         const IRMath::Color color = (label.colorOverride_.alpha_ == 0)
                                         ? IRPrefab::Widget::detail::stateText(theme_, widget)
                                         : label.colorOverride_;
-        IRPrefab::GuiText::queueGuiText(
+        IRPrefab::WidgetText::queue(
             textCmds_,
-            label.text_,
-            guiPos.pos_,
+            IRPrefab::WidgetText::label(label, guiPos.pos_),
             canvas_->size_,
-            color,
-            IRPrefab::Widget::detail::kWidgetTextFontSize,
-            IRComponents::TextAlignH::LEFT,
-            IRComponents::TextAlignV::TOP,
-            0,
-            0,
-            0,
-            label.textSize_
+            color
         );
     }
 

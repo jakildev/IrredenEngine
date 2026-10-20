@@ -56,10 +56,12 @@ static_assert(IRWorld::SaveTrait<C_EntityCanvas>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_HitBox2D>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_ShapeDescriptor>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_TextStyle>::kHandWrittenLayout);
+static_assert(IRWorld::SaveTrait<C_Widget>::kHandWrittenLayout);
 static_assert(!UsesRawImageSerializer<C_EntityCanvas>);
 static_assert(!UsesRawImageSerializer<C_HitBox2D>);
 static_assert(!UsesRawImageSerializer<C_ShapeDescriptor>);
 static_assert(!UsesRawImageSerializer<C_TextStyle>);
+static_assert(!UsesRawImageSerializer<C_Widget>);
 
 template <typename C> std::vector<std::uint8_t> serialize(const C &value) {
     IRAsset::MemoryBinaryWriter writer;
@@ -953,6 +955,73 @@ TEST(SaveSerializers, TextStyleV1MigrationRejectsAnOutOfRangeAlignment) {
     IRAsset::MemoryBinaryWriter writer;
     writer.writeBytes(&old, sizeof(old));
     const IRAsset::Result<C_TextStyle> restored = migrate<C_TextStyle>(1u, writer.buffer());
+    ASSERT_FALSE(restored.ok());
+    EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+}
+
+TEST(SaveSerializers, WidgetRoundTripsEveryFieldWithTheCoverOnAndOff) {
+    for (const bool covers : {true, false}) {
+        C_Widget widget{WidgetKind::NUMBER_FIELD, IRMath::ivec2(80, 18), -3};
+        widget.disabled_ = true;
+        widget.coversBelow_ = covers;
+
+        const C_Widget restored = roundTrip(widget);
+
+        EXPECT_EQ(restored.kind_, WidgetKind::NUMBER_FIELD);
+        EXPECT_EQ(restored.size_, IRMath::ivec2(80, 18));
+        EXPECT_TRUE(restored.disabled_);
+        EXPECT_EQ(restored.coversBelow_, covers);
+        EXPECT_EQ(restored.zOrder_, -3);
+    }
+    EXPECT_EQ(IRWorld::saveVersion<C_Widget>(), 2u);
+}
+
+TEST(SaveSerializers, WidgetRejectsAnOutOfRangeKind) {
+    std::vector<std::uint8_t> bytes = serialize(C_Widget{WidgetKind::BUTTON, IRMath::ivec2(4, 4)});
+    bytes.front() = 200;
+    const IRAsset::Result<C_Widget> restored = deserialize<C_Widget>(bytes);
+    ASSERT_FALSE(restored.ok());
+    EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+}
+
+// The version-1 row is the raw struct image: three padding bytes follow
+// `disabled_`. They are 0xFF here, so a migrator that read the cover flag out
+// of the padding would read true for every kind.
+std::vector<std::uint8_t> widgetV1Image(WidgetKind kind) {
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeI32(static_cast<std::int32_t>(kind));
+    writer.writeI32(64);
+    writer.writeI32(14);
+    writer.writeU8(1);
+    writer.writeU8(0xFF);
+    writer.writeU8(0xFF);
+    writer.writeU8(0xFF);
+    writer.writeI32(7);
+    EXPECT_EQ(writer.buffer().size(), sizeof(IRWorld::detail::WidgetV1));
+    return writer.buffer();
+}
+
+TEST(SaveSerializers, WidgetV1MigrationTakesEachKindsBuilderCover) {
+    ASSERT_EQ(IRWorld::SaveMigration<C_Widget>::migrators().size(), 1u);
+    for (int raw = 0; raw <= static_cast<int>(WidgetKind::IMAGE); ++raw) {
+        const WidgetKind kind = static_cast<WidgetKind>(raw);
+        const IRAsset::Result<C_Widget> restored = migrate<C_Widget>(1u, widgetV1Image(kind));
+        ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+        EXPECT_EQ(restored.value_.kind_, kind);
+        EXPECT_EQ(restored.value_.size_, IRMath::ivec2(64, 14));
+        EXPECT_TRUE(restored.value_.disabled_);
+        EXPECT_EQ(restored.value_.zOrder_, 7);
+        EXPECT_EQ(
+            restored.value_.coversBelow_,
+            kind == WidgetKind::PANEL || kind == WidgetKind::DROPDOWN
+        ) << "kind "
+          << raw;
+    }
+}
+
+TEST(SaveSerializers, WidgetV1MigrationRejectsAnOutOfRangeKind) {
+    const IRAsset::Result<C_Widget> restored =
+        migrate<C_Widget>(1u, widgetV1Image(static_cast<WidgetKind>(99)));
     ASSERT_FALSE(restored.ok());
     EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
 }
