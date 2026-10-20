@@ -13,7 +13,6 @@
 #include <string_view>
 #include <fstream>
 #include <filesystem>
-#include <iterator>
 #include <ranges>
 #include <utility>
 
@@ -31,15 +30,19 @@ bool requestsProfile(const std::vector<std::string> &argv) {
     return false;
 }
 
+constexpr std::size_t kMaxResultFileBytes = 64 * 1024;
+
 std::optional<std::string> readVerdict(const std::filesystem::path &path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         return std::nullopt;
     }
-    const std::string text(
-        (std::istreambuf_iterator<char>(input)),
-        std::istreambuf_iterator<char>()
-    );
+    std::string text(kMaxResultFileBytes + 1, '\0');
+    input.read(text.data(), static_cast<std::streamsize>(text.size()));
+    if (static_cast<std::size_t>(input.gcount()) > kMaxResultFileBytes) {
+        return std::nullopt;
+    }
+    text.resize(static_cast<std::size_t>(input.gcount()));
     const auto json = IRAsset::parseJson(text);
     if (!json.has_value()) {
         return std::nullopt;
