@@ -164,6 +164,7 @@ add_executable(IrredenEngineTest
   script/lua_audio_midi_observer_test.cpp
   script/lua_audio_monitor_test.cpp
   script/lua_collision_bindings_test.cpp
+  script/lua_collision_response_test.cpp
   script/lua_catalog_test.cpp
   script/lua_command_test.cpp
   script/lua_cursor_position_test.cpp
@@ -227,6 +228,7 @@ add_executable(IrredenEngineTest
   job/worker_block_queue_test.cpp
   utility/contained_path_test.cpp
   utility/ir_utility_test.cpp
+  update/collision_response_test.cpp
   video/auto_screenshot_helpers_test.cpp
   video/auto_record_pacing_test.cpp
   video/audio_capture_rate_test.cpp

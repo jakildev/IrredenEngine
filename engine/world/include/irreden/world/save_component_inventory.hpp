@@ -137,6 +137,7 @@
 #include <irreden/update/components/component_animation_clip.hpp>
 #include <irreden/update/components/component_collider_iso3d_aabb.hpp>
 #include <irreden/update/components/component_collision_layer.hpp>
+#include <irreden/update/components/component_collision_response.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_direction.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
@@ -330,6 +331,7 @@ IR_SAVE_OPT_IN(IRComponents::C_WallBounce, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WallDeath, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ColliderIso3DAABB, 1)
 IR_SAVE_OPT_IN(IRComponents::C_CollisionLayer, 1)
+IR_SAVE_OPT_IN(IRComponents::C_CollisionResponse, 1)
 // Version 1 was the raw {halfExtent_, hovered_} image. Version 2 writes only
 // authored configuration; save_serializers_input.hpp owns the direct migration.
 IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_HitBox2D, 2)
@@ -581,6 +583,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WallDeath,
     IRComponents::C_ColliderIso3DAABB,
     IRComponents::C_CollisionLayer,
+    IRComponents::C_CollisionResponse,
     IRComponents::C_HitBox2D,
     IRComponents::C_HitBox2DGui,
     IRComponents::C_HitboxCircle,

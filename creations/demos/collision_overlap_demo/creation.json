@@ -22,6 +22,20 @@
             "--auto-screenshot",
             "5"
           ]
+        },
+        {
+          "name": "Response stress",
+          "args": [
+            "--response-stress"
+          ]
+        },
+        {
+          "name": "Response stress profile",
+          "args": [
+            "--response-stress",
+            "--auto-profile",
+            "300"
+          ]
         }
       ]
     }
