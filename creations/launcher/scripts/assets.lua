@@ -60,6 +60,7 @@ local function clearPreview(browser)
     end
     if slot.viewport then
         IRRender.destroyViewport(slot.viewport)
+        browser.releasedViewport = slot.viewport
     end
     if slot.entity then
         IREntity.destroyTree(slot.entity)
@@ -123,7 +124,9 @@ local function preview(browser, asset)
     if asset.kind == "png" then
         browser.preview.image = IRGui.makeImage(p.x, p.y, p.w, p.h, asset.path)
         if IRTest then
-            IRTest.report("assetPngOnly", browser.preview.viewport and "false" or "true")
+            local released = browser.releasedViewport
+            local leaked = released and pcall(IRRender.getViewportSubject, released)
+            IRTest.report("assetPngOnly", leaked and "false" or "true")
         end
     elseif asset.kind == "voxel_set" then
         if boundsOversize(asset.fields.bounds) then
