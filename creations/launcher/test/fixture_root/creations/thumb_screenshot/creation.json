@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Thumbnail Screenshot",
+  "description": "Exercises the newest screenshot rung.",
+  "group": "z_thumbnails",
+  "tags": ["fixture"],
+  "kind": "demo",
+  "targets": [{"name": "IRThumbScreenshot", "display": "Fixture", "presets": []}]
+}

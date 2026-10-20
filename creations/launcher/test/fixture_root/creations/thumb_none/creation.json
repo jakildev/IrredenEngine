@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Thumbnail None",
+  "description": "Exercises the placeholder rung.",
+  "group": "z_thumbnails",
+  "tags": ["fixture"],
+  "kind": "demo",
+  "targets": [{"name": "IRThumbNone", "display": "Fixture", "presets": []}]
+}

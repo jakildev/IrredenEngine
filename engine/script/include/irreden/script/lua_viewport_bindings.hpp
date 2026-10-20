@@ -116,6 +116,9 @@ inline void bindViewport(LuaScript &script, ViewportFactory createViewport = cre
         }
         return static_cast<lua_Integer>(subject);
     };
+    render["viewportSubjectOversize"] = [](lua_Integer id) {
+        return IRPrefab::Viewport::subjectOversize(requireViewport(id, "viewportSubjectOversize"));
+    };
     render["destroyViewport"] = [](lua_Integer id) {
         IRPrefab::Viewport::destroy(requireViewport(id, "destroyViewport"));
     };

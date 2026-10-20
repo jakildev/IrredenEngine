@@ -7,6 +7,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/picking.hpp>
 #include <irreden/render/widgets.hpp>
 
@@ -27,6 +28,18 @@
 // machine-readable `GUI-ASSERT ...` log line the gui-verify skill greps
 // the way render-verify parses image diffs.
 namespace IRPrefab::GuiTest {
+
+inline std::optional<IRMath::Color> imageCenterColor(IREntity::EntityId widget) {
+    const auto *image =
+        IREntity::getComponentOptional<IRComponents::C_WidgetImage>(widget).value_or(nullptr);
+    if (image == nullptr || image->texelSize_.x <= 0 || image->texelSize_.y <= 0 ||
+        image->texels_.empty()) {
+        return std::nullopt;
+    }
+    const int x = image->texelSize_.x / 2;
+    const int y = image->texelSize_.y / 2;
+    return image->texels_.at(static_cast<std::size_t>(y) * image->texelSize_.x + x);
+}
 
 enum class AssertKind {
     HOVERS,            // IRPrefab::Widget::hoveredWidget() == widget_

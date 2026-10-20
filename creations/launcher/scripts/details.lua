@@ -4,11 +4,52 @@
 -- on selection, so the zone holds nothing between selections but its panel.
 
 local L = require("launcher_layout")
+local WidgetList = require("widget_list")
 local catalogView = require("catalog_view")
 
 local M = {}
 
 local SMALL = IRText.Size.SMALL
+local PLACEHOLDER = "creations/launcher/test/fixture_root/missing-thumbnail.png"
+
+local function thumbnailIndex(assetIndex)
+    if assetIndex.thumbnailIndex then
+        return assetIndex.thumbnailIndex
+    end
+    local index = { references = {}, screenshots = {} }
+    for _, asset in ipairs(assetIndex.entries) do
+        if asset.kind == "png" then
+            local dir, preset = asset.path:match("^(creations/.+)/test/references/([^/]+)/")
+            if dir then
+                local key = dir .. "|" .. preset
+                if not index.references[key] or asset.path < index.references[key] then
+                    index.references[key] = asset.path
+                end
+            else
+                dir = asset.path:match("^(creations/.+)/save_files/screenshots/")
+                local current = dir and index.screenshots[dir]
+                if dir and (not current or asset.mtime > current.mtime) then
+                    index.screenshots[dir] = asset
+                end
+            end
+        end
+    end
+    assetIndex.thumbnailIndex = index
+    return index
+end
+
+function M.thumbnailFor(creation, preset, assetIndex)
+    if not creation or not creation.manifest then
+        return PLACEHOLDER
+    end
+    if creation.manifest.thumbnail and creation.manifest.thumbnail ~= "" then
+        return creation.manifest.thumbnail
+    end
+    local index = thumbnailIndex(assetIndex)
+    local reference = index.references[creation.dir .. "|" .. preset]
+    local newestScreenshot = index.screenshots[creation.dir]
+    return reference or (newestScreenshot and newestScreenshot.path) or PLACEHOLDER
+end
 
 local function wrap(text, cols, maxLines)
     local lines, line = {}, ""
@@ -60,10 +101,6 @@ end
 function M.new(app)
     local details = { widgets = {}, presets = {}, page = 0 }
     IRGui.makePanel(L.details.x, L.details.y, L.details.w, L.details.h, "DETAILS")
-    IRGui.makePanel(L.assets.x, L.assets.y, L.assets.w, L.assets.h, "ASSETS")
-    IRGui.makeLabel(L.assets.x + 8, L.assets.y + 20, "ASSET PREVIEWS", nil, SMALL)
-    IRGui.makeLabel(L.assets.x + 8, L.assets.y + 30, "ARRIVE IN A LATER", nil, SMALL)
-    IRGui.makeLabel(L.assets.x + 8, L.assets.y + 40, "SLICE", nil, SMALL)
     return details
 end
 
@@ -73,10 +110,7 @@ local function add(details, id)
 end
 
 function M.clear(details)
-    for _, id in ipairs(details.widgets) do
-        IRGui.destroyWidget(id)
-    end
-    details.widgets = {}
+    WidgetList.clear(details.widgets)
     details.presets = {}
 end
 
@@ -151,6 +185,13 @@ function M.show(app, details, creation)
     local cols = L.details.cols
     local description
     if manifest then
+        local thumbnail = L.details.thumbnail
+        local thumbnailPath = M.thumbnailFor(creation, IRLauncher.preset(), app.assetBrowser.index)
+        add(details, IRGui.makeImage(thumbnail.x, thumbnail.y, thumbnail.w, thumbnail.h,
+            thumbnailPath))
+        if IRTest then
+            IRTest.report("thumbnail", thumbnailPath)
+        end
         description = manifest.description
     elseif creation.error then
         local e = creation.error
