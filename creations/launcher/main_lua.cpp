@@ -593,8 +593,8 @@ void registerLuaBindings() {
         script
             .registerTypesFromTraits<IRComponents::C_LocalTransform, IRComponents::C_VoxelSetNew>();
         script.registerCreateEntityFunction<
-             IRComponents::C_LocalTransform,
-             IRComponents::C_VoxelSetNew>("createPreviewEntity");
+            IRComponents::C_LocalTransform,
+            IRComponents::C_VoxelSetNew>("createPreviewEntity");
         script.bindLuaCommands();
         script.bindLuaViewport();
         script.bindLuaFiles();

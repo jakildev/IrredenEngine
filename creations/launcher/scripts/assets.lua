@@ -174,19 +174,28 @@ local function assetsOfKind(browser)
     return result
 end
 
-function M.rebuild(browser)
+function M.rebuild(browser, keepPreview)
     clearWidgets(browser)
-    clearPreview(browser)
+    if not keepPreview then
+        clearPreview(browser)
+    end
     local assets = assetsOfKind(browser)
-    for index = 1, math.min(#assets, L.assets.rows) do
-        local asset = assets[index]
-        local y = L.assets.rowTop + (index - 1) * L.assets.rowStep
+    browser.scroll = math.min(browser.scroll, math.max(0, #assets - L.assets.rows))
+    for slot = 1, L.assets.rows do
+        local asset = assets[browser.scroll + slot]
+        if not asset then
+            break
+        end
+        local y = L.assets.rowTop + (slot - 1) * L.assets.rowStep
         add(browser, IRGui.makeButton(L.assets.left, y, L.assets.listWidth, 14,
             basename(asset.path), function() preview(browser, asset) end, SMALL))
     end
     if #assets == 0 then
         add(browser, IRGui.makeLabel(L.assets.left, L.assets.rowTop, "NO ASSETS", nil, SMALL))
     end
+    local shown = math.min(#assets, L.assets.rows)
+    IRGui.setLabelText(browser.countLabel, string.format("%d-%d/%d",
+        #assets == 0 and 0 or browser.scroll + 1, browser.scroll + shown, #assets))
     return assets
 end
 
@@ -195,6 +204,7 @@ function M.new(app)
         app = app,
         index = IRCatalog.assets({ root = IRLauncher.catalogRoot() }),
         kind = 1,
+        scroll = 0,
         widgets = {},
         preview = { zoom = 8, yaw = 0, widgets = {} },
         sequence = {},
@@ -204,9 +214,22 @@ function M.new(app)
         local x = L.assets.left + (index - 1) * L.assets.tabStep
         IRGui.makeButton(x, L.assets.tabY, L.assets.tabWidth, 14, kind.label, function()
             browser.kind = index
+            browser.scroll = 0
             M.rebuild(browser)
         end, SMALL)
     end
+    IRGui.makeButton(L.assets.up.x, L.assets.up.y, L.assets.up.w, L.assets.up.h, "UP", function()
+        browser.scroll = math.max(0, browser.scroll - L.assets.rows + 1)
+        M.rebuild(browser, true)
+    end, SMALL)
+    IRGui.makeButton(L.assets.down.x, L.assets.down.y, L.assets.down.w, L.assets.down.h,
+        "DN", function()
+            local assets = assetsOfKind(browser)
+            browser.scroll = math.min(browser.scroll + L.assets.rows - 1,
+                math.max(0, #assets - L.assets.rows))
+            M.rebuild(browser, true)
+        end, SMALL)
+    browser.countLabel = IRGui.makeLabel(L.assets.count.x, L.assets.count.y, "", nil, SMALL)
     IRGui.makeButton(L.assets.ide.x, L.assets.ide.y, L.assets.ide.w, L.assets.ide.h,
         "IDE", function() M.openSelected(browser) end, SMALL)
     M.rebuild(browser)

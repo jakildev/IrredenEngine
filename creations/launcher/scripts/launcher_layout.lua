@@ -60,8 +60,11 @@ L.assets.tabWidth = 27
 L.assets.tabStep = 29
 L.assets.rowTop = 68
 L.assets.rowStep = 16
-L.assets.rows = 7
+L.assets.rows = 6
 L.assets.listWidth = 120
+L.assets.up = { x = 510, y = 164, w = 30, h = 16 }
+L.assets.down = { x = 544, y = 164, w = 30, h = 16 }
+L.assets.count = { x = 580, y = 168 }
 L.assets.metadataTop = 184
 L.assets.metadataStep = 10
 L.assets.metadataRows = 4
