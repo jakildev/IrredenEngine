@@ -2330,9 +2330,11 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     clear.use();
     device()->dispatchCompute(64, 128, 1);
     // The capture helper owns the synchronization of this pending GPU write.
-    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string()));
+    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string(), true));
     const std::string cleared = probe.contents();
     EXPECT_NE(cleared.find("# active=1\n"), std::string::npos);
+    EXPECT_NE(cleared.find("# geometry_records_captured=0\n"), std::string::npos);
+    EXPECT_EQ(cleared.find("# geometry_record_0="), std::string::npos);
     ASSERT_NE(cleared.find("# face_records_requested=0\n"), std::string::npos);
     EXPECT_NE(cleared.find("# spill_nodes_requested=0\n"), std::string::npos);
     EXPECT_NE(cleared.find("# tile_capacity=256\n"), std::string::npos);
@@ -2397,6 +2399,57 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     EXPECT_NE(captured.find("\n0,127,127,0,1,251,513,253,517\n"), std::string::npos);
     EXPECT_NE(captured.find("\n1,0,0,0,1,11,-7,19,9\n"), std::string::npos);
     EXPECT_NE(captured.find("\n1,127,127,257,0,1027,2025,1035,2041\n"), std::string::npos);
+    EXPECT_EQ(captured.find("# geometry_version="), std::string::npos);
+
+    const std::uint32_t recordCount = 1;
+    const std::array<std::uint32_t, Shadow::kSourceFaceRecordWords> record{
+        0x80000000u,
+        0x3F800000u,
+        0xC0000000u,
+        0x00000001u,
+        0x7F7FFFFFu,
+        0x3F000000u,
+        0u,
+        0xBF800000u,
+        0x40400000u,
+        0u
+    };
+    depth.subData(
+        Shadow::kSourceFaceHeaderOffset * sizeof(std::uint32_t),
+        sizeof(recordCount),
+        &recordCount
+    );
+    depth.subData(
+        Shadow::kSourceFaceRecordOffset * sizeof(std::uint32_t),
+        sizeof(record),
+        record.data()
+    );
+    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string(), true));
+    const auto geometry = probe.contents();
+    EXPECT_NE(geometry.find("# geometry_version=1\n"), std::string::npos);
+    EXPECT_NE(geometry.find("# geometry_records_captured=1\n"), std::string::npos);
+    EXPECT_NE(geometry.find("# geometry_record_words=10\n"), std::string::npos);
+    EXPECT_NE(
+        geometry.find(
+            "# "
+            "geometry_record_0=2147483648,1065353216,3221225472,1,2139095039,1056964608,0,"
+            "3212836864,1077936128,0\n"
+        ),
+        std::string::npos
+    );
+    EXPECT_EQ(geometry.find("# geometry_record_1="), std::string::npos);
+    const auto exhausted = Shadow::kSourceFaceCapacity + 1u;
+    depth.subData(
+        Shadow::kSourceFaceHeaderOffset * sizeof(std::uint32_t),
+        sizeof(exhausted),
+        &exhausted
+    );
+    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string(), true));
+    const auto partial = probe.contents();
+    EXPECT_NE(partial.find("# face_records_requested=65537\n"), std::string::npos);
+    EXPECT_NE(partial.find("# geometry_records_captured=65536\n"), std::string::npos);
+    EXPECT_NE(partial.find("# geometry_record_65535="), std::string::npos);
+    EXPECT_EQ(partial.find("# geometry_record_65536="), std::string::npos);
 }
 #endif
 

@@ -75,6 +75,16 @@ class SourceFaceIndexProbeTest(unittest.TestCase):
             self.assertEqual(result["point_tiles"], [{"cascade": 0, "x": 1, "y": 0,
                                                      "counter": 64, "complete": True}])
 
+    def test_read_capture_preserves_raw_record_words_and_table(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.csv.gz"
+            with gzip.open(path, "wt") as stream:
+                stream.write("# geometry_record_0=2147483648,1,0\n"
+                             "cascade,x,y,count,complete\n0,0,0,0,1\n")
+            metadata, lines = PROBE.read_capture(path)
+            self.assertEqual(metadata, {"geometry_record_0": "2147483648,1,0"})
+            self.assertEqual(lines, ["cascade,x,y,count,complete\n", "0,0,0,0,1\n"])
+
     def test_inactive_capture(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "tiles.csv"

@@ -87,6 +87,13 @@ coverage. Keep the known-failing
 as a correctness prerequisite: the sixteen-caster fallback is not an acceptable
 performance shortcut. Native Windows reproduction, a depth-preserving finite
 geometry query, and AC-powered Release throughput qualification remain next.
+A capture-only finite-geometry export and exact offline quad hierarchy now
+exercise depth-preserving pruning against actual GPU records. This is a layout
+experiment, not a production overflow fix: retain its rejection-heavy linear
+worst-case control, then measure conservative GPU construction and traversal
+before selecting the production representation. Analytic records, exhausted
+record pools and raster-only layers still need their own completeness treatment.
+See the [capacity experiment](sun-face-index-capacity.md#captured-finite-quad-hierarchy-experiment).
 For the private-canvas overlap controls, separate actual GPU work and CPU
 submission from Metal's synchronous presentation and offscreen pacing before
 selecting an optimization. Compare the existing shadows-off/unlit pairs, then
