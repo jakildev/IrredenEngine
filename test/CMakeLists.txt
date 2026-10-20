@@ -291,7 +291,6 @@ target_compile_definitions(IrredenEngineTest PRIVATE
     IR_FLOWER_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
     IR_CREATION_MANIFEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/asset/fixtures/creation_manifest"
     IR_CATALOG_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/catalog/fixtures"
-    IR_CREATION_MANIFEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/asset/fixtures/creation_manifest"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua

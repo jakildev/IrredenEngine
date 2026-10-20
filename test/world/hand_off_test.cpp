@@ -230,6 +230,30 @@ TEST(HandOffTest, DoesNotReuseAStaleResult) {
     std::filesystem::remove_all(root);
 }
 
+TEST(HandOffTest, OversizedResultFileYieldsNoVerdict) {
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / "ir_handoff_oversized_result";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "build");
+    StubPlatform platform;
+    platform.childHook_ = [](const std::vector<std::string> &argv) {
+        const auto result = std::ranges::find(argv, "--result-file");
+        ASSERT_NE(result, argv.end());
+        const std::filesystem::path resultPath = *std::next(result);
+        std::filesystem::create_directories(resultPath.parent_path());
+        std::ofstream output(resultPath);
+        output << R"({"verdict":"CLEAN","pad":")" << std::string(64 * 1024, 'x') << R"("})";
+    };
+    const HandOffOutcome outcome =
+        runHandOff(HandOffRequest{{"IRDemo"}}, wrapperOnly(), platform, root);
+
+    EXPECT_TRUE(outcome.result_.ok_);
+    ASSERT_TRUE(outcome.result_.exitCode_.has_value());
+    EXPECT_EQ(*outcome.result_.exitCode_, 0);
+    EXPECT_FALSE(outcome.result_.verdict_.has_value());
+    std::filesystem::remove_all(root);
+}
+
 TEST(HandOffTest, WithoutToolRootUsesNoBuildDirOrResultFile) {
     StubPlatform platform;
     const HandOffOutcome outcome = runHandOff(HandOffRequest{{"IRDemo"}}, wrapperOnly(), platform);

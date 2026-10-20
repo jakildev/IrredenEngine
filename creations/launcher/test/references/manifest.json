@@ -1,0 +1,14 @@
+{
+  "demo": "launcher",
+  "target": "IRLauncher",
+  "screenshot_subdir": "save_files/screenshots",
+  "demo_args": ["--catalog-root", "creations/launcher/test/fixture_root"],
+  "shots": ["launcher_main"],
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "notes": "The main screen over the fixture catalog with nothing selected: the tree, the empty details zone, the reserved assets zone and the one-line log. Nothing on it depends on the host's build state."
+}

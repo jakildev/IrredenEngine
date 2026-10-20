@@ -1,17 +1,18 @@
 {
   "version": 1,
   "name": "Lua pipeline",
-  "description": "Demonstrates the lua pipeline creation and its engine integration.",
+  "description": "A Lua pipeline composition example for entity creation and frame-system ordering.",
   "group": "lua/ecs",
   "tags": [
     "lua",
     "ecs"
   ],
   "kind": "demo",
+  "thumbnail": "test/references/macos-debug/lua_pipeline_demo_zoom4.png",
   "targets": [
     {
       "name": "IRLuaPipelineDemo",
-      "description": "Runs the lua pipeline creation.",
+      "description": "Runs the Lua-defined pipeline and its voxel scene.",
       "presets": [
         {
           "name": "Interactive",

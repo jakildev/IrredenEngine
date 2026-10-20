@@ -1,17 +1,18 @@
 {
   "version": 1,
   "name": "Shape debug",
-  "description": "Demonstrates the shape debug creation and its engine integration.",
+  "description": "The reference SDF shape scene for LOD, pivots, culling, and render verification.",
   "group": "render/shapes",
   "tags": [
     "render",
     "shapes"
   ],
   "kind": "demo",
+  "thumbnail": "test/references/macos-debug/zoom4_origin.png",
   "targets": [
     {
       "name": "IRShapeDebug",
-      "description": "Runs the shape debug creation.",
+      "description": "Runs the SDF shape-debug and render-verification reference scene.",
       "presets": [
         {
           "name": "Interactive",

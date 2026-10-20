@@ -113,11 +113,55 @@ TEST_F(LuaSpawnToolTest, RefusesUnknownAndUntypedInput) {
         "NUL byte"
     );
     expectRaises("IREngine.spawnTool{ tool = 'editor', path = '/etc' }", "inside the tool root");
+    expectRaises(
+        "IREngine.spawnTool{ tool = 'editor', path = 'creations', editor = 'vim' }",
+        "unknown editor"
+    );
+    expectRaises(
+        "IREngine.spawnTool{ tool = 'editor', path = 'creations', editor = 1 }",
+        "editor must be a string"
+    );
+    expectRaises(
+        "IREngine.spawnTool{ tool = 'open-folder', path = 'creations', editor = 'code' }",
+        "unknown key"
+    );
+}
+
+TEST_F(LuaSpawnToolTest, ListsTheFixedEditorTable) {
+    const sol::protected_function_result result = m_lua.lua().safe_script(
+        R"lua(
+            local editors = IREngine.toolEditors()
+            assert(#editors == 2)
+            assert(editors[1].name == "cursor" and editors[2].name == "code")
+            assert(type(editors[1].found) == "boolean" and type(editors[2].found) == "boolean")
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
 }
 
 TEST_F(LuaSpawnToolTest, RefusesOffMainThread) {
     m_mainThread = false;
     expectRaises("IREngine.spawnTool{ tool = 'ir-build', target = 'IRDemo' }", "main thread");
+}
+
+TEST_F(LuaSpawnToolTest, HandleMethodsRefuseOffMainThread) {
+    const sol::protected_function_result spawned = m_lua.lua().safe_script(
+        "handle = IREngine.spawnTool{ tool = 'ir-build', target = 'Sleep' }",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(spawned.valid()) << sol::error(spawned).what();
+
+    m_mainThread = false;
+    expectRaises("handle:poll()", "must be called from the main thread");
+    expectRaises("handle:exit()", "must be called from the main thread");
+    expectRaises("handle:kill()", "must be called from the main thread");
+    expectRaises("handle:droppedLines()", "must be called from the main thread");
+
+    m_mainThread = true;
+    const sol::protected_function_result killed =
+        m_lua.lua().safe_script("handle:kill()", sol::script_pass_on_error);
+    ASSERT_TRUE(killed.valid()) << sol::error(killed).what();
 }
 
 TEST_F(LuaSpawnToolTest, ExposesTheConfiguredRootReadOnly) {

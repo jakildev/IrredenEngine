@@ -1,0 +1,349 @@
+#!/usr/bin/env bash
+# ir-launcher — build, install and supervise IRLauncher for this checkout.
+#
+# The launcher builds into its own tree, <checkout>/build-launcher/, so a
+# broken <checkout>/build never takes it down, and it never runs the build
+# output: every successful build is copied into a versioned directory
+#
+#   build-launcher/installed/<id>/     one complete installed launcher
+#   build-launcher/installed/current   one line naming the live <id>
+#
+# and the launcher runs from the copy `current` names, through ir-run.
+# `current` is written only by the lock holder, only after the directory it
+# names is complete, and only by one atomic `mv -f`, so it names a runnable
+# launcher at every instant and the previous copy is never removed before the
+# new one is live.
+#
+# This script is the supervisor and never execs. It runs the installed
+# launcher and waits. Exit code 86 (the launcher's "Update launcher" button)
+# means: rebuild, install, run again. Any other code ends the loop with that
+# code. The update happens after the engine has exited, so nothing holds an
+# installed executable open while it runs.
+#
+# One writer per checkout: the supervisor holds build-launcher/lock/ for its
+# whole life and `--update` holds it from recovery to cleanup. A second
+# invocation does not wait; it prints the holder's pid and exits 1 without
+# touching installed/. The lock is the ir-acquire primitive from
+# engine/tools/lib/concurrency_helpers.sh, reached only through its functions.
+#
+# Stated limit: a supervisor killed with SIGKILL leaves its launcher running
+# under a dead holder pid; the next invocation takes the lock over.
+#
+# Usage:
+#   ir-launcher            build on first use, then run and supervise
+#   ir-launcher --update   one locked update (or first use), no launch;
+#                          exits non-zero when the build or install fails
+#
+# Source of truth: engine/tools/bin/ir-launcher in the engine repo.
+# Installed to ~/bin/ir-launcher (as a symlink) by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+    link="$(readlink "$SCRIPT_PATH")"
+    case "$link" in
+        /*) SCRIPT_PATH="$link" ;;
+        *)  SCRIPT_PATH="$(dirname "$SCRIPT_PATH")/$link" ;;
+    esac
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+HELPERS="$SCRIPT_DIR/../lib/concurrency_helpers.sh"
+IR_BUILD="$SCRIPT_DIR/ir-build"
+
+# The launcher's "Update launcher" exit code. Chosen apart from 0, 1, 2,
+# ir-run's 75 and 76, and the signal range from 128 up; IRLauncher's
+# main_lua.cpp returns the same value.
+UPDATE_REQUESTED_EXIT=86
+
+# Root-relative names: the script runs with cwd = $ROOT, and the launcher
+# opens the update log through its root-relative editor tool.
+TREE="build-launcher"
+INST="$TREE/installed"
+LOCK="$TREE/lock"
+LOG="$TREE/update.log"
+
+usage() {
+    sed -n '/^# Usage:/,/^# Source of truth/p' "$SCRIPT_PATH" | sed '$d' | sed 's/^# \{0,1\}//'
+}
+
+MODE="supervise"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --update) MODE="update" ;;
+        -h|--help) usage; exit 0 ;;
+        *)
+            echo "ir-launcher: unknown option '$1'" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+if [[ ! -f "$HELPERS" ]]; then
+    echo "ir-launcher: missing $HELPERS" >&2
+    exit 1
+fi
+# shellcheck source=../lib/concurrency_helpers.sh
+source "$HELPERS"
+
+IR_RUN="$(command -v ir-run 2>/dev/null || true)"
+[[ -n "$IR_RUN" ]] || IR_RUN="$SCRIPT_DIR/ir-run"
+
+cd "$ROOT"
+
+say() { echo "ir-launcher: $*" >&2; }
+
+# --- Children: never exec, never leave one behind ---------------------------
+
+CHILD=""
+HOLD_LOCK=0
+
+release_lock() {
+    if (( HOLD_LOCK )) && _ir_lock_owned_by "$LOCK" "$$" "$(ir_self_owner_token)"; then
+        _ir_lock_detach "$LOCK" || say "could not release $LOCK"
+    fi
+    HOLD_LOCK=0
+    return 0
+}
+
+on_signal() {
+    local name="$1" number="$2"
+    trap - INT TERM
+    if [[ -n "$CHILD" ]]; then
+        kill -"$name" "$CHILD" 2>/dev/null || true
+        wait "$CHILD" 2>/dev/null || true
+        CHILD=""
+    fi
+    exit $(( 128 + number ))
+}
+
+trap release_lock EXIT
+trap 'on_signal INT 2' INT
+trap 'on_signal TERM 15' TERM
+
+# run_child <cmd...> — runs <cmd> in the background, so a signal can be
+# forwarded to it, and returns its exit code. stdin is passed through
+# explicitly: a background job of a non-interactive shell otherwise reads
+# /dev/null.
+run_child() {
+    local rc=0
+    "$@" <&0 &
+    CHILD=$!
+    wait "$CHILD" || rc=$?
+    CHILD=""
+    return "$rc"
+}
+
+# --- Lock -------------------------------------------------------------------
+
+acquire_lock() {
+    mkdir -p "$TREE"
+    if _ir_try_lock "$LOCK"; then
+        HOLD_LOCK=1
+        return 0
+    fi
+    local holder
+    holder="$(_ir_lock_holder "$LOCK" 2>/dev/null || true)"
+    say "another ir-launcher (pid ${holder:-unknown}) holds $LOCK"
+    exit 1
+}
+
+# --- Installed copies ---------------------------------------------------------
+
+# has_exe <dir> — the directory holds an installed launcher executable.
+has_exe() {
+    [[ -f "$1/IRLauncher" || -f "$1/IRLauncher.exe" ]]
+}
+
+# read_current — sets LIVE to the <id> `current` names when that directory
+# holds the executable, else empty.
+read_current() {
+    LIVE=""
+    local id=""
+    [[ -f "$INST/current" ]] || return 0
+    { IFS= read -r id; } < "$INST/current" 2>/dev/null || true
+    case "$id" in
+        ""|*/*|*\\*|.|..) return 0 ;;
+    esac
+    if [[ -d "$INST/$id" ]] && has_exe "$INST/$id"; then
+        LIVE="$id"
+    fi
+    return 0
+}
+
+remove_dir() {
+    if ! rm -rf "$1" 2>/dev/null || [[ -e "$1" ]]; then
+        say "could not remove $1; retrying at the next recovery"
+    fi
+    return 0
+}
+
+# remove_others <id> — best effort: every installed/*/ but <id>.
+remove_others() {
+    local keep="$1" dir name
+    for dir in "$INST"/*/; do
+        [[ -d "$dir" ]] || continue
+        name="$(basename "$dir")"
+        [[ "$name" == "$keep" ]] && continue
+        remove_dir "$INST/$name"
+    done
+    return 0
+}
+
+# recover — runs under the lock before anything else reads installed/.
+# Drops interrupted staging copies; when `current` names a runnable copy,
+# drops every other copy too. Missing or dangling `current` leaves LIVE empty
+# and deletes nothing else: the caller runs first use.
+recover() {
+    local dir
+    for dir in "$INST"/*.staging/; do
+        [[ -d "$dir" ]] || continue
+        remove_dir "${dir%/}"
+    done
+    rm -f "$INST/current.tmp" 2>/dev/null || true
+    read_current
+    if [[ -n "$LIVE" ]]; then
+        remove_others "$LIVE"
+    fi
+    return 0
+}
+
+new_id() {
+    local stamp n=1
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    NEW_ID="$stamp-$$"
+    while [[ -e "$INST/$NEW_ID" || -e "$INST/$NEW_ID.staging" ]]; do
+        NEW_ID="$stamp-$$-$n"
+        n=$(( n + 1 ))
+    done
+}
+
+# built_exe_dir — the directory of the IRLauncher the last build produced.
+built_exe_dir() {
+    local exe
+    exe="$(find "$TREE" -path "$INST" -prune -o \
+        \( -name IRLauncher -o -name IRLauncher.exe \) -type f -print 2>/dev/null | head -n 1)"
+    [[ -n "$exe" ]] || return 1
+    dirname "$exe"
+}
+
+# install_new <carry-from-id> — update steps 1-4. Sets NEW_ID. Returns 1 when
+# a step fails; a step-4 failure leaves installed/$NEW_ID as an orphan for
+# the caller's cleanup.
+install_new() {
+    local carry="$1" built staging rc=0
+    NEW_ID=""
+    say "building IRLauncher in $TREE (log: $LOG)"
+    run_child env IRREDEN_BUILD_DIR="$ROOT/$TREE" "$IR_BUILD" --target IRLauncher \
+        > "$LOG" 2>&1 || rc=$?
+    if (( rc != 0 )); then
+        say "build failed (exit $rc); see $LOG"
+        return 1
+    fi
+    if ! built="$(built_exe_dir)"; then
+        say "build succeeded but no IRLauncher executable was found under $TREE"
+        echo "ir-launcher: no IRLauncher executable under $TREE" >> "$LOG"
+        return 1
+    fi
+
+    mkdir -p "$INST"
+    new_id
+    staging="$INST/$NEW_ID.staging"
+    if ! cp -R "$built" "$staging"; then
+        say "could not copy $built into $staging"
+        return 1
+    fi
+    rm -rf "$staging/CMakeFiles" "$staging/save_files"
+    if [[ -n "$carry" && -d "$INST/$carry/save_files" ]]; then
+        if ! cp -R "$INST/$carry/save_files" "$staging/save_files"; then
+            say "could not carry save_files from $INST/$carry"
+            return 1
+        fi
+    fi
+    if ! mv "$staging" "$INST/$NEW_ID"; then
+        say "could not complete $INST/$NEW_ID"
+        return 1
+    fi
+    if ! { printf '%s\n' "$NEW_ID" > "$INST/current.tmp" && \
+            mv -f "$INST/current.tmp" "$INST/current"; }; then
+        rm -f "$INST/current.tmp" 2>/dev/null || true
+        say "could not point $INST/current at $NEW_ID"
+        return 1
+    fi
+    say "installed $INST/$NEW_ID"
+    return 0
+}
+
+# update — recovery has run and LIVE names the running copy. Steps 1-5.
+update() {
+    local rc=0
+    install_new "$LIVE" || rc=$?
+    read_current
+    if [[ -n "$LIVE" ]]; then
+        remove_others "$LIVE"
+    fi
+    return "$rc"
+}
+
+# first_use — no runnable copy: steps 1-4, nothing to carry, nothing removed.
+first_use() {
+    say "no installed launcher; first use"
+    local rc=0
+    install_new "" || rc=$?
+    read_current
+    return "$rc"
+}
+
+# --- Modes --------------------------------------------------------------------
+
+run_update_once() {
+    acquire_lock
+    recover
+    if [[ -z "$LIVE" ]]; then
+        first_use
+    else
+        update
+    fi
+}
+
+supervise() {
+    local update_failed=0 rc
+    local -a args
+    acquire_lock
+    while :; do
+        recover
+        if [[ -z "$LIVE" ]]; then
+            if ! first_use || [[ -z "$LIVE" ]]; then
+                say "the launcher is not installed; fix the build and run ir-launcher again"
+                return 1
+            fi
+        fi
+        args=(--window-mode normal --supervised)
+        if (( update_failed )); then
+            args+=(--update-failed "$LOG")
+        fi
+        rc=0
+        run_child "$IR_RUN" --build-dir "$INST/$LIVE" IRLauncher "${args[@]}" || rc=$?
+        update_failed=0
+        if (( rc != UPDATE_REQUESTED_EXIT )); then
+            return "$rc"
+        fi
+        say "update requested"
+        recover
+        if [[ -z "$LIVE" ]]; then
+            first_use || update_failed=1
+        else
+            update || update_failed=1
+        fi
+    done
+}
+
+rc=0
+case "$MODE" in
+    update)    run_update_once || rc=$? ;;
+    supervise) supervise || rc=$? ;;
+esac
+exit "$rc"

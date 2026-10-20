@@ -296,6 +296,7 @@ its check. Every failure happens before a child is started.
   - The Lua handle is a value naming one run (an id plus a generation); it
     owns nothing. Garbage-collecting a handle does not stop the child.
   - A handle from an earlier run raises on `poll`, `exit` and `kill`.
+  - Every handle method raises off the main thread, as `spawnTool` does.
 - **There is no reader thread.** The service drains the pipe without
   blocking, on the main thread: on every `poll()`, and once per frame from
   the world loop while a run is live. On POSIX the read end is
@@ -306,9 +307,12 @@ its check. Every failure happens before a child is started.
 - **A kill takes the whole tree.** `ir-build` runs `cmake`, which runs
   Ninja and the compilers, so killing the wrapper alone would leave them
   running.
-  - On POSIX the child starts as the leader of a new process group. `kill()`
-    sends `SIGTERM` to the group, waits up to 2 s, then sends `SIGKILL` to
-    the group, and reaps the child with `waitpid`.
+  - On POSIX the child starts as the leader of a new process group, with
+    stdin on `/dev/null` so a read cannot stop it with `SIGTTIN`. `kill()`
+    sends `SIGTERM` to the group, waits up to 2 s for the child to be reaped
+    and the group to empty, then sends `SIGKILL` to the group, and reaps the
+    child with `waitpid`. A member that ignores `SIGTERM` dies at the
+    `SIGKILL` even when the child exited on the first signal.
   - On Windows the child starts suspended. It is assigned to a job object
     with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` before it resumes, and
     `kill()` is `TerminateJobObject` followed by the wait.

@@ -37,6 +37,9 @@ class ToolSpawnTest : public testing::Test {
             "#!/usr/bin/env bash\n"
             "if [[ \"$2\" == Sleep ]]; then echo \"parent:$$\"; sleep 10 & echo \"child:$!\"; "
             "wait; exit 0; fi\n"
+            "if [[ \"$2\" == IgnoreTerm ]]; then sh -c 'trap \"\" TERM; echo \"grandchild:$$\"; "
+            "while :; do sleep 0.1; done' & wait; exit 0; fi\n"
+            "if [[ \"$2\" == Stdin ]]; then read -r line || echo eof; exit 0; fi\n"
             "if [[ \"$2\" == Flood ]]; then for ((i=0; i<2058; ++i)); do echo \"line-$i\"; done; "
             "exit 0; fi\n"
             "if [[ \"$2\" == LongLine ]]; then for ((i=0; i<4096; ++i)); do "
@@ -196,6 +199,53 @@ TEST_F(ToolSpawnTest, KillReaps) {
 #endif
 }
 
+TEST_F(ToolSpawnTest, KillReachesAGroupMemberThatIgnoresSigterm) {
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX process group test";
+#else
+    auto spawned = m_service->spawn({IREngine::ToolName::IR_BUILD, "IgnoreTerm", ""});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    std::vector<std::string> lines;
+    for (int attempt = 0; attempt < 500 && !processId(lines, "grandchild:").has_value();
+         ++attempt) {
+        std::vector<std::string> next = spawned->poll();
+        lines.insert(lines.end(), next.begin(), next.end());
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const std::optional<int> grandchild = processId(lines, "grandchild:");
+    ASSERT_TRUE(grandchild.has_value());
+
+    spawned->kill();
+
+    const bool gone =
+        IRTest::waitFor([&]() { return !processExists(*grandchild); }, std::chrono::seconds(3));
+    if (!gone) {
+        ::kill(*grandchild, SIGKILL);
+    }
+    EXPECT_TRUE(gone);
+#endif
+}
+
+TEST_F(ToolSpawnTest, TreeChildReadsEofOnStdin) {
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX stub executable test";
+#else
+    auto spawned = m_service->spawn({IREngine::ToolName::IR_BUILD, "Stdin", ""});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    std::vector<std::string> lines;
+    for (int attempt = 0; attempt < 300 && !spawned->exitCode().has_value(); ++attempt) {
+        std::vector<std::string> next = spawned->poll();
+        lines.insert(lines.end(), next.begin(), next.end());
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    std::vector<std::string> next = spawned->poll();
+    lines.insert(lines.end(), next.begin(), next.end());
+    ASSERT_TRUE(spawned->exitCode().has_value());
+    EXPECT_EQ(*spawned->exitCode(), 0);
+    EXPECT_EQ(lines, (std::vector<std::string>{"eof"}));
+#endif
+}
+
 TEST_F(ToolSpawnTest, HandleDestructionLeavesTheChildRunning) {
     {
         auto spawned = m_service->spawn({IREngine::ToolName::IR_BUILD, "Sleep", ""});
@@ -320,6 +370,32 @@ TEST_F(ToolSpawnTest, ResolvesInRootSymlinksAndRemovesBuildDirectoryForEditor) {
         std::filesystem::weakly_canonical(m_root / "creations" / "inside")
     );
     EXPECT_EQ(lines[1], "unset");
+#endif
+}
+
+TEST_F(ToolSpawnTest, RunsTheNamedEditorAndRefusesNamesOutsideTheTable) {
+    const auto unknown = m_service->spawn({IREngine::ToolName::EDITOR, "", "creations", "vim"});
+    ASSERT_FALSE(unknown.has_value());
+    EXPECT_EQ(unknown.error(), "unknown editor 'vim'");
+    EXPECT_FALSE(m_service->spawn({IREngine::ToolName::EDITOR, "", "creations", "/usr/bin/cursor"})
+                     .has_value());
+    ASSERT_EQ(IREngine::editorNames().size(), 2);
+    EXPECT_EQ(IREngine::editorNames()[0], "cursor");
+    EXPECT_EQ(IREngine::editorNames()[1], "code");
+    EXPECT_FALSE(IREngine::editorAvailable("vim"));
+#ifndef _WIN32
+    EXPECT_TRUE(IREngine::editorAvailable("cursor"));
+    auto spawned = m_service->spawn({IREngine::ToolName::EDITOR, "", "creations/inside", "cursor"});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    for (int attempt = 0; attempt < 100 && !spawned->exitCode().has_value(); ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const std::vector<std::string> lines = spawned->poll();
+    ASSERT_EQ(lines.size(), 2);
+    EXPECT_EQ(
+        std::filesystem::weakly_canonical(lines[0]),
+        std::filesystem::weakly_canonical(m_root / "creations" / "inside")
+    );
 #endif
 }
 

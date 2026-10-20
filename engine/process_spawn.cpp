@@ -170,6 +170,12 @@ int decodeStatus(int status) {
     return -1;
 }
 
+/// A group outlives its leader while any member runs, so this stays true after
+/// the direct child is reaped.
+bool processGroupAlive(pid_t group) {
+    return kill(-group, 0) == 0 || errno != ESRCH;
+}
+
 #endif
 
 } // namespace
@@ -194,6 +200,9 @@ ChildProcess spawnChild(const SpawnChildRequest &request) {
     }
 
 #ifdef _WIN32
+    // Without this, DWM replaces a window that stops pumping messages for 5 s
+    // with a "Not Responding" ghost, and closing the ghost ends the process.
+    // The call is process-wide.
     DisableProcessWindowsGhosting();
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
     HANDLE outputRead = nullptr;
@@ -283,6 +292,11 @@ ChildProcess spawnChild(const SpawnChildRequest &request) {
         posix_spawn_file_actions_adddup2(&actions, outputPipe[1], STDERR_FILENO);
         posix_spawn_file_actions_addclose(&actions, outputPipe[0]);
         posix_spawn_file_actions_addclose(&actions, outputPipe[1]);
+    }
+    if (request.processTree_) {
+        // A tree child runs in a background process group, so a read from the
+        // terminal would stop it with SIGTTIN and leave the tool live forever.
+        posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
     }
     if (!request.cwd_.empty()) {
 #if defined(__APPLE__)
@@ -466,8 +480,8 @@ int killChild(ChildProcess &child) {
     kill(-child.state_->pid_, SIGTERM);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < deadline) {
-        if (const std::optional<int> code = pollChildExit(child); code.has_value()) {
-            return *code;
+        if (pollChildExit(child).has_value() && !processGroupAlive(child.state_->pid_)) {
+            return *child.state_->exitCode_;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }

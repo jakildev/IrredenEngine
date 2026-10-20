@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <deque>
+#include <functional>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
@@ -23,6 +24,7 @@ namespace {
 constexpr std::size_t kMaxBufferedLines = 2048;
 constexpr std::size_t kMaxBufferedLineBytes = 64 * 1024;
 constexpr std::size_t kMaxDrainBytesPerTick = 64 * 1024;
+constexpr std::string_view kEditorNames[] = {"cursor", "code"};
 
 std::optional<std::filesystem::path> fixedTool(std::string_view name) {
     const std::string wrapper = IRUtility::envString("IR_RUN_WRAPPER");
@@ -37,6 +39,14 @@ std::optional<std::filesystem::path> fixedTool(std::string_view name) {
         }
     }
     return IRUtility::findOnPath(name, {""});
+}
+
+std::optional<std::filesystem::path> findEditor(std::string_view name) {
+#ifdef _WIN32
+    return IRUtility::findOnPath(name, {".exe", ".cmd", ".bat"});
+#else
+    return IRUtility::findOnPath(name, {""});
+#endif
 }
 
 #ifdef _WIN32
@@ -54,6 +64,20 @@ bool isCommandScript(const std::filesystem::path &path) {
     throw sol::error{"IREngine.spawnTool: " + message};
 }
 
+void requireMainThread(const std::function<bool()> &isMainThread, const char *caller) {
+    if (!isMainThread()) {
+        throw sol::error{std::string{caller} + ": must be called from the main thread"};
+    }
+}
+
+template <typename Method>
+auto mainThreadOnly(const std::function<bool()> &isMainThread, Method method) {
+    return [isMainThread, method](ToolHandle &handle) {
+        requireMainThread(isMainThread, "IREngine tool handle");
+        return (handle.*method)();
+    };
+}
+
 void requireOnlyKeys(const sol::table &table, std::initializer_list<std::string_view> allowed) {
     for (const auto &[key, value] : table) {
         (void)value;
@@ -65,6 +89,17 @@ void requireOnlyKeys(const sol::table &table, std::initializer_list<std::string_
             raise("unknown key '" + std::string{name} + "'");
         }
     }
+}
+
+std::optional<std::string> optionalString(const sol::table &table, const char *name) {
+    const sol::object value = table[name];
+    if (!value.valid() || value.get_type() == sol::type::lua_nil) {
+        return std::nullopt;
+    }
+    if (value.get_type() != sol::type::string) {
+        raise(std::string{name} + " must be a string");
+    }
+    return value.as<std::string>();
 }
 
 std::string requiredString(const sol::table &table, const char *name) {
@@ -80,6 +115,15 @@ std::string requiredString(const sol::table &table, const char *name) {
 }
 
 } // namespace
+
+std::span<const std::string_view> editorNames() {
+    return kEditorNames;
+}
+
+bool editorAvailable(std::string_view name) {
+    return std::ranges::find(kEditorNames, name) != std::ranges::end(kEditorNames) &&
+           findEditor(name).has_value();
+}
 
 struct ToolService::Impl {
     std::optional<std::filesystem::path> root_;
@@ -138,11 +182,11 @@ struct ToolService::Impl {
     }
 
     void drain() {
-        const std::string output = detail::readChildOutput(child_, kMaxDrainBytesPerTick);
-        consume(output);
         if (!exitCode_.has_value()) {
             exitCode_ = detail::pollChildExit(child_);
         }
+        const std::string output = detail::readChildOutput(child_, kMaxDrainBytesPerTick);
+        consume(output);
         if (exitCode_.has_value() && output.size() < kMaxDrainBytesPerTick) {
             if (!droppingPartial_ && !partial_.empty()) {
                 pushLine(std::move(partial_));
@@ -264,17 +308,20 @@ std::expected<ToolHandle, std::string> ToolService::spawn(const ToolSpawnRequest
         }
         std::optional<std::filesystem::path> tool;
         if (request.tool_ == ToolName::EDITOR) {
-#ifdef _WIN32
-            tool = IRUtility::findOnPath("cursor", {".exe", ".cmd", ".bat"});
-            if (!tool.has_value()) {
-                tool = IRUtility::findOnPath("code", {".exe", ".cmd", ".bat"});
+            if (request.editor_.empty()) {
+                for (const std::string_view name : kEditorNames) {
+                    tool = findEditor(name);
+                    if (tool.has_value()) {
+                        break;
+                    }
+                }
+            } else if (
+                std::ranges::find(kEditorNames, request.editor_) == std::ranges::end(kEditorNames)
+            ) {
+                return std::unexpected("unknown editor '" + request.editor_ + "'");
+            } else {
+                tool = findEditor(request.editor_);
             }
-#else
-            tool = IRUtility::findOnPath("cursor", {""});
-            if (!tool.has_value()) {
-                tool = IRUtility::findOnPath("code", {""});
-            }
-#endif
         } else {
 #ifdef _WIN32
             tool = IRUtility::findOnPath("explorer", {".exe", ".cmd", ".bat"});
@@ -285,10 +332,12 @@ std::expected<ToolHandle, std::string> ToolService::spawn(const ToolSpawnRequest
 #endif
         }
         if (!tool.has_value()) {
+            if (request.tool_ != ToolName::EDITOR) {
+                return std::unexpected("the platform folder opener was not found on PATH");
+            }
             return std::unexpected(
-                request.tool_ == ToolName::EDITOR
-                    ? "no supported editor was found on PATH"
-                    : "the platform folder opener was not found on PATH"
+                request.editor_.empty() ? "no supported editor was found on PATH"
+                                        : "editor '" + request.editor_ + "' was not found on PATH"
             );
         }
 #ifdef _WIN32
@@ -357,19 +406,17 @@ void bindToolSpawnLua(
         "IREngineToolHandle",
         sol::no_constructor,
         "poll",
-        &ToolHandle::poll,
+        mainThreadOnly(isMainThread, &ToolHandle::poll),
         "exit",
-        &ToolHandle::exitCode,
+        mainThreadOnly(isMainThread, &ToolHandle::exitCode),
         "kill",
-        &ToolHandle::kill,
+        mainThreadOnly(isMainThread, &ToolHandle::kill),
         "droppedLines",
-        &ToolHandle::droppedLines
+        mainThreadOnly(isMainThread, &ToolHandle::droppedLines)
     );
     engine["spawnTool"] = IRScript::detail::statefulLuaFunction(
         [&service, isMainThread = std::move(isMainThread)](const sol::object &arg) {
-            if (!isMainThread()) {
-                raise("must be called from the main thread");
-            }
+            requireMainThread(isMainThread, "IREngine.spawnTool");
             if (arg.get_type() != sol::type::table) {
                 raise("expects a table");
             }
@@ -380,9 +427,14 @@ void bindToolSpawnLua(
                 requireOnlyKeys(requestTable, {"tool", "target"});
                 request.tool_ = ToolName::IR_BUILD;
                 request.target_ = requiredString(requestTable, "target");
-            } else if (tool == "editor" || tool == "open-folder") {
+            } else if (tool == "editor") {
+                requireOnlyKeys(requestTable, {"tool", "path", "editor"});
+                request.tool_ = ToolName::EDITOR;
+                request.path_ = requiredString(requestTable, "path");
+                request.editor_ = optionalString(requestTable, "editor").value_or("");
+            } else if (tool == "open-folder") {
                 requireOnlyKeys(requestTable, {"tool", "path"});
-                request.tool_ = tool == "editor" ? ToolName::EDITOR : ToolName::OPEN_FOLDER;
+                request.tool_ = ToolName::OPEN_FOLDER;
                 request.path_ = requiredString(requestTable, "path");
             } else {
                 raise("unknown tool '" + tool + "'");
@@ -394,6 +446,18 @@ void bindToolSpawnLua(
             return std::move(*handle);
         }
     );
+    engine["toolEditors"] = [](sol::this_state state) {
+        sol::state_view view{state};
+        sol::table entries = view.create_table(static_cast<int>(std::size(kEditorNames)), 0);
+        lua_Integer index = 1;
+        for (const std::string_view name : kEditorNames) {
+            sol::table entry = view.create_table(0, 2);
+            entry["name"] = std::string{name};
+            entry["found"] = editorAvailable(name);
+            entries[index++] = entry;
+        }
+        return entries;
+    };
     engine["toolRoot"] = [&service]() -> sol::optional<std::string> {
         const auto root = service.root();
         return root.has_value() ? sol::optional<std::string>{root->string()} : sol::nullopt;

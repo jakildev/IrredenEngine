@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Default creation",
-  "description": "Demonstrates the default creation creation and its engine integration.",
+  "description": "The reference Lua-driven creation with ECS motion, input, rendering, and MIDI wiring.",
   "group": "lua/ecs",
   "tags": [
     "lua",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRCreationDefault",
-      "description": "Runs the default creation creation.",
+      "description": "Launches the default Lua gameplay and rendering reference scene.",
       "presets": [
         {
           "name": "Interactive",

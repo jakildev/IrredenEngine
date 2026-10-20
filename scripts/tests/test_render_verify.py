@@ -638,6 +638,20 @@ class DemoResolution(unittest.TestCase):
             _resolve_demo_dir(self.worktree, "IRVoxelEditor", None),
             editor)
 
+    def test_declared_targets_include_standalone_creations(self):
+        refs = self.worktree / "creations" / "launcher" / "test" / "references"
+        refs.mkdir(parents=True)
+        (refs / "manifest.json").write_text(json.dumps(
+            {"demo": "launcher", "target": "IRLauncher", "shots": ["s0"]}))
+        private = self.worktree / "creations" / "private_game" / "test" / "references"
+        private.mkdir(parents=True)
+        (private / "manifest.json").write_text(json.dumps(
+            {"demo": "private_game", "target": "IRPrivate", "shots": ["s0"]}))
+        self.assertEqual(_declared_targets(self.worktree), {"IRLauncher": "launcher"})
+        self.assertEqual(
+            _resolve_demo_dir(self.worktree, "IRLauncher", None),
+            self.worktree / "creations" / "launcher")
+
     def test_manifest_without_target_is_ignored_not_fatal(self):
         self._demo("legacy", None)          # "target": null
         self._demo("lighting", "IRLightingSdfBlocker")
@@ -722,8 +736,7 @@ class CommittedManifestsResolve(unittest.TestCase):
     """
 
     def _manifests(self):
-        return sorted(path for root in _rv._manifest_roots(REPO_ROOT)
-                      for path in root.glob(_rv.MANIFEST_GLOB))
+        return _rv._manifest_paths(REPO_ROOT)
 
     def test_every_committed_manifest_declares_a_target(self):
         missing = [str(p.relative_to(REPO_ROOT)) for p in self._manifests()

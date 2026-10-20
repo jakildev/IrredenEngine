@@ -7,16 +7,18 @@
 
 #include <sol/sol.hpp>
 
+#include <chrono>
+#include <filesystem>
 #include <string>
 
 namespace {
 
 // Owns the managers `bindLuaDrivenEcs()` touches. Exercises the IRSave
 // surface in-memory only — set/get/has/remove/clear + the Lua<->Value type
-// conversion. The file I/O path (IRSave.load/save) resolves to the real
-// per-user data dir, so it is covered by the hermetic C++ KeyValueStore
-// FileRoundTrip test (writing to /tmp) rather than here, to keep this test
-// from touching the developer's home directory.
+// conversion. The default file I/O path (IRSave.load/save) resolves to the
+// real per-user data dir, so file I/O here runs only after bindLuaSave points
+// the stores at a temp directory, keeping the test out of the developer's
+// home directory.
 class LuaPersistenceTest : public testing::Test {
   protected:
     LuaPersistenceTest()
@@ -122,6 +124,33 @@ TEST_F(LuaPersistenceTest, NonArrayTableIsRejected) {
 TEST_F(LuaPersistenceTest, NestedListIsRejected) {
     // Lists do not nest in v1.
     EXPECT_TRUE(raisesError("IRSave.set('s', 'bad', { { 1, 2 }, { 3, 4 } })"));
+}
+
+TEST_F(LuaPersistenceTest, BindLuaSaveRootsStoresInTheGivenDirectory) {
+    const std::filesystem::path directory =
+        std::filesystem::temp_directory_path() /
+        ("ir_lua_save_" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())) /
+        "save_files";
+    m_lua.bindLuaSave(directory);
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(
+                        R"(
+        IRSave.set("settings", "editor", "code")
+        IRSave.set("settings", "favourites", { "creations/demos/a" })
+        assert(IRSave.save("settings"))
+        IRSave.clear("settings")
+        assert(IRSave.get("settings", "editor") == nil)
+        assert(IRSave.load("settings"))
+    )",
+                        sol::script_pass_on_error
+                    )
+                    .valid());
+    EXPECT_TRUE(std::filesystem::is_regular_file(directory / "settings.irkv"));
+    EXPECT_TRUE(evalTrue("IRSave.get('settings', 'editor') == 'code'"));
+    EXPECT_TRUE(evalTrue("IRSave.get('settings', 'favourites')[1] == 'creations/demos/a'"));
+    std::error_code error;
+    std::filesystem::remove_all(directory.parent_path(), error);
 }
 
 } // namespace

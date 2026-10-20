@@ -205,37 +205,43 @@ float sampleCascadeShadow(
             ivec2 px = base + ivec2(dx, dy);
             if (px.x < 0 || px.x >= kSunShadowMapDim ||
                 px.y < 0 || px.y >= kSunShadowMapDim) continue;
-            uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
-            if (!surfaceReceiver && hasSourceFaces)
-                stored = min(stored, sunDepthBuf[kSourceFaceFallbackOffset + bufferOffset + px.y * kSunShadowMapDim + px.x]);
-            if (stored == 0xFFFFFFFFu || (surfaceReceiver && sunWriteIsSurface(stored))) continue;
-            float nearestZ = unpackSunDepth(stored);
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
-            // Far shadow-throw window — raw sun-Z gap to the stored occluder, on
-            // BOTH tap regimes. maxShadowThrow == the feeder / bake sweep
-            // (kSunShadowMaxDistance) so a baked caster is receivable at its full
-            // throw.
-            float depthDiff = sunZ - nearestZ;
-            if (depthDiff - bias >= maxShadowThrow) continue;
+            // Range and plane rejection are per layer; a nearer invalid tap
+            // cannot erase a valid blocker retained in the other layer.
+            const int layerCount = !surfaceReceiver && hasSourceFaces ? 2 : 1;
+            for (int layer = 0; layer < layerCount; ++layer) {
+                uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x
+                    + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
+                if (stored == 0xFFFFFFFFu || (surfaceReceiver && sunWriteIsSurface(stored))) continue;
+                float nearestZ = unpackSunDepth(stored);
+                // Far shadow-throw window — raw sun-Z gap to the stored occluder, on
+                // BOTH tap regimes. maxShadowThrow == the feeder / bake sweep
+                // (kSunShadowMaxDistance) so a baked caster is receivable at its full
+                // throw.
+                float depthDiff = sunZ - nearestZ;
+                if (depthDiff - bias >= maxShadowThrow) continue;
 
-            if (sunWriteIsDirect(stored) || sunWriteIsSurface(stored)) {
-                // Direct writes compare caster depth without splat-plane recovery.
-                if (depthDiff > bias) shadowAccum += weight;
-            } else {
-                // Coverage-SPLAT neighbour: the winning depth was written from a
-                // caster `offset` texels away. Reconstruct that origin and test
-                // whether the occluder lies in the RECEIVER's OWN plane. A same-face
-                // self-hit extrapolates to ~nearestZ (h ~ 0 -> lit, at ANY splat
-                // distance and face tilt). A genuine cast sits far above the plane
-                // (h ~ caster height >> bias -> shadow at the base tolerance, no
-                // widening, whatever the caster-floor gap).
-                ivec2 offset = unpackSunSplatOffset(stored);
-                ivec2 originTexel = px - offset;
-                vec2 originUV = origin + (vec2(originTexel) + 0.5) * texelSz;
-                float expectedZ = sunZ + dot(gradUV, originUV - sunUV);
-                float h = expectedZ - nearestZ;
-                if (h > bias) shadowAccum += weight;
+                if (sunWriteIsDirect(stored) || sunWriteIsSurface(stored)) {
+                    // Direct writes compare caster depth without splat-plane recovery.
+                    if (depthDiff <= bias) continue;
+                } else {
+                    // Coverage-SPLAT neighbour: the winning depth was written from a
+                    // caster `offset` texels away. Reconstruct that origin and test
+                    // whether the occluder lies in the RECEIVER's OWN plane. A same-face
+                    // self-hit extrapolates to ~nearestZ (h ~ 0 -> lit, at ANY splat
+                    // distance and face tilt). A genuine cast sits far above the plane
+                    // (h ~ caster height >> bias -> shadow at the base tolerance, no
+                    // widening, whatever the caster-floor gap).
+                    ivec2 offset = unpackSunSplatOffset(stored);
+                    ivec2 originTexel = px - offset;
+                    vec2 originUV = origin + (vec2(originTexel) + 0.5) * texelSz;
+                    float expectedZ = sunZ + dot(gradUV, originUV - sunUV);
+                    float h = expectedZ - nearestZ;
+                    if (h <= bias) continue;
+                }
+                shadowAccum += weight;
+                break;
             }
         }
     }

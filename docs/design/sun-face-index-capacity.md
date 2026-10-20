@@ -52,3 +52,26 @@ This extends exact coverage at moderate overlap; it does not solve arbitrary
 density, record-pool exhaustion, sampled receiver placement or cascade clipping.
 Larger workloads need measured hierarchy or range-compaction work, not a larger
 unconditional scan, blur or a shadow-bias adjustment.
+
+### Overlapping casters and finite shadow range
+
+Occlusion is a union of blockers inside the receiver's shadow-distance window.
+Adding an opaque caster must not remove an existing blocker at a fixed receiver.
+The two sampled depth layers are therefore tested independently, including their
+range and splat-plane rejection, before a tap contributes its filter weight once.
+Taking the minimum depth across layers before rejection loses valid blockers.
+
+This does not recover depths lost **within** either layer. A single nearest-depth
+sample cannot answer an arbitrary bounded interval query: if receiver depth is
+10, a lower caster is at 2 and the throw limit is 100, adding a caster at -120
+replaces 2 with -120; the stored caster is then too distant. Complete finite-face
+queries still find the lower caster. Incomplete tiles and raster-only casters
+can lose it. Increasing bias, blending or accepting every retained partial-list
+hit does not restore the missing information.
+
+Pending work is a measured representation/query change that retains the needed
+depth intervals without unbounded global scans. It must preserve the finite
+throw limit and allocation-order independence. The moving-block report also
+needs native Windows scene reproduction; this mechanism alone does not identify
+every visible speckle. [Sampler controls and scene evidence](../pr-screenshots/codex/overlapping-caster-shadow/README.md)
+separate the corrected cross-layer case from that remaining limitation.

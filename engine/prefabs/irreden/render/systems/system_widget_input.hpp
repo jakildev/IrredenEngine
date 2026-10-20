@@ -40,8 +40,10 @@ namespace IRSystem {
 // **Keyboard focus**: a single `focusedWidgetId_` is tracked.
 // Tab (forward) / Shift+Tab (backward) cycles through non-disabled widgets
 // that do not capture keyboard editing. Text inputs and number fields gain
-// focus by pointer click and release it on Tab without transferring focus on
-// that press.
+// focus by pointer click or by `IRPrefab::Widget::focus()`, and release it on
+// Tab without transferring focus on that press. A `focus()` request lands at
+// the start of the next beginTick, so the key that asked for it never reaches
+// the newly focused editor.
 //
 // **Hotkey dispatch**: each `beginTick` fires registered callbacks from
 // `IRPrefab::Widget::getHotkeyRegistry()` for any matching PRESSED key
@@ -81,6 +83,10 @@ template <> struct System<WIDGET_INPUT> {
     }
 
     void beginTick() {
+        const IREntity::EntityId requested = IRPrefab::Widget::takeFocusRequest();
+        if (requested != IREntity::kNullEntity && IREntity::entityExists(requested)) {
+            focusedWidgetId_ = requested;
+        }
         keyboardWidgetFocusedAtStart_ = hasFocusedKeyboardWidget();
         mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
 
@@ -253,6 +259,7 @@ template <> struct System<WIDGET_INPUT> {
     }
 
     static SystemId create() {
+        IRPrefab::Widget::ensureFocusRequestSingleton();
         return registerSystem<
             WIDGET_INPUT,
             IRComponents::C_Widget,

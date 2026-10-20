@@ -1,16 +1,17 @@
 {
   "version": 1,
   "name": "UI widgets",
-  "description": "Demonstrates the ui widgets creation and its engine integration.",
+  "description": "The trixel GUI widget gallery, including image placeholders and scripted UI checks.",
   "group": "ui",
   "tags": [
     "ui"
   ],
   "kind": "demo",
+  "thumbnail": "test/references/macos-debug/widgets_idle.png",
   "targets": [
     {
       "name": "IRUIWidgetsDemo",
-      "description": "Runs the ui widgets creation.",
+      "description": "Shows the interactive trixel GUI widget set and image states.",
       "presets": [
         {
           "name": "Interactive",

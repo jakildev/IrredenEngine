@@ -1,17 +1,18 @@
 {
   "version": 1,
   "name": "Fog demo",
-  "description": "Demonstrates the fog demo creation and its engine integration.",
+  "description": "A fog-of-war scene covering visible, explored, and unexplored render states.",
   "group": "render/fog",
   "tags": [
     "render",
     "fog"
   ],
   "kind": "demo",
+  "thumbnail": "test/references/macos-debug/fog_ceiling9.png",
   "targets": [
     {
       "name": "IRFogDemo",
-      "description": "Runs the fog demo creation.",
+      "description": "Renders fog-of-war transitions and an optional moving observer.",
       "presets": [
         {
           "name": "Interactive",

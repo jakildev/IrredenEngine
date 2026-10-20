@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "MIDI device",
-  "description": "Demonstrates the midi device creation and its engine integration.",
+  "description": "MIDI device input and keyboard-event visualization.",
   "group": "audio-midi",
   "tags": [
     "audio-midi"
@@ -10,7 +10,8 @@
   "targets": [
     {
       "name": "DemoMidiDevice",
-      "description": "Runs the midi device creation.",
+      "display": "MIDI device",
+      "description": "Receives and displays MIDI device input.",
       "presets": [
         {
           "name": "Interactive",
