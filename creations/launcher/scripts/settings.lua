@@ -5,6 +5,7 @@
 -- falls back to the first entry that is.
 
 local L = require("launcher_layout")
+local WidgetList = require("widget_list")
 
 local M = {}
 
@@ -107,10 +108,7 @@ local function add(settings, id)
 end
 
 function M.close(settings)
-    for _, id in ipairs(settings.widgets) do
-        IRGui.destroyWidget(id)
-    end
-    settings.widgets = {}
+    WidgetList.clear(settings.widgets)
     settings.dropdown = nil
     settings.open = false
 end

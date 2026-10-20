@@ -54,6 +54,24 @@ L.settings.revert = { x = 262, y = 160, w = 60, h = 16 }
 L.settings.close = { x = 326, y = 160, w = 54, h = 16 }
 
 L.assets = { x = 504, y = 30, w = 136, h = 450 }
+L.assets.left = 510
+L.assets.tabY = 48
+L.assets.tabWidth = 27
+L.assets.tabStep = 29
+L.assets.rowTop = 68
+L.assets.rowStep = 16
+L.assets.rows = 6
+L.assets.listWidth = 120
+L.assets.up = { x = 510, y = 164, w = 30, h = 16 }
+L.assets.down = { x = 544, y = 164, w = 30, h = 16 }
+L.assets.count = { x = 580, y = 168 }
+L.assets.metadataTop = 184
+L.assets.metadataStep = 10
+L.assets.metadataRows = 4
+L.assets.preview = { x = 510, y = 230, w = 120, h = 180 }
+L.assets.ide = { x = 590, y = 414, w = 40, h = 16 }
+
+L.details.thumbnail = { x = 412, y = 64, w = 82, h = 54 }
 
 L.log = { x = 0, y = 482, w = 640, h = 238 }
 L.log.result = { x = 8, y = 500 }

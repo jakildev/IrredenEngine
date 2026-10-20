@@ -1,8 +1,8 @@
 #include <irreden/ir_catalog.hpp>
-
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <string_view>
 
 namespace {
 
@@ -12,6 +12,16 @@ const IRCatalog::AssetEntry *
 findAsset(const IRCatalog::AssetIndex &index, IRCatalog::AssetKind kind) {
     for (const auto &entry : index.entries_) {
         if (entry.kind_ == kind) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+const IRCatalog::AssetEntry *
+findAssetPath(const IRCatalog::AssetIndex &index, std::string_view path) {
+    for (const auto &entry : index.entries_) {
+        if (entry.path_ == path) {
             return &entry;
         }
     }
@@ -36,13 +46,29 @@ TEST(CatalogAssetsTest, FixtureTree) {
     EXPECT_EQ(prefab->parts_[1], "crown");
     EXPECT_EQ(prefab->fields_.at("part_count"), "2");
 
-    const auto *png = findAsset(index, IRCatalog::AssetKind::PNG);
+    const auto *png = findAssetPath(index, "test/references/fixture.png");
     ASSERT_NE(png, nullptr);
     EXPECT_EQ(png->path_, "test/references/fixture.png");
 
     const auto *data = findAsset(index, IRCatalog::AssetKind::DATA);
     ASSERT_NE(data, nullptr);
     EXPECT_EQ(data->path_, "creations/demos/valid/data/readme.txt");
+}
+
+TEST(CatalogAssetsTest, IndexesCreationReferencesAndScreenshots) {
+    const IRCatalog::CatalogService service(kFixtureRoot);
+    const auto index = service.assets();
+
+    bool foundReference = false;
+    bool foundScreenshot = false;
+    for (const auto &entry : index.entries_) {
+        foundReference =
+            foundReference || entry.path_ == "creations/demos/valid/test/references/reference.png";
+        foundScreenshot = foundScreenshot ||
+                          entry.path_ == "creations/demos/valid/save_files/screenshots/capture.png";
+    }
+    EXPECT_TRUE(foundReference);
+    EXPECT_TRUE(foundScreenshot);
 }
 
 } // namespace

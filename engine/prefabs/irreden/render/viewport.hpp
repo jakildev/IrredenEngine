@@ -490,6 +490,11 @@ inline IREntity::EntityId drawnSubject(IREntity::EntityId viewport) {
     return camera != nullptr ? camera->drawnSubject_ : IREntity::kNullEntity;
 }
 
+inline bool subjectOversize(IREntity::EntityId viewport) {
+    const auto *camera = detail::cameraOrNull(viewport);
+    return camera != nullptr && camera->subjectOversize_;
+}
+
 inline IREntity::EntityId canvasOf(IREntity::EntityId viewport) {
     const auto *camera = detail::cameraOrNull(viewport);
     return camera != nullptr ? camera->canvasEntity_ : IREntity::kNullEntity;

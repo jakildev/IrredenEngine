@@ -87,12 +87,22 @@ TEST_F(LuaViewportBindingsTest, ExposesTheCompleteSurface) {
     EXPECT_TRUE(scriptSucceeds(R"lua(
         local names = {
             'createViewport', 'setViewportRect', 'setViewportCamera', 'setViewportFocus',
-            'setViewportVisible', 'setViewportSubject', 'getViewportSubject', 'destroyViewport'
+            'setViewportVisible', 'setViewportSubject', 'getViewportSubject',
+            'viewportSubjectOversize', 'destroyViewport'
         }
         for _, name in ipairs(names) do
             assert(type(IRRender[name]) == 'function', name)
         end
     )lua"));
+}
+
+TEST_F(LuaViewportBindingsTest, ViewportSubjectOversizeReadsTheSyncVerdict) {
+    const IREntity::EntityId viewport = createViewport("{}");
+    m_lua.lua()["viewport"] = static_cast<lua_Integer>(viewport);
+    EXPECT_TRUE(scriptSucceeds("assert(not IRRender.viewportSubjectOversize(viewport))"));
+
+    IREntity::getComponent<C_ViewportCamera>(viewport).subjectOversize_ = true;
+    EXPECT_TRUE(scriptSucceeds("assert(IRRender.viewportSubjectOversize(viewport))"));
 }
 
 TEST_F(LuaViewportBindingsTest, CreateViewportAppliesTheOptionsTable) {

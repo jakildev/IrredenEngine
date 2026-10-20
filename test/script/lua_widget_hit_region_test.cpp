@@ -101,6 +101,9 @@ TEST_F(LuaWidgetHitRegion, BareRegionBuildsTheWidget) {
     EXPECT_EQ(widget.zOrder_, 0);
     EXPECT_EQ(IREntity::getComponent<C_GuiPosition>(region).pos_, IRMath::ivec2(16, 42));
     EXPECT_EQ(IREntity::getComponent<C_HitBox2DGui>(region).size_, IRMath::ivec2(300, 9));
+    run("assert(not IRGui.isPressed(region))");
+    state(region).pressed_ = true;
+    run("assert(IRGui.isPressed(region))");
 }
 
 TEST_F(LuaWidgetHitRegion, ZOrderOptionIsAppliedAndClampedBelowTheDropdownBias) {

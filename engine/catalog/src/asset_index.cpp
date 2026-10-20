@@ -163,15 +163,32 @@ AssetIndex CatalogService::assets(std::string_view root) const {
     const std::filesystem::recursive_directory_iterator end;
     while (!error && iterator != end) {
         const auto &entry = *iterator;
+        const bool isDirectory = entry.is_directory(error);
         if (entry.is_symlink(error)) {
-            if (entry.is_directory(error)) {
+            if (isDirectory) {
                 iterator.disable_recursion_pending();
             }
-        } else if (entry.is_directory(error) && detail::skipDirectory(entry.path())) {
+        } else if (isDirectory && detail::skipDirectory(entry.path())) {
             iterator.disable_recursion_pending();
-        } else if (entry.is_directory(error) && entry.path().filename() == "data") {
+        } else if (isDirectory && entry.path().filename() == "data") {
             addFiles(index, entry.path(), m_toolRoot, AssetKind::DATA, [](const auto &) {
                 return true;
+            });
+            iterator.disable_recursion_pending();
+        } else if (
+            isDirectory && entry.path().filename() == "references" &&
+            entry.path().parent_path().filename() == "test"
+        ) {
+            addFiles(index, entry.path(), m_toolRoot, AssetKind::PNG, [](const auto &path) {
+                return hasExtension(path, ".png");
+            });
+            iterator.disable_recursion_pending();
+        } else if (
+            isDirectory && entry.path().filename() == "screenshots" &&
+            entry.path().parent_path().filename() == "save_files"
+        ) {
+            addFiles(index, entry.path(), m_toolRoot, AssetKind::PNG, [](const auto &path) {
+                return hasExtension(path, ".png");
             });
             iterator.disable_recursion_pending();
         }
