@@ -111,6 +111,8 @@ fleet-review-verdict verdict-approve-nits <N> --agent <your-worktree-name>     #
 fleet-review-verdict verdict-needs-fix <N> --agent <your-worktree-name>
 ```
 
+For a non-default repository, append `--repo engine|game|<owner/name>`.
+
 A send-back is always `verdict-needs-fix` — there is no severity-specific
 edge (the severity verdict was retired in #3077: no lane consumed it).
 When the approach itself is wrong, add `fleet:fable` so the fix dispatches
