@@ -2401,3 +2401,103 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
 #endif
 
 } // namespace
+
+#if defined(IR_GRAPHICS_OPENGL) || defined(IR_GRAPHICS_METAL)
+#include <irreden/render/gui_text_batch.hpp>
+
+namespace {
+#if defined(IR_GRAPHICS_METAL)
+using GlyphDispatchTest = MetalGpuComputeDispatchTest;
+#else
+using GlyphDispatchTest = GpuComputeDispatchTest;
+#endif
+
+// Two full chunks plus a partial one, each command painting its own texel in a
+// colour that encodes its index: a dropped, repeated or reordered chunk leaves
+// texels clear or holding another command's colour.
+TEST_F(GlyphDispatchTest, CommandListsLongerThanOneDispatchDrawEveryCommand) {
+    using namespace IRRender;
+    namespace GuiText = IRPrefab::GuiText;
+    constexpr int width = 128;
+    constexpr int count = 2 * GuiText::kMaxGlyphCommands + 7;
+    constexpr int height = (count + width - 1) / width;
+    constexpr std::uint8_t blue = 0x5A;
+
+    const std::string shaderPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_text_to_trixel.glsl";
+    ShaderProgram program{std::vector{ShaderStage{shaderPath.c_str(), ShaderType::COMPUTE}}};
+    const std::vector<std::uint32_t> font = GuiText::buildFontBuffer();
+    Buffer fontBuf{
+        font.data(),
+        font.size() * sizeof(std::uint32_t),
+        BUFFER_STORAGE_DYNAMIC,
+        BufferTarget::SHADER_STORAGE,
+        kBufferIndex_FontData
+    };
+    Buffer cmdBuf{
+        nullptr,
+        GuiText::kMaxGlyphCommands * sizeof(GlyphDrawCommand),
+        BUFFER_STORAGE_DYNAMIC,
+        BufferTarget::SHADER_STORAGE,
+        kBufferIndex_GlyphDrawCommands
+    };
+    Texture2D colors{TextureKind::TEXTURE_2D, width, height, TextureFormat::RGBA8};
+    Texture2D distances{TextureKind::TEXTURE_2D, width, height, TextureFormat::R32I};
+    colors.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, nullptr);
+
+    std::vector<GlyphDrawCommand> commands(count);
+    for (int i = 0; i < count; ++i) {
+        GlyphDrawCommand &cmd = commands[i];
+        cmd.positionPacked =
+            static_cast<std::uint32_t>(i % width) | (static_cast<std::uint32_t>(i / width) << 16);
+        cmd.firstFontRow = static_cast<std::uint32_t>(GuiText::kSolidCellStart);
+        cmd.colorPacked =
+            IRMath::Color{
+                static_cast<std::uint8_t>(i & 0xFF),
+                static_cast<std::uint8_t>(i >> 8),
+                blue,
+                255
+            }
+                .toPackedRGBA();
+        cmd.distance = static_cast<std::uint32_t>(kGuiTextDistance);
+        cmd.styleFlags =
+            1u | (1u << kGlyphStyleCellWidthShift) | (1u << kGlyphStyleCellHeightShift);
+    }
+
+    program.use();
+    colors.bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+    distances.bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+    GuiText::dispatchGlyphCommands(cmdBuf, commands);
+    device()->finish();
+
+    std::vector<std::uint8_t> texels(std::size_t(width) * height * 4);
+    colors.getSubImage2D(
+        0,
+        0,
+        width,
+        height,
+        PixelDataFormat::RGBA,
+        PixelDataType::UNSIGNED_BYTE,
+        texels.data()
+    );
+    int mismatches = 0;
+    int firstMismatch = -1;
+    for (int i = 0; i < width * height; ++i) {
+        const std::array<std::uint8_t, 4> expected =
+            i < count
+                ? std::array<
+                      std::uint8_t,
+                      4>{static_cast<std::uint8_t>(i & 0xFF), static_cast<std::uint8_t>(i >> 8), blue, 255}
+                : std::array<std::uint8_t, 4>{0, 0, 0, 0};
+        if (std::memcmp(&texels[std::size_t(i) * 4], expected.data(), 4) != 0) {
+            ++mismatches;
+            if (firstMismatch < 0) {
+                firstMismatch = i;
+            }
+        }
+    }
+    EXPECT_EQ(mismatches, 0) << "first mismatched texel " << firstMismatch << " of " << count
+                             << " commands";
+}
+} // namespace
+#endif

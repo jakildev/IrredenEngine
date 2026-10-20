@@ -105,21 +105,12 @@ template <> struct System<TEXT_TO_TRIXEL> {
         if (drawCommands_.empty())
             return;
 
-        int count = static_cast<int>(drawCommands_.size());
-        if (count > IRPrefab::GuiText::kMaxGlyphCommands) {
-            count = IRPrefab::GuiText::kMaxGlyphCommands;
-        }
-
         IRPrefab::GuiText::stampGlyphLayout(drawCommands_, *canvasTextures_);
-        glyphCmdBuf_->subData(0, count * sizeof(GlyphDrawCommand), drawCommands_.data());
-
         canvasTextures_->getTextureColorsForGeometryWrite()
             ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
         canvasTextures_->getTextureDistances()
             ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
-
-        IRRender::device()->dispatchCompute(count, 1, 1);
-        IRRender::device()->memoryBarrier(BarrierType::ALL);
+        IRPrefab::GuiText::dispatchGlyphCommands(*glyphCmdBuf_, drawCommands_);
     }
 
     static SystemId create() {

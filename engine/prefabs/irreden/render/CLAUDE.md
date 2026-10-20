@@ -59,7 +59,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
 tick; never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick`
-and caps glyphs at `kMaxGlyphCommands` (`gui_text_batch.hpp`). Widget renderers
+and dispatches glyphs in `kMaxGlyphCommands` chunks (`gui_text_batch.hpp`). Widget renderers
 overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right).
 
 ## Component contracts

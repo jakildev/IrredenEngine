@@ -49,8 +49,9 @@
 
 namespace IRPrefab::GuiText {
 
-// Max glyph commands rasterized by a single compute dispatch. Matches the
-// GlyphDrawCommandBuffer capacity created in System<TEXT_TO_TRIXEL>.
+// Max glyph commands rasterized by a single compute dispatch: the
+// GlyphDrawCommandBuffer capacity created in System<TEXT_TO_TRIXEL>. Longer
+// command lists dispatch in chunks of this size (dispatchGlyphCommands).
 constexpr int kMaxGlyphCommands = 8192;
 constexpr int kFontTableEntries = 128;
 constexpr int kFontRowsPerGlyph = IRRender::kGlyphHeight;
@@ -397,9 +398,26 @@ inline void stampGlyphLayout(
         cmd.styleFlags |= IRRender::kGlyphStyleLatticeScale;
 }
 
-// Uploads `commands` to the shared glyph-command SSBO and dispatches the text
-// compute shader once, rasterizing every queued glyph onto the GUI canvas,
-// then clears `commands`. No-op (and clears) when the shared text resources
+// Rasterizes every command with the bound text program onto the bound colour
+// and distance images, uploading through `cmdBuf` (kMaxGlyphCommands capacity,
+// bound at kBufferIndex_GlyphDrawCommands) and dispatching one chunk at a time.
+// Re-uploading after a queued dispatch is safe on both backends: GL orders
+// buffer updates after prior reads, and Metal orphans an encoded buffer.
+inline void dispatchGlyphCommands(
+    const IRRender::Buffer &cmdBuf, std::span<const IRRender::GlyphDrawCommand> commands
+) {
+    for (std::size_t first = 0; first < commands.size(); first += kMaxGlyphCommands) {
+        const std::size_t count =
+            IRMath::min(commands.size() - first, static_cast<std::size_t>(kMaxGlyphCommands));
+        cmdBuf.subData(0, count * sizeof(IRRender::GlyphDrawCommand), commands.data() + first);
+        IRRender::device()->dispatchCompute(static_cast<std::uint32_t>(count), 1, 1);
+        IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    }
+}
+
+// Uploads `commands` to the shared glyph-command SSBO and rasterizes every
+// queued glyph onto the GUI canvas (dispatchGlyphCommands), then clears
+// `commands`. No-op (and clears) when the shared text resources
 // or the GUI canvas are absent — e.g. a creation that runs widget systems
 // without TEXT_TO_TRIXEL, which would not show free text either. That no-op is
 // why the resource lookups are `getNamedResourceOrNull`: the asserting
@@ -420,26 +438,13 @@ inline void dispatchGuiText(std::vector<IRRender::GlyphDrawCommand> &commands) {
     }
     auto &canvas = IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
 
-    int count = static_cast<int>(commands.size());
-    if (count > kMaxGlyphCommands) {
-        IRE_LOG_WARN(
-            "dispatchGuiText: {} glyph commands exceeds the {}-command "
-            "dispatch cap — truncating; some GUI text will not render.",
-            count,
-            kMaxGlyphCommands
-        );
-        count = kMaxGlyphCommands;
-    }
-
     stampGlyphLayout(commands, canvas);
     program->use();
-    cmdBuf->subData(0, count * sizeof(IRRender::GlyphDrawCommand), commands.data());
     canvas.getTextureColorsForGeometryWrite()
         ->bindAsImage(0, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::RGBA8);
     canvas.getTextureDistances()
         ->bindAsImage(1, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::R32I);
-    IRRender::device()->dispatchCompute(count, 1, 1);
-    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    dispatchGlyphCommands(*cmdBuf, commands);
 
     commands.clear();
 }
