@@ -69,7 +69,7 @@ FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
 
 # The one-line verdict ir-run prints for every self-terminating run
 # (``engine/tools/bin/ir-run`` ``ir_report_result``): CLEAN, CRASH,
-# ALIVE-TIMEOUT, LOCK-FAILED, or HOST-CLOSED. HOST-CLOSED shares CRASH's
+# ALIVE-TIMEOUT, LOCK-FAILED, HOST-CLOSED, or NO-DISPLAY. HOST-CLOSED shares CRASH's
 # non-zero exit status, so only this token tells them apart.
 RUN_RESULT_RE = re.compile(r"ir-run: RESULT=([A-Z][A-Z-]*)")
 
@@ -77,6 +77,16 @@ RUN_RESULT_RE = re.compile(r"ir-run: RESULT=([A-Z][A-Z-]*)")
 # neither a pass nor a demo failure — re-run (docs/agents/FLEET.md
 # §"Clean-exit policy").
 HOST_CLOSED = "HOST-CLOSED"
+NO_DISPLAY = "NO-DISPLAY"
+EXIT_ENV_FAIL = 69
+
+
+def report_no_display(prefix: str) -> None:
+    """Report the host state that prevents a display-backed verifier from running."""
+    print(
+        f"{prefix}ENV-FAIL: Discovered 0 display monitors "
+        "(the host session has no WindowServer connection; sign in or wake the Aqua session)"
+    )
 
 
 def run_result(output: str) -> str | None:

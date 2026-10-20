@@ -66,6 +66,9 @@ def main() -> None:
         "--auto-screenshot", str(args.warmup_frames),
     ] + list(args.target_args)
     run_rc, output = verify_common.run_capture(run_cmd)
+    if verify_common.run_result(output) == verify_common.NO_DISPLAY:
+        verify_common.report_no_display("[gui-verify] ")
+        raise SystemExit(verify_common.EXIT_ENV_FAIL)
 
     # An --auto-screenshot GUI-test run must self-terminate. The fleet-run
     # watchdog reports a process still alive at --timeout as exit 0 ("healthy"
