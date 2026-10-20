@@ -258,6 +258,9 @@ inline bool decodeAnalyticSurface(uint2 rawId) {
 inline bool decodeEntityIdCardinalVoxel(uint2 rawId) {
     return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
+inline bool isCardinalVoxelSurface(uint2 rawId) {
+    return decodeEntityIdCardinalVoxel(rawId) && !decodeCutFace(rawId);
+}
 inline uint2 decodeEntityId(uint2 rawId) {
     return uint2(rawId.x, rawId.y & kEntityIdHighWordMask);
 }

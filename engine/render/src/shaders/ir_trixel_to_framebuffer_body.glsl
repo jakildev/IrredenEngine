@@ -138,7 +138,7 @@ void main() {
 
 #if IR_CARDINAL_LIGHTING
     if (color.a >= 0.1 && lightingEnabled != 0 && cardinalLightingEnabled != 0 &&
-        decodeEntityIdCardinalVoxel(texelFetch(triangleEntityIds, sampleCoord, 0).rg) && !decodeCutFace(texelFetch(triangleEntityIds, sampleCoord, 0).rg)) {
+        isCardinalVoxelSurface(texelFetch(triangleEntityIds, sampleCoord, 0).rg)) {
         const vec3 position = cardinalVoxelSurfacePoint(
             originRaw, ivec2(sampleCoord), rawDist, perAxisBase,
             cardinalReceiver.xy, ivec2(cardinalReceiver.zw),

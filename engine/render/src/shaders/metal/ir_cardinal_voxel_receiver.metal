@@ -31,7 +31,7 @@ inline float3 cardinalVoxelSurfaceCenter(
 // Intersect the displayed fragment ray with the stored face plane. Rectangular
 // storage approximates the silhouette; do not clamp to a micro-square and tear
 // an otherwise continuous coplanar receiver into separate shadow samples.
-float3 cardinalVoxelSurfacePoint(
+inline float3 cardinalVoxelSurfacePoint(
     float2 canvasPixel, int2 ownerPixel, int encoded, int2 z1, float2 cameraOffset,
     int2 renderOptions, int cardinalIndex
 ) {

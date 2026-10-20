@@ -261,6 +261,10 @@ template <> struct System<PERF_STATS_OVERLAY> {
             return "TRIX-COMP";
         if (name == "trixelToFb")
             return "TRIX-FB";
+        if (name == "cardinalSurfaceFb")
+            return "CARD-SURFACE";
+        if (name == "perAxisSurfaceFb")
+            return "PA-SURFACE";
         if (name == "entityCanvasToFb")
             return "ENT-FB";
         if (name == "resolvePerAxisScreenDepth")

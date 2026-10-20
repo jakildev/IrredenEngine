@@ -167,6 +167,7 @@ def source_for(backend):
                                     r"MaskInHighWord = [^;]+;", common))
     helpers += extract_function(common, "decodeEntityIdCardinalVoxel")
     helpers += extract_function(common, "decodeCutFace")
+    helpers += extract_function(common, "isCardinalVoxelSurface")
     skip = re.search(r"if \((?:frameData\.)?normalOptions.y != 0.*?\) return;",
                      compute, re.DOTALL).group()
     disabled = re.search(r"if \((?:frameData\.)?lightingEnabled == 0\) \{\s*return;\s*\}",
@@ -174,7 +175,7 @@ def source_for(backend):
     # The shape branch also has a lighting gate; the cardinal branch owns the provenance read.
     condition = next(match.group() for match in re.finditer(
         r"if \(color.a >= 0.1[^\{]+\{", fragment)
-        if "decodeEntityIdCardinalVoxel" in match.group())
+        if "isCardinalVoxelSurface" in match.group())
     predicates = (helpers + "\nbool skip(){" + disabled.replace("return;", "return false;")
                   + skip.replace("return;", "return true;") + "return false;}\n"
                   + "bool fragment(){" + condition + "return true;}return false;}\n")
@@ -203,7 +204,7 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                     "lighting_->cardinalSurfaceLightingEligible_"),
                 "glitch_pipeline": replace_once(
                     source, "findSystem(TRIXEL_GLITCH) == kNullSystemId", "true"),
-                "cut_face": source.replace("!decodeCutFace(id)", "true"),
+                "cut_face": source.replace("!decodeCutFace(rawId)", "true"),
             }
             messages = {"lighting_disabled": "fragment lighting gate",
                         "stale_ready": "begin resets readiness before main tick",

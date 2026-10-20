@@ -220,7 +220,7 @@ void main() {
 
     if (normalOptions.y != 0 && !sourceMode && perAxisRoute == 0 &&
         isDetachedCanvas == 0.0 && residualYaw == 0.0 &&
-        decodeEntityIdCardinalVoxel(imageLoad(trixelEntityIds, pixel).xy) && !decodeCutFace(imageLoad(trixelEntityIds, pixel).xy)) return;
+        isCardinalVoxelSurface(imageLoad(trixelEntityIds, pixel).xy)) return;
 
     const vec4 sourceColor = sourceMode ? sourceFaces[sourceIndex].color : imageLoad(trixelColors, pixel);
     // A detached re-voxelize canvas is lit by AO + directional sun + sky

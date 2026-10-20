@@ -185,11 +185,9 @@ struct CanvasStressSettings {
     int sweepPanCount_ = 0;
     int sweepFramesCount_ = 0;
     int sweepFramesSettle_ = 0;
-    // `--auto-profile` enables per-system frame timing so the World dtor
-    // writes save_files/profile_report.txt on the auto-screenshot exit —
-    // the per-system CPU sensor for the rotating-GRID / re-voxelize load
-    // this demo uniquely exercises (perf_grid has no rotating sets).
     bool autoProfile_ = false;
+    int profileFrames_ = 0;
+    int profileFrameCount_ = 0;
     // `--debug-overlay <mode>` forces a render debug overlay for the whole run
     // (none|ao|light_level|shadow|peraxis_id|peraxis_origin|peraxis_margin|unlit|normals|receiver_position).
     // This captures with `--debug-overlay shadow` so cast shadows read magenta
@@ -1989,13 +1987,7 @@ void applyDepthProbeAssert(const std::string &value) {
     }
 }
 
-// Declare canvas_stress's custom flags on the engine-owned parser. Must run
-// before IREngine::init(argc, argv), which performs the single strict parse of
-// engine-common + these flags (see engine/CLAUDE.md "CLI args go through
-// IRArgs"). The registered defaults mirror g_settings's struct defaults so a
-// flagless run is byte-identical. Multi-value flags use the FLOAT_LIST type so
-// the established space-separated spellings (--sweep-yaw <from> <to> <n>) keep
-// working.
+// Registered defaults mirror the settings defaults for flagless runs.
 void registerArgs() {
     IRArgs::Parser &args = IREngine::args();
     args.enumValue(
@@ -2213,10 +2205,8 @@ void registerArgs() {
         "Focused capture: <n> identical-camera shots <settle> frames apart (self-spin phase sweep)",
         2
     );
-    args.flag(
-        "--auto-profile",
-        "CPU and GPU timing; write save_files/profile_report.txt on the auto-screenshot exit"
-    );
+    args.flag("--auto-profile", "CPU and GPU timing; write save_files/profile_report.txt on exit");
+    args.integer("--profile-frames", "Profile N frames and exit without captures", 0);
     args.flag(
         "--probe-assert",
         "Run the scripted probe of --only modeswitch, detach or residency; exit nonzero on failure"
@@ -2327,7 +2317,8 @@ void applyArgs() {
         g_settings.autoRotate_ = false;
         g_settings.autoRotateSetByCli_ = true;
     }
-    g_settings.autoProfile_ = args.getFlag("--auto-profile");
+    g_settings.profileFrames_ = args.getInt("--profile-frames");
+    g_settings.autoProfile_ = args.getFlag("--auto-profile") || g_settings.profileFrames_ > 0;
     if (args.wasProvided("--debug-overlay")) {
         g_settings.debugOverlay_ =
             IRRender::debugOverlayModeFromString(args.getEnum("--debug-overlay").c_str());
@@ -2382,7 +2373,25 @@ void initEntities();
 int main(int argc, char **argv) {
     registerArgs();
     IR_LOG_INFO("Starting creation: canvas_stress");
-    IREngine::init(argc, argv);
+    IREngine::args().parse(argc, argv);
+    if (IREngine::args().wasProvided("--profile-frames")) {
+        if (IREngine::args().getInt("--profile-frames") <= 0) {
+            IR_LOG_ERROR("--profile-frames requires a positive frame count");
+            return 2;
+        }
+        for (const char *captureFlag :
+             {"--auto-screenshot",
+              "--auto-record",
+              "--sweep-frames",
+              "--sweep-yaw",
+              "--sweep-pan"}) {
+            if (IREngine::args().wasProvided(captureFlag)) {
+                IR_LOG_ERROR("--profile-frames cannot be combined with {}", captureFlag);
+                return 2;
+            }
+        }
+    }
+    IREngine::init(argv[0]);
     applyArgs();
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_autoRecordFrames = IREngine::args().autoRecordFrames();
@@ -2903,6 +2912,23 @@ void initSystems() {
                 )
             );
         }
+    }
+    if (g_settings.profileFrames_ > 0) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "AutoProfile",
+                [](C_Camera &) {},
+                []() {
+                    if (++g_settings.profileFrameCount_ >= g_settings.profileFrames_) {
+                        IR_LOG_INFO(
+                            "Auto-profile: {} frames collected, exiting",
+                            g_settings.profileFrames_
+                        );
+                        IRWindow::closeWindow();
+                    }
+                }
+            )
+        );
     }
     IRVideo::appendAutoRecordIfRequested(renderPipeline, g_autoRecordFrames);
 

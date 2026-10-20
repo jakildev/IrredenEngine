@@ -281,6 +281,9 @@ bool decodeAnalyticSurface(uvec2 rawId) {
 bool decodeEntityIdCardinalVoxel(uvec2 rawId) {
     return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
+bool isCardinalVoxelSurface(uvec2 rawId) {
+    return decodeEntityIdCardinalVoxel(rawId) && !decodeCutFace(rawId);
+}
 uvec2 decodeEntityId(uvec2 rawId) {
     return uvec2(rawId.x, rawId.y & kEntityIdHighWordMask);
 }
