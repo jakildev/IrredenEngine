@@ -97,9 +97,23 @@ See the [capacity experiment](sun-face-index-capacity.md#captured-finite-quad-hi
 The [GPU-built hierarchy diagnostic](../perf/sun-hierarchy-gpu/README.md) now
 passes captured-pool and synthetic controls in both Metal math modes, including
 reversed record order. Unsorted leaves preserve visibility but require many more
-candidate tests under oblique light. Next evaluate GPU spatial ordering, then
-measure construction and reference-free query dispatches before engine adoption.
-Production overflow remains unresolved; this is not a visual fix or an FPS gain.
+candidate tests under oblique light. The
+[GPU spatial-ordering follow-up](../perf/sun-spatial-hierarchy/README.md)
+preserves coverage, reuses the existing GPU sorter and separately measures
+construction and reference-free query dispatches. Oblique candidate counts
+improve; cardinal counts can worsen. Retained timings are exploratory or
+quiet-window-rejected; the guarded retry could not acquire the busy fleet GPU.
+First obtain a qualified timing comparison, then evaluate overflow-only
+construction and query routing while retaining the complete-tile path. Establish mixed
+record/raster completeness and pool-exhaustion behavior before engine adoption,
+then validate moving geometry and OpenGL parity. Production overflow remains
+unresolved; these diagnostics are not a visual fix or an FPS gain.
+The hosted Linux [performance run](https://github.com/jakildev/IrredenEngine/actions/runs/39472592142)
+also reports a zoom-1 mean regression of 11.2% against its class-matched
+baseline (zoom 4: +0.9%). Attribute this with same-revision/base controls before
+declaring the stack performance-qualified. The standalone Metal diagnostic
+does not run in that engine workload; its candidate counts cannot clear this
+gate or establish the source of the regression.
 For the private-canvas overlap controls, separate actual GPU work and CPU
 submission from Metal's synchronous presentation and offscreen pacing before
 selecting an optimization. Compare the existing shadows-off/unlit pairs, then

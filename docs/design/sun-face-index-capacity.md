@@ -165,6 +165,19 @@ match exhaustive GPU queries and the captured exact oracle. Independent node
 readbacks check enclosure. Synthetic controls retain the full 65,536-record
 pool and the rejection-heavy linear worst case. This validates a diagnostic
 construction path, not production adoption: oblique-light candidate counts are
-much worse than the spatially partitioned offline tree. Next evaluate GPU
-spatial ordering and separately measure build/query costs; preserve all
-completeness, capacity and backend limitations of the offline experiment.
+much worse than the spatially partitioned offline tree.
+
+The [spatial-ordering experiment](../perf/sun-spatial-hierarchy/README.md)
+generates GPU Morton keys and reuses the per-axis overflow sorter without
+changing its comparator or network. Sorting record IDs preserves the complete
+geometry pool. Rebuilt leaf bounds and queries use the same permutation.
+The known-octant control rejects all-zero keys, while readbacks validate the
+permutation, sorted keys, sentinels and conservative bounds.
+
+Spatial ordering reduces oblique face tests but increases them in several
+cardinal fixtures. Separate reference-free query timings include a complete
+key/range/sort/tree build measurement; the repeated coherent receiver grid is
+not a frame-rate benchmark. Preserve the complete-tile fast path when
+evaluating an overflow fallback. Production selection still needs mixed
+analytic/raster-only completeness, pool-exhaustion handling, engine resource
+integration, native OpenGL parity and actual moving-scene qualification.
