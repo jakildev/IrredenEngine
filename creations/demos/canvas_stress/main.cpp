@@ -2131,6 +2131,10 @@ void registerArgs() {
         "--sun-face-index-probe",
         "Dump sun face tile counters on auto-screenshot frames (stalls GPU)"
     );
+    args.flag(
+        "--sun-face-geometry-probe",
+        "Include lossless sun geometry records with tile counters (capture-only, stalls GPU)"
+    );
     args.integer("--analytic-box-span", "Analytic probe X/Y extent, 1..512 (0 keeps default)", 0);
     args.integer("--analytic-box-count", "Analytic probes for index pressure, 1..128", 1);
     args.numbers(
@@ -2876,22 +2880,27 @@ void initSystems() {
         cfg.settleFrames_ = settleFrames;
         cfg.shots_ = g_allShots.data();
         cfg.numShots_ = static_cast<int>(g_allShots.size());
-        if (modeSwitchGroupRequested()) {
-            cfg.onCaptureFrame_ = &advanceModeSwitchCapture;
-        } else if (detachGroupRequested()) {
-            cfg.onCaptureFrame_ = &advanceDetachCapture;
-        } else if (IREngine::args().getFlag("--sun-face-index-probe")) {
-            cfg.onCaptureFrame_ = [](int shotIndex) {
+        cfg.onCaptureFrame_ = [](int shotIndex) {
+            if (modeSwitchGroupRequested()) {
+                advanceModeSwitchCapture(shotIndex);
+            } else if (detachGroupRequested()) {
+                advanceDetachCapture(shotIndex);
+            }
+            if (IREngine::args().getFlag("--sun-face-index-probe") ||
+                IREngine::args().getFlag("--sun-face-geometry-probe")) {
                 const std::string path = "sun-face-index-" + std::to_string(shotIndex) + ".csv";
-                const bool written = IRPrefab::SunShadow::writeSourceFaceIndexProbe(path);
+                const bool written = IRPrefab::SunShadow::writeSourceFaceIndexProbe(
+                    path,
+                    IREngine::args().getFlag("--sun-face-geometry-probe")
+                );
                 IR_LOG_INFO(
                     "sun-face-index-probe: shot={} path={} written={}",
                     shotIndex,
                     path,
                     written
                 );
-            };
-        }
+            }
+        };
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
         if (modeSwitchGroupRequested()) {
             renderPipeline.push_back(

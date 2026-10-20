@@ -14,7 +14,7 @@
 namespace IRPrefab::SunShadow {
 
 // Capture only after shadow baking. Synchronizes the GPU; never use in timing runs.
-inline bool writeSourceFaceIndexProbe(const std::string &path) {
+inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeometry = false) {
     std::ofstream output(path);
     if (!output) {
         return false;
@@ -64,6 +64,32 @@ inline bool writeSourceFaceIndexProbe(const std::string &path) {
            << frame.sunBasisU_.z << "\n";
     output << "# basis_v=" << frame.sunBasisV_.x << ',' << frame.sunBasisV_.y << ','
            << frame.sunBasisV_.z << "\n";
+    if (includeGeometry) {
+        const auto captured = IRMath::min(words[0], kSourceFaceCapacity);
+        std::vector<std::uint32_t> records(std::size_t(captured) * kSourceFaceRecordWords);
+        if (!records.empty()) {
+            buffer->getSubData(
+                std::size_t(kSourceFaceRecordOffset) * sizeof(std::uint32_t),
+                records.size() * sizeof(std::uint32_t),
+                records.data()
+            );
+        }
+        output << "# geometry_version=1\n";
+        output << "# geometry_record_words=" << kSourceFaceRecordWords << "\n";
+        output << "# geometry_records_captured=" << captured << "\n";
+        output << "# sun_direction=" << frame.sunDirection_.x << ',' << frame.sunDirection_.y << ','
+               << frame.sunDirection_.z << "\n";
+        output << "# max_shadow_throw=" << frame.sunMaxShadowThrow_ << "\n";
+        for (std::uint32_t record = 0; record < captured; ++record) {
+            output << "# geometry_record_" << record << '=';
+            for (std::uint32_t word = 0; word < kSourceFaceRecordWords; ++word) {
+                if (word != 0)
+                    output << ',';
+                output << records[std::size_t(record) * kSourceFaceRecordWords + word];
+            }
+            output << '\n';
+        }
+    }
     output << "cascade,x,y,count,complete,u_min,v_min,u_max,v_max\n";
     for (std::uint32_t tile = 0; tile < kSourceFaceTileCount; ++tile) {
         const auto cascade = tile / (kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis);

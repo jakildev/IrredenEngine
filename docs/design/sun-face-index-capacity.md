@@ -113,3 +113,39 @@ fallback design. A spatial/depth hierarchy retaining finite geometry is the
 alternative to evaluate; another nearest-K cache, an enlarged unconditional
 scan, or accepting whichever partial records won allocation does not establish
 the required invariant.
+
+### Captured finite-quad hierarchy experiment
+
+`IRCanvasStress --sun-face-geometry-probe` adds the allocated record pool to the
+capture-frame tile CSV. The versioned comment fields preserve each of the ten
+32-bit words as unsigned decimal integers, including floating-point payloads.
+Only allocated records up to pool capacity are read, after the same GPU finish
+as the tile counters. Ordinary captures and normal frames do not read the pool.
+The requested and captured counts remain separate when allocation overflows.
+
+`scripts/perf/sun_geometry_probe.py` loads this capture and builds an offline
+median-split bounding-volume hierarchy in sun U/V/depth. Every finite quad is
+retained, including duplicates. A node can be rejected when its closed U/V
+bounds miss the query or its depth bounds do not intersect the receiver's open
+throw/bias interval. Leaves still evaluate the finite footprint and plane depth;
+a node overlap is never itself treated as a blocker. Rational arithmetic treats
+the captured binary32 values exactly. An exhaustive quad query checks every
+hierarchy answer; independent ray/triangle tests validate the footprint oracle.
+
+This experiment is deliberately narrower than a GPU replacement. It rejects
+analytic-solid records and exhausted record pools instead of dropping them.
+The pool contains geometry admitted by the capture's cascade domains, not every
+object in an unbounded world. The oracle does not reproduce shader rounding,
+edge tolerances, cascade selection, sampled non-indexed layers or receiver
+placement. A GPU hierarchy additionally needs conservative binary32 bounds,
+construction/publication, allocation-failure handling and measured clear/build/
+query costs. Its worst-case traversal is still linear: many overlapping bounds
+whose finite faces miss a receiver require every leaf candidate. Report that
+case alongside useful depth pruning; do not turn candidate reduction into an
+unmeasured frame-rate claim.
+
+The [native record experiment](../pr-screenshots/codex/sun-geometry-capture/README.md)
+contains seven captured pools, 2,023 matching query results and probe-on/off
+pixel controls. It preserves the lower blocker with 128 distant overlapping
+casters, while the unchanged production image still has a hole. These candidate
+counts select a GPU experiment; no GPU performance improvement is claimed.

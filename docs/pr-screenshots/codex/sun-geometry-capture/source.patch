@@ -1,0 +1,275 @@
+diff --git a/creations/demos/canvas_stress/main.cpp b/creations/demos/canvas_stress/main.cpp
+index a510e32d5..d45ee3695 100644
+--- a/creations/demos/canvas_stress/main.cpp
++++ b/creations/demos/canvas_stress/main.cpp
+@@ -2131,6 +2131,10 @@ void registerArgs() {
+         "--sun-face-index-probe",
+         "Dump sun face tile counters on auto-screenshot frames (stalls GPU)"
+     );
++    args.flag(
++        "--sun-face-geometry-probe",
++        "Include lossless sun geometry records with tile counters (capture-only, stalls GPU)"
++    );
+     args.integer("--analytic-box-span", "Analytic probe X/Y extent, 1..512 (0 keeps default)", 0);
+     args.integer("--analytic-box-count", "Analytic probes for index pressure, 1..128", 1);
+     args.numbers(
+@@ -2876,22 +2880,27 @@ void initSystems() {
+         cfg.settleFrames_ = settleFrames;
+         cfg.shots_ = g_allShots.data();
+         cfg.numShots_ = static_cast<int>(g_allShots.size());
+-        if (modeSwitchGroupRequested()) {
+-            cfg.onCaptureFrame_ = &advanceModeSwitchCapture;
+-        } else if (detachGroupRequested()) {
+-            cfg.onCaptureFrame_ = &advanceDetachCapture;
+-        } else if (IREngine::args().getFlag("--sun-face-index-probe")) {
+-            cfg.onCaptureFrame_ = [](int shotIndex) {
++        cfg.onCaptureFrame_ = [](int shotIndex) {
++            if (modeSwitchGroupRequested()) {
++                advanceModeSwitchCapture(shotIndex);
++            } else if (detachGroupRequested()) {
++                advanceDetachCapture(shotIndex);
++            }
++            if (IREngine::args().getFlag("--sun-face-index-probe") ||
++                IREngine::args().getFlag("--sun-face-geometry-probe")) {
+                 const std::string path = "sun-face-index-" + std::to_string(shotIndex) + ".csv";
+-                const bool written = IRPrefab::SunShadow::writeSourceFaceIndexProbe(path);
++                const bool written = IRPrefab::SunShadow::writeSourceFaceIndexProbe(
++                    path,
++                    IREngine::args().getFlag("--sun-face-geometry-probe")
++                );
+                 IR_LOG_INFO(
+                     "sun-face-index-probe: shot={} path={} written={}",
+                     shotIndex,
+                     path,
+                     written
+                 );
+-            };
+-        }
++            }
++        };
+         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
+         if (modeSwitchGroupRequested()) {
+             renderPipeline.push_back(
+diff --git a/docs/design/rendering-audit-todo.md b/docs/design/rendering-audit-todo.md
+index 88f8940ce..3d5e5850f 100644
+--- a/docs/design/rendering-audit-todo.md
++++ b/docs/design/rendering-audit-todo.md
+@@ -87,6 +87,13 @@ coverage. Keep the known-failing
+ as a correctness prerequisite: the sixteen-caster fallback is not an acceptable
+ performance shortcut. Native Windows reproduction, a depth-preserving finite
+ geometry query, and AC-powered Release throughput qualification remain next.
++A capture-only finite-geometry export and exact offline quad hierarchy now
++exercise depth-preserving pruning against actual GPU records. This is a layout
++experiment, not a production overflow fix: retain its rejection-heavy linear
++worst-case control, then measure conservative GPU construction and traversal
++before selecting the production representation. Analytic records, exhausted
++record pools and raster-only layers still need their own completeness treatment.
++See the [capacity experiment](sun-face-index-capacity.md#captured-finite-quad-hierarchy-experiment).
+ For the private-canvas overlap controls, separate actual GPU work and CPU
+ submission from Metal's synchronous presentation and offscreen pacing before
+ selecting an optimization. Compare the existing shadows-off/unlit pairs, then
+diff --git a/docs/design/sun-face-index-capacity.md b/docs/design/sun-face-index-capacity.md
+index 66e063507..0182ed7a8 100644
+--- a/docs/design/sun-face-index-capacity.md
++++ b/docs/design/sun-face-index-capacity.md
+@@ -113,3 +113,33 @@ fallback design. A spatial/depth hierarchy retaining finite geometry is the
+ alternative to evaluate; another nearest-K cache, an enlarged unconditional
+ scan, or accepting whichever partial records won allocation does not establish
+ the required invariant.
++
++### Captured finite-quad hierarchy experiment
++
++`IRCanvasStress --sun-face-geometry-probe` adds the allocated record pool to the
++capture-frame tile CSV. The versioned comment fields preserve each of the ten
++32-bit words as unsigned decimal integers, including floating-point payloads.
++Only allocated records up to pool capacity are read, after the same GPU finish
++as the tile counters. Ordinary captures and normal frames do not read the pool.
++The requested and captured counts remain separate when allocation overflows.
++
++`scripts/perf/sun_geometry_probe.py` loads this capture and builds an offline
++median-split bounding-volume hierarchy in sun U/V/depth. Every finite quad is
++retained, including duplicates. A node can be rejected when its closed U/V
++bounds miss the query or its depth bounds do not intersect the receiver's open
++throw/bias interval. Leaves still evaluate the finite footprint and plane depth;
++a node overlap is never itself treated as a blocker. Rational arithmetic treats
++the captured binary32 values exactly. An exhaustive quad query checks every
++hierarchy answer; independent ray/triangle tests validate the footprint oracle.
++
++This experiment is deliberately narrower than a GPU replacement. It rejects
++analytic-solid records and exhausted record pools instead of dropping them.
++The pool contains geometry admitted by the capture's cascade domains, not every
++object in an unbounded world. The oracle does not reproduce shader rounding,
++edge tolerances, cascade selection, sampled non-indexed layers or receiver
++placement. A GPU hierarchy additionally needs conservative binary32 bounds,
++construction/publication, allocation-failure handling and measured clear/build/
++query costs. Its worst-case traversal is still linear: many overlapping bounds
++whose finite faces miss a receiver require every leaf candidate. Report that
++case alongside useful depth pruning; do not turn candidate reduction into an
++unmeasured frame-rate claim.
+diff --git a/engine/prefabs/irreden/render/sun_shadow_probe.hpp b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
+index e0e24769a..76658d55a 100644
+--- a/engine/prefabs/irreden/render/sun_shadow_probe.hpp
++++ b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
+@@ -14,7 +14,7 @@
+ namespace IRPrefab::SunShadow {
+ 
+ // Capture only after shadow baking. Synchronizes the GPU; never use in timing runs.
+-inline bool writeSourceFaceIndexProbe(const std::string &path) {
++inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeometry = false) {
+     std::ofstream output(path);
+     if (!output) {
+         return false;
+@@ -64,6 +64,32 @@ inline bool writeSourceFaceIndexProbe(const std::string &path) {
+            << frame.sunBasisU_.z << "\n";
+     output << "# basis_v=" << frame.sunBasisV_.x << ',' << frame.sunBasisV_.y << ','
+            << frame.sunBasisV_.z << "\n";
++    if (includeGeometry) {
++        const auto captured = IRMath::min(words[0], kSourceFaceCapacity);
++        std::vector<std::uint32_t> records(std::size_t(captured) * kSourceFaceRecordWords);
++        if (!records.empty()) {
++            buffer->getSubData(
++                std::size_t(kSourceFaceRecordOffset) * sizeof(std::uint32_t),
++                records.size() * sizeof(std::uint32_t),
++                records.data()
++            );
++        }
++        output << "# geometry_version=1\n";
++        output << "# geometry_record_words=" << kSourceFaceRecordWords << "\n";
++        output << "# geometry_records_captured=" << captured << "\n";
++        output << "# sun_direction=" << frame.sunDirection_.x << ',' << frame.sunDirection_.y << ','
++               << frame.sunDirection_.z << "\n";
++        output << "# max_shadow_throw=" << frame.sunMaxShadowThrow_ << "\n";
++        for (std::uint32_t record = 0; record < captured; ++record) {
++            output << "# geometry_record_" << record << '=';
++            for (std::uint32_t word = 0; word < kSourceFaceRecordWords; ++word) {
++                if (word != 0)
++                    output << ',';
++                output << records[std::size_t(record) * kSourceFaceRecordWords + word];
++            }
++            output << '\n';
++        }
++    }
+     output << "cascade,x,y,count,complete,u_min,v_min,u_max,v_max\n";
+     for (std::uint32_t tile = 0; tile < kSourceFaceTileCount; ++tile) {
+         const auto cascade = tile / (kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis);
+diff --git a/scripts/perf/sun_face_index_probe.py b/scripts/perf/sun_face_index_probe.py
+index d30af1a7a..64b0409f7 100644
+--- a/scripts/perf/sun_face_index_probe.py
++++ b/scripts/perf/sun_face_index_probe.py
+@@ -9,7 +9,7 @@ import math
+ from pathlib import Path
+ 
+ 
+-def summarize(path, world_point=None):
++def read_capture(path):
+     path = Path(path)
+     metadata = {}
+     opener = gzip.open if path.suffix == ".gz" else open
+@@ -24,6 +24,11 @@ def summarize(path, world_point=None):
+                 metadata[key] = value
+             else:
+                 lines.append(line)
++    return metadata, lines
++
++
++def summarize(path, world_point=None):
++    metadata, lines = read_capture(path)
+     if metadata.get("active") != "1":
+         raise ValueError("finite face index is inactive")
+     required_metadata = {"tile_capacity", "tiles_per_axis", "cascade_count",
+diff --git a/scripts/tests/test_sun_face_index_probe.py b/scripts/tests/test_sun_face_index_probe.py
+index c28a2a0e0..d2568af58 100644
+--- a/scripts/tests/test_sun_face_index_probe.py
++++ b/scripts/tests/test_sun_face_index_probe.py
+@@ -75,6 +75,16 @@ class SourceFaceIndexProbeTest(unittest.TestCase):
+             self.assertEqual(result["point_tiles"], [{"cascade": 0, "x": 1, "y": 0,
+                                                      "counter": 64, "complete": True}])
+ 
++    def test_read_capture_preserves_raw_record_words_and_table(self):
++        with tempfile.TemporaryDirectory() as directory:
++            path = Path(directory) / "records.csv.gz"
++            with gzip.open(path, "wt") as stream:
++                stream.write("# geometry_record_0=2147483648,1,0\n"
++                             "cascade,x,y,count,complete\n0,0,0,0,1\n")
++            metadata, lines = PROBE.read_capture(path)
++            self.assertEqual(metadata, {"geometry_record_0": "2147483648,1,0"})
++            self.assertEqual(lines, ["cascade,x,y,count,complete\n", "0,0,0,0,1\n"])
++
+     def test_inactive_capture(self):
+         with tempfile.TemporaryDirectory() as directory:
+             path = Path(directory) / "tiles.csv"
+diff --git a/test/render/gpu_compute_dispatch_test.cpp b/test/render/gpu_compute_dispatch_test.cpp
+index 77dc52433..62739ef68 100644
+--- a/test/render/gpu_compute_dispatch_test.cpp
++++ b/test/render/gpu_compute_dispatch_test.cpp
+@@ -2330,9 +2330,11 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
+     clear.use();
+     device()->dispatchCompute(64, 128, 1);
+     // The capture helper owns the synchronization of this pending GPU write.
+-    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string()));
++    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string(), true));
+     const std::string cleared = probe.contents();
+     EXPECT_NE(cleared.find("# active=1\n"), std::string::npos);
++    EXPECT_NE(cleared.find("# geometry_records_captured=0\n"), std::string::npos);
++    EXPECT_EQ(cleared.find("# geometry_record_0="), std::string::npos);
+     ASSERT_NE(cleared.find("# face_records_requested=0\n"), std::string::npos);
+     EXPECT_NE(cleared.find("# spill_nodes_requested=0\n"), std::string::npos);
+     EXPECT_NE(cleared.find("# tile_capacity=256\n"), std::string::npos);
+@@ -2397,6 +2399,57 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
+     EXPECT_NE(captured.find("\n0,127,127,0,1,251,513,253,517\n"), std::string::npos);
+     EXPECT_NE(captured.find("\n1,0,0,0,1,11,-7,19,9\n"), std::string::npos);
+     EXPECT_NE(captured.find("\n1,127,127,257,0,1027,2025,1035,2041\n"), std::string::npos);
++    EXPECT_EQ(captured.find("# geometry_version="), std::string::npos);
++
++    const std::uint32_t recordCount = 1;
++    const std::array<std::uint32_t, Shadow::kSourceFaceRecordWords> record{
++        0x80000000u,
++        0x3F800000u,
++        0xC0000000u,
++        0x00000001u,
++        0x7F7FFFFFu,
++        0x3F000000u,
++        0u,
++        0xBF800000u,
++        0x40400000u,
++        0u
++    };
++    depth.subData(
++        Shadow::kSourceFaceHeaderOffset * sizeof(std::uint32_t),
++        sizeof(recordCount),
++        &recordCount
++    );
++    depth.subData(
++        Shadow::kSourceFaceRecordOffset * sizeof(std::uint32_t),
++        sizeof(record),
++        record.data()
++    );
++    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string(), true));
++    const auto geometry = probe.contents();
++    EXPECT_NE(geometry.find("# geometry_version=1\n"), std::string::npos);
++    EXPECT_NE(geometry.find("# geometry_records_captured=1\n"), std::string::npos);
++    EXPECT_NE(geometry.find("# geometry_record_words=10\n"), std::string::npos);
++    EXPECT_NE(
++        geometry.find(
++            "# "
++            "geometry_record_0=2147483648,1065353216,3221225472,1,2139095039,1056964608,0,"
++            "3212836864,1077936128,0\n"
++        ),
++        std::string::npos
++    );
++    EXPECT_EQ(geometry.find("# geometry_record_1="), std::string::npos);
++    const auto exhausted = Shadow::kSourceFaceCapacity + 1u;
++    depth.subData(
++        Shadow::kSourceFaceHeaderOffset * sizeof(std::uint32_t),
++        sizeof(exhausted),
++        &exhausted
++    );
++    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string(), true));
++    const auto partial = probe.contents();
++    EXPECT_NE(partial.find("# face_records_requested=65537\n"), std::string::npos);
++    EXPECT_NE(partial.find("# geometry_records_captured=65536\n"), std::string::npos);
++    EXPECT_NE(partial.find("# geometry_record_65535="), std::string::npos);
++    EXPECT_EQ(partial.find("# geometry_record_65536="), std::string::npos);
+ }
+ #endif
+ 

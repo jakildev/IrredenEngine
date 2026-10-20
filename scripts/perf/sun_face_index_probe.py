@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 
 
-def summarize(path, world_point=None):
+def read_capture(path):
     path = Path(path)
     metadata = {}
     opener = gzip.open if path.suffix == ".gz" else open
@@ -24,6 +24,11 @@ def summarize(path, world_point=None):
                 metadata[key] = value
             else:
                 lines.append(line)
+    return metadata, lines
+
+
+def summarize(path, world_point=None):
+    metadata, lines = read_capture(path)
     if metadata.get("active") != "1":
         raise ValueError("finite face index is inactive")
     required_metadata = {"tile_capacity", "tiles_per_axis", "cascade_count",

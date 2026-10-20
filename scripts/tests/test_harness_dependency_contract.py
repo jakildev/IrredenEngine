@@ -7,12 +7,10 @@ holds that list as the list of record and derives the real importer set from
 the source, so a script that grows a dependency the workflow does not install
 fails here instead of on a bare host.
 
-Population is exactly the workflow's trigger globs — ``scripts/*.py``,
-``scripts/tests/*.py`` and ``scripts/perf/compare_perf_runs.py`` — so the
-change that breaks the gate cannot skip it. ``compare_perf_runs`` is in the
-population so its stem is a local module: ``occlusion-fire-verify.py`` imports
-it after a ``sys.path`` insert, and without it the derivation would call it
-third-party.
+Population includes the harness scripts, its tests, and the perf modules
+those tests exercise. Perf modules imported after a ``sys.path`` insert
+must be in the population, so their imports are checked as local source
+rather than classified as third-party packages.
 
 Imports are read with ``ast`` and never executed: importing a listed file on a
 host without Pillow is the failure this contract exists to name.
@@ -62,7 +60,12 @@ _NEVER_ELIGIBLE = frozenset({
 })
 
 _POPULATION_GLOBS = ("scripts/*.py", "scripts/tests/*.py")
-_POPULATION_FILES = ("scripts/perf/compare_perf_runs.py",)
+_POPULATION_FILES = (
+    "scripts/perf/compare_perf_runs.py",
+    "scripts/perf/sun_face_index_probe.py",
+    "scripts/perf/sun_geometry_probe.py",
+    "scripts/perf/sun_query_probe.py",
+)
 _MANIFEST_GLOB = "creations/demos/*/test/references/manifest.json"
 
 
@@ -180,6 +183,12 @@ class HarnessDependencyContractTest(unittest.TestCase):
         # insert; the population must make it local, not special-case the name.
         self.assertNotIn("scripts/occlusion-fire-verify.py", derive_third_party(_REPO))
 
+    def test_geometry_probe_and_dependencies_are_checked_as_local_source(self):
+        population = {p.relative_to(_REPO).as_posix() for p in _population(_REPO)}
+        self.assertIn("scripts/perf/sun_geometry_probe.py", population)
+        self.assertIn("scripts/perf/sun_face_index_probe.py", population)
+        self.assertNotIn("scripts/tests/test_sun_geometry_probe.py", derive_third_party(_REPO))
+
     def test_gating_path_is_never_eligible(self):
         gating = _never_eligible(_REPO)
         self.assertIn("scripts/render-verify.py", gating)
@@ -198,6 +207,13 @@ class ContractMutationControlTest(unittest.TestCase):
 
     def test_unmutated_copy_is_clean(self):
         self.assertEqual(check_contract(self.root), [])
+
+    def test_geometry_dependency_cannot_hide_a_third_party_import(self):
+        target = "scripts/perf/sun_face_index_probe.py"
+        _append(self.root / target, "import numpy")
+        violations = check_contract(self.root)
+        self.assertTrue(any(v.startswith("(b)") and target in v and "numpy" in v
+                            for v in violations), violations)
 
     def test_arm_a_unlisted_importer_is_named(self):
         _append(self.root / "scripts/render-compare.py", "from PIL import Image")
