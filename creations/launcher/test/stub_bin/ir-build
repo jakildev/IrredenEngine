@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# The ir-build the details_build GUI session runs in place of the real one:
+# three known lines, then a clean exit.
+for line in 1 2 3; do
+    echo "IR_LAUNCHER_STUB line $line $*"
+done
+exit 0

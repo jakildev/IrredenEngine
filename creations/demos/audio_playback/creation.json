@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Audio playback",
-  "description": "Demonstrates the audio playback creation and its engine integration.",
+  "description": "Lua-driven sound, music, bus volume, and fade playback over a voxel scene.",
   "group": "audio-midi",
   "tags": [
     "audio-midi"
@@ -10,7 +10,7 @@
   "targets": [
     {
       "name": "IRAudioPlayback",
-      "description": "Runs the audio playback creation.",
+      "description": "Exercises the Lua audio playback and mixing surface.",
       "presets": [
         {
           "name": "Interactive",

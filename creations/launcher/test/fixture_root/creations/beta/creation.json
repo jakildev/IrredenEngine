@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Beta",
+  "description": "Fixture creation that runs the lua widgets demo's screenshot take.",
+  "group": "fixture/two",
+  "tags": ["fixture", "hand-off"],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRLuaWidgetsDemo",
+      "display": "Lua widgets",
+      "presets": [{ "name": "Screenshot", "args": ["--auto-screenshot", "3"] }]
+    }
+  ]
+}

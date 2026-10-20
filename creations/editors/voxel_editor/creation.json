@@ -1,16 +1,17 @@
 {
   "version": 1,
   "name": "Voxel editor",
-  "description": "Demonstrates the voxel editor creation and its engine integration.",
+  "description": "An interactive voxel editor for painting, baking, assembling, and saving entity scenes.",
   "group": "editors",
   "tags": [
     "editors"
   ],
   "kind": "editor",
+  "thumbnail": "test/references/macos-debug/mode_preview_grid.png",
   "targets": [
     {
       "name": "IRVoxelEditor",
-      "description": "Runs the voxel editor creation.",
+      "description": "Launches the voxel editor and its scripted authoring workspace.",
       "presets": [
         {
           "name": "Interactive",

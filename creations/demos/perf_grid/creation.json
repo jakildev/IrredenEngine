@@ -1,16 +1,17 @@
 {
   "version": 1,
   "name": "Performance grid",
-  "description": "Demonstrates the performance grid creation and its engine integration.",
+  "description": "A dense voxel grid for measuring renderer and scene throughput.",
   "group": "perf",
   "tags": [
     "perf"
   ],
   "kind": "demo",
+  "thumbnail": "test/references/macos-debug/fit_grid.png",
   "targets": [
     {
       "name": "IRPerfGrid",
-      "description": "Runs the performance grid creation.",
+      "description": "Renders the dense performance grid scene.",
       "presets": [
         {
           "name": "Interactive",

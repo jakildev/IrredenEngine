@@ -113,6 +113,31 @@ TEST_F(LuaSpawnToolTest, RefusesUnknownAndUntypedInput) {
         "NUL byte"
     );
     expectRaises("IREngine.spawnTool{ tool = 'editor', path = '/etc' }", "inside the tool root");
+    expectRaises(
+        "IREngine.spawnTool{ tool = 'editor', path = 'creations', editor = 'vim' }",
+        "unknown editor"
+    );
+    expectRaises(
+        "IREngine.spawnTool{ tool = 'editor', path = 'creations', editor = 1 }",
+        "editor must be a string"
+    );
+    expectRaises(
+        "IREngine.spawnTool{ tool = 'open-folder', path = 'creations', editor = 'code' }",
+        "unknown key"
+    );
+}
+
+TEST_F(LuaSpawnToolTest, ListsTheFixedEditorTable) {
+    const sol::protected_function_result result = m_lua.lua().safe_script(
+        R"lua(
+            local editors = IREngine.toolEditors()
+            assert(#editors == 2)
+            assert(editors[1].name == "cursor" and editors[2].name == "code")
+            assert(type(editors[1].found) == "boolean" and type(editors[2].found) == "boolean")
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
 }
 
 TEST_F(LuaSpawnToolTest, RefusesOffMainThread) {

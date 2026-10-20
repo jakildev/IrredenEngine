@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Analytic oracle",
-  "description": "Demonstrates the analytic oracle creation and its engine integration.",
+  "description": "A deterministic shadow-occupancy oracle for cross-backend render validation.",
   "group": "render/shapes",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRAnalyticOracle",
-      "description": "Runs the analytic oracle creation.",
+      "description": "Renders the analytic shadow oracle scene and structural metric probe.",
       "presets": [
         {
           "name": "Interactive",

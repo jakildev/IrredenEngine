@@ -1,17 +1,18 @@
 {
   "version": 1,
   "name": "Metal clear test",
-  "description": "Demonstrates the metal clear test creation and its engine integration.",
+  "description": "A minimal renderer clear-and-present test for the Metal backend.",
   "group": "render/canvas",
   "tags": [
     "render",
     "canvas"
   ],
   "kind": "demo",
+  "thumbnail": "test/references/macos-debug/metal_clear_zoom1.png",
   "targets": [
     {
       "name": "IRMetalClearTest",
-      "description": "Runs the metal clear test creation.",
+      "description": "Runs the minimal Metal clear test scene.",
       "presets": [
         {
           "name": "Interactive",

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Lua widgets",
-  "description": "Demonstrates the lua widgets creation and its engine integration.",
+  "description": "Lua bindings for interactive trixel GUI widgets and widget input.",
   "group": "lua/widgets",
   "tags": [
     "lua",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRLuaWidgetsDemo",
-      "description": "Runs the lua widgets creation.",
+      "description": "Launches the Lua-driven widgets demonstration.",
       "presets": [
         {
           "name": "Interactive",

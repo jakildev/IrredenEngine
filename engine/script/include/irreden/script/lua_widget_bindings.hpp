@@ -13,6 +13,7 @@
 //   local number = IRGui.makeNumberField(x, y, w, h, value, min, max, step?, size?)
 //   local value  = IRGui.numberFieldValue(number)
 //   IRGui.setNumberFieldValue(number, value)
+//   IRGui.focus(textInput)                            -- keyboard focus, next INPUT frame
 //   local region = IRGui.makeHitRegion(x, y, w, h, {
 //       zOrder = 0, onHover = fn(id), onUnhover = fn(id), onClick = fn(id),
 //   })                                                -- every key optional
@@ -536,6 +537,11 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
     gui["setTextInputValue"] = [](lua_Integer id, std::string text) {
         requireWidget<IRComponents::C_WidgetTextInput>(id, "IRGui.setTextInputValue", "text input");
         IRPrefab::Widget::setTextInputValue(static_cast<IREntity::EntityId>(id), std::move(text));
+    };
+
+    gui["focus"] = [](lua_Integer id) {
+        requireWidget<IRComponents::C_Widget>(id, "IRGui.focus", "live widget");
+        IRPrefab::Widget::focus(static_cast<IREntity::EntityId>(id));
     };
 
     gui["makeNumberField"] = [](int x,
