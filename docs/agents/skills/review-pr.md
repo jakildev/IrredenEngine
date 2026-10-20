@@ -213,10 +213,14 @@ merging is the human's call.
 ### Test plan the author should run before merge
 - [ ] <...>
 
+<!-- fleet-review dispatch=<FLEET_DISPATCH_ID> agent=<worktree-basename> -->
 🤖 Reviewed by Claude <model> (review-pr skill)
 ```
 
 Cite `file:line` and a concrete fix for every issue; drop empty sections.
+The `fleet-review` marker is written only when `FLEET_DISPATCH_ID` is set
+(a dispatched fleet reviewer); an interactive human drops it. It lets the
+verdict wrapper recognise this dispatch's own review after a swept claim.
 
 **The bright line:** a Nit is truly optional. Anything phrased "must
 resolve before merge", "the comment and code must agree", "needs to be

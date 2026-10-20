@@ -722,6 +722,38 @@ class DispatchTargets(HostSeamCase):
             finally:
                 os.environ.pop("FLEET_STATE_DIR", None)
 
+    def test_verdict_replay_target_has_its_own_decline_memory(self):
+        # The stranded-review shape: a sonnet `review:` decline at the PR's
+        # current stamp hid it from every lane. A `verdict_replay` candidate
+        # is a distinct target, so that ledger cannot suppress it; only a
+        # declined replay of the same unchanged PR does.
+        with tempfile.TemporaryDirectory() as state_dir:
+            os.environ["FLEET_STATE_DIR"] = state_dir
+            try:
+                declined = Path(state_dir) / "declined"
+                declined.mkdir()
+                stamp = "2026-10-17T20:03:38Z"
+                (declined / "review-engine-4483").write_text(
+                    f"{stamp}\nfleet-review-verdict requires fleet:reviewing-mac-pool-2\n"
+                    "sonnet-reviewer\n")
+                stranded = {"number": 4483, "repo": "engine", "updatedAt": stamp,
+                            "verdict_replay": True}
+                plain = {"number": 4483, "repo": "engine", "updatedAt": stamp}
+                self.assertEqual(pick_role({"candidate_prs": [plain]}, "sonnet-reviewer"), [])
+                self.assertEqual(pick_role({"candidate_prs": [stranded]}, "sonnet-reviewer"),
+                                 ["verdict-replay:engine:4483"])
+                (declined / "verdict-replay-engine-4483").write_text(
+                    f"{stamp}\nambiguous verdict\nsonnet-reviewer\n")
+                self.assertEqual(pick_role({"candidate_prs": [stranded]}, "sonnet-reviewer"), [])
+                held = dict(stranded, updatedAt="2026-10-18T00:00:00Z",
+                            labels=["fleet:reviewing-mac-pool-4"])
+                self.assertEqual(pick_role({"candidate_prs": [held]}, "sonnet-reviewer"), [])
+                # The opus lane never emits the kind.
+                self.assertEqual(pick_role({"flagged_prs": [dict(stranded, updatedAt="")]},
+                                           "opus-reviewer"), ["review:engine:4483"])
+            finally:
+                os.environ.pop("FLEET_STATE_DIR", None)
+
     def test_shadowed_closeout_is_terminal_and_repo_scoped(self):
         with tempfile.TemporaryDirectory() as state_dir:
             os.environ["FLEET_STATE_DIR"] = state_dir

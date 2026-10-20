@@ -47,6 +47,12 @@ assert_eq "$(parse task:engine:1969)" "task|engine|1969|" "task target"
 assert_eq "$(parse stack:game:344:397)" "stack|game|344|397" "stack target carries its base PR as extra"
 assert_eq "$(parse review:engine:3074)" "review|engine|3074|" "review target"
 assert_eq "$(parse planreview:game:605)" "planreview|game|605|" "planreview target"
+assert_eq "$(parse verdict-replay:engine:4483)" "verdict-replay|engine|4483|" \
+    "verdict-replay target keeps its hyphenated kind, repo and PR"
+assert_eq "$(fleet_target_key verdict-replay:game:12)" "verdict-replay-game-12" \
+    "verdict-replay key is distinct from the review key of the same PR"
+assert_eq "${FLEET_TARGET_CLAIM[verdict-replay]:-}|${FLEET_TARGET_LABEL[verdict-replay]:-}" \
+    "review-claim|fleet:reviewing-" "verdict-replay takes the reviewing claim and label"
 assert_eq "$(parse merge:engine:3455)" "merge|engine|3455|" "merge target (the claimless kind)"
 
 echo "T2: every kind in the claim table parses, and the two tables agree"
@@ -148,6 +154,8 @@ assert_eq "$(release plan:game:7)" "--repo game planning-release 7 pool-3" "plan
 assert_eq "$(release review:engine:3074)" "review-release 3074 pool-3" "review -> review-release"
 assert_eq "$(release planreview:engine:605)" "review-release 605 pool-3" "planreview -> review-release"
 assert_eq "$(release smoke:engine:3087)" "review-release 3087 pool-3" "smoke -> review-release"
+assert_eq "$(release verdict-replay:game:12)" "--repo game review-release 12 pool-3" \
+    "verdict-replay -> review-release, game namespaced"
 assert_eq "$(release merge:engine:3455)" "" "merge -> nothing to release (claimless)"
 assert_eq "$(release bogus:engine:1)" "" "a malformed target releases nothing"
 

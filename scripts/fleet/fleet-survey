@@ -10,7 +10,8 @@ per repo, and prints:
   queue      per repo: claimable here / host-pinned away / ghost / in-flight /
              blocked / in progress
   parks      every fleet:awaiting-infra PR with its Parked-until issues and PRs resolved
-  stranded   fleet:wip PRs no label vouches for, and whether they conflict
+  stranded   fleet:wip PRs no label vouches for, and whether they conflict; PRs
+             whose current-head fleet review postdates every verdict event
   approval   fleet:task issues no approval label has reached, epic children first
   epics      fleet:epic umbrellas with children left, flagging ghost-only remainders
   untriaged  issues with no fleet:/human: label (judge with fleet-triage-sweep)
@@ -42,6 +43,7 @@ import fleet_epic_membership  # noqa: E402
 import fleet_github  # noqa: E402
 import fleet_github_identity  # noqa: E402
 import fleet_poll_topology  # noqa: E402
+import fleet_review_replay  # noqa: E402
 import fleet_task_class  # noqa: E402
 import fleet_validate_stack  # noqa: E402
 
@@ -241,7 +243,10 @@ def blocker_impacts(open_issues, ghosts):
     return impacts
 
 
-def stranded_section(prs):
+def stranded_section(prs, cached_prs=()):
+    """Unowned `fleet:wip` PRs from the live listing, then reviewed-but-
+    unverdicted PRs from the scout cache — the live listing carries no
+    label-event times, which the replay predicate needs."""
     rows = []
     for pr in prs:
         labels = label_set(pr)
@@ -256,6 +261,14 @@ def stranded_section(prs):
                      "state": ("resume pending (fleet:design-unblocked)"
                                if "fleet:design-unblocked" in labels
                                else "stranded: wip with no owner label (R7 re-arms)")})
+    for pr in cached_prs:
+        if not fleet_review_replay.replay_pending(pr):
+            continue
+        rows.append({"pr": pr["number"], "title": pr.get("title"),
+                     "mergeable": pr.get("mergeable"), "updatedAt": pr.get("updatedAt"),
+                     "reviewed_at": pr["fleet_review_at"],
+                     "state": (f"reviewed {pr['fleet_review_at']}, no verdict since "
+                               f"(verdict-replay pending)")})
     return rows
 
 
@@ -341,7 +354,7 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=No
         report["repos"][key] = {
             "queue": queue,
             "parks": parks_section(key, listings),
-            "stranded": stranded_section(prs),
+            "stranded": stranded_section(prs, state["repos"][key].get("prs") or []),
             "approval_gap": approval_section(open_issues),
             "epics": epics_section(open_issues, ghosts, prs_by_issue),
             "untriaged": untriaged_section(open_issues),

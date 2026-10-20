@@ -26,6 +26,21 @@
 # Usage:
 #   fleet-review-verdict <verdict-transition> <pr-number> \
 #       [--agent <name>] [--repo engine|game|<owner/name>] [--no-review-check] [--dry-run]
+#   fleet-review-verdict --replay <pr-number> --agent <name> [--repo engine|game|<owner/name>] [--dry-run]
+#
+# Replay (`verdict-replay` dispatch targets): the PR's newest submitted review
+#   on the current head is a fleet review whose edge never landed. The edge is
+#   read from that body (fleet_review_replay.verdict_edge: `**Verdict:**
+#   needs-fix` -> verdict-needs-fix; `approve` -> verdict-needs-opus-recheck
+#   when a line starts `Opus recheck required:`, else verdict-approve-nits
+#   with a substantive `### Nits`, else verdict-approve), the head is re-read
+#   just before the swap, and nothing is ever posted. The claim is required.
+#
+# Swept claim: with --agent and no claim label, the wrapper re-takes the claim
+#   once instead of refusing, but only when no other reviewing claim stands
+#   and the head review is this login's own fleet review carrying the
+#   `<!-- fleet-review dispatch=<FLEET_DISPATCH_ID> agent=<name> -->`
+#   provenance of this very dispatch. Anything else is the misroute refusal.
 #
 # Options:
 #   --agent <name>  The reviewing agent (worktree basename passed to
@@ -46,8 +61,10 @@
 #                   Skip the current-head review-body check. Reserved for the
 #                   label-fixup lane fenced by REVIEWER-PROTOCOL.md; ordinary
 #                   reviewer verdicts must never pass this flag.
+#   --replay        Replay mode (above): takes <pr-number> and no transition.
 #   --dry-run       Print what would happen; make no changes. Passed through
-#                   to fleet-transition. The claim check still runs.
+#                   to fleet-transition. The claim check still runs; a claim
+#                   re-take is reported, not written.
 #   -h, --help      Show this help.
 #
 # Exit status:
@@ -59,6 +76,8 @@
 #      reviewing claim on the PR — no writes performed
 #   5  REVIEW-BODY GUARD: no submitted review pins the PR's current head —
 #      no writes performed
+#   6  REPLAY GUARD: --replay found no fleet review on the current head, its
+#      body names no unambiguous verdict, or the head moved — no writes
 #
 # Source of truth: scripts/fleet/fleet-review-verdict in the engine repo.
 # Installed to ~/bin/ by scripts/fleet/install.sh.
@@ -92,6 +111,7 @@ agent=""
 repo_slug=""
 dry_run=0
 review_check=1
+replay=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -125,6 +145,7 @@ while [[ $# -gt 0 ]]; do
             fi
             shift ;;
         --no-review-check) review_check=0; shift ;;
+        --replay) replay=1; shift ;;
         --dry-run) dry_run=1; shift ;;
         -h|--help)
             awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0" | sed 's/^# \{0,1\}//'
@@ -141,8 +162,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$transition" || -z "$number" ]]; then
+if [[ "$replay" -eq 1 ]]; then
+    # The edge comes from the review body; the one positional is the PR.
+    if [[ -n "$number" ]]; then
+        echo "$PROG: --replay takes a PR number and no transition" >&2; exit 2
+    fi
+    number="$transition"; transition=""
+    if [[ -z "$agent" || "$review_check" -eq 0 ]]; then
+        echo "$PROG: --replay requires --agent and the review-body check" >&2; exit 2
+    fi
+fi
+if [[ ( -z "$transition" && "$replay" -eq 0 ) || -z "$number" ]]; then
     echo "$PROG: usage: $PROG <verdict-transition> <pr-number> [--agent <name>] [--repo <slug>] [--no-review-check] [--dry-run]" >&2
+    echo "$PROG:        $PROG --replay <pr-number> --agent <name> [--repo <slug>] [--dry-run]" >&2
     exit 2
 fi
 if ! [[ "$number" =~ ^[0-9]+$ ]]; then
@@ -151,7 +183,7 @@ if ! [[ "$number" =~ ^[0-9]+$ ]]; then
 fi
 
 # Guard the lane: only the reviewer verdict edges pass through here.
-if [[ " $VERDICT_TRANSITIONS " != *" $transition "* ]]; then
+if [[ "$replay" -eq 0 && " $VERDICT_TRANSITIONS " != *" $transition "* ]]; then
     echo "$PROG: '$transition' is not a verdict transition — use fleet-transition." >&2
     echo "$PROG: verdict transitions: $VERDICT_TRANSITIONS" >&2
     exit 2
@@ -182,6 +214,69 @@ fi
 
 repo_args=()
 [[ -n "$repo_slug" ]] && repo_args=(--repo "$repo_slug")
+reviews_path="repos/{owner}/{repo}/pulls/${number}/reviews"
+[[ -n "$repo_slug" ]] && reviews_path="repos/${repo_slug}/pulls/${number}/reviews"
+
+# read_head_review — describe the newest submitted review on the current head
+# (fleet_review_replay.py inspect). Sets HR_HEAD, HR_AUTHOR, HR_FLEET (0|1),
+# HR_EDGE and HR_REASON, HR_DISPATCH and HR_AGENT ("-" when absent).
+# Returns 1 on a gh/parse failure, 3 when no submitted review pins the head.
+read_head_review() {
+    local reviews_file rc=0 line
+    HR_HEAD="" HR_AUTHOR="" HR_FLEET=0 HR_EDGE="-" HR_REASON="" HR_DISPATCH="-" HR_AGENT="-"
+    if ! HR_HEAD="$(gh pr view "$number" ${repo_args[@]+"${repo_args[@]}"} --json headRefOid --jq '.headRefOid' 2>/dev/null)" || [[ -z "$HR_HEAD" ]]; then
+        echo "$PROG: could not read the current head for PR #$number." >&2
+        return 1
+    fi
+    reviews_file="$(mktemp "${TMPDIR:-/tmp}/fleet-review-verdict.XXXXXX")" || return 1
+    if ! gh api "$reviews_path" --paginate >"$reviews_file" 2>/dev/null; then
+        rm -f "$reviews_file"
+        echo "$PROG: could not read the reviews of PR #$number." >&2
+        return 1
+    fi
+    line="$(python3 "$runtime_dir/fleet_review_replay.py" inspect \
+        --reviews "$reviews_file" --head "$HR_HEAD" | tr -d '\r')" || rc=$?
+    rm -f "$reviews_file"
+    if [[ "$rc" -eq 1 ]]; then return 3; fi
+    if [[ "$rc" -ne 0 || -z "$line" ]]; then return 1; fi
+    IFS=$'\t' read -r HR_AUTHOR HR_FLEET HR_EDGE HR_REASON HR_DISPATCH HR_AGENT <<<"$line"
+    return 0
+}
+
+# retake_swept_claim — the claim this dispatch took was swept while its review
+# was being written. Re-take it only for the review this dispatch posted:
+# a different reviewer's body, a different dispatch or agent, or a claim
+# another reviewer now holds is the misroute the guard exists to refuse.
+retake_swept_claim() {
+    local dispatch="${FLEET_DISPATCH_ID:-}" login slug
+    local -a claim_ns=()
+    [[ -n "$dispatch" && "$dispatch" != preclaim ]] || return 1
+    if printf '%s\n' "$live_labels" | grep -q '^fleet:reviewing-'; then
+        echo "$PROG: another reviewing claim stands on #$number; not re-taking." >&2
+        return 1
+    fi
+    read_head_review || return 1
+    if [[ "$HR_FLEET" != 1 || "$HR_DISPATCH" != "$dispatch" || "$HR_AGENT" != "$agent" ]]; then
+        echo "$PROG: the current-head review on #$number is not this dispatch's own; not re-taking." >&2
+        return 1
+    fi
+    login="$(gh api user --jq '.login' 2>/dev/null | tr -d '\r')" || return 1
+    if [[ -z "$login" || "$HR_AUTHOR" != "$login" ]]; then
+        echo "$PROG: the current-head review on #$number is by '$HR_AUTHOR', not '$login'; not re-taking." >&2
+        return 1
+    fi
+    slug="$repo_slug"
+    if [[ -z "$slug" ]]; then
+        slug="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null | tr -d '\r')" || return 1
+    fi
+    case "$slug" in game|jakildev/irreden) claim_ns=(--repo game) ;; esac
+    if [[ "$dry_run" -eq 1 ]]; then
+        echo "$PROG: (dry-run) would re-take '$claim_label' on #$number." >&2
+        return 0
+    fi
+    fleet-claim ${claim_ns[@]+"${claim_ns[@]}"} review-claim "$number" "$agent" >/dev/null || return 1
+    echo "$PROG: re-took the swept '$claim_label' on #$number for this dispatch's own review." >&2
+}
 
 # ----------------------------------------------------------------------
 # The guard: with --agent, require this agent's reviewing claim on the PR.
@@ -217,11 +312,43 @@ if [[ -n "$agent" ]]; then
         echo "$PROG: could not read labels for PR #$number (not found, or gh/auth error)." >&2
         exit 1
     fi
-    if ! printf '%s\n' "$live_labels" | grep -Fxq -- "$claim_label"; then
-        echo "$PROG: refusing verdict '$transition' on #$number: this agent does not hold '$claim_label'." >&2
+    if ! printf '%s\n' "$live_labels" | grep -Fxq -- "$claim_label" \
+            && { [[ "$replay" -eq 1 ]] || ! retake_swept_claim; }; then
+        echo "$PROG: refusing verdict '${transition:-replay}' on #$number: this agent does not hold '$claim_label'." >&2
         echo "$PROG: (misroute guard) apply the verdict only to the PR you took the reviewing claim on." >&2
         exit 4
     fi
+fi
+
+# ----------------------------------------------------------------------
+# Replay: the edge is the one the existing current-head fleet review names.
+# Its head is re-read immediately before the swap, so a push between the
+# projection and here voids the replay instead of stamping an unreviewed head.
+# ----------------------------------------------------------------------
+if [[ "$replay" -eq 1 ]]; then
+    hr_rc=0
+    read_head_review || hr_rc=$?
+    if [[ "$hr_rc" -eq 1 ]]; then exit 1; fi
+    if [[ "$hr_rc" -eq 3 ]]; then
+        echo "$PROG: refusing replay on #$number: no submitted review pins the current head." >&2
+        exit 6
+    fi
+    if [[ "$HR_FLEET" != 1 || "$HR_EDGE" == "-" ]]; then
+        echo "$PROG: refusing replay on #$number: ${HR_REASON:-no replayable review}." >&2
+        exit 6
+    fi
+    transition="$HR_EDGE"
+    replayed_head="$HR_HEAD"
+    if ! head_now="$(gh pr view "$number" ${repo_args[@]+"${repo_args[@]}"} --json headRefOid --jq '.headRefOid' 2>/dev/null)" || [[ -z "$head_now" ]]; then
+        echo "$PROG: could not re-read the current head for PR #$number." >&2
+        exit 1
+    fi
+    if [[ "$head_now" != "$replayed_head" ]]; then
+        echo "$PROG: refusing replay on #$number: the head moved from $replayed_head to $head_now." >&2
+        exit 6
+    fi
+    echo "$PROG: replaying '$transition' on #$number from the review on $replayed_head ($HR_REASON)." >&2
+    review_check=0
 fi
 
 # ----------------------------------------------------------------------
@@ -236,8 +363,6 @@ if [[ "$review_check" -eq 1 ]]; then
         exit 1
     fi
 
-    reviews_path="repos/{owner}/{repo}/pulls/${number}/reviews"
-    [[ -n "$repo_slug" ]] && reviews_path="repos/${repo_slug}/pulls/${number}/reviews"
     submitted_commits=""
     for attempt in 1 2; do
         if ! submitted_commits="$(gh api "$reviews_path" --paginate --jq '.[] | select(.state != "PENDING") | .commit_id' 2>/dev/null)"; then
