@@ -122,4 +122,22 @@ rc=0
 "$DISPATCHER" --gate-block-check >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "2" "T13 missing role exits 2"
 
+echo "T14: a colon-bearing reason keeps a delimiter-safe three-tick streak"
+set +e
+out=$(gate worker 'claim-refused: stale clone' 'claim-refused: stale clone' \
+        'claim-refused: stale clone')
+rc=$?
+set -e
+assert_eq "$rc" "0" "T14 colon reason does not abort the streak"
+assert_contains "$out" "reason=claim-refused: stale clone count=3" \
+    "T14 colon reason reaches count 3 without arithmetic parsing"
+out=$("$DISPATCHER" --gate-block-check worker - 2>&1)
+assert_contains "$out" "tick 1 cleared" "T14 healthy tick clears the colon-bearing alert"
+assert_contains "$out" "alert: none" "T14 alert is gone after clear"
+
+echo "T15: the optional third argument replaces the default log text"
+out=$(FLEET_GATE_BLOCK_TEST_LOG_TEXT='worker: exact refusal summary' gate worker codex-cooldown)
+assert_contains "$out" "worker: exact refusal summary" "T15 custom log text emitted"
+assert_absent "$out" "claim budget" "T15 default wording suppressed"
+
 summarize "fleet-dispatcher gate-block tests"

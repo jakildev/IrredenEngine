@@ -2668,13 +2668,78 @@ note_sweep_cooldowns() {
 # assign_for_pane and its dispatch_role callers before every assign_budget_hit;
 # consumed by note_gate_block so the log names the real cause.
 ASSIGN_BLOCK_REASON=""
-declare -A DISPATCH_GATE_STREAK=()
+declare -A DISPATCH_GATE_REASON=()
+declare -A DISPATCH_GATE_COUNT=()
+declare -A CLAIM_WALK_REFUSAL_COUNT=()
+declare -a CLAIM_WALK_REFUSAL_ORDER=()
+CLAIM_WALK_REFUSAL_TOTAL=0
+CLAIM_WALK_REFUSAL_DOMINANT=""
+CLAIM_WALK_REFUSAL_DOMINANT_COUNT=0
+declare -A CLAIM_PASS_REFUSAL_COUNT=()
+CLAIM_PASS_REFUSAL_TOTAL=0
+CLAIM_PASS_REFUSAL_DOMINANT=""
+CLAIM_PASS_REFUSAL_DOMINANT_COUNT=0
+
+reset_claim_walk_refusals() {
+    CLAIM_WALK_REFUSAL_COUNT=()
+    CLAIM_WALK_REFUSAL_ORDER=()
+    CLAIM_WALK_REFUSAL_TOTAL=0
+    CLAIM_WALK_REFUSAL_DOMINANT=""
+    CLAIM_WALK_REFUSAL_DOMINANT_COUNT=0
+}
+
+note_claim_walk_refusal() {  # $1 = raw claim refusal reason
+    local reason="$1" count
+    local -a words=()
+    reason="${reason//$'\r'/ }"
+    reason="${reason//$'\n'/ }"
+    read -r -a words <<< "$reason"
+    if (( ${#words[@]} > 0 )); then
+        printf -v reason '%s ' "${words[@]}"
+        reason="${reason% }"
+    else
+        reason="no reason given"
+    fi
+    if [[ -z "${CLAIM_WALK_REFUSAL_COUNT[$reason]+x}" ]]; then
+        CLAIM_WALK_REFUSAL_ORDER+=("$reason")
+        CLAIM_WALK_REFUSAL_COUNT["$reason"]=0
+    fi
+    count=$(( ${CLAIM_WALK_REFUSAL_COUNT[$reason]} + 1 ))
+    CLAIM_WALK_REFUSAL_COUNT["$reason"]=$count
+    CLAIM_WALK_REFUSAL_TOTAL=$(( CLAIM_WALK_REFUSAL_TOTAL + 1 ))
+    if (( count > CLAIM_WALK_REFUSAL_DOMINANT_COUNT )); then
+        CLAIM_WALK_REFUSAL_DOMINANT="$reason"
+        CLAIM_WALK_REFUSAL_DOMINANT_COUNT=$count
+    fi
+}
+
+merge_claim_walk_refusals() {
+    local reason count
+    (( ${#CLAIM_WALK_REFUSAL_ORDER[@]} > 0 )) || return 0
+    for reason in "${CLAIM_WALK_REFUSAL_ORDER[@]}"; do
+        if [[ -z "${CLAIM_PASS_REFUSAL_COUNT[$reason]+x}" ]]; then
+            CLAIM_PASS_REFUSAL_COUNT["$reason"]=0
+        fi
+        count=$(( ${CLAIM_PASS_REFUSAL_COUNT[$reason]} + ${CLAIM_WALK_REFUSAL_COUNT[$reason]} ))
+        CLAIM_PASS_REFUSAL_COUNT["$reason"]=$count
+        if (( count > CLAIM_PASS_REFUSAL_DOMINANT_COUNT )); then
+            CLAIM_PASS_REFUSAL_DOMINANT="$reason"
+            CLAIM_PASS_REFUSAL_DOMINANT_COUNT=$count
+        fi
+    done
+    CLAIM_PASS_REFUSAL_TOTAL=$(( CLAIM_PASS_REFUSAL_TOTAL + CLAIM_WALK_REFUSAL_TOTAL ))
+}
+
+claim_refusal_suffix() {  # $1 = count, $2 = total, $3 = reason
+    local reason="${3:0:120}"
+    [[ -n "$reason" ]] && printf ' (%s/%s refused: %s)' "$1" "$2" "$reason"
+}
 
 _dispatch_gate_alert_path() {
     echo "${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatch-gate-$1"
 }
 
-# note_gate_block <role> <reason> — log once per reason (the CAP_DEFER_LOGGED
+# note_gate_block <role> <reason> [log-text] — log once per reason (the CAP_DEFER_LOGGED
 # quiet-until-cleared idiom, re-armed whenever the reason changes) and, once the
 # SAME reason has held for 3 consecutive calls, keep a standing alert file so a
 # persistent block (e.g. a stuck Codex cooldown, a misconfigured review-policy
@@ -2684,24 +2749,28 @@ _dispatch_gate_alert_path() {
 # blocked the lane first for as long as the lane stayed blocked — the
 # indistinguishable-cause misreport this helper exists to end.
 note_gate_block() {
-    local role="$1" reason="${2:-claim-budget-spent}" count
-    local prev="${DISPATCH_GATE_STREAK[$role]:-}"
-    if [[ "$prev" == "$reason:"* ]]; then
-        count="${prev#*:}"
-        count=$(( count + 1 ))
+    local role="$1" reason="${2:-claim-budget-spent}" log_text="${3:-}" count
+    local prev_reason="${DISPATCH_GATE_REASON[$role]:-}"
+    if [[ "$prev_reason" == "$reason" ]]; then
+        count=$(( ${DISPATCH_GATE_COUNT[$role]:-0} + 1 ))
     else
         count=1
         # New cause ⇒ news. Re-arm the one-line log, and drop the standing
         # alert, which still names the cause that just stopped being true —
         # it is rewritten below once the new cause reaches the threshold.
         unset "CAP_DEFER_LOGGED[$role-claimbudget]"
-        if [[ -n "$prev" ]]; then
+        if [[ -n "$prev_reason" ]]; then
             rm -f "$(_dispatch_gate_alert_path "$role")" 2>/dev/null || true
         fi
     fi
-    DISPATCH_GATE_STREAK["$role"]="$reason:$count"
+    DISPATCH_GATE_REASON["$role"]="$reason"
+    DISPATCH_GATE_COUNT["$role"]=$count
     if [[ -z "${CAP_DEFER_LOGGED[$role-claimbudget]+x}" ]]; then
-        log "$role: claim budget (${CLAIM_ATTEMPTS_PER_TICK}/tick) spent with candidates left ($reason); trigger kept for the next tick"
+        if [[ -n "$log_text" ]]; then
+            log "$log_text"
+        else
+            log "$role: claim budget (${CLAIM_ATTEMPTS_PER_TICK}/tick) spent with candidates left ($reason); trigger kept for the next tick"
+        fi
         CAP_DEFER_LOGGED["$role-claimbudget"]=1
     fi
     if (( count >= 3 )); then
@@ -2716,7 +2785,7 @@ note_gate_block() {
 # any standing alert so the next block, whatever it is, escalates from zero.
 clear_gate_block() {
     local role="$1"
-    unset "DISPATCH_GATE_STREAK[$role]"
+    unset "DISPATCH_GATE_REASON[$role]" "DISPATCH_GATE_COUNT[$role]"
     rm -f "$(_dispatch_gate_alert_path "$role")" 2>/dev/null || true
     unset "CAP_DEFER_LOGGED[$role-claimbudget]"
 }
@@ -2992,6 +3061,7 @@ print(data.get(sys.argv[2], "") if isinstance(data, dict) else "")' "$1" "$2" 2>
 # iterations do no lane work, so a claim there would only strand a lock.
 assign_for_pane() {
     local role="$1" agent="$2" pin_rc=0
+    reset_claim_walk_refusals
     ASSIGNMENT=""
     ASSIGN_RUNTIME="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_CLASS=""
     ASSIGN_PINNED="" ASSIGN_PIN_MODEL="" ASSIGN_PIN_EPOCH=""
@@ -3049,6 +3119,7 @@ assign_for_pane() {
         refusal_key="$role|$DISPATCH_CLASS|$line"
         if [[ -n "${CLAIM_REFUSED_AT[$refusal_key]+x}" ]] \
             && (( now - CLAIM_REFUSED_AT[$refusal_key] < CLAIM_REFUSE_TTL_SECONDS )); then
+            note_claim_walk_refusal "${CLAIM_REFUSED_REASON[$refusal_key]:-no reason given}"
             continue
         fi
         # FLEET_RUNTIMES is the sole gate for whether routing runs at all.
@@ -3115,6 +3186,7 @@ assign_for_pane() {
             log "$role: claim of $line under $agent refused (rc=$claim_rc): $CLAIM_TARGET_ERROR"
             CLAIM_REFUSED_REASON[$refusal_key]="$CLAIM_TARGET_ERROR"
         fi
+        note_claim_walk_refusal "$CLAIM_TARGET_ERROR"
         CLAIM_REFUSED_AT[$refusal_key]=$now
     done <<< "$PICKS_CACHE"
     (( runtime_blocked )) && return 3
@@ -3128,9 +3200,13 @@ assign_for_pane() {
 # class, 1 when nothing else is servable. $1 = role, $2 = the reason for the
 # log line.
 elect_next_class() {
-    local role="$1" reason="$2"
+    local role="$1" reason="$2" suffix=""
+    if (( CLAIM_WALK_REFUSAL_TOTAL > 0 )); then
+        suffix=$(claim_refusal_suffix "$CLAIM_WALK_REFUSAL_DOMINANT_COUNT" \
+            "$CLAIM_WALK_REFUSAL_TOTAL" "$CLAIM_WALK_REFUSAL_DOMINANT")
+    fi
     _sat_excluded="${_sat_excluded:+$_sat_excluded,}$DISPATCH_CLASS"
-    log "$role: class=$DISPATCH_CLASS $reason; serving next class"
+    log "$role: class=$DISPATCH_CLASS $reason$suffix; serving next class"
     resolve_worker_class "$role" "$_sat_excluded"
     [[ -n "$DISPATCH_CLASS" ]] && (( ! DISPATCH_DEFER )) || return 1
     claim_headroom=-1
@@ -3584,7 +3660,7 @@ dispatch_role() {
     # fan-out stops and the trigger is consumed below rather than re-walked
     # every 10 s. assign_budget_hit: the walk stopped on the per-tick claim
     # budget with candidates left — the trigger is kept instead.
-    local assign_exhausted="" assign_budget_hit="" assign_rc=0
+    local assign_exhausted="" assign_budget_hit="" assign_rc=0 assignment_walked=""
     # reserved_held: a reserved worker pane sat out this tick, in its
     # usage-limit cooldown or behind a closed gate on the model it resumes.
     # Its reservation is the resume nobody else can serve (free panes fall
@@ -3595,6 +3671,10 @@ dispatch_role() {
     local batch_runtime="" batch_class="" batch_model="" batch_effort=""
     PICKS_CACHE_KEY=""
     CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
+    CLAIM_PASS_REFUSAL_COUNT=()
+    CLAIM_PASS_REFUSAL_TOTAL=0
+    CLAIM_PASS_REFUSAL_DOMINANT=""
+    CLAIM_PASS_REFUSAL_DOMINANT_COUNT=0
     while IFS= read -r pane_id; do
         [[ -n "$pane_id" ]] || continue
         # Role-cap headroom: stop once this tick's launches have consumed the
@@ -3686,6 +3766,8 @@ dispatch_role() {
             fi
             if [[ "$role" != "worker" ]] || ! worktree_is_reserved "$pane_basename"; then
                 assign_for_pane "$role" "$pane_basename" && assign_rc=0 || assign_rc=$?
+                assignment_walked=1
+                merge_claim_walk_refusals
                 # The elected class has no claimable candidate left (every one
                 # held elsewhere, in flight, or refused by its claim gate
                 # live) while ANOTHER class is claimable: re-elect without it
@@ -3699,6 +3781,8 @@ dispatch_role() {
                     && elect_next_class "$role" "has no claimable candidate left"; do
                     dispatched_class=0
                     assign_for_pane "$role" "$pane_basename" && assign_rc=0 || assign_rc=$?
+                    assignment_walked=1
+                    merge_claim_walk_refusals
                 done
                 case "$assign_rc" in
                     0)
@@ -3869,10 +3953,24 @@ dispatch_role() {
     # the next projection change, which is exactly when a candidate frees up,
     # and the periodic worker re-arm covers the quiet corner.
     if [[ -n "$assign_budget_hit" ]]; then
-        note_gate_block "$role" "$ASSIGN_BLOCK_REASON"
+        if [[ "$role" == worker && "$ASSIGN_BLOCK_REASON" == claim-attempts-exhausted \
+            && $CLAIM_PASS_REFUSAL_TOTAL -gt 0 ]]; then
+            local refusal_reason="${CLAIM_PASS_REFUSAL_DOMINANT:0:120}"
+            note_gate_block "$role" "claim-refused: $refusal_reason" \
+                "$role: task claims refused (${CLAIM_PASS_REFUSAL_DOMINANT_COUNT}/${CLAIM_PASS_REFUSAL_TOTAL}: $refusal_reason); trigger kept for the next tick"
+        else
+            note_gate_block "$role" "$ASSIGN_BLOCK_REASON"
+        fi
         return
     fi
-    clear_gate_block "$role"
+    if [[ -n "$assign_exhausted" && "$role" == worker && $CLAIM_PASS_REFUSAL_TOTAL -gt 0 ]]; then
+        local refusal_reason="${CLAIM_PASS_REFUSAL_DOMINANT:0:120}"
+        note_gate_block "$role" "claim-refused: $refusal_reason" \
+            "$role: task claims refused (${CLAIM_PASS_REFUSAL_DOMINANT_COUNT}/${CLAIM_PASS_REFUSAL_TOTAL}: $refusal_reason); standing down until the next re-arm"
+    elif [[ -n "$assignment_walked" \
+        || "${DISPATCH_GATE_REASON[$role]:-}" != claim-refused:* ]]; then
+        clear_gate_block "$role"
+    fi
     if [[ -n "$reserved_held" ]]; then
         if [[ -z "${CAP_DEFER_LOGGED[$role-reserved-held]+x}" ]]; then
             log "$role: dispatched $dispatched; a reserved pane is held (usage-limit cooldown or its resume model's gate closed) — trigger kept for its resume"
@@ -3889,7 +3987,12 @@ dispatch_role() {
         if (( dispatched > 0 )); then
             log "$role: dispatched $dispatched; remaining candidates could not be claimed — standing down; scout re-arms on change"
         elif [[ -z "${CAP_DEFER_LOGGED[$role-unassignable]+x}" ]]; then
-            log "$role: no candidate could be claimed${DISPATCH_CLASS:+ (class=$DISPATCH_CLASS)}; standing down — scout re-arms on change"
+            local refusal_suffix=""
+            if (( CLAIM_PASS_REFUSAL_TOTAL > 0 )); then
+                refusal_suffix=$(claim_refusal_suffix "$CLAIM_PASS_REFUSAL_DOMINANT_COUNT" \
+                    "$CLAIM_PASS_REFUSAL_TOTAL" "$CLAIM_PASS_REFUSAL_DOMINANT")
+            fi
+            log "$role: no candidate could be claimed${DISPATCH_CLASS:+ (class=$DISPATCH_CLASS)}$refusal_suffix; standing down — scout re-arms on change"
             CAP_DEFER_LOGGED["$role-unassignable"]=1
         fi
         return
@@ -4610,6 +4713,11 @@ case "${1:-}" in
         fi
         DISPATCH_MODE="$(read_dispatch_mode)"
         for (( _tick = 0; _tick < ${3:-1}; _tick++ )); do
+            if (( _tick > 0 )) && [[ -n "${FLEET_DISPATCHER_TEST_REARM:-}" ]] \
+                && [[ "${FLEET_DISPATCHER_TEST_NO_REARM_TICK:-}" != "$((_tick + 1))" ]]; then
+                mkdir -p "$TRIGGERS_DIR"
+                : > "$TRIGGERS_DIR/$2"
+            fi
             dispatch_role "$2"
         done
         exit 0
@@ -4999,7 +5107,8 @@ case "${1:-}" in
                 continue
             fi
             _gbc_before="$_gbc_logs"
-            note_gate_block "$_gbc_role" "$_gbc_reason"
+            note_gate_block "$_gbc_role" "$_gbc_reason" \
+                "${FLEET_GATE_BLOCK_TEST_LOG_TEXT:-}"
             if (( _gbc_logs > _gbc_before )); then
                 _gbc_logged=yes
             else

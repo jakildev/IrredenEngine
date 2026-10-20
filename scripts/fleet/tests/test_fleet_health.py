@@ -548,6 +548,61 @@ class AutomergeLane(Env):
         self.assertIn("merged PR #3101 (rebless) at 2026-09-09T05:00:00Z", text)
 
 
+class CloneFreshnessAlerts(Env):
+    ALERT_TIME = "2026-10-19T05:38:34Z"
+
+    def make_clean(self):
+        for name in ("dispatcher.log", "fleet-rebase.log", "state-scout.log"):
+            (self.root / "logs" / name).write_text(
+                "[2026-09-09T04:40:51Z dispatcher] started (pid=1)\n"
+                if name == "dispatcher.log" else "")
+        (self.root / "state" / "scout.pid").write_text(str(os.getpid()))
+        (self.root / "fleet-up.conf").write_text('FLEET_RUNTIMES="claude"\n')
+        (self.root / "alerts" / "witness-roster.stuck").unlink()
+
+    def write_alert(self, detail=""):
+        root = self.root / "IrredenEngine"
+        suffix = f" detail='{detail}'" if detail else ""
+        (self.root / "alerts" / "clone-freshness-IrredenEngine").write_text(
+            f"clone-freshness skip: host=mac root={root} branch=master reason=dirty "
+            f"count=2014 since={self.ALERT_TIME} remedy='git -C {root} checkout master "
+            f"&& git -C {root} merge --ff-only origin/master  (or rerun fleet-up)'{suffix}\n")
+        return root
+
+    def test_alert_warns_with_full_fields_and_since_age(self):
+        self.make_clean()
+        root = self.write_alert()
+        rc, rep = self.run_report_at("2026-10-20T17:28:00Z")
+        warning = next(w for w in rep["warnings"] if w.startswith(
+            "main clone advance skipped:"))
+        self.assertEqual(rc, 1)
+        for expected in (f"root={root}", "reason=dirty", "count=2014",
+                         f"since={self.ALERT_TIME}", "(or rerun fleet-up)"):
+            self.assertIn(expected, warning)
+        alert = next(a for a in rep["alerts"] if a["name"].startswith("clone-freshness-"))
+        self.assertEqual(fleet_health.fmt_age(alert["age_s"]), "35h")
+        self.assertEqual(alert["clone_freshness"]["remedy"],
+                         f"git -C {root} checkout master && git -C {root} merge --ff-only "
+                         "origin/master  (or rerun fleet-up)")
+
+    def test_multiple_quoted_fields_parse_and_detail_warns(self):
+        self.make_clean()
+        self.write_alert("engine/foo.hpp")
+        rc, rep = self.run_report_at("2026-10-20T17:28:00Z")
+        warning = next(w for w in rep["warnings"] if w.startswith(
+            "main clone advance skipped:"))
+        self.assertEqual(rc, 1)
+        self.assertIn("detail=engine/foo.hpp", warning)
+        self.assertIn("(or rerun fleet-up)", warning)
+
+    def test_no_alert_stays_clean(self):
+        self.make_clean()
+        rc, rep = self.run_report_at("2026-10-20T17:28:00Z")
+        self.assertEqual(rc, 0)
+        self.assertFalse(any(w.startswith("main clone advance skipped:")
+                             for w in rep["warnings"]))
+
+
 class DaemonsAndWindow(Env):
     @unittest.skipUnless(os.name == "nt", "native-Windows pid probe")
     def test_windows_pid_probe_reads_native_and_msys_pids(self):

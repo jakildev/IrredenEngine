@@ -59,6 +59,8 @@ TMPROOT=$(mktemp -d)
 source "$(dirname "$0")/lib_hermetic.sh"
 hermetic_poison_gh_env "$TMPROOT"
 export FLEET_STATE_DIR="$TMPROOT/state"
+export FLEET_ALERTS_DIR="$TMPROOT/alerts"
+mkdir -p "$FLEET_ALERTS_DIR"
 export FLEET_CONF="$TMPROOT/fleet-up.conf"
 # Sandbox the session sidecars too: T31's reservation-resume path reads
 # <sessions>/<pane>.session.json; without this override it reads the LIVE
@@ -196,6 +198,9 @@ case "$sub" in
                 reason="$STUB_REFUSE_REASON_CHANGED"
             fi
             printf '%s\n' "$reason" >&2
+            if [[ -n "${STUB_REFUSE_UNTIL_COUNT:-}" && $count -gt $STUB_REFUSE_UNTIL_COUNT ]]; then
+                exit 0
+            fi
             exit 1
         fi
         exit 0
@@ -464,7 +469,7 @@ assert_absent "$(<"$FLEET_STATE_DIR/dispatch/pane-1.json")" '"launch_class"' \
 echo "T21: a refused head yields to the next class in the SAME tick"
 out=$(tick worker 1 STUB_REFUSE='engine:10')
 case "$out" in
-    *"class=opus has no claimable candidate left; serving next class"*)
+    *"class=opus has no claimable candidate left (1/1 refused: held by existing claim label); serving next class"*)
         PASS=$((PASS+1)); echo "  ok: re-election logged" ;;
     *) FAIL=$((FAIL+1)); echo "  FAIL: no re-election line:"; printf '%s\n' "$out" ;;
 esac
@@ -632,6 +637,63 @@ out=$(STUB_REFUSE='engine:77' FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK=1 \
     "$DISPATCHER" --dispatch-tick 1 2>&1 >/dev/null)
 assert_eq "$(grep -c '^review-claim 77 ' "$FLEET_CLAIM_LOG")" "2" \
     "sonnet and opus walks each attempt the shared target"
+
+echo "T25b5: worker refusal walks report, escalate, survive idle ticks, and clear on grant"
+STALE_REASON=$'clone stale\nroot behind\nrun fleet-up\n   git -C /tmp/x merge --ff-only origin/master   (or rerun fleet-up)'
+write_slice worker '{"tasks_open":[
+  {"issue":"#10","model":"opus","owner":"free","blocked":false,"repo":"engine"},
+  {"issue":"#11","model":"opus","owner":"free","blocked":false,"repo":"engine"},
+  {"issue":"#12","model":"sonnet","owner":"free","blocked":false,"repo":"engine"}],
+ "feedback_prs":[],"needs_plan":[]}'
+out=$(tick worker 1 STUB_REFUSE='engine:10 engine:11 engine:12' STUB_REFUSE_REASON="$STALE_REASON")
+assert_contains "$out" "class=opus has no claimable candidate left (2/2 refused: git -C /tmp/x merge --ff-only origin/master (or rerun fleet-up)); serving next class" \
+    "worker election line names the dominant normalized refusal"
+assert_contains "$out" "no candidate could be claimed (class=sonnet) (3/3 refused:" \
+    "worker terminal line carries the refusal summary"
+
+rm -f "$FLEET_ALERTS_DIR/dispatch-gate-worker"
+out=$(tick worker 3 STUB_REFUSE='engine:10 engine:11 engine:12' STUB_REFUSE_REASON="$STALE_REASON" \
+    FLEET_DISPATCHER_TEST_REARM=1)
+if [[ -f "$FLEET_ALERTS_DIR/dispatch-gate-worker" ]]; then
+    assert_contains "$(<"$FLEET_ALERTS_DIR/dispatch-gate-worker")" \
+        "reason=claim-refused: git -C /tmp/x merge --ff-only origin/master (or rerun fleet-up) count=3" \
+        "default-TTL memo skips still escalate the repeated refusal"
+else
+    bad "default-TTL memo skips still escalate the repeated refusal"
+    printf '%s\n' "$out"
+fi
+
+rm -rf "$TMPROOT/refusal-counts" "$FLEET_ALERTS_DIR/dispatch-gate-worker"
+out=$(tick worker 4 STUB_REFUSE='engine:10 engine:11 engine:12' STUB_REFUSE_REASON="$STALE_REASON" \
+    STUB_REFUSE_COUNT_DIR="$TMPROOT/refusal-counts" STUB_REFUSE_UNTIL_COUNT=3 \
+    FLEET_DISPATCHER_CLAIM_REFUSE_TTL=0 FLEET_DISPATCHER_TEST_REARM=1)
+[[ ! -f "$FLEET_ALERTS_DIR/dispatch-gate-worker" ]] \
+    && { PASS=$((PASS+1)); echo "  ok: first granted walk clears the refusal alert"; } \
+    || { FAIL=$((FAIL+1)); echo "  FAIL: refusal alert survived a granted walk"; }
+
+rm -f "$FLEET_ALERTS_DIR/dispatch-gate-worker"
+out=$(tick worker 4 STUB_REFUSE='engine:10 engine:11 engine:12' STUB_REFUSE_REASON="$STALE_REASON" \
+    FLEET_DISPATCHER_CLAIM_REFUSE_TTL=0 FLEET_DISPATCHER_TEST_REARM=1 \
+    FLEET_DISPATCHER_TEST_NO_REARM_TICK=3)
+if [[ -f "$FLEET_ALERTS_DIR/dispatch-gate-worker" ]]; then
+    assert_contains "$(<"$FLEET_ALERTS_DIR/dispatch-gate-worker")" "count=3" \
+        "a no-walk tick leaves the refusal streak intact"
+else
+    bad "a no-walk tick leaves the refusal streak intact"
+    printf '%s\n' "$out"
+fi
+
+write_slice worker '{"tasks_open":[
+  {"issue":"#10","model":"opus","owner":"free","blocked":false,"repo":"engine"},
+  {"issue":"#11","model":"opus","owner":"free","blocked":false,"repo":"engine"},
+  {"issue":"#12","model":"opus","owner":"free","blocked":false,"repo":"engine"}],
+ "feedback_prs":[],"needs_plan":[]}'
+rm -f "$FLEET_ALERTS_DIR/dispatch-gate-worker"
+out=$(tick worker 3 STUB_REFUSE='engine:10 engine:11 engine:12' STUB_REFUSE_REASON="$STALE_REASON" \
+    FLEET_DISPATCHER_CLAIM_ATTEMPTS_PER_TICK=1 FLEET_DISPATCHER_TEST_REARM=1)
+assert_contains "$(<"$FLEET_ALERTS_DIR/dispatch-gate-worker")" \
+    "reason=claim-refused: git -C /tmp/x merge --ff-only origin/master (or rerun fleet-up) count=3" \
+    "budget and exhausted paths share one refusal streak"
 
 echo "T25c: dry-run launches the standby path without a claim or a target"
 write_slice worker "$TWO_CLASS_SLICE"

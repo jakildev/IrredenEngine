@@ -216,6 +216,10 @@ class FleetSurveyFixture(unittest.TestCase):
 
     def setUp(self):
         self.decline_file.write_text(self.decline_text)
+        self.alerts = Path(self.tmp.name) / "alerts"
+        self.alerts.mkdir(exist_ok=True)
+        for path in self.alerts.glob("clone-freshness-*"):
+            path.unlink()
 
     def run_survey(self, host="mac", state=STATE, with_game=False):
         issues, prs = {"engine": ISSUES}, {"engine": PRS}
@@ -227,7 +231,16 @@ class FleetSurveyFixture(unittest.TestCase):
             issues["game"], prs["game"] = GAME_ISSUES, GAME_PRS
         with mock.patch.dict(os.environ, {"FLEET_STATE_DIR": str(self.state_dir)}):
             return _mod.survey(state, issues, prs, host,
-                               Path(self.tmp.name) / "usage", self.log, now=NOW)
+                               Path(self.tmp.name) / "usage", self.log,
+                               alerts_dir=self.alerts, now=NOW)
+
+    def write_clone_alert(self, name="IrredenEngine"):
+        root = Path(self.tmp.name) / name
+        (self.alerts / f"clone-freshness-{name}").write_text(
+            f"clone-freshness skip: host=mac root={root} branch=master reason=dirty "
+            "count=2014 since=2026-10-19T05:38:34Z "
+            f"remedy='git -C {root} checkout master && git -C {root} merge --ff-only "
+            "origin/master  (or rerun fleet-up)'\n")
 
 
 class Dispatch(FleetSurveyFixture):
@@ -280,12 +293,63 @@ class Dispatch(FleetSurveyFixture):
             log_path = Path(self.tmp.name) / "gate-transition.log"
             log_path.write_text(log)
             report = _mod.survey(STATE, {"engine": ISSUES}, {"engine": PRS}, "mac",
-                                 Path(self.tmp.name) / "usage", log_path, now=NOW)
+                                 Path(self.tmp.name) / "usage", log_path,
+                                 alerts_dir=self.alerts, now=NOW)
             text = _mod.render(report)
             self.assertIn(expected_text, text)
             if index == 0:
                 self.assertNotIn("closed since", text)
             self.assertTrue(report["dispatch"]["usage_gate"].endswith(expected_event))
+
+    def stale_state(self, fresh=False, with_game=True):
+        state = copy.deepcopy(STATE)
+        state["clone_freshness"] = {"behind": 5, "fresh": fresh}
+        state["repos"]["engine"]["path"] = str(Path(self.tmp.name) / "IrredenEngine")
+        if with_game:
+            state["repos"]["game"] = {"path": str(Path(self.tmp.name) / "game"),
+                                       "tasks": {"open": [], "in_progress": []}}
+        return state
+
+    def test_stale_engine_clone_gates_both_repos_and_json(self):
+        state = self.stale_state()
+        self.write_clone_alert()
+        report = self.run_survey(state=state, with_game=True)
+        text = _mod.render(report)
+        gate = report["dispatch"]["claim_gate"]
+        self.assertEqual(gate["reason"], "dirty (5 behind)")
+        self.assertIn("task claims refused:", text)
+        self.assertIn("since 2026-10-19T05:38:34Z", text)
+        self.assertIn("claimable_here (3) (gated: main clone stale)", text)
+        self.assertIn("claimable_here (0) (gated: main clone stale)", text)
+        self.assertEqual(report["repos"]["engine"]["queue"]["gated"], "main clone stale")
+        self.assertEqual(report["repos"]["game"]["queue"]["gated"], "main clone stale")
+
+    def test_stale_without_alert_uses_fail_safe_defaults(self):
+        report = self.run_survey(state=self.stale_state(), with_game=True)
+        gate = report["dispatch"]["claim_gate"]
+        self.assertEqual((gate["reason"], gate["since"], gate["remedy"]),
+                         ("5 behind", "?", "rerun fleet-up"))
+
+    def test_current_clone_lists_alert_without_gating(self):
+        root = Path(self.tmp.name) / "IrredenEngine"
+        (self.alerts / "clone-freshness-IrredenEngine").write_text(
+            f"clone-freshness skip: host=mac root={root} branch=master reason=dirty "
+            "count=2014 since=2026-10-19T05:38:34Z remedy='rerun fleet-up'\n")
+        report = self.run_survey(state=self.stale_state(fresh=True), with_game=True)
+        self.assertIsNone(report["dispatch"]["claim_gate"])
+        self.assertNotIn("gated", report["repos"]["engine"]["queue"])
+        self.assertIn("main clone advance skipped:", _mod.render(report))
+
+    def test_game_alert_never_gates_a_current_engine_clone(self):
+        self.write_clone_alert("game")
+        report = self.run_survey(state=self.stale_state(fresh=True), with_game=True)
+        self.assertIsNone(report["dispatch"]["claim_gate"])
+        self.assertIn(str(Path(self.tmp.name) / "game"), _mod.render(report))
+
+    def test_missing_freshness_key_has_no_gate(self):
+        report = self.run_survey(state=STATE)
+        self.assertIsNone(report["dispatch"]["claim_gate"])
+        self.assertNotIn("gated", report["repos"]["engine"]["queue"])
 
 
 class Queue(FleetSurveyFixture):
@@ -576,6 +640,23 @@ class Cli(FleetSurveyFixture):
         self.assertEqual(out, "")
         self.assertIn("no game repo", err)
         self.assertEqual(self.gh_calls, [])
+
+    def test_json_cli_carries_claim_gate_from_explicit_alerts_dir(self):
+        state = copy.deepcopy(STATE)
+        state["clone_freshness"] = {"behind": 5, "fresh": False}
+        state["repos"]["engine"]["path"] = str(Path(self.tmp.name) / "IrredenEngine")
+        self.state_path.write_text(json.dumps(state))
+        self.write_clone_alert()
+        try:
+            code, out, err = self.run_main("--repo", "engine", "--json", "--alerts-dir",
+                                           str(self.alerts))
+        finally:
+            self.state_path.write_text(json.dumps(STATE))
+        self.assertEqual((code, err), (0, ""))
+        report = json.loads(out)
+        self.assertEqual(report["dispatch"]["claim_gate"]["behind"], 5)
+        self.assertEqual(report["repos"]["engine"]["queue"]["gated"],
+                         "main clone stale")
 
 
 if __name__ == "__main__":
