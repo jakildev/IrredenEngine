@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "GPU particles",
-  "description": "Demonstrates the gpu particles creation and its engine integration.",
+  "description": "GPU particle pools rendered through the trixel pipeline.",
   "group": "render/particles",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRGpuParticles",
-      "description": "Runs the gpu particles creation.",
+      "description": "Displays GPU-simulated particles with the voxel render stack.",
       "presets": [
         {
           "name": "Interactive",

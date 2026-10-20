@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Modifier demo",
-  "description": "Demonstrates the modifier demo creation and its engine integration.",
+  "description": "A command-driven voxel scene demonstrating modifier decay and input controls.",
   "group": "render/shapes",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRModifierDemo",
-      "description": "Runs the modifier demo creation.",
+      "description": "Runs the voxel modifier and command demonstration scene.",
       "presets": [
         {
           "name": "Interactive",

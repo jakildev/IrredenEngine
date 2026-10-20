@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Skeletal demo",
-  "description": "Demonstrates the skeletal demo creation and its engine integration.",
+  "description": "Procedural skeletal voxel entities with rig construction and round-trip verification.",
   "group": "physics",
   "tags": [
     "physics"
@@ -10,7 +10,7 @@
   "targets": [
     {
       "name": "IRSkeletalDemo",
-      "description": "Runs the skeletal demo creation.",
+      "description": "Builds and renders skeletal voxel entities with saved rig validation.",
       "presets": [
         {
           "name": "Interactive",

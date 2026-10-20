@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Lua performance grid",
-  "description": "Demonstrates the lua performance grid creation and its engine integration.",
+  "description": "A Lua-authored grid for profiling creation and update throughput.",
   "group": "perf",
   "tags": [
     "perf"
@@ -10,7 +10,7 @@
   "targets": [
     {
       "name": "IRLuaPerfGrid",
-      "description": "Runs the lua performance grid creation.",
+      "description": "Builds and updates the Lua performance grid scene.",
       "presets": [
         {
           "name": "Interactive",

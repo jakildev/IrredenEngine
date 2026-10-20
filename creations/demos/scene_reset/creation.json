@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Scene reset",
-  "description": "Demonstrates the scene reset creation and its engine integration.",
+  "description": "A live render-stack proof that gameplay scene resets remain idempotent.",
   "group": "world/persistence",
   "tags": [
     "world",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRSceneReset",
-      "description": "Runs the scene reset creation.",
+      "description": "Repeats gameplay scene resets while checking render and voxel-pool stability.",
       "presets": [
         {
           "name": "Interactive",

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Collision overlap",
-  "description": "Demonstrates the collision overlap creation and its engine integration.",
+  "description": "Lua collision-layer pairs that report deterministic overlap enter and exit events.",
   "group": "physics",
   "tags": [
     "physics"
@@ -10,7 +10,7 @@
   "targets": [
     {
       "name": "IRCollisionOverlapDemo",
-      "description": "Runs the collision overlap creation.",
+      "description": "Runs Lua overlap callbacks for pickup, player, projectile, and enemy pairs.",
       "presets": [
         {
           "name": "Interactive",

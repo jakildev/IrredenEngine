@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Random voxels",
-  "description": "Demonstrates the random voxels creation and its engine integration.",
+  "description": "A randomized voxel scene for exercising procedural voxel content.",
   "group": "render/shapes",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRRandomVoxels",
-      "description": "Runs the random voxels creation.",
+      "description": "Generates and renders randomized voxel content.",
       "presets": [
         {
           "name": "Interactive",

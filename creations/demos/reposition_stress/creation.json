@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Reposition stress",
-  "description": "Demonstrates the reposition stress creation and its engine integration.",
+  "description": "A headless stress harness for repeated voxel-entity repositioning and churn.",
   "group": "perf",
   "tags": [
     "perf"
@@ -10,7 +10,7 @@
   "targets": [
     {
       "name": "IRRepositionStress",
-      "description": "Runs the reposition stress creation.",
+      "description": "Exercises live entity repositioning, churn, and stale-handle probes.",
       "presets": [
         {
           "name": "Interactive",

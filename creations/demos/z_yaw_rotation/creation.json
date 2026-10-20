@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Z yaw rotation",
-  "description": "Demonstrates the z yaw rotation creation and its engine integration.",
+  "description": "Three focused scenes for static, interactive, and coverage-tested Z-axis yaw rotation.",
   "group": "render/camera",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRZYawStatic",
-      "description": "Runs the z yaw rotation creation.",
+      "description": "Shows automatic Z-yaw rotation on a lit voxel and shape scene.",
       "presets": [
         {
           "name": "Interactive",
@@ -28,7 +28,7 @@
     },
     {
       "name": "IRZYawInteractive",
-      "description": "Runs the z yaw rotation creation.",
+      "description": "Lets input drive continuous Z-yaw rotation through the render stack.",
       "presets": [
         {
           "name": "Interactive",
@@ -45,7 +45,7 @@
     },
     {
       "name": "IRZYawCoverage",
-      "description": "Runs the z yaw rotation creation.",
+      "description": "Covers Z-yaw rotation behavior with the compact coverage scene.",
       "presets": [
         {
           "name": "Interactive",

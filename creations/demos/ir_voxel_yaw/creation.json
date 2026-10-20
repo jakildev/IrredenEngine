@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Voxel yaw",
-  "description": "Demonstrates the voxel yaw creation and its engine integration.",
+  "description": "A voxel-only scene for continuous Z yaw, depth compositing, and lit canvas output.",
   "group": "render/camera",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRVoxelYaw",
-      "description": "Runs the voxel yaw creation.",
+      "description": "Exercises yawed voxel compositing with shadows, ambient occlusion, and lamps.",
       "presets": [
         {
           "name": "Interactive",

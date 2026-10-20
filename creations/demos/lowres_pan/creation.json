@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Low-resolution pan",
-  "description": "Demonstrates the low-resolution pan creation and its engine integration.",
+  "description": "A low-resolution camera panning scene for viewport and movement behavior.",
   "group": "render/camera",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRLowresPan",
-      "description": "Runs the low-resolution pan creation.",
+      "description": "Shows camera panning in the low-resolution render configuration.",
       "presets": [
         {
           "name": "Interactive",
