@@ -18,6 +18,7 @@
 #include <irreden/world/hand_off.hpp>
 #include <irreden/world/tool_spawn.hpp>
 #include <sol/sol.hpp>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -43,7 +44,7 @@ class World {
         std::optional<IRWindow::WindowMode> windowModeOverride = std::nullopt
     );
     virtual ~World();
-    void gameLoop();
+    void gameLoop(std::uint32_t exitAfterRenderFrames = 0);
     void setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings);
     void runScript(const char *fileName);
     void enableFrameTiming(bool enabled);

@@ -60,7 +60,7 @@ enum class Type {
 // Which built-in args the constructor pre-registers. ENGINE (the default) adds
 // the engine-common args; NONE adds only --help / -h, for standalone tools that
 // don't run the engine loop and shouldn't advertise --auto-screenshot /
-// --config-preset.
+// --exit-after-frames / --config-preset.
 enum class Common {
     ENGINE,
     NONE,
@@ -71,9 +71,10 @@ class Parser {
     // `programDescription` is an optional one-line summary printed under the
     // usage header. The constructor always pre-registers the built-in --help /
     // -h. With Common::ENGINE (the default) it also pre-registers the
-    // engine-common args (--auto-screenshot, --config-preset) so every engine
-    // target inherits them without re-declaring; with Common::NONE it does not,
-    // for standalone tools (see the header example).
+    // engine-common args (--auto-screenshot, --exit-after-frames,
+    // --config-preset) so every engine target inherits them without
+    // re-declaring; with Common::NONE it does not, for standalone tools (see
+    // the header example).
     explicit Parser(const char *programDescription = nullptr, Common common = Common::ENGINE);
 
     // Declarative registration. All return *this so calls can chain.
@@ -169,6 +170,8 @@ class Parser {
     //     sentinel), else the warmup frame count.
     //   - 0 when --auto-record is absent, else the capture window in render
     //     frames (kDefaultAutoRecordFrames for the bare switch).
+    //   - 0 when --exit-after-frames is absent, else the requested render-frame
+    //     limit.
     //   - empty string when --config-preset is absent, else the path.
     //   - kWorkerThreadsUnset when --worker-threads is absent, else the
     //     requested worker count: -1 for auto, 0 for inline-serial, N for an
@@ -181,6 +184,7 @@ class Parser {
     //     screen without editing every call site.
     int autoScreenshotWarmupFrames() const;
     int autoRecordFrames() const;
+    int exitAfterFrames() const;
     bool autoRecordRealTime() const;
     std::string configPreset() const;
     int workerThreads() const;

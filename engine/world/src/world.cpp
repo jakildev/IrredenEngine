@@ -5,6 +5,7 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_job.hpp>
 #include <irreden/ir_audio.hpp>
+#include <irreden/ir_window.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gui_canvas.hpp>
 #include <irreden/profile/profile_report.hpp>
@@ -311,8 +312,9 @@ void World::runScript(const char *fileName) {
     m_lua.scriptFile(fileName);
 }
 
-void World::gameLoop() {
+void World::gameLoop(std::uint32_t exitAfterRenderFrames) {
     using Clock = std::chrono::steady_clock;
+    std::uint32_t renderFramesRun = 0;
     try {
         start();
         if (IRVideo::isAutoCaptureActive()) {
@@ -364,6 +366,10 @@ void World::gameLoop() {
             const uint32_t updateTicksThisFrame = runMainLoopFrame(stages);
             if (m_handOffLeaseLost) {
                 break;
+            }
+            if (exitAfterRenderFrames != 0 && ++renderFramesRun == exitAfterRenderFrames) {
+                IRE_LOG_INFO("exit-after-frames: reached {} render frames", exitAfterRenderFrames);
+                IRWindow::closeWindow();
             }
             // Histogram frame boundary. It sits outside render() so render()'s
             // own IR_PROFILE_SCOPE has exited and lands in the frame it
