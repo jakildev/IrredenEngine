@@ -560,6 +560,44 @@ echo "$alert_t28" | grep -q "detail='file'" && ok "alert names the tracked path"
 grep -q "dirty|master" "$COUNTER3" 2>/dev/null && ok "dirty|master counter written" || fail "no dirty|master counter: $(cat "$COUNTER3" 2>/dev/null)"
 git_q "$CLONE3" checkout -- file
 
+# --- T29: a failing `git status` fails closed on both tracked-WIP callers -----
+# The shadow fails only `status`, so fetch / merge --ff-only would succeed:
+# only the guard itself stands between an unreadable tree and the mutation.
+echo "T29: failing git status -> neither advance nor restore mutates the clone"
+status_fails() { git() { [[ " $* " == *" status "* ]] && return 128; command git "$@"; }; }
+reset_skip_counter
+export FLEET_FRESHNESS_SKIP_ESCALATE_N=1
+push_new_commit t29
+head_before=$(git -C "$CLONE3" rev-parse master)
+reset_rate_limit
+status_fails
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+unset -f git
+unset FLEET_FRESHNESS_SKIP_ESCALATE_N
+[[ "$(git -C "$CLONE3" rev-parse master)" == "$head_before" ]] \
+    && ok "advance skipped on a failed status" || fail "advanced past a failed git status"
+echo "$out" | grep -q "'git status' failed" && ok "advance warns on the failed status" || fail "no status-failed warning: $out"
+grep -q "reason=status-failed" "$ALERT3" 2>/dev/null && ok "alert records reason=status-failed" || fail "alert missing reason: $(cat "$ALERT3" 2>/dev/null)"
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null
+[[ "$(git -C "$CLONE3" rev-parse master)" == "$(git -C "$CLONE3" rev-parse origin/master)" ]] \
+    && ok "same fixture advances once status reads again" || fail "fixture blocked by another guard"
+
+git_q "$CLONE3" checkout -b claude/t29-parked
+push_new_commit t29b
+git_q "$CLONE3" fetch origin master
+head_before=$(git -C "$CLONE3" rev-parse master)
+status_fails
+out=$(restore_main_clone_to_master "$CLONE3" 2>&1 || true)
+unset -f git
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/t29-parked" ]] \
+    && ok "restore left the parked branch alone" || fail "restore switched branches past a failed status"
+[[ "$(git -C "$CLONE3" rev-parse master)" == "$head_before" ]] \
+    && ok "restore did not advance master" || fail "restore advanced master past a failed status"
+echo "$out" | grep -q "'git status' failed" && ok "restore warns on the failed status" || fail "no status-failed warning: $out"
+git_q "$CLONE3" checkout master
+git_q "$CLONE3" branch -D claude/t29-parked
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

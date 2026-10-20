@@ -232,10 +232,13 @@ _freshness_all_clear() {
 # own if an incoming commit would overwrite one, and stray junk (a __pycache__,
 # a 0-byte `=`, .review-body.md) is routine in a fleet clone. The one predicate
 # behind advance_main_clone's guard 2 and restore_main_clone_to_master. Empty
-# output when clean — or when `git status` itself fails, so a broken status
-# never blocks the advance.
+# output when clean. Returns 1 when `git status` itself fails: an unreadable
+# tree is not a clean one, so both callers skip rather than mutate.
 _tracked_dirty_lines() {
-    git -C "$1" status --porcelain 2>/dev/null | grep -v '^??' || true
+    local porcelain
+    porcelain="$(git -C "$1" status --porcelain 2>/dev/null)" || return 1
+    [[ -n "$porcelain" ]] || return 0
+    printf '%s\n' "$porcelain" | grep -v '^??' || true
 }
 
 # advance_main_clone <repo_root>
@@ -319,7 +322,10 @@ advance_main_clone() {
     fi
     # Guard 2: no tracked modifications (never clobber uncommitted work).
     # Untracked files do not block — see _tracked_dirty_lines.
-    dirty="$(_tracked_dirty_lines "$root")"
+    if ! dirty="$(_tracked_dirty_lines "$root")"; then
+        _freshness_warn "$root" "status-failed|master" "fleet-clone-freshness: 'git status' failed in $root — tracked-WIP state unknown, skipping advance."
+        return 0
+    fi
     if [[ -n "$dirty" ]]; then
         local dirty_path
         dirty_path="$(printf '%s\n' "$dirty" | head -n1 | cut -c4-)"
@@ -402,7 +408,7 @@ _ff_advance_to_origin_master() {
 #   - tracked modifications anywhere (staged or not) → never touch, warn loudly.
 #     Untracked files don't block: `git checkout` refuses on its own if one
 #     would be overwritten, and stray junk files (0-byte `=`, .review-body.md)
-#     are routine in a fleet clone.
+#     are routine in a fleet clone. A failing `git status` counts as dirty.
 #   - off-master + clean → checkout master.
 #   - then ff-advance master to origin/master (fetch is the caller's job at
 #     fleet-up; a cheap refresh here keeps standalone use correct).
@@ -413,7 +419,10 @@ restore_main_clone_to_master() {
     [[ -d "$root/.git" ]] || return 0
 
     local tracked_dirty
-    tracked_dirty="$(_tracked_dirty_lines "$root")"
+    if ! tracked_dirty="$(_tracked_dirty_lines "$root")"; then
+        echo "fleet-clone-freshness: 'git status' failed in $root — tracked-WIP state unknown, leaving it alone. Claims stay blocked until it is readable, clean and on master; rerun fleet-up after fixing it." >&2
+        return 0
+    fi
 
     local branch
     branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
