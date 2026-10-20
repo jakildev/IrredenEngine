@@ -690,8 +690,9 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
 | Table | Call | Owner |
 |---|---|---|
 | `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` (relative to the bound tool root); installed only by `bindLuaCatalog(toolRoot)` | `engine/catalog` |
-| `IREngine` | `spawnTool{ tool, target \| path }` → handle (`poll`, `exit`, `kill`); `toolRoot()`; `handOff{ argv }` → `r.verdict` (runs from `<root>/build` when a tool root is set, D5) | `engine/world` |
-| `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` (`path` relative to the image base bound by `bindWidgets`, D9) | `engine/prefabs/irreden/render` |
+| `IREngine` | `spawnTool{ tool, target \| path [, editor] }` → handle (`poll`, `exit`, `kill`; `editor` is the optional editor name a `tool = "editor"` request launches); `toolEditors()` → `{ name, found }` entries; `toolRoot()`; `handOff{ argv }` → `r.verdict` (runs from `<root>/build` when a tool root is set, D5) | `engine/world` |
+| `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` (`path` relative to the image base bound by `bindWidgets`, D9); `isPressed(id)` | `engine/prefabs/irreden/render` |
+| `IRRender` | `viewportSubjectOversize(id)` | `engine/script` |
 | `IRLauncher` | `requestUpdate()` (launcher-local, `--supervised` only, D6) | `creations/launcher` |
 
 ## Validators

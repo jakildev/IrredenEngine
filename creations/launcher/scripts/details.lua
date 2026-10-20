@@ -10,7 +10,8 @@ local catalogView = require("catalog_view")
 local M = {}
 
 local SMALL = IRText.Size.SMALL
-local PLACEHOLDER = "creations/launcher/test/fixture_root/missing-thumbnail.png"
+-- Absent on purpose: IRGui.makeImage draws its placeholder for a missing in-base file.
+local PLACEHOLDER = "creations/launcher/missing-thumbnail.png"
 
 local function thumbnailIndex(assetIndex)
     if assetIndex.thumbnailIndex then
