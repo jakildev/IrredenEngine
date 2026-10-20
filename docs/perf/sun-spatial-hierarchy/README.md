@@ -87,6 +87,11 @@ timed out waiting for the fleet GPU lock after 600 seconds and never ran.
 There is **no qualified timing comparison in this evidence set**. Do not use
 these reports to approve a performance gain or choose a production threshold.
 
+The [merge-review evidence](merge-review/README.md) retains a later rejected
+native timing attempt and a separate same-runner Linux engine comparison.
+The latter does not reproduce the historical CI regression; it does not
+measure this standalone hierarchy or qualify its native timing.
+
 ## Replay
 
 ```bash

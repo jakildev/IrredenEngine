@@ -113,7 +113,15 @@ also reports a zoom-1 mean regression of 11.2% against its class-matched
 baseline (zoom 4: +0.9%). Attribute this with same-revision/base controls before
 declaring the stack performance-qualified. The standalone Metal diagnostic
 does not run in that engine workload; its candidate counts cannot clear this
-gate or establish the source of the regression.
+gate or establish the source of the regression. The subsequent
+[same-runner head/base/head comparison](../perf/sun-spatial-hierarchy/merge-review/README.md)
+did not reproduce it: steady zoom-1 means (first 15 of 60 frames excluded)
+were −1.8% / +3.6% versus current master, with 5.5% repeat spread; zoom 4
+was −0.7% / −0.8%. The gate's all-frame means also did not reproduce the
+regression; both series are retained. This does not certify zero cost
+or native throughput. Another native hierarchy timing attempt completed all
+geometry checks but was rejected for a breached fleet quiet window; retain
+qualified timing as the next decision gate.
 For the private-canvas overlap controls, separate actual GPU work and CPU
 submission from Metal's synchronous presentation and offscreen pacing before
 selecting an optimization. Compare the existing shadows-off/unlit pairs, then
