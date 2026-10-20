@@ -14,7 +14,7 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 44;
+inline constexpr std::size_t kGpuStageCount = 46;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
@@ -58,6 +58,8 @@ struct GpuStageTiming {
     float fogToTrixelMs_ = 0.0f;
     float trixelToTrixelMs_ = 0.0f;
     float trixelToFbMs_ = 0.0f;
+    float cardinalSurfaceFbMs_ = 0.0f;
+    float perAxisSurfaceFbMs_ = 0.0f;
     float entityCanvasToFbMs_ = 0.0f;
     float resolvePerAxisScreenDepthMs_ = 0.0f;
     float fbToScreenMs_ = 0.0f;
@@ -413,8 +415,10 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 //   `lightingOverflow`      ← the overflow-face relight dispatch
 //   `fogPerAxis`            ← the 3 per-axis fog dispatches
 //   `fogOverflow`           ← the overflow-face fog dispatch
-//   `trixelToFb`            ← the single-canvas gather draw ONLY
-//   `perAxisScatter`        ← the 3 per-axis scatter draws + overflow draw
+//   `trixelToFb`            ← gathers without cardinal surface lighting
+//   `cardinalSurfaceFb`     ← gathers with cardinal surface lighting
+//   `perAxisSurfaceFb`      ← per-axis scatter with surface lighting
+//   `perAxisScatter`        ← per-axis scatter without surface lighting
 // and VOXEL_TO_TRIXEL_STAGE_1's rotating-only per-axis dispatch groups get
 // their own rows (phases per docs/design/per-axis-trixel-canvas-rotation.md
 // §"The overflow lane"):
@@ -479,6 +483,8 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"fogToTrixel", &GpuStageTiming::fogToTrixelMs_, 0.05f},
         {"trixelToTrixel", &GpuStageTiming::trixelToTrixelMs_, 0.05f},
         {"trixelToFb", &GpuStageTiming::trixelToFbMs_, 0.15f},
+        {"cardinalSurfaceFb", &GpuStageTiming::cardinalSurfaceFbMs_, 0.0f},
+        {"perAxisSurfaceFb", &GpuStageTiming::perAxisSurfaceFbMs_, 0.0f},
         {"entityCanvasToFb", &GpuStageTiming::entityCanvasToFbMs_, 0.05f},
         {"resolvePerAxisScreenDepth", &GpuStageTiming::resolvePerAxisScreenDepthMs_, 0.05f},
         {"fbToScreen", &GpuStageTiming::fbToScreenMs_, 0.05f},

@@ -74,6 +74,33 @@ Keep diverse-tile rejection-heavy GPU cost, dense local
 overflow and native OpenGL qualification on the TODO; this is not closure of all
 shared voxel shadow defects. Use these controls to select candidate-reduction
 hypotheses, then measure index construction and full-frame cost before adoption.
+
+The cardinal continuous-receiver follow-up separates `cardinalSurfaceFb` and
+`perAxisSurfaceFb` GPU draws from their sampled/unlit routes. The fog-free
+[surface-lighting matrix](../../scripts/perf/README.md#surface-lighting-scene-controls)
+varies camera yaw, zoom, subdivision and distant-caster overlap, with shadows-off
+and unlit pairs. CanvasStress now supports a bounded capture-free profile run;
+screenshots must be separate because readback/write stalls contaminate tails.
+Route samples establish which draw executed, not pixel counts or exact shadow
+coverage. Keep the known-failing
+[crowded overlap diagnostic](../pr-screenshots/codex/crowded-shadow-overlap/README.md)
+as a correctness prerequisite: the sixteen-caster fallback is not an acceptable
+performance shortcut. Native Windows reproduction, a depth-preserving finite
+geometry query, and AC-powered Release throughput qualification remain next.
+For the private-canvas overlap controls, separate actual GPU work and CPU
+submission from Metal's synchronous presentation and offscreen pacing before
+selecting an optimization. Compare the existing shadows-off/unlit pairs, then
+sample the slow run's CPU stacks. If compositing remains significant, evaluate
+conservative occupied-footprint culling while preserving offscreen shadow
+casters, detached hitboxes, fog and rotated placement. A large transparent
+canvas is not evidence that the object's visible geometry covers that area.
+The [capture-free Metal controls](../perf/surface-lighting-controls/README.md)
+retain 60 guarded Debug/battery runs and a separate CPU sample. Crowded cases
+remain around 20–22 ms, including unlit controls. The CPU sample chiefly waits
+in offscreen pacing and GPU completion; it does not justify a simulation rewrite
+or certify visible Release throughput. Qualify that workload before changing
+presentation scheduling or buffer lifetimes.
+
 Proposed next experiment: a conservative per-tile candidate mask before full
 geometry loads, retaining the shared finite-envelope containment proof and
 complete-list/fallback semantics. Do not adopt it without measured net benefit.

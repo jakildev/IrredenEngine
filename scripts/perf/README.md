@@ -8,6 +8,41 @@ it holds `ir-acquire benchmark` around the whole matrix, captures an
 `ir-host-probe` fingerprint (`host_slug`) — into the manifest.
 `compare_perf_runs.py` diffs two runs; `check_regression.py` is the gate.
 
+## Surface-lighting scene controls
+
+```bash
+ir-acquire benchmark -- python3 scripts/perf/surface_lighting_controls.py --output /tmp/surface-lighting-controls
+```
+
+The fog-free `IRCanvasStress` matrix compares cardinal and continuous-yaw GRID
+receivers at zoom 1/4 with 0/8/16 coincident distant source casters. Shadows-off
+and unlit pairs keep the geometry and camera fixed. Every case explicitly enables
+the `IR_PERAXIS_SURFACE_LIGHTING=1` experiment, recorded in its manifest.
+The eight-caster pair also runs at subdivision 4 at both zooms.
+Completed `cardinalSurfaceFb`
+or `perAxisSurfaceFb` GPU samples are required in every lit report; unlit controls
+must have neither. This certifies the selected draw path, not pixel coverage or
+shadow correctness. The known-failing crowded-overlap diagnostic owns that check.
+The usual `IRPerfGrid` fog pipeline disables surface lighting, so its perf gate
+does not qualify these paths.
+
+Results retain runtime fingerprints, pose/overflow witnesses and
+forward/reverse rounds through `repeat_profile.py` and `profile_matrix.py`.
+Each run uses `--profile-frames 360` (override with the driver's `--frames`)
+and exits without screenshots. The runner rejects incomplete frame series,
+incorrect pose sample counts and capture flags combined with this mode.
+Visual evidence must be captured separately, outside the timed window.
+Offscreen frame pacing remains enabled; wall-frame duration includes that wait.
+The outer benchmark wrapper's successful quiet verdict is required even when
+all individual reports validate. A quiet breach invalidates throughput claims.
+The matrix reports full-frame tails and sampled GPU invocation means separately.
+Its overflow column is the per-axis raster overflow witness, not sun-face tile
+completeness. Cull counts are averages over canvas samples, not unique scene
+entity totals; adding private canvases can lower that average.
+It does not certify million-entity throughput or treat a fast incomplete shadow
+query as correct. Use a new output directory and a configured, freshly built
+`IRCanvasStress`.
+
 ## Native finite-shadow query probe
 
 On macOS:

@@ -185,14 +185,20 @@ def shape_pose_mismatch(demo_args: list[str], witness: RunWitness) -> str | None
     return None
 
 
-def shape_measurement_failure(values: dict[str, str], report: CellReport) -> str | None:
-    frames = int(values["--auto-profile"])
+def frame_measurement_failure(report: CellReport, frames: int) -> str | None:
     if report.recorded_frames != frames or len(report.frame_times_ms) != frames:
         return "the frame-time series does not cover the requested frame count"
     if any(not math.isfinite(value) or value <= 0 for value in report.frame_times_ms):
         return "the frame-time series contains nonpositive or nonfinite measurements"
     if not report.steady_frame_times_ms():
         return "the report has no complete steady-frame series"
+    return None
+
+
+def shape_measurement_failure(values: dict[str, str], report: CellReport) -> str | None:
+    failure = frame_measurement_failure(report, int(values["--auto-profile"]))
+    if failure:
+        return failure
     stage_samples = any((stage.samples or 0) > 0 for stage in report.gpu_stages)
     expected = values["--config-preset"].endswith("sdf-on.lua")
     if stage_samples != expected:
@@ -303,12 +309,35 @@ def canvas_sweep_count(demo_args: list[str], flag: str, size: int, count_index: 
     return count
 
 
+def canvas_profile_frames(demo_args: list[str]) -> int | None:
+    """Validate the capture-free CanvasStress exit mode before launching a run."""
+    frames = None
+    for index, argument in enumerate(demo_args):
+        flag, separator, inline = argument.partition("=")
+        if flag != "--profile-frames":
+            continue
+        value = inline if separator else (
+            demo_args[index + 1] if index + 1 < len(demo_args) else "")
+        if not value.isascii() or not value.isdecimal() or not 0 < int(value) <= 2147483647:
+            raise ValueError("--profile-frames requires a positive 32-bit frame count")
+        frames = int(value)
+    if frames is not None:
+        captures = {"--auto-screenshot", "--auto-record", "--capture-frame",
+                    "--sweep-frames", "--sweep-yaw", "--sweep-pan"}
+        if any(argument.split("=", 1)[0] in captures for argument in demo_args):
+            raise ValueError("--profile-frames cannot be combined with capture or sweep flags")
+    return frames
+
+
 def static_canvas_frame_sweep(demo_args: list[str]) -> bool:
-    """Frame-only screenshot sweeps disable CanvasStress's automatic yaw.
+    """Recognize fixed-camera capture sweeps and explicitly frozen profile runs.
 
     Yaw/pan shot tables and the independent full-rotation driver are moving
     captures. The demo truncates the sweep count to an integer.
     """
+    frames = canvas_profile_frames(demo_args)
+    if frames is not None:
+        return "--no-auto-rotate" in demo_args and "--full-rotate" not in demo_args
     if "--full-rotate" in demo_args or not canvas_capture_enabled(demo_args):
         return False
     if (canvas_sweep_count(demo_args, "--sweep-yaw", 3, 2) > 0
@@ -340,6 +369,9 @@ def fixed_zoom_mismatch(witness: RunWitness, *, require_range: bool = False) -> 
 
 
 def canvas_frame_pose_mismatch(demo_args: list[str], witness: RunWitness) -> str | None:
+    frames = canvas_profile_frames(demo_args)
+    if frames is not None and witness.pose_samples != frames:
+        return f"witnessed {witness.pose_samples} frames; --profile-frames asked for {frames}"
     if not static_canvas_frame_sweep(demo_args):
         return None
     yaw_values = (witness.yaw_first_deg, witness.yaw_last_deg, witness.yaw_travel_deg)
@@ -744,6 +776,8 @@ def main() -> int:
         requested_first_frame_yaw(demo_args)
         if args.target == "IRCanvasStress":
             static_canvas_frame_sweep(demo_args)
+        canvas_frames = (
+            canvas_profile_frames(demo_args) if args.target == "IRCanvasStress" else None)
         shape_args = shape_profile_arguments(demo_args) if args.target == "IRShapeDebug" else None
     except ValueError as error:
         parser.error(str(error))
@@ -819,6 +853,8 @@ def main() -> int:
             run.update(witness_checks(args.target, demo_args, row.witness))
             if shape_args is not None:
                 run["measurement_failure"] = shape_measurement_failure(shape_args, row)
+            elif canvas_frames is not None:
+                run["measurement_failure"] = frame_measurement_failure(row, canvas_frames)
             run["gpu_measured"] = (
                 any(stage.avg_ms > 0 for stage in row.gpu_stages)
                 or (row.gpu_frame.supported is True and row.gpu_frame.valid > 0)
@@ -829,9 +865,9 @@ def main() -> int:
             not clean
             or not fresh
             or not run.get("gpu_measured")
+            or run.get("measurement_failure") is not None
             or (shape_args is not None and (
                 run["quiet"] != "guarded" or not run["configuration_unchanged"]
-                or run.get("measurement_failure") is not None
             ))
             or run["yaw_pose_mismatch"] is not None
             or run["pivot_mismatch"] is not None

@@ -187,7 +187,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 
 #if IR_CARDINAL_LIGHTING
     if (color.a >= 0.1 && lighting.lightingEnabled != 0 && frameData.cardinalLightingEnabled != 0 &&
-        decodeEntityIdCardinalVoxel(triangleEntityIds.read(sampleCoord).rg) && !decodeCutFace(triangleEntityIds.read(sampleCoord).rg)) {
+        isCardinalVoxelSurface(triangleEntityIds.read(sampleCoord).rg)) {
         const float3 position = cardinalVoxelSurfacePoint(
             originRaw, int2(sampleCoord), rawDist, frameData.perAxisBase,
             frameData.cardinalReceiver.xy, int2(frameData.cardinalReceiver.zw),

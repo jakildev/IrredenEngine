@@ -12,12 +12,14 @@ from unittest.mock import MagicMock, patch
 from compare_perf_runs import RunWitness
 from repeat_profile import (
     RESIDUAL_YAW_DEADBAND_RAD,
+    canvas_profile_frames,
     cmake_build_type,
     cmake_source_dir,
     demo_binary,
     directory_digest,
     engine_logged,
     find_demo_pid,
+    frame_measurement_failure,
     host_battery_percent,
     host_load,
     host_power_source,
@@ -127,6 +129,45 @@ class CanvasStaticPoseTest(unittest.TestCase):
     def mismatch(self, witness, args=None):
         return yaw_pose_mismatch("IRCanvasStress", self.ARGS if args is None else args, witness)
 
+    def test_capture_free_profile_requires_exact_count_and_static_pose(self):
+        args = ["--auto-profile", "--profile-frames", "300", "--no-auto-rotate", "--yaw", "0"]
+        self.assertEqual(canvas_profile_frames(args), 300)
+        self.assertEqual(canvas_profile_frames(["--profile-frames=120"]), 120)
+        self.assertIsNone(canvas_profile_frames(self.ARGS))
+        self.assertTrue(static_canvas_frame_sweep(args))
+        self.assertIsNone(self.mismatch(witnessed(yaw=0), args))
+        for witness in (witnessed(yaw=0, samples=299), witnessed(yaw=0, last=1),
+                        witnessed(yaw=0, zoom_min=1)):
+            self.assertIsNotNone(self.mismatch(witness, args))
+        self.assertTrue(static_canvas_frame_sweep([*args, "--auto-rotate"]))
+        self.assertFalse(static_canvas_frame_sweep([*args, "--full-rotate"]))
+        self.assertFalse(static_canvas_frame_sweep(["--profile-frames", "300"]))
+
+    def test_capture_free_profile_rejects_invalid_or_contaminated_requests(self):
+        for value in ("0", "-1", "nan", "1.5", "2147483648", "", "--yaw"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                canvas_profile_frames(["--profile-frames", value])
+        with self.assertRaises(ValueError):
+            canvas_profile_frames(["--profile-frames"])
+        for flag in ("--auto-screenshot", "--auto-record", "--capture-frame",
+                     "--sweep-frames", "--sweep-yaw", "--sweep-pan"):
+            with self.subTest(flag=flag), self.assertRaisesRegex(ValueError, "combined"):
+                canvas_profile_frames(["--profile-frames=300", f"{flag}=1"])
+
+    def test_bounded_measurements_reject_partial_invalid_and_unwarmed_series(self):
+        report = MagicMock(recorded_frames=300, frame_times_ms=[10.0] * 300)
+        report.steady_frame_times_ms.return_value = [10.0] * 240
+        self.assertIsNone(frame_measurement_failure(report, 300))
+        self.assertIn("frame count", frame_measurement_failure(report, 301))
+        report.frame_times_ms.pop()
+        self.assertIn("frame count", frame_measurement_failure(report, 300))
+        for value in (0, -1, float("nan"), float("inf")):
+            report.frame_times_ms = [10.0] * 299 + [value]
+            self.assertIn("nonpositive or nonfinite", frame_measurement_failure(report, 300))
+        report.frame_times_ms = [10.0] * 300
+        report.steady_frame_times_ms.return_value = []
+        self.assertIn("steady-frame", frame_measurement_failure(report, 300))
+
     def test_frame_sweep_requires_capture_and_a_positive_shot_count(self):
         self.assertTrue(static_canvas_frame_sweep(self.ARGS))
         self.assertTrue(static_canvas_frame_sweep([*self.ARGS, "--auto-rotate"]))
@@ -198,8 +239,12 @@ class CanvasStaticPoseTest(unittest.TestCase):
                  ("min=nan max=4.000", "all-frame", False),
                  ("min=4..000 max=4.000", "all-frame", False),
                  (None, "all-frame", False))
-        for bounds, reason, accepted in cases:
-            with self.subTest(bounds=bounds), tempfile.TemporaryDirectory() as temporary:
+        cases = [(bounds, reason, accepted, None, False) for bounds, reason, accepted in cases]
+        cases += [("min=4.000 max=4.000", None, failure is None, failure, True)
+                  for failure in (None, "frame count", "nonpositive or nonfinite")]
+        for bounds, reason, accepted, failure, bounded in cases:
+            with self.subTest(bounds=bounds, failure=failure), \
+                    tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 demo = root / "build/creations/demos/canvas_stress"
                 demo.mkdir(parents=True)
@@ -212,6 +257,12 @@ class CanvasStaticPoseTest(unittest.TestCase):
                 range_line = "Camera zoom range: min=4.000 max=4.000\n"
                 text = text.replace(range_line, f"Camera zoom range: {bounds}\n" if bounds else "")
                 text = text.replace("maxDropped=7", "maxDropped=0")
+                if failure == "frame count":
+                    text = text.replace("19.000 18.000 18.000\n", "19.000\n")
+                elif failure:
+                    text = text.replace("19.000 18.000 18.000\n", "19.000 0.000 18.000\n")
+                arguments = (["--auto-profile", "--profile-frames", "8", "--no-auto-rotate",
+                              "--yaw", "0"] if bounded else self.ARGS)
 
                 def capture(command, repo, log, binary, seconds, delay):
                     log.write_text("ir-run: QUIET=guarded exe=IRCanvasStress\nRESULT=CLEAN\n")
@@ -225,7 +276,7 @@ class CanvasStaticPoseTest(unittest.TestCase):
                     patch.dict("os.environ", {"IRREDEN_BUILD_DIR": str(root / "build")}),
                     patch("sys.argv", ["repeat_profile.py", "--target", "IRCanvasStress",
                                        "--output", str(output), "--repeats", "1", "--",
-                                       *self.ARGS]),
+                                       *arguments]),
                     patch("repeat_profile.subprocess.check_output", return_value="fixture"),
                     patch("repeat_profile.platform.platform", return_value="fixture host"),
                     patch("repeat_profile.host_power_source", return_value=None),
@@ -239,6 +290,10 @@ class CanvasStaticPoseTest(unittest.TestCase):
                 self.assertTrue((output / "run-1.txt").exists())
                 run = json.loads((output / "manifest.json").read_text())["runs"][0]
                 self.assertEqual(run["quiet"], "guarded")
+                if failure:
+                    self.assertIn(failure, run["measurement_failure"])
+                elif bounded:
+                    self.assertIsNone(run["measurement_failure"])
                 if reason:
                     self.assertIn(reason, run["yaw_pose_mismatch"])
                 else:

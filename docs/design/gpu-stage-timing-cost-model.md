@@ -29,6 +29,16 @@ waits and adds no lookup to the per-frame timing brackets.
 
 ## 1. What the timers measure
 
+- **Surface-lighting draws have separate rows.** `cardinalSurfaceFb` measures a
+  single-canvas gather with cardinal fragment lighting enabled, including a
+  combined shape/cardinal program when shapes are present. `perAxisSurfaceFb`
+  measures the per-axis scatter/overflow draw group with fragment lighting.
+  These replace, rather than nest inside, `trixelToFb` and `perAxisScatter` for
+  those invocations. The original rows measure draws without the corresponding
+  surface-lighting route. Completed samples witness the route, not fragment
+  counts or shadow-query hits. Historical unsplit rows are not directly
+  comparable. These optional rows have no assigned frame-budget share.
+
 - **One measurement per tagged `SystemId`, bracketing the whole tick.**
   `IRRender::tagGpuStage(systemId, "<name>")` registers a system against a
   row of `gpuStageRegistry()` (`engine/prefabs/irreden/render/

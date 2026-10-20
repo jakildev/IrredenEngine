@@ -269,9 +269,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.updateFrameData(frameDataBuf_);
 
         {
-            // Sub-scope: the single-canvas gather draw only — the
-            // per-axis scatter above owns its own row (perAxisScatter).
-            GpuSubStageScope gatherScope("trixelToFb");
+            GpuSubStageScope gatherScope(cardinalLighting ? "cardinalSurfaceFb" : "trixelToFb");
             const bool probe = (shapeProbeEnabled_ || shapeLightingEnabled_) &&
                                entity == perAxisCanvasEntity_ &&
                                triangleCanvasTextures.shapeGeometry_.samplesValid();
@@ -492,7 +490,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.frameData_.scatterDebugMode_ = static_cast<int>(IRRender::getDebugOverlay());
         {
             // The timer includes visibility clear, prepass and replay when enabled.
-            GpuSubStageScope scatterScope("perAxisScatter");
+            GpuSubStageScope scatterScope(
+                scatterLightingEnabled_ ? "perAxisSurfaceFb" : "perAxisScatter"
+            );
             IRRender::device()->setPolygonMode(PolygonMode::FILL);
             if (scatterProbeEnabled_ || scatterLightingEnabled_) {
                 bindSunShadowResources();
