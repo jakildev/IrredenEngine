@@ -580,8 +580,8 @@ class TrixelGlitchRecordingEncoder final : public IRSystem::TrixelGlitchEncoder 
         m_log.push_back("trixel:swap");
         std::swap(liveColour_, scratchColour_);
     }
-    void createPerAxisScratch() override {
-        m_log.push_back("trixel:perAxisCreateScratch");
+    void createPerAxisResources() override {
+        m_log.push_back("trixel:perAxisCreateResources");
         perAxisScratch_ = true;
     }
     void createPerAxisHistory() override {
@@ -594,11 +594,17 @@ class TrixelGlitchRecordingEncoder final : public IRSystem::TrixelGlitchEncoder 
     void copyPerAxisHistoryEntityIds(int axis) override {
         m_log.push_back("trixel:perAxisCopyIds:" + std::to_string(axis));
     }
-    void dispatchPerAxis(int axis) override {
-        m_log.push_back("trixel:perAxisDispatch:" + std::to_string(axis));
+    void clearPerAxisArgs() override {
+        m_log.push_back("trixel:perAxisFillArgs");
     }
-    void swapPerAxisColors(int axis) override {
-        m_log.push_back("trixel:perAxisSwap:" + std::to_string(axis));
+    void dispatchPerAxisMark(int axis) override {
+        m_log.push_back("trixel:perAxisMark:" + std::to_string(axis));
+    }
+    void dispatchPerAxisResolve(int axis) override {
+        m_log.push_back("trixel:perAxisResolve:" + std::to_string(axis));
+    }
+    void dispatchPerAxisWriteback(int axis) override {
+        m_log.push_back("trixel:perAxisWriteback:" + std::to_string(axis));
     }
     void finishPerAxisDispatches() override {
         m_log.push_back("trixel:perAxisBarrier");
@@ -808,7 +814,7 @@ TEST_F(TrixelGlitchScheduleProbeTest, SubjectsUploadSortedByIdWithTheirSlots) {
     EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 90u), 2);
 }
 
-TEST_F(TrixelGlitchScheduleProbeTest, AllocatedPerAxisStoreDispatchesAndSwapsEveryAxis) {
+TEST_F(TrixelGlitchScheduleProbeTest, AllocatedPerAxisStoreRunsTileWorklistEveryAxis) {
     IRComponents::C_GlitchSubject tear;
     tear.tearWeight_ = 1.0f;
     m_subjects = {{57u, tear}};
@@ -819,28 +825,36 @@ TEST_F(TrixelGlitchScheduleProbeTest, AllocatedPerAxisStoreDispatchesAndSwapsEve
             "trixel:upload",
             "trixel:dispatch read=1 write=2",
             "trixel:swap",
-            "trixel:perAxisCreateScratch",
-            "trixel:perAxisDispatch:0",
-            "trixel:perAxisDispatch:1",
-            "trixel:perAxisDispatch:2",
-            "trixel:perAxisBarrier",
-            "trixel:perAxisSwap:0",
-            "trixel:perAxisSwap:1",
-            "trixel:perAxisSwap:2"
+            "trixel:perAxisCreateResources",
+            "trixel:perAxisFillArgs",
+            "trixel:perAxisMark:0",
+            "trixel:perAxisMark:1",
+            "trixel:perAxisMark:2",
+            "trixel:perAxisResolve:0",
+            "trixel:perAxisResolve:1",
+            "trixel:perAxisResolve:2",
+            "trixel:perAxisWriteback:0",
+            "trixel:perAxisWriteback:1",
+            "trixel:perAxisWriteback:2",
+            "trixel:perAxisBarrier"
         })
     );
-    EXPECT_EQ(m_trixel->framePerAxisDispatches_, 3);
-    EXPECT_EQ(m_trixel->framePerAxisSwaps_, 3);
+    EXPECT_EQ(m_trixel->framePerAxisDispatches_, 9);
+    EXPECT_EQ(m_trixel->framePerAxisMarkDispatches_, 3);
+    EXPECT_EQ(m_trixel->framePerAxisResolveDispatches_, 3);
+    EXPECT_EQ(m_trixel->framePerAxisWritebackDispatches_, 3);
+    EXPECT_EQ(m_trixel->framePerAxisFills_, 1);
+    EXPECT_EQ(m_trixel->framePerAxisSwaps_, 0);
     EXPECT_EQ(m_trixel->perAxisScratchCreationCount_, 1u);
 
     const std::array<int, 3> distancesBefore = m_encoder.perAxisDistanceHandles_;
     const std::array<int, 3> idsBefore = m_encoder.perAxisIdHandles_;
     const RenderOpLog second = renderFrame(false, 0, true);
-    EXPECT_EQ(std::count(second.begin(), second.end(), "trixel:perAxisCreateScratch"), 0);
-    EXPECT_EQ(m_trixel->framePerAxisDispatches_, 3);
-    EXPECT_EQ(m_trixel->framePerAxisSwaps_, 3);
+    EXPECT_EQ(std::count(second.begin(), second.end(), "trixel:perAxisCreateResources"), 0);
+    EXPECT_EQ(m_trixel->framePerAxisDispatches_, 9);
+    EXPECT_EQ(m_trixel->framePerAxisSwaps_, 0);
     EXPECT_EQ(m_encoder.perAxisDistanceHandles_, distancesBefore);
-    EXPECT_EQ(m_encoder.perAxisIdHandles_, idsBefore) << "only per-axis colour handles may swap";
+    EXPECT_EQ(m_encoder.perAxisIdHandles_, idsBefore);
 }
 
 TEST_F(TrixelGlitchScheduleProbeTest, PerAxisHoldCopiesOnTickAndCardinalChanges) {

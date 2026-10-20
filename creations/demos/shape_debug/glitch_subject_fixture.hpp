@@ -144,6 +144,7 @@ struct GlitchSubjectFixture {
     std::uint64_t preHashTick_ = ~0ull;
     std::array<std::uint64_t, 3> perAxisPreIdHash_{};
     std::array<std::uint64_t, 3> perAxisPreDistanceHash_{};
+    std::array<std::vector<IRMath::Color>, 3> perAxisPreColors_{};
 
     struct SpillPose {
         bool valid_ = false;
@@ -509,6 +510,9 @@ struct GlitchSubjectFixture {
         preIdHash_ = planeHash(ids, distances, preDistanceHash_);
         if (const auto *axes = perAxisCanvases(); axes != nullptr) {
             for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
+                if (perAxisPreColors_[axis].empty()) {
+                    axes->axes_[axis].readColors(axes->size_, perAxisPreColors_[axis]);
+                }
                 axes->axes_[axis].readEntityIdCarriers(axes->size_, ids);
                 axes->axes_[axis].readDistances(axes->size_, distances);
                 perAxisPreIdHash_[axis] = planeHash(ids, distances, perAxisPreDistanceHash_[axis]);
@@ -569,7 +573,7 @@ struct GlitchSubjectFixture {
         return true;
     }
 
-    static bool readPerAxisPlanes(int axisIndex, Planes &planes) {
+    bool readPerAxisPlanes(int axisIndex, Planes &planes) const {
         const auto *axes = perAxisCanvases();
         if (axes == nullptr || !axes->axes_[axisIndex].hasGlitchScratch()) {
             return false;
@@ -578,7 +582,10 @@ struct GlitchSubjectFixture {
         const auto &axis = axes->axes_[axisIndex];
         planes.size_ = axes->size_;
         axis.readColors(axes->size_, planes.output_);
-        axis.readGlitchInputColors(axes->size_, planes.input_);
+        planes.input_ = perAxisPreColors_[static_cast<std::size_t>(axisIndex)];
+        if (planes.input_.size() != planes.output_.size()) {
+            return false;
+        }
         axis.readEntityIdCarriers(axes->size_, planes.ids_);
         axis.readDistances(axes->size_, planes.distances_);
         if (axis.hasGlitchHistory()) {
@@ -831,12 +838,17 @@ struct GlitchSubjectFixture {
         const IRPrefab::Glitch::Clock clock = IRPrefab::Glitch::clock();
         const auto words = IRPrefab::Glitch::toTickWords(clock.tick_);
         const auto *framebuffer = IRPrefab::Glitch::systemOrNull();
+        const auto *axes = perAxisCanvases();
+        const std::array<std::uint32_t, 3> markedTiles =
+            axes != nullptr && axes->hasGlitchWorklist() ? axes->readGlitchMarkedTileCounts()
+                                                         : std::array<std::uint32_t, 3>{};
         IR_LOG_INFO(
             "[glitch-subject-probe] at={} mode={} engineTick={} tick={} tickWords={},{} "
             "trixelTick={} enabled={} subjects=[{}] perAxisAllocated={} frameUploads={} "
             "frameHistoryCopies={} frameDispatches={} frameSwaps={} totalDispatches={} "
             "totalHistoryCopies={} imageCreations={} perAxisHistoryCopies={} "
-            "perAxisDispatches={} perAxisSwaps={} overflow={} fbFrameDraws={} "
+            "perAxisDispatches={} perAxisMark={} perAxisResolve={} perAxisWriteback={} "
+            "perAxisFills={} perAxisSwaps={} markedTiles={},{},{} overflow={} fbFrameDraws={} "
             "gpuMs={:.4f} perAxisGpuMs={:.4f}",
             when,
             static_cast<int>(mode_),
@@ -857,8 +869,15 @@ struct GlitchSubjectFixture {
             system->imageCreationCount_,
             system->framePerAxisHistoryCopies_,
             system->framePerAxisDispatches_,
+            system->framePerAxisMarkDispatches_,
+            system->framePerAxisResolveDispatches_,
+            system->framePerAxisWritebackDispatches_,
+            system->framePerAxisFills_,
             system->framePerAxisSwaps_,
-            perAxisCanvases() != nullptr ? perAxisCanvases()->laggedOverflowCount_ : 0u,
+            markedTiles[0],
+            markedTiles[1],
+            markedTiles[2],
+            axes != nullptr ? axes->laggedOverflowCount_ : 0u,
             framebuffer != nullptr ? framebuffer->frameDraws_ : -1,
             IRRender::gpuStageTiming().trixelGlitchMs_,
             IRRender::gpuStageTiming().trixelGlitchPerAxisMs_
@@ -940,9 +959,13 @@ struct GlitchSubjectFixture {
         );
         if (atYaw()) {
             const auto *axes = perAxisCanvases();
-            bool yawPass = axes != nullptr && system->framePerAxisDispatches_ == 3 &&
-                           system->framePerAxisSwaps_ == 3;
+            bool yawPass = axes != nullptr && system->framePerAxisDispatches_ == 9 &&
+                           system->framePerAxisMarkDispatches_ == 3 &&
+                           system->framePerAxisResolveDispatches_ == 3 &&
+                           system->framePerAxisWritebackDispatches_ == 3 &&
+                           system->framePerAxisFills_ == 1 && system->framePerAxisSwaps_ == 0;
             std::uint64_t perAxisGlitchBytes = 0;
+            std::array<std::uint32_t, 3> markedTiles{};
             if (axes != nullptr) {
                 const std::uint64_t pixels = static_cast<std::uint64_t>(axes->size_.x) *
                                              static_cast<std::uint64_t>(axes->size_.y);
@@ -950,6 +973,8 @@ struct GlitchSubjectFixture {
                     perAxisGlitchBytes += axis.hasGlitchScratch() ? pixels * 4u : 0u;
                     perAxisGlitchBytes += axis.hasGlitchHistory() ? pixels * 12u : 0u;
                 }
+                perAxisGlitchBytes += axes->glitchWorklistBytes();
+                markedTiles = axes->readGlitchMarkedTileCounts();
             }
             const std::span<const IRMath::uvec4> words{system->words_};
             const std::uint32_t header = words[2].x;
@@ -1021,11 +1046,14 @@ struct GlitchSubjectFixture {
             }
             IR_LOG_INFO(
                 "[glitch-subject-probe] yaw={} perAxisAllocated={} dispatches={} copies={} "
-                "overflow={} bytes={} pass={}",
+                "markedTiles={},{},{} overflow={} bytes={} pass={}",
                 yawDegrees_,
                 system->perAxisAllocated_,
                 system->framePerAxisDispatches_,
                 system->framePerAxisHistoryCopies_,
+                markedTiles[0],
+                markedTiles[1],
+                markedTiles[2],
                 axes != nullptr ? axes->laggedOverflowCount_ : 0u,
                 perAxisGlitchBytes,
                 yawPass

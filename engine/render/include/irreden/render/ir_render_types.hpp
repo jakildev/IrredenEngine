@@ -1477,6 +1477,12 @@ constexpr std::uint32_t kBufferIndex_OverflowLightingScratch = kBufferIndex_Voxe
 // after its dispatch, as FOG_TO_TRIXEL's per-axis path does. A storage-table
 // slot, so the borrow never shadows a uniform binding on Metal.
 constexpr std::uint32_t kBufferIndex_TrixelGlitchSubjects = kBufferIndex_VoxelActiveMask;
+// TRIXEL_GLITCH borrows the late-frame lighting slots for its per-axis tile
+// worklist. The pass restores all three owners before returning: lighting
+// frame data (27), the sun-depth map (28), and sun frame data (29).
+constexpr std::uint32_t kBufferIndex_TrixelGlitchTileFlags = kBufferIndex_FrameDataLightingToTrixel;
+constexpr std::uint32_t kBufferIndex_TrixelGlitchTileList = kBufferIndex_SunShadowDepthMap;
+constexpr std::uint32_t kBufferIndex_TrixelGlitchTileArgs = kBufferIndex_FrameDataSun;
 // The per-axis empty-cell pass compacts each canvas's occupied cells into an
 // indirect instanced draw, so the scatter rasterizes only non-empty cells instead of sweeping the
 // whole worst-case-sized per-axis grid (~12x the cardinal area, mostly empty).
@@ -1836,7 +1842,7 @@ static_assert(
 // local_size_x/y = 16 declared independently in each of the six consumer
 // kernels' GLSL + Metal twins (c_compute_voxel_ao, c_compute_sun_shadow,
 // c_lighting_to_trixel, c_fog_to_trixel, c_resolve_per_axis_screen_depth,
-// c_trixel_glitch_per_axis). Changing any one kernel's group size without
+// c_trixel_glitch_per_axis_mark). Changing any one kernel's group size without
 // updating this constant AND the other eleven files silently misaligns the
 // cell recovery (skipped or duplicated cells, no compiler/runtime diagnostic).
 constexpr std::uint32_t kPerAxisCellComputeTile = 256;

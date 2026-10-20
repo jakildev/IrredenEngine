@@ -15,6 +15,9 @@ const char *const kFileFragFramebufferGlitch = "shaders/f_framebuffer_glitch.gls
 // metal/c_trixel_glitch.metal; shared ABI in ir_glitch_common.{glsl,metal}).
 const char *const kFileCompTrixelGlitch = "shaders/c_trixel_glitch.glsl";
 const char *const kFileCompTrixelGlitchPerAxis = "shaders/c_trixel_glitch_per_axis.glsl";
+const char *const kFileCompTrixelGlitchPerAxisMark = "shaders/c_trixel_glitch_per_axis_mark.glsl";
+const char *const kFileCompTrixelGlitchPerAxisWriteback =
+    "shaders/c_trixel_glitch_per_axis_writeback.glsl";
 
 const char *const kFileVertSpritesToScreen = "shaders/v_sprites_to_screen.glsl";
 const char *const kFileFragSpritesToScreen = "shaders/f_sprites_to_screen.glsl";

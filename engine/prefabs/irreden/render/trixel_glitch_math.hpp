@@ -63,8 +63,28 @@ inline constexpr std::uint32_t kSubjectHeaderWords = 3u;
 inline constexpr std::uint32_t kSubjectRecordWords = 5u;
 inline constexpr std::uint32_t kPerAxisFrameWords = 2u;
 inline constexpr int kPerAxisFaceStep = 2;
+inline constexpr int kPerAxisSubjectTileSize = 16;
+inline constexpr int kPerAxisSubjectTileHalo = kPerAxisFaceStep * kSubjectHalo;
+inline constexpr int kPerAxisSubjectTileWindow =
+    kPerAxisSubjectTileSize + 2 * kPerAxisSubjectTileHalo;
 
 static_assert(kSubjectTileSize == 26, "the kernels declare a 26x26 id tile");
+static_assert(kPerAxisSubjectTileWindow == 36, "the per-axis resolve stages a 36x36 window");
+
+inline IRMath::ivec4
+perAxisSubjectTileBounds(IRMath::ivec2 subjectCell, int spill, IRMath::ivec2 storeSize) {
+    IR_ASSERT(spill >= 0 && spill <= kSubjectMaxSpill, "per-axis tile mark spill is invalid");
+    IR_ASSERT(storeSize.x > 0 && storeSize.y > 0, "per-axis tile mark needs a store");
+    const int reach = kPerAxisFaceStep * spill;
+    const IRMath::ivec2 firstCell = IRMath::max(subjectCell - reach, IRMath::ivec2(0));
+    const IRMath::ivec2 lastCell = IRMath::min(subjectCell + reach, storeSize - IRMath::ivec2(1));
+    return IRMath::ivec4(
+        firstCell.x / kPerAxisSubjectTileSize,
+        firstCell.y / kPerAxisSubjectTileSize,
+        lastCell.x / kPerAxisSubjectTileSize,
+        lastCell.y / kPerAxisSubjectTileSize
+    );
+}
 
 inline bool isSubjectActive(const IRComponents::C_GlitchSubject &subject) {
     return subject.weight_ > 0.0f && (subject.tearWeight_ > 0.0f || subject.holdWeight_ > 0.0f ||

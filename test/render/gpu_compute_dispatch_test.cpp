@@ -1554,10 +1554,16 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
         axis.createGlitchScratch(axes->size_);
         axis.createGlitchHistory(axes->size_);
     }
+    axes->createGlitchWorklist();
     const auto faceTextures = axes->axes_;
     const auto winners = axes->winnerIds_;
     const auto compacted = axes->cellCompacted_;
     const auto indirect = axes->cellIndirect_;
+    const auto glitchFlags = axes->glitchTileFlags_;
+    const auto glitchList = axes->glitchTileList_;
+    const auto glitchArgs = axes->glitchTileArgs_;
+    const auto glitchGrid = axes->glitchTileGrid_;
+    const int glitchStride = axes->glitchTileRegionStride_;
     const auto layout = axes->overflowScratchLayout();
     const int liveResources = resources.liveResourceCount();
     const std::uint32_t scratchValue = 0x12345678u;
@@ -1585,6 +1591,11 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
         EXPECT_EQ(axes->winnerIds_, winners);
         EXPECT_EQ(axes->cellCompacted_, compacted);
         EXPECT_EQ(axes->cellIndirect_, indirect);
+        EXPECT_EQ(axes->glitchTileFlags_, glitchFlags);
+        EXPECT_EQ(axes->glitchTileList_, glitchList);
+        EXPECT_EQ(axes->glitchTileArgs_, glitchArgs);
+        EXPECT_EQ(axes->glitchTileGrid_, glitchGrid);
+        EXPECT_EQ(axes->glitchTileRegionStride_, glitchStride);
         EXPECT_EQ(axes->overflowScratchLayout(), layout);
         EXPECT_EQ(resources.liveResourceCount(), liveResources);
         std::uint32_t scratchReadback = 0;

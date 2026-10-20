@@ -252,7 +252,10 @@ The active per-axis store owns the corresponding images in each of its three
 `AxisTextures`: scratch is created on the first enabled rotating frame, while
 history colour/id are created only for an active hold. They follow the store
 through park/unpark without re-creation and are destroyed with it on resize or
-release. A cardinal frame allocates none of them.
+release. The store also owns one three-region tile-flag buffer, tile-list
+buffer and indirect-args buffer. Those buffers are created with scratch,
+follow the same lifetime, and contribute to the reported lazy-resource bytes.
+A cardinal frame allocates none of them.
 
 An enabled frame uploads the subject buffer, takes the two history copies when
 due, runs one 16x16 compute dispatch over the whole canvas, then swaps the
@@ -295,13 +298,23 @@ against the standing references.
 ### Smooth-yaw per-axis route
 
 When the main canvas's per-axis set is allocated, the same enabled tick also
-runs one indirect compacted-cell dispatch for each X/Y/Z axis canvas. The
-kernel reads occupied cells directly (there is no spatially coherent shared
-tile), writes only scratch colour, takes one image barrier, then swaps the
-three colour pairs. Distance and entity-id handles never swap. Slots 25/26
-are restored to voxel compaction and borrowed slot 8 is restored to the voxel
-active mask. `IR_TRIXEL_GLITCH_PER_AXIS_DISABLE=1` skips this route for defect
-isolation. Its copies and dispatches alone occupy the
+runs a three-pass subject-tile worklist for each X/Y/Z axis canvas:
+
+1. Mark scans compacted occupied cells. A subject cell marks every 16x16 store
+   tile intersecting its `2 * spill` reach; the first marker appends the tile
+   and increments that axis's indirect group count.
+2. Resolve runs one 16x16 workgroup per marked tile. It stages subject slot and
+   spill for a 36x36 window (ten-cell halo), resolves the unchanged closest-two
+   rule from threadgroup memory, and writes occupied cells to scratch.
+3. Write-back copies scratch to the live colour for those occupied cells and
+   clears the tile flag. The fixture oracle retains its own pre-pass colour
+   readback because the one-way write-back does not swap the two planes.
+
+The live colour, distance and entity-id handles never swap. The pass clears
+the three axes' args with one fill, issues nine indirect dispatches, and
+restores borrowed slots 8 and 25-29 to their owners. Resolve and write-back do
+not bind their indirect-args buffer for write. `IR_TRIXEL_GLITCH_PER_AXIS_DISABLE=1`
+skips this route for defect isolation. Its copies, fill, and dispatches alone occupy the
 `trixelGlitchPerAxis` timing row; frames without the route write zero.
 
 All three axes use the nearest-cardinal store frame. One logical trixel of a
@@ -334,9 +347,11 @@ sub-face trixel.
 
 ### Cost
 
-The pass shades canvas texels (or compacted occupied per-axis cells), not
-output pixels, so its cost follows the main canvas size and rotating face
-count rather than the output scale. Budget: eight subjects, every
+The main pass shades canvas texels, while the per-axis route performs one
+subject lookup per compacted occupied cell during mark and resolve work
+proportional to subject reach. Its cost therefore follows main-canvas size and
+the rotating subjects' reached tiles rather than every occupied face in the
+scene. Budget: eight subjects, every
 effect at weight 1, `spill = 4`, at the committed 1x take preset:
 
     UCB95(trixelGlitch per-run means, --glitch-subject-test all)  <  0.40 ms
@@ -347,7 +362,8 @@ Executor: five quiet runs of `fleet-run IRShapeDebug --glitch-subject-test all
 GPU stage table in `save_files/profile_report.txt`, interleaved with
 `--glitch-subject-test off` runs whose glitch rows collect no sample. The
 per-axis arm adds `--glitch-subject-yaw 22.5` to both modes and records its
-three dispatches, hold-copy cadence, canvas sizes and lazy image bytes.
+nine dispatches, one args fill, marked tiles per axis, hold-copy cadence,
+canvas sizes and lazy resource bytes.
 
 Measured on an Apple M4 Max (macOS Metal, 1280x720 output at scale 1, main
 canvas 642x722, one dispatch per frame and two history copies per period

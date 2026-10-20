@@ -198,6 +198,81 @@ struct PerAxisCanvasStore {
     std::pair<ResourceId, Buffer *> cellIndirect_{0, nullptr};
     int cellRegionStride_ = 0; // uints per axis region (>= axis cells, 64-aligned)
 
+    // TRIXEL_GLITCH marks only the store tiles reached by an active subject,
+    // resolves those tiles through a shared-memory halo, then writes them back.
+    // Each buffer has three 256-byte-aligned axis regions so bindRange remains
+    // portable across GL and Metal. These resources are lazy because a smooth
+    // yaw with no active glitch subject must retain the pre-feature footprint.
+    std::pair<ResourceId, Buffer *> glitchTileFlags_{0, nullptr};
+    std::pair<ResourceId, Buffer *> glitchTileList_{0, nullptr};
+    std::pair<ResourceId, Buffer *> glitchTileArgs_{0, nullptr};
+    ivec2 glitchTileGrid_{0, 0};
+    int glitchTileRegionStride_ = 0;
+
+    bool hasGlitchWorklist() const {
+        return glitchTileFlags_.second != nullptr;
+    }
+
+    void createGlitchWorklist() {
+        if (hasGlitchWorklist()) {
+            return;
+        }
+        static constexpr int kTileSize = 16;
+        glitchTileGrid_ =
+            ivec2(IRMath::divCeil(size_.x, kTileSize), IRMath::divCeil(size_.y, kTileSize));
+        const int tileCount = glitchTileGrid_.x * glitchTileGrid_.y;
+        glitchTileRegionStride_ =
+            IRMath::divCeil(tileCount, kScratchAlignUints) * kScratchAlignUints;
+        const std::size_t regionBytes =
+            static_cast<std::size_t>(glitchTileRegionStride_) * sizeof(std::uint32_t);
+        glitchTileFlags_ = IRRender::createResource<Buffer>(
+            nullptr,
+            regionBytes * kAxisCount,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileFlags
+        );
+        glitchTileList_ = IRRender::createResource<Buffer>(
+            nullptr,
+            regionBytes * kAxisCount,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileList
+        );
+        glitchTileArgs_ = IRRender::createResource<Buffer>(
+            nullptr,
+            static_cast<std::size_t>(kAxisCount) * kScratchAlignUints * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileArgs
+        );
+        IRRender::device()
+            ->fillBuffer(glitchTileFlags_.second, regionBytes * kAxisCount, std::uint8_t{0});
+    }
+
+    std::uint64_t glitchWorklistBytes() const {
+        if (!hasGlitchWorklist()) {
+            return 0;
+        }
+        return static_cast<std::uint64_t>(glitchTileRegionStride_) * kAxisCount *
+                   sizeof(std::uint32_t) * 2u +
+               static_cast<std::uint64_t>(kAxisCount) * kScratchAlignUints * sizeof(std::uint32_t);
+    }
+
+    std::array<std::uint32_t, kAxisCount> readGlitchMarkedTileCounts() const {
+        IR_ASSERT(hasGlitchWorklist(), "marked-tile readback needs the glitch worklist");
+        std::array<std::uint32_t, kAxisCount> counts{};
+        for (int axis = 0; axis < kAxisCount; ++axis) {
+            glitchTileArgs_.second->getSubData(
+                static_cast<std::ptrdiff_t>(axis) * kScratchAlignUints *
+                    static_cast<int>(sizeof(std::uint32_t)),
+                sizeof(std::uint32_t),
+                &counts[static_cast<std::size_t>(axis)]
+            );
+        }
+        return counts;
+    }
+
     // Unified per-axis resolve scratch for winner election and overflow,
     // bound whole at
     // kBufferIndex_PerAxisResolveScratch during the per-axis dispatches only
@@ -432,6 +507,16 @@ struct PerAxisCanvasStore {
         IRRender::destroyResource<Buffer>(cellIndirect_.first);
         cellIndirect_ = {0, nullptr};
         cellRegionStride_ = 0;
+        if (glitchTileFlags_.second != nullptr) {
+            IRRender::destroyResource<Buffer>(glitchTileFlags_.first);
+            IRRender::destroyResource<Buffer>(glitchTileList_.first);
+            IRRender::destroyResource<Buffer>(glitchTileArgs_.first);
+        }
+        glitchTileFlags_ = {0, nullptr};
+        glitchTileList_ = {0, nullptr};
+        glitchTileArgs_ = {0, nullptr};
+        glitchTileGrid_ = ivec2{0, 0};
+        glitchTileRegionStride_ = 0;
         IRRender::destroyResource<Buffer>(winnerIds_.first);
         winnerIds_ = {0, nullptr};
         ctrlBaseUints_ = 0;

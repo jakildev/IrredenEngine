@@ -101,9 +101,11 @@ inline TrixelGlitchFramePlan planTrixelGlitchFrame(
 
 // The GPU work of one enabled frame. `encodeFrame` issues it in this order:
 // `createImages` on first use and after a resize, `uploadSubjects`, the two
-// history copies on a new tick, `dispatch`, then `swapColors`. Nothing ever
-// writes the distance or entity-id planes. `TrixelGlitchGpuEncoder` encodes
-// it; the headless probes record it.
+// history copies on a new tick, `dispatch`, then `swapColors`. The per-axis
+// route clears its indirect args, marks reached tiles, resolves them into
+// scratch, and writes them back without swapping a live handle. Nothing ever
+// writes the distance or entity-id planes. `TrixelGlitchGpuEncoder` encodes it;
+// the headless probes record it.
 class TrixelGlitchEncoder {
   public:
     // Gives the main canvas its three glitch images at its current size.
@@ -115,12 +117,14 @@ class TrixelGlitchEncoder {
     // writing every scratch texel, then an image barrier.
     virtual void dispatch() = 0;
     virtual void swapColors() = 0;
-    virtual void createPerAxisScratch() = 0;
+    virtual void createPerAxisResources() = 0;
     virtual void createPerAxisHistory() = 0;
     virtual void copyPerAxisHistoryColors(int axis) = 0;
     virtual void copyPerAxisHistoryEntityIds(int axis) = 0;
-    virtual void dispatchPerAxis(int axis) = 0;
-    virtual void swapPerAxisColors(int axis) = 0;
+    virtual void clearPerAxisArgs() = 0;
+    virtual void dispatchPerAxisMark(int axis) = 0;
+    virtual void dispatchPerAxisResolve(int axis) = 0;
+    virtual void dispatchPerAxisWriteback(int axis) = 0;
     virtual void finishPerAxisDispatches() = 0;
 
   protected:
@@ -139,9 +143,14 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
         std::size_t &subjectBufBytes,
         Buffer *slotOwner,
         IRComponents::C_PerAxisTrixelCanvases *perAxis,
-        ShaderProgram *perAxisProgram,
+        ShaderProgram *perAxisMarkProgram,
+        ShaderProgram *perAxisResolveProgram,
+        ShaderProgram *perAxisWritebackProgram,
         Buffer *&voxelCompactedBuf,
-        Buffer *&voxelIndirectBuf
+        Buffer *&voxelIndirectBuf,
+        Buffer *lightingFrameDataBuf,
+        Buffer *sunDepthBuf,
+        Buffer *sunFrameDataBuf
     )
         : m_canvas{canvas}
         , m_program{program}
@@ -149,9 +158,14 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
         , m_subjectBufBytes{subjectBufBytes}
         , m_slotOwner{slotOwner}
         , m_perAxis{perAxis}
-        , m_perAxisProgram{perAxisProgram}
+        , m_perAxisMarkProgram{perAxisMarkProgram}
+        , m_perAxisResolveProgram{perAxisResolveProgram}
+        , m_perAxisWritebackProgram{perAxisWritebackProgram}
         , m_voxelCompactedBuf{voxelCompactedBuf}
-        , m_voxelIndirectBuf{voxelIndirectBuf} {}
+        , m_voxelIndirectBuf{voxelIndirectBuf}
+        , m_lightingFrameDataBuf{lightingFrameDataBuf}
+        , m_sunDepthBuf{sunDepthBuf}
+        , m_sunFrameDataBuf{sunFrameDataBuf} {}
 
     void createImages() override {
         m_canvas.createGlitchImages();
@@ -227,10 +241,11 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
         m_canvas.swapGlitchScratchColors();
     }
 
-    void createPerAxisScratch() override {
+    void createPerAxisResources() override {
         for (auto &axis : m_perAxis->axes_) {
             axis.createGlitchScratch(m_perAxis->size_);
         }
+        m_perAxis->createGlitchWorklist();
     }
 
     void createPerAxisHistory() override {
@@ -255,20 +270,49 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
         );
     }
 
-    void dispatchPerAxis(int axis) override {
+    void clearPerAxisArgs() override {
+        IRRender::device()->fillBuffer(
+            m_perAxis->glitchTileArgs_.second,
+            static_cast<std::size_t>(IRComponents::PerAxisCanvasStore::kAxisCount) *
+                IRComponents::PerAxisCanvasStore::kScratchAlignUints * sizeof(std::uint32_t),
+            std::uint8_t{0}
+        );
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+    }
+
+    void bindPerAxisWorklist(int axis) {
+        const std::ptrdiff_t regionOffset = static_cast<std::ptrdiff_t>(axis) *
+                                            m_perAxis->glitchTileRegionStride_ *
+                                            static_cast<int>(sizeof(std::uint32_t));
+        const std::size_t regionBytes =
+            static_cast<std::size_t>(m_perAxis->glitchTileRegionStride_) * sizeof(std::uint32_t);
+        m_perAxis->glitchTileFlags_.second->bindRange(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileFlags,
+            regionOffset,
+            regionBytes
+        );
+        m_perAxis->glitchTileList_.second->bindRange(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileList,
+            regionOffset,
+            regionBytes
+        );
+        m_perAxis->glitchTileArgs_.second->bindRange(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileArgs,
+            static_cast<std::ptrdiff_t>(axis) *
+                IRComponents::PerAxisCanvasStore::kScratchAlignUints *
+                static_cast<int>(sizeof(std::uint32_t)),
+            static_cast<std::size_t>(IRComponents::PerAxisCanvasStore::kScratchAlignUints) *
+                sizeof(std::uint32_t)
+        );
+    }
+
+    void dispatchPerAxisMark(int axis) override {
         auto &textures = m_perAxis->axes_[axis];
-        m_perAxisProgram->use();
-        textures.colors_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-        textures.distances_.second->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        m_perAxisMarkProgram->use();
         textures.entityIds_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
-        (textures.hasGlitchHistory() ? textures.glitchHistoryColors_.second
-                                     : textures.colors_.second)
-            ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
-        (textures.hasGlitchHistory() ? textures.glitchHistoryEntityIds_.second
-                                     : textures.entityIds_.second)
-            ->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
-        textures.glitchScratchColors_.second
-            ->bindAsImage(5, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
         m_subjectBuf.second->bindBase(
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_TrixelGlitchSubjects
@@ -286,15 +330,60 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
             static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
             kPerAxisCellIndirectStrideBytes
         );
+        bindPerAxisWorklist(axis);
         IRRender::device()->dispatchComputeIndirect(
             m_perAxis->cellIndirect_.second,
             static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
                 kPerAxisCellDispatchArgsOffsetBytes
         );
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        IRRender::device()->memoryBarrier(BarrierType::COMMAND);
     }
 
-    void swapPerAxisColors(int axis) override {
-        m_perAxis->axes_[axis].swapGlitchScratchColors();
+    void dispatchPerAxisResolve(int axis) override {
+        auto &textures = m_perAxis->axes_[axis];
+        m_perAxisResolveProgram->use();
+        textures.colors_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        textures.distances_.second->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        textures.entityIds_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+        (textures.hasGlitchHistory() ? textures.glitchHistoryColors_.second
+                                     : textures.colors_.second)
+            ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        (textures.hasGlitchHistory() ? textures.glitchHistoryEntityIds_.second
+                                     : textures.entityIds_.second)
+            ->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+        textures.glitchScratchColors_.second
+            ->bindAsImage(5, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        m_subjectBuf.second->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchSubjects
+        );
+        bindPerAxisWorklist(axis);
+        IRRender::device()->dispatchComputeIndirect(
+            m_perAxis->glitchTileArgs_.second,
+            static_cast<std::ptrdiff_t>(axis) *
+                IRComponents::PerAxisCanvasStore::kScratchAlignUints *
+                static_cast<int>(sizeof(std::uint32_t))
+        );
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+    }
+
+    void dispatchPerAxisWriteback(int axis) override {
+        auto &textures = m_perAxis->axes_[axis];
+        m_perAxisWritebackProgram->use();
+        textures.colors_.second->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        textures.entityIds_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+        textures.glitchScratchColors_.second
+            ->bindAsImage(5, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        bindPerAxisWorklist(axis);
+        IRRender::device()->dispatchComputeIndirect(
+            m_perAxis->glitchTileArgs_.second,
+            static_cast<std::ptrdiff_t>(axis) *
+                IRComponents::PerAxisCanvasStore::kScratchAlignUints *
+                static_cast<int>(sizeof(std::uint32_t))
+        );
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 
     void finishPerAxisDispatches() override {
@@ -306,6 +395,18 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
         if (m_slotOwner != nullptr) {
             m_slotOwner->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
         }
+        if (m_lightingFrameDataBuf != nullptr) {
+            m_lightingFrameDataBuf->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataLightingToTrixel
+            );
+        }
+        if (m_sunDepthBuf != nullptr) {
+            m_sunDepthBuf->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        }
+        if (m_sunFrameDataBuf != nullptr) {
+            m_sunFrameDataBuf->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        }
     }
 
   private:
@@ -315,9 +416,14 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
     std::size_t &m_subjectBufBytes;
     Buffer *m_slotOwner;
     IRComponents::C_PerAxisTrixelCanvases *m_perAxis;
-    ShaderProgram *m_perAxisProgram;
+    ShaderProgram *m_perAxisMarkProgram;
+    ShaderProgram *m_perAxisResolveProgram;
+    ShaderProgram *m_perAxisWritebackProgram;
     Buffer *&m_voxelCompactedBuf;
     Buffer *&m_voxelIndirectBuf;
+    Buffer *m_lightingFrameDataBuf;
+    Buffer *m_sunDepthBuf;
+    Buffer *m_sunFrameDataBuf;
 };
 
 // Canvas-space glitch of the entities carrying `C_GlitchSubject`. One
@@ -335,12 +441,17 @@ template <> struct System<TRIXEL_GLITCH> {
     };
 
     ShaderProgram *program_ = nullptr;
-    ShaderProgram *perAxisProgram_ = nullptr;
+    ShaderProgram *perAxisMarkProgram_ = nullptr;
+    ShaderProgram *perAxisResolveProgram_ = nullptr;
+    ShaderProgram *perAxisWritebackProgram_ = nullptr;
     std::pair<ResourceId, Buffer *> subjectBuf_{0, nullptr};
     std::size_t subjectBufBytes_ = 0;
     Buffer *slotOwner_ = nullptr;
     Buffer *voxelCompactedBuf_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
+    Buffer *lightingFrameDataBuf_ = nullptr;
+    Buffer *sunDepthBuf_ = nullptr;
+    Buffer *sunFrameDataBuf_ = nullptr;
     bool perAxisDisabled_ = false;
 
     // Frame state resolved in beginTick and the tick.
@@ -370,6 +481,10 @@ template <> struct System<TRIXEL_GLITCH> {
     int frameSwaps_ = 0;
     int framePerAxisHistoryCopies_ = 0;
     int framePerAxisDispatches_ = 0;
+    int framePerAxisMarkDispatches_ = 0;
+    int framePerAxisResolveDispatches_ = 0;
+    int framePerAxisWritebackDispatches_ = 0;
+    int framePerAxisFills_ = 0;
     int framePerAxisSwaps_ = 0;
     std::uint64_t imageCreationCount_ = 0;
     std::uint64_t perAxisScratchCreationCount_ = 0;
@@ -387,6 +502,10 @@ template <> struct System<TRIXEL_GLITCH> {
         frameSwaps_ = 0;
         framePerAxisHistoryCopies_ = 0;
         framePerAxisDispatches_ = 0;
+        framePerAxisMarkDispatches_ = 0;
+        framePerAxisResolveDispatches_ = 0;
+        framePerAxisWritebackDispatches_ = 0;
+        framePerAxisFills_ = 0;
         framePerAxisSwaps_ = 0;
         subjects_.clear();
         subjects_.reserve(
@@ -511,7 +630,7 @@ template <> struct System<TRIXEL_GLITCH> {
             return;
         }
         if (perAxisPlan.createScratch_) {
-            encoder.createPerAxisScratch();
+            encoder.createPerAxisResources();
             ++perAxisScratchCreationCount_;
         }
         if (perAxisPlan.createHistory_) {
@@ -533,16 +652,24 @@ template <> struct System<TRIXEL_GLITCH> {
                 perAxisHistorySize_ = perAxisInput.size_;
                 perAxisHistoryCardinal_ = perAxisInput.storeFrame_.z;
             }
+            encoder.clearPerAxisArgs();
+            ++framePerAxisFills_;
             for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
-                encoder.dispatchPerAxis(axis);
-                ++framePerAxisDispatches_;
-                ++perAxisDispatchCount_;
+                encoder.dispatchPerAxisMark(axis);
+                ++framePerAxisMarkDispatches_;
             }
+            for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
+                encoder.dispatchPerAxisResolve(axis);
+                ++framePerAxisResolveDispatches_;
+            }
+            for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
+                encoder.dispatchPerAxisWriteback(axis);
+                ++framePerAxisWritebackDispatches_;
+            }
+            framePerAxisDispatches_ = framePerAxisMarkDispatches_ + framePerAxisResolveDispatches_ +
+                                      framePerAxisWritebackDispatches_;
+            perAxisDispatchCount_ += framePerAxisDispatches_;
             encoder.finishPerAxisDispatches();
-        }
-        for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
-            encoder.swapPerAxisColors(axis);
-            ++framePerAxisSwaps_;
         }
         if (!readsHistory_) {
             perAxisHistoryValid_ = false;
@@ -575,14 +702,20 @@ template <> struct System<TRIXEL_GLITCH> {
             subjectBufBytes_,
             slotOwner_,
             axes,
-            perAxisProgram_,
+            perAxisMarkProgram_,
+            perAxisResolveProgram_,
+            perAxisWritebackProgram_,
             voxelCompactedBuf_,
-            voxelIndirectBuf_
+            voxelIndirectBuf_,
+            lightingFrameDataBuf_,
+            sunDepthBuf_,
+            sunFrameDataBuf_
         };
         TrixelGlitchPerAxisFrameInput perAxisInput;
         if (axes != nullptr) {
             perAxisInput.allocated_ = true;
-            perAxisInput.scratchAllocated_ = axes->axes_[0].hasGlitchScratch();
+            perAxisInput.scratchAllocated_ =
+                axes->axes_[0].hasGlitchScratch() && axes->hasGlitchWorklist();
             perAxisInput.historyAllocated_ = axes->axes_[0].hasGlitchHistory();
             perAxisInput.size_ = axes->size_;
             perAxisInput.storeFrame_ = IRPrefab::PerAxisCanvas::storeFrame(axes->size_);
@@ -597,14 +730,35 @@ template <> struct System<TRIXEL_GLITCH> {
             std::vector{ShaderStage{IRRender::kFileCompTrixelGlitch, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<ShaderProgram>(
-            "TrixelGlitchPerAxisProgram",
+            "TrixelGlitchPerAxisResolveProgram",
             std::vector{ShaderStage{IRRender::kFileCompTrixelGlitchPerAxis, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "TrixelGlitchPerAxisMarkProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompTrixelGlitchPerAxisMark, ShaderType::COMPUTE}
+            }
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "TrixelGlitchPerAxisWritebackProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompTrixelGlitchPerAxisWriteback, ShaderType::COMPUTE}
+            }
         );
         SystemId id = registerSystem<TRIXEL_GLITCH, IRComponents::C_GlitchSubject>("TrixelGlitch");
         auto *sys = getSystemParams<System<TRIXEL_GLITCH>>(id);
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("TrixelGlitchProgram");
-        sys->perAxisProgram_ =
-            IRRender::getNamedResource<ShaderProgram>("TrixelGlitchPerAxisProgram");
+        sys->perAxisMarkProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("TrixelGlitchPerAxisMarkProgram");
+        sys->perAxisResolveProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("TrixelGlitchPerAxisResolveProgram");
+        sys->perAxisWritebackProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("TrixelGlitchPerAxisWritebackProgram");
+        sys->lightingFrameDataBuf_ =
+            IRRender::getNamedResourceOrNull<Buffer>("LightingToTrixelFrameData");
+        sys->sunDepthBuf_ = IRRender::getNamedResourceOrNull<Buffer>("SunShadowDepthMap");
+        sys->sunFrameDataBuf_ =
+            IRRender::getNamedResourceOrNull<Buffer>("ComputeSunShadowFrameData");
         sys->perAxisDisabled_ = std::getenv("IR_TRIXEL_GLITCH_PER_AXIS_DISABLE") != nullptr;
         // Deliberately untagged: `encodeFrame`'s GpuSubStageScope owns the
         // `trixelGlitch` row, and a system tag would share its timestamp

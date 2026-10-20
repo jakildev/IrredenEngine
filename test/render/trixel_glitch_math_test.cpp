@@ -339,6 +339,31 @@ TEST(TrixelGlitchMathTest, StepTwoSpillVisitsOddOddFaceNeighbours) {
     EXPECT_EQ(got.distA_, 1);
 }
 
+TEST(TrixelGlitchMathTest, PerAxisTileMarkCoversReachAcrossTileBoundaries) {
+    constexpr IRMath::ivec2 kStoreSize{53, 41};
+    constexpr IRMath::ivec2 kSubjectCell{15, 16};
+    constexpr int kSpill = IRPrefab::Glitch::kSubjectMaxSpill;
+    const IRMath::ivec4 bounds =
+        IRPrefab::Glitch::perAxisSubjectTileBounds(kSubjectCell, kSpill, kStoreSize);
+    const int reach = IRPrefab::Glitch::kPerAxisFaceStep * kSpill;
+    for (int y = IRMath::max(0, kSubjectCell.y - reach);
+         y <= IRMath::min(kStoreSize.y - 1, kSubjectCell.y + reach);
+         ++y) {
+        for (int x = IRMath::max(0, kSubjectCell.x - reach);
+             x <= IRMath::min(kStoreSize.x - 1, kSubjectCell.x + reach);
+             ++x) {
+            const int tileX = x / IRPrefab::Glitch::kPerAxisSubjectTileSize;
+            const int tileY = y / IRPrefab::Glitch::kPerAxisSubjectTileSize;
+            EXPECT_GE(tileX, bounds.x);
+            EXPECT_LE(tileX, bounds.z);
+            EXPECT_GE(tileY, bounds.y);
+            EXPECT_LE(tileY, bounds.w);
+        }
+    }
+    EXPECT_LT(bounds.x, bounds.z) << "the subject reach must cross the x tile boundary";
+    EXPECT_LT(bounds.y, bounds.w) << "the subject reach must cross the y tile boundary";
+}
+
 // ---- the per-texel CPU twin ------------------------------------------------
 
 struct FakeCanvas {
@@ -784,6 +809,28 @@ TEST(TrixelGlitchMathTest, ShaderTwinsCarryTheCpuConstants) {
             ),
         std::string::npos
     );
+    for (const char *kernel : {
+             "c_trixel_glitch_per_axis_mark.glsl",
+             "c_trixel_glitch_per_axis.glsl",
+             "c_trixel_glitch_per_axis_writeback.glsl",
+             "metal/c_trixel_glitch_per_axis_mark.metal",
+             "metal/c_trixel_glitch_per_axis.metal",
+             "metal/c_trixel_glitch_per_axis_writeback.metal",
+         }) {
+        const std::string source = readShader(kernel);
+        ASSERT_FALSE(source.empty()) << kernel << " not found";
+        EXPECT_NE(source.find("16"), std::string::npos) << kernel << " lacks the tile size";
+    }
+    for (const char *kernel : {
+             "c_trixel_glitch_per_axis.glsl",
+             "metal/c_trixel_glitch_per_axis.metal",
+         }) {
+        const std::string source = readShader(kernel);
+        EXPECT_NE(source.find("TileHalo = 10"), std::string::npos)
+            << kernel << " lacks the staged halo";
+        EXPECT_NE(source.find("TileSize + 2 *"), std::string::npos)
+            << kernel << " does not derive the staged window from tile plus halo";
+    }
 }
 
 } // namespace

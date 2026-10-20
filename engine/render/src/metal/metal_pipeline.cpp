@@ -80,7 +80,9 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         return MTL::Size(16, 16, 1);
     }
     if (functionName == "c_fog_to_trixel" || functionName == "c_trixel_glitch" ||
-        functionName == "c_trixel_glitch_per_axis") {
+        functionName == "c_trixel_glitch_per_axis" ||
+        functionName == "c_trixel_glitch_per_axis_mark" ||
+        functionName == "c_trixel_glitch_per_axis_writeback") {
         return MTL::Size(16, 16, 1);
     }
     if (functionName == "c_build_distance_hiz") {

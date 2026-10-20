@@ -9,11 +9,8 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 layout(std430, binding = 8) readonly buffer TrixelGlitchSubjects {
     uvec4 subjectWords[];
 };
-layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
-    uint compactedCells[];
-};
-layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
-    uint cellDrawArgs[];
+layout(std430, binding = 28) readonly buffer TrixelGlitchTileList {
+    uint tileList[];
 };
 
 layout(rgba8, binding = 0) readonly uniform image2D liveColors;
@@ -22,6 +19,12 @@ layout(rg32ui, binding = 2) readonly uniform uimage2D liveEntityIds;
 layout(rgba8, binding = 3) readonly uniform image2D historyColors;
 layout(rg32ui, binding = 4) readonly uniform uimage2D historyEntityIds;
 layout(rgba8, binding = 5) writeonly uniform image2D scratchColors;
+
+const int kTileSize = 16;
+const int kTileHalo = 10;
+const int kTileWindow = kTileSize + 2 * kTileHalo;
+shared int stagedSlots[kTileWindow * kTileWindow];
+shared int stagedSpills[kTileWindow * kTileWindow];
 
 struct SubjectRecord {
     uvec2 id;
@@ -235,7 +238,20 @@ bool influenceBefore(int slot, int dist, int otherSlot, int otherDist) {
     return dist < otherDist || (dist == otherDist && slot < otherSlot);
 }
 
-uvec4 glitchCell(ivec2 p, PerAxisFrame frame) {
+int stagedSlotAt(ivec2 q, ivec2 tileOrigin) {
+    ivec2 local = q - tileOrigin + ivec2(kTileHalo);
+    if (any(lessThan(local, ivec2(0))) || any(greaterThanEqual(local, ivec2(kTileWindow)))) {
+        return -1;
+    }
+    return stagedSlots[local.y * kTileWindow + local.x];
+}
+
+int stagedSpillAt(ivec2 q, ivec2 tileOrigin) {
+    ivec2 local = q - tileOrigin + ivec2(kTileHalo);
+    return stagedSpills[local.y * kTileWindow + local.x];
+}
+
+uvec4 glitchCell(ivec2 p, ivec2 tileOrigin, PerAxisFrame frame) {
     int slotA = -1;
     int distA = 0;
     int slotB = -1;
@@ -246,12 +262,13 @@ uvec4 glitchCell(ivec2 p, PerAxisFrame frame) {
             if ((dx + dy) % frame.faceStep != 0) {
                 continue;
             }
-            int slot = slotAt(p + ivec2(dx, dy), frame);
+            ivec2 sampleAt = p + ivec2(dx, dy);
+            int slot = stagedSlotAt(sampleAt, tileOrigin);
             if (slot < 0) {
                 continue;
             }
             int dist = (max(abs(dx), abs(dy)) + frame.faceStep - 1) / frame.faceStep;
-            if (dist > recordSpill(slot)) {
+            if (dist > stagedSpillAt(sampleAt, tileOrigin)) {
                 continue;
             }
             if (slot == slotA) {
@@ -301,12 +318,6 @@ uvec4 glitchCell(ivec2 p, PerAxisFrame frame) {
 }
 
 void main() {
-    uint idx = perAxisCellInvocationIndex(
-        gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
-    );
-    if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
-        return;
-    }
     PerAxisFrame frame;
     frame.size = imageSize(liveColors);
     uint header = subjectWords[2].x;
@@ -319,6 +330,25 @@ void main() {
     frame.depthBias = history.w;
     frame.seed = subjectWords[0].x;
     frame.tick = subjectWords[0].yz;
-    ivec2 p = perAxisCellPixel(compactedCells[idx], frame.size.x);
-    imageStore(scratchColors, p, vec4(glitchCell(p, frame)) / 255.0);
+    ivec2 tileGrid = (frame.size + ivec2(kTileSize - 1)) / kTileSize;
+    uint tile = tileList[gl_WorkGroupID.x];
+    ivec2 tileOrigin = ivec2(int(tile % uint(tileGrid.x)), int(tile / uint(tileGrid.x))) *
+                       kTileSize;
+    for (uint flatIndex = gl_LocalInvocationIndex;
+         flatIndex < uint(kTileWindow * kTileWindow);
+         flatIndex += uint(kTileSize * kTileSize)) {
+        ivec2 local = ivec2(
+            int(flatIndex % uint(kTileWindow)), int(flatIndex / uint(kTileWindow))
+        );
+        ivec2 q = tileOrigin + local - ivec2(kTileHalo);
+        int slot = inCanvas(q, frame.size) ? subjectSlot(loadId(q)) : -1;
+        stagedSlots[flatIndex] = slot;
+        stagedSpills[flatIndex] = slot >= 0 ? recordSpill(slot) : 0;
+    }
+    barrier();
+    ivec2 p = tileOrigin + ivec2(gl_LocalInvocationID.xy);
+    if (any(greaterThanEqual(p, frame.size)) || all(equal(loadId(p), uvec2(0u)))) {
+        return;
+    }
+    imageStore(scratchColors, p, vec4(glitchCell(p, tileOrigin, frame)) / 255.0);
 }
