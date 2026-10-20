@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 // The deterministic contract of the canvas-space subject glitch
@@ -55,10 +56,13 @@ inline constexpr int kSubjectTintPaletteSize = 4;
 // Encoded distance of a texel no geometry wrote.
 inline constexpr int kSubjectEmptyDistance = IRConstants::kTrixelDistanceMaxDistance;
 
-// GPU buffer layout, in uvec4 words: a two-word header, the open-addressed
-// table (one word per entry), then `kSubjectRecordWords` words per subject.
-inline constexpr std::uint32_t kSubjectHeaderWords = 2u;
+// GPU buffer layout, in uvec4 words: a three-word header, the open-addressed
+// table (one word per entry), `kSubjectRecordWords` words per subject, then the
+// per-axis frame tail.
+inline constexpr std::uint32_t kSubjectHeaderWords = 3u;
 inline constexpr std::uint32_t kSubjectRecordWords = 5u;
+inline constexpr std::uint32_t kPerAxisFrameWords = 2u;
+inline constexpr int kPerAxisFaceStep = 2;
 
 static_assert(kSubjectTileSize == 26, "the kernels declare a 26x26 id tile");
 
@@ -196,6 +200,7 @@ struct SubjectBufferLayout {
     std::uint32_t tableMask_ = 0u;
     std::uint32_t tableBase_ = kSubjectHeaderWords;
     std::uint32_t recordBase_ = kSubjectHeaderWords;
+    std::uint32_t perAxisFrameBase_ = kSubjectHeaderWords;
     std::uint32_t wordCount_ = kSubjectHeaderWords;
 };
 
@@ -204,8 +209,9 @@ inline SubjectBufferLayout subjectBufferLayout(std::size_t subjectCount) {
     const std::uint32_t capacity = subjectTableCapacity(subjectCount);
     layout.tableMask_ = capacity - 1u;
     layout.recordBase_ = layout.tableBase_ + capacity;
-    layout.wordCount_ =
+    layout.perAxisFrameBase_ =
         layout.recordBase_ + kSubjectRecordWords * static_cast<std::uint32_t>(subjectCount);
+    layout.wordCount_ = layout.perAxisFrameBase_ + kPerAxisFrameWords;
     return layout;
 }
 
@@ -230,6 +236,7 @@ inline void packSubjectWords(
         layout.recordBase_,
         static_cast<std::uint32_t>(maxSpill)
     );
+    out[2] = IRMath::uvec4(layout.perAxisFrameBase_, 0u, 0u, 0u);
     for (std::size_t slot = 0; slot < records.size(); ++slot) {
         const SubjectRecord &record = records[slot];
         std::uint32_t entry = subjectTableHome(record.id_, layout.tableMask_);
@@ -267,6 +274,18 @@ inline void packSubjectWords(
         out[base + 4u] =
             packSigned(record.depthNear_, record.depthFar_, record.tintA_, record.tintB_);
     }
+}
+
+inline void setPerAxisFrameWords(
+    std::vector<IRMath::uvec4> &words,
+    IRMath::ivec4 storeFrame,
+    IRMath::ivec2 snapshotOrigin,
+    int depthScale,
+    int depthBias
+) {
+    const std::uint32_t base = words[2].x;
+    words[base] = packSigned(storeFrame.x, storeFrame.y, storeFrame.z, kPerAxisFaceStep);
+    words[base + 1u] = packSigned(snapshotOrigin.x, snapshotOrigin.y, depthScale, depthBias);
 }
 
 // The kernel's id -> slot probe: -1 for the null id or an id with no subject.
@@ -341,15 +360,20 @@ constexpr bool influenceBefore(int slot, int dist, int otherSlot, int otherDist)
 // subject texel within @p radius of @p p is visited, so the result does not
 // depend on the scan order.
 template <typename SlotAt, typename SpillOf>
-Influence resolveInfluence(IRMath::ivec2 p, int radius, SlotAt &&slotAt, SpillOf &&spillOf) {
+Influence
+resolveInfluenceStepped(IRMath::ivec2 p, int radius, int step, SlotAt &&slotAt, SpillOf &&spillOf) {
     Influence influence;
-    for (int dy = -radius; dy <= radius; ++dy) {
-        for (int dx = -radius; dx <= radius; ++dx) {
+    const int scanRadius = radius * step;
+    for (int dy = -scanRadius; dy <= scanRadius; ++dy) {
+        for (int dx = -scanRadius; dx <= scanRadius; ++dx) {
+            if (IRMath::floorMod(static_cast<std::int64_t>(dx + dy), step) != 0) {
+                continue;
+            }
             const int slot = slotAt(p + IRMath::ivec2(dx, dy));
             if (slot < 0) {
                 continue;
             }
-            const int dist = IRMath::max(IRMath::abs(dx), IRMath::abs(dy));
+            const int dist = IRMath::divCeil(IRMath::max(IRMath::abs(dx), IRMath::abs(dy)), step);
             if (dist > spillOf(slot)) {
                 continue;
             }
@@ -381,6 +405,17 @@ Influence resolveInfluence(IRMath::ivec2 p, int radius, SlotAt &&slotAt, SpillOf
     }
     influence.count_ = influence.slotA_ < 0 ? 0 : (influence.slotB_ < 0 ? 1 : 2);
     return influence;
+}
+
+template <typename SlotAt, typename SpillOf>
+Influence resolveInfluence(IRMath::ivec2 p, int radius, SlotAt &&slotAt, SpillOf &&spillOf) {
+    return resolveInfluenceStepped(
+        p,
+        radius,
+        1,
+        std::forward<SlotAt>(slotAt),
+        std::forward<SpillOf>(spillOf)
+    );
 }
 
 enum class PairMode : std::uint32_t {
@@ -453,6 +488,11 @@ template <typename Canvas> struct SubjectFrame {
     int maxSpill_ = 0;
     // id -> slot, -1 when the id has no subject.
     std::span<const IRMath::uvec4> words_;
+    int spatialStep_ = 1;
+    IRMath::ivec2 storeOrigin_{0};
+    IRMath::ivec2 historyOrigin_{0};
+    int depthScale_ = 1;
+    int depthBias_ = 0;
 
     bool inBounds(IRMath::ivec2 q) const {
         const IRMath::ivec2 size = canvas_.size();
@@ -469,7 +509,7 @@ template <typename Canvas> struct SubjectFrame {
         }
         constexpr std::array<IRMath::ivec2, 4> kNeighbours{{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}};
         for (const IRMath::ivec2 neighbour : kNeighbours) {
-            if (slotAt(q + neighbour) != slot) {
+            if (slotAt(q + neighbour * spatialStep_) != slot) {
                 return true;
             }
         }
@@ -483,10 +523,15 @@ template <typename Canvas> struct SubjectFrame {
         const SubjectRecord &record = records_[static_cast<std::size_t>(slot)];
         const std::uint64_t current = canvas_.id(p);
         const int distance = canvas_.distance(p);
-        const bool depthPasses = !record.depthEnabled_ || (distance < kSubjectEmptyDistance &&
-                                                           (distance >> 3) >= record.depthNear_ &&
-                                                           (distance >> 3) <= record.depthFar_);
-        const int band = p.y / record.bandRows_;
+        const int emptyDistance = spatialStep_ == 1 ? kSubjectEmptyDistance : 0x7FFFFFFF;
+        const int decodedDepth =
+            (distance >> (spatialStep_ == 1 ? 3 : 15)) * depthScale_ + depthBias_;
+        const bool depthPasses = !record.depthEnabled_ ||
+                                 (distance < emptyDistance && decodedDepth >= record.depthNear_ &&
+                                  decodedDepth <= record.depthFar_);
+        const IRMath::ivec2 relative = p - storeOrigin_;
+        const int band =
+            static_cast<int>(IRMath::floorDiv(relative.y, record.bandRows_ * spatialStep_));
         const std::uint32_t bandLane =
             record.salt_ ^ (static_cast<std::uint32_t>(band) * kCellHashY);
 
@@ -495,7 +540,10 @@ template <typename Canvas> struct SubjectFrame {
             const std::uint32_t hash = glitchHash(seed_, tick_, kEffectSubjectTear, bandLane);
             if ((hash & 0xFFFFu) < record.tearThreshold_) {
                 const IRMath::ivec2 shifted =
-                    p + IRMath::ivec2(signedOffset(hash >> 16, record.tearMaxTrixels_), 0);
+                    p + IRMath::ivec2(
+                            signedOffset(hash >> 16, record.tearMaxTrixels_) * spatialStep_,
+                            0
+                        );
                 if (inBounds(shifted) && canvas_.id(shifted) == accept) {
                     source = shifted;
                     trace.tearDx_ = shifted.x - p.x;
@@ -505,14 +553,15 @@ template <typename Canvas> struct SubjectFrame {
         IRMath::uvec4 colour = canvas_.colour(source);
 
         if (record.splitTrixels_ != 0) {
-            const IRMath::ivec2 redAt = source + IRMath::ivec2(record.splitTrixels_, 0);
-            const IRMath::ivec2 blueAt = source - IRMath::ivec2(record.splitTrixels_, 0);
+            const IRMath::ivec2 split(record.splitTrixels_ * spatialStep_, 0);
+            const IRMath::ivec2 redAt = source + split;
+            const IRMath::ivec2 blueAt = source - split;
             const bool redAccepted = inBounds(redAt) && canvas_.id(redAt) == accept;
             const bool blueAccepted = inBounds(blueAt) && canvas_.id(blueAt) == accept;
             const IRMath::uvec4 red = redAccepted ? canvas_.colour(redAt) : colour;
             const IRMath::uvec4 blue = blueAccepted ? canvas_.colour(blueAt) : colour;
             if (redAccepted || blueAccepted) {
-                trace.splitDx_ = record.splitTrixels_;
+                trace.splitDx_ = record.splitTrixels_ * spatialStep_;
             }
             colour = IRMath::uvec4(
                 red.r,
@@ -525,9 +574,11 @@ template <typename Canvas> struct SubjectFrame {
         if (record.holdThreshold_ > 0u && depthPasses) {
             const std::uint32_t hash = glitchHash(seed_, tick_, kEffectSubjectHold, bandLane);
             if ((hash & 0xFFFFu) < record.holdThreshold_) {
-                const std::uint64_t held = canvas_.historyId(p);
+                const IRMath::ivec2 historyAt = p - storeOrigin_ + historyOrigin_;
+                const bool historyInBounds = inBounds(historyAt);
+                const std::uint64_t held = historyInBounds ? canvas_.historyId(historyAt) : 0u;
                 if (held == record.id_ || (current == record.id_ && held == 0u)) {
-                    colour = canvas_.historyColour(p);
+                    colour = historyInBounds ? canvas_.historyColour(historyAt) : IRMath::uvec4(0u);
                     trace.held_ = true;
                     trace.heldForeign_ = trace.heldForeign_ || (held != 0u && held != record.id_);
                 }
@@ -535,18 +586,22 @@ template <typename Canvas> struct SubjectFrame {
         }
 
         if (record.echoStrength_ > 0) {
-            if (isEdge(p - record.echoA_, slot)) {
+            if (isEdge(p - record.echoA_ * spatialStep_, slot)) {
                 colour = echoBlend(colour, subjectTint(record.tintA_), record.echoStrength_);
                 trace.echoed_ = true;
             }
-            if (isEdge(p - record.echoB_, slot)) {
+            if (isEdge(p - record.echoB_ * spatialStep_, slot)) {
                 colour = echoBlend(colour, subjectTint(record.tintB_), record.echoStrength_);
                 trace.echoed_ = true;
             }
         }
 
         if (record.dissolveThreshold_ > 0u && current == record.id_) {
-            const IRMath::ivec2 cell = p / record.dissolveCell_;
+            const int cellSize = record.dissolveCell_ * spatialStep_;
+            const IRMath::ivec2 cell(
+                IRMath::floorDiv(relative.x, cellSize),
+                IRMath::floorDiv(relative.y, cellSize)
+            );
             const std::uint32_t hash =
                 glitchHash(seed_, tick_, kEffectSubjectDissolve, record.salt_ ^ cellLane(cell));
             if ((hash & 0xFFFFu) < record.dissolveThreshold_) {
@@ -558,9 +613,11 @@ template <typename Canvas> struct SubjectFrame {
     }
 
     IRMath::uvec4 texel(IRMath::ivec2 p, TexelTrace &trace) const {
-        const Influence influence = resolveInfluence(
+        const IRMath::ivec2 relative = p - storeOrigin_;
+        const Influence influence = resolveInfluenceStepped(
             p,
             maxSpill_,
+            spatialStep_,
             [this](IRMath::ivec2 q) { return slotAt(q); },
             [this](int slot) { return records_[static_cast<std::size_t>(slot)].spill_; }
         );
@@ -578,7 +635,7 @@ template <typename Canvas> struct SubjectFrame {
         switch (pairMode(hash)) {
         case PairMode::ROWS: {
             const int pick =
-                (hash3(hash, static_cast<std::uint32_t>(p.y), 0u) & 1u) != 0u ? hi : lo;
+                (hash3(hash, static_cast<std::uint32_t>(relative.y), 0u) & 1u) != 0u ? hi : lo;
             return applySubject(p, pick, idOf(pick), trace);
         }
         case PairMode::MIX:

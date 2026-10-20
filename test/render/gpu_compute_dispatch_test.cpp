@@ -1550,6 +1550,10 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
     };
     std::unique_ptr<Axes, decltype(destroyAxes)> axes(new Axes, destroyAxes);
     axes->allocate(IRMath::ivec2(8, 16), IRMath::ivec2(8));
+    for (auto &axis : axes->axes_) {
+        axis.createGlitchScratch(axes->size_);
+        axis.createGlitchHistory(axes->size_);
+    }
     const auto faceTextures = axes->axes_;
     const auto winners = axes->winnerIds_;
     const auto compacted = axes->cellCompacted_;
@@ -1565,6 +1569,18 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
             EXPECT_EQ(axes->axes_[axis].entityIds_, faceTextures[axis].entityIds_);
             EXPECT_EQ(axes->axes_[axis].ao_, faceTextures[axis].ao_);
             EXPECT_EQ(axes->axes_[axis].sunShadow_, faceTextures[axis].sunShadow_);
+            EXPECT_EQ(
+                axes->axes_[axis].glitchScratchColors_,
+                faceTextures[axis].glitchScratchColors_
+            );
+            EXPECT_EQ(
+                axes->axes_[axis].glitchHistoryColors_,
+                faceTextures[axis].glitchHistoryColors_
+            );
+            EXPECT_EQ(
+                axes->axes_[axis].glitchHistoryEntityIds_,
+                faceTextures[axis].glitchHistoryEntityIds_
+            );
         }
         EXPECT_EQ(axes->winnerIds_, winners);
         EXPECT_EQ(axes->cellCompacted_, compacted);

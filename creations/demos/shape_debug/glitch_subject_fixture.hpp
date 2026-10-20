@@ -9,9 +9,11 @@
 #include <irreden/ir_time.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/glitch.hpp>
 #include <irreden/render/glitch_subject.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/trixel_glitch_math.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -60,24 +62,37 @@ struct GlitchSubjectFixture {
         Mode mode_;
         const char *arg_;
         const char *label_;
+        const char *yawLabel_;
     };
 
     static constexpr std::array<ModeInfo, 15> kModes{{
-        {Mode::NONE, "none", ""},
-        {Mode::STANDARD_OFF, "standard-off", ""},
-        {Mode::OFF, "off", "glitch_subject_off"},
-        {Mode::TEAR, "tear", "glitch_subject_tear"},
-        {Mode::HOLD, "hold", "glitch_subject_hold"},
-        {Mode::SPLIT, "split", "glitch_subject_split"},
-        {Mode::ECHO, "echo", "glitch_subject_echo"},
-        {Mode::DISSOLVE, "dissolve", "glitch_subject_dissolve"},
-        {Mode::DEPTH, "depth", "glitch_subject_depth"},
-        {Mode::SPILL_FAR_OFF, "spill-far-off", "glitch_subject_spill_far_off"},
-        {Mode::SPILL_FAR_ON, "spill-far-on", "glitch_subject_spill_far_on"},
-        {Mode::SPILL_NEAR_OFF, "spill-near-off", "glitch_subject_spill_near_off"},
-        {Mode::SPILL_NEAR_ON, "spill-near-on", "glitch_subject_spill_near_on"},
-        {Mode::CHOREOGRAPHY, "choreography", "glitch_subject_choreo_tick_n"},
-        {Mode::ALL, "all", "glitch_subject_all"},
+        {Mode::NONE, "none", "", ""},
+        {Mode::STANDARD_OFF, "standard-off", "", ""},
+        {Mode::OFF, "off", "glitch_subject_off", "glitch_subject_yaw22_off"},
+        {Mode::TEAR, "tear", "glitch_subject_tear", "glitch_subject_yaw22_tear"},
+        {Mode::HOLD, "hold", "glitch_subject_hold", "glitch_subject_yaw22_hold"},
+        {Mode::SPLIT, "split", "glitch_subject_split", "glitch_subject_yaw22_split"},
+        {Mode::ECHO, "echo", "glitch_subject_echo", "glitch_subject_yaw22_echo"},
+        {Mode::DISSOLVE, "dissolve", "glitch_subject_dissolve", "glitch_subject_yaw22_dissolve"},
+        {Mode::DEPTH, "depth", "glitch_subject_depth", "glitch_subject_yaw22_depth"},
+        {Mode::SPILL_FAR_OFF,
+         "spill-far-off",
+         "glitch_subject_spill_far_off",
+         "glitch_subject_yaw22_spill_far_off"},
+        {Mode::SPILL_FAR_ON,
+         "spill-far-on",
+         "glitch_subject_spill_far_on",
+         "glitch_subject_yaw22_spill_far_on"},
+        {Mode::SPILL_NEAR_OFF,
+         "spill-near-off",
+         "glitch_subject_spill_near_off",
+         "glitch_subject_yaw22_spill_near_off"},
+        {Mode::SPILL_NEAR_ON,
+         "spill-near-on",
+         "glitch_subject_spill_near_on",
+         "glitch_subject_yaw22_spill_near_on"},
+        {Mode::CHOREOGRAPHY, "choreography", "glitch_subject_choreo_tick_n", ""},
+        {Mode::ALL, "all", "glitch_subject_all", "glitch_subject_yaw22_all"},
     }};
     static constexpr const char *kChoreographySecondLabel = "glitch_subject_choreo_tick_n1";
 
@@ -116,6 +131,7 @@ struct GlitchSubjectFixture {
     static constexpr IRMath::ivec3 kSubjectSizeB{5, 5, 5};
 
     Mode mode_ = Mode::NONE;
+    float yawDegrees_ = 0.0f;
     std::array<IREntity::EntityId, 8> subjects_{};
     int subjectCount_ = 0;
     bool depthMeasured_ = false;
@@ -126,6 +142,8 @@ struct GlitchSubjectFixture {
     std::uint64_t preIdHash_ = 0;
     std::uint64_t preDistanceHash_ = 0;
     std::uint64_t preHashTick_ = ~0ull;
+    std::array<std::uint64_t, 3> perAxisPreIdHash_{};
+    std::array<std::uint64_t, 3> perAxisPreDistanceHash_{};
 
     struct SpillPose {
         bool valid_ = false;
@@ -149,6 +167,10 @@ struct GlitchSubjectFixture {
         return mode_ != Mode::NONE && mode_ != Mode::STANDARD_OFF;
     }
 
+    bool atYaw() const {
+        return yawDegrees_ != 0.0f;
+    }
+
     bool isSpill() const {
         return mode_ == Mode::SPILL_FAR_OFF || mode_ == Mode::SPILL_FAR_ON ||
                mode_ == Mode::SPILL_NEAR_OFF || mode_ == Mode::SPILL_NEAR_ON;
@@ -156,7 +178,7 @@ struct GlitchSubjectFixture {
 
     // One shot per mode, two for the choreography.
     const IRVideo::AutoScreenshotShot *shots(int &count) const {
-        static const std::array<IRVideo::AutoScreenshotShot, kModes.size() + 1> table = [] {
+        static const std::array<IRVideo::AutoScreenshotShot, kModes.size() + 1> cardinal = [] {
             std::array<IRVideo::AutoScreenshotShot, kModes.size() + 1> rows{};
             for (std::size_t i = 0; i < kModes.size(); ++i) {
                 rows[i] = {4.0f, IRMath::vec2(0.0f), 0.0f, kModes[i].label_};
@@ -164,10 +186,18 @@ struct GlitchSubjectFixture {
             rows[kModes.size()] = {4.0f, IRMath::vec2(0.0f), 0.0f, kChoreographySecondLabel};
             return rows;
         }();
+        static const std::array<IRVideo::AutoScreenshotShot, kModes.size()> yaw = [] {
+            std::array<IRVideo::AutoScreenshotShot, kModes.size()> rows{};
+            const float yawRadians = 22.5f * IRMath::kPi / 180.0f;
+            for (std::size_t i = 0; i < kModes.size(); ++i) {
+                rows[i] = {4.0f, IRMath::vec2(0.0f), yawRadians, kModes[i].yawLabel_};
+            }
+            return rows;
+        }();
         for (std::size_t i = 0; i < kModes.size(); ++i) {
             if (kModes[i].mode_ == mode_) {
                 count = mode_ == Mode::CHOREOGRAPHY ? 2 : 1;
-                return &table[i];
+                return atYaw() ? &yaw[i] : &cardinal[i];
             }
         }
         count = 0;
@@ -186,10 +216,41 @@ struct GlitchSubjectFixture {
     // Two-tone stripes so a whole-trixel shift reads inside a face, not only
     // at its silhouette.
     static IREntity::EntityId spawnSubject(
-        IRMath::vec3 position, IRMath::ivec3 size, IRMath::Color base, IRMath::Color stripe
+        IRMath::vec3 position,
+        IRMath::ivec3 size,
+        IRMath::Color base,
+        IRMath::Color stripe,
+        bool yawPattern
     ) {
         IRComponents::C_VoxelSetNew set{size, base, true};
         set.editVoxels([&](int, IRComponents::C_Voxel &voxel, IRMath::vec3 local) {
+            if (yawPattern) {
+                const int x = static_cast<int>(IRMath::floor(local.x));
+                const int y = static_cast<int>(IRMath::floor(local.y));
+                const int z = static_cast<int>(IRMath::floor(local.z));
+                voxel.color_ = IRMath::Color{
+                    static_cast<std::uint8_t>(
+                        32 + IRMath::floorMod(
+                                 static_cast<int>(base.red_) + 17 * x + 29 * y + 43 * z,
+                                 192
+                             )
+                    ),
+                    static_cast<std::uint8_t>(
+                        32 + IRMath::floorMod(
+                                 static_cast<int>(base.green_) + 47 * x + 19 * y + 31 * z,
+                                 192
+                             )
+                    ),
+                    static_cast<std::uint8_t>(
+                        32 + IRMath::floorMod(
+                                 static_cast<int>(base.blue_) + 23 * x + 53 * y + 11 * z,
+                                 192
+                             )
+                    ),
+                    255,
+                };
+                return;
+            }
             const int band = static_cast<int>(IRMath::floor(local.x + local.z));
             if ((band & 1) != 0) {
                 voxel.color_ = stripe;
@@ -203,13 +264,15 @@ struct GlitchSubjectFixture {
             kSubjectA,
             kSubjectSizeA,
             IRMath::Color{236, 126, 54, 255},
-            IRMath::Color{248, 214, 92, 255}
+            IRMath::Color{248, 214, 92, 255},
+            atYaw()
         );
         subjects_[1] = spawnSubject(
             kSubjectB,
             kSubjectSizeB,
             IRMath::Color{58, 150, 232, 255},
-            IRMath::Color{168, 96, 236, 255}
+            IRMath::Color{168, 96, 236, 255},
+            atYaw()
         );
         subjectCount_ = 2;
         if (mode_ != Mode::ALL) {
@@ -224,7 +287,8 @@ struct GlitchSubjectFixture {
                 kSubjectA + IRMath::vec3(-5.0f * column, 5.0f * column, 9.0f + 9.0f * row),
                 IRMath::ivec3(4),
                 IRMath::Color{static_cast<std::uint8_t>(80 + 25 * i), 200, 120, 255},
-                IRMath::Color{40, static_cast<std::uint8_t>(90 + 20 * i), 210, 255}
+                IRMath::Color{40, static_cast<std::uint8_t>(90 + 20 * i), 210, 255},
+                atYaw()
             );
         }
         subjectCount_ = 8;
@@ -330,6 +394,13 @@ struct GlitchSubjectFixture {
         );
     }
 
+    static const IRComponents::C_PerAxisTrixelCanvases *perAxisCanvases() {
+        const auto axes = IREntity::getComponentOptional<IRComponents::C_PerAxisTrixelCanvases>(
+            IRRender::getCanvas("main")
+        );
+        return axes.has_value() && axes.value()->isAllocated() ? axes.value() : nullptr;
+    }
+
     // RENDER, before VOXEL_TO_TRIXEL_STAGE_1: poses and configures the
     // subjects for this tick, and drives the choreography's two passes.
     void controlFrame() {
@@ -373,17 +444,36 @@ struct GlitchSubjectFixture {
     void measureDepthRange() {
         std::vector<IRMath::uvec2> ids;
         std::vector<int> distances;
-        const auto &canvas = mainCanvas();
         IRRender::device()->finish();
-        canvas.readEntityIdCarriers(ids);
-        canvas.readDistances(distances);
         int lo = 1 << 30;
         int hi = -(1 << 30);
-        for (std::size_t i = 0; i < ids.size(); ++i) {
-            if (IRRender::decodeCarrierEntityId(ids[i]) == subjects_[0] &&
-                distances[i] < IRPrefab::Glitch::kSubjectEmptyDistance) {
-                lo = IRMath::min(lo, distances[i] >> 3);
-                hi = IRMath::max(hi, distances[i] >> 3);
+        if (atYaw()) {
+            const auto *axes = perAxisCanvases();
+            if (axes != nullptr) {
+                const int scale = IRRender::getVoxelRenderEffectiveSubdivisions();
+                for (const auto &axis : axes->axes_) {
+                    axis.readEntityIdCarriers(axes->size_, ids);
+                    axis.readDistances(axes->size_, distances);
+                    for (std::size_t i = 0; i < ids.size(); ++i) {
+                        if (IRRender::decodeCarrierEntityId(ids[i]) == subjects_[0] &&
+                            distances[i] < 0x7FFFFFFF) {
+                            const int depth = (distances[i] >> 15) * scale;
+                            lo = IRMath::min(lo, depth);
+                            hi = IRMath::max(hi, depth);
+                        }
+                    }
+                }
+            }
+        } else {
+            const auto &canvas = mainCanvas();
+            canvas.readEntityIdCarriers(ids);
+            canvas.readDistances(distances);
+            for (std::size_t i = 0; i < ids.size(); ++i) {
+                if (IRRender::decodeCarrierEntityId(ids[i]) == subjects_[0] &&
+                    distances[i] < IRPrefab::Glitch::kSubjectEmptyDistance) {
+                    lo = IRMath::min(lo, distances[i] >> 3);
+                    hi = IRMath::max(hi, distances[i] >> 3);
+                }
             }
         }
         if (lo > hi) {
@@ -417,6 +507,13 @@ struct GlitchSubjectFixture {
         canvas.readEntityIdCarriers(ids);
         canvas.readDistances(distances);
         preIdHash_ = planeHash(ids, distances, preDistanceHash_);
+        if (const auto *axes = perAxisCanvases(); axes != nullptr) {
+            for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
+                axes->axes_[axis].readEntityIdCarriers(axes->size_, ids);
+                axes->axes_[axis].readDistances(axes->size_, distances);
+                perAxisPreIdHash_[axis] = planeHash(ids, distances, perAxisPreDistanceHash_[axis]);
+            }
+        }
         preHashTick_ = IRTime::tick();
     }
 
@@ -472,6 +569,28 @@ struct GlitchSubjectFixture {
         return true;
     }
 
+    static bool readPerAxisPlanes(int axisIndex, Planes &planes) {
+        const auto *axes = perAxisCanvases();
+        if (axes == nullptr || !axes->axes_[axisIndex].hasGlitchScratch()) {
+            return false;
+        }
+        IRRender::device()->finish();
+        const auto &axis = axes->axes_[axisIndex];
+        planes.size_ = axes->size_;
+        axis.readColors(axes->size_, planes.output_);
+        axis.readGlitchInputColors(axes->size_, planes.input_);
+        axis.readEntityIdCarriers(axes->size_, planes.ids_);
+        axis.readDistances(axes->size_, planes.distances_);
+        if (axis.hasGlitchHistory()) {
+            axis.readGlitchHistoryColors(axes->size_, planes.historyColours_);
+            axis.readGlitchHistoryEntityIdCarriers(axes->size_, planes.historyIds_);
+        } else {
+            planes.historyColours_ = planes.input_;
+            planes.historyIds_ = planes.ids_;
+        }
+        return true;
+    }
+
     // The CPU twin's view of `Planes`.
     struct TwinCanvas {
         const Planes &planes_;
@@ -498,7 +617,10 @@ struct GlitchSubjectFixture {
     struct Analysis {
         bool valid_ = false;
         int mismatch_ = 0;
+        int mismatchOutputInput_ = 0;
+        int mismatchExpectedInput_ = 0;
         int changed_ = 0;
+        int changedSubject_ = 0;
         int influenced_ = 0;
         int interfered_ = 0;
         int tearPx_ = 0;
@@ -506,6 +628,7 @@ struct GlitchSubjectFixture {
         int tearDxMax_ = 0;
         int tearForeign_ = 0;
         int splitPx_ = 0;
+        int oddDisplacements_ = 0;
         int heldPx_ = 0;
         int heldForeign_ = 0;
         int foreignHistorySamples_ = 0;
@@ -520,7 +643,14 @@ struct GlitchSubjectFixture {
         std::vector<std::uint8_t> effect_;
     };
 
-    Analysis analyze(const Planes &planes) const {
+    Analysis analyze(
+        const Planes &planes,
+        int spatialStep = 1,
+        IRMath::ivec2 storeOrigin = IRMath::ivec2(0),
+        IRMath::ivec2 historyOrigin = IRMath::ivec2(0),
+        int depthScale = 1,
+        int depthBias = 0
+    ) const {
         Analysis result;
         const auto *system = IRPrefab::Glitch::trixelSystemOrNull();
         if (system == nullptr || !system->enabledThisFrame_) {
@@ -530,7 +660,7 @@ struct GlitchSubjectFixture {
         const IRPrefab::Glitch::TickWords tick =
             IRPrefab::Glitch::toTickWords(system->clock_.tick_);
         const TwinCanvas canvas{planes};
-        const IRPrefab::Glitch::SubjectFrame<TwinCanvas> frame{
+        IRPrefab::Glitch::SubjectFrame<TwinCanvas> frame{
             canvas,
             system->records_,
             system->state_.seed_,
@@ -538,6 +668,11 @@ struct GlitchSubjectFixture {
             static_cast<int>(words[1].w),
             words
         };
+        frame.spatialStep_ = spatialStep;
+        frame.storeOrigin_ = storeOrigin;
+        frame.historyOrigin_ = historyOrigin;
+        frame.depthScale_ = depthScale;
+        frame.depthBias_ = depthBias;
         const std::size_t texels = planes.output_.size();
         result.slots_.assign(texels, -1);
         result.effect_.assign(texels, 0u);
@@ -553,7 +688,7 @@ struct GlitchSubjectFixture {
                 }
             }
         }
-        const int reach = static_cast<int>(words[1].w);
+        const int reach = static_cast<int>(words[1].w) * spatialStep;
         lo -= IRMath::ivec2(reach);
         hi += IRMath::ivec2(reach);
         const IRPrefab::Glitch::SubjectRecord *depthRecord =
@@ -568,12 +703,18 @@ struct GlitchSubjectFixture {
                 const IRMath::uvec4 output = toUvec4(planes.output_[i]);
                 IRPrefab::Glitch::TexelTrace trace;
                 IRMath::uvec4 expected = input;
-                if (p.x >= lo.x && p.y >= lo.y && p.x <= hi.x && p.y <= hi.y) {
+                const bool routeVisits = spatialStep == 1 || planes.distances_[i] < 0x7FFFFFFF;
+                if (routeVisits && p.x >= lo.x && p.y >= lo.y && p.x <= hi.x && p.y <= hi.y) {
                     expected = frame.texel(p, trace);
                 }
-                const bool changed = output != input;
-                result.mismatch_ += expected != output ? 1 : 0;
+                const bool changed = routeVisits && output != input;
+                result.mismatch_ += routeVisits && expected != output ? 1 : 0;
+                if (routeVisits && expected != output) {
+                    result.mismatchOutputInput_ += output == input ? 1 : 0;
+                    result.mismatchExpectedInput_ += expected == input ? 1 : 0;
+                }
                 result.changed_ += changed ? 1 : 0;
+                result.changedSubject_ += changed && result.slots_[i] >= 0 ? 1 : 0;
                 result.effect_[i] = changed ? 1u : 0u;
                 result.influenced_ += trace.influences_ > 0 ? 1 : 0;
                 result.interfered_ += trace.influences_ > 1 ? 1 : 0;
@@ -588,16 +729,24 @@ struct GlitchSubjectFixture {
                         own = own || record.id_ == source;
                     }
                     result.tearForeign_ += own ? 0 : 1;
+                    result.oddDisplacements_ +=
+                        IRMath::floorMod(trace.tearDx_, spatialStep) != 0 ? 1 : 0;
                 }
                 result.splitPx_ += trace.splitDx_ != 0 ? 1 : 0;
+                result.oddDisplacements_ +=
+                    trace.splitDx_ != 0 && IRMath::floorMod(trace.splitDx_, spatialStep) != 0 ? 1
+                                                                                              : 0;
                 result.heldPx_ += trace.held_ ? 1 : 0;
                 result.heldForeign_ += trace.heldForeign_ ? 1 : 0;
                 result.echoPx_ += trace.echoed_ ? 1 : 0;
                 result.dissolvedPx_ += trace.dissolved_ ? 1 : 0;
                 // Read independently of the trace: a held texel that shows a
                 // history colour whose history id is a non-subject entity.
-                const std::uint64_t held = canvas.historyId(p);
-                if (trace.held_ && held != 0u && output == canvas.historyColour(p)) {
+                const IRMath::ivec2 historyAt = p - storeOrigin + historyOrigin;
+                const bool historyInBounds = frame.inBounds(historyAt);
+                const std::uint64_t held = historyInBounds ? canvas.historyId(historyAt) : 0u;
+                if (trace.held_ && held != 0u && historyInBounds &&
+                    output == canvas.historyColour(historyAt)) {
                     bool subjectHeld = false;
                     for (const auto &record : system->records_) {
                         subjectHeld = subjectHeld || record.id_ == held;
@@ -606,9 +755,13 @@ struct GlitchSubjectFixture {
                 }
                 if (depthRecord != nullptr) {
                     const int distance = planes.distances_[i];
-                    const bool inInterval = distance < IRPrefab::Glitch::kSubjectEmptyDistance &&
-                                            (distance >> 3) >= depthRecord->depthNear_ &&
-                                            (distance >> 3) <= depthRecord->depthFar_;
+                    const int emptyDistance =
+                        spatialStep == 1 ? IRPrefab::Glitch::kSubjectEmptyDistance : 0x7FFFFFFF;
+                    const int decoded =
+                        (distance >> (spatialStep == 1 ? 3 : 15)) * depthScale + depthBias;
+                    const bool inInterval = distance < emptyDistance &&
+                                            decoded >= depthRecord->depthNear_ &&
+                                            decoded <= depthRecord->depthFar_;
                     if (changed) {
                         ++(inInterval ? result.depthInChanged_ : result.depthOutChanged_);
                     } else if (!inInterval && result.slots_[i] == 0) {
@@ -626,28 +779,39 @@ struct GlitchSubjectFixture {
         return result;
     }
 
-    bool modePasses(const Analysis &analysis, bool perAxis) const {
-        if (!analysis.valid_ || analysis.mismatch_ != 0 || perAxis) {
+    bool modePasses(const Analysis &analysis, bool perAxis, int axis = -1) const {
+        if (!analysis.valid_ || analysis.mismatch_ != 0) {
             return false;
         }
         switch (mode_) {
         case Mode::TEAR:
-            return analysis.tearPx_ > 0 && analysis.tearForeign_ == 0 && analysis.changed_ > 0;
+            return analysis.tearPx_ > 0 && analysis.tearForeign_ == 0 &&
+                   (!perAxis || analysis.oddDisplacements_ == 0) && analysis.changedSubject_ > 0;
         case Mode::HOLD:
             return analysis.heldPx_ > 0 && analysis.heldForeign_ == 0 &&
                    analysis.foreignHistorySamples_ == 0 && analysis.changed_ > 0;
         case Mode::SPLIT:
-            return analysis.splitPx_ > 0 && analysis.changed_ > 0;
+            return analysis.splitPx_ > 0 && (!perAxis || analysis.oddDisplacements_ == 0) &&
+                   analysis.changedSubject_ > 0;
         case Mode::ECHO:
             return analysis.echoPx_ > 0 && analysis.changed_ > 0;
         case Mode::DISSOLVE:
-            return analysis.dissolvedPx_ > 0 && analysis.idHash_ == preIdHash_ &&
-                   analysis.distanceHash_ == preDistanceHash_ && preHashTick_ == IRTime::tick();
+            return analysis.dissolvedPx_ > 0 &&
+                   analysis.idHash_ ==
+                       (perAxis ? perAxisPreIdHash_[static_cast<std::size_t>(axis)] : preIdHash_) &&
+                   analysis.distanceHash_ ==
+                       (perAxis ? perAxisPreDistanceHash_[static_cast<std::size_t>(axis)]
+                                : preDistanceHash_) &&
+                   preHashTick_ == IRTime::tick();
         case Mode::DEPTH:
             return analysis.depthInChanged_ > 0 && analysis.depthOutChanged_ == 0 &&
                    analysis.depthOutUnchangedSubject_ > 0;
+        case Mode::SPILL_FAR_ON:
+            return analysis.interfered_ == 0 && analysis.changedSubject_ > 0;
+        case Mode::SPILL_NEAR_ON:
+            return analysis.interfered_ > 0 && analysis.changedSubject_ > 0;
         default:
-            return analysis.changed_ > 0;
+            return analysis.changedSubject_ > 0;
         }
     }
 
@@ -671,7 +835,9 @@ struct GlitchSubjectFixture {
             "[glitch-subject-probe] at={} mode={} engineTick={} tick={} tickWords={},{} "
             "trixelTick={} enabled={} subjects=[{}] perAxisAllocated={} frameUploads={} "
             "frameHistoryCopies={} frameDispatches={} frameSwaps={} totalDispatches={} "
-            "totalHistoryCopies={} imageCreations={} fbFrameDraws={} gpuMs={:.4f}",
+            "totalHistoryCopies={} imageCreations={} perAxisHistoryCopies={} "
+            "perAxisDispatches={} perAxisSwaps={} overflow={} fbFrameDraws={} "
+            "gpuMs={:.4f} perAxisGpuMs={:.4f}",
             when,
             static_cast<int>(mode_),
             IRTime::tick(),
@@ -681,7 +847,7 @@ struct GlitchSubjectFixture {
             system->clock_.tick_,
             system->enabledThisFrame_,
             subjectIds(),
-            system->perAxisAllocated_,
+            perAxisCanvases() != nullptr,
             system->frameUploads_,
             system->frameHistoryCopies_,
             system->frameDispatches_,
@@ -689,8 +855,13 @@ struct GlitchSubjectFixture {
             system->dispatchCount_,
             system->historyCopyCount_,
             system->imageCreationCount_,
+            system->framePerAxisHistoryCopies_,
+            system->framePerAxisDispatches_,
+            system->framePerAxisSwaps_,
+            perAxisCanvases() != nullptr ? perAxisCanvases()->laggedOverflowCount_ : 0u,
             framebuffer != nullptr ? framebuffer->frameDraws_ : -1,
-            IRRender::gpuStageTiming().trixelGlitchMs_
+            IRRender::gpuStageTiming().trixelGlitchMs_,
+            IRRender::gpuStageTiming().trixelGlitchPerAxisMs_
         );
     }
 
@@ -722,10 +893,15 @@ struct GlitchSubjectFixture {
             }
         }
         if (system == nullptr || !system->enabledThisFrame_) {
+            const bool expectedOff =
+                mode_ == Mode::OFF || mode_ == Mode::SPILL_FAR_OFF || mode_ == Mode::SPILL_NEAR_OFF;
             IR_LOG_INFO(
-                "[glitch-subject-probe] capture dispatches={} (no active subject) pass={}",
+                "[glitch-subject-probe] capture dispatches={} perAxisAllocated={} "
+                "perAxisDispatches={} (no active subject) pass={}",
                 system != nullptr ? system->frameDispatches_ : -1,
-                mode_ == Mode::OFF || mode_ == Mode::SPILL_FAR_OFF || mode_ == Mode::SPILL_NEAR_OFF
+                perAxisCanvases() != nullptr,
+                system != nullptr ? system->framePerAxisDispatches_ : -1,
+                expectedOff && (!atYaw() || perAxisCanvases() != nullptr)
             );
             return;
         }
@@ -760,8 +936,101 @@ struct GlitchSubjectFixture {
             analysis.idHash_,
             preDistanceHash_,
             analysis.distanceHash_,
-            modePasses(analysis, system->perAxisAllocated_)
+            atYaw() ? analysis.mismatch_ == 0 : modePasses(analysis, false)
         );
+        if (atYaw()) {
+            const auto *axes = perAxisCanvases();
+            bool yawPass = axes != nullptr && system->framePerAxisDispatches_ == 3 &&
+                           system->framePerAxisSwaps_ == 3;
+            std::uint64_t perAxisGlitchBytes = 0;
+            if (axes != nullptr) {
+                const std::uint64_t pixels = static_cast<std::uint64_t>(axes->size_.x) *
+                                             static_cast<std::uint64_t>(axes->size_.y);
+                for (const auto &axis : axes->axes_) {
+                    perAxisGlitchBytes += axis.hasGlitchScratch() ? pixels * 4u : 0u;
+                    perAxisGlitchBytes += axis.hasGlitchHistory() ? pixels * 12u : 0u;
+                }
+            }
+            const std::span<const IRMath::uvec4> words{system->words_};
+            const std::uint32_t header = words[2].x;
+            const IRMath::ivec4 current(words[header]);
+            const IRMath::ivec4 history(words[header + 1u]);
+            const std::array<int, 3> expectedSubjectCells{
+                {kSubjectSizeA.y * kSubjectSizeA.z,
+                 kSubjectSizeA.x * kSubjectSizeA.z,
+                 kSubjectSizeA.x * kSubjectSizeA.y}
+            };
+            if (axes != nullptr) {
+                for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
+                    Planes axisPlanes;
+                    const bool read = readPerAxisPlanes(axis, axisPlanes);
+                    const Analysis axisAnalysis = read ? analyze(
+                                                             axisPlanes,
+                                                             current.w,
+                                                             IRMath::ivec2(current),
+                                                             IRMath::ivec2(history),
+                                                             history.z,
+                                                             history.w
+                                                         )
+                                                       : Analysis{};
+                    int subjectCells = 0;
+                    for (const IRMath::uvec2 id : axisPlanes.ids_) {
+                        subjectCells += IRRender::decodeCarrierEntityId(id) == subjects_[0] ? 1 : 0;
+                    }
+                    const bool axisPass = modePasses(axisAnalysis, true, axis) &&
+                                          subjectCells == expectedSubjectCells[axis];
+                    yawPass = yawPass && axisPass;
+                    IR_LOG_INFO(
+                        "[glitch-subject-probe] perAxis={} size={}x{} cpuMismatch={} "
+                        "mismatchOutputInput={} mismatchExpectedInput={} changed={} "
+                        "changedSubject={} influenced={} interfered={} oddDisplacements={} "
+                        "tearPx={} tearForeign={} splitPx={} heldPx={} heldForeign={} "
+                        "foreignHistorySamples={} echoPx={} dissolvedPx={} depthInChanged={} "
+                        "depthOutChanged={} subjectCells={}/{} idHash={:016x}/{:016x} "
+                        "distanceHash={:016x}/{:016x} pass={}",
+                        axis,
+                        axisPlanes.size_.x,
+                        axisPlanes.size_.y,
+                        axisAnalysis.mismatch_,
+                        axisAnalysis.mismatchOutputInput_,
+                        axisAnalysis.mismatchExpectedInput_,
+                        axisAnalysis.changed_,
+                        axisAnalysis.changedSubject_,
+                        axisAnalysis.influenced_,
+                        axisAnalysis.interfered_,
+                        axisAnalysis.oddDisplacements_,
+                        axisAnalysis.tearPx_,
+                        axisAnalysis.tearForeign_,
+                        axisAnalysis.splitPx_,
+                        axisAnalysis.heldPx_,
+                        axisAnalysis.heldForeign_,
+                        axisAnalysis.foreignHistorySamples_,
+                        axisAnalysis.echoPx_,
+                        axisAnalysis.dissolvedPx_,
+                        axisAnalysis.depthInChanged_,
+                        axisAnalysis.depthOutChanged_,
+                        subjectCells,
+                        expectedSubjectCells[axis],
+                        perAxisPreIdHash_[axis],
+                        axisAnalysis.idHash_,
+                        perAxisPreDistanceHash_[axis],
+                        axisAnalysis.distanceHash_,
+                        axisPass
+                    );
+                }
+            }
+            IR_LOG_INFO(
+                "[glitch-subject-probe] yaw={} perAxisAllocated={} dispatches={} copies={} "
+                "overflow={} bytes={} pass={}",
+                yawDegrees_,
+                system->perAxisAllocated_,
+                system->framePerAxisDispatches_,
+                system->framePerAxisHistoryCopies_,
+                axes != nullptr ? axes->laggedOverflowCount_ : 0u,
+                perAxisGlitchBytes,
+                yawPass
+            );
+        }
         if (mode_ == Mode::DEPTH) {
             IR_LOG_INFO(
                 "[glitch-subject-probe] depth subject={} interval=[{},{}] inChanged={} "

@@ -324,6 +324,21 @@ TEST(TrixelGlitchMathTest, EqualDistancesBreakTiesByAscendingEntityId) {
     EXPECT_EQ(got.distB_, 2);
 }
 
+TEST(TrixelGlitchMathTest, StepTwoSpillVisitsOddOddFaceNeighbours) {
+    const ivec2 p(8, 4);
+    const ivec2 diagonal = p + ivec2(1, 1);
+    const Glitch::Influence got = Glitch::resolveInfluenceStepped(
+        p,
+        1,
+        Glitch::kPerAxisFaceStep,
+        [diagonal](ivec2 q) { return q == diagonal ? 0 : -1; },
+        [](int) { return 1; }
+    );
+    ASSERT_EQ(got.count_, 1);
+    EXPECT_EQ(got.slotA_, 0);
+    EXPECT_EQ(got.distA_, 1);
+}
+
 // ---- the per-texel CPU twin ------------------------------------------------
 
 struct FakeCanvas {
@@ -392,6 +407,123 @@ struct TwinRun {
         };
     }
 };
+
+TEST(TrixelGlitchMathTest, StepOneRouteIsTheMainCanvasTwinBitForBit) {
+    FakeCanvas canvas;
+    canvas.paint(6, 18, 100u);
+    C_GlitchSubject subject = tearSubject(3);
+    subject.holdWeight_ = 1.0f;
+    subject.splitWeight_ = 1.0f;
+    subject.echoWeight_ = 1.0f;
+    subject.dissolveWeight_ = 0.5f;
+    const TwinRun run({{100u, subject}});
+    const auto shipped = run.frame(canvas);
+    auto routed = run.frame(canvas);
+    routed.spatialStep_ = 1;
+    routed.storeOrigin_ = ivec2(0);
+    routed.historyOrigin_ = ivec2(0);
+    for (int y = 0; y < canvas.size_.y; ++y) {
+        for (int x = 0; x < canvas.size_.x; ++x) {
+            Glitch::TexelTrace shippedTrace;
+            Glitch::TexelTrace routedTrace;
+            EXPECT_EQ(
+                shipped.texel(ivec2(x, y), shippedTrace),
+                routed.texel(ivec2(x, y), routedTrace)
+            ) << x
+              << "," << y;
+        }
+    }
+}
+
+TEST(TrixelGlitchMathTest, StepTwoOffsetsStayOnTheOccupiedSublattice) {
+    FakeCanvas canvas;
+    for (int y = 0; y < canvas.size_.y; ++y) {
+        for (int x = 2; x < canvas.size_.x - 2; ++x) {
+            if (((x + y) & 1) == 0) {
+                const std::size_t index = canvas.index(ivec2(x, y));
+                canvas.ids_[index] = 100u;
+                canvas.colours_[index] = uvec4(static_cast<std::uint32_t>(x), 50u, 200u, 255u);
+            }
+        }
+    }
+    C_GlitchSubject subject = tearSubject(4);
+    subject.splitWeight_ = 1.0f;
+    const TwinRun run({{100u, subject}});
+    auto frame = run.frame(canvas);
+    frame.spatialStep_ = Glitch::kPerAxisFaceStep;
+    int displaced = 0;
+    for (int y = 0; y < canvas.size_.y; ++y) {
+        for (int x = 2; x < canvas.size_.x - 2; ++x) {
+            if (((x + y) & 1) != 0) {
+                continue;
+            }
+            Glitch::TexelTrace trace;
+            frame.texel(ivec2(x, y), trace);
+            for (const int dx : {trace.tearDx_, trace.splitDx_}) {
+                EXPECT_EQ(IRMath::floorMod(dx, Glitch::kPerAxisFaceStep), 0);
+                displaced += dx != 0 ? 1 : 0;
+            }
+        }
+    }
+    EXPECT_GT(displaced, 0);
+}
+
+TEST(TrixelGlitchMathTest, PerAxisOutputIsTranslationEquivariantWithStoreOrigin) {
+    FakeCanvas base;
+    FakeCanvas shifted;
+    constexpr ivec2 delta(2, 0);
+    for (int y = 1; y < base.size_.y - 1; ++y) {
+        for (int x = 4; x < 16; ++x) {
+            if (((x + y) & 1) != 0) {
+                continue;
+            }
+            const ivec2 p(x, y);
+            const ivec2 q = p + delta;
+            base.ids_[base.index(p)] = 100u;
+            shifted.ids_[shifted.index(q)] = 100u;
+            const uvec4 colour(static_cast<std::uint32_t>(x * 7), 30u, 90u, 255u);
+            base.colours_[base.index(p)] = colour;
+            shifted.colours_[shifted.index(q)] = colour;
+        }
+    }
+    C_GlitchSubject subject = tearSubject(2);
+    subject.splitWeight_ = 1.0f;
+    subject.dissolveWeight_ = 0.5f;
+    const TwinRun run({{100u, subject}});
+    auto a = run.frame(base);
+    auto b = run.frame(shifted);
+    a.spatialStep_ = b.spatialStep_ = Glitch::kPerAxisFaceStep;
+    b.storeOrigin_ = delta;
+    for (int y = 1; y < base.size_.y - 1; ++y) {
+        for (int x = 4; x < 16; ++x) {
+            const ivec2 p(x, y);
+            Glitch::TexelTrace traceA;
+            Glitch::TexelTrace traceB;
+            EXPECT_EQ(a.texel(p, traceA), b.texel(p + delta, traceB)) << x << "," << y;
+        }
+    }
+}
+
+TEST(TrixelGlitchMathTest, PerAxisHoldReadsThroughTheSnapshotOriginDelta) {
+    FakeCanvas canvas;
+    const ivec2 current(12, 4);
+    const ivec2 old(10, 4);
+    canvas.ids_[canvas.index(current)] = 100u;
+    canvas.colours_[canvas.index(current)] = uvec4(8u, 8u, 8u, 255u);
+    canvas.historyIds_[canvas.index(old)] = 100u;
+    canvas.historyColours_[canvas.index(old)] = uvec4(1u, 2u, 3u, 255u);
+    C_GlitchSubject subject;
+    subject.holdWeight_ = 1.0f;
+    const TwinRun run({{100u, subject}});
+    auto frame = run.frame(canvas);
+    frame.spatialStep_ = Glitch::kPerAxisFaceStep;
+    frame.storeOrigin_ = ivec2(2, 0);
+    frame.historyOrigin_ = ivec2(0);
+    Glitch::TexelTrace trace;
+    EXPECT_EQ(frame.texel(current, trace), uvec4(1u, 2u, 3u, 255u));
+    EXPECT_TRUE(trace.held_);
+    EXPECT_FALSE(trace.heldForeign_);
+}
 
 TEST(TrixelGlitchMathTest, TearAndSplitReadOnlyTheSubjectsOwnTrixels) {
     FakeCanvas canvas;
@@ -617,7 +749,11 @@ TEST(TrixelGlitchMathTest, ShaderTwinsCarryTheCpuConstants) {
             EXPECT_NE(source.find(literal), std::string::npos) << twin << " tint " << tint;
         }
     }
-    for (const char *kernel : {"c_trixel_glitch.glsl", "metal/c_trixel_glitch.metal"}) {
+    for (const char *kernel :
+         {"c_trixel_glitch.glsl",
+          "metal/c_trixel_glitch.metal",
+          "c_trixel_glitch_per_axis.glsl",
+          "metal/c_trixel_glitch_per_axis.metal"}) {
         const std::string source = readShader(kernel);
         ASSERT_FALSE(source.empty()) << kernel << " not found";
         EXPECT_NE(
@@ -634,6 +770,14 @@ TEST(TrixelGlitchMathTest, ShaderTwinsCarryTheCpuConstants) {
     }
     EXPECT_NE(
         readShader("c_trixel_glitch.glsl")
+            .find(
+                "local_size_x = " + std::to_string(Glitch::kTrixelGlitchGroupSize) +
+                ", local_size_y = " + std::to_string(Glitch::kTrixelGlitchGroupSize)
+            ),
+        std::string::npos
+    );
+    EXPECT_NE(
+        readShader("c_trixel_glitch_per_axis.glsl")
             .find(
                 "local_size_x = " + std::to_string(Glitch::kTrixelGlitchGroupSize) +
                 ", local_size_y = " + std::to_string(Glitch::kTrixelGlitchGroupSize)

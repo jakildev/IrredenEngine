@@ -51,6 +51,36 @@ struct PerAxisCanvasStore {
         std::pair<ResourceId, Texture2D *> entityIds_{0, nullptr};
         std::pair<ResourceId, Texture2D *> ao_{0, nullptr};
         std::pair<ResourceId, Texture2D *> sunShadow_{0, nullptr};
+        std::pair<ResourceId, Texture2D *> glitchScratchColors_{0, nullptr};
+        std::pair<ResourceId, Texture2D *> glitchHistoryColors_{0, nullptr};
+        std::pair<ResourceId, Texture2D *> glitchHistoryEntityIds_{0, nullptr};
+
+        bool hasGlitchScratch() const {
+            return glitchScratchColors_.second != nullptr;
+        }
+
+        bool hasGlitchHistory() const {
+            return glitchHistoryColors_.second != nullptr;
+        }
+
+        void createGlitchScratch(ivec2 size) {
+            if (!hasGlitchScratch()) {
+                glitchScratchColors_ = detail::makeCanvasColorTexture(size);
+            }
+        }
+
+        void createGlitchHistory(ivec2 size) {
+            if (hasGlitchHistory()) {
+                return;
+            }
+            glitchHistoryColors_ = detail::makeCanvasColorTexture(size);
+            glitchHistoryEntityIds_ = detail::makeCanvasEntityIdTexture(size);
+        }
+
+        void swapGlitchScratchColors() {
+            IR_ASSERT(hasGlitchScratch(), "swapGlitchScratchColors: no per-axis scratch image");
+            std::swap(colors_, glitchScratchColors_);
+        }
 
         /// Raw entity-id carriers of this axis canvas, row-major over
         /// @p size (the component's `size_`). One full-texture GPU readback:
@@ -79,6 +109,58 @@ struct PerAxisCanvasStore {
                 size.y,
                 PixelDataFormat::RGBA,
                 PixelDataType::UNSIGNED_BYTE,
+                out.data()
+            );
+        }
+
+        void readDistances(ivec2 size, std::vector<int> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            distances_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RED_INTEGER,
+                PixelDataType::INT32,
+                out.data()
+            );
+        }
+
+        void readGlitchInputColors(ivec2 size, std::vector<Color> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            glitchScratchColors_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RGBA,
+                PixelDataType::UNSIGNED_BYTE,
+                out.data()
+            );
+        }
+
+        void readGlitchHistoryColors(ivec2 size, std::vector<Color> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            glitchHistoryColors_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RGBA,
+                PixelDataType::UNSIGNED_BYTE,
+                out.data()
+            );
+        }
+
+        void readGlitchHistoryEntityIdCarriers(ivec2 size, std::vector<uvec2> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            glitchHistoryEntityIds_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RG_INTEGER,
+                PixelDataType::UINT32,
                 out.data()
             );
         }
@@ -334,6 +416,13 @@ struct PerAxisCanvasStore {
             IRRender::destroyResource<Texture2D>(axis.entityIds_.first);
             IRRender::destroyResource<Texture2D>(axis.ao_.first);
             IRRender::destroyResource<Texture2D>(axis.sunShadow_.first);
+            if (axis.glitchScratchColors_.second != nullptr) {
+                IRRender::destroyResource<Texture2D>(axis.glitchScratchColors_.first);
+            }
+            if (axis.glitchHistoryColors_.second != nullptr) {
+                IRRender::destroyResource<Texture2D>(axis.glitchHistoryColors_.first);
+                IRRender::destroyResource<Texture2D>(axis.glitchHistoryEntityIds_.first);
+            }
             axis = AxisTextures{};
         }
         IRRender::destroyResource<Texture2D>(resolveDepth_.first);

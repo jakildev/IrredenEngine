@@ -1833,12 +1833,12 @@ static_assert(
 // workgroups; each consumer kernel recovers its flat list index as
 // (groupId.x + groupId.y*numGroupsX)*tile + localInvocationIndex. This value has
 // no compile-time tie to the shaders — it must stay 16*16 to match the
-// local_size_x/y = 16 declared independently in each of the four consumer
+// local_size_x/y = 16 declared independently in each of the six consumer
 // kernels' GLSL + Metal twins (c_compute_voxel_ao, c_compute_sun_shadow,
-// c_lighting_to_trixel, c_resolve_per_axis_screen_depth). Changing any one
-// kernel's group size without updating this constant AND the other seven files
-// silently misaligns the cell recovery (skipped or duplicated cells, no
-// compiler/runtime diagnostic).
+// c_lighting_to_trixel, c_fog_to_trixel, c_resolve_per_axis_screen_depth,
+// c_trixel_glitch_per_axis). Changing any one kernel's group size without
+// updating this constant AND the other eleven files silently misaligns the
+// cell recovery (skipped or duplicated cells, no compiler/runtime diagnostic).
 constexpr std::uint32_t kPerAxisCellComputeTile = 256;
 
 // TODO: Future culling optimization constants
