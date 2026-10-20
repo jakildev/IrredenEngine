@@ -59,7 +59,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
 tick; never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick`
-and caps glyphs at `kMaxGlyphCommands` (`gui_text_batch.hpp`). Widget renderers
+and dispatches glyphs in `kMaxGlyphCommands` chunks (`gui_text_batch.hpp`). Widget renderers
 overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right).
 
 ## Component contracts
@@ -82,8 +82,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   (`SHAPES_TO_TRIXEL`) or `C_VoxelSetNew` (`GATE_VOXEL_SETS_BY_LOD`) draws only
   inside its `[lodMax_ .. lodMin_]` band; disjoint co-located bands swap. A new
   consumer resolves via `IRPrefab::Lod::TierSnapshot`, which honours `C_LodTierOverride`.
-- Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md));
-  `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
+- Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md)); `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
+- `C_TextStyle::voxel_.voxelSize_ > 0` draws iso voxel letters with per-face colours through `TEXT_TO_TRIXEL` ([contract](../../../../docs/design/voxel-text.md)).
 - Fog subject classes: untagged voxel sets, SDF shapes and world-placed detached
   canvas owners are BODY subjects (one owner/ground-anchor `evalReveal` verdict);
   detached BODY factor + hidden state modulates/skips the whole authored composite.

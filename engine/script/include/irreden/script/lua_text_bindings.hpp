@@ -4,6 +4,7 @@
 // IRText Lua bindings — the glyph-set enum and text measurement.
 //
 //   IRText.Size.LARGE, IRText.Size.SMALL
+//   IRText.VoxelFacing.CAMERA, .X_FACE, .Y_FACE  -- C_TextStyle.voxelFacing
 //   local w, h = IRText.measure(text, size?, wrapWidth?)  -- GUI trixels, fontSize 1
 //
 // Every Lua call that takes a text size reads it through textSizeFromLua, so
@@ -17,6 +18,7 @@
 
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/trixel_text.hpp>
+#include <irreden/render/voxel_text.hpp>
 
 #include <string>
 #include <tuple>
@@ -51,6 +53,25 @@ inline IRRender::TextSize textSizeFromLua(const sol::object &value, const char *
     throw sol::error{std::string(caller) + ": size must be IRText.Size.LARGE or IRText.Size.SMALL"};
 }
 
+// An `IRText.VoxelFacing` value; anything else raises
+// `<caller>: facing must be ...`.
+inline IRRender::VoxelTextFacing voxelFacingFromLua(const sol::object &value, const char *caller) {
+    if (value.get_type() == sol::type::number) {
+        const double number = value.as<double>();
+        for (const IRRender::VoxelTextFacing facing :
+             {IRRender::VoxelTextFacing::CAMERA,
+              IRRender::VoxelTextFacing::X_FACE,
+              IRRender::VoxelTextFacing::Y_FACE}) {
+            if (number == static_cast<double>(facing)) {
+                return facing;
+            }
+        }
+    }
+    throw sol::error{
+        std::string(caller) + ": facing must be IRText.VoxelFacing.CAMERA, .X_FACE or .Y_FACE"
+    };
+}
+
 namespace detail {
 
 inline void bindText(LuaScript &script) {
@@ -70,6 +91,15 @@ inline void bindText(LuaScript &script) {
     IR_BIND_TEXT_SIZE(SMALL);
 #undef IR_BIND_TEXT_SIZE
     text["Size"] = sizes;
+
+    sol::table facings = lua.create_table();
+#define IR_BIND_VOXEL_FACING(name)                                                                 \
+    facings[#name] = static_cast<lua_Integer>(IRRender::VoxelTextFacing::name)
+    IR_BIND_VOXEL_FACING(CAMERA);
+    IR_BIND_VOXEL_FACING(X_FACE);
+    IR_BIND_VOXEL_FACING(Y_FACE);
+#undef IR_BIND_VOXEL_FACING
+    text["VoxelFacing"] = facings;
 
     text["measure"] = [](const std::string &str, sol::object size, sol::optional<int> wrapWidth) {
         const IRMath::ivec2 extent = IRRender::measureText(

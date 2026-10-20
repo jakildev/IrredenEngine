@@ -312,9 +312,70 @@ template <> struct SaveSerialize<IRComponents::C_TextStyle> {
         w.writeI32(value.boxHeight_);
         w.writeI32(value.fontSize_);
         detail::writeTextSize(w, value.textSize_, "C_TextStyle text size");
+        IR_ASSERT(
+            value.voxel_.voxelSize_ >= 0 && value.voxel_.voxelSize_ <= IRRender::kMaxVoxelTextSize,
+            "C_TextStyle voxel size: saving {}, which read will reject",
+            value.voxel_.voxelSize_
+        );
+        IR_ASSERT(
+            value.voxel_.depth_ >= 1 && value.voxel_.depth_ <= IRRender::kMaxVoxelTextDepth,
+            "C_TextStyle voxel depth: saving {}, which read will reject",
+            value.voxel_.depth_
+        );
+        w.writeI32(value.voxel_.voxelSize_);
+        w.writeI32(value.voxel_.depth_);
+        detail::writeEnumByte(
+            w,
+            value.voxel_.facing_,
+            IRRender::VoxelTextFacing::Y_FACE,
+            "C_TextStyle voxel facing"
+        );
+        w.writeU32(value.faceColors_.x_.toPackedRGBA());
+        w.writeU32(value.faceColors_.y_.toPackedRGBA());
+        w.writeU32(value.faceColors_.z_.toPackedRGBA());
     }
 
     static IRAsset::Result<IRComponents::C_TextStyle> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_TextStyle>;
+        IRAsset::Result<IRComponents::C_TextStyle> flat = readFlatFields(r);
+        if (!flat.ok()) {
+            return flat;
+        }
+        IRComponents::C_TextStyle value = flat.value_;
+        IR_SAVE_READ(value.voxel_.voxelSize_, r.readI32());
+        IR_SAVE_READ(value.voxel_.depth_, r.readI32());
+        if (value.voxel_.voxelSize_ < 0 || value.voxel_.voxelSize_ > IRRender::kMaxVoxelTextSize ||
+            value.voxel_.depth_ < 1 || value.voxel_.depth_ > IRRender::kMaxVoxelTextDepth) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_TextStyle: voxel size " + std::to_string(value.voxel_.voxelSize_) + " / depth " +
+                    std::to_string(value.voxel_.depth_) + " is out of range"
+            );
+        }
+        IR_SAVE_READ_STATUS(
+            detail::readEnumByte(
+                r,
+                IRRender::VoxelTextFacing::Y_FACE,
+                "C_TextStyle voxel facing",
+                value.voxel_.facing_
+            )
+        );
+        std::uint32_t faceX = 0;
+        std::uint32_t faceY = 0;
+        std::uint32_t faceZ = 0;
+        IR_SAVE_READ(faceX, r.readU32());
+        IR_SAVE_READ(faceY, r.readU32());
+        IR_SAVE_READ(faceZ, r.readU32());
+        value.faceColors_ = IRRender::VoxelFaceColors{
+            IRMath::Color::fromPackedRGBA(faceX),
+            IRMath::Color::fromPackedRGBA(faceY),
+            IRMath::Color::fromPackedRGBA(faceZ),
+        };
+        return Res::success(value);
+    }
+
+    // The version 2 layout: every field but the voxel style.
+    static IRAsset::Result<IRComponents::C_TextStyle> readFlatFields(IRAsset::BinaryReader &r) {
         using Res = IRAsset::Result<IRComponents::C_TextStyle>;
         IRComponents::C_TextStyle value{};
         std::uint32_t packed = 0;
@@ -349,7 +410,8 @@ template <> struct SaveMigration<IRComponents::C_TextStyle> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_TextStyle>>>
     migrators() {
         return {
-            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_TextStyle> {
+            {1u,
+             [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_TextStyle> {
                  using Res = IRAsset::Result<IRComponents::C_TextStyle>;
                  detail::TextStyleV1 old{};
                  IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
@@ -379,6 +441,7 @@ template <> struct SaveMigration<IRComponents::C_TextStyle> {
                      }
                  );
              }},
+            {2u, &SaveSerialize<IRComponents::C_TextStyle>::readFlatFields},
         };
     }
 };

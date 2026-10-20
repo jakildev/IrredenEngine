@@ -27,6 +27,18 @@
 
 namespace {
 
+TEST(LuaFogRevealedStandalone, RegistersWithoutTheLuaDrivenEcsTables) {
+    IRScript::LuaScript lua;
+    IREntity::EntityManager entityManager;
+    lua.registerTypeFromTraits<IRComponents::C_FogRevealed>();
+    auto result = lua.lua().safe_script(
+        "return IRComponent.FogOverride.FORCE_HIDDEN, IRComponent.FogHiddenPolicy.GHOST"
+    );
+    ASSERT_TRUE(result.valid());
+    EXPECT_EQ(result.get<int>(0), static_cast<int>(IRComponents::FogOverride::FORCE_HIDDEN));
+    EXPECT_EQ(result.get<int>(1), static_cast<int>(IRComponents::FogHiddenPolicy::GHOST));
+}
+
 class LuaFogRevealedTest : public testing::Test {
   protected:
     LuaFogRevealedTest()

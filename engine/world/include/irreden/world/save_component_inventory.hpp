@@ -395,9 +395,10 @@ IR_SAVE_OPT_IN(IRComponents::C_MidiDevice, 1)
 IR_SAVE_OPT_IN(IRComponents::C_MidiDelay, 1)
 IR_SAVE_OPT_IN(IRComponents::C_MidiSourcePort, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TextSegment, 1)
-// Version 1 was the raw struct image, before the glyph-set size. The render
-// serializer owns its direct migration and the current layout.
-IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_TextStyle, 2)
+// Version 1 was the raw struct image, before the glyph-set size; version 2
+// had no voxel style. The render serializer owns both migrations and the
+// current layout.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_TextStyle, 3)
 IR_SAVE_OPT_IN(IRComponents::C_GuiPosition, 1)
 IR_SAVE_OPT_IN(IRComponents::C_GuiElement, 1)
 IR_SAVE_OPT_IN(IRComponents::C_GuiHoverState, 1)
