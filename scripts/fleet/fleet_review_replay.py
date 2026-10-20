@@ -179,15 +179,34 @@ def replay_pending(pr):
     return bool(reviewed) and event is not None and reviewed > event
 
 
+def load_review_pages(text):
+    """The review list from any `gh api --paginate` spelling: one merged array
+    (gh 2.89 merges top-level array pages), a `--slurp` array of page arrays,
+    or one JSON document per page (the shape object endpoints and older gh
+    emit). Raises ValueError on anything else."""
+    decoder = json.JSONDecoder()
+    pages, pos = [], 0
+    while True:
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        if pos == len(text):
+            break
+        page, pos = decoder.raw_decode(text, pos)
+        if not isinstance(page, list):
+            raise ValueError(f"reviews page is a {type(page).__name__}, not a list")
+        pages.append(page)
+    if len(pages) == 1 and pages[0] and all(isinstance(p, list) for p in pages[0]):
+        pages = pages[0]
+    return [review for page in pages for review in page]
+
+
 def _cmd_inspect(args):
     try:
         with open(args.reviews, encoding="utf-8") as handle:
-            reviews = json.load(handle)
+            reviews = load_review_pages(handle.read())
     except (OSError, ValueError) as exc:
         print(f"fleet_review_replay: cannot read reviews: {exc}", file=sys.stderr)
         return 2
-    if isinstance(reviews, list) and reviews and isinstance(reviews[0], list):
-        reviews = [r for page in reviews for r in page]
     review = head_review(reviews, args.head)
     if review is None:
         print(f"fleet_review_replay: no submitted review pins {args.head}", file=sys.stderr)

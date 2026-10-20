@@ -41,6 +41,7 @@
 #   T23: a swept claim is re-taken once for this dispatch's own review
 #   T24: a swept claim stays refused for a different dispatch, agent, author,
 #        head, a pre-claim id, or another reviewer's standing claim
+#   T25: --replay reads a reviews list gh emits as one document per page
 
 set -euo pipefail
 
@@ -663,6 +664,20 @@ assert_eq "$(fc_calls)" "0" "T24 another reviewer's claim: never stolen"
 assert_eq "$(get_labels 540)" "fleet:reviewing-mac-worker-9 fleet:wip" "T24 the other claim is untouched"
 stage_540 escalation;                   swept_arm "re-take refused by fleet-claim" disp-123 FC_RC=1
 assert_eq "$(fc_calls)" "1" "T24 refused re-take: attempted exactly once"
+
+echo "T25: --replay reads a review list spread over several gh pages"
+reset_logs; set_labels 550 fleet:reviewing-mac-worker-2
+set_head_review 550 head-550 "$BODIES/approve"
+python3 - "$STORE/reviews-json-550" <<'PY'
+import json, sys
+path = sys.argv[1]
+head_review = json.load(open(path))[0]
+old = dict(head_review, commit_id="old-550", body="hm", submitted_at="2026-10-16T00:00:00Z")
+with open(path, "w") as out:
+    out.write(json.dumps([old] * 30) + "\n" + json.dumps([head_review]) + "\n")
+PY
+assert_eq "$(run --replay 550 --agent worker-2)" "0" "T25 one document per page: replay exits 0"
+assert_eq "$(cat "$FT_LOG")" "verdict-approve 550" "T25 applies the last page's head-review edge"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

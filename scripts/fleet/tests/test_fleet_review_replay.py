@@ -187,9 +187,10 @@ class ReplayPending(unittest.TestCase):
 
 class InspectCli(unittest.TestCase):
     def _inspect(self, reviews, head=HEAD):
+        text = reviews if isinstance(reviews, str) else json.dumps(reviews)
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "reviews.json")
-            Path(path).write_text(json.dumps(reviews))
+            Path(path).write_text(text)
             argv = [sys.executable, str(_CLI), "inspect", "--reviews", path, "--head", head]
             return subprocess.run(argv,
                                   capture_output=True, text=True, timeout=30)
@@ -209,6 +210,26 @@ class InspectCli(unittest.TestCase):
 
     def test_no_head_review_exits_1(self):
         self.assertEqual(self._inspect([_rest(OPUS_APPROVE, commit=OLD)]).returncode, 1)
+
+    def test_one_document_per_page(self):
+        pages = [[_rest(OPUS_APPROVE, commit=OLD)] * 30, [_rest(SONNET_ESCALATION)]]
+        proc = self._inspect("\n".join(json.dumps(page) for page in pages) + "\n")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.split("\t")[:3], ["jakildev", "1", replay.EDGE_OPUS_RECHECK])
+
+    def test_every_paginate_spelling_reads_the_same_list(self):
+        first, second = _rest(OPUS_APPROVE, commit=OLD), _rest(SONNET_ESCALATION)
+        merged = json.dumps([first, second])
+        for text in (merged, json.dumps([[first], [second]]),
+                     json.dumps([first]) + json.dumps([second])):
+            with self.subTest(text=text[:20]):
+                self.assertEqual(replay.load_review_pages(text), [first, second])
+        self.assertEqual(replay.load_review_pages("[]\n"), [])
+
+    def test_a_non_list_page_exits_2(self):
+        proc = self._inspect('[]{"message": "Not Found"}')
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("not a list", proc.stderr)
 
 
 if __name__ == "__main__":
