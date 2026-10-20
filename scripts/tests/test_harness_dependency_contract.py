@@ -64,6 +64,7 @@ _POPULATION_FILES = (
     "scripts/perf/compare_perf_runs.py",
     "scripts/perf/sun_face_index_probe.py",
     "scripts/perf/sun_geometry_probe.py",
+    "scripts/perf/sun_hierarchy_probe.py",
     "scripts/perf/sun_query_probe.py",
 )
 _MANIFEST_GLOB = "creations/demos/*/test/references/manifest.json"

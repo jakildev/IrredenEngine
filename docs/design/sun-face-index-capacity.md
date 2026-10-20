@@ -149,3 +149,22 @@ contains seven captured pools, 2,023 matching query results and probe-on/off
 pixel controls. It preserves the lower blocker with 128 distant overlapping
 casters, while the unchanged production image still has a hole. These candidate
 counts select a GPU experiment; no GPU performance improvement is claimed.
+
+### GPU construction and traversal diagnostic
+
+The [native GPU experiment](../perf/sun-hierarchy-gpu/README.md) constructs a
+complete heap over consecutive groups of eight records and queries it with the
+production finite-face predicate. Conservative binary32 bounds reuse the
+existing projected-bound helper for U/V and affine depth; uncertifiable bounds
+remain unbounded. Separate tracked-resource compute encoders publish each level
+before its parent. Heap-index traversal needs no local stack and never treats
+an unfinished scan as an exact miss.
+
+All seven captured pools, both record orders and fast/safe Metal math modes
+match exhaustive GPU queries and the captured exact oracle. Independent node
+readbacks check enclosure. Synthetic controls retain the full 65,536-record
+pool and the rejection-heavy linear worst case. This validates a diagnostic
+construction path, not production adoption: oblique-light candidate counts are
+much worse than the spatially partitioned offline tree. Next evaluate GPU
+spatial ordering and separately measure build/query costs; preserve all
+completeness, capacity and backend limitations of the offline experiment.
