@@ -25,7 +25,10 @@ inline double modifiedTime(const std::filesystem::path &path) {
     if (error) {
         return 0.0;
     }
-    return std::chrono::duration<double>(modified.time_since_epoch()).count();
+    // file_clock's epoch is implementation-defined (libstdc++ offsets it past the Unix epoch).
+    // clock_cast is missing from Apple clang, so go through to_sys.
+    const auto system = std::chrono::file_clock::to_sys(modified);
+    return std::chrono::duration<double>(system.time_since_epoch()).count();
 }
 
 inline std::string
