@@ -88,6 +88,14 @@ separately and requires `ir-acquire benchmark`. The
 describe the controls, batching and limits. This diagnostic does not change
 production shadow routing or qualify frame throughput.
 
+`--query-side 257 --repeat-queries 1` submits 66,049 distinct positions rather
+than repeating the default 17×17 grid. Both sample the closed sun-UV square
+[-12, 12] at depth 2; this remains a planar synthetic workload, not captured
+screen receivers. The report records the side length, distinct count and repeat
+count. Side lengths are 2..513, repetitions are 1..1024, and the combined query
+count is capped at 1,048,576. Compare ordered/unsorted variants with identical
+grids and retain quiet-window qualification; a denser grid alone proves no gain.
+
 ## Verdicts are per fingerprint
 
 `check_regression.py <baseline_root> <head_dir>` resolves

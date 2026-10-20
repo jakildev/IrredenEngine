@@ -24,6 +24,47 @@ from sun_geometry_probe import Quad  # noqa: E402
 
 
 class HierarchyProbeTest(unittest.TestCase):
+    def test_default_receiver_grid_preserves_existing_witness_inputs(self):
+        expected = [(Fraction(-12) + Fraction(3, 2) * x,
+                     Fraction(-12) + Fraction(3, 2) * y, Fraction(2))
+                    for y in range(17) for x in range(17)]
+        self.assertEqual(probe.receiver_grid(17), expected)
+        self.assertEqual(probe.receiver_grid(17, 3), expected * 3)
+
+    def test_dense_receiver_grid_is_distinct_after_gpu_packing(self):
+        for side in (2, 33, 256, 257, 513):
+            with self.subTest(side=side):
+                points = probe.receiver_grid(side)
+                self.assertEqual(len(points), side * side)
+                packed = {struct.pack("<3f", *point) for point in points}
+                self.assertEqual(len(packed), side * side)
+                self.assertEqual(points[0], (-12, -12, 2))
+                self.assertEqual(points[side - 1], (12, -12, 2))
+                self.assertEqual(points[-side], (-12, 12, 2))
+                self.assertEqual(points[-1], (12, 12, 2))
+                self.assertEqual({p[0] for p in points}, {p[1] for p in points})
+                self.assertEqual({p[2] for p in points}, {2})
+                self.assertEqual(points[1][0] - points[0][0], Fraction(24, side - 1))
+
+    def test_receiver_query_budget_and_invalid_cli_fail_before_native_work(self):
+        self.assertEqual(len(probe.receiver_grid(256, 16)), probe.MAX_QUERY_COUNT)
+        for side, repeats in ((1, 1), (514, 1), (17, 0), (17, 1025), (257, 16)):
+            with self.subTest(side=side, repeats=repeats), self.assertRaises(ValueError):
+                probe.receiver_grid(side, repeats)
+        for extra in (("--query-side", "1"), ("--query-side", "514"),
+                      ("--query-side", "513", "--repeat-queries", "4")):
+            argv = ["probe", "missing.csv", "--output", "/unused", *extra]
+            with patch.object(sys, "argv", argv), patch.object(probe.platform, "system") as host:
+                with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                    probe.main()
+                self.assertEqual(error.exception.code, 2)
+                host.assert_not_called()
+        with patch.object(sys, "argv", ["probe", "--self-test", "--query-side", "33",
+                                         "--output", "/unused"]):
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                probe.main()
+            self.assertEqual(error.exception.code, 2)
+
     def setUp(self):
         self.face = Quad((Fraction(0),) * 3, (Fraction(1), Fraction(0), Fraction(0)),
                          (Fraction(0), Fraction(1), Fraction(0)))
