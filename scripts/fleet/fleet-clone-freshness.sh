@@ -33,7 +33,8 @@
 #   assert_clone_fresh  <repo_root>  — return 1 + loud stderr if behind; else 0.
 #                                     rev-parse only, NEVER fetches.
 #   advance_main_clone  <repo_root>  — guarded, rate-limited fetch + ff-only
-#                                     advance of a clean on-master clone. Never
+#                                     advance of an on-master clone with no
+#                                     tracked modifications. Never
 #                                     resets --hard; never switches branches
 #                                     except one self-heal case: a clean tree
 #                                     parked on the fleet's scratch namespace
@@ -155,12 +156,14 @@ _freshness_iso8601() {
         || echo "$1"
 }
 
-# _freshness_warn <repo_root> <reason>|<branch> <message>
+# _freshness_warn <repo_root> <reason>|<branch> <message> [<detail>]
 # Emit a skip warning, escalating-then-quieting on repetition. Same key as the
 # last tick → increment; a different key → restart the count, since a changed
-# condition is news again.
+# condition is news again. A non-empty <detail> (kept out of the key, so a
+# changing detail does not restart the count) rides on the alert line as
+# detail='…'.
 _freshness_warn() {
-    local root="$1" key="$2" msg="$3"
+    local root="$1" key="$2" msg="$3" detail="${4:-}"
     local counter n now count first prev_key
     counter="$(_freshness_counter_path "$root")"
     n="$(_freshness_escalate_n)"
@@ -189,7 +192,8 @@ _freshness_warn() {
         return 0
     fi
 
-    local alert reason branch since remedy
+    local alert reason branch since remedy detail_field=""
+    [[ -n "$detail" ]] && detail_field=" detail='$detail'"
     alert="$(_freshness_alert_path "$root")"
     reason="${key%%|*}"
     branch="${key#*|}"
@@ -208,8 +212,8 @@ _freshness_warn() {
         echo "fleet-clone-freshness: ESCALATION — $root has skipped its advance $count consecutive times (reason=$reason branch='$branch') since $since. Wrote $alert. Remedy: $remedy. Suppressing further identical warns until the condition clears." >&2
     fi
     mkdir -p "$(dirname "$alert")" 2>/dev/null || true
-    printf "clone-freshness skip: host=%s root=%s branch=%s reason=%s count=%s since=%s remedy='%s'\n" \
-        "$(hostname 2>/dev/null || echo '?')" "$root" "$branch" "$reason" "$count" "$since" "$remedy" \
+    printf "clone-freshness skip: host=%s root=%s branch=%s reason=%s count=%s since=%s remedy='%s'%s\n" \
+        "$(hostname 2>/dev/null || echo '?')" "$root" "$branch" "$reason" "$count" "$since" "$remedy" "$detail_field" \
         > "$alert" 2>/dev/null || true
     return 0
 }
@@ -222,10 +226,25 @@ _freshness_all_clear() {
     return 0
 }
 
+# _tracked_dirty_lines <repo_root>
+# Porcelain lines for tracked modifications only (staged or not). Untracked
+# files never count: `git merge --ff-only` and `git checkout` refuse on their
+# own if an incoming commit would overwrite one, and stray junk (a __pycache__,
+# a 0-byte `=`, .review-body.md) is routine in a fleet clone. The one predicate
+# behind advance_main_clone's guard 2 and restore_main_clone_to_master. Empty
+# output when clean. Returns 1 when `git status` itself fails: an unreadable
+# tree is not a clean one, so both callers skip rather than mutate.
+_tracked_dirty_lines() {
+    local porcelain
+    porcelain="$(git -C "$1" status --porcelain 2>/dev/null)" || return 1
+    [[ -n "$porcelain" ]] || return 0
+    printf '%s\n' "$porcelain" | grep -v '^??' || true
+}
+
 # advance_main_clone <repo_root>
 # Guarded, rate-limited fast-forward of the main clone's master. Safe on the
-# shared main checkout: advances ONLY when the clone is on branch master, has a
-# clean working tree, and master is a strict pure-ancestor of origin/master
+# shared main checkout: advances ONLY when the clone is on branch master, has no
+# tracked modifications, and master is a strict pure-ancestor of origin/master
 # (i.e. a real fast-forward). Any guard miss → skip + warn, never mutate —
 # except the scratch-namespace self-heal in guard 1 (see comment there). Mirrors
 # fleet-up's reset_worktree dirty-guard idiom. Always returns 0 so a `set -e`
@@ -301,10 +320,16 @@ advance_main_clone() {
             return 0
         fi
     fi
-    # Guard 2: clean working tree (never clobber uncommitted work).
-    dirty="$(git -C "$root" status --porcelain 2>/dev/null || echo SKIP)"
-    if [[ -n "$dirty" && "$dirty" != "SKIP" ]]; then
-        _freshness_warn "$root" "dirty|master" "fleet-clone-freshness: $root has uncommitted changes — skipping advance."
+    # Guard 2: no tracked modifications (never clobber uncommitted work).
+    # Untracked files do not block — see _tracked_dirty_lines.
+    if ! dirty="$(_tracked_dirty_lines "$root")"; then
+        _freshness_warn "$root" "status-failed|master" "fleet-clone-freshness: 'git status' failed in $root — tracked-WIP state unknown, skipping advance."
+        return 0
+    fi
+    if [[ -n "$dirty" ]]; then
+        local dirty_path
+        dirty_path="$(printf '%s\n' "$dirty" | head -n1 | cut -c4-)"
+        _freshness_warn "$root" "dirty|master" "fleet-clone-freshness: $root has uncommitted changes (first tracked path: $dirty_path) — skipping advance." "$dirty_path"
         return 0
     fi
     # Guard 3 + the ff itself live in the shared tail. The second arg opts this
@@ -383,7 +408,7 @@ _ff_advance_to_origin_master() {
 #   - tracked modifications anywhere (staged or not) → never touch, warn loudly.
 #     Untracked files don't block: `git checkout` refuses on its own if one
 #     would be overwritten, and stray junk files (0-byte `=`, .review-body.md)
-#     are routine in a fleet clone.
+#     are routine in a fleet clone. A failing `git status` counts as dirty.
 #   - off-master + clean → checkout master.
 #   - then ff-advance master to origin/master (fetch is the caller's job at
 #     fleet-up; a cheap refresh here keeps standalone use correct).
@@ -394,7 +419,10 @@ restore_main_clone_to_master() {
     [[ -d "$root/.git" ]] || return 0
 
     local tracked_dirty
-    tracked_dirty="$(git -C "$root" status --porcelain 2>/dev/null | grep -v '^??' || true)"
+    if ! tracked_dirty="$(_tracked_dirty_lines "$root")"; then
+        echo "fleet-clone-freshness: 'git status' failed in $root — tracked-WIP state unknown, leaving it alone. Claims stay blocked until it is readable, clean and on master; rerun fleet-up after fixing it." >&2
+        return 0
+    fi
 
     local branch
     branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"

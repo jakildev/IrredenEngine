@@ -520,6 +520,84 @@ behind=$(clone_behind_count "$CLONE3")
 [[ "$behind" == "1" ]] && ok "one-shot did not advance past the refusal" || fail "behind=$behind, expected 1"
 rm -f "$CLONE3/.git/index.lock"
 
+# --- T27: untracked-only tree -> advances (guard 2 gates on tracked-dirty) ----
+# A stray untracked file (a __pycache__ left by a Python import, a 0-byte `=`)
+# must not freeze the advance: ff-only cannot clobber an untracked file, and
+# refuses on its own if an incoming commit adds the same path.
+echo "T27: untracked-only clone advances"
+reset_skip_counter
+rm -f "$CLONE3/.git/index.lock"
+git_q "$CLONE3" checkout master
+advance_main_clone "$CLONE3" 2>/dev/null   # land the T26 commit
+push_new_commit t27
+mkdir -p "$CLONE3/pycache_junk"
+: > "$CLONE3/pycache_junk/x.pyc"
+: > "$CLONE3/="
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+[[ "$(git -C "$CLONE3" rev-parse master)" == "$(git -C "$CLONE3" rev-parse origin/master)" ]] \
+    && ok "untracked-only clone advanced to origin/master" || fail "untracked junk blocked the advance: $out"
+! echo "$out" | grep -q "uncommitted changes" && ok "no dirty warning for untracked junk" || fail "warned on untracked junk: $out"
+[[ ! -f "$COUNTER3" ]] && ok "no skip counted" || fail "skip counter written: $(cat "$COUNTER3" 2>/dev/null)"
+[[ -f "$CLONE3/pycache_junk/x.pyc" ]] && ok "untracked junk left in place" || fail "untracked junk was removed"
+
+# --- T28: a tracked modification still skips, naming the path in warn + alert --
+echo "T28: tracked-dirty clone skips and names the first tracked path"
+reset_skip_counter
+export FLEET_FRESHNESS_SKIP_ESCALATE_N=1
+push_new_commit t28
+head_before=$(git -C "$CLONE3" rev-parse master)
+echo "wip" >> "$CLONE3/file"
+reset_rate_limit
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+unset FLEET_FRESHNESS_SKIP_ESCALATE_N
+[[ "$(git -C "$CLONE3" rev-parse master)" == "$head_before" ]] && ok "tracked-dirty clone not advanced" || fail "advanced over a tracked modification"
+echo "$out" | grep -q "uncommitted changes" && ok "tracked-dirty warns" || fail "no dirty warning: $out"
+echo "$out" | grep -q "first tracked path: file" && ok "warn names the tracked path" || fail "warn lacks the path: $out"
+alert_t28=$(cat "$ALERT3" 2>/dev/null || true)
+echo "$alert_t28" | grep -q "reason=dirty" && ok "alert records reason=dirty" || fail "alert missing reason: $alert_t28"
+echo "$alert_t28" | grep -q "detail='file'" && ok "alert names the tracked path" || fail "alert lacks the path: $alert_t28"
+grep -q "dirty|master" "$COUNTER3" 2>/dev/null && ok "dirty|master counter written" || fail "no dirty|master counter: $(cat "$COUNTER3" 2>/dev/null)"
+git_q "$CLONE3" checkout -- file
+
+# --- T29: a failing `git status` fails closed on both tracked-WIP callers -----
+# The shadow fails only `status`, so fetch / merge --ff-only would succeed:
+# only the guard itself stands between an unreadable tree and the mutation.
+echo "T29: failing git status -> neither advance nor restore mutates the clone"
+status_fails() { git() { [[ " $* " == *" status "* ]] && return 128; command git "$@"; }; }
+reset_skip_counter
+export FLEET_FRESHNESS_SKIP_ESCALATE_N=1
+push_new_commit t29
+head_before=$(git -C "$CLONE3" rev-parse master)
+reset_rate_limit
+status_fails
+out=$(advance_main_clone "$CLONE3" 2>&1 || true)
+unset -f git
+unset FLEET_FRESHNESS_SKIP_ESCALATE_N
+[[ "$(git -C "$CLONE3" rev-parse master)" == "$head_before" ]] \
+    && ok "advance skipped on a failed status" || fail "advanced past a failed git status"
+echo "$out" | grep -q "'git status' failed" && ok "advance warns on the failed status" || fail "no status-failed warning: $out"
+grep -q "reason=status-failed" "$ALERT3" 2>/dev/null && ok "alert records reason=status-failed" || fail "alert missing reason: $(cat "$ALERT3" 2>/dev/null)"
+reset_rate_limit
+advance_main_clone "$CLONE3" 2>/dev/null
+[[ "$(git -C "$CLONE3" rev-parse master)" == "$(git -C "$CLONE3" rev-parse origin/master)" ]] \
+    && ok "same fixture advances once status reads again" || fail "fixture blocked by another guard"
+
+git_q "$CLONE3" checkout -b claude/t29-parked
+push_new_commit t29b
+git_q "$CLONE3" fetch origin master
+head_before=$(git -C "$CLONE3" rev-parse master)
+status_fails
+out=$(restore_main_clone_to_master "$CLONE3" 2>&1 || true)
+unset -f git
+[[ "$(git -C "$CLONE3" rev-parse --abbrev-ref HEAD)" == "claude/t29-parked" ]] \
+    && ok "restore left the parked branch alone" || fail "restore switched branches past a failed status"
+[[ "$(git -C "$CLONE3" rev-parse master)" == "$head_before" ]] \
+    && ok "restore did not advance master" || fail "restore advanced master past a failed status"
+echo "$out" | grep -q "'git status' failed" && ok "restore warns on the failed status" || fail "no status-failed warning: $out"
+git_q "$CLONE3" checkout master
+git_q "$CLONE3" branch -D claude/t29-parked
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]
