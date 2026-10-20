@@ -228,8 +228,8 @@ Every scripted demo, test, or tool run through `fleet-run` / `ir-run` must end
 HOST-CLOSED, including a teardown crash after outputs were saved — fails the
 step that ran it; parse the RESULT line or exit code, never log prose or the
 existence of outputs. `RESULT=ALIVE-TIMEOUT` is healthy for smoke but says
-nothing about shutdown. On a CRASH, fix it this session (fix-forward; ownership
-of the introducing change is irrelevant; bisect if needed). Only if genuinely
+nothing about shutdown; use `--exit-after-frames <N>` for a clean interactive
+teardown. On a CRASH, fix it this session (fix-forward; ownership is irrelevant; bisect if needed). Only if genuinely
 out of reach (another host or hardware, design escalation, exceeds the session)
 file an issue with the repro command, RESULT line and bisect window — and mark
 your own lane failed: no smoke verdict, PR body, or `fleet:verified-<host>`

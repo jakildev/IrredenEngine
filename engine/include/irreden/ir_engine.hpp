@@ -77,11 +77,12 @@ std::unique_ptr<HandOffPlatform> makeProcessHandOffPlatform();
 } // namespace detail
 
 // The process-global engine argument parser, pre-loaded with the engine-common
-// args (--auto-screenshot, --auto-record, --config-preset, --worker-threads,
-// --window-mode, --help/-h) by the IRArgs::Parser ctor. A launch target
-// registers its own flags on this parser BEFORE calling init(argc, argv) — init
-// parses it as its first action — then reads results back via args(). See engine/CLAUDE.md "CLI
-// args go through IRArgs" for the no-custom-flags / custom-flags patterns. Inline so the
+// args (--auto-screenshot, --auto-record, --exit-after-frames,
+// --config-preset, --worker-threads, --window-mode, --help/-h) by the
+// IRArgs::Parser ctor. A launch target registers its own flags on this parser
+// BEFORE calling init(argc, argv) — init parses it as its first action — then
+// reads results back via args(). See engine/CLAUDE.md "CLI args go through
+// IRArgs" for the no-custom-flags / custom-flags patterns. Inline so the
 // function-local static is one shared instance across every translation unit.
 inline IRArgs::Parser &args() {
     static IRArgs::Parser parser;
@@ -154,8 +155,8 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
 // cwd change and World (window/GL/Metal) construction — then runs the same
 // exe-dir setup as the argv0 overload. This is the entry point a no-custom-arg
 // target uses: IREngine::init(argc, argv) gives it --help / --auto-screenshot
-// / --auto-record / --config-preset / --worker-threads / --window-mode with no
-// parser code.
+// / --auto-record / --exit-after-frames / --config-preset / --worker-threads /
+// --window-mode with no parser code.
 inline void init(int argc, char **argv, const char *configFileName = "config.lua") {
     IR_ASSERT(argc > 0, "init(argc, argv) needs argv[0] for exe-dir resolution");
     args().parse(argc, argv);
@@ -208,8 +209,18 @@ inline std::expected<ToolHandle, std::string> spawnTool(const ToolSpawnRequest &
 // before the manager block so column teardown always unrefs
 // against a live lua_State.
 inline void gameLoop() {
+    const int requestedExitAfterFrames = args().exitAfterFrames();
+    const bool exitAfterFramesProvided = args().wasProvided("--exit-after-frames");
+    if (exitAfterFramesProvided && requestedExitAfterFrames < 1) {
+        IRE_LOG_WARN(
+            "Ignoring --exit-after-frames value {}; expected a positive render-frame count",
+            requestedExitAfterFrames
+        );
+    }
     detail::warnIfAutoCaptureNeverArmed();
-    getWorld().gameLoop();
+    getWorld().gameLoop(
+        requestedExitAfterFrames > 0 ? static_cast<std::uint32_t>(requestedExitAfterFrames) : 0u
+    );
     g_world.reset();
 }
 
