@@ -101,8 +101,12 @@ end
 
 function M.new(app)
     local details = { widgets = {}, presets = {}, page = 0 }
-    IRGui.makePanel(L.details.x, L.details.y, L.details.w, L.details.h, "DETAILS")
+    details.panel = IRGui.makePanel(L.details.x, L.details.y, L.details.w, L.details.h, "DETAILS")
     return details
+end
+
+function M.reflow(app, details)
+    M.show(app, details, app.selected())
 end
 
 local function add(details, id)

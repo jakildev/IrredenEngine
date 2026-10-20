@@ -84,4 +84,68 @@ L.log.down = { x = 40, y = 698, w = 30, h = 16 }
 L.log.tail = { x = 74, y = 698, w = 40, h = 16 }
 L.log.open = { x = 548, y = 698, w = 84, h = 16 }
 
+local function setRect(target, x, y, w, h)
+    target.x, target.y, target.w, target.h = x, y, w, h
+end
+
+function L.update(tree, details, assets, log)
+    setRect(L.tree, tree.x, tree.y, tree.w, tree.h)
+    setRect(L.tree.filter, tree.x + 6, tree.y + 18, tree.w - 12, 16)
+    L.tree.rowTop = tree.y + 42
+    setRect(L.tree.up, tree.x + 6, tree.y + tree.h - 22, 30, 16)
+    setRect(L.tree.down, tree.x + 40, tree.y + tree.h - 22, 30, 16)
+    L.tree.count.x, L.tree.count.y = tree.x + 78, tree.y + tree.h - 18
+
+    setRect(L.details, details.x, details.y, details.w, details.h)
+    L.details.left = details.x + 8
+    L.details.cols = math.max(16, math.floor((details.w - 24) / 6))
+    L.details.name.x, L.details.name.y = details.x + 8, details.y + 18
+    setRect(L.details.fav, details.x + details.w - 62, details.y + 16, 56, 16)
+    L.details.descriptionTop = details.y + 36
+    L.details.tagsY = details.y + 68
+    L.details.dirY = details.y + 80
+    setRect(L.details.ide, details.x + 8, details.y + 92, 40, 16)
+    setRect(L.details.folder, details.x + 52, details.y + 92, 52, 16)
+    L.details.docsTop = details.y + 112
+    L.details.targetTop = details.y + 152
+    L.details.preset.x = details.x + details.w - 130
+    L.details.build.x = details.x + details.w - 130
+    L.details.run.x = details.x + details.w - 86
+    L.details.more.x, L.details.more.y = details.x + details.w - 42, details.y + details.h - 20
+    setRect(L.details.thumbnail, details.x + details.w - 90, details.y + 34,
+        math.min(82, details.w - 16), 54)
+
+    L.settings.title.x, L.settings.title.y = details.x + 8, details.y + 18
+    L.settings.editorLabel.x, L.settings.editorLabel.y = details.x + 8, details.y + 40
+    setRect(L.settings.editor, details.x + 8, details.y + 52,
+        math.max(80, details.w - 16), 14)
+    L.settings.favourites.x, L.settings.favourites.y = details.x + 8, details.y + 110
+    setRect(L.settings.save, details.x + 8, details.y + 130, 48, 16)
+    setRect(L.settings.revert, details.x + 60, details.y + 130, 60, 16)
+    setRect(L.settings.close, details.x + 124, details.y + 130, 54, 16)
+
+    setRect(L.assets, assets.x, assets.y, assets.w, assets.h)
+    L.assets.left = assets.x + 6
+    L.assets.tabY = assets.y + 18
+    L.assets.rowTop = assets.y + 38
+    setRect(L.assets.up, assets.x + 6, assets.y + 134, 30, 16)
+    setRect(L.assets.down, assets.x + 40, assets.y + 134, 30, 16)
+    L.assets.count.x, L.assets.count.y = assets.x + 76, assets.y + 138
+    L.assets.metadataTop = assets.y + 154
+    setRect(L.assets.preview, assets.x + 6, assets.y + 200,
+        math.max(40, assets.w - 12), math.max(40, assets.h - 270))
+    setRect(L.assets.ide, assets.x + assets.w - 50, assets.y + assets.h - 36, 40, 16)
+    L.assets.listWidth = math.max(40, assets.w - 16)
+
+    setRect(L.log, log.x, log.y, log.w, log.h)
+    L.log.result.x, L.log.result.y = log.x + 8, log.y + 18
+    L.log.lineTop = log.y + 32
+    L.log.rows = math.max(1, math.floor((log.h - 58) / L.log.lineStep))
+    L.log.cols = math.max(16, math.floor((log.w - 16) / 6))
+    setRect(L.log.up, log.x + 6, log.y + log.h - 22, 30, 16)
+    setRect(L.log.down, log.x + 40, log.y + log.h - 22, 30, 16)
+    setRect(L.log.tail, log.x + 74, log.y + log.h - 22, 40, 16)
+    setRect(L.log.open, log.x + log.w - 92, log.y + log.h - 22, 84, 16)
+end
+
 return L

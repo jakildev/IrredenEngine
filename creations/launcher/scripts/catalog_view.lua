@@ -176,20 +176,32 @@ local function report(app, view)
 end
 
 function M.new(app)
-    local view = { rows = {}, widgets = {}, collapsed = {}, scroll = 0, needle = "" }
-    IRGui.makePanel(L.tree.x, L.tree.y, L.tree.w, L.tree.h, "CREATIONS")
+    local view = { rows = {}, widgets = {}, chrome = {}, collapsed = {}, scroll = 0, needle = "" }
+    view.panel = IRGui.makePanel(L.tree.x, L.tree.y, L.tree.w, L.tree.h, "CREATIONS")
+    M.reflow(app, view)
+    return view
+end
+
+function M.reflow(app, view)
+    local current = view.filter and IRGui.textInputValue(view.filter) or view.needle
+    WidgetList.clear(view.chrome)
     local f = L.tree.filter
     view.filter = IRGui.makeTextInput(f.x, f.y, f.w, f.h, "", 40)
-    IRGui.makeButton(L.tree.up.x, L.tree.up.y, L.tree.up.w, L.tree.up.h, "UP", function()
+    view.chrome[#view.chrome + 1] = view.filter
+    IRGui.setTextInputValue(view.filter, current)
+    view.chrome[#view.chrome + 1] = IRGui.makeButton(
+        L.tree.up.x, L.tree.up.y, L.tree.up.w, L.tree.up.h, "UP", function()
         view.scroll = math.max(0, view.scroll - L.tree.rows + 1)
         M.rebuild(app, view)
     end, SMALL)
-    IRGui.makeButton(L.tree.down.x, L.tree.down.y, L.tree.down.w, L.tree.down.h, "DN", function()
+    view.chrome[#view.chrome + 1] = IRGui.makeButton(
+        L.tree.down.x, L.tree.down.y, L.tree.down.w, L.tree.down.h, "DN", function()
         view.scroll = math.min(view.scroll + L.tree.rows - 1, math.max(0, #view.rows - L.tree.rows))
         M.rebuild(app, view)
     end, SMALL)
     view.countLabel = IRGui.makeLabel(L.tree.count.x, L.tree.count.y, "", nil, SMALL)
-    return view
+    view.chrome[#view.chrome + 1] = view.countLabel
+    M.rebuild(app, view)
 end
 
 function M.clearFilter(app, view)

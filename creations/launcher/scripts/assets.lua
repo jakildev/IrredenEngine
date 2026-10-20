@@ -83,27 +83,7 @@ local function report(browser, kind, path)
     IRTest.report("entityCount", tostring(IRTest.entityCount()))
 end
 
-local function makeViewport(browser, entity)
-    local p = L.assets.preview
-    local slot = browser.preview
-    slot.entity = entity
-    slot.viewport = IRRender.createViewport({
-        x = p.x, y = p.y, width = p.w, height = p.h, zoom = slot.zoom, yaw = slot.yaw,
-    })
-    IRRender.setViewportSubject(slot.viewport, entity)
-    slot.drag = IRGui.makeHitRegion(p.x, p.y, p.w, p.h, {})
-    for index, zoom in ipairs({ 4, 8, 16 }) do
-        addPreview(browser, IRGui.makeButton(p.x + (index - 1) * 40, p.y + p.h + 3, 36, 14,
-            tostring(zoom) .. "X", function()
-                slot.zoom = zoom
-                IRRender.setViewportCamera(slot.viewport, slot.zoom, slot.yaw)
-            end, SMALL))
-    end
-end
-
-local function preview(browser, asset)
-    clearPreview(browser)
-    local p = L.assets.preview
+local function addMetadata(browser, asset)
     local fieldNames = {}
     for name, _ in pairs(asset.fields) do
         fieldNames[#fieldNames + 1] = name
@@ -121,6 +101,37 @@ local function preview(browser, asset)
             L.assets.left, L.assets.metadataTop + (index - 1) * L.assets.metadataStep,
             metadata[index], nil, SMALL))
     end
+end
+
+local function placeViewport(browser)
+    local p = L.assets.preview
+    local slot = browser.preview
+    IRRender.setViewportRect(slot.viewport, p.x, p.y, p.w, p.h)
+    slot.drag = IRGui.makeHitRegion(p.x, p.y, p.w, p.h, {})
+    for index, zoom in ipairs({ 4, 8, 16 }) do
+        addPreview(browser, IRGui.makeButton(p.x + (index - 1) * 40, p.y + p.h + 3, 36, 14,
+            tostring(zoom) .. "X", function()
+                slot.zoom = zoom
+                IRRender.setViewportCamera(slot.viewport, slot.zoom, slot.yaw)
+            end, SMALL))
+    end
+end
+
+local function makeViewport(browser, entity)
+    local p = L.assets.preview
+    local slot = browser.preview
+    slot.entity = entity
+    slot.viewport = IRRender.createViewport({
+        x = p.x, y = p.y, width = p.w, height = p.h, zoom = slot.zoom, yaw = slot.yaw,
+    })
+    IRRender.setViewportSubject(slot.viewport, entity)
+    placeViewport(browser)
+end
+
+local function preview(browser, asset)
+    clearPreview(browser)
+    local p = L.assets.preview
+    addMetadata(browser, asset)
     if asset.kind == "png" then
         browser.preview.image = IRGui.makeImage(p.x, p.y, p.w, p.h, asset.path)
         if IRTest then
@@ -209,23 +220,32 @@ function M.new(app)
         kind = 1,
         scroll = 0,
         widgets = {},
+        chrome = {},
         preview = { zoom = 8, yaw = 0, widgets = {} },
         sequence = {},
     }
-    IRGui.makePanel(L.assets.x, L.assets.y, L.assets.w, L.assets.h, "ASSETS")
+    browser.panel = IRGui.makePanel(L.assets.x, L.assets.y, L.assets.w, L.assets.h, "ASSETS")
+    M.reflow(browser)
+    return browser
+end
+
+local function buildChrome(browser)
     for index, kind in ipairs(KINDS) do
         local x = L.assets.left + (index - 1) * L.assets.tabStep
-        IRGui.makeButton(x, L.assets.tabY, L.assets.tabWidth, 14, kind.label, function()
+        browser.chrome[#browser.chrome + 1] =
+            IRGui.makeButton(x, L.assets.tabY, L.assets.tabWidth, 14, kind.label, function()
             browser.kind = index
             browser.scroll = 0
             M.rebuild(browser)
         end, SMALL)
     end
-    IRGui.makeButton(L.assets.up.x, L.assets.up.y, L.assets.up.w, L.assets.up.h, "UP", function()
+    browser.chrome[#browser.chrome + 1] = IRGui.makeButton(
+        L.assets.up.x, L.assets.up.y, L.assets.up.w, L.assets.up.h, "UP", function()
         browser.scroll = math.max(0, browser.scroll - L.assets.rows + 1)
         M.rebuild(browser, true)
     end, SMALL)
-    IRGui.makeButton(L.assets.down.x, L.assets.down.y, L.assets.down.w, L.assets.down.h,
+    browser.chrome[#browser.chrome + 1] = IRGui.makeButton(
+        L.assets.down.x, L.assets.down.y, L.assets.down.w, L.assets.down.h,
         "DN", function()
             local assets = assetsOfKind(browser)
             browser.scroll = math.min(browser.scroll + L.assets.rows - 1,
@@ -233,10 +253,41 @@ function M.new(app)
             M.rebuild(browser, true)
         end, SMALL)
     browser.countLabel = IRGui.makeLabel(L.assets.count.x, L.assets.count.y, "", nil, SMALL)
-    IRGui.makeButton(L.assets.ide.x, L.assets.ide.y, L.assets.ide.w, L.assets.ide.h,
+    browser.chrome[#browser.chrome + 1] = browser.countLabel
+    browser.chrome[#browser.chrome + 1] = IRGui.makeButton(
+        L.assets.ide.x, L.assets.ide.y, L.assets.ide.w, L.assets.ide.h,
         "IDE", function() M.openSelected(browser) end, SMALL)
-    M.rebuild(browser)
-    return browser
+end
+
+function M.reflow(browser)
+    local selected = browser.selected
+    local slot = browser.preview
+    local liveViewport = selected and slot.viewport
+    local oversize = slot.oversize ~= nil
+    WidgetList.clear(browser.chrome)
+    clearWidgets(browser)
+    buildChrome(browser)
+    M.rebuild(browser, liveViewport)
+    if liveViewport then
+        WidgetList.clear(slot.widgets)
+        slot.widgets = {}
+        if slot.drag then
+            IRGui.destroyWidget(slot.drag)
+            slot.drag = nil
+        end
+        slot.oversize = nil
+        addMetadata(browser, selected)
+        placeViewport(browser)
+        if oversize then
+            slot.oversize = addPreview(browser,
+                IRGui.makeLabel(L.assets.preview.x, L.assets.preview.y,
+                    "TOO LARGE TO PREVIEW", nil, SMALL))
+        end
+    elseif selected then
+        preview(browser, selected)
+    else
+        clearPreview(browser)
+    end
 end
 
 function M.poll(browser)

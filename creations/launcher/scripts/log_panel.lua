@@ -4,6 +4,7 @@
 -- it is.
 
 local L = require("launcher_layout")
+local WidgetList = require("widget_list")
 
 local M = {}
 
@@ -22,29 +23,44 @@ local function maxScroll(log)
 end
 
 function M.new(app)
-    local log = { lines = {}, head = 0, count = 0, scroll = 0, labels = {}, dirty = true }
-    IRGui.makePanel(L.log.x, L.log.y, L.log.w, L.log.h, "LOG")
+    local log = {
+        lines = {}, head = 0, count = 0, scroll = 0, labels = {}, widgets = {}, dirty = true,
+    }
+    log.panel = IRGui.makePanel(L.log.x, L.log.y, L.log.w, L.log.h, "LOG")
+    M.reflow(log, app)
+    return log
+end
+
+function M.reflow(log, app)
+    WidgetList.clear(log.widgets)
+    log.labels = {}
     log.result = IRGui.makeLabel(L.log.result.x, L.log.result.y, "LAST RUN: -", nil, SMALL)
+    log.widgets[#log.widgets + 1] = log.result
     for row = 1, L.log.rows do
         log.labels[row] = IRGui.makeLabel(
             L.log.result.x, L.log.lineTop + (row - 1) * L.log.lineStep, "", nil, SMALL)
+        log.widgets[#log.widgets + 1] = log.labels[row]
     end
     local half = math.floor(L.log.rows / 2)
-    IRGui.makeButton(L.log.up.x, L.log.up.y, L.log.up.w, L.log.up.h, "UP", function()
+    log.widgets[#log.widgets + 1] = IRGui.makeButton(
+        L.log.up.x, L.log.up.y, L.log.up.w, L.log.up.h, "UP", function()
         log.scroll = math.min(log.scroll + half, maxScroll(log))
         log.dirty = true
     end, SMALL)
-    IRGui.makeButton(L.log.down.x, L.log.down.y, L.log.down.w, L.log.down.h, "DN", function()
+    log.widgets[#log.widgets + 1] = IRGui.makeButton(
+        L.log.down.x, L.log.down.y, L.log.down.w, L.log.down.h, "DN", function()
         log.scroll = math.max(0, log.scroll - half)
         log.dirty = true
     end, SMALL)
-    IRGui.makeButton(L.log.tail.x, L.log.tail.y, L.log.tail.w, L.log.tail.h, "TAIL", function()
+    log.widgets[#log.widgets + 1] = IRGui.makeButton(
+        L.log.tail.x, L.log.tail.y, L.log.tail.w, L.log.tail.h, "TAIL", function()
         log.scroll = 0
         log.dirty = true
     end, SMALL)
-    IRGui.makeButton(L.log.open.x, L.log.open.y, L.log.open.w, L.log.open.h, "OPEN LOG",
+    log.widgets[#log.widgets + 1] = IRGui.makeButton(
+        L.log.open.x, L.log.open.y, L.log.open.w, L.log.open.h, "OPEN LOG",
         function() app.openLogInEditor() end, SMALL)
-    return log
+    log.dirty = true
 end
 
 function M.append(log, line)

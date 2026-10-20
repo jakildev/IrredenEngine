@@ -23,6 +23,12 @@
 //   * settings_roundtrip — with only a stub `code` on PATH, opening settings
 //     falls back from the missing `cursor` to `code`; the editor entry and a
 //     favourite then survive a save, a local change and a revert from disk.
+//   * asset_preview — voxel and PNG previews replace each other without
+//     leaking entities, while oversize assets stay guarded.
+//   * thumbnail_chain — generated thumbnail data flows through the launcher
+//     fixture without losing its asset association.
+//   * dockspace_roundtrip — splitter resize, persistence, revert and panel
+//     docking reflow every zone while a live voxel preview remains attached.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_entity.hpp>
@@ -47,15 +53,20 @@
 #include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_layout_compute.hpp>
 #include <irreden/render/systems/system_widget_apply_dropdown.hpp>
 #include <irreden/render/systems/system_widget_apply_text_input.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
+#include <irreden/render/systems/system_widget_input_panel_drag.hpp>
+#include <irreden/render/systems/system_widget_input_splitter.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
 #include <irreden/render/systems/system_widget_render_dropdown.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_image.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
+#include <irreden/render/systems/system_widget_render_dock_preview.hpp>
+#include <irreden/render/systems/system_widget_render_splitter.hpp>
 #include <irreden/render/systems/system_widget_render_text_input.hpp>
 #include <irreden/script/lua_widget_bindings.hpp>
 #include <irreden/utility/path_utils.hpp>
@@ -89,6 +100,7 @@ enum class Session {
     SETTINGS_ROUNDTRIP,
     ASSET_PREVIEW,
     THUMBNAIL_CHAIN,
+    DOCKSPACE_ROUNDTRIP,
 };
 
 IRSystem::SystemId g_dispatchId = IRSystem::kNullSystemId;
@@ -117,6 +129,9 @@ Session parseSession(const std::string &name) {
     }
     if (name == "thumbnail_chain") {
         return Session::THUMBNAIL_CHAIN;
+    }
+    if (name == "dockspace_roundtrip") {
+        return Session::DOCKSPACE_ROUNDTRIP;
     }
     return Session::NONE;
 }
@@ -211,16 +226,16 @@ constexpr IRMath::ivec2 treeRow(int row) {
     return IRMath::ivec2(kTreeRow0.x, kTreeRow0.y + row * kTreeRowStep);
 }
 constexpr IRMath::ivec2 kFilter{200, 56};
-constexpr IRMath::ivec2 kBuildFirstTarget{784, 208};
-constexpr IRMath::ivec2 kRunFirstTarget{872, 208};
-constexpr IRMath::ivec2 kFavourite{936, 54};
+constexpr IRMath::ivec2 kBuildFirstTarget{776, 208};
+constexpr IRMath::ivec2 kRunFirstTarget{864, 208};
+constexpr IRMath::ivec2 kFavourite{928, 54};
 constexpr IRMath::ivec2 kSettings{1202, 14};
-constexpr IRMath::ivec2 kEditorHeader{620, 89};
-constexpr IRMath::ivec2 kEditorItem1{620, 103};
-constexpr IRMath::ivec2 kEditorItem2{620, 117};
-constexpr IRMath::ivec2 kSettingsSave{468, 168};
-constexpr IRMath::ivec2 kSettingsRevert{584, 168};
-constexpr IRMath::ivec2 kSettingsClose{706, 168};
+constexpr IRMath::ivec2 kEditorHeader{704, 89};
+constexpr IRMath::ivec2 kEditorItem1{704, 103};
+constexpr IRMath::ivec2 kEditorItem2{704, 117};
+constexpr IRMath::ivec2 kSettingsSave{476, 168};
+constexpr IRMath::ivec2 kSettingsRevert{592, 168};
+constexpr IRMath::ivec2 kSettingsClose{714, 168};
 
 constexpr Event move(int frame, IRMath::ivec2 at) {
     return {frame, EventType::MOVE, at};
@@ -308,6 +323,38 @@ constexpr Event kRevertEvents[] = {
     IR_LAUNCHER_CLICK(0, kSettings),
     IR_LAUNCHER_CLICK(6, kSettingsRevert),
 };
+constexpr IRMath::ivec2 kCatalogSplitter{406, 240};
+constexpr IRMath::ivec2 kCatalogSplitterSaved{466, 240};
+constexpr IRMath::ivec2 kCatalogSplitterMutated{506, 240};
+constexpr IRMath::ivec2 kAssetsTitle{1140, 38};
+constexpr IRMath::ivec2 kDetailsDockTarget{734, 253};
+constexpr IRMath::ivec2 kDockSettingsSave{536, 168};
+constexpr IRMath::ivec2 kDockSettingsRevert{652, 168};
+constexpr Event kDockSaveEvents[] = {
+    move(0, kCatalogSplitter),
+    press(1, kCatalogSplitter, IRInput::kMouseButtonLeft),
+    move(4, kCatalogSplitterSaved),
+    release(5, kCatalogSplitterSaved, IRInput::kMouseButtonLeft),
+};
+constexpr Event kDockPersistEvents[] = {
+    IR_LAUNCHER_CLICK(0, kSettings),
+    IR_LAUNCHER_CLICK(8, kDockSettingsSave),
+    move(18, kDockSettingsSave),
+};
+constexpr Event kDockRevertEvents[] = {
+    move(0, kCatalogSplitterSaved),
+    press(1, kCatalogSplitterSaved, IRInput::kMouseButtonLeft),
+    move(4, kCatalogSplitterMutated),
+    release(5, kCatalogSplitterMutated, IRInput::kMouseButtonLeft),
+    IR_LAUNCHER_CLICK(10, kDockSettingsRevert),
+    move(18, kDockSettingsRevert),
+};
+constexpr Event kDockSwapEvents[] = {
+    move(0, kAssetsTitle),
+    press(1, kAssetsTitle, IRInput::kMouseButtonLeft),
+    move(4, kDetailsDockTarget),
+    release(5, kDetailsDockTarget, IRInput::kMouseButtonLeft),
+};
 
 #undef IR_LAUNCHER_CLICK
 #undef IR_LAUNCHER_KEY
@@ -343,6 +390,14 @@ constexpr IRVideo::GuiTestShot kAssetPreviewShots[] = {
     shot("asset_preview_prefab", kAssetPrefabEvents),
 };
 constexpr IRVideo::GuiTestShot kThumbnailShots[] = {shot("thumbnail_chain")};
+constexpr IRVideo::GuiTestShot kDockspaceShots[] = {
+    shot("dockspace_initial"),
+    shot("dockspace_resized", kDockSaveEvents),
+    shot("dockspace_save_clicked", kDockPersistEvents),
+    shot("dockspace_saved"),
+    shot("dockspace_reverted", kDockRevertEvents),
+    shot("dockspace_swapped", kDockSwapEvents),
+};
 
 std::span<const IRVideo::GuiTestShot> sessionShots(Session session) {
     switch (session) {
@@ -358,6 +413,8 @@ std::span<const IRVideo::GuiTestShot> sessionShots(Session session) {
         return kAssetPreviewShots;
     case Session::THUMBNAIL_CHAIN:
         return kThumbnailShots;
+    case Session::DOCKSPACE_ROUNDTRIP:
+        return kDockspaceShots;
     case Session::NONE:
         break;
     }
@@ -437,6 +494,12 @@ const ReportCheck kThumbnailChain{
 const ReportCheck kThumbnailProbes{
     "thumbnailProbes", "230,140,40,255|84,86,92,255|56,71,77,255|120,124,132,255"
 };
+const ReportCheck kDockInitial{"layoutWidths", "200"};
+const ReportCheck kDockSaved{"layoutWidths", "200|230"};
+const ReportCheck kDockReverted{"layoutWidths", "200|230|249|230"};
+const ReportCheck kDockRestored{"layoutRestored", "true"};
+const ReportCheck kDockSwapped{"layoutPanelXs", "236|504"};
+const ReportCheck kDockContained{"layoutContained", "true"};
 
 #undef IR_LAUNCHER_FAVOURITE
 
@@ -487,6 +550,17 @@ const ShotAssertions kThumbnailAssertions[] = {
     {predicate(&reportMatches, &kThumbnailChain, "thumbnail_fallback_chain"),
      predicate(&reportMatches, &kThumbnailProbes, "thumbnail_probe_colours")},
 };
+const ShotAssertions kDockspaceAssertions[] = {
+    {predicate(&reportMatches, &kDockInitial, "initial_catalog_width")},
+    {predicate(&reportMatches, &kDockSaved, "splitter_saved")},
+    {predicate(&reportMatches, &kDockSaved, "save_keeps_width")},
+    {predicate(&reportMatches, &kDockRestored, "layout_saved_to_disk")},
+    {predicate(&reportMatches, &kDockReverted, "splitter_reverted"),
+     predicate(&reportMatches, &kDockRestored, "disk_value_restored")},
+    {predicate(&reportMatches, &kDockSwapped, "panels_swapped"),
+     predicate(&reportMatches, &kDockContained, "zone_widgets_contained"),
+     predicate(&reportMatches, &kAssetSubjectMatches, "viewport_subject_survived")},
+};
 
 std::span<const ShotAssertions> sessionAssertions(Session session) {
     switch (session) {
@@ -502,6 +576,8 @@ std::span<const ShotAssertions> sessionAssertions(Session session) {
         return kAssetPreviewAssertions;
     case Session::THUMBNAIL_CHAIN:
         return kThumbnailAssertions;
+    case Session::DOCKSPACE_ROUNDTRIP:
+        return kDockspaceAssertions;
     case Session::NONE:
         break;
     }
@@ -514,6 +590,7 @@ static_assert(std::size(kRunHandOffAssertions) == std::size(kRunHandOffShots));
 static_assert(std::size(kSettingsAssertions) == std::size(kSettingsShots));
 static_assert(std::size(kAssetPreviewAssertions) == std::size(kAssetPreviewShots));
 static_assert(std::size(kThumbnailAssertions) == std::size(kThumbnailShots));
+static_assert(std::size(kDockspaceAssertions) == std::size(kDockspaceShots));
 
 IRPrefab::GuiTest::LatchState g_assertLatch;
 
@@ -561,7 +638,8 @@ int main(int argc, char **argv) {
          "run_hand_off",
          "settings_roundtrip",
          "asset_preview",
-         "thumbnail_chain"},
+         "thumbnail_chain",
+         "dockspace_roundtrip"},
         "none"
     );
     registerLuaBindings();
@@ -673,6 +751,8 @@ void initSystems() {
             IRLauncher::g_dispatchId,
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_INPUT_SPLITTER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_INPUT_PANEL_DRAG>(),
         }
     );
     IRSystem::registerPipeline(
@@ -690,12 +770,15 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::SYNC_VIEWPORT_SUBJECTS>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::LAYOUT_COMPUTE>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_IMAGE>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SPLITTER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_DOCK_PREVIEW>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),

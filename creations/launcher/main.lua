@@ -50,6 +50,27 @@ app.tree.collapsed = app.settings.collapsed
 app.details = details.new(app)
 app.assetBrowser = assetsModule.new(app)
 
+local fraction = function(value, minPx, maxPx)
+    return { mode = IRLayout.SizeMode.FRACTION, value = value, minPx = minPx, maxPx = maxPx }
+end
+local fixed = function(value, minPx, maxPx)
+    return { mode = IRLayout.SizeMode.FIXED_PX, value = value, minPx = minPx, maxPx = maxPx }
+end
+local root = IRLayout.makeRow(nil, fraction(1), "launcher")
+IRLayout.makeLeaf(root, fixed(200, 140, 320), app.tree.panel, "catalog")
+local right = IRLayout.makeColumn(root, fraction(1), "right")
+local top = IRLayout.makeRow(right, fraction(1, 180), "top")
+IRLayout.makeLeaf(top, fraction(1, 180), app.details.panel, "details")
+IRLayout.makeLeaf(top, fixed(136, 110, 240), app.assetBrowser.panel, "assets")
+IRLayout.makeLeaf(right, fixed(238, 100, 360), app.logView.panel, "log")
+IRLayout.buildSplitters()
+IRLayout.setRoot(root, 0, 30, 640, 690)
+if app.settings.layout ~= "" then
+    IRLayout.deserialize(app.settings.layout)
+end
+app.layoutRevision = IRLayout.revision()
+app.layoutWidths = {}
+
 function app.selected()
     return app.selectedDir and app.byDir[app.selectedDir] or nil
 end
@@ -271,6 +292,9 @@ end
 
 function app.revertSettings()
     settingsModule.load(app.settings)
+    if app.settings.layout ~= "" then
+        IRLayout.deserialize(app.settings.layout)
+    end
     app.tree.collapsed = app.settings.collapsed
     settingsModule.show(app, app.settings)
     settingsModule.report(app.settings)
@@ -330,6 +354,45 @@ IREntity.singleton(C_LauncherTick)
 -- redraws the log window. Both systems defer their work out of the tick,
 -- because a rescan or a filter change rebuilds widgets.
 local function poll()
+    local revision = IRLayout.revision()
+    if revision ~= app.layoutRevision then
+        app.layoutRevision = revision
+        local tx, ty, tw, th = IRLayout.leafRect(app.tree.panel)
+        local dx, dy, dw, dh = IRLayout.leafRect(app.details.panel)
+        local ax, ay, aw, ah = IRLayout.leafRect(app.assetBrowser.panel)
+        local lx, ly, lw, lh = IRLayout.leafRect(app.logView.panel)
+        L.update(
+            { x = tx, y = ty, w = tw, h = th },
+            { x = dx, y = dy, w = dw, h = dh },
+            { x = ax, y = ay, w = aw, h = ah },
+            { x = lx, y = ly, w = lw, h = lh })
+        catalogView.reflow(app, app.tree)
+        if app.settings.open then
+            settingsModule.show(app, app.settings)
+        else
+            details.reflow(app, app.details)
+        end
+        assetsModule.reflow(app.assetBrowser)
+        logPanel.reflow(app.logView, app)
+        if IRTest then
+            local last = app.layoutWidths[#app.layoutWidths]
+            if last ~= tw then
+                app.layoutWidths[#app.layoutWidths + 1] = tw
+            end
+            IRTest.report("layoutWidths", table.concat(app.layoutWidths, "|"))
+            IRTest.report("layoutPanelXs", string.format("%d|%d", ax, dx))
+            local contained =
+                L.tree.filter.x >= tx and L.tree.filter.x + L.tree.filter.w <= tx + tw and
+                L.details.name.x >= dx and L.details.name.x <= dx + dw and
+                L.assets.preview.x >= ax and L.assets.preview.x + L.assets.preview.w <= ax + aw and
+                L.log.open.x >= lx and L.log.open.x + L.log.open.w <= lx + lw
+            IRTest.report("layoutContained", contained and "true" or "false")
+        end
+    end
+    if IRTest and app.settings.layout ~= "" then
+        IRTest.report("layoutRestored",
+            IRLayout.serialize() == app.settings.layout and "true" or "false")
+    end
     local tool = app.tool
     if tool then
         local lines = tool.handle:poll()
@@ -374,7 +437,7 @@ IRSystem.appendSystem(IRTime.INPUT, IRSystem.registerSystem({
 }))
 
 app.rescan()
-if IRLauncher.session() == "asset_preview" then
+if IRLauncher.session() == "asset_preview" or IRLauncher.session() == "dockspace_roundtrip" then
     assetsModule.previewIndex(app.assetBrowser, "voxel_set", 1)
 end
 if IRLauncher.session() == "thumbnail_chain" then
