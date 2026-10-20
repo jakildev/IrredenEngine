@@ -4,7 +4,7 @@ add_executable(IRCollisionOverlapDemo main_lua.cpp)
 target_link_libraries(IRCollisionOverlapDemo PUBLIC IrredenEngine)
 
 # Exe-relative runtime layout (data/ shaders/ scripts/ + Windows DLLs).
-irreden_bundle_assets(IRCollisionOverlapDemo SCRIPTS main.lua config.lua)
+irreden_bundle_assets(IRCollisionOverlapDemo SCRIPTS main.lua response_stress.lua config.lua)
 
 add_custom_target(IRCollisionOverlapDemoRun
     COMMAND $<TARGET_FILE:IRCollisionOverlapDemo>

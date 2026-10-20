@@ -46,6 +46,13 @@ in the `UPDATE` pipeline unless explicitly noted.
   `singletonOrNull<...>()`, which is how the producer and consumer share the
   vector without a cross-system SystemId handoff. `ContactPair` is co-located in
   `component_overlap_contact_batch.hpp`.
+- `C_CollisionResponse` — marks a moving body for `COLLISION_RESPONSE`:
+  restitution and friction (clamped to [0, 1] by the constructors), `restSpeed_`
+  (default 2.0 blocks/s), an optional floor plane `floorZ_` (solid side +z,
+  so the box bottom never ends a tick below it) and the output `resting_`.
+  Lua: `C_CollisionResponse.new(r, f, restOnSupport[, floorZ])`, `restSpeed`
+  (setter clamps to ≥ 0) and read-only `resting`; restitution and friction
+  are constructor-only.
 - `C_PrefabParts` — on a schema-v2 composite prefab root: the parsed parts
   manifest plus one slot per part (live entity, band, resident flag) and the
   tier-settle state. Written by `Prefab.spawn` and `PREFAB_LOD_PARTS` only.
@@ -85,6 +92,17 @@ in the `UPDATE` pipeline unless explicitly noted.
   in its own tick (the `IRCollision.*` Lua surface lives in
   `engine/script/CLAUDE.md`; the runnable proof is
   `creations/demos/collision_overlap_demo`).
+- `COLLISION_RESPONSE` — bounces, slides and rests bodies on solid AABBs and
+  their floor plane. Body: `C_LocalTransform`, `C_WorldTransform`,
+  `C_Velocity3D`, `C_ColliderIso3DAABB`, `C_CollisionLayer`,
+  `C_CollisionResponse`, no `C_ContactEvent` needed. Solid: any solid
+  collider without `C_CollisionResponse`, snapshotted in `beginTick`; only
+  the body's mask is read. Slot: after `VELOCITY_3D` and
+  `PROPAGATE_TRANSFORM` (and `COLLISION_NOTE_PLATFORM`), with **no
+  `C_Velocity3D` writer between** — the sweep start is `world − v·dt`.
+  Resolves z, x, y, each axis stopping exactly on the nearest face; an
+  upward contact slower than `restSpeed_` rests, so rest needs
+  `g·dt < restSpeed_`. `contactTolUlps_` (8) only classifies contacts.
 - `PERIODIC_IDLE` — advances per-entity `C_PeriodicIdle` timer.
 - `PERIODIC_IDLE_POSITION_OFFSET` — upserts the resolved bob value as a
   vec3 ADD modifier on the entity's `C_Modifiers` each tick via
@@ -154,7 +172,7 @@ in the `UPDATE` pipeline unless explicitly noted.
 ## Gotchas
 
 - **Velocity is in blocks/second.** `system_velocity.hpp` multiplies by
-  `deltaTime(UPDATE)` (wall-clock dt, not the fixed step). Use sensible
+  `deltaTime(UPDATE)`, the fixed `1/kFPS` step. Use sensible
   magnitudes or drift looks jittery.
 - **Order matters between gravity, drag, velocity.** The canonical
   pipeline order is `GRAVITY_3D → VELOCITY_DRAG → VELOCITY_3D` so drag
@@ -166,6 +184,8 @@ in the `UPDATE` pipeline unless explicitly noted.
 - **Particle spawner allocates voxels.** `entity_voxel_particle` calls
   `allocateVoxels()` per spawn. At high spawn rates, the voxel pool
   can exhaust. Check pool capacity before cranking the rate.
+- **`COLLISION_RESPONSE` bodies are root entities.** Velocity and the
+  translation delta are world-space; a parented body resolves wrongly.
 - **Lifetime + ephemeral pattern.** The common idiom
   `createEntity({..., C_Lifetime{1}})` creates a one-frame entity,
   picked up by the next tick's systems, then destroyed. Use this for

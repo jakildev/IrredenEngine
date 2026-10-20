@@ -21,6 +21,7 @@
 #include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/update/components/component_angular_velocity.hpp>
+#include <irreden/update/components/component_collision_response.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
 #include <irreden/update/components/component_rotation_target.hpp>
 #include <irreden/update/systems/system_angular_velocity_damped.hpp>
@@ -55,6 +56,7 @@ namespace {
 
 using IRComponents::C_AngularVelocity;
 using IRComponents::C_BindPoints;
+using IRComponents::C_CollisionResponse;
 using IRComponents::C_EntityCanvas;
 using IRComponents::C_FogExempt;
 using IRComponents::C_FogField;
@@ -780,6 +782,30 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsEasingComponentsAndKeepsTheCurveLive) {
 // constructor default, so a reload that substituted one fails here. One tick
 // after the reload shows the restored rate and damping still drive the
 // transform, not only that the bytes came back.
+// Every authored C_CollisionResponse field survives the raw-image round trip;
+// `resting_` is recomputed by the next COLLISION_RESPONSE tick.
+TEST_F(LuaWorldSnapshotTest, RoundTripsCollisionResponse) {
+    C_CollisionResponse authored{0.4f, 0.3f, false, -7.25f};
+    authored.restSpeed_ = 3.5f;
+    const EntityId body = m_entity_manager.createEntity(C_LocalTransform{}, authored);
+
+    const std::string path = tempPath("collision_response");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_EQ(m_entity_manager.getLiveEntityCount(), 0u);
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    ASSERT_TRUE(m_entity_manager.entityExists(body));
+    const C_CollisionResponse &reloaded = m_entity_manager.getComponent<C_CollisionResponse>(body);
+    EXPECT_EQ(reloaded.restitution_, authored.restitution_);
+    EXPECT_EQ(reloaded.friction_, authored.friction_);
+    EXPECT_EQ(reloaded.restSpeed_, authored.restSpeed_);
+    EXPECT_EQ(reloaded.floorZ_, authored.floorZ_);
+    EXPECT_TRUE(reloaded.hasFloor_);
+    EXPECT_FALSE(reloaded.restOnSupport_);
+}
+
 TEST_F(LuaWorldSnapshotTest, RoundTripsAngularVelocityAndKeepsTheDecayLive) {
     const IRMath::vec3 axis{0.0f, 0.6f, 0.8f};
     constexpr float kRate = 0.25f;
