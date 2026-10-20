@@ -121,6 +121,10 @@ def validate(path: Path, root: Path, tracked_files: set[str]) -> list[str] | Non
         if not validate_target_name(path, f"{target_key}.name", target.get("name")):
             return None
         names.append(target["name"])
+        for key in ("display", "description"):
+            if key in target and not isinstance(target[key], str):
+                fail(path, f"{target_key}.{key} must be a string")
+                return None
         presets = target.get("presets", [])
         if not isinstance(presets, list):
             fail(path, f"{target_key}.presets must be an array")
@@ -129,6 +133,9 @@ def validate(path: Path, root: Path, tracked_files: set[str]) -> list[str] | Non
             preset_key = f"{target_key}.presets[{preset_index}]"
             if not isinstance(preset, dict):
                 fail(path, f"{preset_key} must be an object")
+                return None
+            if not isinstance(preset.get("name"), str) or not preset["name"]:
+                fail(path, f"{preset_key}.name must be a non-empty string")
                 return None
             args = preset.get("args")
             if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
