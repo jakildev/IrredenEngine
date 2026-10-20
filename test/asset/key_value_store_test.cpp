@@ -4,8 +4,11 @@
 #include <irreden/asset/chunk_header.hpp>
 #include <irreden/asset/key_value_store.hpp>
 
+#include "common/engine_log_capture.hpp"
+
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -231,10 +234,33 @@ TEST(KeyValueStore, FileRoundTrip) {
 }
 
 TEST(KeyValueStore, MissingFileIsRecoverable) {
+    IRTest::EngineLogCapture log;
     auto loaded = loadKeyValueStore(kTmpDir + "/definitely_not_a_real_kv_store.irkv");
     ASSERT_FALSE(loaded.ok());
     EXPECT_EQ(loaded.status_.code_, BinaryIOError::OpenFailed);
     EXPECT_EQ(loaded.value_.size(), 0u);
+
+    const std::string text = log.text();
+    EXPECT_NE(text.find("No key-value store at"), std::string::npos) << text;
+    EXPECT_EQ(text.find("FileBinaryReader: fopen failed"), std::string::npos) << text;
+    EXPECT_EQ(text.find("[error]"), std::string::npos) << text;
+}
+
+TEST(KeyValueStore, UnreadableStorePathStillLogsAtError) {
+    const std::string path = kTmpDir + "/ir_kv_test_directory_at_store_path";
+    std::filesystem::remove_all(path);
+    ASSERT_TRUE(std::filesystem::create_directory(path));
+
+    IRTest::EngineLogCapture log;
+    auto loaded = loadKeyValueStore(path);
+    EXPECT_FALSE(loaded.ok());
+
+    const std::string text = log.text();
+    const std::size_t errorAt = text.find("[error]");
+    ASSERT_NE(errorAt, std::string::npos) << text;
+    EXPECT_NE(text.find(path, errorAt), std::string::npos) << text;
+
+    std::filesystem::remove_all(path);
 }
 
 TEST(KeyValueStore, SaveCreatesMissingParentDirectory) {
