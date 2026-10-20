@@ -31,6 +31,8 @@
 #   T15: zero reviews → exit 5
 #   T16: --no-review-check restores the fenced label-fixup path
 #   T17: reviews read failure → exit 1
+#   Repo aliases resolve before the wrapper reaches GitHub or fleet-transition
+#   Unknown repository namespaces reject before the wrapper reaches GitHub
 
 set -euo pipefail
 
@@ -72,7 +74,10 @@ export GH_LOG="$TMPROOT/gh.log"      # gh invocations
 export HOST_KEY="mac"                # what the fleet-claim stub reports
 export FT_RC=0                       # exit code the fleet-transition stub returns
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
+export FLEET_STATE_DIR="$TMPROOT/fleet/state"
 mkdir -p "$BIN" "$STORE" "$FLEET_CLAIMS_DIR"
+mkdir -p "$FLEET_STATE_DIR"
+printf '%s\n' '{"engine":"owner/engine","game":"owner/game"}' > "$FLEET_STATE_DIR/repos.json"
 
 # gh stub — validates the argument shapes the wrapper uses and serves labels,
 # headRefOid, and paginated reviews from separate per-PR store files.
@@ -337,6 +342,37 @@ set_labels 115 fleet:reviewing-mac-worker-2
 printf '%s\n' head-115 >"$STORE/head-115"              # reviews-115 absent
 assert_eq "$(run verdict-needs-fix 115 --agent worker-2)" "1" "T17 fails closed"
 assert_eq "$(ft_calls)" "0" "T17 does not delegate"
+
+echo "T19: repo aliases resolve to their configured GitHub slugs"
+for repo in engine game owner/explicit; do
+    reset_logs
+    set_labels 117 fleet:reviewing-mac-worker-2
+    set_review_data 117 head-117 head-117 COMMENTED 2026-01-02T00:00:00Z
+    assert_eq "$(run verdict-approve 117 --agent worker-2 --repo "$repo" --dry-run)" "0" \
+        "T19 $repo exits 0"
+    case "$repo" in
+        engine) expected_repo="owner/engine" ;;
+        game) expected_repo="owner/game" ;;
+        *) expected_repo="$repo" ;;
+    esac
+    grep -q -- "pr view 117 --repo $expected_repo" "$GH_LOG" && \
+        { PASS=$((PASS+1)); echo "  ok: T19 $repo reached gh as $expected_repo"; } || \
+        { FAIL=$((FAIL+1)); echo "  FAIL: T19 $repo did not reach gh as $expected_repo"; }
+    grep -q -- "api repos/$expected_repo/pulls/117/reviews" "$GH_LOG" && \
+        { PASS=$((PASS+1)); echo "  ok: T19 $repo used the resolved review route"; } || \
+        { FAIL=$((FAIL+1)); echo "  FAIL: T19 $repo did not use the resolved review route"; }
+    grep -q -- "--repo $expected_repo" "$FT_LOG" && \
+        { PASS=$((PASS+1)); echo "  ok: T19 $repo reached fleet-transition as $expected_repo"; } || \
+        { FAIL=$((FAIL+1)); echo "  FAIL: T19 $repo did not reach fleet-transition as $expected_repo"; }
+done
+
+echo "T20: unknown repo namespace rejects before gh"
+reset_logs
+assert_eq "$(run verdict-approve 117 --repo unknown --dry-run)" "2" "T20 unknown repo exits 2"
+grep -q "engine, game, or owner/repo" "$TMPROOT/out" && \
+    { PASS=$((PASS+1)); echo "  ok: T20 names accepted repo forms"; } || \
+    { FAIL=$((FAIL+1)); echo "  FAIL: T20 did not name accepted repo forms"; }
+assert_eq "$(grep -c . "$GH_LOG" 2>/dev/null || true)" "0" "T20 makes no gh call"
 
 # === T18: the retired severity verdict is not a verdict edge ==============
 # The severity verdict is retired (no lane consumed it). T4 pins the generic

@@ -25,7 +25,7 @@
 #
 # Usage:
 #   fleet-review-verdict <verdict-transition> <pr-number> \
-#       [--agent <name>] [--repo <slug>] [--no-review-check] [--dry-run]
+#       [--agent <name>] [--repo engine|game|<owner/name>] [--no-review-check] [--dry-run]
 #
 # Options:
 #   --agent <name>  The reviewing agent (worktree basename passed to
@@ -39,9 +39,9 @@
 #                   agent following its role doc always gets the guard. The
 #                   carve-out is the ABSENCE of --agent, deliberately not a
 #                   --force flag an agent could add to defeat the guard.
-#   --repo <slug>   Target repo (e.g. jakildev/IrredenEngine or
-#                   jakildev/irreden). Threaded through to fleet-transition
-#                   and the claim-label read. Default: the current git remote.
+#   --repo <repo>   Target repo: engine, game, or owner/name. Namespaces use
+#                   the shared fleet resolver before reaching GitHub or
+#                   fleet-transition. Default: the current git remote.
 #   --no-review-check
 #                   Skip the current-head review-body check. Reserved for the
 #                   label-fixup lane fenced by REVIEWER-PROTOCOL.md; ordinary
@@ -72,6 +72,7 @@ PROG="fleet-review-verdict"
 _self="${BASH_SOURCE[0]}"
 while [[ -L "$_self" ]]; do _self="$(readlink "$_self")"; done
 _lib_dir="$(cd "$(dirname "$_self")" && pwd)"
+runtime_dir="$_lib_dir"
 if [[ -f "$_lib_dir/fleet-net.sh" ]]; then
     # shellcheck source=/dev/null
     source "$_lib_dir/fleet-net.sh"
@@ -114,11 +115,15 @@ while [[ $# -gt 0 ]]; do
             shift ;;
         --repo)
             if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
-                echo "$PROG: --repo requires a value (e.g. owner/repo)" >&2; exit 2
+                echo "$PROG: --repo requires engine, game, or owner/repo" >&2; exit 2
             fi
             repo_slug="$2"; shift 2 ;;
         --repo=*)
-            repo_slug="${1#--repo=}"; shift ;;
+            repo_slug="${1#--repo=}"
+            if [[ -z "$repo_slug" ]]; then
+                echo "$PROG: --repo requires engine, game, or owner/repo" >&2; exit 2
+            fi
+            shift ;;
         --no-review-check) review_check=0; shift ;;
         --dry-run) dry_run=1; shift ;;
         -h|--help)
@@ -157,6 +162,23 @@ for dep in gh fleet-transition; do
         echo "$PROG: $dep not found." >&2; exit 1
     fi
 done
+
+if [[ -n "$repo_slug" ]]; then
+    repo_resolve_status=0
+    repo_slug="$(PYTHONPATH="$runtime_dir${PYTHONPATH:+:$PYTHONPATH}" python3 -c '
+import sys
+import fleet_runtime
+
+try:
+    print(fleet_runtime.resolve_repo(sys.argv[1]))
+except ValueError as exc:
+    print(f"fleet-review-verdict: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+' "$repo_slug")" || repo_resolve_status=$?
+    if [[ "$repo_resolve_status" -ne 0 ]]; then
+        exit "$repo_resolve_status"
+    fi
+fi
 
 repo_args=()
 [[ -n "$repo_slug" ]] && repo_args=(--repo "$repo_slug")
