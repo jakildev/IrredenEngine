@@ -895,6 +895,27 @@ TEST(SaveSerializers, SavingAnOutOfRangeTextEnumAsserts) {
     IRAsset::MemoryBinaryWriter inRange;
     EXPECT_NO_THROW(IRWorld::SaveSerialize<C_TextStyle>::write(inRange, C_TextStyle{}));
 }
+
+TEST(SaveSerializers, SavingAnOutOfRangeVoxelTextStyleAsserts) {
+    const auto expectWriteThrows = [](int voxelSize, int depth) {
+        C_TextStyle style{};
+        style.voxel_.voxelSize_ = voxelSize;
+        style.voxel_.depth_ = depth;
+        IRAsset::MemoryBinaryWriter writer;
+        EXPECT_THROW(IRWorld::SaveSerialize<C_TextStyle>::write(writer, style), std::runtime_error)
+            << "voxel size " << voxelSize << " / depth " << depth;
+    };
+    expectWriteThrows(-1, 1);
+    expectWriteThrows(IRRender::kMaxVoxelTextSize + 1, 1);
+    expectWriteThrows(1, 0);
+    expectWriteThrows(1, IRRender::kMaxVoxelTextDepth + 1);
+
+    C_TextStyle atBounds{};
+    atBounds.voxel_.voxelSize_ = IRRender::kMaxVoxelTextSize;
+    atBounds.voxel_.depth_ = IRRender::kMaxVoxelTextDepth;
+    IRAsset::MemoryBinaryWriter inRange;
+    EXPECT_NO_THROW(IRWorld::SaveSerialize<C_TextStyle>::write(inRange, atBounds));
+}
 #endif
 
 TEST(SaveSerializers, TextStyleV1MigrationPreservesEveryFieldAndReadsLarge) {

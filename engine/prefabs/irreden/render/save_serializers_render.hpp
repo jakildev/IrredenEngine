@@ -312,6 +312,16 @@ template <> struct SaveSerialize<IRComponents::C_TextStyle> {
         w.writeI32(value.boxHeight_);
         w.writeI32(value.fontSize_);
         detail::writeTextSize(w, value.textSize_, "C_TextStyle text size");
+        IR_ASSERT(
+            value.voxel_.voxelSize_ >= 0 && value.voxel_.voxelSize_ <= IRRender::kMaxVoxelTextSize,
+            "C_TextStyle voxel size: saving {}, which read will reject",
+            value.voxel_.voxelSize_
+        );
+        IR_ASSERT(
+            value.voxel_.depth_ >= 1 && value.voxel_.depth_ <= IRRender::kMaxVoxelTextDepth,
+            "C_TextStyle voxel depth: saving {}, which read will reject",
+            value.voxel_.depth_
+        );
         w.writeI32(value.voxel_.voxelSize_);
         w.writeI32(value.voxel_.depth_);
         detail::writeEnumByte(

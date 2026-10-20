@@ -5097,7 +5097,6 @@ void setupCanvasLighting() {
     }
 }
 
-// The --voxel-text-sample scene (see g_voxelTextSample).
 void initVoxelTextSampleScene() {
     using IRRender::VoxelTextFacing;
     constexpr int kLeft = 8;
