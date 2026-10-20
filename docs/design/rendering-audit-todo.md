@@ -94,6 +94,12 @@ worst-case control, then measure conservative GPU construction and traversal
 before selecting the production representation. Analytic records, exhausted
 record pools and raster-only layers still need their own completeness treatment.
 See the [capacity experiment](sun-face-index-capacity.md#captured-finite-quad-hierarchy-experiment).
+The [GPU-built hierarchy diagnostic](../perf/sun-hierarchy-gpu/README.md) now
+passes captured-pool and synthetic controls in both Metal math modes, including
+reversed record order. Unsorted leaves preserve visibility but require many more
+candidate tests under oblique light. Next evaluate GPU spatial ordering, then
+measure construction and reference-free query dispatches before engine adoption.
+Production overflow remains unresolved; this is not a visual fix or an FPS gain.
 For the private-canvas overlap controls, separate actual GPU work and CPU
 submission from Metal's synchronous presentation and offscreen pacing before
 selecting an optimization. Compare the existing shadows-off/unlit pairs, then

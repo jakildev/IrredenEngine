@@ -267,9 +267,12 @@ class Events(Base):
         import shutil
         from unittest import mock
         now = 1790000000.0
-        for hours_ago in (72, 0):
-            fleet_github.record(["pr", "view", "1"], self.env(FLEET_ROLE="worker"),
-                                now=now - hours_ago * 3600)
+        # Newest first keeps both fixtures alive even when every write prunes.
+        with mock.patch.object(fleet_github.random, "randrange", return_value=0):
+            for hours_ago in (0, 72):
+                fleet_github.record(["pr", "view", "1"], self.env(FLEET_ROLE="worker"),
+                                    now=now - hours_ago * 3600)
+        self.assertEqual(len(list(self.events.iterdir())), 2)
         old = min(p for p in self.events.iterdir())
         real_iterdir = Path.iterdir
 
