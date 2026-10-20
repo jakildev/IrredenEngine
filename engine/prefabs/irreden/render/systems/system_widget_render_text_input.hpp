@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/trixel_text.hpp>
 
@@ -63,17 +64,12 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
             scratch_
         );
 
-        const int textX = guiPos.pos_.x + theme_.padding_ * 2;
-        if (!textInput.text_.empty()) {
-            IRPrefab::Widget::detail::queueLeftText(
-                textCmds_,
-                canvas_->size_,
-                textInput.text_,
-                IRMath::ivec2(textX, guiPos.pos_.y),
-                widget.size_.y,
-                IRPrefab::Widget::detail::stateText(theme_, widget)
-            );
-        }
+        IRPrefab::WidgetText::queue(
+            textCmds_,
+            IRPrefab::WidgetText::textInputText(widget, textInput, guiPos.pos_, theme_),
+            canvas_->size_,
+            IRPrefab::Widget::detail::stateText(theme_, widget)
+        );
 
         if (!state.focused_ || widget.disabled_)
             return;
@@ -86,6 +82,7 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
         if (!cursorVisible)
             return;
 
+        const int textX = guiPos.pos_.x + theme_.padding_ * 2;
         const int cursorChars =
             IRMath::clamp(textInput.cursorPos_, 0, static_cast<int>(textInput.text_.size()));
         const int cursorX = IRMath::min(

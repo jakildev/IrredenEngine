@@ -162,6 +162,7 @@ add_executable(IrredenEngineTest
   render/widget_hit_region_test.cpp
   render/widget_image_test.cpp
   render/widget_tab_focus_test.cpp
+  render/gui_layout_audit_test.cpp
   script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp
   script/lua_audio_monitor_test.cpp
@@ -185,6 +186,7 @@ add_executable(IrredenEngineTest
   script/lua_widget_hit_region_test.cpp
   script/lua_widget_values_test.cpp
   script/lua_widget_image_test.cpp
+  script/lua_widget_layout_test.cpp
   script/lua_voxel_seam_test.cpp
   script/lua_text_style_voxel_test.cpp
   script/lua_hierarchy_test.cpp

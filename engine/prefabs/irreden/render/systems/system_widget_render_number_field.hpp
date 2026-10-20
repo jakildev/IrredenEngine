@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/widget_theme.hpp>
 
 namespace IRSystem {
@@ -59,27 +60,24 @@ template <> struct System<WIDGET_RENDER_NUMBER_FIELD> {
         if (!field.editing_) {
             field.formatValue(formattedText_);
         }
-        const std::string &text = field.editing_ ? field.editBuffer_ : formattedText_;
-        const int cursorWidth = field.editing_ ? theme_.textInputCursorWidth_ : 0;
-        const int padding = theme_.padding_ * 2;
-        IRPrefab::GuiText::queueGuiText(
+        IRPrefab::WidgetText::queue(
             textCmds_,
-            text,
-            IRMath::ivec2(guiPos.pos_.x + padding, guiPos.pos_.y),
+            IRPrefab::WidgetText::numberFieldText(
+                widget,
+                field,
+                guiPos.pos_,
+                theme_,
+                IRPrefab::WidgetText::numberFieldShownText(field, formattedText_)
+            ),
             canvas_->size_,
-            IRPrefab::Widget::detail::stateText(theme_, widget),
-            IRPrefab::Widget::detail::kWidgetTextFontSize,
-            IRComponents::TextAlignH::RIGHT,
-            IRComponents::TextAlignV::CENTER,
-            IRMath::max(0, widget.size_.x - padding * 2 - cursorWidth),
-            widget.size_.y,
-            0,
-            field.textSize_
+            IRPrefab::Widget::detail::stateText(theme_, widget)
         );
 
         if (!field.editing_ || widget.disabled_) {
             return;
         }
+        const int cursorWidth = IRPrefab::WidgetText::numberFieldCursorWidth(field, theme_);
+        const int padding = theme_.padding_ * 2;
         const IRRender::GlyphMetrics metrics = IRRender::glyphMetrics(field.textSize_);
         const int cursorX = guiPos.pos_.x + widget.size_.x - padding - cursorWidth;
         const int cursorY = guiPos.pos_.y + (widget.size_.y - metrics.height_) / 2;

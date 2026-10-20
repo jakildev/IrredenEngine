@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/trixel_rect.hpp>
 
 namespace IRSystem {
@@ -76,16 +77,12 @@ template <> struct System<WIDGET_RENDER_RADIO> {
             );
         }
 
-        if (!radio.label_.empty()) {
-            IRPrefab::Widget::detail::queueLeftText(
-                textCmds_,
-                canvas_->size_,
-                radio.label_,
-                IRMath::ivec2(guiPos.pos_.x + box + theme_.padding_ * 2, guiPos.pos_.y),
-                widget.size_.y,
-                IRPrefab::Widget::detail::stateText(theme_, widget)
-            );
-        }
+        IRPrefab::WidgetText::queue(
+            textCmds_,
+            IRPrefab::WidgetText::radioCaption(widget, radio, guiPos.pos_, theme_),
+            canvas_->size_,
+            IRPrefab::Widget::detail::stateText(theme_, widget)
+        );
     }
 
     void endTick() {

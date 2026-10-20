@@ -402,7 +402,9 @@ IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_TextStyle, 3)
 IR_SAVE_OPT_IN(IRComponents::C_GuiPosition, 1)
 IR_SAVE_OPT_IN(IRComponents::C_GuiElement, 1)
 IR_SAVE_OPT_IN(IRComponents::C_GuiHoverState, 1)
-IR_SAVE_OPT_IN(IRComponents::C_Widget, 1)
+// Version 1 was the raw struct image, before the layout-audit cover flag. The
+// render serializer owns its direct migration and the current layout.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_Widget, 2)
 // Version 2 of each text-bearing widget appends the glyph-set size; a version 1
 // row reads back through its SaveMigration as LARGE.
 IR_SAVE_OPT_IN(IRComponents::C_WidgetButton, 2)

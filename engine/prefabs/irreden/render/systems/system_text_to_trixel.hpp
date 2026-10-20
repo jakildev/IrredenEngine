@@ -9,6 +9,7 @@
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/trixel_text.hpp>
 #include <irreden/render/gui_text_batch.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
@@ -39,8 +40,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
     Buffer *fontDataBuf_ = nullptr;
     Buffer *glyphCmdBuf_ = nullptr;
     std::vector<GlyphDrawCommand> drawCommands_;
-    IRRender::VoxelTextLayout voxelLayout_;
-    IRRender::VoxelTextScratch voxelScratch_;
+    IRPrefab::WidgetText::StyledTextScratch styledScratch_;
     bool fontUploaded_ = false;
 
     // Cached once per frame in beginTick; the gui canvas entity is permanent so
@@ -54,34 +54,13 @@ template <> struct System<TEXT_TO_TRIXEL> {
         const C_GuiElement &,
         const C_TextStyle &style
     ) {
-        if (IRRender::isVoxelTextStyle(style.voxel_)) {
-            IRRender::layoutVoxelText(text.text_, style.voxel_, voxelLayout_, voxelScratch_);
-            IRPrefab::GuiText::expandVoxelTextToCommands(
-                drawCommands_,
-                voxelLayout_,
-                guiPos.pos_,
-                canvasTextures_->size_,
-                style.faceColors_,
-                style.alignH_,
-                style.alignV_,
-                style.boxWidth_,
-                style.boxHeight_
-            );
-            return;
-        }
-        IRPrefab::GuiText::expandTextToCommands(
+        IRPrefab::WidgetText::queueStyledText(
             drawCommands_,
             text.text_,
             guiPos.pos_,
             canvasTextures_->size_,
-            style.color_,
-            style.wrapWidth_,
-            style.alignH_,
-            style.alignV_,
-            style.boxWidth_,
-            style.boxHeight_,
-            style.fontSize_,
-            style.textSize_
+            style,
+            styledScratch_
         );
     }
 

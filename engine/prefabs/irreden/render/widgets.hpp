@@ -89,8 +89,10 @@ inline IREntity::EntityId makePanel(
     bool drawBorder = true,
     int zOrder = 0
 ) {
+    IRComponents::C_Widget widget{IRComponents::WidgetKind::PANEL, size, zOrder};
+    widget.coversBelow_ = true;
     return IREntity::createEntity(
-        IRComponents::C_Widget{IRComponents::WidgetKind::PANEL, size, zOrder},
+        widget,
         IRComponents::C_GuiPosition{pos},
         IRComponents::C_GuiElement{},
         IRComponents::C_WidgetState{},
@@ -273,6 +275,16 @@ inline void setDisabled(IREntity::EntityId widget, bool disabled) {
     IREntity::getComponent<IRComponents::C_Widget>(widget).disabled_ = disabled;
 }
 
+// Declares (or withdraws) `widget` as a deliberate cover for the GUI layout
+// audit (`C_Widget::coversBelow_`). makePanel and makeDropdown declare theirs.
+inline void setCoversBelow(IREntity::EntityId widget, bool covers) {
+    IREntity::getComponent<IRComponents::C_Widget>(widget).coversBelow_ = covers;
+}
+
+inline bool coversBelow(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_Widget>(widget).coversBelow_;
+}
+
 inline void setButtonLabel(IREntity::EntityId widget, std::string label) {
     IREntity::getComponent<IRComponents::C_WidgetButton>(widget).label_ = std::move(label);
 }
@@ -319,8 +331,10 @@ inline IREntity::EntityId makeDropdown(
     ddData.selectedIndex_ = initialSelected;
     ddData.itemHeight_ = itemHeight;
     ddData.textSize_ = textSize;
+    IRComponents::C_Widget widget{IRComponents::WidgetKind::DROPDOWN, size};
+    widget.coversBelow_ = true;
     return IREntity::createEntity(
-        IRComponents::C_Widget{IRComponents::WidgetKind::DROPDOWN, size},
+        widget,
         IRComponents::C_GuiPosition{pos},
         IRComponents::C_GuiElement{},
         IRComponents::C_WidgetState{},

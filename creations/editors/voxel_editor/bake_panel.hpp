@@ -36,10 +36,10 @@ constexpr float kBakeParam1Default = 8.0f;
 constexpr float kBakeParam2Default = 3.0f;
 
 constexpr SliderGeometry kBakeParam1SliderGeometry{
-    IRMath::ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 100), IRMath::ivec2(112, 14)
+    IRMath::ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 100), IRMath::ivec2(111, 14)
 };
 constexpr SliderGeometry kBakeParam2SliderGeometry{
-    IRMath::ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 118), IRMath::ivec2(112, 14)
+    IRMath::ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 118), IRMath::ivec2(111, 14)
 };
 
 // The most a P1 / P2 value a scripted drag leaves on its track can differ from

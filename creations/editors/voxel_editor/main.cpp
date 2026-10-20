@@ -3905,7 +3905,13 @@ int main(int argc, char **argv) {
     );
     IREngine::args()
         .string("--module-session", "replay an authoring session registered by --module", "");
+    IREngine::args().flag(
+        IRPrefab::GuiAudit::kLayoutCheckFlag,
+        IRPrefab::GuiAudit::kLayoutCheckFlagHelp
+    );
     IREngine::init(argc, argv);
+    IRVoxelEditor::g_guiAssertLatch.layoutCheck_ =
+        IREngine::args().getFlag(IRPrefab::GuiAudit::kLayoutCheckFlag);
     const auto exitCleanly = [](int code) {
         IRWindow::closeWindow();
         IREngine::gameLoop();
@@ -6472,20 +6478,22 @@ void initEntities() {
         0,
         13
     );
+    // The checkbox is wide enough for its box, the gap and "visible"; the two
+    // narrow buttons take the rest of the row.
     IRVoxelEditor::g_layerVisCheckbox = IRPrefab::Widget::makeCheckbox(
         ivec2(kLayerPanelPos.x + 4, kLayerPanelPos.y + 74),
-        ivec2(60, 14),
+        ivec2(80, 14),
         "visible",
         true
     );
     IRVoxelEditor::g_layerAddBtn = IRPrefab::Widget::makeButton(
-        ivec2(kLayerPanelPos.x + 68, kLayerPanelPos.y + 74),
-        ivec2(20, 14),
+        ivec2(kLayerPanelPos.x + 86, kLayerPanelPos.y + 74),
+        ivec2(14, 14),
         "+"
     );
     IRVoxelEditor::g_layerDelBtn = IRPrefab::Widget::makeButton(
-        ivec2(kLayerPanelPos.x + 92, kLayerPanelPos.y + 74),
-        ivec2(20, 14),
+        ivec2(kLayerPanelPos.x + 102, kLayerPanelPos.y + 74),
+        ivec2(14, 14),
         "-"
     );
 
@@ -6576,7 +6584,7 @@ void initEntities() {
     );
     IRVoxelEditor::g_arrayCountSlider = IRPrefab::Widget::makeSlider(
         IRVoxelEditor::kArrayCountSliderGeometry.pos_,
-        ivec2(122, 14),
+        IRVoxelEditor::kArrayCountSliderGeometry.size_,
         "COUNT",
         2.0f,
         static_cast<float>(IRVoxelEditor::kArrayMaxCount),
@@ -6592,7 +6600,7 @@ void initEntities() {
     );
     IRVoxelEditor::g_arrayStepYSlider = IRPrefab::Widget::makeSlider(
         ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 86),
-        ivec2(122, 14),
+        ivec2(121, 14),
         "STEP Y",
         -12.0f,
         12.0f,
@@ -6600,7 +6608,7 @@ void initEntities() {
     );
     IRVoxelEditor::g_arrayStepZSlider = IRPrefab::Widget::makeSlider(
         ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 104),
-        ivec2(122, 14),
+        ivec2(121, 14),
         "STEP Z",
         -12.0f,
         12.0f,

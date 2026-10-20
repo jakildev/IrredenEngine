@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/trixel_rect.hpp>
 
 namespace IRSystem {
@@ -57,7 +58,6 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         if (widget.size_.x <= 0 || widget.size_.y <= 0)
             return;
 
-        const int itemH = dd.rowHeight();
         const int n = static_cast<int>(dd.items_.size());
 
         // Collapsed header.
@@ -79,22 +79,11 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             scratch_
         );
 
-        // Selected label (or placeholder dash when empty).
-        const std::string &headerText = (dd.selectedIndex_ >= 0 && dd.selectedIndex_ < n)
-                                            ? dd.items_[static_cast<std::size_t>(dd.selectedIndex_)]
-                                            : std::string("---");
-        IRPrefab::Widget::detail::queueLeftText(
+        IRPrefab::WidgetText::queue(
             textCmds_,
+            IRPrefab::WidgetText::dropdownHeader(widget, dd, guiPos.pos_, theme_),
             canvas_->size_,
-            headerText,
-            IRMath::ivec2(
-                guiPos.pos_.x + IRPrefab::Widget::detail::dropdownHorizontalInset(theme_.padding_),
-                guiPos.pos_.y
-            ),
-            widget.size_.y,
-            IRPrefab::Widget::detail::stateText(theme_, widget),
-            IRPrefab::Widget::detail::kWidgetTextFontSize,
-            dd.textSize_
+            IRPrefab::Widget::detail::stateText(theme_, widget)
         );
 
         // Dropdown chevron at the right edge: a "v" of lattice diamonds, two
@@ -135,11 +124,10 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         const IRComponents::C_WidgetState &state = *panel.state_;
         const int itemH = dd.rowHeight();
         const int n = static_cast<int>(dd.items_.size());
-        const IRMath::ivec2 panelPos(
-            panel.pos_.x,
-            panel.pos_.y + dd.itemTopOffsetY(widget.size_.y, 0)
-        );
-        const IRMath::ivec2 panelSize(widget.size_.x, dd.stripHeight());
+        const IRPrefab::GuiRect strip =
+            IRPrefab::WidgetText::dropdownStripRect(widget, dd, panel.pos_);
+        const IRMath::ivec2 panelPos = strip.pos_;
+        const IRMath::ivec2 panelSize = strip.size_;
         IRRender::fillRect(
             *canvas_,
             panelPos,
@@ -178,18 +166,11 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                     scratch_
                 );
             }
-            IRPrefab::Widget::detail::queueLeftText(
+            IRPrefab::WidgetText::queue(
                 textCmds_,
+                IRPrefab::WidgetText::dropdownStripRow(widget, dd, panel.pos_, theme_, i),
                 canvas_->size_,
-                dd.items_[static_cast<std::size_t>(i)],
-                IRMath::ivec2(
-                    rowPos.x + IRPrefab::Widget::detail::dropdownHorizontalInset(theme_.padding_),
-                    rowPos.y
-                ),
-                itemH,
-                IRPrefab::Widget::detail::stateText(theme_, widget),
-                IRPrefab::Widget::detail::kWidgetTextFontSize,
-                dd.textSize_
+                IRPrefab::Widget::detail::stateText(theme_, widget)
             );
         }
 

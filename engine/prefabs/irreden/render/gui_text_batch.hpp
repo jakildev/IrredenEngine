@@ -159,7 +159,7 @@ inline GuiRect textBounds(
 }
 
 inline int nextWordWidth(
-    const std::string &text,
+    std::string_view text,
     std::size_t i,
     int fontSize,
     IRRender::TextSize size = IRRender::TextSize::LARGE
@@ -199,7 +199,7 @@ inline IRMath::ivec2 alignedBlockOffset(
 // styleFlags. TEXT_TO_TRIXEL and the widget render systems share this path.
 inline void expandTextToCommands(
     std::vector<IRRender::GlyphDrawCommand> &commands,
-    const std::string &text,
+    std::string_view text,
     IRMath::ivec2 position,
     IRMath::ivec2 canvasSize,
     IRMath::Color color,
@@ -356,7 +356,7 @@ inline void expandVoxelTextToCommands(
 // (widget render systems, editor overlays). No-op for empty text.
 inline void queueGuiText(
     std::vector<IRRender::GlyphDrawCommand> &commands,
-    const std::string &text,
+    std::string_view text,
     IRMath::ivec2 pos,
     IRMath::ivec2 canvasSize,
     IRMath::Color color,

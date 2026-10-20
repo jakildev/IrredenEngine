@@ -4,11 +4,16 @@
 Parses the per-assertion result log emitted by IRPrefab::GuiTest::evaluate()
 when a creation is run with --auto-screenshot. Exits non-zero on any FAIL.
 
+With --gui-layout-check among the target args, also parses the GUI layout
+audit's lines and exits non-zero when a shot reports a finding (unless
+--allow-layout-findings) or never reports a summary.
+
 Usage:
     python3 scripts/gui-verify.py IRVoxelEditor
     python3 scripts/gui-verify.py IRVoxelEditor --warmup-frames 15 --timeout 60
     python3 scripts/gui-verify.py IRVoxelEditor --no-build
     python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session drag_probe
+    python3 scripts/gui-verify.py IRVoxelEditor -- --gui-layout-check
 """
 
 import verify_common
@@ -46,6 +51,11 @@ def main() -> None:
         help="Allow a successful run with no GUI-ASSERT lines",
     )
     parser.add_argument(
+        "--allow-layout-findings",
+        action="store_true",
+        help="With -- --gui-layout-check, report layout findings without failing the run",
+    )
+    parser.add_argument(
         "target_args",
         nargs="*",
         metavar="-- TARGET_ARG ...",
@@ -74,10 +84,15 @@ def main() -> None:
     # which this harness treats as a failure.
     assertions, hung, failures, missing_shots = verify_common.report_gui_asserts(
         output, "[gui-verify] ", timeout=args.timeout)
+    layout_failed = (
+        verify_common.GUI_LAYOUT_CHECK_FLAG in args.target_args
+        and verify_common.report_gui_layout(
+            output, "[gui-verify] ", allow_findings=args.allow_layout_findings)
+    )
 
     if not assertions:
         msg = "[gui-verify] no GUI-ASSERT lines found in output"
-        if run_rc != 0 or hung or missing_shots:
+        if run_rc != 0 or hung or missing_shots or layout_failed:
             print(msg)
             raise SystemExit(1)
         if not args.allow_no_assertions:
@@ -86,7 +101,7 @@ def main() -> None:
         print(msg + " (allowed by --allow-no-assertions)")
         return
 
-    if failures or missing_shots or run_rc != 0 or hung:
+    if failures or missing_shots or run_rc != 0 or hung or layout_failed:
         raise SystemExit(1)
 
 

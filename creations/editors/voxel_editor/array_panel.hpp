@@ -9,13 +9,13 @@ constexpr IRMath::ivec2 kArrayPanelPos{682, 20};
 constexpr IRMath::ivec2 kArrayPanelSize{130, 174};
 constexpr int kArrayMaxCount = 12;
 constexpr SliderGeometry kArrayCountSliderGeometry{
-    IRMath::ivec2(kArrayPanelPos.x + 4, kArrayPanelPos.y + 50), IRMath::ivec2(122, 14)
+    IRMath::ivec2(kArrayPanelPos.x + 4, kArrayPanelPos.y + 50), IRMath::ivec2(121, 14)
 };
 constexpr float kArrayRadiusSliderMin = -12.0f;
 constexpr float kArrayRadiusSliderMax = 12.0f;
 constexpr int kArrayDefaultRadius = 4;
 constexpr SliderGeometry kArrayRadiusSliderGeometry{
-    IRMath::ivec2(kArrayPanelPos.x + 4, kArrayPanelPos.y + 68), IRMath::ivec2(122, 14)
+    IRMath::ivec2(kArrayPanelPos.x + 4, kArrayPanelPos.y + 68), IRMath::ivec2(121, 14)
 };
 static_assert(
     static_cast<float>(kArrayRadiusSliderGeometry.size_.x) /
@@ -26,11 +26,13 @@ static_assert(
 // COPY YAW: the whole degrees each radial copy is turned about the array axis
 // on top of the copy before it. A drag lands on a whole trixel and the track
 // is 120 trixels across 360 degrees, so the reachable turns are the multiples
-// of 3.
+// of 3. With an even width the right-aligned value readout passes the track's
+// end by a trixel whenever text parity alignment shifts it right, as it does
+// from x + 4 on the editor's GUI canvas; from x + 5 it does not.
 constexpr float kArrayYawSliderMin = -180.0f;
 constexpr float kArrayYawSliderMax = 180.0f;
 constexpr SliderGeometry kArrayYawSliderGeometry{
-    IRMath::ivec2(kArrayPanelPos.x + 4, kArrayPanelPos.y + 122), IRMath::ivec2(120, 14)
+    IRMath::ivec2(kArrayPanelPos.x + 5, kArrayPanelPos.y + 122), IRMath::ivec2(120, 14)
 };
 static_assert(
     (kArrayYawSliderMax - kArrayYawSliderMin) /

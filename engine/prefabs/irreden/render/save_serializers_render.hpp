@@ -117,6 +117,16 @@ struct TextStyleV1 {
 
 static_assert(sizeof(TextStyleV1) == 28);
 
+// The version-1 raw image: three padding bytes follow `disabled_`.
+struct WidgetV1 {
+    IRComponents::WidgetKind kind_;
+    IRMath::ivec2 size_;
+    bool disabled_;
+    int zOrder_;
+};
+
+static_assert(sizeof(WidgetV1) == 20);
+
 // An enum whose enumerators run 0..`last` is one byte on disk. Its `int`
 // underlying type admits values no enumerator names, so `read` rejects them:
 // the text draws index the glyph sets and alignment offsets by these values.
@@ -739,13 +749,73 @@ template <> struct SaveSerialize<IRComponents::C_TriangleCanvasBackground> {
 };
 
 // ---------------------------------------------------------------------------
-// Widget family. Every widget entity carries C_Widget + C_WidgetState (both
-// trivially copyable, so they take SaveSerialize's fast path) plus one
-// per-kind data component. Only the per-kind components that own a string or
-// a vector of strings need a specialization here; C_WidgetColorSwatch and
-// C_WidgetScroll are plain data and are covered by the fast path. The five
-// text-bearing kinds read through `detail::readWithTextSize`.
+// Widget family. Every widget entity carries C_Widget + C_WidgetState plus one
+// per-kind data component. C_WidgetState is trivially copyable and takes
+// SaveSerialize's fast path; C_Widget is hand-written below. Of the per-kind
+// components, only those that own a string or a vector of strings need a
+// specialization here; C_WidgetColorSwatch and C_WidgetScroll are plain data
+// and are covered by the fast path. The five text-bearing kinds read through
+// `detail::readWithTextSize`.
 // ---------------------------------------------------------------------------
+
+template <> struct SaveSerialize<IRComponents::C_Widget> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_Widget &value) {
+        detail::writeEnumByte(w, value.kind_, IRComponents::WidgetKind::IMAGE, "C_Widget kind");
+        IRMath::BinaryIO::writeIVec2(w, value.size_);
+        w.writeU8(value.disabled_ ? 1 : 0);
+        w.writeU8(value.coversBelow_ ? 1 : 0);
+        w.writeI32(value.zOrder_);
+    }
+
+    static IRAsset::Result<IRComponents::C_Widget> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_Widget>;
+        IRComponents::C_Widget value{};
+        IR_SAVE_READ_STATUS(
+            detail::readEnumByte(r, IRComponents::WidgetKind::IMAGE, "C_Widget kind", value.kind_)
+        );
+        IR_SAVE_READ(value.size_, IRMath::BinaryIO::readIVec2(r));
+        IR_SAVE_READ_BOOL(value.disabled_, r.readU8());
+        IR_SAVE_READ_BOOL(value.coversBelow_, r.readU8());
+        IR_SAVE_READ(value.zOrder_, r.readI32());
+        return Res::success(value);
+    }
+};
+
+// A version-1 row predates the cover flag; it takes the value its builder
+// sets, so a loaded panel or dropdown audits like a freshly built one.
+template <> struct SaveMigration<IRComponents::C_Widget> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_Widget>>>
+    migrators() {
+        return {
+            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_Widget> {
+                 using Res = IRAsset::Result<IRComponents::C_Widget>;
+                 detail::WidgetV1 old{};
+                 IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
+                 if (!status.ok()) {
+                     return Res::error(status.code_, std::move(status.message_));
+                 }
+                 // The current reader's kind check, so a migrated row saves
+                 // back without tripping the writer's assert.
+                 if (!detail::enumInRange(old.kind_, IRComponents::WidgetKind::IMAGE)) {
+                     return Res::error(
+                         IRAsset::BinaryIOError::UnknownTag,
+                         "C_Widget: version 1 kind " + std::to_string(static_cast<int>(old.kind_)) +
+                             " is outside [0, " +
+                             std::to_string(static_cast<int>(IRComponents::WidgetKind::IMAGE)) + "]"
+                     );
+                 }
+                 IRComponents::C_Widget value{};
+                 value.kind_ = old.kind_;
+                 value.size_ = old.size_;
+                 value.disabled_ = old.disabled_;
+                 value.coversBelow_ = old.kind_ == IRComponents::WidgetKind::PANEL ||
+                                      old.kind_ == IRComponents::WidgetKind::DROPDOWN;
+                 value.zOrder_ = old.zOrder_;
+                 return Res::success(value);
+             }},
+        };
+    }
+};
 
 template <> struct SaveSerialize<IRComponents::C_WidgetPanel> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetPanel &value) {

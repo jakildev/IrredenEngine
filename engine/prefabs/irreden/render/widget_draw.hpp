@@ -77,64 +77,6 @@ inline IRMath::Color stateText(const WidgetTheme &theme, const IRComponents::C_W
     return widget.disabled_ ? theme.textDisabled_ : theme.textIdle_;
 }
 
-// Queue `text` centered horizontally and vertically inside `[pos, pos +
-// size)` onto `cmds`. Appends glyph commands rather than rasterizing
-// immediately; the owning render system dispatches `cmds` once in its
-// endTick. `canvasSize` is the GUI canvas extent (for parity alignment).
-inline void queueCenteredText(
-    std::vector<IRRender::GlyphDrawCommand> &cmds,
-    IRMath::ivec2 canvasSize,
-    const std::string &text,
-    IRMath::ivec2 pos,
-    IRMath::ivec2 size,
-    IRMath::Color color,
-    int fontSize = kWidgetTextFontSize,
-    IRRender::TextSize textSize = IRRender::TextSize::LARGE
-) {
-    IRPrefab::GuiText::queueGuiText(
-        cmds,
-        text,
-        pos,
-        canvasSize,
-        color,
-        fontSize,
-        IRComponents::TextAlignH::CENTER,
-        IRComponents::TextAlignV::CENTER,
-        size.x,
-        size.y,
-        0,
-        textSize
-    );
-}
-
-// Queue `text` left-aligned, vertically centered within `height`, onto
-// `cmds`. See queueCenteredText for the deferred-dispatch contract.
-inline void queueLeftText(
-    std::vector<IRRender::GlyphDrawCommand> &cmds,
-    IRMath::ivec2 canvasSize,
-    const std::string &text,
-    IRMath::ivec2 pos,
-    int height,
-    IRMath::Color color,
-    int fontSize = kWidgetTextFontSize,
-    IRRender::TextSize textSize = IRRender::TextSize::LARGE
-) {
-    IRPrefab::GuiText::queueGuiText(
-        cmds,
-        text,
-        pos,
-        canvasSize,
-        color,
-        fontSize,
-        IRComponents::TextAlignH::LEFT,
-        IRComponents::TextAlignV::CENTER,
-        0,
-        height,
-        0,
-        textSize
-    );
-}
-
 } // namespace IRPrefab::Widget::detail
 
 #endif /* WIDGET_DRAW_H */

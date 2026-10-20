@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/trixel_rect.hpp>
 
 namespace IRSystem {
@@ -52,15 +53,11 @@ template <> struct System<WIDGET_RENDER_BUTTON> {
             theme_.borderThickness_,
             scratch_
         );
-        IRPrefab::Widget::detail::queueCenteredText(
+        IRPrefab::WidgetText::queue(
             textCmds_,
+            IRPrefab::WidgetText::buttonCaption(widget, button, guiPos.pos_),
             canvas_->size_,
-            button.label_,
-            guiPos.pos_,
-            widget.size_,
-            IRPrefab::Widget::detail::stateText(theme_, widget),
-            IRPrefab::Widget::detail::kWidgetTextFontSize,
-            button.textSize_
+            IRPrefab::Widget::detail::stateText(theme_, widget)
         );
     }
 
