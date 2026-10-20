@@ -39,6 +39,8 @@ template <> struct System<TEXT_TO_TRIXEL> {
     Buffer *fontDataBuf_ = nullptr;
     Buffer *glyphCmdBuf_ = nullptr;
     std::vector<GlyphDrawCommand> drawCommands_;
+    IRRender::VoxelTextLayout voxelLayout_;
+    IRRender::VoxelTextScratch voxelScratch_;
     bool fontUploaded_ = false;
 
     // Cached once per frame in beginTick; the gui canvas entity is permanent so
@@ -52,6 +54,21 @@ template <> struct System<TEXT_TO_TRIXEL> {
         const C_GuiElement &,
         const C_TextStyle &style
     ) {
+        if (IRRender::isVoxelTextStyle(style.voxel_)) {
+            IRRender::layoutVoxelText(text.text_, style.voxel_, voxelLayout_, voxelScratch_);
+            IRPrefab::GuiText::expandVoxelTextToCommands(
+                drawCommands_,
+                voxelLayout_,
+                guiPos.pos_,
+                canvasTextures_->size_,
+                style.faceColors_,
+                style.alignH_,
+                style.alignV_,
+                style.boxWidth_,
+                style.boxHeight_
+            );
+            return;
+        }
         IRPrefab::GuiText::expandTextToCommands(
             drawCommands_,
             text.text_,

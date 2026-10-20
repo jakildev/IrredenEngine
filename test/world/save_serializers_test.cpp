@@ -771,8 +771,90 @@ TEST(SaveSerializers, TextStyleRoundTripsEveryFieldWithTheSmallSet) {
     expectConsumesAllBytes(style);
     expectReserializesIdentically(style);
     expectTruncationIsRecoverable(style);
-    expectOutOfRangeTextSizeIsRejected(style, 2);
-    expectOutOfRangeTextSizeIsRejected(style, 0xFF);
+    // Color, wrap width, two alignment bytes, box width and height, and font
+    // size precede the text-size byte; the voxel style follows it.
+    constexpr std::size_t kTextSizeOffset = 22;
+    for (const std::uint8_t raw : {std::uint8_t{2}, std::uint8_t{0xFF}}) {
+        std::vector<std::uint8_t> bytes = serialize(style);
+        ASSERT_EQ(bytes[kTextSizeOffset], 1u);
+        bytes[kTextSizeOffset] = raw;
+        const IRAsset::Result<C_TextStyle> restored = deserialize<C_TextStyle>(bytes);
+        ASSERT_FALSE(restored.ok()) << "text size " << int{raw} << " read back as valid";
+        EXPECT_NE(restored.status_.message_.find("text size"), std::string::npos)
+            << restored.status_.message_;
+    }
+}
+
+TEST(SaveSerializers, TextStyleRoundTripsTheVoxelStyle) {
+    C_TextStyle style = C_TextStyle::voxel(
+        IRRender::VoxelFaceColors{
+            IRMath::Color{1, 2, 3, 4},
+            IRMath::Color{5, 6, 7, 8},
+            IRMath::Color{9, 10, 11, 12},
+        },
+        3,
+        IRRender::VoxelTextFacing::X_FACE,
+        2
+    );
+    style.alignH_ = TextAlignH::CENTER;
+    const C_TextStyle restored = roundTrip(style);
+    EXPECT_EQ(restored.voxel_.voxelSize_, 3);
+    EXPECT_EQ(restored.voxel_.depth_, 2);
+    EXPECT_EQ(restored.voxel_.facing_, IRRender::VoxelTextFacing::X_FACE);
+    EXPECT_EQ(restored.faceColors_.x_.toPackedRGBA(), style.faceColors_.x_.toPackedRGBA());
+    EXPECT_EQ(restored.faceColors_.y_.toPackedRGBA(), style.faceColors_.y_.toPackedRGBA());
+    EXPECT_EQ(restored.faceColors_.z_.toPackedRGBA(), style.faceColors_.z_.toPackedRGBA());
+    EXPECT_EQ(restored.alignH_, TextAlignH::CENTER);
+    EXPECT_EQ(roundTrip(C_TextStyle{}).voxel_.voxelSize_, 0);
+    expectConsumesAllBytes(style);
+    expectReserializesIdentically(style);
+    expectTruncationIsRecoverable(style);
+}
+
+TEST(SaveSerializers, TextStyleRejectsAnOutOfRangeVoxelStyle) {
+    const C_TextStyle style = C_TextStyle::voxel(IRRender::VoxelFaceColors{}, 2);
+    // The text-size byte ends the flat fields at 22; voxel size (4 bytes),
+    // depth (4) and the facing byte follow.
+    struct Corruption {
+        std::size_t offset_;
+        std::uint8_t raw_;
+        const char *message_;
+    };
+    for (const Corruption c : {
+             Corruption{23, 17, "voxel size"},
+             Corruption{27, 0, "voxel size"},
+             Corruption{31, 3, "voxel facing"},
+         }) {
+        std::vector<std::uint8_t> bytes = serialize(style);
+        bytes[c.offset_] = c.raw_;
+        const IRAsset::Result<C_TextStyle> restored = deserialize<C_TextStyle>(bytes);
+        ASSERT_FALSE(restored.ok()) << "byte " << c.offset_ << " = " << int{c.raw_};
+        EXPECT_NE(restored.status_.message_.find(c.message_), std::string::npos)
+            << restored.status_.message_;
+    }
+}
+
+TEST(SaveSerializers, TextStyleVersionTwoReadsAsFlatText) {
+    const C_TextStyle style{
+        IRMath::Color{10, 20, 30, 40},
+        -1,
+        TextAlignH::RIGHT,
+        TextAlignV::BOTTOM,
+        96,
+        48,
+        3,
+        IRRender::TextSize::SMALL,
+    };
+    std::vector<std::uint8_t> bytes = serialize(style);
+    // Version 2 is the current record without the voxel style.
+    constexpr std::size_t kVoxelStyleBytes = 4 + 4 + 1 + 3 * 4;
+    bytes.resize(bytes.size() - kVoxelStyleBytes);
+    const IRAsset::Result<C_TextStyle> restored = migrate<C_TextStyle>(2, bytes);
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_EQ(restored.value_.color_.blue_, 30);
+    EXPECT_EQ(restored.value_.fontSize_, 3);
+    EXPECT_EQ(restored.value_.textSize_, IRRender::TextSize::SMALL);
+    EXPECT_EQ(restored.value_.voxel_.voxelSize_, 0);
 }
 
 TEST(SaveSerializers, TextStyleRejectsAnOutOfRangeAlignment) {
@@ -828,7 +910,7 @@ TEST(SaveSerializers, TextStyleV1MigrationPreservesEveryFieldAndReadsLarge) {
     IRAsset::MemoryBinaryWriter writer;
     writer.writeBytes(&old, sizeof(old));
 
-    ASSERT_EQ(IRWorld::SaveMigration<C_TextStyle>::migrators().size(), 1u);
+    ASSERT_EQ(IRWorld::SaveMigration<C_TextStyle>::migrators().size(), 2u);
     const IRAsset::Result<C_TextStyle> restored = migrate<C_TextStyle>(1u, writer.buffer());
     ASSERT_TRUE(restored.ok()) << restored.status_.message_;
     EXPECT_EQ(restored.value_.color_.red_, 1);
@@ -840,7 +922,7 @@ TEST(SaveSerializers, TextStyleV1MigrationPreservesEveryFieldAndReadsLarge) {
     EXPECT_EQ(restored.value_.boxHeight_, 30);
     EXPECT_EQ(restored.value_.fontSize_, 1);
     EXPECT_EQ(restored.value_.textSize_, IRRender::TextSize::LARGE);
-    EXPECT_EQ(IRWorld::saveVersion<C_TextStyle>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_TextStyle>(), 3u);
 }
 
 TEST(SaveSerializers, TextStyleV1MigrationRejectsAnOutOfRangeAlignment) {

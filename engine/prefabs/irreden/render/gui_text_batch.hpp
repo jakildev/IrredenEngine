@@ -30,6 +30,7 @@
 
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/trixel_text.hpp>
+#include <irreden/render/voxel_text.hpp>
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/buffer.hpp>
@@ -54,10 +55,14 @@ constexpr int kMaxGlyphCommands = 8192;
 constexpr int kFontTableEntries = 128;
 constexpr int kFontRowsPerGlyph = IRRender::kGlyphHeight;
 constexpr int kSmallFontRowsPerGlyph = IRRender::kSmallGlyphHeight;
-// The LARGE block (kFontTableEntries glyphs of kFontRowsPerGlyph rows), then
-// the SMALL block (kFontTableEntries glyphs of kSmallFontRowsPerGlyph rows).
+// The LARGE block (kFontTableEntries glyphs of kFontRowsPerGlyph rows), the
+// SMALL block (kFontTableEntries glyphs of kSmallFontRowsPerGlyph rows), then
+// one solid cell (kFontRowsPerGlyph all-lit rows) that draws any block up to
+// the shader's cell size: voxel text paints its face runs with it.
 constexpr int kSmallFontBlockStart = kFontTableEntries * kFontRowsPerGlyph;
-constexpr int kFontBufferSize = kSmallFontBlockStart + kFontTableEntries * kSmallFontRowsPerGlyph;
+constexpr int kSolidCellStart = kSmallFontBlockStart + kFontTableEntries * kSmallFontRowsPerGlyph;
+constexpr int kFontBufferSize = kSolidCellStart + kFontRowsPerGlyph;
+constexpr std::uint32_t kSolidCellRow = 0x7FFFu;
 constexpr IRMath::ivec2 kGuiOverlayPadding = IRMath::ivec2(24, 24);
 
 // c_text_to_trixel runs one thread per texel of the large cell, and the
@@ -68,6 +73,11 @@ static_assert(
     "every glyph cell must fit the text shader's (kGlyphWidth, kGlyphHeight) workgroup"
 );
 static_assert(IRRender::kGlyphWidth <= 15 && IRRender::kGlyphHeight <= 15);
+static_assert(
+    IRRender::kVoxelTextMaxRun.x == IRRender::kGlyphWidth &&
+        IRRender::kVoxelTextMaxRun.y == IRRender::kGlyphHeight,
+    "a voxel text run must fill at most one text-shader glyph cell"
+);
 
 // The font-buffer row where `c`'s `size` glyph starts.
 inline std::uint32_t firstFontRow(IRRender::TextSize size, char c) {
@@ -91,6 +101,9 @@ inline std::vector<std::uint32_t> buildFontBuffer() {
                 buf[first + row] = static_cast<std::uint32_t>(rows[row]);
             }
         }
+    }
+    for (int row = 0; row < kFontRowsPerGlyph; ++row) {
+        buf[kSolidCellStart + row] = kSolidCellRow;
     }
     return buf;
 }
@@ -151,6 +164,30 @@ inline int nextWordWidth(
     IRRender::TextSize size = IRRender::TextSize::LARGE
 ) {
     return IRRender::nextWordWidth(text, i, size) * fontSize;
+}
+
+// Horizontal / vertical offset that places a `width` x `height` block in a
+// `refW` x `refH` box, rounded down to even so the block keeps the lattice
+// parity of its origin.
+inline IRMath::ivec2 alignedBlockOffset(
+    int width,
+    int height,
+    int refW,
+    int refH,
+    IRComponents::TextAlignH alignH,
+    IRComponents::TextAlignV alignV
+) {
+    int offsetX = 0;
+    if (alignH == IRComponents::TextAlignH::CENTER)
+        offsetX = (refW - width) / 2;
+    else if (alignH == IRComponents::TextAlignH::RIGHT)
+        offsetX = refW - width;
+    int offsetY = 0;
+    if (alignV == IRComponents::TextAlignV::CENTER)
+        offsetY = (refH - height) / 2;
+    else if (alignV == IRComponents::TextAlignV::BOTTOM)
+        offsetY = refH - height;
+    return IRMath::ivec2((offsetX / 2) * 2, (offsetY / 2) * 2);
 }
 
 // CPU-side layout: appends one GlyphDrawCommand per visible glyph of `text`
@@ -253,21 +290,11 @@ inline void expandTextToCommands(
     const int refH = (boxHeight > 0) ? boxHeight : canvasSize.y;
     const int totalTextH = static_cast<int>(lines.size()) * stepY - spacY;
 
-    int offsetY = 0;
-    if (alignV == IRComponents::TextAlignV::CENTER)
-        offsetY = (refH - totalTextH) / 2;
-    else if (alignV == IRComponents::TextAlignV::BOTTOM)
-        offsetY = refH - totalTextH;
-
     for (auto &line : lines) {
-        int offsetX = 0;
-        if (alignH == IRComponents::TextAlignH::CENTER)
-            offsetX = (refW - line.width_) / 2;
-        else if (alignH == IRComponents::TextAlignH::RIGHT)
-            offsetX = refW - line.width_;
-
-        int roundedX = (offsetX / 2) * 2;
-        int roundedY = (offsetY / 2) * 2;
+        const IRMath::ivec2 offset =
+            alignedBlockOffset(line.width_, totalTextH, refW, refH, alignH, alignV);
+        const int roundedX = offset.x;
+        const int roundedY = offset.y;
 
         for (std::size_t j = 0; j < line.count_; ++j) {
             auto &cmd = commands[line.firstIndex_ + j];
@@ -276,6 +303,51 @@ inline void expandTextToCommands(
             cmd.positionPacked = static_cast<std::uint32_t>(cx & 0xFFFF) |
                                  (static_cast<std::uint32_t>(cy & 0xFFFF) << 16);
         }
+    }
+}
+
+// Appends one solid-cell command per run of `layout` (layoutVoxelText),
+// coloured by the run's face. Each line aligns on its own in the
+// boxWidth x boxHeight box (canvas extent when 0), as flat text does.
+inline void expandVoxelTextToCommands(
+    std::vector<IRRender::GlyphDrawCommand> &commands,
+    const IRRender::VoxelTextLayout &layout,
+    IRMath::ivec2 position,
+    IRMath::ivec2 canvasSize,
+    const IRRender::VoxelFaceColors &colors,
+    IRComponents::TextAlignH alignH = IRComponents::TextAlignH::LEFT,
+    IRComponents::TextAlignV alignV = IRComponents::TextAlignV::TOP,
+    int boxWidth = 0,
+    int boxHeight = 0
+) {
+    const IRMath::ivec2 origin = IRRender::parityAlignedPosition(position, canvasSize);
+    const int refW = (boxWidth > 0) ? boxWidth : canvasSize.x;
+    const int refH = (boxHeight > 0) ? boxHeight : canvasSize.y;
+    const std::uint32_t packedByFace[3] = {
+        colors.forFace(IRMath::kXFace).toPackedRGBA(),
+        colors.forFace(IRMath::kYFace).toPackedRGBA(),
+        colors.forFace(IRMath::kZFace).toPackedRGBA(),
+    };
+    for (const IRRender::VoxelTextRun &run : layout.runs_) {
+        const IRMath::ivec2 offset = alignedBlockOffset(
+            layout.lineWidths_[static_cast<std::size_t>(run.line_)],
+            layout.size_.y,
+            refW,
+            refH,
+            alignH,
+            alignV
+        );
+        const IRMath::ivec2 pos = origin + offset + run.pos_;
+        IRRender::GlyphDrawCommand cmd;
+        cmd.positionPacked = static_cast<std::uint32_t>(pos.x & 0xFFFF) |
+                             (static_cast<std::uint32_t>(pos.y & 0xFFFF) << 16);
+        cmd.firstFontRow = static_cast<std::uint32_t>(kSolidCellStart);
+        cmd.colorPacked = packedByFace[run.face_];
+        cmd.distance = static_cast<std::uint32_t>(IRRender::kGuiTextDistance);
+        cmd.styleFlags =
+            1u | (static_cast<std::uint32_t>(run.size_.x) << IRRender::kGlyphStyleCellWidthShift) |
+            (static_cast<std::uint32_t>(run.size_.y) << IRRender::kGlyphStyleCellHeightShift);
+        commands.push_back(cmd);
     }
 }
 

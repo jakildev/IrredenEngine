@@ -22,7 +22,6 @@
 #include "glitch_subject_fixture.hpp"
 #include "lod_scene.hpp"
 #include "sdf_voxel_scene.hpp"
-#include "voxel_text_sample.hpp"
 
 #include <algorithm>
 #include <array>
@@ -590,13 +589,13 @@ constexpr IRVideo::AutoScreenshotShot kTextSizeSampleShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "text_size_sample"},
 };
 
-// --voxel-text-sample: the IRShapeDebug::VoxelTextSample scene, built and
-// captured at --voxel-text-yaw degrees; the one shot is
-// voxel_text_yaw<degrees>.
+// --voxel-text-sample: an empty world under isometric voxel GUI text — each
+// facing, explicit and shaded face colours, two voxel sizes and a centred
+// line.
 bool g_voxelTextSample = false;
-float g_voxelTextYawDegrees = 0.0f;
-std::array<char, 32> g_voxelTextShotLabel{};
-IRVideo::AutoScreenshotShot g_voxelTextShot{};
+constexpr IRVideo::AutoScreenshotShot kVoxelTextSampleShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "voxel_text_sample"},
+};
 
 // --load-prefab <path>: the scene is the prefab manifest at <path> (exe-relative)
 // spawned at the origin, so each shot shows the parts its LOD bands select at
@@ -1717,20 +1716,15 @@ void registerCliArgs() {
         "Replace the scene + capture table with both GUI glyph sets side by side: the character "
         "sheet and one of each text widget per size, over an empty world"
     );
+    args.flag(
+        "--voxel-text-sample",
+        "Replace the scene + capture table with isometric voxel GUI text in each facing and "
+        "face-colour style, over an empty world"
+    );
     args.numbers(
         "--framebuffer-size",
         "Resize the logical window to produce the requested framebuffer width and height",
         2
-    );
-    args.flag(
-        "--voxel-text-sample",
-        "Replace the scene + capture table with three voxel titles on a lit floor (default path, "
-        "world -X, a bent polyline), built facing --voxel-text-yaw"
-    );
-    args.number(
-        "--voxel-text-yaw",
-        "Camera Z-yaw in degrees the --voxel-text-sample titles are built facing and captured at",
-        0.0f
     );
     args.flag(
         "--viewport-lod-swap",
@@ -1787,6 +1781,7 @@ void readCliArgs() {
     g_lodScene = args.getFlag("--lod-scene");
     g_viewportPortrait = args.getFlag("--viewport-portrait");
     g_textSizeSample = args.getFlag("--text-size-sample");
+    g_voxelTextSample = args.getFlag("--voxel-text-sample");
     if (args.wasProvided("--framebuffer-size")) {
         const std::vector<float> &size = args.getFloats("--framebuffer-size");
         if (size[0] > 0.0f && size[1] > 0.0f && IRMath::floor(size[0]) == size[0] &&
@@ -1794,8 +1789,6 @@ void readCliArgs() {
             g_requestedFramebufferSize = ivec2(size[0], size[1]);
         }
     }
-    g_voxelTextSample = args.getFlag("--voxel-text-sample");
-    g_voxelTextYawDegrees = args.getFloat("--voxel-text-yaw");
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
     g_continuousZoomGuiTest = args.getFlag("--continuous-zoom-gui-test");
@@ -4400,17 +4393,7 @@ void initSystems() {
         } else if (g_textSizeSample) {
             IRVideo::setAutoScreenshotShots(cfg, kTextSizeSampleShots);
         } else if (g_voxelTextSample) {
-            std::snprintf(
-                g_voxelTextShotLabel.data(),
-                g_voxelTextShotLabel.size(),
-                "voxel_text_yaw%d",
-                static_cast<int>(g_voxelTextYawDegrees)
-            );
-            g_voxelTextShot.zoom_ = IRShapeDebug::VoxelTextSample::kZoom;
-            g_voxelTextShot.yawRadians_ = g_voxelTextYawDegrees * (IRMath::kPi / 180.0f);
-            g_voxelTextShot.label_ = g_voxelTextShotLabel.data();
-            cfg.shots_ = &g_voxelTextShot;
-            cfg.numShots_ = 1;
+            IRVideo::setAutoScreenshotShots(cfg, kVoxelTextSampleShots);
         } else if (!g_loadPrefabPath.empty()) {
             buildLoadPrefabShots();
             cfg.shots_ = g_loadPrefabShots.data();
@@ -5114,6 +5097,45 @@ void setupCanvasLighting() {
     }
 }
 
+// The --voxel-text-sample scene (see g_voxelTextSample).
+void initVoxelTextSampleScene() {
+    using IRRender::VoxelTextFacing;
+    constexpr int kLeft = 8;
+    constexpr int kGap = 8;
+    const auto line = [](const char *text, ivec2 pos, const C_TextStyle &style) {
+        IREntity::createEntity(C_TextSegment{text}, C_GuiPosition{pos}, C_GuiElement{}, style);
+        return pos.y + IRRender::voxelGlyphBoxSize(style.voxel_).y + kGap;
+    };
+    int y = kLeft;
+    y = line(
+        "IRREDEN",
+        ivec2(kLeft, y),
+        C_TextStyle::voxel(IRRender::shadedVoxelFaceColors(Color{235, 200, 90, 255}), 2)
+    );
+    // Explicit faces: X red, Y green, Z blue, so each face's role reads off
+    // the capture.
+    const IRRender::VoxelFaceColors rgb{
+        Color{220, 60, 60, 255},
+        Color{60, 200, 80, 255},
+        Color{70, 110, 235, 255},
+    };
+    line("XFACE", ivec2(kLeft, y), C_TextStyle::voxel(rgb, 2, VoxelTextFacing::X_FACE, 2));
+    y = line(
+        "YFACE",
+        ivec2(kLeft + 128, y),
+        C_TextStyle::voxel(rgb, 2, VoxelTextFacing::Y_FACE, 2)
+    );
+    y = line(
+        "GUI TEXT 0123",
+        ivec2(kLeft, y),
+        C_TextStyle::voxel(IRRender::shadedVoxelFaceColors(Color{110, 200, 235, 255}), 1)
+    );
+    C_TextStyle centred = C_TextStyle::voxel(rgb, 1, VoxelTextFacing::CAMERA, 2);
+    centred.alignH_ = TextAlignH::CENTER;
+    centred.boxWidth_ = 256;
+    line("CENTRED\nDEPTH 2", ivec2(kLeft, y), centred);
+}
+
 // The --text-size-sample scene (see g_textSizeSample).
 void initTextSizeSampleScene() {
     // The 63 characters both sets cover, 21 per line.
@@ -5323,9 +5345,8 @@ void initEntities() {
         return;
     }
     if (g_voxelTextSample) {
-        IR_LOG_INFO("--- Voxel text sample scene (yaw {} deg) ---", g_voxelTextYawDegrees);
-        IRShapeDebug::VoxelTextSample::initialize(g_voxelTextYawDegrees * (IRMath::kPi / 180.0f));
-        setupCanvasLighting();
+        IR_LOG_INFO("--- GUI voxel text sample scene ---");
+        initVoxelTextSampleScene();
         return;
     }
     if (g_viewportPortrait) {

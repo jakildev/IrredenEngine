@@ -25,7 +25,6 @@
 #include <irreden/script/lua_spatial_bindings.hpp>
 #include <irreden/script/lua_text_bindings.hpp>
 #include <irreden/script/lua_viewport_bindings.hpp>
-#include <irreden/script/lua_voxel_text_bindings.hpp>
 #include <irreden/script/lua_widget_bindings.hpp>
 #include <irreden/script/lua_world_snapshot_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
@@ -1023,7 +1022,6 @@ void LuaScript::bindLuaCommands() {
 
 void LuaScript::bindLuaText() {
     detail::bindText(*this);
-    detail::bindVoxelText(*this);
 }
 
 void LuaScript::bindLuaInputEnums() {

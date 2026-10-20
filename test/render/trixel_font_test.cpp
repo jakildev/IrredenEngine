@@ -178,7 +178,8 @@ TEST(TrixelFont, DuplicateBitmapFiresOnACopiedGlyphButNotOnTwoEmptyOnes) {
 TEST(TrixelFont, FontBufferHoldsTheLargeBlockThenTheSmallBlock) {
     namespace GuiText = IRPrefab::GuiText;
     const std::vector<std::uint32_t> buffer = GuiText::buildFontBuffer();
-    ASSERT_EQ(buffer.size(), static_cast<std::size_t>(128 * 11 + 128 * 7));
+    // The solid cell voxel text draws with follows the SMALL block.
+    ASSERT_EQ(buffer.size(), static_cast<std::size_t>(128 * 11 + 128 * 7 + 11));
     for (int ascii = 0; ascii < 128; ++ascii) {
         const char c = static_cast<char>(ascii);
         const IRRender::Glyph &large = *IRRender::getGlyph(c);

@@ -153,7 +153,7 @@ add_executable(IrredenEngineTest
   render/voxel_pool_config_test.cpp
   render/voxel_pool_capacity_test.cpp
   render/voxel_font_test.cpp
-  render/voxel_text_placement_test.cpp
+  render/voxel_text_test.cpp
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
@@ -186,7 +186,7 @@ add_executable(IrredenEngineTest
   script/lua_widget_values_test.cpp
   script/lua_widget_image_test.cpp
   script/lua_voxel_seam_test.cpp
-  script/lua_voxel_text_test.cpp
+  script/lua_text_style_voxel_test.cpp
   script/lua_hierarchy_test.cpp
   script/lua_enum_register_test.cpp
   script/lua_persistence_test.cpp

@@ -239,43 +239,10 @@
       }
     },
     {
-      "name": "voxel_text_yaw0",
-      "demo_args": ["--voxel-text-sample", "--voxel-text-yaw", "0"],
-      "shots": ["voxel_text_yaw0"],
-      "capture_offset": 0,
-      "structural": {
-        "voxel_text_yaw0": [
-          { "metric": "clip", "roi": [1384, 378, 640, 414], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.146 },
-          { "metric": "clip", "roi": [728, 282, 464, 318], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.144 },
-          { "metric": "clip", "roi": [472, 666, 656, 486], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.192 }
-        ]
-      }
-    },
-    {
-      "name": "voxel_text_yaw90",
-      "demo_args": ["--voxel-text-sample", "--voxel-text-yaw", "90"],
-      "shots": ["voxel_text_yaw90"],
-      "capture_offset": 0,
-      "structural": {
-        "voxel_text_yaw90": [
-          { "metric": "clip", "roi": [1384, 250, 640, 414], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.143 },
-          { "metric": "clip", "roi": [600, 666, 464, 318], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.144 },
-          { "metric": "clip", "roi": [1368, 730, 656, 382], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.18 }
-        ]
-      }
-    },
-    {
-      "name": "voxel_text_yaw45",
-      "demo_args": ["--voxel-text-sample", "--voxel-text-yaw", "45"],
-      "shots": ["voxel_text_yaw45"],
-      "capture_offset": 0,
-      "structural": {
-        "voxel_text_yaw45": [
-          { "metric": "clip", "roi": [1444, 400, 452, 326], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.171 },
-          { "metric": "clip", "roi": [438, 558, 328, 124], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.23 },
-          { "metric": "clip", "roi": [800, 864, 464, 180], "roi_at": [2560, 1440], "bg": "77,80,86", "min_occupancy": 0.23 }
-        ]
-      }
+      "name": "voxel_text",
+      "demo_args": ["--voxel-text-sample"],
+      "shots": ["voxel_text_sample"],
+      "capture_offset": 0
     },
     {
       "name": "glitch_standard_off",

@@ -11,13 +11,14 @@ namespace IRRender {
 // The voxel glyph set: a 5x7 bitmap per character with 1-voxel strokes,
 // covering exactly the characters of the trixel sets (trixel_font.hpp).
 // Unlike those sets it draws on the voxel lattice, not the triangle lattice,
-// so it has no parity rules: any lit pixel is one voxel column of a letter.
+// so it has no parity rules: any lit pixel is one voxel column of a letter
+// (voxel_text.hpp projects the letters onto the GUI canvas).
 //   - a bitmap column is one voxel column along the letter's reading
-//     direction; a bitmap row is kVoxelGlyphRowVoxels voxel rows, because one
-//     reading-diagonal voxel column projects twice as wide as one voxel row
-//     is tall, and two rows keep the pixels square on screen;
+//     direction; on a camera-facing letter a bitmap row is
+//     kVoxelGlyphRowVoxels voxel rows, because one screen-horizontal voxel
+//     step is twice as wide as one voxel row is tall, and two rows keep the
+//     pixels square on screen;
 //   - no two characters share a bitmap.
-// One column of spacing separates letters on a straight path.
 constexpr int kVoxelGlyphWidth = 5;
 constexpr int kVoxelGlyphHeight = 7;
 constexpr int kVoxelGlyphSpacingX = 1;

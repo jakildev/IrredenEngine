@@ -21,12 +21,10 @@ namespace IRScript::detail {
 // `destroyEntity` never cascades; the tree verbs visit children before
 // parents. A detached canvas is CHILD_OF mainFramebuffer, not its owner, so
 // no tree verb reaches it.
-// Errors read `<table>.<function>: <param> ...`.
-inline IREntity::EntityId requireLiveEntity(
-    const sol::object &value, const char *table, const char *function, const char *param
-) {
+inline IREntity::EntityId
+requireLiveHierarchyEntity(const sol::object &value, const char *function, const char *param) {
     auto fail = [&](const char *reason) {
-        return sol::error{std::string{table} + "." + function + ": " + param + reason};
+        return sol::error{std::string{"IREntity."} + function + ": " + param + reason};
     };
     IREntity::EntityId entity = IREntity::kNullEntity;
     if (value.is<IRScript::LuaEntity>()) {
@@ -50,11 +48,6 @@ inline IREntity::EntityId requireLiveEntity(
         throw fail(" is not a live, placed entity");
     }
     return entity & IREntity::IR_ENTITY_ID_BITS;
-}
-
-inline IREntity::EntityId
-requireLiveHierarchyEntity(const sol::object &value, const char *function, const char *param) {
-    return requireLiveEntity(value, "IREntity", function, param);
 }
 
 inline void bindEntityHierarchy(LuaScript &script) {
