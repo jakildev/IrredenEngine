@@ -8,8 +8,8 @@ import unittest
 from fractions import Fraction as F
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from perf import sun_geometry_probe as probe  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "perf"))
+import sun_geometry_probe as probe  # noqa: E402
 
 
 def quad(corner=(0, 0, 0), edge_u=(1, 0, 0), edge_v=(0, 1, 0)):
