@@ -37,9 +37,10 @@
 // text-over-widget finding whose pair includes the widget's covering surface:
 // a PANEL's background (never its title run), a DROPDOWN's open strip and its
 // rows (never its header; a covering strip is never a subject at all), a
-// LABEL's text, any other kind's whole rect. text-clipped, outside-parent and
-// offscreen concern an element's own bounds and are never dropped. Declare a
-// cover only for a deliberate overlay; fix the layout for anything else.
+// LABEL's text, any other kind's whole rect and every run it draws.
+// text-clipped, outside-parent and offscreen concern an element's own bounds
+// and are never dropped. Declare a cover only for a deliberate overlay; fix
+// the layout for anything else.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -174,9 +175,10 @@ class Collector {
     void addRun(
         IREntity::EntityId owner,
         const IRPrefab::WidgetText::TextRun &run,
-        std::optional<GuiRect> textRegion
+        std::optional<GuiRect> textRegion,
+        bool covers = false
     ) {
-        addText(owner, runExtent(run), textRegion);
+        addText(owner, runExtent(run), textRegion, covers);
     }
 
     // A text element over `extent`; nothing when the run drew nothing.
@@ -221,6 +223,7 @@ class Collector {
         m_layout.widgets_.push_back({id, widget.kind_, rect, pos});
         const bool isDropdown = widget.kind_ == IRComponents::WidgetKind::DROPDOWN;
         const bool bodyCovers = widget.coversBelow_ && !isDropdown;
+        const bool textCovers = bodyCovers && widget.kind_ != IRComponents::WidgetKind::PANEL;
         m_layout.elements_.push_back({id, rect, Surface::BODY, false, bodyCovers});
 
         const auto *hitbox = component<IRComponents::C_HitBox2DGui>(id);
@@ -228,7 +231,7 @@ class Collector {
             const GuiRect hitRect = isDropdown ? rect : GuiRect{pos, hitbox->size_};
             m_layout.elements_.push_back({id, hitRect, Surface::HIT, true, bodyCovers});
         }
-        addWidgetText(id, widget, pos, rect, hitbox != nullptr);
+        addWidgetText(id, widget, pos, rect, hitbox != nullptr, textCovers);
     }
 
     void addLabel(IREntity::EntityId id, const IRComponents::C_Widget &widget, IRMath::ivec2 pos) {
@@ -249,23 +252,24 @@ class Collector {
         const IRComponents::C_Widget &widget,
         IRMath::ivec2 pos,
         const GuiRect &rect,
-        bool interactive
+        bool interactive,
+        bool covers
     ) {
         namespace Text = IRPrefab::WidgetText;
         if (const auto *button = component<IRComponents::C_WidgetButton>(id)) {
-            addRun(id, Text::buttonCaption(widget, *button, pos), rect);
+            addRun(id, Text::buttonCaption(widget, *button, pos), rect, covers);
         }
         if (const auto *checkbox = component<IRComponents::C_WidgetCheckbox>(id)) {
-            addRun(id, Text::checkboxCaption(widget, *checkbox, pos, m_theme), rect);
+            addRun(id, Text::checkboxCaption(widget, *checkbox, pos, m_theme), rect, covers);
         }
         if (const auto *radio = component<IRComponents::C_WidgetRadio>(id)) {
-            addRun(id, Text::radioCaption(widget, *radio, pos, m_theme), rect);
+            addRun(id, Text::radioCaption(widget, *radio, pos, m_theme), rect, covers);
         }
         if (const auto *slider = component<IRComponents::C_WidgetSlider>(id)) {
-            addRun(id, Text::sliderLabel(*slider, pos), rect);
+            addRun(id, Text::sliderLabel(*slider, pos), rect, covers);
             if (!slider->label_.empty()) {
                 const Text::SliderValueText value = Text::sliderValueText(*slider);
-                addRun(id, Text::sliderValue(widget, *slider, pos, value), rect);
+                addRun(id, Text::sliderValue(widget, *slider, pos, value), rect, covers);
             }
         }
         if (const auto *panel = component<IRComponents::C_WidgetPanel>(id)) {
@@ -274,17 +278,17 @@ class Collector {
         if (const auto *field = component<IRComponents::C_WidgetNumberField>(id)) {
             field->formatValue(m_formatted);
             const std::string_view shown = Text::numberFieldShownText(*field, m_formatted);
-            addRun(id, Text::numberFieldText(widget, *field, pos, m_theme, shown), rect);
+            addRun(id, Text::numberFieldText(widget, *field, pos, m_theme, shown), rect, covers);
         }
         if (const auto *textInput = component<IRComponents::C_WidgetTextInput>(id)) {
-            addRun(id, Text::textInputText(widget, *textInput, pos, m_theme), rect);
+            addRun(id, Text::textInputText(widget, *textInput, pos, m_theme), rect, covers);
         }
         if (const auto *list = component<IRComponents::C_WidgetList>(id)) {
             const int rows = list->visibleRows(widget.size_.y);
             const int top = list->topIndex(widget.size_.y);
             const int n = static_cast<int>(list->items_.size());
             for (int row = 0; row < rows && top + row < n; ++row) {
-                addRun(id, Text::listRow(*list, pos, m_theme, row, top + row), rect);
+                addRun(id, Text::listRow(*list, pos, m_theme, row, top + row), rect, covers);
             }
         }
         if (const auto *dd = component<IRComponents::C_WidgetDropdown>(id)) {

@@ -269,6 +269,32 @@ TEST_F(GuiLayoutAudit, DeclaredCoverDropsOverlapButNotOwnBounds) {
     EXPECT_EQ(findings, expected) << describe(findings);
 }
 
+TEST_F(GuiLayoutAudit, DeclaredCoverTakesTheOverlaysCaptionToo) {
+    // Captions at x 14..44 and 34..64 each reach into the other button.
+    const IREntity::EntityId overlay =
+        IRPrefab::Widget::makeButton(ivec2(10, 10), ivec2(40, 14), "AAAA");
+    IRPrefab::Widget::makeButton(ivec2(30, 10), ivec2(40, 14), "BBBB");
+    IRPrefab::Widget::setCoversBelow(overlay, true);
+
+    const std::vector<Finding> findings = report(kCanvas);
+
+    EXPECT_TRUE(findings.empty()) << describe(findings);
+}
+
+TEST_F(GuiLayoutAudit, CoveringDropdownHeaderIsStillAudited) {
+    const IREntity::EntityId dropdown =
+        IRPrefab::Widget::makeDropdown(ivec2(10, 10), ivec2(100, 18), {"ONE", "TWO"}, 0, 18);
+    const IREntity::EntityId label = IRPrefab::Widget::makeLabel(ivec2(10, 12), "LABEL");
+    ASSERT_TRUE(IRPrefab::Widget::coversBelow(dropdown));
+
+    const std::vector<Finding> findings = report(kCanvas);
+
+    ASSERT_EQ(findings.size(), 1u) << describe(findings);
+    EXPECT_EQ(findings[0].kind_, FindingKind::TEXT_OVER_WIDGET);
+    EXPECT_EQ(findings[0].a_, IRMath::min(dropdown, label));
+    EXPECT_EQ(findings[0].b_, IRMath::max(dropdown, label));
+}
+
 TEST_F(GuiLayoutAudit, TwoReportsOverTheSameStateAreEqual) {
     IRPrefab::Widget::makeButton(ivec2(10, 10), ivec2(40, 14), "AAAA");
     IRPrefab::Widget::makeButton(ivec2(30, 10), ivec2(40, 14), "BBBB");
