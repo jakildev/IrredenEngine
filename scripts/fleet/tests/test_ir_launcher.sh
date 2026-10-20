@@ -183,6 +183,20 @@ EOF
 chmod +x "$STUB"/* "$STUB_LAUNCHER_SRC"
 export PATH="$STUB:$PATH"
 
+# On native Windows ir-build runs cmake inside `cmd.exe //c "set PATH=
+# $IR_MSYS2_MINGW;%PATH% && cmake …"`, and cmd.exe skips an extensionless
+# script, so the stub above is invisible and the real cmake.exe runs. A
+# cmake.bat that hands its arguments to the stub, in a directory the shipped
+# IR_MSYS2_MINGW seam puts first on cmd.exe's PATH, routes the call back to it.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        WIN_STUB="$(cygpath -w "$STUB")"
+        printf '@echo off\r\n"%s" "%%~dp0cmake" %%*\r\nexit /b %%ERRORLEVEL%%\r\n' \
+            "$(cygpath -w "$BASH")" > "$STUB/cmake.bat"
+        export IR_MSYS2_MINGW="$WIN_STUB"
+        ;;
+esac
+
 # --- fixture helpers ----------------------------------------------------------
 
 # new_fixture <name> — a fake checkout at $R with its stub state at $STUB_FIX.

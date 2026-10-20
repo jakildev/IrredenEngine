@@ -256,6 +256,8 @@ Run mode
                                 jobs in the requesting session before profiling.
     IR_RUN_HOST_CLOSE_*         Test seams for the HOST-CLOSED check (see
                                 the comment above ir_host_closed_event).
+    IR_RUN_NO_DISPLAY_GRACE     Seconds to wait after a zero-monitor log line
+                                before reporting NO-DISPLAY (default 5).
 
   Exported to the program (IREngine.handOff launches its child through them):
     IR_RUN_WRAPPER, IRREDEN_BUILD_DIR, IR_RUN_BASH (native Windows), and
@@ -277,6 +279,9 @@ Run mode
     ir-run: RESULT=ALIVE-TIMEOUT exe=<name> ...
         Watchdog killed a still-healthy process at --timeout. Says
         nothing about shutdown-path health (teardown never ran).
+    ir-run: RESULT=NO-DISPLAY exe=<name> exit=69
+        The program reported zero display monitors and remained alive past
+        IR_RUN_NO_DISPLAY_GRACE (default 5 seconds).
     ir-run: RESULT=LOCK-FAILED exe=<name> exit=<rc> ...
         ir-acquire never granted the lock (queue timeout), so the
         program did not run. Exit code propagated as 1.
@@ -715,8 +720,31 @@ ir_launch_cleanup() {
     if [[ -n "$QUIET_REPORT_FILE" ]]; then
         rm -f "$QUIET_REPORT_FILE"
     fi
+    if [[ -n "${SCAN_LOG:-}" ]]; then
+        rm -f "$SCAN_LOG"
+    fi
+    if [[ -n "${SCAN_ERR_LOG:-}" ]]; then
+        rm -f "$SCAN_ERR_LOG"
+    fi
+    if [[ -n "${SCAN_OUT_PIPE:-}" ]]; then
+        rm -f "$SCAN_OUT_PIPE"
+    fi
+    if [[ -n "${SCAN_ERR_PIPE:-}" ]]; then
+        rm -f "$SCAN_ERR_PIPE"
+    fi
+    if [[ -n "${TEE_OUT_PID:-}" ]]; then
+        kill "$TEE_OUT_PID" 2>/dev/null || true
+    fi
+    if [[ -n "${TEE_ERR_PID:-}" ]]; then
+        kill "$TEE_ERR_PID" 2>/dev/null || true
+    fi
 }
 trap ir_launch_cleanup EXIT
+
+ir_finish_scan() {
+    wait "$TEE_OUT_PID" 2>/dev/null || true
+    wait "$TEE_ERR_PID" 2>/dev/null || true
+}
 
 # Newest Application Hang/1002 events as XML, one per line. Never fails:
 # a missing wevtutil or a query error yields no candidates. Git Bash rewrites
@@ -917,16 +945,34 @@ cd "$EXE_DIR"
 # whose pid file (READY_FILE) appears once ir-acquire has granted the lock.
 # The loop below holds the clock until that file appears.
 READY_FILE=""
+SCAN_LOG="$(mktemp "${TMPDIR:-/tmp}/ir-run-no-display.XXXXXX")"
+SCAN_ERR_LOG="$(mktemp "${TMPDIR:-/tmp}/ir-run-no-display.XXXXXX")"
+SCAN_OUT_PIPE="${SCAN_LOG}.pipe"
+SCAN_ERR_PIPE="${SCAN_ERR_LOG}.pipe"
+rm -f "$SCAN_LOG" "$SCAN_ERR_LOG"
+mkfifo "$SCAN_OUT_PIPE" "$SCAN_ERR_PIPE"
+tee "$SCAN_LOG" < "$SCAN_OUT_PIPE" &
+TEE_OUT_PID=$!
+tee "$SCAN_ERR_LOG" < "$SCAN_ERR_PIPE" >&2 &
+TEE_ERR_PID=$!
+NO_DISPLAY_SEEN=-1
+NO_DISPLAY_GRACE="${IR_RUN_NO_DISPLAY_GRACE:-5}"
+if ! [[ "$NO_DISPLAY_GRACE" =~ ^[0-9]+$ ]]; then
+    echo "ir-run: IR_RUN_NO_DISPLAY_GRACE must be a non-negative integer" >&2
+    exit 2
+fi
 ir_launch_begin
 if (( ${#acquire_prefix[@]} > 0 )); then
     [[ -n "$LAUNCH_DIR" ]] || LAUNCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ir-run-launch.XXXXXX")"
     READY_FILE="$LAUNCH_DIR/pid"
     "${acquire_prefix[@]}" bash -c "$IR_LAUNCH_SHIM" \
-        ir-run-launch "$LAUNCH_DIR" "$HOST_CLOSE" "./$EXE_RUN" "$@" &
+        ir-run-launch "$LAUNCH_DIR" "$HOST_CLOSE" "./$EXE_RUN" "$@" \
+        > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 elif [[ -n "$LAUNCH_DIR" ]]; then
-    bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "./$EXE_RUN" "$@" &
+    bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "./$EXE_RUN" "$@" \
+        > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 else
-    "./$EXE_RUN" "$@" &
+    "./$EXE_RUN" "$@" > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 fi
 PID=$!
 
@@ -938,6 +984,7 @@ while true; do
         exit_code=0
         wait "$PID" 2>/dev/null || exit_code=$?
         ir_launch_end
+        ir_finish_scan
         if [[ -n "$READY_FILE" && ! -s "$READY_FILE" ]]; then
             if [[ $exit_code -eq 75 || $exit_code -eq 76 ]]; then
                 ir_report_result "$exit_code"
@@ -965,6 +1012,20 @@ while true; do
         sleep 0.2   # still queued on the lock: the run clock has not started
         continue
     fi
+    if (( NO_DISPLAY_SEEN < 0 )) && grep -q "Discovered 0 display monitors" "$SCAN_LOG" "$SCAN_ERR_LOG"; then
+        NO_DISPLAY_SEEN=$elapsed
+    fi
+    if (( NO_DISPLAY_SEEN >= 0 && elapsed - NO_DISPLAY_SEEN >= NO_DISPLAY_GRACE )); then
+        KILL_PID="$PID"
+        [[ -n "$READY_FILE" ]] && KILL_PID="$(<"$READY_FILE")"
+        kill "$KILL_PID" 2>/dev/null
+        wait "$PID" 2>/dev/null || true
+        ir_launch_end
+        ir_finish_scan
+        echo "ir-run: RESULT=NO-DISPLAY exe=$EXE_NAME exit=69" >&2
+        ir_write_result "NO-DISPLAY" 69
+        exit 69
+    fi
     (( elapsed >= TIMEOUT )) && break
     sleep 1
     elapsed=$((elapsed + 1))
@@ -979,6 +1040,7 @@ KILL_PID="$PID"
 [[ -n "$READY_FILE" ]] && KILL_PID="$(<"$READY_FILE")"
 kill "$KILL_PID" 2>/dev/null
 wait "$PID" 2>/dev/null || true
+ir_finish_scan
 echo "ir-run: RESULT=ALIVE-TIMEOUT exe=$EXE_NAME — ran for ${TIMEOUT}s without crashing, killed by watchdog"
 ir_write_result "ALIVE-TIMEOUT" 0
 exit 0

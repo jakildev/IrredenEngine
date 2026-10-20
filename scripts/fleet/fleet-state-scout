@@ -680,7 +680,11 @@ def derive_closes_refs(body, repo):
 # 5 -> 6: refs_issues added. The feedback host pin reads it; a schema-5
 # record lacks the key and would leave every `Refs`-linked feedback PR
 # unpinned until the next ETag flip.
-PR_RECORD_SCHEMA = 6
+#
+# 6 -> 7: stack_position added. The merger wake projection reads it; a
+# schema-6 record would miss a retargeted native-stack child until the next
+# ETag flip.
+PR_RECORD_SCHEMA = 7
 
 # statusCheckRollup reduced to the one reading the merger signal needs.
 # mergeStateStatus cannot make this cut: GitHub reports UNSTABLE for a check
@@ -883,6 +887,28 @@ def _drop_prs_closed_since(repo, prev, rest_body):
     return kept
 
 
+def _stamp_stack_positions(fresh, rest_body, prev):
+    """Stamp native-stack positions from the detector body onto fresh rows.
+
+    An unreadable detector preserves the previous reading for the same PR;
+    a readable body is authoritative, including a missing or null `stack`.
+    """
+    try:
+        detector_prs = json.loads(rest_body)
+        positions = {
+            int(item["number"]): (item.get("stack") or {}).get("position")
+            for item in detector_prs
+        }
+    except (TypeError, ValueError, KeyError, AttributeError):
+        positions = {
+            item.get("number"): item.get("stack_position")
+            for item in prev or ()
+        }
+    for pr in fresh:
+        pr["stack_position"] = positions.get(pr.get("number"))
+    return fresh
+
+
 # A check completing on a PR's head bumps neither the PR's updated_at nor the
 # open-list ETag, so the 304 fast path would serve a cached `checks` until an
 # unrelated list change. The heads whose merger signal reads it have both
@@ -1054,7 +1080,7 @@ def _fetch_prs_gated(repo, prev, keep):
             if not _unknown_mergeable_count(fresh):
                 _mergeable_requery_ticks[repo] = 0
             _prime_fetched_heads(repo, fresh, polled, keep)
-            return fresh
+            return _stamp_stack_positions(fresh, body, prev)
         return prev
     polled = _check_state_moved(repo, prev, keep)[1] if prev is not None else set()
     _mergeable_requery_ticks[repo] = 0
@@ -1064,7 +1090,7 @@ def _fetch_prs_gated(repo, prev, keep):
     else:
         _prs_refetch_pending.discard(repo)
         _prime_fetched_heads(repo, fresh, polled, keep)
-    return fresh
+    return _stamp_stack_positions(fresh, body, prev) if fresh is not None else None
 
 
 def sample_github_rate_limit():
@@ -3902,12 +3928,22 @@ def _merger_action_signal(labels, mergeable, base_ref, checks=None):
     return None
 
 
+# The LLM merger pass's own skip set (role-merger.md step 3) on top of the
+# projection's: a PR another lane is rewriting, or one already handed to the
+# worker as a semantic conflict, is never a merge target. The projection's
+# stack-root wake shares only the mutation-claim prefixes: semantic-conflict
+# is merger-set state and must not move its hash.
+_MERGER_LLM_SKIP_LABELS = frozenset({"fleet:semantic-conflict"})
+_MERGER_LLM_SKIP_PREFIXES = ("fleet:amending-", "fleet:claim-")
+
+
 def project_merger(state):
-    """Hash-input projection: `needs-resolve` and orphan-check rows — stable
-    signals, so the merger neither self-triggers on its own label toggles
-    nor wakes on merge-ready churn (a PR becoming mergeable, the human
-    merging it). Slicer (slice_merger) still emits the full PR record for
-    the role to consume."""
+    """Stable hash-input rows that represent work requiring a merger tick.
+
+    Besides approved conflicts and orphan checks, an unapproved conflicting
+    native-stack root wakes tier-0 so it can route the PR to the LLM pass.
+    Merger-toggled labels remain outside every row predicate.
+    """
     items = []
     for repo, repo_state in state["repos"].items():
         repo_prs = repo_state.get("prs", [])
@@ -3916,6 +3952,12 @@ def project_merger(state):
             for candidate in repo_prs
             if candidate.get("state", "OPEN") == "OPEN"
         }
+        open_child_bases = {
+            candidate.get("baseRefName")
+            for candidate in repo_prs
+            if candidate.get("state", "OPEN") == "OPEN"
+            and candidate.get("baseRefName")
+        }
         for pr in repo_prs:
             labels = set(pr["labels"])
             signal = _merger_action_signal(
@@ -3923,20 +3965,27 @@ def project_merger(state):
                 pr.get("checks"),
             )
             if signal != "needs-resolve":
-                if not needs_orphan_check(
+                stack_root_conflict = (
+                    pr.get("mergeable") == "CONFLICTING"
+                    and pr.get("baseRefName", "master") == "master"
+                    and "fleet:approved" not in labels
+                    and not labels & _MERGER_PROJECTION_SKIP_LABELS
+                    and not any(label.startswith(_MERGER_LLM_SKIP_PREFIXES)
+                                for label in labels)
+                    and (pr.get("headRefName") in open_child_bases
+                         or (isinstance(pr.get("stack_position"), int)
+                             and pr["stack_position"] > 1))
+                )
+                if stack_root_conflict:
+                    signal = "stack-root-conflict"
+                elif needs_orphan_check(
                         pr, repo_prs, _MERGER_PROJECTION_SKIP_LABELS,
                         open_parent_heads):
+                    signal = "orphan-check"
+                else:
                     continue
-                signal = "orphan-check"
             items.append({"repo": repo, "pr": pr["number"], "signal": signal})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
-
-
-# The LLM merger pass's own skip set (role-merger.md step 3) on top of the
-# projection's: a PR another lane is rewriting, or one already handed to the
-# worker as a semantic conflict, is never a merge target.
-_MERGER_LLM_SKIP_LABELS = frozenset({"fleet:semantic-conflict"})
-_MERGER_LLM_SKIP_PREFIXES = ("fleet:amending-", "fleet:claim-")
 
 
 def _merger_candidate_signal(labels, mergeable, base_ref, checks=None):
