@@ -21,9 +21,40 @@
 #include <type_traits>
 #ifndef _WIN32
 #include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace {
+
+#ifndef _WIN32
+/// A path ending in `/sleep` makes the stub leave a grandchild behind and wait,
+/// the shape a real launcher CLI has while it hands off to a desktop application.
+constexpr const char *kHandOffStub =
+    "#!/usr/bin/env bash\n"
+    "if [[ \"$1\" == */sleep ]]; then echo \"parent:$$\"; sleep 10 & echo \"child:$!\"; "
+    "wait; exit 0; fi\n"
+    "printf '%s\\n%s\\n' \"$1\" \"${IRREDEN_BUILD_DIR-unset}\"\n";
+
+/// Kills a stub grandchild by pid so a failed ASSERT cannot leak a `sleep`.
+class GrandchildGuard {
+  public:
+    GrandchildGuard() = default;
+    GrandchildGuard(const GrandchildGuard &) = delete;
+    GrandchildGuard &operator=(const GrandchildGuard &) = delete;
+    ~GrandchildGuard() {
+        if (m_pid.has_value()) {
+            ::kill(*m_pid, SIGKILL);
+        }
+    }
+
+    void track(int pid) {
+        m_pid = pid;
+    }
+
+  private:
+    std::optional<int> m_pid;
+};
+#endif
 
 class ToolSpawnTest : public testing::Test {
   protected:
@@ -32,6 +63,7 @@ class ToolSpawnTest : public testing::Test {
                  ("ir_tool_spawn_" +
                   std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(m_root / "creations" / "inside");
+        std::filesystem::create_directories(m_root / "creations" / "sleep");
         IRTest::writeExecutableFile(
             m_root / "bin" / "ir-build",
             "#!/usr/bin/env bash\n"
@@ -54,20 +86,11 @@ class ToolSpawnTest : public testing::Test {
         );
         IRTest::writeExecutableFile(m_root / "bin" / "ir-run", "#!/usr/bin/env bash\nexit 0\n");
 #ifndef _WIN32
-        IRTest::writeExecutableFile(
-            m_root / "bin" / "cursor",
-            "#!/usr/bin/env bash\nprintf '%s\\n%s\\n' \"$1\" \"${IRREDEN_BUILD_DIR-unset}\"\n"
-        );
+        IRTest::writeExecutableFile(m_root / "bin" / "cursor", kHandOffStub);
 #ifdef __APPLE__
-        IRTest::writeExecutableFile(
-            m_root / "bin" / "open",
-            "#!/usr/bin/env bash\nprintf '%s\\n%s\\n' \"$1\" \"${IRREDEN_BUILD_DIR-unset}\"\n"
-        );
+        IRTest::writeExecutableFile(m_root / "bin" / "open", kHandOffStub);
 #else
-        IRTest::writeExecutableFile(
-            m_root / "bin" / "xdg-open",
-            "#!/usr/bin/env bash\nprintf '%s\\n%s\\n' \"$1\" \"${IRREDEN_BUILD_DIR-unset}\"\n"
-        );
+        IRTest::writeExecutableFile(m_root / "bin" / "xdg-open", kHandOffStub);
 #endif
 #endif
         m_wrapper = std::make_unique<IRTest::ScopedEnv>(
@@ -111,6 +134,16 @@ class ToolSpawnTest : public testing::Test {
     static bool processExists(int process) {
         errno = 0;
         return ::kill(process, 0) == 0 || errno != ESRCH;
+    }
+
+    static std::vector<std::string> pollUntilStubStarted(IREngine::ToolHandle &handle) {
+        std::vector<std::string> lines;
+        for (int attempt = 0; attempt < 500 && !processId(lines, "child:").has_value(); ++attempt) {
+            std::vector<std::string> next = handle.poll();
+            lines.insert(lines.end(), next.begin(), next.end());
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return lines;
     }
 
 #endif
@@ -440,6 +473,87 @@ TEST_F(ToolSpawnTest, ServiceDestructionKillsTheChildTree) {
     errno = 0;
     EXPECT_EQ(::waitpid(*processId(lines, "parent:"), &status, WNOHANG), -1);
     EXPECT_EQ(errno, ECHILD);
+#endif
+}
+
+TEST_F(ToolSpawnTest, HandOffEntryKillStopsOnlyTheDirectChild) {
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX stub executable test";
+#else
+    auto spawned = m_service->spawn({IREngine::ToolName::EDITOR, "", "creations/sleep", "cursor"});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    const std::vector<std::string> lines = pollUntilStubStarted(*spawned);
+    const std::optional<int> parent = processId(lines, "parent:");
+    const std::optional<int> grandchild = processId(lines, "child:");
+    ASSERT_TRUE(parent.has_value());
+    ASSERT_TRUE(grandchild.has_value());
+    GrandchildGuard guard;
+    guard.track(*grandchild);
+
+    const auto start = std::chrono::steady_clock::now();
+    spawned->kill();
+    EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(3));
+
+    int status = 0;
+    errno = 0;
+    EXPECT_EQ(::waitpid(*parent, &status, WNOHANG), -1);
+    EXPECT_EQ(errno, ECHILD);
+    EXPECT_FALSE(processExists(*parent));
+    EXPECT_TRUE(processExists(*grandchild));
+#endif
+}
+
+TEST_F(ToolSpawnTest, HandOffEntryServiceDestructionStopsOnlyTheDirectChild) {
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX stub executable test";
+#else
+    auto service = std::make_unique<IREngine::ToolService>(m_root);
+    auto spawned = service->spawn({IREngine::ToolName::OPEN_FOLDER, "", "creations/sleep"});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    const std::vector<std::string> lines = pollUntilStubStarted(*spawned);
+    const std::optional<int> parent = processId(lines, "parent:");
+    const std::optional<int> grandchild = processId(lines, "child:");
+    ASSERT_TRUE(parent.has_value());
+    ASSERT_TRUE(grandchild.has_value());
+    GrandchildGuard guard;
+    guard.track(*grandchild);
+
+    const auto start = std::chrono::steady_clock::now();
+    service.reset();
+    EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(3));
+
+    int status = 0;
+    errno = 0;
+    EXPECT_EQ(::waitpid(*parent, &status, WNOHANG), -1);
+    EXPECT_EQ(errno, ECHILD);
+    EXPECT_FALSE(processExists(*parent));
+    EXPECT_TRUE(processExists(*grandchild));
+#endif
+}
+
+TEST_F(ToolSpawnTest, HandOffEntrySharesTheEngineProcessGroup) {
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX process group test";
+#else
+    auto handOff = m_service->spawn({IREngine::ToolName::EDITOR, "", "creations/sleep", "cursor"});
+    ASSERT_TRUE(handOff.has_value()) << handOff.error();
+    const std::vector<std::string> handOffLines = pollUntilStubStarted(*handOff);
+    const std::optional<int> handOffParent = processId(handOffLines, "parent:");
+    const std::optional<int> handOffGrandchild = processId(handOffLines, "child:");
+    ASSERT_TRUE(handOffParent.has_value());
+    ASSERT_TRUE(handOffGrandchild.has_value());
+    GrandchildGuard handOffGuard;
+    handOffGuard.track(*handOffGrandchild);
+    EXPECT_EQ(::getpgid(*handOffParent), ::getpgrp());
+    handOff->kill();
+
+    auto tree = m_service->spawn({IREngine::ToolName::IR_BUILD, "Sleep", ""});
+    ASSERT_TRUE(tree.has_value()) << tree.error();
+    const std::vector<std::string> treeLines = pollUntilStubStarted(*tree);
+    const std::optional<int> treeParent = processId(treeLines, "parent:");
+    ASSERT_TRUE(treeParent.has_value());
+    EXPECT_EQ(::getpgid(*treeParent), *treeParent);
+    tree->kill();
 #endif
 }
 
