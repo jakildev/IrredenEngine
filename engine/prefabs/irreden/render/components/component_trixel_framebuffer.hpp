@@ -55,6 +55,10 @@ struct C_TrixelCanvasFramebuffer {
         return framebuffer_.second->getTextureColor();
     }
 
+    Texture2D &getTextureColorForWrite() {
+        return framebuffer_.second->getTextureColorForWrite();
+    }
+
     const ivec2 getResolution() const {
         return framebuffer_.second->getResolution();
     }
