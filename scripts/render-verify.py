@@ -677,8 +677,7 @@ def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
         tail = output.splitlines()[-40:]
         for line in tail:
             print(f"    {line}", file=sys.stderr)
-        verdict = (verify_common.HOST_CLOSED
-                   if result == verify_common.HOST_CLOSED
+        verdict = (result if result in (verify_common.HOST_CLOSED, verify_common.NO_DISPLAY)
                    else "CRASH")
         return (proc.returncode, "\n".join(tail), verdict)
     return None
@@ -831,6 +830,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
         worktree=worktree, target=target, shots_dir=shots_dir,
         warmup=warmup, timeout=args.timeout, demo_args=default_demo_args,
         pass_label="default")
+    if main_outcome is not None and main_outcome[2] == verify_common.NO_DISPLAY:
+        verify_common.report_no_display("[render-verify] ")
+        return tally(verify_common.EXIT_ENV_FAIL)
     main_closed = main_outcome is not None and main_outcome[2] == verify_common.HOST_CLOSED
     if main_outcome is not None and not main_closed:
         crashes.append(main_outcome[:2])

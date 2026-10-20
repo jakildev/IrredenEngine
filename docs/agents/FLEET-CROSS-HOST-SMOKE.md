@@ -177,9 +177,9 @@ reports "alive at deadline" as success and would mask a hang. Verdict per
 **Environment failure is not a PR failure.** Classify the run as ENV-FAIL
 — no verdict, no label change — when the failure is outside the PR's
 diff: the dedicated game configure fails; the build fails in code the PR
-did not touch; or the run logs `Discovered 0 display monitors` (GLFW
-found no display session on this pane — `engine/window/src/ir_glfw_window.cpp`)
-and never reaches the auto-screenshot exit while reporting 0 monitors.
+did not touch; or `RESULT=NO-DISPLAY` (exit 69) reports that the run logged
+`Discovered 0 display monitors` (GLFW found no display session on this pane)
+and never reached the auto-screenshot exit.
 Post the log excerpt and the host, leave the smoke label on, do **not**
 drop `fleet:approved`, release, and exit; a dispatched pane declines
 (`fleet-claim decline`) with that reading so a recurrence becomes a host
