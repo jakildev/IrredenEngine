@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""fleet-pr — per-PR reads: `comments` is live-first, `view`/`diff` are snapshots.
+"""fleet-pr — per-PR reads: `comments`/`fork-of` are live, `view`/`diff` are snapshots.
 
 Subcommands:
   view <N>      full PR detail (body + comments + reviews + inline review threads)
   diff <N>      raw diff text
   comments <N>  flat timeline of conversation + review-summary + inline comments
+  fork-of <N>   the merger's fork-of-other-PR verdict and merged-parent rebase
+                boundary, as exactly two lines:
+                  fork-of: none | <upstream-N> <upstream-headRefName> <upstream-sha>
+                  merged-parent: none | <merged-N> <boundary-sha>
+                Run from a clone of the --repo repository (it fetches the PR's
+                head and base from `origin`). Any failure exits non-zero with
+                empty stdout; the verdict is never carried by the exit code.
 
 Repo selection:
   --repo {engine,game}  default: engine
@@ -16,6 +23,9 @@ Cache policy:
   is structurally guaranteed to drop the triggering item. On a `gh` failure it
   serves the cached record with a loud stderr warning naming the snapshot time.
   One live attempt, never a retry loop.
+
+  `fork-of` is live-only with no cache fallback: a stale verdict (a parent
+  that merged after the snapshot, a head that moved) durably parks a PR.
 
   `view` and `diff` stay snapshot reads — their callers want the cheap cached
   record — and each prints its snapshot stamp to stderr so a stale read is
@@ -32,6 +42,7 @@ Installed to ~/bin/fleet-pr by scripts/fleet/install.sh.
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,6 +67,11 @@ CACHE_FALLBACK_NOTE = (
     "newer comments/reviews may be missing"
 )
 SNAPSHOT_HINT = "'comments' is the live subcommand"
+
+# Passing it is a failure, never a truncated `none`: a commit range this long
+# is a branch that merged a busy base in, not a stack the merger can name.
+FORK_OF_ASSOCIATION_CAP = 100
+GIT_TIMEOUT_SECONDS = 120
 
 
 def repo_slug(repo_key):
@@ -274,12 +290,131 @@ def cmd_comments(args):
     return 0
 
 
+class ForkOfError(Exception):
+    pass
+
+
+def git_out(*args):
+    try:
+        result = subprocess.run(
+            ["git", *args], capture_output=True, text=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ForkOfError(f"git {args[0]} failed: {e}")
+    if result.returncode != 0:
+        raise ForkOfError(
+            f"git {' '.join(args)} exited {result.returncode}: "
+            f"{result.stderr.strip()}"
+        )
+    return result.stdout
+
+
+def gh_json_or_fail(cmd, what):
+    data = run_gh_json(cmd)
+    if data is None:
+        raise ForkOfError(f"{what} failed")
+    return data
+
+
+def fork_of_verdict(slug, pr_number):
+    """Return the two output lines, or raise ForkOfError."""
+    open_prs = gh_json_or_fail(
+        ["api", f"repos/{slug}/pulls?state=open&per_page=100", "--paginate"],
+        "open-PR list",
+    )
+    subject = next((p for p in open_prs if p["number"] == pr_number), None)
+    if subject is None:
+        raise ForkOfError(f"#{pr_number} is not an open PR in {slug}")
+    head_ref = subject["head"]["ref"]
+    head_sha = subject["head"]["sha"]
+    base_ref = subject["base"]["ref"]
+
+    refs = dict.fromkeys([head_ref, base_ref, "master"])
+    git_out("fetch", "--quiet", "origin",
+            *[f"+refs/heads/{r}:refs/remotes/origin/{r}" for r in refs])
+    # A branch name can exist in both fleet repos, so a resolved ref alone does
+    # not prove this cwd is a clone of `slug`; only the PR's own head SHA does.
+    fetched = git_out("rev-parse", f"origin/{head_ref}^{{commit}}").strip()
+    if fetched != head_sha:
+        raise ForkOfError(
+            f"origin/{head_ref} is {fetched}, but #{pr_number}'s head is "
+            f"{head_sha}: wrong clone for {slug}, or a push landed mid-run"
+        )
+
+    # Commits on the PR's own base are not inherited baggage. Neither are
+    # commits already on master: no open PR's head and no squash-merged
+    # parent's boundary can sit there.
+    commits = git_out(
+        "rev-list", "--topo-order", f"origin/{head_ref}",
+        f"^origin/{base_ref}", "^origin/master",
+    ).split()
+    position = {sha: i for i, sha in enumerate(commits)}
+
+    upstreams = sorted(
+        (position[p["head"]["sha"]], p["number"], p)
+        for p in open_prs
+        if p["number"] != pr_number
+        and p["head"]["sha"] != head_sha
+        and p["head"]["sha"] in position
+    )
+    if upstreams:
+        _, _, up = upstreams[0]
+        fork_line = (
+            f"fork-of: {up['number']} {up['head']['ref']} {up['head']['sha']}"
+        )
+    else:
+        fork_line = "fork-of: none"
+
+    parent_line = "merged-parent: none"
+    for i, sha in enumerate(commits):
+        if i == FORK_OF_ASSOCIATION_CAP:
+            raise ForkOfError(
+                f"{len(commits)} branch-unique commits exceed the "
+                f"{FORK_OF_ASSOCIATION_CAP}-lookup cap with no merged parent"
+            )
+        pulls = gh_json_or_fail(
+            ["api", f"repos/{slug}/commits/{sha}/pulls?per_page=100"],
+            f"PR association for {sha}",
+        )
+        parent = next(
+            (p for p in pulls
+             if p.get("merged_at")
+             and p["base"]["ref"] == base_ref
+             and p["number"] != pr_number),
+            None,
+        )
+        if parent is not None:
+            parent_line = f"merged-parent: {parent['number']} {sha}"
+            break
+    return fork_line, parent_line
+
+
+def cmd_fork_of(args):
+    slug = repo_slug(args.repo)
+    if slug is None:
+        warn(f"unknown repo key: {args.repo}")
+        return 2
+    try:
+        lines = fork_of_verdict(slug, args.pr_number)
+    except ForkOfError as e:
+        warn(f"fork-of: {e}")
+        return 1
+    except (KeyError, TypeError) as e:
+        warn(f"fork-of: unexpected gh JSON shape: {e!r}")
+        return 1
+    print("\n".join(lines))
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Per-PR reads: comments live-first, view/diff from cache.",
+        description="Per-PR reads: comments live-first, fork-of live, "
+                    "view/diff from cache.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name, fn in [("view", cmd_view), ("diff", cmd_diff), ("comments", cmd_comments)]:
+    for name, fn in [("view", cmd_view), ("diff", cmd_diff),
+                     ("comments", cmd_comments), ("fork-of", cmd_fork_of)]:
         sp = sub.add_parser(name)
         sp.add_argument("pr_number", type=int)
         sp.add_argument(

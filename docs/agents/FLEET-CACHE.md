@@ -71,6 +71,7 @@ section grows a field — that is the omission this table exists to close.
 | `fleet-pr view <N> [--repo engine\|game]` | snapshot (stamp on stderr; `cache miss … falling back to gh` on a miss) | `gh pr view <N> --comments` |
 | `fleet-pr diff <N> [--repo engine\|game]` | snapshot | `gh pr diff <N>` |
 | `fleet-pr comments <N> [--repo engine\|game]` | live-first | `gh pr view --json comments,reviews` + the review-comments API |
+| `fleet-pr fork-of <N> [--repo engine\|game]` | live-only, no cache fallback (a failure exits non-zero with empty stdout) | the merger's per-PR `git merge-base --is-ancestor` loop + `gh api repos/<slug>/commits/<sha>/pulls` |
 | `fleet-issue view <N> [--repo engine\|game]` | live-first | `gh issue view --json number,title,state,labels,body,comments` |
 
 Live-first exists because those callers were woken by the very item they
