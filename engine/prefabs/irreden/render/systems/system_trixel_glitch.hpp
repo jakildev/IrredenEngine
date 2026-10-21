@@ -696,6 +696,17 @@ template <> struct System<TRIXEL_GLITCH> {
         if (slotOwner_ == nullptr) {
             slotOwner_ = IRRender::getNamedResourceOrNull<Buffer>("VoxelActiveMaskBuffer");
         }
+        if (lightingFrameDataBuf_ == nullptr) {
+            lightingFrameDataBuf_ =
+                IRRender::getNamedResourceOrNull<Buffer>("LightingToTrixelFrameData");
+        }
+        if (sunDepthBuf_ == nullptr) {
+            sunDepthBuf_ = IRRender::getNamedResourceOrNull<Buffer>("SunShadowDepthMap");
+        }
+        if (sunFrameDataBuf_ == nullptr) {
+            sunFrameDataBuf_ =
+                IRRender::getNamedResourceOrNull<Buffer>("ComputeSunShadowFrameData");
+        }
         IRComponents::C_PerAxisTrixelCanvases *axes = perAxisAllocated_ ? perAxis.value() : nullptr;
         TrixelGlitchGpuEncoder encoder{
             canvas,
@@ -756,11 +767,6 @@ template <> struct System<TRIXEL_GLITCH> {
             IRRender::getNamedResource<ShaderProgram>("TrixelGlitchPerAxisResolveProgram");
         sys->perAxisWritebackProgram_ =
             IRRender::getNamedResource<ShaderProgram>("TrixelGlitchPerAxisWritebackProgram");
-        sys->lightingFrameDataBuf_ =
-            IRRender::getNamedResourceOrNull<Buffer>("LightingToTrixelFrameData");
-        sys->sunDepthBuf_ = IRRender::getNamedResourceOrNull<Buffer>("SunShadowDepthMap");
-        sys->sunFrameDataBuf_ =
-            IRRender::getNamedResourceOrNull<Buffer>("ComputeSunShadowFrameData");
         sys->perAxisDisabled_ = IRUtility::envFlagSet("IR_TRIXEL_GLITCH_PER_AXIS_DISABLE");
         sys->perAxisForceScan_ = IRUtility::envFlagSet("IR_TRIXEL_GLITCH_PER_AXIS_SCAN");
         // Deliberately untagged: `encodeFrame`'s GpuSubStageScope owns the

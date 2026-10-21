@@ -77,11 +77,6 @@ struct PerAxisCanvasStore {
             glitchHistoryEntityIds_ = detail::makeCanvasEntityIdTexture(size);
         }
 
-        void swapGlitchScratchColors() {
-            IR_ASSERT(hasGlitchScratch(), "swapGlitchScratchColors: no per-axis scratch image");
-            std::swap(colors_, glitchScratchColors_);
-        }
-
         /// Raw entity-id carriers of this axis canvas, row-major over
         /// @p size (the component's `size_`). One full-texture GPU readback:
         /// for probes and tests, never per frame.
@@ -221,6 +216,11 @@ struct PerAxisCanvasStore {
         glitchTileGrid_ =
             ivec2(IRMath::divCeil(size_.x, kTileSize), IRMath::divCeil(size_.y, kTileSize));
         const int tileCount = glitchTileGrid_.x * glitchTileGrid_.y;
+        constexpr int kMaxSingleDimensionDispatchGroups = 65535;
+        IR_ASSERT(
+            tileCount <= kMaxSingleDimensionDispatchGroups,
+            "per-axis glitch tile list exceeds the single-dimension indirect dispatch limit"
+        );
         glitchTileRegionStride_ =
             IRMath::divCeil(tileCount, kScratchAlignUints) * kScratchAlignUints;
         const std::size_t regionBytes =

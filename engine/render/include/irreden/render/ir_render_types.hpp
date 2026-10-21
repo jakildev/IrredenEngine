@@ -1490,9 +1490,10 @@ constexpr std::uint32_t kBufferIndex_TrixelGlitchTileArgs = kBufferIndex_FrameDa
 // and consumes them several stages earlier, and SPRITE_TO_SCREEN (the other
 // slot-25 consumer) draws after the main framebuffer — same non-overlapping-
 // stage rationale as the aliases above. CompactedCells is bound as an SSBO for
-// both the compaction write and the scatter vertex-shader read; CellIndirect is
-// bound as an SSBO for the compaction write and as the draw-indirect buffer for
-// the draw.
+// both the compaction write, TRIXEL_GLITCH's transient mark pass and the
+// scatter vertex-shader read; CellIndirect is bound as an SSBO for compaction,
+// as a dispatch-indirect buffer for the glitch mark, and as the draw-indirect
+// buffer for the scatter draw.
 constexpr std::uint32_t kBufferIndex_PerAxisCellCompacted = kBufferIndex_CompactedVoxelIndices;
 constexpr std::uint32_t kBufferIndex_PerAxisCellIndirect = kBufferIndex_IndirectDispatchParams;
 // SPRITE_TO_SCREEN aliases two slots whose prior consumers finish before the

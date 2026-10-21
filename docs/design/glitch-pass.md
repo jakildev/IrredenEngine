@@ -376,8 +376,12 @@ Measured on an Apple M4 Max (macOS Metal, 1280x720 output at scale 1, main
 canvas 642x722, one dispatch per frame and two history copies per period
 tick): per-run means 0.240, 0.227, 0.231, 0.229 and 0.232 ms, mean 0.232 ms,
 spread 0.013 ms, UCB95 0.237 ms. CPU cost per frame is about 0.017 ms. The
-fixture's canvas probes run only under `--auto-screenshot`; their readbacks
-stall the queue and must not ride a profiled run.
+per-axis arm uses 1284x1364 stores and measures 0.397, 0.270, 0.289, 0.301
+and 0.294 ms, mean 0.310 ms and UCB95 0.358 ms; the forced exact-scan path
+measures 0.399 ms. Its all-effects capture marks 20, 18 and 18 tiles on the
+X, Y and Z stores and allocates 84,234,240 lazy-resource bytes. The fixture's
+canvas probes run only under `--auto-screenshot`; their readbacks stall the
+queue and must not ride a profiled run.
 
 ### Choreography
 

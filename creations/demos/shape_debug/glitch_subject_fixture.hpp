@@ -446,21 +446,36 @@ struct GlitchSubjectFixture {
         std::vector<IRMath::uvec2> ids;
         std::vector<int> distances;
         IRRender::device()->finish();
+        const int scale = IRRender::getVoxelRenderEffectiveSubdivisions();
         int lo = 1 << 30;
         int hi = -(1 << 30);
+        int faceDepthA = -(1 << 30);
+        int faceDepthB = -(1 << 30);
+        const auto rememberFaceDepth = [&](int depth) {
+            if (depth == faceDepthA || depth == faceDepthB) {
+                return;
+            }
+            if (depth > faceDepthB) {
+                faceDepthA = faceDepthB;
+                faceDepthB = depth;
+            } else if (depth > faceDepthA) {
+                faceDepthA = depth;
+            }
+        };
         if (atYaw()) {
             const auto *axes = perAxisCanvases();
             if (axes != nullptr) {
-                const int scale = IRRender::getVoxelRenderEffectiveSubdivisions();
                 for (const auto &axis : axes->axes_) {
                     axis.readEntityIdCarriers(axes->size_, ids);
                     axis.readDistances(axes->size_, distances);
                     for (std::size_t i = 0; i < ids.size(); ++i) {
                         if (IRRender::decodeCarrierEntityId(ids[i]) == subjects_[0] &&
                             distances[i] < 0x7FFFFFFF) {
-                            const int depth = (distances[i] >> 15) * scale;
+                            const int perAxisDepth = distances[i] >> 15;
+                            const int depth = perAxisDepth * scale;
                             lo = IRMath::min(lo, depth);
                             hi = IRMath::max(hi, depth);
+                            rememberFaceDepth(perAxisDepth);
                         }
                     }
                 }
@@ -472,8 +487,12 @@ struct GlitchSubjectFixture {
             for (std::size_t i = 0; i < ids.size(); ++i) {
                 if (IRRender::decodeCarrierEntityId(ids[i]) == subjects_[0] &&
                     distances[i] < IRPrefab::Glitch::kSubjectEmptyDistance) {
-                    lo = IRMath::min(lo, distances[i] >> 3);
-                    hi = IRMath::max(hi, distances[i] >> 3);
+                    const int depth = distances[i] >> 3;
+                    lo = IRMath::min(lo, depth);
+                    hi = IRMath::max(hi, depth);
+                    if (IRMath::floorMod(depth, scale) == 0) {
+                        rememberFaceDepth(depth);
+                    }
                 }
             }
         }
@@ -485,6 +504,26 @@ struct GlitchSubjectFixture {
         depthNear_ = lo + third;
         depthFar_ = hi - third;
         depthMeasured_ = true;
+        if (faceDepthA > -(1 << 30)) {
+            if (atYaw()) {
+                IR_LOG_INFO(
+                    "[glitch-subject-probe] depth map perAxis=[{},{}] mappedMain=[{},{}] "
+                    "subdivisions={} bias=0",
+                    faceDepthA,
+                    faceDepthB,
+                    faceDepthA * scale,
+                    faceDepthB * scale,
+                    scale
+                );
+            } else {
+                IR_LOG_INFO(
+                    "[glitch-subject-probe] depth map mainFaceOrigin=[{},{}] subdivisions={}",
+                    faceDepthA,
+                    faceDepthB,
+                    scale
+                );
+            }
+        }
         IR_LOG_INFO(
             "[glitch-subject-probe] depth measured subject={} range=[{},{}] interval=[{},{}]",
             subjects_[0],
@@ -955,6 +994,49 @@ struct GlitchSubjectFixture {
             analysis.distanceHash_,
             atYaw() ? analysis.mismatch_ == 0 : modePasses(analysis, false)
         );
+        if (atYaw() && system->perAxisDisabled_) {
+            const auto *axes = perAxisCanvases();
+            bool pass = axes != nullptr && system->framePerAxisDispatches_ == 0 &&
+                        system->framePerAxisFills_ == 0 && system->framePerAxisSwaps_ == 0;
+            if (axes != nullptr) {
+                IRRender::device()->finish();
+                for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
+                    std::vector<IRMath::Color> output;
+                    axes->axes_[axis].readColors(axes->size_, output);
+                    const auto &input = perAxisPreColors_[static_cast<std::size_t>(axis)];
+                    int changed = 0;
+                    if (output.size() == input.size()) {
+                        for (std::size_t i = 0; i < output.size(); ++i) {
+                            changed += output[i].toPackedRGBA() != input[i].toPackedRGBA() ? 1 : 0;
+                        }
+                    } else {
+                        changed = -1;
+                    }
+                    const bool axisPass = changed == 0;
+                    pass = pass && axisPass;
+                    IR_LOG_INFO(
+                        "[glitch-subject-probe] perAxis={} size={}x{} disarmed=true changed={} "
+                        "pass={}",
+                        axis,
+                        axes->size_.x,
+                        axes->size_.y,
+                        changed,
+                        axisPass
+                    );
+                }
+            }
+            IR_LOG_INFO(
+                "[glitch-subject-probe] yaw={} perAxisAllocated={} disarmed=true dispatches={} "
+                "fills={} swaps={} pass={}",
+                yawDegrees_,
+                system->perAxisAllocated_,
+                system->framePerAxisDispatches_,
+                system->framePerAxisFills_,
+                system->framePerAxisSwaps_,
+                pass
+            );
+            return;
+        }
         if (atYaw()) {
             const auto *axes = perAxisCanvases();
             bool yawPass = axes != nullptr && system->framePerAxisDispatches_ == 9 &&

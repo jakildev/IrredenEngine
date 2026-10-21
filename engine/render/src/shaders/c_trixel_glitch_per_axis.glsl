@@ -382,6 +382,7 @@ void main() {
     if (gl_LocalInvocationIndex == 0u) {
         rankedSubjectCount = 0u;
     }
+    memoryBarrierShared();
     barrier();
     ivec2 tileGrid = (frame.size + ivec2(kTileSize - 1)) / kTileSize;
     uint tile = tileList[gl_WorkGroupID.x];
@@ -401,6 +402,7 @@ void main() {
             atomicOr(presentWords[uint(slot) >> 5], 1u << (uint(slot) & 31u));
         }
     }
+    memoryBarrierShared();
     barrier();
     if (gl_LocalInvocationIndex < uint(kPresenceWords)) {
         uint base = 0u;
@@ -409,6 +411,7 @@ void main() {
         }
         rankBases[gl_LocalInvocationIndex] = base;
     }
+    memoryBarrierShared();
     barrier();
     if (gl_LocalInvocationIndex == 0u) {
         rankedSubjectCount = rankBases[kPresenceWords - 1] +
@@ -434,6 +437,7 @@ void main() {
             atomicOr(spillMasks[distance], 1u << rank);
         }
     }
+    memoryBarrierShared();
     barrier();
     for (uint index = gl_LocalInvocationIndex;
          index < uint(kTileWindow * kTileWindow);
@@ -448,6 +452,7 @@ void main() {
         }
         stagedBits[index] = bit;
     }
+    memoryBarrierShared();
     barrier();
     for (uint index = gl_LocalInvocationIndex;
          index < uint(kLevel1Size * kLevel1Size);
@@ -463,6 +468,7 @@ void main() {
         }
         level1[index] = mask;
     }
+    memoryBarrierShared();
     barrier();
     for (uint index = gl_LocalInvocationIndex;
          index < uint(kLevel2Size * kLevel2Size);
@@ -475,6 +481,7 @@ void main() {
                         level1[(center.y + 2) * kLevel1Size + center.x - 2] |
                         level1[(center.y + 2) * kLevel1Size + center.x + 2];
     }
+    memoryBarrierShared();
     barrier();
     for (uint index = gl_LocalInvocationIndex;
          index < uint(kLevel3Size * kLevel3Size);
@@ -487,6 +494,7 @@ void main() {
                         level2[(center.y + 2) * kLevel2Size + center.x - 2] |
                         level2[(center.y + 2) * kLevel2Size + center.x + 2];
     }
+    memoryBarrierShared();
     barrier();
     uint level4Index = gl_LocalInvocationIndex;
     ivec2 level4Center = ivec2(
@@ -497,6 +505,7 @@ void main() {
         level3[(level4Center.y - 2) * kLevel3Size + level4Center.x + 2] |
         level3[(level4Center.y + 2) * kLevel3Size + level4Center.x - 2] |
         level3[(level4Center.y + 2) * kLevel3Size + level4Center.x + 2];
+    memoryBarrierShared();
     barrier();
     ivec2 p = tileOrigin + ivec2(gl_LocalInvocationID.xy);
     if (any(greaterThanEqual(p, frame.size)) || all(equal(loadId(p), uvec2(0u)))) {

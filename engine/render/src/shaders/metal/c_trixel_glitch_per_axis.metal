@@ -128,6 +128,9 @@ static int trixelGlitchStagedSlotAt(
     threadgroup const int* stagedSlots, int2 tileOrigin, int2 q
 ) {
     int2 local = q - tileOrigin + int2(kTrixelGlitchTileHalo);
+    if (any(local < int2(0)) || any(local >= int2(kTrixelGlitchTileWindow))) {
+        return -1;
+    }
     return stagedSlots[local.y * kTrixelGlitchTileWindow + local.x];
 }
 
