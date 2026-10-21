@@ -500,6 +500,7 @@ const ReportCheck kDockReverted{"layoutWidths", "200|230|249|230"};
 const ReportCheck kDockRestored{"layoutRestored", "true"};
 const ReportCheck kDockSwapped{"layoutPanelXs", "236|504"};
 const ReportCheck kDockContained{"layoutContained", "true"};
+const ReportCheck kDockPreviewRect{"layoutPreviewRect", "242,230,250,176"};
 
 #undef IR_LAUNCHER_FAVOURITE
 
@@ -554,11 +555,12 @@ const ShotAssertions kDockspaceAssertions[] = {
     {predicate(&reportMatches, &kDockInitial, "initial_catalog_width")},
     {predicate(&reportMatches, &kDockSaved, "splitter_saved")},
     {predicate(&reportMatches, &kDockSaved, "save_keeps_width")},
-    {predicate(&reportMatches, &kDockRestored, "layout_saved_to_disk")},
+    {predicate(&reportMatches, &kDockRestored, "layout_serialized_on_save")},
     {predicate(&reportMatches, &kDockReverted, "splitter_reverted"),
      predicate(&reportMatches, &kDockRestored, "disk_value_restored")},
     {predicate(&reportMatches, &kDockSwapped, "panels_swapped"),
      predicate(&reportMatches, &kDockContained, "zone_widgets_contained"),
+     predicate(&reportMatches, &kDockPreviewRect, "viewport_follows_assets_panel"),
      predicate(&reportMatches, &kAssetSubjectMatches, "viewport_subject_survived")},
 };
 

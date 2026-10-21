@@ -175,6 +175,7 @@ end
 
 function M.show(app, details, creation)
     M.clear(details)
+    details.placed = { x = L.details.name.x, y = L.details.name.y, w = 0, h = 0 }
     if not creation then
         add(details, IRGui.makeLabel(L.details.name.x, L.details.name.y, "SELECT A CREATION"))
         return

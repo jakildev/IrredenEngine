@@ -151,11 +151,21 @@ TEST_F(LuaLayoutBindings, CorruptRestoreIsFailureAtomic) {
     IRPrefab::Layout::compute();
     run(R"lua(
         before = IRLayout.serialize()
-        bad = before:gsub(']}$', ',{"p":0,"i":1,"a":12}]}' )
+        _, _, widthBefore = IRLayout.leafRect(left)
+        revisionBefore = IRLayout.revision()
+        bad = before:gsub('"a":%d+', '"a":45', 1):gsub(']}$', ',{"p":0,"i":1,"a":12}]}')
         accepted = IRLayout.deserialize(bad)
+    )lua");
+    IRPrefab::Layout::compute();
+    run(R"lua(
         after = IRLayout.serialize()
+        _, _, widthAfter = IRLayout.leafRect(left)
+        revisionAfter = IRLayout.revision()
     )lua");
     EXPECT_FALSE(value<bool>("accepted"));
+    EXPECT_EQ(value<int>("widthBefore"), 30);
+    EXPECT_EQ(value<int>("widthAfter"), 30);
+    EXPECT_EQ(value<std::uint64_t>("revisionAfter"), value<std::uint64_t>("revisionBefore"));
     EXPECT_EQ(value<std::string>("after"), value<std::string>("before"));
 }
 

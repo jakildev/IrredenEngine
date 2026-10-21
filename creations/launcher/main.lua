@@ -381,12 +381,21 @@ local function poll()
             end
             IRTest.report("layoutWidths", table.concat(app.layoutWidths, "|"))
             IRTest.report("layoutPanelXs", string.format("%d|%d", ax, dx))
-            local contained =
-                L.tree.filter.x >= tx and L.tree.filter.x + L.tree.filter.w <= tx + tw and
-                L.details.name.x >= dx and L.details.name.x <= dx + dw and
-                L.assets.preview.x >= ax and L.assets.preview.x + L.assets.preview.w <= ax + aw and
-                L.log.open.x >= lx and L.log.open.x + L.log.open.w <= lx + lw
+            -- Each `placed` rect is copied when its zone last built that widget,
+            -- so a zone that skipped its reflow reports its old leaf here.
+            local function inside(r, x, y, w, h)
+                return r ~= nil and r.x >= x and r.y >= y and r.x + r.w <= x + w and
+                    r.y + r.h <= y + h
+            end
+            local detailsPlaced = app.settings.open and app.settings.placed or app.details.placed
+            local preview = app.assetBrowser.preview.placed
+            local contained = inside(app.tree.placed, tx, ty, tw, th) and
+                inside(detailsPlaced, dx, dy, dw, dh) and
+                inside(preview, ax, ay, aw, ah) and
+                inside(app.logView.placed, lx, ly, lw, lh)
             IRTest.report("layoutContained", contained and "true" or "false")
+            IRTest.report("layoutPreviewRect", preview and
+                string.format("%d,%d,%d,%d", preview.x, preview.y, preview.w, preview.h) or "none")
         end
     end
     if IRTest and app.settings.layout ~= "" then

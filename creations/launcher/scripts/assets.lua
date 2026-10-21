@@ -108,6 +108,7 @@ local function placeViewport(browser)
     local slot = browser.preview
     IRRender.setViewportRect(slot.viewport, p.x, p.y, p.w, p.h)
     slot.drag = IRGui.makeHitRegion(p.x, p.y, p.w, p.h, {})
+    slot.placed = { x = p.x, y = p.y, w = p.w, h = p.h }
     for index, zoom in ipairs({ 4, 8, 16 }) do
         addPreview(browser, IRGui.makeButton(p.x + (index - 1) * 40, p.y + p.h + 3, 36, 14,
             tostring(zoom) .. "X", function()

@@ -133,6 +133,7 @@ function M.show(app, settings)
     local e = L.settings.editor
     settings.dropdown = add(settings,
         IRGui.makeDropdown(e.x, e.y, e.w, e.h, items, selected, e.h, SMALL))
+    settings.placed = { x = e.x, y = e.y, w = e.w, h = e.h }
     settings.selected = selected
     if selected > 0 then
         settings.editor = settings.editors[selected].name

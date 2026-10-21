@@ -187,6 +187,7 @@ function M.reflow(app, view)
     WidgetList.clear(view.chrome)
     local f = L.tree.filter
     view.filter = IRGui.makeTextInput(f.x, f.y, f.w, f.h, "", 40)
+    view.placed = { x = f.x, y = f.y, w = f.w, h = f.h }
     view.chrome[#view.chrome + 1] = view.filter
     IRGui.setTextInputValue(view.filter, current)
     view.chrome[#view.chrome + 1] = IRGui.makeButton(

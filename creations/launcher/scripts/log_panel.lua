@@ -57,9 +57,11 @@ function M.reflow(log, app)
         log.scroll = 0
         log.dirty = true
     end, SMALL)
+    local open = L.log.open
     log.widgets[#log.widgets + 1] = IRGui.makeButton(
-        L.log.open.x, L.log.open.y, L.log.open.w, L.log.open.h, "OPEN LOG",
+        open.x, open.y, open.w, open.h, "OPEN LOG",
         function() app.openLogInEditor() end, SMALL)
+    log.placed = { x = open.x, y = open.y, w = open.w, h = open.h }
     log.dirty = true
 end
 
