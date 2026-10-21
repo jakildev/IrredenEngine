@@ -23,8 +23,25 @@ layout(rgba8, binding = 5) writeonly uniform image2D scratchColors;
 const int kTileSize = 16;
 const int kTileHalo = 10;
 const int kTileWindow = kTileSize + 2 * kTileHalo;
+const int kLevel1Size = 28;
+const int kLevel2Size = 24;
+const int kLevel3Size = 20;
+const int kLevel4Size = 16;
+const int kPresenceWords = 32;
+const int kMaxRankedSubjects = 32;
+const int kMaxIndexedSubjects = kPresenceWords * 32;
 shared int stagedSlots[kTileWindow * kTileWindow];
 shared int stagedSpills[kTileWindow * kTileWindow];
+shared uint stagedBits[kTileWindow * kTileWindow];
+shared uint level1[kLevel1Size * kLevel1Size];
+shared uint level2[kLevel2Size * kLevel2Size];
+shared uint level3[kLevel3Size * kLevel3Size];
+shared uint level4[kLevel4Size * kLevel4Size];
+shared uint presentWords[kPresenceWords];
+shared uint rankBases[kPresenceWords];
+shared int rankToSlot[kMaxRankedSubjects];
+shared uint spillMasks[kGlitchSubjectMaxSpill + 1];
+shared uint rankedSubjectCount;
 
 struct SubjectRecord {
     uvec2 id;
@@ -133,19 +150,16 @@ SubjectRecord loadRecord(int slot) {
     return record;
 }
 
-int slotAt(ivec2 q, PerAxisFrame frame) {
-    return inCanvas(q, frame.size) ? subjectSlot(loadId(q)) : -1;
-}
+int stagedSlotAt(ivec2 q, ivec2 tileOrigin);
 
-bool isEdge(ivec2 q, int slot, PerAxisFrame frame) {
-    if (slotAt(q, frame) != slot) {
+bool isEdgeStaged(ivec2 q, int slot, ivec2 tileOrigin) {
+    if (stagedSlotAt(q, tileOrigin) != slot) {
         return false;
     }
-    int step = frame.faceStep;
-    return slotAt(q + ivec2(step, 0), frame) != slot ||
-           slotAt(q - ivec2(step, 0), frame) != slot ||
-           slotAt(q + ivec2(0, step), frame) != slot ||
-           slotAt(q - ivec2(0, step), frame) != slot;
+    return stagedSlotAt(q + ivec2(2, 0), tileOrigin) != slot ||
+           stagedSlotAt(q - ivec2(2, 0), tileOrigin) != slot ||
+           stagedSlotAt(q + ivec2(0, 2), tileOrigin) != slot ||
+           stagedSlotAt(q - ivec2(0, 2), tileOrigin) != slot;
 }
 
 uvec4 echoBlend(uvec4 colour, uvec4 tint, uint strength) {
@@ -156,7 +170,9 @@ uvec4 echoBlend(uvec4 colour, uvec4 tint, uint strength) {
     return uvec4(mixed.rgb, colour.a);
 }
 
-uvec4 applySubject(ivec2 p, int slot, uvec2 acceptId, PerAxisFrame frame) {
+uvec4 applySubject(
+    ivec2 p, int slot, uvec2 acceptId, ivec2 tileOrigin, PerAxisFrame frame
+) {
     SubjectRecord record = loadRecord(slot);
     uvec2 current = loadId(p);
     int encodedDistance = imageLoad(liveDistances, p).x;
@@ -209,10 +225,10 @@ uvec4 applySubject(ivec2 p, int slot, uvec2 acceptId, PerAxisFrame frame) {
     }
 
     if (record.echoStrength > 0u) {
-        if (isEdge(p - record.echoA * frame.faceStep, slot, frame)) {
+        if (isEdgeStaged(p - record.echoA * frame.faceStep, slot, tileOrigin)) {
             colour = echoBlend(colour, glitchSubjectTint(record.tintA), record.echoStrength);
         }
-        if (isEdge(p - record.echoB * frame.faceStep, slot, frame)) {
+        if (isEdgeStaged(p - record.echoB * frame.faceStep, slot, tileOrigin)) {
             colour = echoBlend(colour, glitchSubjectTint(record.tintB), record.echoStrength);
         }
     }
@@ -251,41 +267,64 @@ int stagedSpillAt(ivec2 q, ivec2 tileOrigin) {
     return stagedSpills[local.y * kTileWindow + local.x];
 }
 
-uvec4 glitchCell(ivec2 p, ivec2 tileOrigin, PerAxisFrame frame) {
+uvec4 glitchCell(ivec2 p, ivec2 tileOrigin, PerAxisFrame frame, bool forceScan) {
     int slotA = -1;
-    int distA = 0;
     int slotB = -1;
-    int distB = 0;
-    int radius = int(subjectWords[1].w) * frame.faceStep;
-    for (int dy = -radius; dy <= radius; ++dy) {
-        for (int dx = -radius; dx <= radius; ++dx) {
-            if ((dx + dy) % frame.faceStep != 0) {
-                continue;
+    if (forceScan) {
+        int distA = 0;
+        int distB = 0;
+        int radius = int(subjectWords[1].w) * 2;
+        for (int dy = -radius; dy <= radius; ++dy) {
+            for (int dx = -radius + (dy & 1); dx <= radius; dx += 2) {
+                ivec2 sampleAt = p + ivec2(dx, dy);
+                int slot = stagedSlotAt(sampleAt, tileOrigin);
+                if (slot < 0) {
+                    continue;
+                }
+                int dist = (max(abs(dx), abs(dy)) + 1) >> 1;
+                if (dist > stagedSpillAt(sampleAt, tileOrigin)) {
+                    continue;
+                }
+                if (slot == slotA) {
+                    distA = min(distA, dist);
+                } else if (slot == slotB) {
+                    distB = min(distB, dist);
+                } else if (slotB < 0 || influenceBefore(slot, dist, slotB, distB)) {
+                    slotB = slot;
+                    distB = dist;
+                }
+                if (slotB >= 0 &&
+                    (slotA < 0 || influenceBefore(slotB, distB, slotA, distA))) {
+                    int swapSlot = slotA;
+                    int swapDist = distA;
+                    slotA = slotB;
+                    distA = distB;
+                    slotB = swapSlot;
+                    distB = swapDist;
+                }
             }
-            ivec2 sampleAt = p + ivec2(dx, dy);
-            int slot = stagedSlotAt(sampleAt, tileOrigin);
-            if (slot < 0) {
-                continue;
-            }
-            int dist = (max(abs(dx), abs(dy)) + frame.faceStep - 1) / frame.faceStep;
-            if (dist > stagedSpillAt(sampleAt, tileOrigin)) {
-                continue;
-            }
-            if (slot == slotA) {
-                distA = min(distA, dist);
-            } else if (slot == slotB) {
-                distB = min(distB, dist);
-            } else if (slotB < 0 || influenceBefore(slot, dist, slotB, distB)) {
-                slotB = slot;
-                distB = dist;
-            }
-            if (slotB >= 0 && (slotA < 0 || influenceBefore(slotB, distB, slotA, distA))) {
-                int swapSlot = slotA;
-                int swapDist = distA;
-                slotA = slotB;
-                distA = distB;
-                slotB = swapSlot;
-                distB = swapDist;
+        }
+    } else {
+        ivec2 local = p - tileOrigin;
+        uint levels[5] = uint[5](
+            stagedBits[(local.y + kTileHalo) * kTileWindow + local.x + kTileHalo],
+            level1[(local.y + 6) * kLevel1Size + local.x + 6],
+            level2[(local.y + 4) * kLevel2Size + local.x + 4],
+            level3[(local.y + 2) * kLevel3Size + local.x + 2],
+            level4[local.y * kLevel4Size + local.x]
+        );
+        uint seen = 0u;
+        for (int distance = 0; distance <= kGlitchSubjectMaxSpill && slotB < 0; ++distance) {
+            uint fresh = levels[distance] & ~seen & spillMasks[distance];
+            seen |= levels[distance];
+            while (fresh != 0u && slotB < 0) {
+                int rank = findLSB(fresh);
+                fresh &= fresh - 1u;
+                if (slotA < 0) {
+                    slotA = rankToSlot[rank];
+                } else {
+                    slotB = rankToSlot[rank];
+                }
             }
         }
     }
@@ -294,7 +333,7 @@ uvec4 glitchCell(ivec2 p, ivec2 tileOrigin, PerAxisFrame frame) {
     }
     uvec2 idA = subjectWords[recordBase(slotA)].xy;
     if (slotB < 0) {
-        return applySubject(p, slotA, idA, frame);
+        return applySubject(p, slotA, idA, tileOrigin, frame);
     }
     uvec2 idB = subjectWords[recordBase(slotB)].xy;
     int lo = min(slotA, slotB);
@@ -309,12 +348,14 @@ uvec4 glitchCell(ivec2 p, ivec2 tileOrigin, PerAxisFrame frame) {
     if (mode == 0u) {
         int row = p.y - frame.storeOrigin.y;
         bool pickHi = (hash3(pair, uint(row), 0u) & 1u) != 0u;
-        return applySubject(p, pickHi ? hi : lo, pickHi ? idHi : idLo, frame);
+        return applySubject(p, pickHi ? hi : lo, pickHi ? idHi : idLo, tileOrigin, frame);
     }
     if (mode == 1u) {
-        return (applySubject(p, lo, idLo, frame) + applySubject(p, hi, idHi, frame)) >> 1;
+        return (applySubject(p, lo, idLo, tileOrigin, frame) +
+                applySubject(p, hi, idHi, tileOrigin, frame)) >> 1;
     }
-    return (applySubject(p, lo, idHi, frame) + applySubject(p, hi, idLo, frame)) >> 1;
+    return (applySubject(p, lo, idHi, tileOrigin, frame) +
+            applySubject(p, hi, idLo, tileOrigin, frame)) >> 1;
 }
 
 void main() {
@@ -330,6 +371,18 @@ void main() {
     frame.depthBias = history.w;
     frame.seed = subjectWords[0].x;
     frame.tick = subjectWords[0].yz;
+    bool canIndexSubjects = subjectWords[0].w <= uint(kMaxIndexedSubjects);
+    if (gl_LocalInvocationIndex < uint(kPresenceWords)) {
+        presentWords[gl_LocalInvocationIndex] = 0u;
+        rankBases[gl_LocalInvocationIndex] = 0u;
+    }
+    if (gl_LocalInvocationIndex < uint(kGlitchSubjectMaxSpill + 1)) {
+        spillMasks[gl_LocalInvocationIndex] = 0u;
+    }
+    if (gl_LocalInvocationIndex == 0u) {
+        rankedSubjectCount = 0u;
+    }
+    barrier();
     ivec2 tileGrid = (frame.size + ivec2(kTileSize - 1)) / kTileSize;
     uint tile = tileList[gl_WorkGroupID.x];
     ivec2 tileOrigin = ivec2(int(tile % uint(tileGrid.x)), int(tile / uint(tileGrid.x))) *
@@ -344,11 +397,112 @@ void main() {
         int slot = inCanvas(q, frame.size) ? subjectSlot(loadId(q)) : -1;
         stagedSlots[flatIndex] = slot;
         stagedSpills[flatIndex] = slot >= 0 ? recordSpill(slot) : 0;
+        if (canIndexSubjects && slot >= 0) {
+            atomicOr(presentWords[uint(slot) >> 5], 1u << (uint(slot) & 31u));
+        }
     }
+    barrier();
+    if (gl_LocalInvocationIndex < uint(kPresenceWords)) {
+        uint base = 0u;
+        for (uint word = 0u; word < gl_LocalInvocationIndex; ++word) {
+            base += bitCount(presentWords[word]);
+        }
+        rankBases[gl_LocalInvocationIndex] = base;
+    }
+    barrier();
+    if (gl_LocalInvocationIndex == 0u) {
+        rankedSubjectCount = rankBases[kPresenceWords - 1] +
+                             bitCount(presentWords[kPresenceWords - 1]);
+    }
+    for (uint slot = gl_LocalInvocationIndex; slot < subjectWords[0].w; slot += 256u) {
+        if (!canIndexSubjects) {
+            continue;
+        }
+        uint word = slot >> 5;
+        uint bit = 1u << (slot & 31u);
+        if ((presentWords[word] & bit) == 0u) {
+            continue;
+        }
+        uint lower = bit - 1u;
+        uint rank = rankBases[word] + bitCount(presentWords[word] & lower);
+        if (rank >= uint(kMaxRankedSubjects)) {
+            continue;
+        }
+        rankToSlot[rank] = int(slot);
+        int spill = recordSpill(int(slot));
+        for (int distance = 0; distance <= spill; ++distance) {
+            atomicOr(spillMasks[distance], 1u << rank);
+        }
+    }
+    barrier();
+    for (uint index = gl_LocalInvocationIndex;
+         index < uint(kTileWindow * kTileWindow);
+         index += 256u) {
+        int slot = stagedSlots[index];
+        uint bit = 0u;
+        if (canIndexSubjects && rankedSubjectCount <= uint(kMaxRankedSubjects) && slot >= 0) {
+            uint word = uint(slot) >> 5;
+            uint slotBit = 1u << (uint(slot) & 31u);
+            uint rank = rankBases[word] + bitCount(presentWords[word] & (slotBit - 1u));
+            bit = 1u << rank;
+        }
+        stagedBits[index] = bit;
+    }
+    barrier();
+    for (uint index = gl_LocalInvocationIndex;
+         index < uint(kLevel1Size * kLevel1Size);
+         index += 256u) {
+        ivec2 center = ivec2(
+            int(index % uint(kLevel1Size)), int(index / uint(kLevel1Size))
+        ) + ivec2(4);
+        uint mask = 0u;
+        for (int dy = -2; dy <= 2; ++dy) {
+            for (int dx = -2 + (dy & 1); dx <= 2; dx += 2) {
+                mask |= stagedBits[(center.y + dy) * kTileWindow + center.x + dx];
+            }
+        }
+        level1[index] = mask;
+    }
+    barrier();
+    for (uint index = gl_LocalInvocationIndex;
+         index < uint(kLevel2Size * kLevel2Size);
+         index += 256u) {
+        ivec2 center = ivec2(
+            int(index % uint(kLevel2Size)), int(index / uint(kLevel2Size))
+        ) + ivec2(2);
+        level2[index] = level1[(center.y - 2) * kLevel1Size + center.x - 2] |
+                        level1[(center.y - 2) * kLevel1Size + center.x + 2] |
+                        level1[(center.y + 2) * kLevel1Size + center.x - 2] |
+                        level1[(center.y + 2) * kLevel1Size + center.x + 2];
+    }
+    barrier();
+    for (uint index = gl_LocalInvocationIndex;
+         index < uint(kLevel3Size * kLevel3Size);
+         index += 256u) {
+        ivec2 center = ivec2(
+            int(index % uint(kLevel3Size)), int(index / uint(kLevel3Size))
+        ) + ivec2(2);
+        level3[index] = level2[(center.y - 2) * kLevel2Size + center.x - 2] |
+                        level2[(center.y - 2) * kLevel2Size + center.x + 2] |
+                        level2[(center.y + 2) * kLevel2Size + center.x - 2] |
+                        level2[(center.y + 2) * kLevel2Size + center.x + 2];
+    }
+    barrier();
+    uint level4Index = gl_LocalInvocationIndex;
+    ivec2 level4Center = ivec2(
+        int(level4Index % uint(kLevel4Size)), int(level4Index / uint(kLevel4Size))
+    ) + ivec2(2);
+    level4[level4Index] =
+        level3[(level4Center.y - 2) * kLevel3Size + level4Center.x - 2] |
+        level3[(level4Center.y - 2) * kLevel3Size + level4Center.x + 2] |
+        level3[(level4Center.y + 2) * kLevel3Size + level4Center.x - 2] |
+        level3[(level4Center.y + 2) * kLevel3Size + level4Center.x + 2];
     barrier();
     ivec2 p = tileOrigin + ivec2(gl_LocalInvocationID.xy);
     if (any(greaterThanEqual(p, frame.size)) || all(equal(loadId(p), uvec2(0u)))) {
         return;
     }
-    imageStore(scratchColors, p, vec4(glitchCell(p, tileOrigin, frame)) / 255.0);
+    bool forceScan = subjectWords[2].y != 0u || !canIndexSubjects ||
+                     rankedSubjectCount > uint(kMaxRankedSubjects);
+    imageStore(scratchColors, p, vec4(glitchCell(p, tileOrigin, frame, forceScan)) / 255.0);
 }

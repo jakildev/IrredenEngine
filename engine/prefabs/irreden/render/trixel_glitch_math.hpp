@@ -301,9 +301,11 @@ inline void setPerAxisFrameWords(
     IRMath::ivec4 storeFrame,
     IRMath::ivec2 snapshotOrigin,
     int depthScale,
-    int depthBias
+    int depthBias,
+    bool forceScan = false
 ) {
     const std::uint32_t base = words[2].x;
+    words[2].y = forceScan ? 1u : 0u;
     words[base] = packSigned(storeFrame.x, storeFrame.y, storeFrame.z, kPerAxisFaceStep);
     words[base + 1u] = packSigned(snapshotOrigin.x, snapshotOrigin.y, depthScale, depthBias);
 }

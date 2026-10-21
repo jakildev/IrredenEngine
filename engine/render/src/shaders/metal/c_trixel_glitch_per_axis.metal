@@ -6,6 +6,13 @@ constant int kTrixelGlitchTileSize = 16;
 constant int kTrixelGlitchTileHalo = 10;
 constant int kTrixelGlitchTileWindow =
     kTrixelGlitchTileSize + 2 * kTrixelGlitchTileHalo;
+constant int kTrixelGlitchLevel1Size = 28;
+constant int kTrixelGlitchLevel2Size = 24;
+constant int kTrixelGlitchLevel3Size = 20;
+constant int kTrixelGlitchLevel4Size = 16;
+constant int kTrixelGlitchPresenceWords = 32;
+constant int kTrixelGlitchMaxRankedSubjects = 32;
+constant int kTrixelGlitchMaxIndexedSubjects = kTrixelGlitchPresenceWords * 32;
 
 struct TrixelGlitchSubjectRecord {
     uint2 id;
@@ -117,31 +124,23 @@ static uint2 trixelGlitchLoadId(texture2d<uint, access::read> ids, int2 q) {
     return decodeEntityId(ids.read(uint2(q)).xy);
 }
 
-static int trixelGlitchSlotAt(
-    const device uint4* words,
-    texture2d<uint, access::read> ids,
-    int2 q,
-    TrixelGlitchPerAxisFrame frame
+static int trixelGlitchStagedSlotAt(
+    threadgroup const int* stagedSlots, int2 tileOrigin, int2 q
 ) {
-    return trixelGlitchInCanvas(q, frame.size)
-        ? trixelGlitchSubjectSlot(words, trixelGlitchLoadId(ids, q)) : -1;
+    int2 local = q - tileOrigin + int2(kTrixelGlitchTileHalo);
+    return stagedSlots[local.y * kTrixelGlitchTileWindow + local.x];
 }
 
-static bool trixelGlitchIsEdge(
-    const device uint4* words,
-    texture2d<uint, access::read> ids,
-    int2 q,
-    int slot,
-    TrixelGlitchPerAxisFrame frame
+static bool trixelGlitchIsEdgeStaged(
+    threadgroup const int* stagedSlots, int2 tileOrigin, int2 q, int slot
 ) {
-    if (trixelGlitchSlotAt(words, ids, q, frame) != slot) {
+    if (trixelGlitchStagedSlotAt(stagedSlots, tileOrigin, q) != slot) {
         return false;
     }
-    int step = frame.faceStep;
-    return trixelGlitchSlotAt(words, ids, q + int2(step, 0), frame) != slot ||
-           trixelGlitchSlotAt(words, ids, q - int2(step, 0), frame) != slot ||
-           trixelGlitchSlotAt(words, ids, q + int2(0, step), frame) != slot ||
-           trixelGlitchSlotAt(words, ids, q - int2(0, step), frame) != slot;
+    return trixelGlitchStagedSlotAt(stagedSlots, tileOrigin, q + int2(2, 0)) != slot ||
+           trixelGlitchStagedSlotAt(stagedSlots, tileOrigin, q - int2(2, 0)) != slot ||
+           trixelGlitchStagedSlotAt(stagedSlots, tileOrigin, q + int2(0, 2)) != slot ||
+           trixelGlitchStagedSlotAt(stagedSlots, tileOrigin, q - int2(0, 2)) != slot;
 }
 
 static uint4 trixelGlitchEchoBlend(uint4 colour, uint4 tint, uint strength) {
@@ -162,7 +161,9 @@ static uint4 trixelGlitchApplySubject(
     texture2d<int, access::read> liveDistances,
     texture2d<uint, access::read> liveEntityIds,
     texture2d<float, access::read> historyColors,
-    texture2d<uint, access::read> historyEntityIds
+    texture2d<uint, access::read> historyEntityIds,
+    threadgroup const int* stagedSlots,
+    int2 tileOrigin
 ) {
     TrixelGlitchSubjectRecord record = trixelGlitchLoadRecord(words, slot);
     uint2 current = trixelGlitchLoadId(liveEntityIds, p);
@@ -219,15 +220,15 @@ static uint4 trixelGlitchApplySubject(
     }
 
     if (record.echoStrength > 0u) {
-        if (trixelGlitchIsEdge(
-                words, liveEntityIds, p - record.echoA * frame.faceStep, slot, frame
+        if (trixelGlitchIsEdgeStaged(
+                stagedSlots, tileOrigin, p - record.echoA * frame.faceStep, slot
             )) {
             colour = trixelGlitchEchoBlend(
                 colour, glitchSubjectTint(record.tintA), record.echoStrength
             );
         }
-        if (trixelGlitchIsEdge(
-                words, liveEntityIds, p - record.echoB * frame.faceStep, slot, frame
+        if (trixelGlitchIsEdgeStaged(
+                stagedSlots, tileOrigin, p - record.echoB * frame.faceStep, slot
             )) {
             colour = trixelGlitchEchoBlend(
                 colour, glitchSubjectTint(record.tintB), record.echoStrength
@@ -263,6 +264,14 @@ static uint4 trixelGlitchCell(
     const device uint4* words,
     threadgroup const int* stagedSlots,
     threadgroup const int* stagedSpills,
+    threadgroup const uint* stagedBits,
+    threadgroup const uint* level1,
+    threadgroup const uint* level2,
+    threadgroup const uint* level3,
+    threadgroup const uint* level4,
+    threadgroup const uint* spillMasks,
+    threadgroup const int* rankToSlot,
+    bool forceScan,
     texture2d<float, access::read> liveColors,
     texture2d<int, access::read> liveDistances,
     texture2d<uint, access::read> liveEntityIds,
@@ -270,42 +279,66 @@ static uint4 trixelGlitchCell(
     texture2d<uint, access::read> historyEntityIds
 ) {
     int slotA = -1;
-    int distA = 0;
     int slotB = -1;
-    int distB = 0;
-    int radius = int(words[1].w) * frame.faceStep;
-    for (int dy = -radius; dy <= radius; ++dy) {
-        for (int dx = -radius; dx <= radius; ++dx) {
-            if ((dx + dy) % frame.faceStep != 0) {
-                continue;
+    if (forceScan) {
+        int distA = 0;
+        int distB = 0;
+        int radius = int(words[1].w) * 2;
+        for (int dy = -radius; dy <= radius; ++dy) {
+            for (int dx = -radius + (dy & 1); dx <= radius; dx += 2) {
+                int2 sampleAt = p + int2(dx, dy);
+                int2 local = sampleAt - tileOrigin + int2(kTrixelGlitchTileHalo);
+                int stagedIndex = local.y * kTrixelGlitchTileWindow + local.x;
+                int slot = stagedSlots[stagedIndex];
+                if (slot < 0) {
+                    continue;
+                }
+                int dist = (max(abs(dx), abs(dy)) + 1) >> 1;
+                if (dist > stagedSpills[stagedIndex]) {
+                    continue;
+                }
+                if (slot == slotA) {
+                    distA = min(distA, dist);
+                } else if (slot == slotB) {
+                    distB = min(distB, dist);
+                } else if (slotB < 0 ||
+                           trixelGlitchInfluenceBefore(slot, dist, slotB, distB)) {
+                    slotB = slot;
+                    distB = dist;
+                }
+                if (slotB >= 0 &&
+                    (slotA < 0 || trixelGlitchInfluenceBefore(slotB, distB, slotA, distA))) {
+                    int swapSlot = slotA;
+                    int swapDist = distA;
+                    slotA = slotB;
+                    distA = distB;
+                    slotB = swapSlot;
+                    distB = swapDist;
+                }
             }
-            int2 sampleAt = p + int2(dx, dy);
-            int2 local = sampleAt - tileOrigin + int2(kTrixelGlitchTileHalo);
-            int stagedIndex = local.y * kTrixelGlitchTileWindow + local.x;
-            int slot = stagedSlots[stagedIndex];
-            if (slot < 0) {
-                continue;
-            }
-            int dist = (max(abs(dx), abs(dy)) + frame.faceStep - 1) / frame.faceStep;
-            if (dist > stagedSpills[stagedIndex]) {
-                continue;
-            }
-            if (slot == slotA) {
-                distA = min(distA, dist);
-            } else if (slot == slotB) {
-                distB = min(distB, dist);
-            } else if (slotB < 0 || trixelGlitchInfluenceBefore(slot, dist, slotB, distB)) {
-                slotB = slot;
-                distB = dist;
-            }
-            if (slotB >= 0 &&
-                (slotA < 0 || trixelGlitchInfluenceBefore(slotB, distB, slotA, distA))) {
-                int swapSlot = slotA;
-                int swapDist = distA;
-                slotA = slotB;
-                distA = distB;
-                slotB = swapSlot;
-                distB = swapDist;
+        }
+    } else {
+        int2 local = p - tileOrigin;
+        uint levels[5] = {
+            stagedBits[(local.y + kTrixelGlitchTileHalo) * kTrixelGlitchTileWindow +
+                       local.x + kTrixelGlitchTileHalo],
+            level1[(local.y + 6) * kTrixelGlitchLevel1Size + local.x + 6],
+            level2[(local.y + 4) * kTrixelGlitchLevel2Size + local.x + 4],
+            level3[(local.y + 2) * kTrixelGlitchLevel3Size + local.x + 2],
+            level4[local.y * kTrixelGlitchLevel4Size + local.x]
+        };
+        uint seen = 0u;
+        for (int distance = 0; distance <= kGlitchSubjectMaxSpill && slotB < 0; ++distance) {
+            uint fresh = levels[distance] & ~seen & spillMasks[distance];
+            seen |= levels[distance];
+            while (fresh != 0u && slotB < 0) {
+                int rank = int(ctz(fresh));
+                fresh &= fresh - 1u;
+                if (slotA < 0) {
+                    slotA = rankToSlot[rank];
+                } else {
+                    slotB = rankToSlot[rank];
+                }
             }
         }
     }
@@ -316,7 +349,7 @@ static uint4 trixelGlitchCell(
     if (slotB < 0) {
         return trixelGlitchApplySubject(
             p, slotA, idA, frame, words, liveColors, liveDistances, liveEntityIds,
-            historyColors, historyEntityIds
+            historyColors, historyEntityIds, stagedSlots, tileOrigin
         );
     }
     uint2 idB = words[trixelGlitchRecordBase(words, slotB)].xy;
@@ -334,16 +367,17 @@ static uint4 trixelGlitchCell(
         bool pickHi = (hash3(pair, uint(row), 0u) & 1u) != 0u;
         return trixelGlitchApplySubject(
             p, pickHi ? hi : lo, pickHi ? idHi : idLo, frame, words, liveColors,
-            liveDistances, liveEntityIds, historyColors, historyEntityIds
+            liveDistances, liveEntityIds, historyColors, historyEntityIds,
+            stagedSlots, tileOrigin
         );
     }
     uint4 a = trixelGlitchApplySubject(
         p, lo, mode == 1u ? idLo : idHi, frame, words, liveColors, liveDistances,
-        liveEntityIds, historyColors, historyEntityIds
+        liveEntityIds, historyColors, historyEntityIds, stagedSlots, tileOrigin
     );
     uint4 b = trixelGlitchApplySubject(
         p, hi, mode == 1u ? idHi : idLo, frame, words, liveColors, liveDistances,
-        liveEntityIds, historyColors, historyEntityIds
+        liveEntityIds, historyColors, historyEntityIds, stagedSlots, tileOrigin
     );
     return (a + b) >> 1;
 }
@@ -363,6 +397,18 @@ kernel void c_trixel_glitch_per_axis(
 ) {
     threadgroup int stagedSlots[kTrixelGlitchTileWindow * kTrixelGlitchTileWindow];
     threadgroup int stagedSpills[kTrixelGlitchTileWindow * kTrixelGlitchTileWindow];
+    threadgroup uint stagedBits[kTrixelGlitchTileWindow * kTrixelGlitchTileWindow];
+    threadgroup uint level1[kTrixelGlitchLevel1Size * kTrixelGlitchLevel1Size];
+    threadgroup uint level2[kTrixelGlitchLevel2Size * kTrixelGlitchLevel2Size];
+    threadgroup uint level3[kTrixelGlitchLevel3Size * kTrixelGlitchLevel3Size];
+    threadgroup uint level4[kTrixelGlitchLevel4Size * kTrixelGlitchLevel4Size];
+    threadgroup atomic_uint presentWords[kTrixelGlitchPresenceWords];
+    threadgroup uint presentValues[kTrixelGlitchPresenceWords];
+    threadgroup uint rankBases[kTrixelGlitchPresenceWords];
+    threadgroup int rankToSlot[kTrixelGlitchMaxRankedSubjects];
+    threadgroup atomic_uint atomicSpillMasks[kGlitchSubjectMaxSpill + 1];
+    threadgroup uint spillMasks[kGlitchSubjectMaxSpill + 1];
+    threadgroup uint rankedSubjectCount;
     TrixelGlitchPerAxisFrame frame;
     frame.size = int2(int(liveColors.get_width()), int(liveColors.get_height()));
     uint header = subjectWords[2].x;
@@ -375,6 +421,20 @@ kernel void c_trixel_glitch_per_axis(
     frame.depthBias = history.w;
     frame.seed = subjectWords[0].x;
     frame.tick = subjectWords[0].yz;
+    bool canIndexSubjects = subjectWords[0].w <= uint(kTrixelGlitchMaxIndexedSubjects);
+    if (localIndex < uint(kTrixelGlitchPresenceWords)) {
+        atomic_store_explicit(&presentWords[localIndex], 0u, memory_order_relaxed);
+        presentValues[localIndex] = 0u;
+        rankBases[localIndex] = 0u;
+    }
+    if (localIndex < uint(kGlitchSubjectMaxSpill + 1)) {
+        atomic_store_explicit(&atomicSpillMasks[localIndex], 0u, memory_order_relaxed);
+        spillMasks[localIndex] = 0u;
+    }
+    if (localIndex == 0u) {
+        rankedSubjectCount = 0u;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
     int2 tileGrid = (frame.size + int2(kTrixelGlitchTileSize - 1)) /
                     kTrixelGlitchTileSize;
     uint tile = tileList[groupId.x];
@@ -393,7 +453,127 @@ kernel void c_trixel_glitch_per_axis(
                        : -1;
         stagedSlots[flatIndex] = slot;
         stagedSpills[flatIndex] = slot >= 0 ? trixelGlitchRecordSpill(subjectWords, slot) : 0;
+        if (canIndexSubjects && slot >= 0) {
+            atomic_fetch_or_explicit(
+                &presentWords[uint(slot) >> 5],
+                1u << (uint(slot) & 31u),
+                memory_order_relaxed
+            );
+        }
     }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (localIndex < uint(kTrixelGlitchPresenceWords)) {
+        presentValues[localIndex] =
+            atomic_load_explicit(&presentWords[localIndex], memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (localIndex < uint(kTrixelGlitchPresenceWords)) {
+        uint base = 0u;
+        for (uint word = 0u; word < localIndex; ++word) {
+            base += popcount(presentValues[word]);
+        }
+        rankBases[localIndex] = base;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (localIndex == 0u) {
+        rankedSubjectCount = rankBases[kTrixelGlitchPresenceWords - 1] +
+                             popcount(presentValues[kTrixelGlitchPresenceWords - 1]);
+    }
+    for (uint slot = localIndex; slot < subjectWords[0].w; slot += 256u) {
+        if (!canIndexSubjects) {
+            continue;
+        }
+        uint word = slot >> 5;
+        uint bit = 1u << (slot & 31u);
+        if ((presentValues[word] & bit) == 0u) {
+            continue;
+        }
+        uint rank = rankBases[word] + popcount(presentValues[word] & (bit - 1u));
+        if (rank >= uint(kTrixelGlitchMaxRankedSubjects)) {
+            continue;
+        }
+        rankToSlot[rank] = int(slot);
+        int spill = trixelGlitchRecordSpill(subjectWords, int(slot));
+        for (int distance = 0; distance <= spill; ++distance) {
+            atomic_fetch_or_explicit(
+                &atomicSpillMasks[distance], 1u << rank, memory_order_relaxed
+            );
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (localIndex < uint(kGlitchSubjectMaxSpill + 1)) {
+        spillMasks[localIndex] =
+            atomic_load_explicit(&atomicSpillMasks[localIndex], memory_order_relaxed);
+    }
+    for (uint index = localIndex;
+         index < uint(kTrixelGlitchTileWindow * kTrixelGlitchTileWindow);
+         index += 256u) {
+        int slot = stagedSlots[index];
+        uint bit = 0u;
+        if (canIndexSubjects &&
+            rankedSubjectCount <= uint(kTrixelGlitchMaxRankedSubjects) && slot >= 0) {
+            uint word = uint(slot) >> 5;
+            uint slotBit = 1u << (uint(slot) & 31u);
+            uint rank = rankBases[word] + popcount(presentValues[word] & (slotBit - 1u));
+            bit = 1u << rank;
+        }
+        stagedBits[index] = bit;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint index = localIndex;
+         index < uint(kTrixelGlitchLevel1Size * kTrixelGlitchLevel1Size);
+         index += 256u) {
+        int2 center = int2(
+            int(index % uint(kTrixelGlitchLevel1Size)),
+            int(index / uint(kTrixelGlitchLevel1Size))
+        ) + int2(4);
+        uint mask = 0u;
+        for (int dy = -2; dy <= 2; ++dy) {
+            for (int dx = -2 + (dy & 1); dx <= 2; dx += 2) {
+                mask |= stagedBits[(center.y + dy) * kTrixelGlitchTileWindow + center.x + dx];
+            }
+        }
+        level1[index] = mask;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint index = localIndex;
+         index < uint(kTrixelGlitchLevel2Size * kTrixelGlitchLevel2Size);
+         index += 256u) {
+        int2 center = int2(
+            int(index % uint(kTrixelGlitchLevel2Size)),
+            int(index / uint(kTrixelGlitchLevel2Size))
+        ) + int2(2);
+        level2[index] =
+            level1[(center.y - 2) * kTrixelGlitchLevel1Size + center.x - 2] |
+            level1[(center.y - 2) * kTrixelGlitchLevel1Size + center.x + 2] |
+            level1[(center.y + 2) * kTrixelGlitchLevel1Size + center.x - 2] |
+            level1[(center.y + 2) * kTrixelGlitchLevel1Size + center.x + 2];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint index = localIndex;
+         index < uint(kTrixelGlitchLevel3Size * kTrixelGlitchLevel3Size);
+         index += 256u) {
+        int2 center = int2(
+            int(index % uint(kTrixelGlitchLevel3Size)),
+            int(index / uint(kTrixelGlitchLevel3Size))
+        ) + int2(2);
+        level3[index] =
+            level2[(center.y - 2) * kTrixelGlitchLevel2Size + center.x - 2] |
+            level2[(center.y - 2) * kTrixelGlitchLevel2Size + center.x + 2] |
+            level2[(center.y + 2) * kTrixelGlitchLevel2Size + center.x - 2] |
+            level2[(center.y + 2) * kTrixelGlitchLevel2Size + center.x + 2];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    uint level4Index = localIndex;
+    int2 level4Center = int2(
+        int(level4Index % uint(kTrixelGlitchLevel4Size)),
+        int(level4Index / uint(kTrixelGlitchLevel4Size))
+    ) + int2(2);
+    level4[level4Index] =
+        level3[(level4Center.y - 2) * kTrixelGlitchLevel3Size + level4Center.x - 2] |
+        level3[(level4Center.y - 2) * kTrixelGlitchLevel3Size + level4Center.x + 2] |
+        level3[(level4Center.y + 2) * kTrixelGlitchLevel3Size + level4Center.x - 2] |
+        level3[(level4Center.y + 2) * kTrixelGlitchLevel3Size + level4Center.x + 2];
     threadgroup_barrier(mem_flags::mem_threadgroup);
     int2 p = tileOrigin + int2(localPosition.xy);
     if (!trixelGlitchInCanvas(p, frame.size) ||
@@ -402,6 +582,9 @@ kernel void c_trixel_glitch_per_axis(
     }
     uint4 colour = trixelGlitchCell(
         p, tileOrigin, frame, subjectWords, stagedSlots, stagedSpills,
+        stagedBits, level1, level2, level3, level4, spillMasks, rankToSlot,
+        subjectWords[2].y != 0u || !canIndexSubjects ||
+            rankedSubjectCount > uint(kTrixelGlitchMaxRankedSubjects),
         liveColors, liveDistances, liveEntityIds,
         historyColors, historyEntityIds
     );

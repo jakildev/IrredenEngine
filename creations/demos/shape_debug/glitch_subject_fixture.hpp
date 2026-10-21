@@ -510,9 +510,7 @@ struct GlitchSubjectFixture {
         preIdHash_ = planeHash(ids, distances, preDistanceHash_);
         if (const auto *axes = perAxisCanvases(); axes != nullptr) {
             for (int axis = 0; axis < IRComponents::PerAxisCanvasStore::kAxisCount; ++axis) {
-                if (perAxisPreColors_[axis].empty()) {
-                    axes->axes_[axis].readColors(axes->size_, perAxisPreColors_[axis]);
-                }
+                axes->axes_[axis].readColors(axes->size_, perAxisPreColors_[axis]);
                 axes->axes_[axis].readEntityIdCarriers(axes->size_, ids);
                 axes->axes_[axis].readDistances(axes->size_, distances);
                 perAxisPreIdHash_[axis] = planeHash(ids, distances, perAxisPreDistanceHash_[axis]);

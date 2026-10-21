@@ -16,10 +16,10 @@
 #include <irreden/render/gpu_substage_timing.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/trixel_glitch_math.hpp>
+#include <irreden/utility/path_utils.hpp>
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdlib>
 #include <cstdint>
 #include <span>
 #include <utility>
@@ -453,6 +453,7 @@ template <> struct System<TRIXEL_GLITCH> {
     Buffer *sunDepthBuf_ = nullptr;
     Buffer *sunFrameDataBuf_ = nullptr;
     bool perAxisDisabled_ = false;
+    bool perAxisForceScan_ = false;
 
     // Frame state resolved in beginTick and the tick.
     IRComponents::C_GlitchState state_{};
@@ -587,7 +588,8 @@ template <> struct System<TRIXEL_GLITCH> {
                 perAxisInput.storeFrame_,
                 snapshotOrigin,
                 perAxisInput.depthScale_,
-                perAxisInput.depthBias_
+                perAxisInput.depthBias_,
+                perAxisForceScan_
             );
         }
         const TrixelGlitchFramePlan plan = planTrixelGlitchFrame(
@@ -759,7 +761,8 @@ template <> struct System<TRIXEL_GLITCH> {
         sys->sunDepthBuf_ = IRRender::getNamedResourceOrNull<Buffer>("SunShadowDepthMap");
         sys->sunFrameDataBuf_ =
             IRRender::getNamedResourceOrNull<Buffer>("ComputeSunShadowFrameData");
-        sys->perAxisDisabled_ = std::getenv("IR_TRIXEL_GLITCH_PER_AXIS_DISABLE") != nullptr;
+        sys->perAxisDisabled_ = IRUtility::envFlagSet("IR_TRIXEL_GLITCH_PER_AXIS_DISABLE");
+        sys->perAxisForceScan_ = IRUtility::envFlagSet("IR_TRIXEL_GLITCH_PER_AXIS_SCAN");
         // Deliberately untagged: `encodeFrame`'s GpuSubStageScope owns the
         // `trixelGlitch` row, and a system tag would share its timestamp
         // attachment.

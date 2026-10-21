@@ -304,8 +304,14 @@ runs a three-pass subject-tile worklist for each X/Y/Z axis canvas:
    tile intersecting its `2 * spill` reach; the first marker appends the tile
    and increments that axis's indirect group count.
 2. Resolve runs one 16x16 workgroup per marked tile. It stages subject slot and
-   spill for a 36x36 window (ten-cell halo), resolves the unchanged closest-two
-   rule from threadgroup memory, and writes occupied cells to scratch.
+   spill for a 36x36 window (ten-cell halo), then assigns the window's distinct
+   subjects local ranks in ascending slot order. A five-level threadgroup
+   slot-mask pyramid records which ranks lie within store Chebyshev radii
+   0, 2, 4, 6 and 8. Per-cell level and spill masks recover the unchanged
+   closest-two rule without scanning the window, and occupied cells write to
+   scratch. Up to 32 distinct subjects in a window take this path; a larger
+   window, a frame with more than 1024 subjects, or
+   `IR_TRIXEL_GLITCH_PER_AXIS_SCAN=1` takes the exact step-2 lattice scan.
 3. Write-back copies scratch to the live colour for those occupied cells and
    clears the tile flag. The fixture oracle retains its own pre-pass colour
    readback because the one-way write-back does not swap the two planes.
@@ -347,12 +353,13 @@ sub-face trixel.
 
 ### Cost
 
-The main pass shades canvas texels, while the per-axis route performs one
-subject lookup per compacted occupied cell during mark and resolve work
-proportional to subject reach. Its cost therefore follows main-canvas size and
-the rotating subjects' reached tiles rather than every occupied face in the
-scene. Budget: eight subjects, every
-effect at weight 1, `spill = 4`, at the committed 1x take preset:
+The main pass shades canvas texels. The per-axis mark performs one subject
+lookup per compacted occupied cell. Resolve performs a fixed amount of
+threadgroup work per marked tile while at most 32 distinct subjects share its
+window; only the explicit or overflow fallback scans the step-2 lattice. Its
+cost therefore follows main-canvas size and the rotating subjects' reached
+tiles rather than every occupied face in the scene. Budget: eight subjects,
+every effect at weight 1, `spill = 4`, at the committed 1x take preset:
 
     UCB95(trixelGlitch per-run means, --glitch-subject-test all)  <  0.40 ms
     UCB95(trixelGlitchPerAxis per-run means, yaw 22.5)            <  0.40 ms

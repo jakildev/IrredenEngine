@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <fstream>
 #include <map>
@@ -146,6 +147,8 @@ TEST(TrixelGlitchMathTest, PackedBufferRoundTripsEverySubjectThroughTheTable) {
     EXPECT_EQ(Glitch::lookupSubjectSlot(words, 0u), -1) << "the null id is the empty sentinel";
     EXPECT_EQ(Glitch::lookupSubjectSlot(words, 19u), -1);
     EXPECT_EQ(Glitch::lookupSubjectSlot(words, 0x2'0000'0002ull), -1);
+    Glitch::setPerAxisFrameWords(words, IRMath::ivec4(1), ivec2(2), 3, 4, true);
+    EXPECT_EQ(words[2].y, 1u) << "the forced scan switch rides the existing header";
 }
 
 TEST(TrixelGlitchMathTest, CollidingIdsResolveByLinearProbing) {
@@ -362,6 +365,182 @@ TEST(TrixelGlitchMathTest, PerAxisTileMarkCoversReachAcrossTileBoundaries) {
     }
     EXPECT_LT(bounds.x, bounds.z) << "the subject reach must cross the x tile boundary";
     EXPECT_LT(bounds.y, bounds.w) << "the subject reach must cross the y tile boundary";
+}
+
+struct PyramidResult {
+    Glitch::Influence influence_{};
+    bool fallback_ = false;
+};
+
+PyramidResult resolvePyramidModel(
+    ivec2 p, const std::map<std::pair<int, int>, int> &slots, const std::vector<int> &spills
+) {
+    constexpr int kWindow = Glitch::kPerAxisSubjectTileWindow;
+    constexpr int kHalo = Glitch::kPerAxisSubjectTileHalo;
+    std::vector<int> rankedSlots;
+    for (int slot = 0; slot < static_cast<int>(spills.size()); ++slot) {
+        const bool present = std::any_of(slots.begin(), slots.end(), [slot](const auto &entry) {
+            return entry.second == slot;
+        });
+        if (present) {
+            rankedSlots.push_back(slot);
+        }
+    }
+    if (rankedSlots.size() > 32u || spills.size() > 1024u) {
+        return {
+            Glitch::resolveInfluenceStepped(
+                p,
+                Glitch::kSubjectMaxSpill,
+                Glitch::kPerAxisFaceStep,
+                [&slots](ivec2 q) {
+                    const auto found = slots.find({q.x, q.y});
+                    return found == slots.end() ? -1 : found->second;
+                },
+                [&spills](int slot) { return spills[static_cast<std::size_t>(slot)]; }
+            ),
+            true
+        };
+    }
+    std::vector<std::uint32_t> level0(kWindow * kWindow, 0u);
+    for (const auto &[at, slot] : slots) {
+        const int x = at.first + kHalo;
+        const int y = at.second + kHalo;
+        if (x < 0 || y < 0 || x >= kWindow || y >= kWindow) {
+            continue;
+        }
+        const auto rank = std::find(rankedSlots.begin(), rankedSlots.end(), slot);
+        level0[static_cast<std::size_t>(y * kWindow + x)] =
+            1u << static_cast<unsigned>(rank - rankedSlots.begin());
+    }
+    const auto buildLevel1 = [&level0](int x, int y) {
+        std::uint32_t mask = 0u;
+        for (int dy = -2; dy <= 2; ++dy) {
+            for (int dx = -2 + (dy & 1); dx <= 2; dx += 2) {
+                mask |= level0[static_cast<std::size_t>((y + dy) * 36 + x + dx)];
+            }
+        }
+        return mask;
+    };
+    std::vector<std::uint32_t> level1(28 * 28);
+    std::vector<std::uint32_t> level2(24 * 24);
+    std::vector<std::uint32_t> level3(20 * 20);
+    std::vector<std::uint32_t> level4(16 * 16);
+    for (int y = 0; y < 28; ++y) {
+        for (int x = 0; x < 28; ++x) {
+            level1[static_cast<std::size_t>(y * 28 + x)] = buildLevel1(x + 4, y + 4);
+        }
+    }
+    const auto grow = [](const std::vector<std::uint32_t> &source, int sourceSize, int x, int y) {
+        const int centerX = x + 2;
+        const int centerY = y + 2;
+        return source[static_cast<std::size_t>((centerY - 2) * sourceSize + centerX - 2)] |
+               source[static_cast<std::size_t>((centerY - 2) * sourceSize + centerX + 2)] |
+               source[static_cast<std::size_t>((centerY + 2) * sourceSize + centerX - 2)] |
+               source[static_cast<std::size_t>((centerY + 2) * sourceSize + centerX + 2)];
+    };
+    for (int y = 0; y < 24; ++y) {
+        for (int x = 0; x < 24; ++x) {
+            level2[static_cast<std::size_t>(y * 24 + x)] = grow(level1, 28, x, y);
+        }
+    }
+    for (int y = 0; y < 20; ++y) {
+        for (int x = 0; x < 20; ++x) {
+            level3[static_cast<std::size_t>(y * 20 + x)] = grow(level2, 24, x, y);
+        }
+    }
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            level4[static_cast<std::size_t>(y * 16 + x)] = grow(level3, 20, x, y);
+        }
+    }
+    std::array<std::uint32_t, Glitch::kSubjectMaxSpill + 1> spillMasks{};
+    for (std::size_t rank = 0; rank < rankedSlots.size(); ++rank) {
+        for (int distance = 0; distance <= spills[static_cast<std::size_t>(rankedSlots[rank])];
+             ++distance) {
+            spillMasks[static_cast<std::size_t>(distance)] |= 1u << rank;
+        }
+    }
+    const std::array<std::uint32_t, Glitch::kSubjectMaxSpill + 1> levels{
+        level0[static_cast<std::size_t>((p.y + 10) * 36 + p.x + 10)],
+        level1[static_cast<std::size_t>((p.y + 6) * 28 + p.x + 6)],
+        level2[static_cast<std::size_t>((p.y + 4) * 24 + p.x + 4)],
+        level3[static_cast<std::size_t>((p.y + 2) * 20 + p.x + 2)],
+        level4[static_cast<std::size_t>(p.y * 16 + p.x)]
+    };
+    PyramidResult result;
+    std::uint32_t seen = 0u;
+    for (int distance = 0; distance <= Glitch::kSubjectMaxSpill && result.influence_.count_ < 2;
+         ++distance) {
+        std::uint32_t fresh = levels[static_cast<std::size_t>(distance)] & ~seen &
+                              spillMasks[static_cast<std::size_t>(distance)];
+        seen |= levels[static_cast<std::size_t>(distance)];
+        while (fresh != 0u && result.influence_.count_ < 2) {
+            const int rank = static_cast<int>(std::countr_zero(fresh));
+            fresh &= fresh - 1u;
+            if (result.influence_.count_ == 0) {
+                result.influence_.slotA_ = rankedSlots[static_cast<std::size_t>(rank)];
+                result.influence_.distA_ = distance;
+            } else {
+                result.influence_.slotB_ = rankedSlots[static_cast<std::size_t>(rank)];
+                result.influence_.distB_ = distance;
+            }
+            ++result.influence_.count_;
+        }
+    }
+    return result;
+}
+
+TEST(TrixelGlitchMathTest, PerAxisPyramidMatchesStepTwoInfluenceAndFallsBackAbove32Subjects) {
+    std::uint32_t state = 0xC001D00Du;
+    const auto next = [&state]() {
+        state = Glitch::hash3(state, 0x91u, 0x37u);
+        return state;
+    };
+    for (int trial = 0; trial < 128; ++trial) {
+        const int subjectCount = 3 + static_cast<int>(next() % 6u);
+        std::vector<int> spills(static_cast<std::size_t>(subjectCount));
+        for (int &spill : spills) {
+            spill = static_cast<int>(next() % 5u);
+        }
+        std::map<std::pair<int, int>, int> slots;
+        for (int cell = 0; cell < 80; ++cell) {
+            int x = -8 + static_cast<int>(next() % 32u);
+            int y = -8 + static_cast<int>(next() % 32u);
+            if (((x + y) & 1) != 0) {
+                ++x;
+            }
+            slots[{x, y}] = static_cast<int>(next() % static_cast<std::uint32_t>(subjectCount));
+        }
+        slots[{-1, -1}] = 2;
+        slots[{1, 1}] = 1;
+        spills[1] = IRMath::max(spills[1], 1);
+        spills[2] = IRMath::max(spills[2], 1);
+        const ivec2 p(0, 0);
+        const PyramidResult pyramid = resolvePyramidModel(p, slots, spills);
+        const Glitch::Influence scan = Glitch::resolveInfluenceStepped(
+            p,
+            Glitch::kSubjectMaxSpill,
+            Glitch::kPerAxisFaceStep,
+            [&slots](ivec2 q) {
+                const auto found = slots.find({q.x, q.y});
+                return found == slots.end() ? -1 : found->second;
+            },
+            [&spills](int slot) { return spills[static_cast<std::size_t>(slot)]; }
+        );
+        EXPECT_FALSE(pyramid.fallback_);
+        EXPECT_EQ(pyramid.influence_.count_, scan.count_) << "trial " << trial;
+        EXPECT_EQ(pyramid.influence_.slotA_, scan.slotA_) << "trial " << trial;
+        EXPECT_EQ(pyramid.influence_.distA_, scan.distA_) << "trial " << trial;
+        EXPECT_EQ(pyramid.influence_.slotB_, scan.slotB_) << "trial " << trial;
+        EXPECT_EQ(pyramid.influence_.distB_, scan.distB_) << "trial " << trial;
+    }
+
+    std::vector<int> spills(33, 4);
+    std::map<std::pair<int, int>, int> slots;
+    for (int slot = 0; slot < 33; ++slot) {
+        slots[{(slot % 11) * 2 - 10, (slot / 11) * 2 - 2}] = slot;
+    }
+    EXPECT_TRUE(resolvePyramidModel(ivec2(0), slots, spills).fallback_);
 }
 
 // ---- the per-texel CPU twin ------------------------------------------------
