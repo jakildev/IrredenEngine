@@ -52,7 +52,8 @@ def rules(worktree, role):
     # merges"); every role is refused the bare and checkout-relative forms.
     executor = "scripts/fleet/fleet-automerge"
     for form in (["fleet-automerge"], [executor], ["./" + executor], [str(worktree / executor)],
-                 ["python3", executor], ["python3", str(worktree / executor)]):
+                 ["python3", executor], ["python3", "./" + executor],
+                 ["python3", str(worktree / executor)]):
         rule(form, "forbidden")
     rule(["gh", "pr", "create"], "forbidden" if role in REVIEW_ROLES else "allow")
     rule(["gh", "auth", "status"], "allow")

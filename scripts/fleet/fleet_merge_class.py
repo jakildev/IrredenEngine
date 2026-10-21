@@ -178,7 +178,9 @@ _ASSIGN_RE = re.compile(r"^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$")
 
 def parse_conf_text(text):
     """The `NAME=value` assignments of a bash-sourceable conf, last one wins;
-    surrounding quotes and a trailing `# comment` after a quoted value drop."""
+    surrounding quotes and a trailing `# comment` after a quoted value drop.
+    A quoted value with no closing quote on its line maps to None: bash would
+    not read it as written, so callers treat it as malformed."""
     values = {}
     for line in text.splitlines():
         m = _ASSIGN_RE.match(line)
@@ -188,7 +190,7 @@ def parse_conf_text(text):
         if raw[:1] in ("'", '"'):
             quote = raw[0]
             end = raw.find(quote, 1)
-            raw = raw[1:end] if end > 0 else raw[1:]
+            raw = raw[1:end] if end > 0 else None
         else:
             raw = raw.split("#", 1)[0].strip()
         values[m.group(1)] = raw
@@ -207,15 +209,21 @@ def read_enablement(conf_path):
         return Enablement(frozenset(), 0, (f"conf unreadable: {exc.strerror or exc}",))
     classes = set()
     raw = values.get("FLEET_AUTOMERGE_CLASSES", "")
+    if raw is None:
+        problems.append("FLEET_AUTOMERGE_CLASSES has an unterminated quote")
+        raw = ""
     for token in re.split(r"[,\s]+", raw):
         if not token:
             continue
         if token not in KNOWN_CLASSES:
             problems.append(f"FLEET_AUTOMERGE_CLASSES names unknown class {token!r}")
         classes.add(token)
-    hold_raw = values.get("FLEET_AUTOMERGE_HOLD_SECS", "0") or "0"
+    hold_raw = values.get("FLEET_AUTOMERGE_HOLD_SECS", "0")
+    hold_raw = "0" if hold_raw == "" else hold_raw
     hold = 0
-    if hold_raw.isdigit():
+    if hold_raw is None:
+        problems.append("FLEET_AUTOMERGE_HOLD_SECS has an unterminated quote")
+    elif hold_raw.isdigit():
         hold = int(hold_raw)
     else:
         problems.append(f"FLEET_AUTOMERGE_HOLD_SECS is not a non-negative integer: {hold_raw!r}")

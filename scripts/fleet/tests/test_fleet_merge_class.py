@@ -286,6 +286,22 @@ class Enablement(unittest.TestCase):
         self.assertFalse(en.enabled)
         self.assertTrue(any("HOLD_SECS" in p for p in en.problems))
 
+    def test_unterminated_quote_enables_nothing(self):
+        for text in ('FLEET_AUTOMERGE_CLASSES="rebless\n',
+                     "FLEET_AUTOMERGE_CLASSES='rebless\n",
+                     'FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_HOLD_SECS="60\n'):
+            with self.subTest(text=text):
+                en = self.read(text)
+                self.assertFalse(en.enabled)
+                self.assertEqual(en.classes, frozenset())
+                self.assertTrue(any("unterminated quote" in p for p in en.problems))
+
+    def test_unterminated_quote_parses_to_none(self):
+        self.assertIsNone(mc.parse_conf_text('FLEET_AUTOMERGE_CLASSES="rebless\n')
+                          ["FLEET_AUTOMERGE_CLASSES"])
+        self.assertEqual(mc.parse_conf_text('FLEET_AUTOMERGE_CLASSES=""\n')
+                         ["FLEET_AUTOMERGE_CLASSES"], "")
+
     def test_comment_and_last_assignment(self):
         en = self.read("# FLEET_AUTOMERGE_CLASSES=docs\nFLEET_AUTOMERGE_CLASSES=docs\n"
                        "FLEET_AUTOMERGE_CLASSES=rebless\n")
