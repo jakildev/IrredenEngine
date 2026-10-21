@@ -671,6 +671,14 @@ template <> struct System<TRIXEL_GLITCH> {
             framePerAxisDispatches_ = framePerAxisMarkDispatches_ + framePerAxisResolveDispatches_ +
                                       framePerAxisWritebackDispatches_;
             perAxisDispatchCount_ += framePerAxisDispatches_;
+            IRRender::device()->unbindBufferBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_TrixelGlitchTileFlags
+            );
+            IRRender::device()->unbindBufferBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_TrixelGlitchTileArgs
+            );
             encoder.finishPerAxisDispatches();
         }
         if (!readsHistory_) {

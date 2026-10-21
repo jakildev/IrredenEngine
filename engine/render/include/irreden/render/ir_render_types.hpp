@@ -1478,8 +1478,10 @@ constexpr std::uint32_t kBufferIndex_OverflowLightingScratch = kBufferIndex_Voxe
 // slot, so the borrow never shadows a uniform binding on Metal.
 constexpr std::uint32_t kBufferIndex_TrixelGlitchSubjects = kBufferIndex_VoxelActiveMask;
 // TRIXEL_GLITCH borrows the late-frame lighting slots for its per-axis tile
-// worklist. The pass restores all three owners before returning: lighting
-// frame data (27), the sun-depth map (28), and sun frame data (29).
+// worklist. Metal keeps uniform and storage bindings in separate sticky tables,
+// then applies storage last, so slots 27 and 29 must clear their storage entries
+// before the uniform owners are restored. Slot 28 has a storage owner and is
+// restored directly.
 constexpr std::uint32_t kBufferIndex_TrixelGlitchTileFlags = kBufferIndex_FrameDataLightingToTrixel;
 constexpr std::uint32_t kBufferIndex_TrixelGlitchTileList = kBufferIndex_SunShadowDepthMap;
 constexpr std::uint32_t kBufferIndex_TrixelGlitchTileArgs = kBufferIndex_FrameDataSun;

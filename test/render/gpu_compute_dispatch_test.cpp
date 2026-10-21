@@ -176,6 +176,23 @@ TEST_F(GpuComputeDispatchTest, CopyNamedBufferSubDataMatchesSourceBytes) {
     EXPECT_EQ(readback, expected);
 }
 
+TEST_F(GpuComputeDispatchTest, DeviceUnbindClearsIndexedStorageBinding) {
+    using namespace IRRender;
+
+    constexpr std::uint32_t kBorrowedSlot = 27;
+    constexpr std::uint32_t seed = 0;
+    Buffer buffer{&seed, sizeof(seed), BUFFER_STORAGE_NONE};
+    buffer.bindBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
+
+    GLint binding = 0;
+    ENG_API->glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, kBorrowedSlot, &binding);
+    ASSERT_EQ(binding, static_cast<GLint>(buffer.getHandle()));
+
+    device()->unbindBufferBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
+    ENG_API->glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, kBorrowedSlot, &binding);
+    EXPECT_EQ(binding, 0);
+}
+
 } // namespace
 
 #elif defined(IR_GRAPHICS_METAL)
@@ -268,6 +285,34 @@ void snapshotClearTexture(
         native->width() * native->height() * pixelBytes
     );
     blit->endEncoding();
+}
+
+TEST_F(MetalGpuComputeDispatchTest, DeviceUnbindClearsOnlyTheSelectedBufferTable) {
+    using namespace IRRender;
+
+    constexpr std::uint32_t kBorrowedSlot = 27;
+    constexpr std::uint32_t seed = 0;
+    Buffer uniform{&seed, sizeof(seed), BUFFER_STORAGE_NONE};
+    Buffer storage{&seed, sizeof(seed), BUFFER_STORAGE_NONE};
+    uniform.bindBase(BufferTarget::UNIFORM, kBorrowedSlot);
+    storage.bindBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
+
+    ASSERT_EQ(
+        boundMetalBuffer(BufferTarget::UNIFORM, kBorrowedSlot).buffer_,
+        uniform.getNativeBuffer()
+    );
+    ASSERT_EQ(
+        boundMetalBuffer(BufferTarget::SHADER_STORAGE, kBorrowedSlot).buffer_,
+        storage.getNativeBuffer()
+    );
+
+    device_->unbindBufferBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
+
+    EXPECT_EQ(boundMetalBuffer(BufferTarget::SHADER_STORAGE, kBorrowedSlot).buffer_, nullptr);
+    EXPECT_EQ(
+        boundMetalBuffer(BufferTarget::UNIFORM, kBorrowedSlot).buffer_,
+        uniform.getNativeBuffer()
+    );
 }
 
 enum class ClearSequenceApi { DEVICE, TEXTURE, ALTERNATING };

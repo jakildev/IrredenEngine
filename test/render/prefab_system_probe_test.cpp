@@ -297,6 +297,10 @@ class RecordingRenderDevice final : public IRRender::RenderDevice {
         m_log.push_back("device:dispatchComputeIndirect");
     }
     void memoryBarrier(IRRender::BarrierType) override {}
+    void unbindBufferBase(IRRender::BufferTarget target, std::uint32_t index) override {
+        EXPECT_EQ(target, IRRender::BufferTarget::SHADER_STORAGE);
+        m_log.push_back("device:unbindBufferBase:" + std::to_string(index));
+    }
     void drawElements(IRRender::DrawMode, int, IRRender::IndexType) override {
         m_log.push_back("device:drawElements");
     }
@@ -836,6 +840,8 @@ TEST_F(TrixelGlitchScheduleProbeTest, AllocatedPerAxisStoreRunsTileWorklistEvery
             "trixel:perAxisWriteback:0",
             "trixel:perAxisWriteback:1",
             "trixel:perAxisWriteback:2",
+            "device:unbindBufferBase:27",
+            "device:unbindBufferBase:29",
             "trixel:perAxisBarrier"
         })
     );
