@@ -1477,6 +1477,14 @@ constexpr std::uint32_t kBufferIndex_OverflowLightingScratch = kBufferIndex_Voxe
 // after its dispatch, as FOG_TO_TRIXEL's per-axis path does. A storage-table
 // slot, so the borrow never shadows a uniform binding on Metal.
 constexpr std::uint32_t kBufferIndex_TrixelGlitchSubjects = kBufferIndex_VoxelActiveMask;
+// TRIXEL_GLITCH borrows the late-frame lighting slots for its per-axis tile
+// worklist. Metal keeps uniform and storage bindings in separate sticky tables,
+// then applies storage last, so slots 27 and 29 must clear their storage entries
+// before the uniform owners are restored. Slot 28 has a storage owner and is
+// restored directly.
+constexpr std::uint32_t kBufferIndex_TrixelGlitchTileFlags = kBufferIndex_FrameDataLightingToTrixel;
+constexpr std::uint32_t kBufferIndex_TrixelGlitchTileList = kBufferIndex_SunShadowDepthMap;
+constexpr std::uint32_t kBufferIndex_TrixelGlitchTileArgs = kBufferIndex_FrameDataSun;
 // The per-axis empty-cell pass compacts each canvas's occupied cells into an
 // indirect instanced draw, so the scatter rasterizes only non-empty cells instead of sweeping the
 // whole worst-case-sized per-axis grid (~12x the cardinal area, mostly empty).
@@ -1484,9 +1492,10 @@ constexpr std::uint32_t kBufferIndex_TrixelGlitchSubjects = kBufferIndex_VoxelAc
 // and consumes them several stages earlier, and SPRITE_TO_SCREEN (the other
 // slot-25 consumer) draws after the main framebuffer — same non-overlapping-
 // stage rationale as the aliases above. CompactedCells is bound as an SSBO for
-// both the compaction write and the scatter vertex-shader read; CellIndirect is
-// bound as an SSBO for the compaction write and as the draw-indirect buffer for
-// the draw.
+// both the compaction write, TRIXEL_GLITCH's transient mark pass and the
+// scatter vertex-shader read; CellIndirect is bound as an SSBO for compaction,
+// as a dispatch-indirect buffer for the glitch mark, and as the draw-indirect
+// buffer for the scatter draw.
 constexpr std::uint32_t kBufferIndex_PerAxisCellCompacted = kBufferIndex_CompactedVoxelIndices;
 constexpr std::uint32_t kBufferIndex_PerAxisCellIndirect = kBufferIndex_IndirectDispatchParams;
 // SPRITE_TO_SCREEN aliases two slots whose prior consumers finish before the
@@ -1833,12 +1842,12 @@ static_assert(
 // workgroups; each consumer kernel recovers its flat list index as
 // (groupId.x + groupId.y*numGroupsX)*tile + localInvocationIndex. This value has
 // no compile-time tie to the shaders — it must stay 16*16 to match the
-// local_size_x/y = 16 declared independently in each of the four consumer
+// local_size_x/y = 16 declared independently in each of the six consumer
 // kernels' GLSL + Metal twins (c_compute_voxel_ao, c_compute_sun_shadow,
-// c_lighting_to_trixel, c_resolve_per_axis_screen_depth). Changing any one
-// kernel's group size without updating this constant AND the other seven files
-// silently misaligns the cell recovery (skipped or duplicated cells, no
-// compiler/runtime diagnostic).
+// c_lighting_to_trixel, c_fog_to_trixel, c_resolve_per_axis_screen_depth,
+// c_trixel_glitch_per_axis_mark). Changing any one kernel's group size without
+// updating this constant AND the other eleven files silently misaligns the
+// cell recovery (skipped or duplicated cells, no compiler/runtime diagnostic).
 constexpr std::uint32_t kPerAxisCellComputeTile = 256;
 
 // TODO: Future culling optimization constants

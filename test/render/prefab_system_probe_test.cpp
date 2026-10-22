@@ -40,6 +40,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <string>
 #include <vector>
 
@@ -296,6 +297,10 @@ class RecordingRenderDevice final : public IRRender::RenderDevice {
         m_log.push_back("device:dispatchComputeIndirect");
     }
     void memoryBarrier(IRRender::BarrierType) override {}
+    void unbindBufferBase(IRRender::BufferTarget target, std::uint32_t index) override {
+        EXPECT_EQ(target, IRRender::BufferTarget::SHADER_STORAGE);
+        m_log.push_back("device:unbindBufferBase:" + std::to_string(index));
+    }
     void drawElements(IRRender::DrawMode, int, IRRender::IndexType) override {
         m_log.push_back("device:drawElements");
     }
@@ -579,10 +584,43 @@ class TrixelGlitchRecordingEncoder final : public IRSystem::TrixelGlitchEncoder 
         m_log.push_back("trixel:swap");
         std::swap(liveColour_, scratchColour_);
     }
+    void createPerAxisResources() override {
+        m_log.push_back("trixel:perAxisCreateResources");
+        perAxisScratch_ = true;
+    }
+    void createPerAxisHistory() override {
+        m_log.push_back("trixel:perAxisCreateHistory");
+        perAxisHistory_ = true;
+    }
+    void copyPerAxisHistoryColors(int axis) override {
+        m_log.push_back("trixel:perAxisCopyColors:" + std::to_string(axis));
+    }
+    void copyPerAxisHistoryEntityIds(int axis) override {
+        m_log.push_back("trixel:perAxisCopyIds:" + std::to_string(axis));
+    }
+    void clearPerAxisArgs() override {
+        m_log.push_back("trixel:perAxisFillArgs");
+    }
+    void dispatchPerAxisMark(int axis) override {
+        m_log.push_back("trixel:perAxisMark:" + std::to_string(axis));
+    }
+    void dispatchPerAxisResolve(int axis) override {
+        m_log.push_back("trixel:perAxisResolve:" + std::to_string(axis));
+    }
+    void dispatchPerAxisWriteback(int axis) override {
+        m_log.push_back("trixel:perAxisWriteback:" + std::to_string(axis));
+    }
+    void finishPerAxisDispatches() override {
+        m_log.push_back("trixel:perAxisBarrier");
+    }
 
     int liveImages_ = 0;
     int liveColour_ = 0;
     int scratchColour_ = 0;
+    bool perAxisScratch_ = false;
+    bool perAxisHistory_ = false;
+    std::array<int, 3> perAxisDistanceHandles_{{11, 12, 13}};
+    std::array<int, 3> perAxisIdHandles_{{21, 22, 23}};
     std::vector<IRMath::uvec4> lastWords_;
 
   private:
@@ -606,7 +644,12 @@ class TrixelGlitchScheduleProbeTest : public PrefabSystemProbeTest {
     // real `endTick`, which must return before resolving the canvas; an
     // enabled one hands `encodeFrame` the recorder, with the images present
     // unless @p resized dropped them. @p tickAdvance moves the period tick.
-    RenderOpLog renderFrame(bool resized = false, std::int64_t tickAdvance = 0) {
+    RenderOpLog renderFrame(
+        bool resized = false,
+        std::int64_t tickAdvance = 0,
+        bool perAxisAllocated = false,
+        int perAxisCardinal = 0
+    ) {
         m_log.clear();
         m_trixel->beginTick();
         m_trixel->clock_.tick_ += m_tickOffset + tickAdvance;
@@ -618,7 +661,13 @@ class TrixelGlitchScheduleProbeTest : public PrefabSystemProbeTest {
             if (resized) {
                 m_encoder.liveImages_ = 0;
             }
-            m_trixel->encodeFrame(m_encoder, m_encoder.liveImages_ == 3);
+            IRSystem::TrixelGlitchPerAxisFrameInput perAxisInput;
+            perAxisInput.allocated_ = perAxisAllocated;
+            perAxisInput.scratchAllocated_ = m_encoder.perAxisScratch_;
+            perAxisInput.historyAllocated_ = m_encoder.perAxisHistory_;
+            perAxisInput.size_ = IRMath::ivec2(64);
+            perAxisInput.storeFrame_ = IRMath::ivec4(0, 0, perAxisCardinal, 0);
+            m_trixel->encodeFrame(m_encoder, m_encoder.liveImages_ == 3, perAxisInput);
         } else {
             m_trixel->endTick();
         }
@@ -767,6 +816,96 @@ TEST_F(TrixelGlitchScheduleProbeTest, SubjectsUploadSortedByIdWithTheirSlots) {
     EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 12u), 0);
     EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 55u), 1);
     EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 90u), 2);
+}
+
+TEST_F(TrixelGlitchScheduleProbeTest, AllocatedPerAxisStoreRunsTileWorklistEveryAxis) {
+    IRComponents::C_GlitchSubject tear;
+    tear.tearWeight_ = 1.0f;
+    m_subjects = {{57u, tear}};
+    EXPECT_EQ(
+        renderFrame(false, 0, true),
+        (RenderOpLog{
+            "trixel:createImages",
+            "trixel:upload",
+            "trixel:dispatch read=1 write=2",
+            "trixel:swap",
+            "trixel:perAxisCreateResources",
+            "trixel:perAxisFillArgs",
+            "trixel:perAxisMark:0",
+            "trixel:perAxisMark:1",
+            "trixel:perAxisMark:2",
+            "trixel:perAxisResolve:0",
+            "trixel:perAxisResolve:1",
+            "trixel:perAxisResolve:2",
+            "trixel:perAxisWriteback:0",
+            "trixel:perAxisWriteback:1",
+            "trixel:perAxisWriteback:2",
+            "device:unbindBufferBase:27",
+            "device:unbindBufferBase:29",
+            "trixel:perAxisBarrier"
+        })
+    );
+    EXPECT_EQ(m_trixel->framePerAxisDispatches_, 9);
+    EXPECT_EQ(m_trixel->framePerAxisMarkDispatches_, 3);
+    EXPECT_EQ(m_trixel->framePerAxisResolveDispatches_, 3);
+    EXPECT_EQ(m_trixel->framePerAxisWritebackDispatches_, 3);
+    EXPECT_EQ(m_trixel->framePerAxisFills_, 1);
+    EXPECT_EQ(m_trixel->framePerAxisSwaps_, 0);
+    EXPECT_EQ(m_trixel->perAxisScratchCreationCount_, 1u);
+
+    const std::array<int, 3> distancesBefore = m_encoder.perAxisDistanceHandles_;
+    const std::array<int, 3> idsBefore = m_encoder.perAxisIdHandles_;
+    const RenderOpLog second = renderFrame(false, 0, true);
+    EXPECT_EQ(std::count(second.begin(), second.end(), "trixel:perAxisCreateResources"), 0);
+    EXPECT_EQ(m_trixel->framePerAxisDispatches_, 9);
+    EXPECT_EQ(m_trixel->framePerAxisSwaps_, 0);
+    EXPECT_EQ(m_encoder.perAxisDistanceHandles_, distancesBefore);
+    EXPECT_EQ(m_encoder.perAxisIdHandles_, idsBefore);
+}
+
+TEST_F(TrixelGlitchScheduleProbeTest, PerAxisHoldCopiesOnTickAndCardinalChanges) {
+    m_subjects = {{57u, holdSubject()}};
+    renderFrame(false, 0, true, 0);
+    EXPECT_EQ(m_trixel->framePerAxisHistoryCopies_, 6);
+    EXPECT_EQ(m_trixel->perAxisHistoryCreationCount_, 1u);
+
+    renderFrame(false, 0, true, 0);
+    EXPECT_EQ(m_trixel->framePerAxisHistoryCopies_, 0);
+
+    renderFrame(false, 1, true, 0);
+    EXPECT_EQ(m_trixel->framePerAxisHistoryCopies_, 6);
+
+    renderFrame(false, 0, true, 1);
+    EXPECT_EQ(m_trixel->framePerAxisHistoryCopies_, 6)
+        << "a store rebracket invalidates hold history inside the same period tick";
+}
+
+TEST_F(TrixelGlitchScheduleProbeTest, PerAxisRouteDoesNothingWhenAbsentOrDisarmed) {
+    IRComponents::C_GlitchSubject tear;
+    tear.tearWeight_ = 1.0f;
+    m_subjects = {{57u, tear}};
+    const RenderOpLog absent = renderFrame();
+    EXPECT_EQ(
+        std::count_if(
+            absent.begin(),
+            absent.end(),
+            [](const std::string &op) { return op.find("perAxis") != std::string::npos; }
+        ),
+        0
+    );
+
+    m_trixel->perAxisDisabled_ = true;
+    const RenderOpLog disarmed = renderFrame(false, 0, true);
+    EXPECT_EQ(
+        std::count_if(
+            disarmed.begin(),
+            disarmed.end(),
+            [](const std::string &op) { return op.find("perAxis") != std::string::npos; }
+        ),
+        0
+    );
+    EXPECT_EQ(m_trixel->framePerAxisDispatches_, 0);
+    EXPECT_EQ(m_trixel->framePerAxisSwaps_, 0);
 }
 
 // Both glitch passes resolve one period tick from one `C_GlitchState`, so a

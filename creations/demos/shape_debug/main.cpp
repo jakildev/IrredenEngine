@@ -1606,6 +1606,11 @@ void registerCliArgs() {
          "all"},
         "none"
     );
+    args.number(
+        "--glitch-subject-yaw",
+        "Camera Z-yaw in degrees for the subject-glitch fixture (0 or 22.5)",
+        0.0f
+    );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
     args.enumValue(
@@ -1771,6 +1776,10 @@ void readCliArgs() {
     g_glitchMode = IRShapeDebug::GlitchFixture::info(args.getEnum("--glitch-test")).mode_;
     g_glitchSubject.mode_ =
         IRShapeDebug::GlitchSubjectFixture::info(args.getEnum("--glitch-subject-test")).mode_;
+    g_glitchSubject.yawDegrees_ = args.getFloat("--glitch-subject-yaw");
+    if (g_glitchSubject.yawDegrees_ != 0.0f) {
+        g_initialYawRadians = g_glitchSubject.yawDegrees_ * IRMath::kPi / 180.0f;
+    }
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
@@ -1909,6 +1918,15 @@ int main(int argc, char **argv) {
     registerCliArgs();
     IREngine::args().parse(argc, argv);
     readCliArgs();
+    if (IREngine::args().wasProvided("--glitch-subject-yaw") &&
+        IREngine::args().wasProvided("--yaw")) {
+        IR_LOG_ERROR("--glitch-subject-yaw cannot be combined with --yaw");
+        return 2;
+    }
+    if (g_glitchSubject.yawDegrees_ != 0.0f && g_glitchSubject.yawDegrees_ != 22.5f) {
+        IR_LOG_ERROR("--glitch-subject-yaw labels require exactly 22.5 degrees (or 0)");
+        return 2;
+    }
     if (IREngine::args().wasProvided("--framebuffer-size") &&
         g_requestedFramebufferSize == ivec2(0)) {
         IR_LOG_ERROR("--framebuffer-size requires two positive integer dimensions");

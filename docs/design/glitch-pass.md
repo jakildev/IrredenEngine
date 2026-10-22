@@ -12,7 +12,7 @@ glitch can belong to an object (see [Subjects](#subjects)).
 | Pass | Slot | Reads | Status |
 |---|---|---|---|
 | `FRAMEBUFFER_GLITCH` | RENDER, after every main-framebuffer producer (`TRIXEL_TO_FRAMEBUFFER`, `VIEWPORT_TO_FRAMEBUFFER`, framebuffer debug overlays), immediately before `FRAMEBUFFER_TO_SCREEN` | main framebuffer colour + depth, one history image | shipped |
-| `TRIXEL_GLITCH` | RENDER, after every main-canvas colour producer (`LIGHTING_TO_TRIXEL`, `FOG_TO_TRIXEL` when registered), immediately before `TRIXEL_TO_FRAMEBUFFER` | the main canvas's colour, distance and entity-id planes, a tick-start history | shipped |
+| `TRIXEL_GLITCH` | RENDER, after every main/per-axis colour producer (`LIGHTING_TO_TRIXEL`, `FOG_TO_TRIXEL` when registered), immediately before `TRIXEL_TO_FRAMEBUFFER` | the main and active per-axis canvases' colour, distance and entity-id planes, tick-start history | shipped |
 | World-space jumps | none | — | creation-authored whole-voxel `TRANSFORM_TRANSLATION` modifiers from Lua, keyed off the same `IRRender.glitch().tick` |
 
 ## Clock
@@ -234,13 +234,28 @@ empty at the tick start. It never shows history whose id was another entity. A
 subject that does not move within its tick shows no hold. Showing a ghost of
 the previous tick would need a second history pair; it is not built.
 
+During smooth yaw, each axis canvas has its own history pair. Its snapshot is
+valid only while the store size and nearest cardinal match. A store-origin
+move inside that cardinal reads history at `cell - currentOrigin +
+snapshotOrigin`, so camera-anchor motion does not move the held pose. A
+cardinal rebracket invalidates and retakes history even inside one period
+tick.
+
 ### Resources and cadence
 
 The main canvas (`C_TriangleCanvasTextures`) owns three glitch images, created
 by the pass on its first enabled frame and destroyed by a canvas resize, so
 they return at the new size, and by `onDestroy`: an RGBA8 scratch colour
-destination, the RGBA8 history colour and the RG32UI history id. Other
-canvases never get them.
+destination, the RGBA8 history colour and the RG32UI history id.
+
+The active per-axis store owns the corresponding images in each of its three
+`AxisTextures`: scratch is created on the first enabled rotating frame, while
+history colour/id are created only for an active hold. They follow the store
+through park/unpark without re-creation and are destroyed with it on resize or
+release. The store also owns one three-region tile-flag buffer, tile-list
+buffer and indirect-args buffer. Those buffers are created with scratch,
+follow the same lifetime, and contribute to the reported lazy-resource bytes.
+A cardinal frame allocates none of them.
 
 An enabled frame uploads the subject buffer, takes the two history copies when
 due, runs one 16x16 compute dispatch over the whole canvas, then swaps the
@@ -256,7 +271,9 @@ count; table mask, table base, record base, max spill), an open-addressed id
 the empty sentinel, linear probing), and five words per subject holding every
 per-tick choice the CPU evaluated (`trixel_glitch_math.hpp`). Subjects are
 sorted by id, so a slot is the rank of its id and upload order never depends
-on archetype iteration. The buffer grows by doubling and is reused.
+on archetype iteration. A two-word tail carries the per-axis store origin,
+history origin, face step and affine depth map. The buffer grows by doubling
+and is reused.
 
 Each 16x16 workgroup stages the subject slots of a 26x26 tile (a five-texel
 halo: spill reaches four, and the echo edge test reads one beyond an echo
@@ -278,38 +295,93 @@ and allocates nothing and writes the live `trixelGlitch` timing row to zero.
 `IRShapeDebug --glitch-subject-test standard-off` proves it byte-identical
 against the standing references.
 
+### Smooth-yaw per-axis route
+
+When the main canvas's per-axis set is allocated, the same enabled tick also
+runs a three-pass subject-tile worklist for each X/Y/Z axis canvas:
+
+1. Mark scans compacted occupied cells. A subject cell marks every 16x16 store
+   tile intersecting its `2 * spill` reach; the first marker appends the tile
+   and increments that axis's indirect group count.
+2. Resolve runs one 16x16 workgroup per marked tile. It stages subject slot and
+   spill for a 36x36 window (ten-cell halo), then assigns the window's distinct
+   subjects local ranks in ascending slot order. A five-level threadgroup
+   slot-mask pyramid records which ranks lie within store Chebyshev radii
+   0, 2, 4, 6 and 8. Per-cell level and spill masks recover the unchanged
+   closest-two rule without scanning the window, and occupied cells write to
+   scratch. Up to 32 distinct subjects in a window take this path; a larger
+   window, a frame with more than 1024 subjects, or
+   `IR_TRIXEL_GLITCH_PER_AXIS_SCAN=1` takes the exact step-2 lattice scan.
+3. Write-back copies scratch to the live colour for those occupied cells and
+   clears the tile flag. The fixture oracle retains its own pre-pass colour
+   readback because the one-way write-back does not swap the two planes.
+
+The live colour, distance and entity-id handles never swap. The pass clears
+the three axes' args with one fill, issues nine indirect dispatches, and
+restores borrowed slots 8 and 25-29 to their owners. Resolve and write-back do
+not bind their indirect-args buffer for write. `IR_TRIXEL_GLITCH_PER_AXIS_DISABLE=1`
+skips this route for defect isolation. Its copies, fill, and dispatches alone occupy the
+`trixelGlitchPerAxis` timing row; frames without the route write zero.
+
+All three axes use the nearest-cardinal store frame. One logical trixel of a
+spatial effect is one voxel face, or two store cells
+(`kPerAxisFaceStep = 2`). Tear/split x offsets, echo offsets and edge steps,
+band height, and dissolve cells use that step. Spill scans every checkerboard
+offset `(dx + dy) mod 2 = 0` within twice its radius—including odd/odd face
+neighbours—and measures distance as `ceil(max(abs(dx), abs(dy)) / 2)`.
+Band and dissolve hashes use `cell - storeOrigin`, including floor division
+for negative coordinates, so an anchor move does not re-roll choices inside a
+tick. A cardinal rebracket intentionally re-keys them.
+
+Spill and echo appear only at occupied compacted cells; reaching an empty
+store cell draws nothing. Dissolve writes transparent colour and the scatter
+reveals the framebuffer behind it. Per-axis depth is one value per face and
+is mapped to main-canvas units by `mainDepthAtFaceOrigin = subdivisions *
+perAxisDepth`; depth-band edges therefore resolve per face rather than per
+sub-face trixel.
+
 ### Limits
 
 - **Main canvas only.** Detached, viewport, entity and GUI canvases are
   untouched.
-- **Smooth camera yaw.** While `C_PerAxisTrixelCanvases::isAllocated()` is
-  true, voxels are drawn from the per-axis canvases, not the main canvas, so
-  voxel subjects show no glitch while the camera rotates; SDF and text
-  subjects still do. Per-axis coverage is a follow-up; its open question is
-  what a whole-trixel x offset means on an axis face plane.
+- **Per-axis overflow lane.** It carries no entity id, so only compacted cell
+  faces participate during smooth yaw. Convex subjects in empty sky remain on
+  the cell path; overflow count is reported by the fixture.
 - **Shape probe and shape lighting gather modes** relight a glitched texel
   from the shape geometry sample at its destination, so a moved shape texel
   survives but takes its new position's lighting.
 
 ### Cost
 
-The pass shades canvas texels, not output pixels, so its cost follows the
-main canvas size and not the output scale. Budget: eight subjects, every
-effect at weight 1, `spill = 4`, at the committed 1x take preset:
+The main pass shades canvas texels. The per-axis mark performs one subject
+lookup per compacted occupied cell. Resolve performs a fixed amount of
+threadgroup work per marked tile while at most 32 distinct subjects share its
+window; only the explicit or overflow fallback scans the step-2 lattice. Its
+cost therefore follows main-canvas size and the rotating subjects' reached
+tiles rather than every occupied face in the scene. Budget: eight subjects,
+every effect at weight 1, `spill = 4`, at the committed 1x take preset:
 
     UCB95(trixelGlitch per-run means, --glitch-subject-test all)  <  0.40 ms
+    UCB95(trixelGlitchPerAxis per-run means, yaw 22.5)            <  0.40 ms
 
 Executor: five quiet runs of `fleet-run IRShapeDebug --glitch-subject-test all
 --auto-profile 300 --config-preset configs/perf/glitch-1x.lua`, read from the
 GPU stage table in `save_files/profile_report.txt`, interleaved with
-`--glitch-subject-test off` runs whose `trixelGlitch` row collects no sample.
+`--glitch-subject-test off` runs whose glitch rows collect no sample. The
+per-axis arm adds `--glitch-subject-yaw 22.5` to both modes and records its
+nine dispatches, one args fill, marked tiles per axis, hold-copy cadence,
+canvas sizes and lazy resource bytes.
 
 Measured on an Apple M4 Max (macOS Metal, 1280x720 output at scale 1, main
 canvas 642x722, one dispatch per frame and two history copies per period
 tick): per-run means 0.240, 0.227, 0.231, 0.229 and 0.232 ms, mean 0.232 ms,
 spread 0.013 ms, UCB95 0.237 ms. CPU cost per frame is about 0.017 ms. The
-fixture's canvas probes run only under `--auto-screenshot`; their readbacks
-stall the queue and must not ride a profiled run.
+per-axis arm uses 1284x1364 stores and measures 0.397, 0.270, 0.289, 0.301
+and 0.294 ms, mean 0.310 ms and UCB95 0.358 ms; the forced exact-scan path
+measures 0.399 ms. Its all-effects capture marks 20, 18 and 18 tiles on the
+X, Y and Z stores and allocates 84,234,240 lazy-resource bytes. The fixture's
+canvas probes run only under `--auto-screenshot`; their readbacks stall the
+queue and must not ride a profiled run.
 
 ### Choreography
 
@@ -355,3 +427,11 @@ near on two earlier frames of the same tick, a pure horizontal canvas shift at
 unchanged depth, and the oracle checks that the far and near effect masks,
 B's part shifted by its measured displacement, differ only inside the near
 pair-overlap band.
+
+Adding `--glitch-subject-yaw 22.5` poses both screenshot and profile runs
+inside one cardinal bracket. The yaw rows read all three axis stores, replay
+the step-2 CPU twin with uploaded store/history origins and depth map, census
+the subject's expected X/Y/Z face cells, and report mismatches, changed
+subject cells, odd displacements, foreign reads, history, depth, pair,
+dispatch/copy and overflow evidence. The yaw `off` row is the visual control;
+the cardinal rows and labels are unchanged.

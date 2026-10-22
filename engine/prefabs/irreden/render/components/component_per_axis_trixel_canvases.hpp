@@ -51,6 +51,31 @@ struct PerAxisCanvasStore {
         std::pair<ResourceId, Texture2D *> entityIds_{0, nullptr};
         std::pair<ResourceId, Texture2D *> ao_{0, nullptr};
         std::pair<ResourceId, Texture2D *> sunShadow_{0, nullptr};
+        std::pair<ResourceId, Texture2D *> glitchScratchColors_{0, nullptr};
+        std::pair<ResourceId, Texture2D *> glitchHistoryColors_{0, nullptr};
+        std::pair<ResourceId, Texture2D *> glitchHistoryEntityIds_{0, nullptr};
+
+        bool hasGlitchScratch() const {
+            return glitchScratchColors_.second != nullptr;
+        }
+
+        bool hasGlitchHistory() const {
+            return glitchHistoryColors_.second != nullptr;
+        }
+
+        void createGlitchScratch(ivec2 size) {
+            if (!hasGlitchScratch()) {
+                glitchScratchColors_ = detail::makeCanvasColorTexture(size);
+            }
+        }
+
+        void createGlitchHistory(ivec2 size) {
+            if (hasGlitchHistory()) {
+                return;
+            }
+            glitchHistoryColors_ = detail::makeCanvasColorTexture(size);
+            glitchHistoryEntityIds_ = detail::makeCanvasEntityIdTexture(size);
+        }
 
         /// Raw entity-id carriers of this axis canvas, row-major over
         /// @p size (the component's `size_`). One full-texture GPU readback:
@@ -79,6 +104,58 @@ struct PerAxisCanvasStore {
                 size.y,
                 PixelDataFormat::RGBA,
                 PixelDataType::UNSIGNED_BYTE,
+                out.data()
+            );
+        }
+
+        void readDistances(ivec2 size, std::vector<int> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            distances_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RED_INTEGER,
+                PixelDataType::INT32,
+                out.data()
+            );
+        }
+
+        void readGlitchInputColors(ivec2 size, std::vector<Color> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            glitchScratchColors_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RGBA,
+                PixelDataType::UNSIGNED_BYTE,
+                out.data()
+            );
+        }
+
+        void readGlitchHistoryColors(ivec2 size, std::vector<Color> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            glitchHistoryColors_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RGBA,
+                PixelDataType::UNSIGNED_BYTE,
+                out.data()
+            );
+        }
+
+        void readGlitchHistoryEntityIdCarriers(ivec2 size, std::vector<uvec2> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            glitchHistoryEntityIds_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RG_INTEGER,
+                PixelDataType::UINT32,
                 out.data()
             );
         }
@@ -115,6 +192,86 @@ struct PerAxisCanvasStore {
     std::pair<ResourceId, Buffer *> cellCompacted_{0, nullptr};
     std::pair<ResourceId, Buffer *> cellIndirect_{0, nullptr};
     int cellRegionStride_ = 0; // uints per axis region (>= axis cells, 64-aligned)
+
+    // TRIXEL_GLITCH marks only the store tiles reached by an active subject,
+    // resolves those tiles through a shared-memory halo, then writes them back.
+    // Each buffer has three 256-byte-aligned axis regions so bindRange remains
+    // portable across GL and Metal. These resources are lazy because a smooth
+    // yaw with no active glitch subject must retain the pre-feature footprint.
+    std::pair<ResourceId, Buffer *> glitchTileFlags_{0, nullptr};
+    std::pair<ResourceId, Buffer *> glitchTileList_{0, nullptr};
+    std::pair<ResourceId, Buffer *> glitchTileArgs_{0, nullptr};
+    ivec2 glitchTileGrid_{0, 0};
+    int glitchTileRegionStride_ = 0;
+
+    bool hasGlitchWorklist() const {
+        return glitchTileFlags_.second != nullptr;
+    }
+
+    void createGlitchWorklist() {
+        if (hasGlitchWorklist()) {
+            return;
+        }
+        static constexpr int kTileSize = 16;
+        glitchTileGrid_ =
+            ivec2(IRMath::divCeil(size_.x, kTileSize), IRMath::divCeil(size_.y, kTileSize));
+        const int tileCount = glitchTileGrid_.x * glitchTileGrid_.y;
+        constexpr int kMaxSingleDimensionDispatchGroups = 65535;
+        IR_ASSERT(
+            tileCount <= kMaxSingleDimensionDispatchGroups,
+            "per-axis glitch tile list exceeds the single-dimension indirect dispatch limit"
+        );
+        glitchTileRegionStride_ =
+            IRMath::divCeil(tileCount, kScratchAlignUints) * kScratchAlignUints;
+        const std::size_t regionBytes =
+            static_cast<std::size_t>(glitchTileRegionStride_) * sizeof(std::uint32_t);
+        glitchTileFlags_ = IRRender::createResource<Buffer>(
+            nullptr,
+            regionBytes * kAxisCount,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileFlags
+        );
+        glitchTileList_ = IRRender::createResource<Buffer>(
+            nullptr,
+            regionBytes * kAxisCount,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileList
+        );
+        glitchTileArgs_ = IRRender::createResource<Buffer>(
+            nullptr,
+            static_cast<std::size_t>(kAxisCount) * kScratchAlignUints * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_TrixelGlitchTileArgs
+        );
+        IRRender::device()
+            ->fillBuffer(glitchTileFlags_.second, regionBytes * kAxisCount, std::uint8_t{0});
+    }
+
+    std::uint64_t glitchWorklistBytes() const {
+        if (!hasGlitchWorklist()) {
+            return 0;
+        }
+        return static_cast<std::uint64_t>(glitchTileRegionStride_) * kAxisCount *
+                   sizeof(std::uint32_t) * 2u +
+               static_cast<std::uint64_t>(kAxisCount) * kScratchAlignUints * sizeof(std::uint32_t);
+    }
+
+    std::array<std::uint32_t, kAxisCount> readGlitchMarkedTileCounts() const {
+        IR_ASSERT(hasGlitchWorklist(), "marked-tile readback needs the glitch worklist");
+        std::array<std::uint32_t, kAxisCount> counts{};
+        for (int axis = 0; axis < kAxisCount; ++axis) {
+            glitchTileArgs_.second->getSubData(
+                static_cast<std::ptrdiff_t>(axis) * kScratchAlignUints *
+                    static_cast<int>(sizeof(std::uint32_t)),
+                sizeof(std::uint32_t),
+                &counts[static_cast<std::size_t>(axis)]
+            );
+        }
+        return counts;
+    }
 
     // Unified per-axis resolve scratch for winner election and overflow,
     // bound whole at
@@ -334,6 +491,13 @@ struct PerAxisCanvasStore {
             IRRender::destroyResource<Texture2D>(axis.entityIds_.first);
             IRRender::destroyResource<Texture2D>(axis.ao_.first);
             IRRender::destroyResource<Texture2D>(axis.sunShadow_.first);
+            if (axis.glitchScratchColors_.second != nullptr) {
+                IRRender::destroyResource<Texture2D>(axis.glitchScratchColors_.first);
+            }
+            if (axis.glitchHistoryColors_.second != nullptr) {
+                IRRender::destroyResource<Texture2D>(axis.glitchHistoryColors_.first);
+                IRRender::destroyResource<Texture2D>(axis.glitchHistoryEntityIds_.first);
+            }
             axis = AxisTextures{};
         }
         IRRender::destroyResource<Texture2D>(resolveDepth_.first);
@@ -343,6 +507,16 @@ struct PerAxisCanvasStore {
         IRRender::destroyResource<Buffer>(cellIndirect_.first);
         cellIndirect_ = {0, nullptr};
         cellRegionStride_ = 0;
+        if (glitchTileFlags_.second != nullptr) {
+            IRRender::destroyResource<Buffer>(glitchTileFlags_.first);
+            IRRender::destroyResource<Buffer>(glitchTileList_.first);
+            IRRender::destroyResource<Buffer>(glitchTileArgs_.first);
+        }
+        glitchTileFlags_ = {0, nullptr};
+        glitchTileList_ = {0, nullptr};
+        glitchTileArgs_ = {0, nullptr};
+        glitchTileGrid_ = ivec2{0, 0};
+        glitchTileRegionStride_ = 0;
         IRRender::destroyResource<Buffer>(winnerIds_.first);
         winnerIds_ = {0, nullptr};
         ctrlBaseUints_ = 0;

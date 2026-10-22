@@ -424,6 +424,76 @@
       "warmup": 40,
       "shots": ["glitch_subject_choreo_tick_n", "glitch_subject_choreo_tick_n1"],
       "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_off",
+      "demo_args": ["--glitch-subject-test", "off", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_off"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_tear",
+      "demo_args": ["--glitch-subject-test", "tear", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_tear"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_hold",
+      "demo_args": ["--glitch-subject-test", "hold", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_hold"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_split",
+      "demo_args": ["--glitch-subject-test", "split", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_split"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_echo",
+      "demo_args": ["--glitch-subject-test", "echo", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_echo"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_dissolve",
+      "demo_args": ["--glitch-subject-test", "dissolve", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_dissolve"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_depth",
+      "demo_args": ["--glitch-subject-test", "depth", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_depth"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_spill_far_on",
+      "demo_args": ["--glitch-subject-test", "spill-far-on", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_spill_far_on"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_spill_near_on",
+      "demo_args": ["--glitch-subject-test", "spill-near-on", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_spill_near_on"],
+      "capture_offset": 0
+    },
+    {
+      "name": "glitch_subject_yaw22_all",
+      "demo_args": ["--glitch-subject-test", "all", "--glitch-subject-yaw", "22.5"],
+      "warmup": 40,
+      "shots": ["glitch_subject_yaw22_all"],
+      "capture_offset": 0
     }
   ],
   "structural": {

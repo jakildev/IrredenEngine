@@ -24,6 +24,7 @@ class TimestampDevice : public RenderDevice {
     void dispatchCompute(std::uint32_t, std::uint32_t, std::uint32_t) override {}
     void dispatchComputeIndirect(const Buffer *, std::ptrdiff_t) override {}
     void memoryBarrier(BarrierType) override {}
+    void unbindBufferBase(BufferTarget, std::uint32_t) override {}
     void drawElements(DrawMode, int, IndexType) override {}
     void drawElementsInstanced(DrawMode, int, IndexType, int) override {}
     void
