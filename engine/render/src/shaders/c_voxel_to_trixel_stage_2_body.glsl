@@ -38,7 +38,8 @@
 layout(std430, binding = 8) buffer SourceVoxelFaces {
     uint sourceIndexCount;
     uint sourceFaceCount;
-    uint sourcePadding[6];
+    uint sourcePadding[3];
+    uint sourceMaxAbsPositionBits; uint sourceMaxPriority; uint sourceDepthInvalid;
     SourceVoxelFace sourceFaces[];
 };
 
@@ -356,6 +357,14 @@ void main() {
         if (isDetachedCanvas > 1.5) {
             if (zIdx != 0) return;
             const uint index = atomicAdd(sourceFaceCount, 1u);
+            // Bound actual emitted positions, including GPU-authored geometry.
+            if (sourceFacePositionFinite(voxelPosition.xyz)) {
+                atomicMax(sourceMaxAbsPositionBits, sourceFacePositionMagnitudeBits(voxelPosition.xyz));
+            } else {
+                atomicOr(sourceDepthInvalid, 1u);
+            }
+            atomicMax(sourceMaxPriority, decodePriority(packedEntityId));
+
             sourceFaces[index].centerAndFace = vec4(voxelPosition.xyz, float(faceId));
             sourceFaces[index].color = voxelColor;
             sourceFaces[index].directSunAndExposure = vec4(0.0);

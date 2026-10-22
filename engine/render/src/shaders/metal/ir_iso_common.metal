@@ -1298,7 +1298,10 @@ struct SourceVoxelFace {
 struct SourceVoxelFaces {
     uint indexCount;
     atomic_uint count;
-    uint padding[6];
+    uint padding[3]; // firstIndex, baseVertex, baseInstance
+    atomic_uint maxAbsPositionBits;
+    atomic_uint maxPriority;
+    atomic_uint depthInvalid;
     SourceVoxelFace faces[1];
 };
 

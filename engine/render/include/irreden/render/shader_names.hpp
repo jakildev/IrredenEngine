@@ -42,6 +42,8 @@ const char *const kFileFragTrixelToFramebufferShapes =
 // metal/peraxis_scatter.metal).
 const char *const kFileVertSourceFaceScatter = "shaders/v_source_face_scatter.glsl";
 const char *const kFileFragSourceFaceScatter = "shaders/f_source_face_scatter.glsl";
+const char *const kFileVertSourceFaceScatterEarly = "shaders/v_source_face_scatter_early.glsl";
+const char *const kFileFragSourceFaceScatterEarly = "shaders/f_source_face_scatter_early.glsl";
 const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisSurfaceShadow = "shaders/f_peraxis_surface_shadow.glsl";
