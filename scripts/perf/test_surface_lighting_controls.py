@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from surface_lighting_controls import adoption_cases, cases, main, verify_routes
+from surface_lighting_controls import adoption_cases, cases, main, scene_arguments, verify_routes
 
 
 class SurfaceLightingControlsTest(unittest.TestCase):
@@ -24,6 +24,78 @@ class SurfaceLightingControlsTest(unittest.TestCase):
             for environment in environments.values():
                 self.assertEqual(environment["IR_PERAXIS_SURFACE_LIGHTING"], "1")
                 self.assertEqual(environment["IR_PERAXIS_VISIBILITY_STATS"], "0")
+
+    def test_scene_arguments_are_explicit_and_independent_of_profile_or_capture(self):
+        self.assertEqual(scene_arguments(), [
+            "--only", "shadowbox,floor", "--probe-source-box", "--probe-floor-mode", "grid",
+            "--probe-floor-span", "40", "--sun-direction", "0", "0", "-1",
+            "--no-spin", "--no-auto-rotate", "--pivot-origin", "--no-ao",
+        ])
+        self.assertEqual(scene_arguments("grid-overlap"), [
+            "--only", "maingrid,gridspin,floor", "--frozen-pose", "0.55",
+            "--probe-floor-mode", "grid", "--probe-floor-span", "40",
+            "--sun-direction", "-0.42", "-0.60", "-0.55",
+            "--no-spin", "--no-auto-rotate", "--pivot-origin", "--no-ao",
+        ])
+        for helper in (cases, scene_arguments):
+            with self.assertRaisesRegex(ValueError, "Unknown surface-lighting scene"):
+                helper("unknown")
+        modified = scene_arguments("grid-overlap")
+        modified.append("--no-shadows")
+        self.assertNotIn("--no-shadows", scene_arguments("grid-overlap"))
+        self.assertEqual(cases(), cases("shadowbox"))
+
+    def test_grid_receiver_cases_cover_matched_camera_zoom_and_subdivision(self):
+        selected = cases("grid-overlap")
+        self.assertEqual(len(selected), 8)
+        self.assertFalse(set(selected) & set(cases()))
+        for route, yaw in (("cardinal", "0"), ("per-axis", "0.6")):
+            for zoom in (1, 4):
+                for subdivisions in (1, 4):
+                    name = f"{route}-zoom{zoom}-receivers-subdiv{subdivisions}"
+                    self.assertEqual(selected[name], ["--yaw", yaw, "--zoom", str(zoom),
+                                                     "--subdivisions", str(subdivisions)])
+        expanded, environments = adoption_cases(selected)
+        self.assertEqual(len(expanded), 32)
+        self.assertEqual(set(expanded), set(environments))
+
+    def test_grid_receiver_cli_propagates_scene_and_selected_arms(self):
+        name = "per-axis-zoom4-receivers-subdiv4"
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "matrix"
+            arguments = ["controls", "--output", str(output), "--scene", "grid-overlap",
+                         "--adoption-matrix", "--case", name, "--frames", "200"]
+            with patch("sys.argv", arguments), \
+                    patch("surface_lighting_controls.run_rounds") as run:
+                self.assertEqual(main(), 0)
+            selected, expected = adoption_cases({name: cases("grid-overlap")[name]})
+            self.assertEqual(run.call_args.args[1], selected)
+            self.assertEqual(run.call_args.args[2], [
+                *scene_arguments("grid-overlap"), "--auto-profile", "--profile-frames", "200",
+                "--window-mode", "offscreen",
+            ])
+            recorded = json.loads((output / "cases.json").read_text())
+            self.assertEqual(recorded["scene"], "grid-overlap")
+            self.assertEqual(recorded["cases"], selected)
+            self.assertEqual(recorded["expected_render_environment"], expected)
+            for arm, environment in run.call_args.kwargs["environments"].items():
+                for key, value in expected[arm].items():
+                    self.assertEqual(environment[key], value)
+
+    def test_cross_scene_cases_reject_before_creating_output_or_running(self):
+        for scene, case in (("shadowbox", "per-axis-zoom1-receivers-subdiv1"),
+                            ("grid-overlap", "per-axis-zoom1-overlap0")):
+            with tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary) / "matrix"
+                arguments = ["controls", "--output", str(output), "--scene", scene,
+                             "--case", case]
+                with patch("sys.argv", arguments), patch("sys.stderr"), \
+                        patch("surface_lighting_controls.run_rounds") as run:
+                    with self.assertRaises(SystemExit) as raised:
+                        main()
+                    self.assertEqual(raised.exception.code, 2)
+                    run.assert_not_called()
+                self.assertFalse(output.exists())
 
     def test_adoption_selection_overrides_ambient_and_records_expected_arms(self):
         names = ["per-axis-zoom1-overlap0", "cardinal-zoom4-overlap16"]

@@ -9,7 +9,31 @@ from compare_perf_runs import parse_report
 from profile_matrix import run_rounds, summarize, verify_artifacts, write_cases
 
 
-def cases():
+def scene_arguments(scene="shadowbox"):
+    if scene == "shadowbox":
+        subjects = ["--only", "shadowbox,floor", "--probe-source-box"]
+        sun = ["0", "0", "-1"]
+    elif scene == "grid-overlap":
+        subjects = ["--only", "maingrid,gridspin,floor", "--frozen-pose", "0.55"]
+        sun = ["-0.42", "-0.60", "-0.55"]
+    else:
+        raise ValueError(f"Unknown surface-lighting scene: {scene}")
+    return [*subjects, "--probe-floor-mode", "grid", "--probe-floor-span", "40",
+            "--sun-direction", *sun, "--no-spin", "--no-auto-rotate", "--pivot-origin",
+            "--no-ao"]
+
+
+def cases(scene="shadowbox"):
+    if scene == "grid-overlap":
+        return {
+            f"{route}-zoom{zoom}-receivers-subdiv{subdivisions}":
+                ["--yaw", yaw, "--zoom", str(zoom), "--subdivisions", str(subdivisions)]
+            for route, yaw in (("cardinal", "0"), ("per-axis", "0.6"))
+            for zoom in (1, 4)
+            for subdivisions in (1, 4)
+        }
+    if scene != "shadowbox":
+        raise ValueError(f"Unknown surface-lighting scene: {scene}")
     selected = {}
     for route, yaw in (("cardinal", "0"), ("per-axis", "0.6")):
         for zoom in (1, 4):
@@ -100,7 +124,9 @@ def main():
     parser.add_argument("--frames", type=int, default=360)
     parser.add_argument("--adoption-matrix", action="store_true",
                         help="Compare explicit surface 0/1 and prepass 0/1 arms")
-    parser.add_argument("--case", action="append", choices=list(cases()), dest="case_names",
+    parser.add_argument("--scene", choices=("shadowbox", "grid-overlap"), default="shadowbox",
+                        help="Select the shadowbox or overlapping GRID receiver fixture")
+    parser.add_argument("--case", action="append", dest="case_names",
                         help="Run only this existing case; repeat to select more cases")
     args = parser.parse_args()
     if args.rounds < 1:
@@ -109,7 +135,10 @@ def main():
         parser.error("frames must be at least 120 to retain a steady measurement window")
     if args.case_names and len(set(args.case_names)) != len(args.case_names):
         parser.error("case selections must be unique")
-    selected = cases()
+    selected = cases(args.scene)
+    invalid_cases = set(args.case_names or ()) - selected.keys()
+    if invalid_cases:
+        parser.error(f"cases not in scene {args.scene}: {', '.join(sorted(invalid_cases))}")
     if args.case_names:
         selected = {name: selected[name] for name in args.case_names}
     expected_environments = None
@@ -118,13 +147,11 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     common = [
-        "--only", "shadowbox,floor", "--probe-source-box", "--probe-floor-mode", "grid",
-        "--probe-floor-span", "40", "--sun-direction", "0", "0", "-1",
-        "--no-spin", "--no-auto-rotate", "--pivot-origin", "--no-ao",
+        *scene_arguments(args.scene),
         "--auto-profile", "--profile-frames", str(args.frames), "--window-mode", "offscreen",
     ]
     write_cases(output, args.rounds, common, selected,
-                expected_render_environment=expected_environments)
+                scene=args.scene, expected_render_environment=expected_environments)
     completed_rounds = 0
 
     def after_round():

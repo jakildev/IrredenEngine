@@ -41,6 +41,17 @@ The combined surface timer does not independently prove prepass execution:
 capture its `VISIBILITY-PROBE` counters in a separate untimed stats-enabled run,
 alongside inactive surface-off and prepass-off controls.
 
+`--scene grid-overlap` instead selects frozen `maingrid,gridspin,floor` GRID
+receivers under explicit oblique sunlight. Its eight cases span yaw 0/0.6,
+zoom 1/4 and base subdivisions 1/4; `--adoption-matrix` expands these to 32 arms.
+For a bounded comparison, select `--case per-axis-zoom4-receivers-subdiv1`.
+Case names belong to their scene; mismatched selections fail before launching.
+The default `shadowbox` scene retains its original 20 cases.
+The [untimed GRID controls](../../docs/pr-screenshots/codex/grid-receiver-prepass/README.md)
+show real fragment rejection with identical prepass-off/on images. Identical
+images and counters across the two subdivision settings limit that fixture's
+ability to characterize subdivision scaling; they do not qualify throughput.
+
 Results retain runtime fingerprints, pose/overflow witnesses and
 forward/reverse rounds through `repeat_profile.py` and `profile_matrix.py`.
 Each run uses `--profile-frames 360` (override with the driver's `--frames`)
