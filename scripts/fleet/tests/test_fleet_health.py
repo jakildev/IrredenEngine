@@ -465,7 +465,7 @@ class AutomergeLane(Env):
         self.assertEqual(a["merges"], 2, "the 2026-09-08 merge predates the boot window")
         self.assertEqual([m["pr"] for m in a["merged_prs"]], [3101, 3102])
         self.assertEqual(a["rollbacks"], 1)
-        self.assertEqual(a["partial_audits"], [3102])
+        self.assertEqual(a["partial_audits"], [{"repo": "engine", "pr": 3102}])
         self.assertEqual((a["runs"], a["refusals"]), (2, 1))
         self.assertEqual(rc, 1)
         self.assertTrue(any("1 rollback(s) of an auto-merged PR" in w for w in report["warnings"]))
@@ -499,6 +499,43 @@ class AutomergeLane(Env):
         self.assertTrue(any("1 rollback scan(s) hit the search ceiling" in w
                             for w in report["warnings"]))
 
+    def test_audits_pair_per_repo(self):
+        game = fleet_health.REPO_SLUGS["game"]
+        ledger = "\n".join(json.dumps(e) for e in (
+            {"ts": "2026-09-09T05:00:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
+             "pr": 3101, "class": "rebless"},
+            {"ts": "2026-09-09T05:00:02Z", "event": "audit-complete",
+             "repo": "jakildev/IrredenEngine", "pr": 3101},
+            {"ts": "2026-09-09T05:05:00Z", "event": "merge", "repo": game, "pr": 3101,
+             "class": "rebless"},
+            {"ts": "2026-09-09T05:05:01Z", "event": "audit-error", "repo": game, "pr": 3101,
+             "step": "label"})) + "\n"
+        both_partial = ledger.replace('"event": "audit-complete"', '"event": "audit-error"')
+        self.write_lane(ledger=ledger, conf='FLEET_AUTOMERGE_CLASSES="rebless"\n'
+                                             'FLEET_AUTOMERGE_REPOS="engine game"\n')
+        rc, report = self.run_report()
+        a = report["automerge"]
+        self.assertEqual(a["repos"], ["engine", "game"])
+        self.assertEqual(a["partial_audits"], [{"repo": "game", "pr": 3101}],
+                         "the engine PR's audit-complete does not close the game PR's audit")
+        self.assertEqual([m["repo"] for m in a["merged_prs"]], ["engine", "game"])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        self.assertIn("merged PR #3101 (rebless) in game at 2026-09-09T05:05:00Z", out.getvalue())
+        self.write_lane(ledger=both_partial, conf='FLEET_AUTOMERGE_CLASSES="rebless"\n'
+                                                   'FLEET_AUTOMERGE_REPOS="engine game"\n')
+        rc, report = self.run_report()
+        self.assertEqual(report["automerge"]["partial_audits"],
+                         [{"repo": "engine", "pr": 3101}, {"repo": "game", "pr": 3101}],
+                         "same-number audits in two repos are two partial audits")
+        self.assertTrue(any("audit incomplete on #3101, game#3101" in w
+                            for w in report["warnings"]))
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        self.assertIn("partial-audits=2", out.getvalue())
+
     def test_text_section_names_the_lane(self):
         self.write_lane()
         out = io.StringIO()
@@ -506,8 +543,8 @@ class AutomergeLane(Env):
             fleet_health.main(["--fleet-dir", str(self.root)])
         text = out.getvalue()
         self.assertIn("## Auto-merge lane (tier-0 fleet-automerge)", text)
-        self.assertIn("enabled=rebless  runs=2 refusals=1  merges=2 rollbacks=1 partial-audits=1",
-                      text)
+        self.assertIn("enabled=rebless  repos=engine  runs=2 refusals=1  merges=2 rollbacks=1 "
+                      "partial-audits=1", text)
         self.assertIn("merged PR #3101 (rebless) at 2026-09-09T05:00:00Z", text)
 
 

@@ -110,11 +110,18 @@ class ClassifyPaths(unittest.TestCase):
                 self.assertEqual(mc.classify_paths(DOCS_SET + [path]).kind, "human")
 
     def test_rebless_boundaries(self):
-        self.assertTrue(mc.is_rebless_path("creations/demos/x/test/references/a/b.png"))
-        self.assertTrue(mc.is_rebless_path("docs/pr-screenshots/x/y.png"))
+        for path in ("creations/demos/x/test/references/a/b.png", "docs/pr-screenshots/x/y.png",
+                     "creations/editors/x/test/references/manifest.json",
+                     "creations/x/test/references/macos-debug/a.png",
+                     "tools/x/test/references/a.png", "test/references/a.png"):
+            with self.subTest(path=path):
+                self.assertTrue(mc.is_rebless_path(path))
         for path in ("creations/demos/x/test/gui_sessions/a.json", "creations/demos/x/src/a.cpp",
                      "creations/demos/x/main.cpp", "test/render/references/a.png",
-                     "docs/pr-screenshots.md", "creations/demos/test/references/a.png"):
+                     "docs/pr-screenshots.md", "creations/x/test/references_tool.cpp",
+                     "creations/x/test/fixture_root/test/references/a.png",
+                     "test/catalog/fixtures/root/test/references/a.png",
+                     "scripts/x/tests/fixture/test/references/a.png"):
             with self.subTest(path=path):
                 self.assertFalse(mc.is_rebless_path(path))
 
@@ -347,6 +354,29 @@ class Enablement(unittest.TestCase):
         os.environ["FLEET_AUTOMERGE_CLASSES"] = "rebless"
         self.assertFalse(mc.read_enablement(self.conf).enabled)
         self.assertFalse(self.read("FLEET_RUNTIMES=claude\n").enabled)
+
+    def test_repos_default_to_engine(self):
+        for text in ("FLEET_AUTOMERGE_CLASSES=rebless\n",
+                     'FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_REPOS=""\n'):
+            with self.subTest(text=text):
+                self.assertEqual(self.read(text).repos, frozenset({"engine"}))
+
+    def test_repos_opt_in(self):
+        en = self.read('FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_REPOS="engine game"\n')
+        self.assertEqual(en.repos, frozenset({"engine", "game"}))
+        en = self.read("FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_REPOS=game\n")
+        self.assertEqual(en.repos, frozenset({"game"}))
+
+    def test_malformed_repos_enable_nothing(self):
+        for text, problem in (("FLEET_AUTOMERGE_REPOS=engine,other\n", "unknown repo 'other'"),
+                              ("FLEET_AUTOMERGE_REPOS=jakildev/IrredenEngine\n", "unknown repo"),
+                              ('FLEET_AUTOMERGE_REPOS="engine game\n', "malformed"),
+                              ("FLEET_AUTOMERGE_REPOS=engine game\n", "malformed")):
+            with self.subTest(text=text):
+                en = self.read("FLEET_AUTOMERGE_CLASSES=rebless\n" + text)
+                self.assertFalse(en.enabled)
+                self.assertEqual(en.repos, frozenset())
+                self.assertTrue(any(problem in p for p in en.problems))
 
 
 if __name__ == "__main__":

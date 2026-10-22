@@ -68,6 +68,9 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import fleet_github  # noqa: E402
+from fleet_runtime import REPO_SLUGS  # noqa: E402
+
+REPO_KEYS = {slug: key for key, slug in REPO_SLUGS.items()}
 
 RE_LOG =re.compile(r"^\[(\S+) (dispatcher|fleet-rebase|fleet-automerge|state-scout)\] (.*)$")
 RE_DISPATCH = re.compile(
@@ -449,7 +452,8 @@ def collect_rebase(log_lines, since):
 def collect_automerge(ledger_path, log_lines, since, conf):
     """The tier-0 auto-merge ledger (JSONL) inside the window, plus the
     executor's own run and refusal lines. A merge whose audit never completed
-    and has at least one audit-error is a partial audit. An incomplete
+    and has at least one audit-error is a partial audit; audit events pair up
+    per (repo, PR), since the lane may serve more than one repo. An incomplete
     rollback scan means `rollbacks` may undercount."""
     merges = []
     rollbacks = 0
@@ -469,20 +473,24 @@ def collect_automerge(ledger_path, log_lines, since, conf):
                 if ts is None or ts < since:
                     continue
                 kind = e.get("event")
+                key = (e.get("repo"), e.get("pr"))
                 if kind == "merge":
                     merges.append({"pr": e.get("pr"), "class": e.get("class"),
-                                   "repo": e.get("repo"), "ts": e.get("ts")})
+                                   "repo": REPO_KEYS.get(e.get("repo"), e.get("repo")),
+                                   "ts": e.get("ts")})
                 elif kind == "rollback":
                     rollbacks += 1
                 elif kind == "rollback-scan-incomplete":
                     scans_incomplete += 1
                 elif kind == "audit-error":
-                    errors[e.get("pr")] = errors.get(e.get("pr"), 0) + 1
+                    errors[key] = errors.get(key, 0) + 1
                 elif kind == "audit-complete":
-                    complete.add(e.get("pr"))
+                    complete.add(key)
     except OSError:
         pass
-    partial = sorted(pr for pr in errors if pr not in complete)
+    partial = sorted(({"repo": REPO_KEYS.get(repo, repo), "pr": pr}
+                      for (repo, pr) in errors if (repo, pr) not in complete),
+                     key=lambda p: (str(p["repo"]), str(p["pr"]).zfill(12)))
     runs = 0
     refusals = 0
     for ts, source, msg in log_lines:
@@ -493,8 +501,10 @@ def collect_automerge(ledger_path, log_lines, since, conf):
         elif ": refused: " in msg:
             refusals += 1
     classes = [c for c in re.split(r"[,\s]+", conf.get("FLEET_AUTOMERGE_CLASSES", "")) if c]
-    return {"enabled": classes, "runs": runs, "refusals": refusals, "merges": len(merges),
-            "merged_prs": merges, "rollbacks": rollbacks, "partial_audits": partial,
+    repos = [r for r in re.split(r"[,\s]+", conf.get("FLEET_AUTOMERGE_REPOS", "")) if r]
+    return {"enabled": classes, "repos": repos or ["engine"], "runs": runs,
+            "refusals": refusals, "merges": len(merges), "merged_prs": merges,
+            "rollbacks": rollbacks, "partial_audits": partial,
             "rollback_scans_incomplete": scans_incomplete}
 
 
@@ -681,7 +691,8 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktree
             w.append(f"auto-merge lane: {automerge['rollback_scans_incomplete']} rollback scan(s) "
                      "hit the search ceiling; the rollback count may be low, widen no class")
         if automerge["partial_audits"]:
-            prs = ", ".join(f"#{p}" for p in automerge["partial_audits"])
+            prs = ", ".join(("" if p["repo"] == "engine" else str(p["repo"])) + f"#{p['pr']}"
+                            for p in automerge["partial_audits"])
             w.append(f"auto-merge lane: audit incomplete on {prs} (label/comment/nit-close); "
                      "finish by hand")
     if not daemons["dispatcher"]["alive"]:
@@ -797,11 +808,13 @@ def render_text(report):
     a = report["automerge"]
     o.append("")
     o.append("## Auto-merge lane (tier-0 fleet-automerge)")
-    o.append(f"  enabled={','.join(a['enabled']) or 'off'}  runs={a['runs']} "
+    o.append(f"  enabled={','.join(a['enabled']) or 'off'}  repos={','.join(a['repos'])}  "
+             f"runs={a['runs']} "
              f"refusals={a['refusals']}  merges={a['merges']} rollbacks={a['rollbacks']} "
              f"partial-audits={len(a['partial_audits'])}")
     for m in a["merged_prs"]:
-        o.append(f"    merged PR #{m['pr']} ({m['class']}) at {m['ts']}")
+        where = "" if m["repo"] == "engine" else f" in {m['repo']}"
+        o.append(f"    merged PR #{m['pr']} ({m['class']}){where} at {m['ts']}")
     u = report["runtimes"]
     o.append("")
     o.append("## Runtimes")

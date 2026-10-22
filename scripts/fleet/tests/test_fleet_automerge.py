@@ -23,6 +23,7 @@ if not SUBJECT.is_file():
     sys.exit(3)
 sys.path.insert(0, str(ROOT))
 import fleet_merge_class as mc  # noqa: E402
+from fleet_runtime import REPO_SLUGS  # noqa: E402
 
 SLUG = "jakildev/IrredenEngine"
 NOW = "2026-10-20T12:00:00Z"
@@ -315,6 +316,34 @@ class Enablement(AutomergeCase):
             with self.subTest(argv=argv):
                 result = self.run_tool(*argv, "--repo", SLUG)
                 self.assertEqual(result.returncode, 2, result.stderr)
+        self.assert_no_writes()
+
+    def test_repo_outside_the_opt_in_is_a_noop_logged_once(self):
+        first = self.run_tool("--auto", "--repo", "game")
+        second = self.run_tool("--auto", "--repo", "game")
+        self.assertEqual((first.returncode, second.returncode), (0, 0))
+        self.assertIn("is not in FLEET_AUTOMERGE_REPOS (engine)", first.stderr)
+        self.assertNotIn("FLEET_AUTOMERGE_REPOS", second.stderr)
+        self.assert_no_writes()
+        self.assertEqual(self.gh_calls("pr list"), [])
+        dry = self.run_tool("--dry-run", "--repo", "game")
+        self.assertIn("repos=engine", dry.stdout)
+        self.assertIn("auto:rebless: repo not in FLEET_AUTOMERGE_REPOS", dry.stdout)
+        self.assertIn("1 candidate(s), 0 would merge, 0 writes", dry.stdout)
+        self.assert_no_writes()
+
+    def test_repo_opt_in_merges_there(self):
+        self.write_conf('FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_REPOS="engine game"\n')
+        result = self.run_tool("--auto", "--repo", "game")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([(e["repo"], e["pr"]) for e in self.events("merge")],
+                         [(REPO_SLUGS["game"], 10)])
+        self.assertEqual(len(self.gh_calls("pr merge")), 1)
+
+    def test_environment_cannot_add_a_repo(self):
+        result = self.run_tool("--auto", "--repo", "game",
+                               env_extra={"FLEET_AUTOMERGE_REPOS": "engine game"})
+        self.assertIn("is not in FLEET_AUTOMERGE_REPOS", result.stderr)
         self.assert_no_writes()
 
     def test_malformed_conf_enables_nothing(self):

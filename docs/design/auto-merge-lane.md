@@ -1,15 +1,17 @@
 # Tier-0 auto-merge lane
 
 **Status:** shipped dormant; first wave (`rebless`, engine repo) enabled by
-the human after the operator dry-run; `docs` and the game repo wait for the
-one-week reading.
+the human after the operator dry-run; the game repo is a per-host opt-in
+(`FLEET_AUTOMERGE_REPOS`); `docs` waits for the one-week reading.
 
 The fleet's merge authority has exactly two holders: the human's click, and
 `scripts/fleet/fleet-automerge`, a deterministic script with a fixed
 predicate that the dispatcher runs as the first rung of the merger ladder.
 No LLM role merges: `gh pr merge` and every spelling of the executor are
 forbidden for every role in both runtime adapters (Claude `deny` list,
-generated Codex `forbidden` rules). This document is the contract;
+generated Codex `forbidden` rules). A role reads the lane's partition through
+`fleet-merge-preview`, which accepts only `--repo` and always runs the
+executor as `--dry-run`. This document is the contract;
 `fleet_merge_class.py` is its executable form and the suites under
 `scripts/fleet/tests/test_fleet_merge_class.py` and `test_fleet_automerge.py`
 pin every arm.
@@ -22,13 +24,16 @@ its count checked against `changedFiles`) classifies as one of
 
 | class | every path matches | status |
 |---|---|---|
-| `rebless` | `creations/demos/*/test/references/**`, `docs/pr-screenshots/**` | first wave |
+| `rebless` | `**/test/references/**` not nested inside another `test/` or `tests/` tree (a test fixture's own references), `docs/pr-screenshots/**` | first wave |
 | `docs` | `*.md`, excluding `.claude/**`, `docs/agents/**`, `docs/design/objectives/**` and every `CLAUDE.md` basename | dormant |
 
 One path outside the union is `human`; a set drawing on both classes is
 `auto:mixed` and needs both enabled. A non-Markdown file under
 `docs/design/**` is never `docs`. The dormant class stays represented in the
-fixture so enabling it is a configuration change, not a code change.
+fixture so enabling it is a configuration change, not a code change. The
+`rebless` rule names no repo's layout, so it holds in every enabled repo; the
+`docs` exclusions are the engine's instruction tiers, so enabling `docs` in
+another repo first confirms that repo's tiers are covered.
 
 ## Gates (all live, all required, read immediately before the merge)
 
@@ -69,17 +74,21 @@ merges nothing and exits 1.
 
 ## Enablement
 
-`FLEET_AUTOMERGE_CLASSES` and `FLEET_AUTOMERGE_HOLD_SECS` in
-`~/.fleet/fleet-up.conf` are the only inputs. The executor parses the file
-itself; it reads no environment variable and takes no class flag, and an
-unknown class, a malformed hold, or a knob value that is not one quoted or
+`FLEET_AUTOMERGE_CLASSES`, `FLEET_AUTOMERGE_REPOS` and
+`FLEET_AUTOMERGE_HOLD_SECS` in `~/.fleet/fleet-up.conf` are the only inputs.
+The executor parses the file itself; it reads no environment variable and
+takes no class or repo flag that enables anything, and an unknown class, an
+unknown repo key, a malformed hold, or a knob value that is not one quoted or
 bare shell word (an unterminated quote, text glued to a closing quote, a
-second word) enables nothing. The dispatcher spawns
-`fleet-automerge --auto --repo jakildev/IrredenEngine` ahead of
-`fleet-rebase` in one background chain joined by `;`, so a refusal, failure
-or disabled lane still hands the tick to tier-0's rebase pass; a state-dir
-lock serializes runs. A disabled lane logs once (`.automerge-disabled-logged`)
-until a class is enabled.
+second word) enables nothing. `FLEET_AUTOMERGE_REPOS` lists repo keys
+(`engine`, `game`); unset or empty means `engine` alone. The dispatcher spawns
+`fleet-automerge --auto --repo <key>` for `engine` then `game` ahead of
+`fleet-rebase`, in one background chain joined by `;`, so a refusal, failure,
+disabled lane or repo outside the opt-in still hands the tick to tier-0's
+rebase pass; a state-dir lock serializes runs. A disabled lane logs once
+(`.automerge-disabled-logged`) until a class is enabled; a repo outside the
+opt-in logs once per repo (`.automerge-repo-off-logged.*`), and `--dry-run`
+refuses its candidates as `repo not in FLEET_AUTOMERGE_REPOS`.
 
 ## Merge and audit
 
@@ -119,14 +128,16 @@ found, then appends `rollback-scan-incomplete` and exits 1.
 
 ## Reporting
 
-`fleet-digest-tick` runs the reconcile pass, pins the ledger end, runs
+`fleet-digest-tick` runs the reconcile pass for each repo, pins the ledger
+end, runs
 `fleet-decisions` (which renders `## Auto-merged since last digest` from the
 tick's cursor to that end and moves nothing), and advances
 `~/.fleet/digest/automerge-cursor` only after the digest lands, so every
 merge and rollback renders in exactly one successful digest. `fleet-health`
-reports `enabled`, runs, refusals, merges, rollbacks and partial audits for
-its window and warns on a rollback, an incomplete audit, or a rollback scan
-that hit the search ceiling (the rollback count may then be low).
+reports `enabled`, `repos`, runs, refusals, merges, rollbacks and partial
+audits for its window (audit events pair per repo and PR) and warns on a
+rollback, an incomplete audit, or a rollback scan that hit the search ceiling
+(the rollback count may then be low).
 
 ## Rollout and widening
 
@@ -138,15 +149,23 @@ merge and the branch delete); without it every attempt lands as a
 `merge-failed` event and nothing merges. The human reviews the operator
 dry-run, then sets `FLEET_AUTOMERGE_CLASSES="rebless"`. After one enabled
 week, `fleet-health --since 7d` must read zero rollbacks, zero partial
-audits and no incomplete rollback scan before `docs` or the game repo is
-considered; `docs` additionally
-needs the instruction-tier exclusions above re-confirmed. The labels are
-`fleet:auto-merged` (permanent audit trail; refuses a second pass) and
-`human:hold`.
+audits and no incomplete rollback scan before `docs` is considered; `docs`
+additionally needs the instruction-tier exclusions above re-confirmed. The
+labels are `fleet:auto-merged` (permanent audit trail; refuses a second pass)
+and `human:hold`.
+
+Opting the game repo in is the human's call on each host: run `fleet-labels`
+(it syncs both repos, so the game repo gains the two labels; without
+`fleet:auto-merged` every audit there ends partial), review
+`fleet-merge-preview --repo game`, then set
+`FLEET_AUTOMERGE_REPOS="engine game"`. The App permission above covers every
+repo its installation selects. A repo with no server-side branch protection
+has the lane's gates as its only merge guard.
 
 ## Consumers
 
-`scripts/fleet/fleet-automerge`, `fleet_merge_class.py`, `fleet-dispatcher`
+`scripts/fleet/fleet-automerge`, `fleet-merge-preview` (the role-allowed
+`--dry-run`), `fleet_merge_class.py`, `fleet-dispatcher`
 (merger tick), `fleet-digest-tick`, `fleet-decisions`, `fleet-health`,
 `fleet-labels` / `fleet-state-machine.json`, `.claude/settings.json` and
 `fleet_codex_policy.py` (denials), `docs/agents/FLEET.md` § Who merges,

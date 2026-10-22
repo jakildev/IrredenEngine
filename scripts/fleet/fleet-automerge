@@ -14,11 +14,12 @@
 #
 # Enablement comes from the human-owned daemon configuration alone:
 # `FLEET_AUTOMERGE_CLASSES` in ~/.fleet/fleet-up.conf (default empty = lane
-# off; `rebless` is the first wave) and `FLEET_AUTOMERGE_HOLD_SECS` (default
-# 0). There is no CLI flag and no environment variable that enables a class; a
-# malformed conf enables nothing. `~/.fleet/automerge.off` stops the lane on
-# this host without a restart; `human:hold` on a PR stops it for that PR and
-# is never removed by an agent.
+# off; `rebless` is the first wave), `FLEET_AUTOMERGE_REPOS` (the repo keys
+# the lane may merge in; default `engine`) and `FLEET_AUTOMERGE_HOLD_SECS`
+# (default 0). There is no CLI flag and no environment variable that enables
+# a class or a repo; a malformed conf enables nothing. `~/.fleet/automerge.off`
+# stops the lane on this host without a restart; `human:hold` on a PR stops it
+# for that PR and is never removed by an agent.
 #
 # The merge is a squash guarded by `--match-head-commit <classified head>`,
 # with the PR title as the subject and the PR body as the message. On success
@@ -40,6 +41,7 @@
 #
 # Only the dispatcher invokes --auto (serialized through a state-dir lock);
 # every LLM role's command policy forbids this executable and `gh pr merge`.
+# Roles read the --dry-run partition through fleet-merge-preview.
 #
 # Source of truth: scripts/fleet/fleet-automerge in the engine repo.
 # Installed to ~/bin/fleet-automerge by scripts/fleet/install.sh.
@@ -113,6 +115,9 @@ class Paths:
         self.kill_marker = self.state / ".automerge-killswitch-logged"
         self.repos = self.state / "repos.json"
 
+    def repo_off_marker(self, slug):
+        return self.state / f".automerge-repo-off-logged.{slug.replace('/', '_')}"
+
 
 def log_once(marker, active, message):
     """Log `message` on the first run a standing condition holds and stay
@@ -137,6 +142,10 @@ def resolve_slug(paths, value):
         repos = {}
     slug = repos.get(value) if isinstance(repos, dict) else None
     return slug or REPO_SLUGS.get(value)
+
+
+def repo_enabled(paths, slug, enablement):
+    return slug in {resolve_slug(paths, key) for key in enablement.repos}
 
 
 # --- gh ----------------------------------------------------------------------------------
@@ -279,7 +288,7 @@ def approved_label_age(slug, number, now):
     return (now - max(stamped)).total_seconds()
 
 
-def assess(slug, number, enablement, now):
+def assess(slug, number, enablement, now, repo_on=True):
     view = gh_json(["pr", "view", str(number), "--repo", slug, "--json", VIEW_FIELDS])
     missing = [f for f in ("state", "isDraft", "baseRefName", "mergeable", "headRefOid", "labels",
                            "statusCheckRollup", "changedFiles", "title")
@@ -319,6 +328,8 @@ def assess(slug, number, enablement, now):
     eligible, reason = mc.grant(verdict, enablement.classes)
     if not eligible:
         return refuse(reason)
+    if not repo_on:
+        return refuse(f"{kind}: repo not in FLEET_AUTOMERGE_REPOS")
     provenance = provenance_of(view, head)
     if provenance is None:
         return refuse("no review on the current head and no completed auto-rereview run")
@@ -573,8 +584,10 @@ class Lock:
 def mode_dry_run(paths, slug):
     en = mc.read_enablement(paths.conf)
     kill = paths.kill_switch.exists()
+    repo_on = repo_enabled(paths, slug, en)
     print(f"{PROG} --dry-run  repo={slug}  enabled={','.join(sorted(en.classes)) or 'off'}  "
-          f"hold={en.hold_secs}s  kill-switch={'present' if kill else 'absent'}")
+          f"repos={','.join(sorted(en.repos)) or 'none'}  hold={en.hold_secs}s  "
+          f"kill-switch={'present' if kill else 'absent'}")
     for problem in en.problems:
         print(f"  conf: {problem}")
     now = now_utc()
@@ -586,7 +599,7 @@ def mode_dry_run(paths, slug):
     rows = []
     for number in numbers:
         try:
-            rows.append(assess(slug, number, en, now))
+            rows.append(assess(slug, number, en, now, repo_on))
         except GhError as exc:
             rows.append(Assessment(number, f"#{number}", "human", f"unreadable: {exc}", False))
     for a in rows:
@@ -617,6 +630,12 @@ def mode_auto(paths, slug):
                  f"lane disabled ({why}); merging nothing until the daemon conf enables a class "
                  "(logged once)")
         if not en.enabled:
+            return 0
+        repo_on = repo_enabled(paths, slug, en)
+        log_once(paths.repo_off_marker(slug), not repo_on,
+                 f"{slug} is not in FLEET_AUTOMERGE_REPOS ({','.join(sorted(en.repos))}); "
+                 "merging nothing there (logged once)")
+        if not repo_on:
             return 0
         now = now_utc()
         try:
