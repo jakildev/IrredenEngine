@@ -21,6 +21,7 @@ from sun_geometry_probe import Quad, load_quads
 
 ROOT = Path(__file__).resolve().parents[2]
 LEAF_SIZE = 8
+MAX_QUERY_COUNT = 1 << 20
 
 KERNEL = r"""
 struct Bounds { float4 low; float4 high; };
@@ -481,6 +482,17 @@ def run_case(binary, shader, output, name, quads, points, expected=None, spatial
             "input_sha256": hashlib.sha256(data).hexdigest()}
 
 
+def receiver_grid(side, repeats=1):
+    """Closed sun-UV square [-12, 12] at sun depth 2, in row-major order."""
+    if not 2 <= side <= 513 or not 1 <= repeats <= 1024:
+        raise ValueError("query-side must be 2..513; repeat-queries must be 1..1024")
+    if side * side * repeats > MAX_QUERY_COUNT:
+        raise ValueError(f"receiver grid exceeds {MAX_QUERY_COUNT} total queries")
+    coordinates = [Fraction(-12) + Fraction(24 * i, side - 1) for i in range(side)]
+    depth = Fraction(2)
+    return [(x, y, depth) for y in coordinates for x in coordinates] * repeats
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", nargs="?", type=Path)
@@ -492,17 +504,23 @@ def main():
     parser.add_argument("--rounds", type=int, default=7)
     parser.add_argument("--dispatches", type=int, default=8,
                         help="build/query dispatch batches per timing sample")
+    parser.add_argument("--query-side", type=int, default=17,
+                        help="distinct receiver positions per grid axis (2..513)")
     parser.add_argument("--repeat-queries", type=int, default=1,
-                        help="repeat the 17x17 receiver grid to expose query throughput")
+                        help="repeat the receiver grid; repeats do not add distinct positions")
     args = parser.parse_args()
     if not 3 <= args.rounds <= 100 or not 1 <= args.repeat_queries <= 1024:
         parser.error("rounds must be 3..100; repeat-queries must be 1..1024")
     if not 1 <= args.dispatches <= 64:
         parser.error("dispatches must be 1..64")
-    if args.self_test and (args.measure or args.repeat_queries != 1):
-        parser.error("synthetic controls are validation-only without query repetition")
+    if args.self_test and (args.measure or args.repeat_queries != 1 or args.query_side != 17):
+        parser.error("synthetic controls are validation-only with their fixed queries")
     if (args.capture is None) == (not args.self_test):
         parser.error("supply a capture or --self-test, exclusively")
+    try:
+        points = receiver_grid(args.query_side, args.repeat_queries) if args.capture else None
+    except ValueError as error:
+        parser.error(str(error))
     if platform.system() != "Darwin":
         parser.error("native probe requires macOS Metal")
     allowed = ("benchmark",) if args.measure else ("gpu", "benchmark")
@@ -512,9 +530,6 @@ def main():
     cases = control_cases(args.spatial) if args.self_test else []
     if args.capture:
         quads, _ = load_quads(args.capture)
-        points = [(Fraction(-12) + Fraction(3, 2) * x, Fraction(-12) + Fraction(3, 2) * y,
-                   Fraction(2)) for y in range(17) for x in range(17)]
-        points *= args.repeat_queries
         cases = [("captured", quads, points, None),
                  ("reversed", list(reversed(quads)), points, None)]
     output = args.output.resolve()
@@ -553,6 +568,8 @@ def main():
               "compiler": subprocess.check_output([compiler, "--version"], text=True).strip(),
               "command": sys.argv,
               "spatial": args.spatial, "measurement": args.measure,
+              "query_side": args.query_side if args.capture else None,
+              "unique_queries": args.query_side ** 2 if args.capture else None,
               "repeat_queries": args.repeat_queries, "power_before": power_before,
               "power_after": subprocess.check_output(["pmset", "-g", "batt"], text=True).strip(),
               "scope": "GPU hierarchy microbenchmark; excludes frame and geometry production"}

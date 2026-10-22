@@ -122,6 +122,12 @@ regression; both series are retained. This does not certify zero cost
 or native throughput. Another native hierarchy timing attempt completed all
 geometry checks but was rejected for a breached fleet quiet window; retain
 qualified timing as the next decision gate.
+The [distinct receiver-grid controls](../perf/sun-hierarchy-query-grid/README.md)
+now support dense planar samples instead of repeating only 289 coordinates.
+The 257×257 sorted and unsorted variants match exhaustive GPU visibility in
+both math modes and record orders. Actual surface receivers and guarded timing
+remain unqualified; this removes one workload limitation without changing
+production routing.
 For the private-canvas overlap controls, separate actual GPU work and CPU
 submission from Metal's synchronous presentation and offscreen pacing before
 selecting an optimization. Compare the existing shadows-off/unlit pairs, then
