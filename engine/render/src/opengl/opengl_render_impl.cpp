@@ -96,6 +96,10 @@ class OpenGLRenderDevice final : public RenderDevice {
         ENG_API->glMemoryBarrier(toGLBarrierType(barrierType));
     }
 
+    void unbindBufferBase(BufferTarget target, std::uint32_t index) override {
+        ENG_API->glBindBufferBase(toGLBufferTarget(target), index, 0);
+    }
+
     void drawElements(DrawMode drawMode, int count, IndexType indexType) override {
         ENG_API->glDrawElements(toGLDrawMode(drawMode), count, toGLIndexType(indexType), nullptr);
     }

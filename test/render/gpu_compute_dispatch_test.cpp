@@ -176,6 +176,23 @@ TEST_F(GpuComputeDispatchTest, CopyNamedBufferSubDataMatchesSourceBytes) {
     EXPECT_EQ(readback, expected);
 }
 
+TEST_F(GpuComputeDispatchTest, DeviceUnbindClearsIndexedStorageBinding) {
+    using namespace IRRender;
+
+    constexpr std::uint32_t kBorrowedSlot = 27;
+    constexpr std::uint32_t seed = 0;
+    Buffer buffer{&seed, sizeof(seed), BUFFER_STORAGE_NONE};
+    buffer.bindBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
+
+    GLint binding = 0;
+    ENG_API->glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, kBorrowedSlot, &binding);
+    ASSERT_EQ(binding, static_cast<GLint>(buffer.getHandle()));
+
+    device()->unbindBufferBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
+    ENG_API->glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, kBorrowedSlot, &binding);
+    EXPECT_EQ(binding, 0);
+}
+
 } // namespace
 
 #elif defined(IR_GRAPHICS_METAL)
@@ -268,6 +285,34 @@ void snapshotClearTexture(
         native->width() * native->height() * pixelBytes
     );
     blit->endEncoding();
+}
+
+TEST_F(MetalGpuComputeDispatchTest, DeviceUnbindClearsOnlyTheSelectedBufferTable) {
+    using namespace IRRender;
+
+    constexpr std::uint32_t kBorrowedSlot = 27;
+    constexpr std::uint32_t seed = 0;
+    Buffer uniform{&seed, sizeof(seed), BUFFER_STORAGE_NONE};
+    Buffer storage{&seed, sizeof(seed), BUFFER_STORAGE_NONE};
+    uniform.bindBase(BufferTarget::UNIFORM, kBorrowedSlot);
+    storage.bindBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
+
+    ASSERT_EQ(
+        boundMetalBuffer(BufferTarget::UNIFORM, kBorrowedSlot).buffer_,
+        uniform.getNativeBuffer()
+    );
+    ASSERT_EQ(
+        boundMetalBuffer(BufferTarget::SHADER_STORAGE, kBorrowedSlot).buffer_,
+        storage.getNativeBuffer()
+    );
+
+    device_->unbindBufferBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
+
+    EXPECT_EQ(boundMetalBuffer(BufferTarget::SHADER_STORAGE, kBorrowedSlot).buffer_, nullptr);
+    EXPECT_EQ(
+        boundMetalBuffer(BufferTarget::UNIFORM, kBorrowedSlot).buffer_,
+        uniform.getNativeBuffer()
+    );
 }
 
 enum class ClearSequenceApi { DEVICE, TEXTURE, ALTERNATING };
@@ -1550,10 +1595,20 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
     };
     std::unique_ptr<Axes, decltype(destroyAxes)> axes(new Axes, destroyAxes);
     axes->allocate(IRMath::ivec2(8, 16), IRMath::ivec2(8));
+    for (auto &axis : axes->axes_) {
+        axis.createGlitchScratch(axes->size_);
+        axis.createGlitchHistory(axes->size_);
+    }
+    axes->createGlitchWorklist();
     const auto faceTextures = axes->axes_;
     const auto winners = axes->winnerIds_;
     const auto compacted = axes->cellCompacted_;
     const auto indirect = axes->cellIndirect_;
+    const auto glitchFlags = axes->glitchTileFlags_;
+    const auto glitchList = axes->glitchTileList_;
+    const auto glitchArgs = axes->glitchTileArgs_;
+    const auto glitchGrid = axes->glitchTileGrid_;
+    const int glitchStride = axes->glitchTileRegionStride_;
     const auto layout = axes->overflowScratchLayout();
     const int liveResources = resources.liveResourceCount();
     const std::uint32_t scratchValue = 0x12345678u;
@@ -1565,10 +1620,27 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
             EXPECT_EQ(axes->axes_[axis].entityIds_, faceTextures[axis].entityIds_);
             EXPECT_EQ(axes->axes_[axis].ao_, faceTextures[axis].ao_);
             EXPECT_EQ(axes->axes_[axis].sunShadow_, faceTextures[axis].sunShadow_);
+            EXPECT_EQ(
+                axes->axes_[axis].glitchScratchColors_,
+                faceTextures[axis].glitchScratchColors_
+            );
+            EXPECT_EQ(
+                axes->axes_[axis].glitchHistoryColors_,
+                faceTextures[axis].glitchHistoryColors_
+            );
+            EXPECT_EQ(
+                axes->axes_[axis].glitchHistoryEntityIds_,
+                faceTextures[axis].glitchHistoryEntityIds_
+            );
         }
         EXPECT_EQ(axes->winnerIds_, winners);
         EXPECT_EQ(axes->cellCompacted_, compacted);
         EXPECT_EQ(axes->cellIndirect_, indirect);
+        EXPECT_EQ(axes->glitchTileFlags_, glitchFlags);
+        EXPECT_EQ(axes->glitchTileList_, glitchList);
+        EXPECT_EQ(axes->glitchTileArgs_, glitchArgs);
+        EXPECT_EQ(axes->glitchTileGrid_, glitchGrid);
+        EXPECT_EQ(axes->glitchTileRegionStride_, glitchStride);
         EXPECT_EQ(axes->overflowScratchLayout(), layout);
         EXPECT_EQ(resources.liveResourceCount(), liveResources);
         std::uint32_t scratchReadback = 0;

@@ -41,6 +41,9 @@ class Framebuffer {
     inline const Texture2D &getTextureColor() const {
         return m_textureColor;
     }
+    inline Texture2D &getTextureColorForWrite() {
+        return m_textureColor;
+    }
     inline const Texture2D &getTextureDepth() const {
         return m_textureDepth;
     }

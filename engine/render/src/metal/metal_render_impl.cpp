@@ -567,6 +567,10 @@ class MetalRenderDevice final : public RenderDevice {
         // shared resources, so an explicit barrier is unnecessary here.
     }
 
+    void unbindBufferBase(BufferTarget target, std::uint32_t index) override {
+        bindMetalBuffer(target, index, nullptr, 0);
+    }
+
     void dispatchComputeIndirect(const Buffer *indirectBuffer, std::ptrdiff_t offset) override {
         auto *commandBuffer = metalCommandBuffer();
         auto *pipeline = activeMetalPipeline();
