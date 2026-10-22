@@ -811,15 +811,21 @@ def _review_order(records):
 def pick_role(slice_data, role):
     """Ordered dispatch targets for a non-worker lane, from that role's own
     projection slice: reviewers get one `review:<repo>:<N>` per candidate PR
-    not already under another agent's review claim (the opus reviewer also
+    not already under another agent's review claim (a sonnet candidate with a
+    stranded current-head review is `verdict-replay:<repo>:<N>` instead; the
+    opus reviewer also
     `planreview:<repo>:<N>` per plan-review issue), the smoke worker one
     `smoke:<repo>:<N>` per PR THIS host can validate. Slice order is the role
     doc's pickup order (engine first, oldest first)."""
     picks = []
     if role == "sonnet-reviewer":
-        picks = [_target("review", pr)
-                 for pr in _review_order(slice_data.get("candidate_prs") or [])
-                 if not _held_for_review(pr) and not _declined("review", pr, role)]
+        # A candidate the scout marked `verdict_replay` already carries a
+        # current-head fleet review; its target is a distinct kind, so a
+        # declined `review:` target on the same PR never hides the replay.
+        for pr in _review_order(slice_data.get("candidate_prs") or []):
+            kind = "verdict-replay" if pr.get("verdict_replay") else "review"
+            if not _held_for_review(pr) and not _declined(kind, pr, role):
+                picks.append(_target(kind, pr))
     elif role == "opus-reviewer":
         picks = [_target("review", pr)
                  for pr in _review_order(slice_data.get("flagged_prs") or [])

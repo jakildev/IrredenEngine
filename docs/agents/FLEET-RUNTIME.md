@@ -52,7 +52,16 @@ as abandoned ([`FLEET.md § How a launch ends`](FLEET.md)).
 | `conflict` | `resolving-claim <N> <basename>` | `resolving-release <N> <basename>` |
 | `plan` | `planning-claim <N> <basename>` | `planning-release <N> <basename>` |
 | `review`, `smoke`, `planreview` | `review-claim <N> <basename>` (on the issue for `planreview`) | `review-release <N> <basename>` |
+| `verdict-replay` | `review-claim <N> <basename>` | `review-release <N> <basename> --require-verdict` |
 | `merge` | nothing — claimless; the PR is one tier-0 (`fleet-rebase`) classified as needing the LLM merger pass | nothing; the merger's own mark on the PR (a `— fleet merger` comment, `fleet:merger-cooldown` or a durable handoff label) is the completion record |
+
+A `verdict-replay` target (sonnet-reviewer lane) is a PR whose newest
+current-head review is a fleet review newer than every verdict-label event:
+the body landed, the edge did not. Run `fleet-review-verdict --replay <N>
+--agent <basename>` (`--repo <game-slug>` for game), which reads the edge from
+that body and swaps the labels, then release. Never run `review-pr`, never
+`gh pr review`: the review already exists. Exit 6 (no fleet review on the
+head, an ambiguous verdict, the head moved) is a `decline`.
 
 Add `--repo game` before the subcommand when `FLEET_DISPATCH_REPO` is
 `game`. The definition is `FLEET_TARGET_CLAIM` / `FLEET_TARGET_RELEASE` in

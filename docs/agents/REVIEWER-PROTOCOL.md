@@ -142,6 +142,19 @@ fleet-review-verdict verdict-needs-opus-recheck <N> --agent <your-worktree-name>
 `review-pr` runs this wrapper at its step 5b; if a PR you reviewed has no
 label after the skill returns, run the edge yourself.
 
+**Provenance and a swept claim.** A dispatched review body carries
+`<!-- fleet-review dispatch=<FLEET_DISPATCH_ID> agent=<your-worktree-name> -->`
+on its own line above the `Reviewed by` footer (so the final `Opus recheck`
+line stays last). If your claim was swept while you wrote the review, the
+wrapper re-takes it once — only when no other reviewing claim stands and the
+current-head review is your login's own with this dispatch's marker — and
+applies the edge; anything else is still exit 4.
+
+**Verdict replay.** A review whose edge never landed stays visible: the scout
+offers it to the sonnet lane as `verdict-replay:<repo>:<N>`, which runs
+`fleet-review-verdict --replay <N> --agent <your-worktree-name>` and posts
+nothing ([`FLEET-RUNTIME.md`](FLEET-RUNTIME.md) § "The dispatch target").
+
 ---
 
 ## Cross-host smoke tagging
@@ -284,7 +297,8 @@ On top of
   next Bash call and the following `review-release` passes
   `--require-verdict`; describing the label in the body does not set it.
 - Never re-apply a verdict label without a new review in the same
-  iteration. A prior verdict with no current label may have been cleared
+  iteration, except as a `verdict-replay` dispatch (§ "Verdict label-swap
+  commands"), whose predicate already excludes a cleared verdict. A prior verdict with no current label may have been cleared
   legitimately (an author push, an ESCALATE handoff, a worker mid-claim):
   check live for a commit since your last review's `submittedAt`, a new
   author comment, a recent UNLABELED event (`gh api

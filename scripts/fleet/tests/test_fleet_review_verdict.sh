@@ -33,6 +33,15 @@
 #   T17: reviews read failure → exit 1
 #   Repo aliases resolve before the wrapper reaches GitHub or fleet-transition
 #   Unknown repository namespaces reject before the wrapper reaches GitHub
+#   T20: --replay maps each of the four real body shapes to its edge, once,
+#        and posts no review
+#   T21: --replay fails closed (exit 6, no labels) on an ambiguous body, a
+#        foreign head review, a moved head, and no head review
+#   T22: --replay needs the claim and its own argument shape
+#   T23: a swept claim is re-taken once for this dispatch's own review
+#   T24: a swept claim stays refused for a different dispatch, agent, author,
+#        head, a pre-claim id, or another reviewer's standing claim
+#   T25: --replay reads a reviews list gh emits as one document per page
 
 set -euo pipefail
 
@@ -75,6 +84,10 @@ export HOST_KEY="mac"                # what the fleet-claim stub reports
 export FT_RC=0                       # exit code the fleet-transition stub returns
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
 export FLEET_STATE_DIR="$TMPROOT/fleet/state"
+export FC_LOG="$TMPROOT/fc.log"      # fleet-claim invocations other than `host`
+export GH_LOGIN="jakildev"           # what `gh api user` reports
+export GH_REPO_SLUG="jakildev/IrredenEngine"
+unset FLEET_DISPATCH_ID                # a dispatched shell must not seed the re-take
 mkdir -p "$BIN" "$STORE" "$FLEET_CLAIMS_DIR"
 mkdir -p "$FLEET_STATE_DIR"
 printf '%s\n' '{"engine":"owner/engine","game":"owner/game"}' > "$FLEET_STATE_DIR/repos.json"
@@ -102,7 +115,25 @@ if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
     esac
     [[ -f "$file" ]] || exit 1
     grep -v '^$' "$file" || true
+    # A staged next head models a push landing between two head reads.
+    if [[ "$json" == headRefOid && -f "$STORE/head-next-$num" ]]; then
+        mv "$STORE/head-next-$num" "$file"
+    fi
     exit 0
+fi
+if [[ "${1:-}" == "repo" && "${2:-}" == "view" && "$*" == "repo view --json nameWithOwner --jq .nameWithOwner" ]]; then
+    printf '%s\n' "$GH_REPO_SLUG"; exit 0
+fi
+if [[ "${1:-}" == "api" && "${2:-}" == "user" ]]; then
+    [[ "$*" == "api user --jq .login" ]] || exit 2
+    printf '%s\n' "$GH_LOGIN"; exit 0
+fi
+if [[ "${1:-}" == "api" && "$#" -eq 3 && "${3:-}" == "--paginate" ]]; then
+    # The full reviews list (`gh api --paginate` merges top-level arrays).
+    [[ "${2:-}" =~ /pulls/([0-9]+)/reviews$ ]] || exit 2
+    file="$STORE/reviews-json-${BASH_REMATCH[1]}"
+    [[ -f "$file" ]] || exit 1
+    cat "$file"; exit 0
 fi
 if [[ "${1:-}" == "api" ]]; then
     path="${2:-}"; shift 2
@@ -143,11 +174,20 @@ exit "${FT_RC:-0}"
 FTEOF
 chmod +x "$BIN/fleet-transition"
 
-# fleet-claim stub — only `fleet-claim host` is used by the guard.
+# fleet-claim stub — `host` for the guard; `review-claim` (the swept-claim
+# re-take) is logged and, unless FC_RC says otherwise, adds the label.
 cat >"$BIN/fleet-claim" <<'FCEOF'
 #!/usr/bin/env bash
 if [[ "$1" == "host" ]]; then echo "${HOST_KEY:-mac}"; exit 0; fi
-exit 0
+printf '%s\n' "$*" >>"$FC_LOG"
+ns=""
+if [[ "$1" == "--repo" ]]; then ns="$2"; shift 2; fi
+if [[ "$1" == "review-claim" ]]; then
+    [[ "${FC_RC:-0}" -eq 0 ]] || exit "$FC_RC"
+    echo "fleet:reviewing-${HOST_KEY:-mac}-$3" >>"$STORE/labels-$2"
+    exit 0
+fi
+exit 2
 FCEOF
 chmod +x "$BIN/fleet-claim"
 
@@ -175,10 +215,25 @@ set_review_data() {  # set_review_data <N> <head> [<commit> <state> <submitted-a
 }
 get_labels() { sort "$STORE/labels-${1}" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
 ft_calls() { grep -c . "$FT_LOG" 2>/dev/null || true; }
+fc_calls() { grep -c . "$FC_LOG" 2>/dev/null || true; }
 reset_logs() {
     : >"$FT_LOG"
     : >"$GH_LOG"
+    : >"$FC_LOG"
     rm -f "$FLEET_CLAIMS_DIR/_review-verdict-worker-2"
+}
+# set_head_review <N> <head> <body-file> [<author> <commit>] — one submitted
+# review, served both to the commit-id guard and as the full reviews list.
+set_head_review() {
+    local num="$1" head="$2" body="$3" author="${4:-jakildev}" commit="${5:-$2}"
+    set_review_data "$num" "$head" "$commit" COMMENTED 2026-10-17T20:02:57Z
+    python3 - "$STORE/reviews-json-$num" "$body" "$author" "$commit" <<'PY'
+import json, sys
+out, body, author, commit = sys.argv[1:]
+json.dump([{"user": {"login": author}, "body": open(body, encoding="utf-8").read(),
+            "commit_id": commit, "state": "COMMENTED",
+            "submitted_at": "2026-10-17T20:02:57Z"}], open(out, "w"))
+PY
 }
 
 run() {  # capture rc without tripping set -e
@@ -451,6 +506,178 @@ assert_eq "$(throttle_arm 1 401 head fleet:reviewing-mac-worker-9)" "4|0" \
 assert_eq "$(throttle_arm 1 402 stale-sha fleet:reviewing-mac-worker-2)" "5|0" \
     "T19 throttled: the review-body guard still fires"
 assert_eq "$(cat "$GH_STUB_MISSES")" "" "T19 every stub invocation was modeled"
+
+# --- Replay and swept-claim fixtures ---------------------------------------
+# The three bodies keep the verdict line and ending of three real reviews on
+# one head; approve-nits adds an amend-worthy ### Nits to the plain approve.
+BODIES="$TMPROOT/bodies"
+mkdir -p "$BODIES"
+cat >"$BODIES/escalation" <<'BODY'
+## Review — re-bless four refs
+
+**Verdict:** approve pending Opus recheck
+
+Scoped to four PNGs.
+
+<!-- fleet-review dispatch=disp-123 agent=worker-2 -->
+🤖 Reviewed by Codex (GPT-5)
+
+Opus recheck required: render-reference provenance needs a final render review.
+BODY
+cat >"$BODIES/needs-fix" <<'BODY'
+## Final review — re-bless four refs
+
+**Verdict:** needs-fix.
+
+### Needs-fix
+- docs/pr.md:10 — capture evidence missing — attach it
+
+🤖 Reviewed by Codex (runtime: codex; review class: opus; review-pr skill)
+BODY
+cat >"$BODIES/approve" <<'BODY'
+## Final review — re-bless four refs
+
+**Verdict:** approve
+
+The follow-up evidence resolves both findings.
+
+🤖 Reviewed by Codex (runtime: codex; review class: opus; review-pr skill)
+
+Opus recheck not required (reviewed at opus class).
+BODY
+cat >"$BODIES/approve-nits" <<'BODY'
+## Final review — re-bless four refs
+
+**Verdict:** approve
+
+### Nits
+- a.cpp:3 — missing assert on the invariant
+
+🤖 Reviewed by Codex (runtime: codex; review class: opus; review-pr skill)
+
+Opus recheck not required (reviewed at opus class).
+BODY
+cat >"$BODIES/ambiguous" <<'BODY'
+## Final review — re-bless four refs
+
+**Verdict:** approve
+
+**Verdict:** needs-fix
+
+🤖 Reviewed by Codex (runtime: codex; review class: opus; review-pr skill)
+BODY
+sed 's/agent=worker-2/agent=worker-3/' "$BODIES/escalation" >"$BODIES/escalation-other-agent"
+
+replay_arm() {  # replay_arm <N> <body> <expected-edge>
+    local num="$1" body="$2" edge="$3"
+    reset_logs
+    set_labels "$num" "fleet:reviewing-mac-worker-2"
+    set_head_review "$num" "head-$num" "$BODIES/$body"
+    assert_eq "$(run --replay "$num" --agent worker-2)" "0" "T20 $body: replay exits 0"
+    assert_eq "$(cat "$FT_LOG")" "$edge $num" "T20 $body: applies $edge exactly once"
+    assert_eq "$(grep -c '^pr review' "$GH_LOG" || true)" "0" "T20 $body: posts no review"
+    assert_eq "$(cat "$FLEET_CLAIMS_DIR/_review-verdict-worker-2" 2>/dev/null)" "$num" \
+        "T20 $body: records the guarded-release marker"
+}
+echo "T20: --replay maps each body to its edge"
+replay_arm 500 escalation verdict-needs-opus-recheck
+replay_arm 501 needs-fix verdict-needs-fix
+replay_arm 502 approve verdict-approve
+replay_arm 503 approve-nits verdict-approve-nits
+
+stage_510() {  # stage_510 <body> [author] [commit]
+    reset_logs
+    set_labels 510 fleet:reviewing-mac-worker-2
+    set_head_review 510 head-510 "$BODIES/$1" "${2:-jakildev}" "${3:-head-510}"
+}
+refuse_arm() {  # refuse_arm <what> <expected-rc>
+    assert_eq "$(run --replay 510 --agent worker-2)" "$2" "T21 $1: exits $2"
+    assert_eq "$(ft_calls)" "0" "T21 $1: no transition"
+    assert_eq "$(get_labels 510)" "fleet:reviewing-mac-worker-2" "T21 $1: labels unchanged"
+}
+echo "T21: --replay fails closed"
+stage_510 ambiguous;                refuse_arm "ambiguous verdict" 6
+stage_510 approve someone-else;     refuse_arm "foreign head review" 6
+stage_510 approve jakildev old-510; refuse_arm "no review on the current head" 6
+stage_510 approve
+printf '%s\n' head-510-pushed >"$STORE/head-next-510"
+refuse_arm "head moved before the swap" 6
+grep -q "head moved" "$TMPROOT/out" && \
+    { PASS=$((PASS+1)); echo "  ok: T21 names the moved head"; } || \
+    { FAIL=$((FAIL+1)); echo "  FAIL: T21 names the moved head"; }
+
+echo "T22: --replay needs the claim and its own argument shape"
+reset_logs; set_labels 520 fleet:reviewing-mac-worker-9
+set_head_review 520 head-520 "$BODIES/approve"
+assert_eq "$(FLEET_DISPATCH_ID=disp-123 run --replay 520 --agent worker-2)" "4" \
+    "T22 replay without the claim exits 4"
+assert_eq "$(fc_calls)" "0" "T22 replay never re-takes a claim"
+assert_eq "$(run --replay 520)" "2" "T22 replay without --agent exits 2"
+assert_eq "$(run --replay verdict-approve 520 --agent worker-2)" "2" "T22 replay with a transition exits 2"
+assert_eq "$(run --replay 520 --agent worker-2 --no-review-check)" "2" "T22 replay refuses --no-review-check"
+assert_eq "$(ft_calls)" "0" "T22 no transition"
+
+echo "T23: a swept claim is re-taken for this dispatch's own review"
+reset_logs; set_labels 530 fleet:wip
+set_head_review 530 head-530 "$BODIES/escalation"
+assert_eq "$(FLEET_DISPATCH_ID=disp-123 run verdict-needs-opus-recheck 530 --agent worker-2)" "0" \
+    "T23 re-take + verdict exits 0"
+assert_eq "$(cat "$FC_LOG")" "review-claim 530 worker-2" "T23 re-takes the claim exactly once"
+assert_eq "$(cat "$FT_LOG")" "verdict-needs-opus-recheck 530" "T23 then applies the verdict once"
+reset_logs; set_labels 531 fleet:wip
+set_head_review 531 head-531 "$BODIES/escalation"
+assert_eq "$(GH_REPO_SLUG=jakildev/irreden FLEET_DISPATCH_ID=disp-123 run verdict-needs-opus-recheck 531 --agent worker-2)" \
+    "0" "T23 game remote: exits 0"
+assert_eq "$(cat "$FC_LOG")" "--repo game review-claim 531 worker-2" "T23 game remote: namespaced re-take"
+
+stage_540() {  # stage_540 <body> [author] [commit] [extra-label]
+    reset_logs
+    set_labels 540 fleet:wip ${4:+"$4"}
+    set_head_review 540 head-540 "$BODIES/$1" "${2:-jakildev}" "${3:-head-540}"
+}
+swept_arm() {  # swept_arm <what> <dispatch-id> [VAR=value...]
+    local what="$1" dispatch="$2" rc=0
+    shift 2
+    env FLEET_DISPATCH_ID="$dispatch" "$@" "$WRAPPER" verdict-needs-opus-recheck 540 \
+        --agent worker-2 >"$TMPROOT/out" 2>&1 || rc=$?
+    assert_eq "$rc" "4" "T24 $what: still the misroute refusal"
+    assert_eq "$(ft_calls)" "0" "T24 $what: no transition"
+}
+echo "T24: a swept claim stays refused for anything but this dispatch's own review"
+stage_540 escalation;                   swept_arm "different dispatch" disp-999
+assert_eq "$(fc_calls)" "0" "T24 different dispatch: no re-take"
+stage_540 escalation-other-agent;       swept_arm "different agent" disp-123
+assert_eq "$(fc_calls)" "0" "T24 different agent: no re-take"
+stage_540 escalation;                   swept_arm "different login" disp-123 GH_LOGIN=other-login
+assert_eq "$(fc_calls)" "0" "T24 different login: no re-take"
+stage_540 escalation someone-else;      swept_arm "review by a foreign author" disp-123
+assert_eq "$(fc_calls)" "0" "T24 foreign author: no re-take"
+stage_540 escalation jakildev old-540;  swept_arm "review on an old head" disp-123
+assert_eq "$(fc_calls)" "0" "T24 old head: no re-take"
+stage_540 escalation;                   swept_arm "pre-claim dispatch id" preclaim
+assert_eq "$(fc_calls)" "0" "T24 pre-claim id: no re-take"
+stage_540 escalation;                   swept_arm "no dispatch id" ""
+assert_eq "$(fc_calls)" "0" "T24 no dispatch id: no re-take"
+stage_540 escalation jakildev head-540 fleet:reviewing-mac-worker-9
+swept_arm "another reviewer holds the claim" disp-123
+assert_eq "$(fc_calls)" "0" "T24 another reviewer's claim: never stolen"
+assert_eq "$(get_labels 540)" "fleet:reviewing-mac-worker-9 fleet:wip" "T24 the other claim is untouched"
+stage_540 escalation;                   swept_arm "re-take refused by fleet-claim" disp-123 FC_RC=1
+assert_eq "$(fc_calls)" "1" "T24 refused re-take: attempted exactly once"
+
+echo "T25: --replay reads a review list spread over several gh pages"
+reset_logs; set_labels 550 fleet:reviewing-mac-worker-2
+set_head_review 550 head-550 "$BODIES/approve"
+python3 - "$STORE/reviews-json-550" <<'PY'
+import json, sys
+path = sys.argv[1]
+head_review = json.load(open(path))[0]
+old = dict(head_review, commit_id="old-550", body="hm", submitted_at="2026-10-16T00:00:00Z")
+with open(path, "w") as out:
+    out.write(json.dumps([old] * 30) + "\n" + json.dumps([head_review]) + "\n")
+PY
+assert_eq "$(run --replay 550 --agent worker-2)" "0" "T25 one document per page: replay exits 0"
+assert_eq "$(cat "$FT_LOG")" "verdict-approve 550" "T25 applies the last page's head-review edge"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
