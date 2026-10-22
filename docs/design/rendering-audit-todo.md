@@ -75,6 +75,17 @@ overflow and native OpenGL qualification on the TODO; this is not closure of all
 shared voxel shadow defects. Use these controls to select candidate-reduction
 hypotheses, then measure index construction and full-frame cost before adoption.
 
+The [independent GRID receiver polygon controls](../pr-screenshots/codex/receiver-shadow-polygon/README.md)
+now preserve 16 native Metal frames: all eight cardinal on/off cases and four
+intermediate continuous-surface cases match the authored rigid-cube silhouette
+beyond a one-pixel boundary band. The four intermediate default sampled cases
+still miss 18/32 pixels and add 638/650 excess pixels. Unexpected receiver colors
+fail the checker instead of disappearing from its coverage mask. The historical
+PR #4597 cardinal capture fails this oracle; the current cardinal capture passes.
+No new default or general rendering fix follows from these controls. Next close
+the intermediate receiver defect through the shared geometry route, retaining
+full-scene cost gates before enabling the continuous opt-in more broadly.
+
 The cardinal continuous-receiver follow-up separates `cardinalSurfaceFb` and
 `perAxisSurfaceFb` GPU draws from their sampled/unlit routes. The fog-free
 [surface-lighting matrix](../../scripts/perf/README.md#surface-lighting-scene-controls)
@@ -116,9 +127,25 @@ layer; eleven native Metal captures verify the finite-pool visual reproduction.
 The full CanvasStress regression run passed 41/46 checks; five mode-switch,
 detach and impulse golden comparisons failed. Controlled native query-disabled
 versus production runs match in all nine paired frames, with the same five
-golden differences in both variants. This isolates the query switch only;
-actual parent-revision comparison and attribution/repair remain pending before
-calling the full patch regression-free. Next qualify actual analytic/mixed modes,
+golden differences in both variants. Actual clean-parent captures subsequently
+match all nine production frames too, establishing that these specific golden
+mismatches predate the hierarchy patch; their cause/repair remains pending.
+The [initial engine profile matrix](../perf/sun-overflow-production/README.md)
+exposed crowded-cardinal frame means of 193.66 ms versus 64.73/66.14 ms on the
+parent. The [guarded whole-canvas early-depth follow-up](../perf/sun-overflow-production/guarded-depth/README.md)
+now uses actual GPU-emitted geometry bounds and preserves the original depth path
+for priority and boundary-crossing canvases. Eleven overflow frames and eight
+paired touching/intersection controls retain identical rendered pixels. Native
+full-suite results remain 41/46 with the same inherited failures.
+
+The subsequent retained GUARDED parent/optimized/parent matrix completed with
+battery power 85→83%, explicitly authorized as provisional. Crowded cardinal frame
+means are 70.60 ms versus 66.61/67.23 ms; crowded intermediate means 71.96 versus
+68.52/68.89 ms. The parent is missing overflow shadow coverage. The large initial
+overdraw amplification is absent, but residual cost remains; no performance parity,
+qualified speedup, Release throughput or million-entity claim is made. Measure
+fallback-only canvas overhead and native GL depth behavior before wider adoption.
+Then qualify actual analytic/mixed modes,
 moving geometry, OpenGL parity, and production build/query plus full-frame cost. The standalone timings remain separate from these visual
 controls and establish no production FPS gain.
 The hosted Linux [performance run](https://github.com/jakildev/IrredenEngine/actions/runs/39472592142)
