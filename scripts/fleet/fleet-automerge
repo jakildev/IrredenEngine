@@ -26,10 +26,12 @@
 # BEFORE any audit step, then stamps `fleet:auto-merged`, posts one audit
 # comment, and runs fleet-nit-close-for-pr; an audit step that fails appends
 # an `audit-error` event and the next run completes the missing steps
-# idempotently (bounded by MAX_AUDIT_ATTEMPTS) without ever merging again.
-# `--reconcile` joins merged GitHub revert PRs (title `Revert "…"`, body
-# `Reverts <slug>#<N>`) to their merge events as `rollback` events;
-# fleet-digest-tick runs it, fleet-decisions and fleet-health read the ledger.
+# idempotently (bounded by MAX_AUDIT_ATTEMPTS failed passes) without ever
+# merging again. `--reconcile` joins merged GitHub revert PRs (title
+# `Revert "…"`, body `Reverts <slug>#<N>`) to their merge events as `rollback`
+# events; a scan that cannot read every revert since the oldest unrolled merge
+# appends `rollback-scan-incomplete` and exits 1. fleet-digest-tick runs it,
+# fleet-decisions and fleet-health read the ledger.
 #
 # Usage:
 #   fleet-automerge --auto      [--repo engine|game|owner/name]   at most one merge
@@ -65,6 +67,8 @@ AUDIT_COMMENT_PREFIX = "Auto-merged (class="
 AUDIT_STEPS = ("label", "comment", "nit-close")
 MAX_AUDIT_ATTEMPTS = 3
 REVERT_TITLE_PREFIX = 'Revert "'
+# GitHub search returns at most 1000 results, however far `--limit` reaches.
+REVERT_SCAN_LIMIT = 1000
 REREVIEW_WORKFLOW_PREFIX = "Auto re-review"
 GREEN_CONCLUSIONS = ("SUCCESS", "SKIPPED")
 VIEW_FIELDS = ("number,title,body,state,isDraft,baseRefName,mergeable,headRefOid,labels,"
@@ -377,9 +381,10 @@ def run_nit_close(slug):
     return [line for line in proc.stdout.replace("\r", "").split("\n") if line]
 
 
-def run_audit(paths, slug, number, comment_text, done):
+def run_audit(paths, slug, number, comment_text, done, attempt):
     """Complete the audit steps not in `done`; append one audit-error per
-    failing step and an audit-complete once every step holds."""
+    failing step, each tagged with this pass's `attempt`, and an
+    audit-complete once every step holds."""
     errors = 0
     closed = []
     for step in AUDIT_STEPS:
@@ -412,33 +417,38 @@ def run_audit(paths, slug, number, comment_text, done):
             errors += 1
             log(f"audit step {step} failed for PR #{number}: {exc}")
             append_event(paths.ledger, event="audit-error", repo=slug, pr=number, step=step,
-                         error=str(exc)[:300])
+                         attempt=attempt, error=str(exc)[:300])
     if errors == 0:
         append_event(paths.ledger, event="audit-complete", repo=slug, pr=number,
                      steps=list(AUDIT_STEPS), nit_closed=closed)
     return errors == 0
 
 
-def recover_partial_audits(paths, slug, hold_secs):
+def recover_partial_audits(paths, slug):
     events = read_ledger(paths.ledger)
     merges = {e["pr"]: e for e in events if e.get("event") == "merge" and e.get("repo") == slug}
     complete = {e["pr"] for e in events if e.get("event") == "audit-complete"
                 and e.get("repo") == slug}
-    attempts = {}
+    # A pass that fails several steps writes several audit-errors under one
+    # attempt; the budget counts passes, not steps.
+    failed_passes = {}
     for e in events:
         if e.get("event") == "audit-error" and e.get("repo") == slug:
-            attempts[e["pr"]] = attempts.get(e["pr"], 0) + 1
+            failed_passes.setdefault(e["pr"], set()).add(e.get("attempt"))
     for pr, merge in sorted(merges.items()):
         if pr in complete:
             continue
-        if attempts.get(pr, 0) >= MAX_AUDIT_ATTEMPTS:
-            log(f"PR #{pr}: audit left incomplete after {attempts[pr]} failed step(s); "
+        attempts = len(failed_passes.get(pr, ()))
+        if attempts >= MAX_AUDIT_ATTEMPTS:
+            log(f"PR #{pr}: audit left incomplete after {attempts} failed pass(es); "
                 "a human finishes it")
             continue
         log(f"PR #{pr}: completing the audit left behind by an earlier run")
         stub = Assessment(pr, merge.get("title") or "", f"auto:{merge.get('class')}",
                           "", True, merge.get("head"), "", merge.get("provenance") or {})
-        run_audit(paths, slug, pr, audit_comment(stub, hold_secs), set())
+        # The comment states the hold the merge ran under, not today's conf.
+        run_audit(paths, slug, pr, audit_comment(stub, merge.get("hold_secs", "?")), set(),
+                  attempts + 1)
 
 
 # --- merge -------------------------------------------------------------------------------
@@ -470,7 +480,7 @@ def merge_one(paths, slug, assessment, hold_secs):
                  title=assessment.title, provenance=assessment.provenance, hold_secs=hold_secs)
     log(f"PR #{assessment.number}: merged ({assessment.kind}) head={assessment.head[:9]} "
         f"merge={str(merge_sha)[:9]}")
-    run_audit(paths, slug, assessment.number, audit_comment(assessment, hold_secs), set())
+    run_audit(paths, slug, assessment.number, audit_comment(assessment, hold_secs), set(), 1)
     return True
 
 
@@ -483,11 +493,21 @@ def reconcile(paths, slug):
     pending = {pr: e for pr, e in merges.items() if pr not in rolled}
     if not pending:
         return 0
+    # A revert merges after the PR it reverts, so the oldest pending merge
+    # bounds the scan; the extra day covers a revert merged in the seconds
+    # between a merge and its ledger write across midnight.
+    stamps = [parse_ts(e.get("ts")) for e in pending.values()]
+    since = min((t for t in stamps if t), default=None)
+    query = "Revert in:title"
+    if since is not None:
+        query += f" merged:>={(since - dt.timedelta(days=1)).strftime('%Y-%m-%d')}"
     reverts = gh_json(["pr", "list", "--repo", slug, "--state", "merged", "--base", "master",
-                       "--search", "Revert in:title", "--limit", "100",
+                       "--search", query, "--limit", str(REVERT_SCAN_LIMIT),
                        "--json", "number,title,body,mergeCommit"])
+    if not isinstance(reverts, list):
+        raise GhError("merged-revert search returned no list")
     found = 0
-    for r in reverts if isinstance(reverts, list) else []:
+    for r in reverts:
         if not str(r.get("title") or "").startswith(REVERT_TITLE_PREFIX):
             continue
         body = str(r.get("body") or "")
@@ -499,6 +519,11 @@ def reconcile(paths, slug):
                 log(f"PR #{pr}: rolled back by revert PR #{r['number']}")
                 del pending[pr]
                 found += 1
+    if len(reverts) >= REVERT_SCAN_LIMIT:
+        append_event(paths.ledger, event="rollback-scan-incomplete", repo=slug, query=query,
+                     read=len(reverts), recorded=found)
+        raise GhError(f"{len(reverts)} merged reverts match '{query}', the search ceiling; "
+                      f"older ones are unread ({found} rollback(s) recorded)")
     return found
 
 
@@ -578,7 +603,7 @@ def mode_auto(paths, slug):
             return 0
         en = mc.read_enablement(paths.conf)
         try:
-            recover_partial_audits(paths, slug, en.hold_secs)
+            recover_partial_audits(paths, slug)
         except GhError as exc:
             log(f"audit recovery skipped: {exc}")
         killed = paths.kill_switch.exists()
@@ -622,7 +647,7 @@ def mode_reconcile(paths, slug):
     try:
         found = reconcile(paths, slug)
     except GhError as exc:
-        log(f"reconcile skipped: {exc}")
+        log(f"reconcile incomplete: {exc}")
         return 1
     log(f"reconcile complete: rollbacks recorded={found}")
     return 0

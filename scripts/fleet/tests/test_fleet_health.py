@@ -483,6 +483,22 @@ class AutomergeLane(Env):
         self.assertEqual((a["merges"], a["rollbacks"], a["partial_audits"]), (1, 0, []))
         self.assertFalse([w for w in report["warnings"] if "auto-merge" in w])
 
+    def test_incomplete_rollback_scan_blocks_the_widening_bar(self):
+        ledger = "\n".join(json.dumps(e) for e in (
+            {"ts": "2026-09-09T05:00:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
+             "pr": 3101, "class": "rebless"},
+            {"ts": "2026-09-09T05:00:02Z", "event": "audit-complete",
+             "repo": "jakildev/IrredenEngine", "pr": 3101},
+            {"ts": "2026-09-09T06:00:00Z", "event": "rollback-scan-incomplete",
+             "repo": "jakildev/IrredenEngine", "read": 1000, "recorded": 0})) + "\n"
+        self.write_lane(ledger=ledger)
+        rc, report = self.run_report()
+        a = report["automerge"]
+        self.assertEqual((a["rollbacks"], a["rollback_scans_incomplete"]), (0, 1))
+        self.assertEqual(rc, 1)
+        self.assertTrue(any("1 rollback scan(s) hit the search ceiling" in w
+                            for w in report["warnings"]))
+
     def test_text_section_names_the_lane(self):
         self.write_lane()
         out = io.StringIO()

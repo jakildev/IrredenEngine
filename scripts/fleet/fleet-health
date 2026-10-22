@@ -449,9 +449,11 @@ def collect_rebase(log_lines, since):
 def collect_automerge(ledger_path, log_lines, since, conf):
     """The tier-0 auto-merge ledger (JSONL) inside the window, plus the
     executor's own run and refusal lines. A merge whose audit never completed
-    and has at least one audit-error is a partial audit."""
+    and has at least one audit-error is a partial audit. An incomplete
+    rollback scan means `rollbacks` may undercount."""
     merges = []
     rollbacks = 0
+    scans_incomplete = 0
     errors = {}
     complete = set()
     try:
@@ -472,6 +474,8 @@ def collect_automerge(ledger_path, log_lines, since, conf):
                                    "repo": e.get("repo"), "ts": e.get("ts")})
                 elif kind == "rollback":
                     rollbacks += 1
+                elif kind == "rollback-scan-incomplete":
+                    scans_incomplete += 1
                 elif kind == "audit-error":
                     errors[e.get("pr")] = errors.get(e.get("pr"), 0) + 1
                 elif kind == "audit-complete":
@@ -490,7 +494,8 @@ def collect_automerge(ledger_path, log_lines, since, conf):
             refusals += 1
     classes = [c for c in re.split(r"[,\s]+", conf.get("FLEET_AUTOMERGE_CLASSES", "")) if c]
     return {"enabled": classes, "runs": runs, "refusals": refusals, "merges": len(merges),
-            "merged_prs": merges, "rollbacks": rollbacks, "partial_audits": partial}
+            "merged_prs": merges, "rollbacks": rollbacks, "partial_audits": partial,
+            "rollback_scans_incomplete": scans_incomplete}
 
 
 # --- Runtimes --------------------------------------------------------------------
@@ -672,6 +677,9 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktree
         if automerge["rollbacks"]:
             w.append(f"auto-merge lane: {automerge['rollbacks']} rollback(s) of an auto-merged PR "
                      "in the window; widen no class until the cause is understood")
+        if automerge["rollback_scans_incomplete"]:
+            w.append(f"auto-merge lane: {automerge['rollback_scans_incomplete']} rollback scan(s) "
+                     "hit the search ceiling; the rollback count may be low, widen no class")
         if automerge["partial_audits"]:
             prs = ", ".join(f"#{p}" for p in automerge["partial_audits"])
             w.append(f"auto-merge lane: audit incomplete on {prs} (label/comment/nit-close); "

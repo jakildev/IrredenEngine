@@ -90,16 +90,19 @@ per run. On success the lane appends a `merge` event to
 `fleet:auto-merged`, posts one comment (`Auto-merged (class=…): approved by
 <login> on <sha>[, auto-rereview kept fleet:approved on <head>], checks
 green, hold <N>s elapsed.`) and runs `fleet-nit-close-for-pr`. A failed step
-appends an `audit-error`; the next run completes the missing steps
-idempotently (label present? comment present?) and appends `audit-complete`,
-never merging again; three failed attempts leave the audit to a human. A
+appends an `audit-error` tagged with its pass's `attempt`; the next run
+completes the missing steps idempotently (label present? comment present?)
+and appends `audit-complete`, never merging again. A recovered comment states
+the `hold_secs` recorded on the `merge` event, not the current conf. Three
+failed passes, however many steps each failed, leave the audit to a human. A
 refusal by GitHub appends `merge-failed` and is not retried that run.
 
 Ledger events (JSONL, one object per line, `ts` first): `merge` (`repo`,
 `pr`, `class`, `head`, `merge_sha`, `title`, `provenance`, `hold_secs`),
-`audit-complete` (`steps`, `nit_closed`), `audit-error` (`step`, `error`),
-`merge-failed`, `rollback` (`pr`, `revert_pr`, `merge_sha`,
-`revert_merge_sha`).
+`audit-complete` (`steps`, `nit_closed`), `audit-error` (`step`, `attempt`,
+`error`), `merge-failed`, `rollback` (`pr`, `revert_pr`, `merge_sha`,
+`revert_merge_sha`), `rollback-scan-incomplete` (`query`, `read`,
+`recorded`).
 
 ## Rollback oracle
 
@@ -109,7 +112,10 @@ A rollback is a merged, master-based GitHub revert PR whose title begins
 `rollback` per auto-merged PR, idempotently (a second revert of the same PR
 adds nothing); a lookalike title without the backlink,
 or a backlink without the title, does not count. A manual rollback must carry
-the backlink to count.
+the backlink to count. The search is bounded below by the oldest unrolled
+merge (`merged:>=` that day, less one) and reads up to GitHub search's
+1000-result ceiling; a scan that reaches the ceiling still records what it
+found, then appends `rollback-scan-incomplete` and exits 1.
 
 ## Reporting
 
@@ -119,7 +125,8 @@ tick's cursor to that end and moves nothing), and advances
 `~/.fleet/digest/automerge-cursor` only after the digest lands, so every
 merge and rollback renders in exactly one successful digest. `fleet-health`
 reports `enabled`, runs, refusals, merges, rollbacks and partial audits for
-its window and warns on a rollback or an incomplete audit.
+its window and warns on a rollback, an incomplete audit, or a rollback scan
+that hit the search ceiling (the rollback count may then be low).
 
 ## Rollout and widening
 
@@ -130,8 +137,9 @@ the first enablement the App needs **Contents: read & write** (the squash
 merge and the branch delete); without it every attempt lands as a
 `merge-failed` event and nothing merges. The human reviews the operator
 dry-run, then sets `FLEET_AUTOMERGE_CLASSES="rebless"`. After one enabled
-week, `fleet-health --since 7d` must read zero rollbacks and zero partial
-audits before `docs` or the game repo is considered; `docs` additionally
+week, `fleet-health --since 7d` must read zero rollbacks, zero partial
+audits and no incomplete rollback scan before `docs` or the game repo is
+considered; `docs` additionally
 needs the instruction-tier exclusions above re-confirmed. The labels are
 `fleet:auto-merged` (permanent audit trail; refuses a second pass) and
 `human:hold`.

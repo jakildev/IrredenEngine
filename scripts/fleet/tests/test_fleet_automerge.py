@@ -87,7 +87,17 @@ def main():
         limit = int(opt(argv, "--limit") or 30)
         fields = (opt(argv, "--json") or "").split(",")
         if st == "merged":
-            rows = [r for r in state.get("reverts", [])][:limit]
+            # A --search list is GitHub search: at most 1000 results whatever --limit says.
+            terms = (opt(argv, "--search") or "").split()
+            if terms[:2] != ["Revert", "in:title"] or any(
+                    not t.startswith("merged:>=") for t in terms[2:]):
+                die("unmodeled search " + str(opt(argv, "--search")))
+            since = [t.split(">=", 1)[1] for t in terms[2:]]
+            state["searches"] = state.get("searches", []) + [" ".join(terms)]
+            save(state)
+            rows = [r for r in state.get("reverts", [])
+                    if not since or r.get("mergedAt", "9999") >= since[0]]
+            rows = rows[:min(limit, 1000)]
             print(json.dumps([{k: r.get(k) for k in fields} for r in rows])); return
         rows = []
         for num, rec in sorted(state["pulls"].items(), key=lambda kv: -int(kv[0])):
@@ -641,6 +651,58 @@ class AuditRecovery(AutomergeCase):
         self.assertEqual(self.gh_calls("pr comment"), [])
         self.assertEqual(len(self.events()), 3)
 
+    def fail_every_step(self, failing):
+        state = self.state()
+        state["label_fail"] = state["comment_fail"] = failing
+        self.state_file.write_text(json.dumps(state), encoding="utf-8")
+        nit_fail = self.dir / "nit-fail"
+        if failing:
+            nit_fail.write_text("")
+        elif nit_fail.exists():
+            nit_fail.unlink()
+
+    def test_one_pass_failing_every_step_is_one_attempt(self):
+        self.fail_every_step(True)
+        self.run_tool("--auto", "--repo", SLUG)
+        errors = self.events("audit-error")
+        self.assertEqual([e["step"] for e in errors], ["label", "comment", "nit-close"])
+
+        self.fail_every_step(False)
+        second = self.run_tool("--auto", "--repo", SLUG)
+        self.assertIn("completing the audit left behind", second.stderr)
+        self.assertNotIn("a human finishes it", second.stderr)
+        self.assertEqual(len(self.events("audit-complete")), 1)
+        self.assertIn("fleet:auto-merged", self.state()["pulls"]["10"]["labels"])
+        self.assertEqual(len(self.state()["pulls"]["10"]["comments"]), 1)
+        self.assertEqual({e["attempt"] for e in errors}, {1})
+
+    def test_three_failed_passes_exhaust_the_budget(self):
+        self.fail_every_step(True)
+        for _ in range(3):
+            self.run_tool("--auto", "--repo", SLUG)
+        self.assertEqual(len(self.events("audit-error")), 9)
+        self.assertEqual(sorted({e["attempt"] for e in self.events("audit-error")}), [1, 2, 3])
+        self.fail_every_step(False)
+        self.gh_log.write_text("")
+        result = self.run_tool("--auto", "--repo", SLUG)
+        self.assertIn("after 3 failed pass(es); a human finishes it", result.stderr)
+        self.assertEqual(self.gh_calls("pr comment"), [])
+        self.assertEqual(self.events("audit-complete"), [])
+
+    def test_recovered_comment_states_the_merge_hold(self):
+        self.set_state({"10": eligible_pr(10, HEAD_A)}, comment_fail=True)
+        self.run_tool("--auto", "--repo", SLUG)
+        self.assertEqual(self.events("merge")[0]["hold_secs"], 0)
+        self.write_conf("FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_HOLD_SECS=1800\n")
+        state = self.state()
+        state["comment_fail"] = False
+        self.state_file.write_text(json.dumps(state), encoding="utf-8")
+        self.run_tool("--auto", "--repo", SLUG)
+        comments = self.state()["pulls"]["10"]["comments"]
+        self.assertEqual(len(comments), 1)
+        self.assertIn("hold 0s elapsed", comments[0])
+        self.assertNotIn("1800", comments[0])
+
     def test_audit_retries_are_bounded(self):
         self.set_state({"10": eligible_pr(10, HEAD_A)}, comment_fail=True)
         for _ in range(4):
@@ -709,6 +771,52 @@ class Rollbacks(AutomergeCase):
         self.state_file.write_text(json.dumps(state), encoding="utf-8")
         self.run_tool("--reconcile", "--repo", SLUG)
         self.assertEqual(self.events("rollback"), [])
+
+    def unrelated_reverts(self, count, start=1000):
+        return [{"number": start + i, "title": f'Revert "unrelated {i}"',
+                 "body": f"Reverts {SLUG}#{start + i + 5000}\n",
+                 "mergeCommit": {"oid": "u" * 40}} for i in range(count)]
+
+    def test_backlink_past_the_first_hundred_reverts_is_found(self):
+        self.merged_ledger()
+        state = self.state()
+        state["reverts"] = self.unrelated_reverts(100) + [
+            {"number": 20, "title": 'Revert "test(macos): re-bless 10"',
+             "body": f"Reverts {SLUG}#10\n", "mergeCommit": {"oid": "r" * 40}}]
+        self.state_file.write_text(json.dumps(state), encoding="utf-8")
+        result = self.run_tool("--reconcile", "--repo", SLUG)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("rollbacks recorded=1", result.stderr)
+        self.assertEqual([(e["pr"], e["revert_pr"]) for e in self.events("rollback")], [(10, 20)])
+
+    def test_scan_is_bounded_by_the_oldest_pending_merge(self):
+        self.merged_ledger()
+        state = self.state()
+        state["reverts"] = [
+            {"number": 20, "title": 'Revert "test(macos): re-bless 10"',
+             "body": f"Reverts {SLUG}#10\n", "mergeCommit": {"oid": "r" * 40},
+             "mergedAt": "2026-10-20T13:00:00Z"},
+            {"number": 5, "title": 'Revert "test(macos): re-bless 10"',
+             "body": f"Reverts {SLUG}#10\n", "mergeCommit": {"oid": "o" * 40},
+             "mergedAt": "2026-10-01T00:00:00Z"}]
+        self.state_file.write_text(json.dumps(state), encoding="utf-8")
+        self.run_tool("--reconcile", "--repo", SLUG)
+        self.assertEqual(self.state()["searches"], ["Revert in:title merged:>=2026-10-19"])
+        self.assertEqual([e["revert_pr"] for e in self.events("rollback")], [20])
+
+    def test_search_ceiling_fails_closed(self):
+        self.merged_ledger()
+        state = self.state()
+        state["reverts"] = self.unrelated_reverts(1000) + [
+            {"number": 20, "title": 'Revert "test(macos): re-bless 10"',
+             "body": f"Reverts {SLUG}#10\n", "mergeCommit": {"oid": "r" * 40}}]
+        self.state_file.write_text(json.dumps(state), encoding="utf-8")
+        result = self.run_tool("--reconcile", "--repo", SLUG)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("reconcile incomplete: 1000 merged reverts match", result.stderr)
+        self.assertEqual(self.events("rollback"), [])
+        incomplete = self.events("rollback-scan-incomplete")
+        self.assertEqual([(e["read"], e["recorded"]) for e in incomplete], [(1000, 0)])
 
     def test_reconcile_without_merges_queries_nothing(self):
         result = self.run_tool("--reconcile", "--repo", SLUG)
