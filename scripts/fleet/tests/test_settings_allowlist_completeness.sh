@@ -33,6 +33,7 @@ done
 # reason names the invoker; a wrapper that a role doc starts instructing
 # leaves this list and gains an allow entry in the same change.
 EXEMPT=(
+    "fleet-automerge"                    # dispatcher-only tier-0 merge lane; every role is DENIED it
     "fleet-common.sh"                    # sourced library
     "fleet-clone-freshness.sh"           # sourced library
     "fleet-net.sh"                       # sourced library
