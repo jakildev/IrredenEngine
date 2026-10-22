@@ -141,6 +141,12 @@ returns a `SystemId` for any pipeline.
 
 ## Engine service bindings
 
+### IRUndo
+
+`LuaScript::bindLuaUndo()` installs the opt-in `IRUndo` history table. Records
+carry `label`, `undo`, `redo`, and optional `coalesce`; closures remain owned by
+the world-scoped history singleton while its Lua VM is alive.
+
 ### IRAsset and voxel authoring
 
 Registering the `C_VoxelSetNew` Lua trait installs

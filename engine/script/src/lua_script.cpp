@@ -25,6 +25,7 @@
 #include <irreden/script/lua_sim_bindings.hpp>
 #include <irreden/script/lua_spatial_bindings.hpp>
 #include <irreden/script/lua_text_bindings.hpp>
+#include <irreden/script/lua_undo_bindings.hpp>
 #include <irreden/script/lua_viewport_bindings.hpp>
 #include <irreden/script/lua_widget_bindings.hpp>
 #include <irreden/script/lua_world_snapshot_bindings.hpp>
@@ -1032,6 +1033,10 @@ void LuaScript::bindLuaInputEnums() {
 
 void LuaScript::bindLuaFog() {
     detail::bindFog(*this);
+}
+
+void LuaScript::bindLuaUndo() {
+    detail::bindUndo(*this);
 }
 
 void LuaScript::bindLuaViewport() {

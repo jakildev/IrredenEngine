@@ -157,8 +157,8 @@ of truth for prefab command bodies.
   `CommandManager` destructs first; reversing that order UAFs at shutdown.
   Test fixtures that mix `LuaScript` + `CommandManager` outside `World`
   mirror this declaration order.
-- **No undo / history / queue.** A command is a `std::function<void()>`; build
-  undo on top if you need it.
+- **No undo / history / queue.** A command is a `std::function<void()>`; use
+  `IRPrefab::Undo` on top when a creation needs edit history.
 - **Modifier keys only work for `KEY_MOUSE`.** Gamepad and MIDI commands ignore
   the `modifiers` field.
 - **A bare start/end pair is admitted once, at the press.** Dispatch resolves

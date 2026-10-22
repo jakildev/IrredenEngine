@@ -19,8 +19,9 @@ Design log, findings and the authoring-session history:
   parts from the module's recipes, a bake, LOD bands, an engine component and a
   yawed radial array,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
-  `remove_part` removes and restores a part across hot and cold undo stacks and
-  proves the saved manifest omits the removed record,
+  `remove_part` removes and restores a part across undo/redo and proves the
+  saved manifest omits the removed record, `undo_history` proves frame-local
+  stroke history and part removal payload restoration,
   `tier_scrub` proves per-part LOD bands and the tier scrubber,
   `part_mode_cycle` takes a Ctrl+P part through every render mode, the Ctrl+M
   twin, an array, and a save and reload,
@@ -132,10 +133,11 @@ render, because the aim and the pick share one screen mapping.
   selected source stays outside the copy group: radial copies start at the
   radius, and linear copies start one step out.
 - Delete and the PARTS-panel REMOVE button remove the selected part as one undo
-  record. Ctrl+Z recreates its authored payload at the same ordered index and
-  rewrites older undo references to the fresh entity id. Removing a rotational
-  group member preserves the group's identity; symmetry remains inactive until
-  the group again matches its rotational order.
+  record. Undo restores its authored payload at the same ordered index, and
+  redo removes the restored entity. Records resolve stable part ids instead of
+  retaining transient entity ids. Removing a rotational group member preserves
+  the group's identity; symmetry remains inactive until the group again matches
+  its rotational order.
 
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same
