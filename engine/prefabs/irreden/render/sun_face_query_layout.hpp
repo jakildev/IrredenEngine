@@ -32,8 +32,27 @@ constexpr std::uint32_t kSourceFaceSpillCounterOffset =
 constexpr std::uint32_t kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
 constexpr std::uint32_t kSourceFaceSpillNodeOffset =
     kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
-constexpr std::uint32_t kSourceFaceBufferWords =
+constexpr std::uint32_t kSourceFaceHierarchyNeededOffset =
     kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
+constexpr std::uint32_t kSourceFaceHierarchyReadyOffset = kSourceFaceHierarchyNeededOffset + 1u;
+constexpr std::uint32_t kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
+constexpr std::uint32_t kSourceFaceHierarchyLeafSize = 8u;
+constexpr std::uint32_t kSourceFaceHierarchyMaxLeaves =
+    kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
+constexpr std::uint32_t kSourceFaceHierarchyNodeWords = 8u;
+constexpr std::uint32_t kSourceFaceBufferWords =
+    kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+
+constexpr int kSourceFaceHierarchyLevels = 14;
+static_assert(kSourceFaceHierarchyLeafSize > 0u, "Hierarchy leaves must hold records");
+static_assert(
+    kSourceFaceCapacity % kSourceFaceHierarchyLeafSize == 0u,
+    "Hierarchy leaf allocation must cover the whole record pool"
+);
+static_assert(
+    kSourceFaceHierarchyMaxLeaves == (1u << (kSourceFaceHierarchyLevels - 1)),
+    "Hierarchy levels must reduce a power-of-two leaf allocation to one root"
+);
 
 static_assert(
     kSourceFaceTileQueryCapacity > kSourceFaceTileCapacity,

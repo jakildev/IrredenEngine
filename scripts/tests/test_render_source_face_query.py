@@ -29,7 +29,11 @@ class SourceFaceQueryTest(unittest.TestCase):
                 header_check = (
                     "if (sourceFaceHeaderIndex(kSourceFaceBufferWords) != kSourceFaceHeaderOffset)"
                     " return 19; if (sourceFaceSpillCounterIndex(kSourceFaceBufferWords)"
-                    " != kSourceFaceSpillCounterOffset) return 21;" if suffix == "glsl" else "")
+                    " != kSourceFaceSpillCounterOffset) return 21;"
+                    " if (sourceFaceHierarchyNeededIndex(kSourceFaceBufferWords)"
+                    " != kSourceFaceHierarchyNeededOffset) return 23;"
+                    " if (sourceFaceHierarchyReadyIndex(kSourceFaceBufferWords)"
+                    " != kSourceFaceHierarchyReadyOffset) return 24;" if suffix == "glsl" else "")
                 source = """#include <cstdint>
 #include <cmath>
 using std::abs;
@@ -54,8 +58,14 @@ int main() {
     if (end != kSourceFaceSpillCounterOffset) return 5;
     if (kSourceFaceSpillHeadOffset != end + 1u ||
         kSourceFaceSpillNodeOffset != kSourceFaceSpillHeadOffset + kSourceFaceTileCount ||
-        kSourceFaceBufferWords != kSourceFaceSpillNodeOffset +
-            kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords) return 20;
+        kSourceFaceHierarchyNeededOffset != kSourceFaceSpillNodeOffset +
+            kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords ||
+        kSourceFaceHierarchyReadyOffset != kSourceFaceHierarchyNeededOffset + 1u ||
+        kSourceFaceHierarchyOffset != kSourceFaceHierarchyReadyOffset + 1u ||
+        kSourceFaceBufferWords != kSourceFaceHierarchyOffset +
+            2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords) return 20;
+    if (kSourceFaceHierarchyLeafSize * kSourceFaceHierarchyMaxLeaves !=
+        kSourceFaceCapacity) return 22;
     const vec2 uv{0.5f, 0.5f};
     const vec3 corner{0, 0, 2}, u{1, 0, .5f}, v{0, 1, -.25f};
     if (sourceFaceRaySeparation(uv, 3, corner, u, v) != .875f) return 8;

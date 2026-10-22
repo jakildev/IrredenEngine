@@ -22,6 +22,8 @@ void main() {
     }
     if (linearIdx == 0) sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))] = 0u;
     if (linearIdx == 0) sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))] = 0u;
+    if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))] = 0u;
+    if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] = 0u;
     if (uint(linearIdx) < kSourceFaceTileCount) {
         sunDepthBuf[sourceFaceTileBase(uint(linearIdx))] = 0u;
         sunDepthBuf[kSourceFaceSpillHeadOffset + uint(linearIdx)] = 0xFFFFFFFFu;

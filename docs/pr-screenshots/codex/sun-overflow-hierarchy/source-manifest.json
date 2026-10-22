@@ -1,0 +1,79 @@
+{
+  "head": "5fe9e07918efb6ed32d365f63bfdcb090b732f84",
+  "scope": "changed engine files only; hashes collected after capture; tracked C++ subsequently formatted and positive-leaf-size static_assert added; captured engine patch retained separately",
+  "captured_tracked_patch": "source-engine.patch",
+  "files": {
+    "engine/prefabs/irreden/render/sun_face_query_layout.hpp": {
+      "sha256": "36cd393ed652d861e664853bc6594ec29c4316f8c050c09d7a9dd45946acc5b3",
+      "untracked": false
+    },
+    "engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp": {
+      "sha256": "4ef5b4411330ade72381f4fb770846161c0a56e1e763569cd5464b21b8ca482c",
+      "untracked": false
+    },
+    "engine/render/include/irreden/render/shader_names.hpp": {
+      "sha256": "8b471bbc3bc313904ef72604d59b06359b27d5a99cc0304171567574dda6c3f4",
+      "untracked": false
+    },
+    "engine/render/src/metal/metal_pipeline.cpp": {
+      "sha256": "5784b2fa4373cd0935bed33d26d6328c7b5e2ffc02dbbe8fbf2d46a63ed14224",
+      "untracked": false
+    },
+    "engine/render/src/shaders/c_build_sun_hierarchy.glsl": {
+      "sha256": "59742b9c9890fe8b31c723fcb4792fcb74b201bb2c96ccb7bbfa52ad426013b6",
+      "untracked": true
+    },
+    "engine/render/src/shaders/c_clear_sun_shadow_map.glsl": {
+      "sha256": "a8eabc848dfd10b0a3f2ce5ef17f49fbdf5fc087be8b94a93544387e9b132391",
+      "untracked": false
+    },
+    "engine/render/src/shaders/ir_sun_face_index.glsl": {
+      "sha256": "b22e2a06aa0578d57433ce3056afef9b5e5590a9a02454494bed107f23cc39df",
+      "untracked": false
+    },
+    "engine/render/src/shaders/ir_sun_face_query_layout.glsl": {
+      "sha256": "34d8609ab8f4f737471703b3bab3a01627c98e6da4be0bc7e5384b6846aee08a",
+      "untracked": false
+    },
+    "engine/render/src/shaders/ir_sun_geometry_storage.glsl": {
+      "sha256": "4296dce928d29b8fa41aa1f42effaf4c9974bb85ad9981c5f66b3c3e5fe9c6b7",
+      "untracked": true
+    },
+    "engine/render/src/shaders/ir_sun_hierarchy_bounds.glsl": {
+      "sha256": "bdff4193e1c24566b091ada1f68c542df9004b05de220165bc76b31430618388",
+      "untracked": true
+    },
+    "engine/render/src/shaders/ir_sun_shadow_sample.glsl": {
+      "sha256": "0143571a4c0b1ad8e5f4d9ad32f24fc07d58314f6482fc3970d10d5a98920353",
+      "untracked": false
+    },
+    "engine/render/src/shaders/metal/c_build_sun_hierarchy.metal": {
+      "sha256": "4f84ab8fb8c66bdd0154387267606baa0387e41d1b4313f8f71e503b80f03442",
+      "untracked": true
+    },
+    "engine/render/src/shaders/metal/c_clear_sun_shadow_map.metal": {
+      "sha256": "34d348430087addcdd9e19dc71978bae48918299523f7a52c0f233cd1c2abff6",
+      "untracked": false
+    },
+    "engine/render/src/shaders/metal/ir_sun_face_index.metal": {
+      "sha256": "09940b5f01c68dd5b837b3fd6b02c6ae5d9ca43aba0cd2aebb7abf026e1d47c9",
+      "untracked": false
+    },
+    "engine/render/src/shaders/metal/ir_sun_face_query_layout.metal": {
+      "sha256": "2eab3db00cfa70fd44f71f989235e242761de237c5e83a70d0a3f5e22ed33c8d",
+      "untracked": false
+    },
+    "engine/render/src/shaders/metal/ir_sun_geometry_storage.metal": {
+      "sha256": "e88d9da389a9597db5dfdfee103c0a337f5638ba4ec82c1a9e9f623458341d6d",
+      "untracked": true
+    },
+    "engine/render/src/shaders/metal/ir_sun_hierarchy_bounds.metal": {
+      "sha256": "f11006019da110ac5b6333a716caf89022d9f60763e76fcee9736b1d32e30bde",
+      "untracked": true
+    },
+    "engine/render/src/shaders/metal/ir_sun_shadow_sample.metal": {
+      "sha256": "805ce52affd830129b4449ff5eb841cda2947843770e6a24dd27287f0564eaf0",
+      "untracked": false
+    }
+  }
+}

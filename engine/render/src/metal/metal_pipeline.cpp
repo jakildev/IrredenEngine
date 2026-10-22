@@ -58,7 +58,8 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_render_stateless_particles_to_trixel" ||
         functionName == "c_light_overflow_faces" ||
         functionName == "c_fog_overflow_faces" ||
-        functionName == "c_bake_voxel_sun_faces") {
+        functionName == "c_bake_voxel_sun_faces" ||
+        functionName == "c_build_sun_hierarchy") {
         return MTL::Size(64, 1, 1);
     }
     // Overflow canonical sort uses 256 threads over a 2048-element fused slab

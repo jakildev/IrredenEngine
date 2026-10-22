@@ -7,9 +7,10 @@ Two 1024×1024 sun cascades contain 32,768 tiles of 8×8 texels each. The first
 index. The complete query ceiling is 256 candidates, independent of unrelated
 records elsewhere in the index. The record pool holds 65,536 ten-word records.
 
-The appended spill counter, heads and nodes cost 2,228,228 bytes. The full sun
-buffer is 30,146,568 bytes, including both depth layers, records and tile lists.
-No extra buffer binding or GPU pass is required. Ordinary inline queries do not
+The appended spill counter, heads and nodes cost 2,228,228 bytes. An appended
+512 KiB hierarchy plus two metadata words brings the full sun buffer to
+30,670,864 bytes, including both depth layers, records and tile lists.
+It shares the existing buffer binding; hierarchy construction adds GPU passes. Ordinary inline queries do not
 read the spill counter or heads. Spill traversal has dependent reads and must
 be measured separately from the fixed-list path.
 
@@ -22,20 +23,54 @@ Consumers run only after the bake dispatches and their existing memory barriers
 complete; the head exchange alone does not publish a node to concurrent readers.
 
 A tile is exact only when all its candidates are available. A count above 256
-selects sampled fallback. Failed record or spill allocation raises the tile
+selects the complete-pool hierarchy when ready, or sampled fallback otherwise. Failed record or spill allocation raises the tile
 counter above that ceiling with atomic max; later reservations cannot make it
 complete again. No partial-list hit is accepted as an exact result.
 
-If the shared spill pool is exhausted, **every spilled tile** uses fallback for
-that frame, even tiles that obtained all their nodes. Otherwise allocation order
+If the shared spill pool is exhausted, **every spilled tile** uses the hierarchy
+or sampled fallback for that frame, even tiles that obtained all their nodes. Otherwise allocation order
 could decide which receivers get geometric coverage. Complete inline tiles
 remain exact. Global record exhaustion invalidates each affected tile; it does
 not invalidate complete tiles touched only by successfully published records.
 
 The default-off small-pool reference remains a diagnostic. Production queries
-never scan the global record pool. The independent non-indexed depth layer stays
+prune the global record pool through the hierarchy only for incomplete tiles.
+A rejection-heavy query can still visit every record; there is no truncated
+traversal budget that silently changes a miss into a complete result. The independent non-indexed depth layer stays
 eligible after an exact indexed miss. Out-of-map and unsupported receiver paths
 retain their existing behavior.
+
+## Overflow hierarchy
+
+The first production route uses unsorted groups of eight records in a complete
+binary heap. Every node stores conservative sun-U, sun-V and sun-depth bounds
+in eight uint words. Empty leaves and unbounded nodes have explicit state;
+unsupported arithmetic and analytical records propagate unbounded state, and
+analytical leaves still use their existing shape predicate. Finite leaves use
+the same quad containment and plane-depth function as inline/spill candidates.
+This is projected face testing, not distance stepping through empty space.
+
+The index sets a GPU flag on the first tile overflow or shared spill exhaustion.
+The existing clear resets that flag and readiness. After all current-frame
+casters, the bake system submits one leaf pass and thirteen reduction passes,
+with storage barriers between them. Kernels skip work when no overflow exists,
+the pool is empty, or any record allocation failed. Each pass binds an immutable
+parameter buffer; no per-frame CPU readback, sorting, or parameter allocation is
+needed. Readiness publishes the dynamic power-of-two leaf count only after the
+root is written. Old nodes remain unreachable after clear or pool shrinkage.
+
+Only incomplete, in-bounds surface tiles can use the ready hierarchy. Complete
+tiles keep their local index, including when unrelated faces exhaust the global
+pool. A complete hierarchy miss suppresses only the indexed sampled layer;
+independent raster casters remain eligible. Facing, strict finite throw and the
+existing quantization bias are unchanged. Stackless traversal has no arbitrary
+visit limit and short-circuits only on a valid blocker.
+
+The [guarded prototype timings](../perf/sun-hierarchy-throughput/README.md)
+support starting without spatial sorting. Those timings do **not** measure this
+engine schedule: even empty builds still incur fourteen dispatch submissions.
+Full-scene parent/head measurements, native Windows execution and global-pool
+scaling remain required before claiming a throughput gain.
 
 ## Evidence and limits
 
@@ -65,12 +100,14 @@ This does not recover depths lost **within** either layer. A single nearest-dept
 sample cannot answer an arbitrary bounded interval query: if receiver depth is
 10, a lower caster is at 2 and the throw limit is 100, adding a caster at -120
 replaces 2 with -120; the stored caster is then too distant. Complete finite-face
-queries still find the lower caster. Incomplete tiles and raster-only casters
-can lose it. Increasing bias, blending or accepting every retained partial-list
+queries still find the lower caster. The hierarchy now extends that guarantee
+to incomplete tiles with a complete pool. Exhausted pools, unpublished hierarchy
+frames and raster-only casters can still lose it. Increasing bias, blending or accepting every retained partial-list
 hit does not restore the missing information.
 
-Pending work is a measured representation/query change that retains the needed
-depth intervals without unbounded global scans. It must preserve the finite
+The hierarchy retains finite face bounds and depth intervals, so it can skip
+disjoint geometry without discarding a lower blocker. Remaining representation
+work includes exhausted record pools and raster-only sampled layers. It must preserve the finite
 throw limit and allocation-order independence. The moving-block report also
 needs native Windows scene reproduction; this mechanism alone does not identify
 every visible speckle. [Sampler controls and scene evidence](../pr-screenshots/codex/overlapping-caster-shadow/README.md)

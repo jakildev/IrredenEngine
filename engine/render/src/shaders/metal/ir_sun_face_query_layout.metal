@@ -21,7 +21,13 @@ constant uint kSourceFaceRecordOffset = kSourceFaceTileOffset + kSourceFaceTileC
 constant uint kSourceFaceSpillCounterOffset = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
 constant uint kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
 constant uint kSourceFaceSpillNodeOffset = kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
-constant uint kSourceFaceBufferWords = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
+constant uint kSourceFaceHierarchyNeededOffset = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
+constant uint kSourceFaceHierarchyReadyOffset = kSourceFaceHierarchyNeededOffset + 1u;
+constant uint kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
+constant uint kSourceFaceHierarchyLeafSize = 8u;
+constant uint kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
+constant uint kSourceFaceHierarchyNodeWords = 8u;
+constant uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
 
 inline uint sourceFaceTileBase(uint tileIndex) {
     return kSourceFaceTileOffset + tileIndex * (kSourceFaceTileCapacity + 1u);

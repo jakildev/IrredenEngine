@@ -1,0 +1,87 @@
+[render-verify] target=IRCanvasStress demo=canvas_stress backend=macos-debug warmup=120
+[render-verify] 6 shots: so3_smooth_sweep, so3_offsnap_disc, so3_wide_parity, so3_grid_cross, so3_offsnap_wide, revoxelize_solids
+[render-verify] 13 extra run(s): modeswitch, sharedparts, detach, compare, impulse, floor_selfshadow, shadow_overlay_floor, world_placed_cast, gridspin_shadow_palette, grid_orbit_facing, grid_orbit_cardinals, cylinder_receiver, cylinder_receiver_pitched
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 120
+[render-verify] warning: captured 12 shots, manifest expects 6; ignoring extras
+[render-verify] extra run 'modeswitch': --only modeswitch --no-auto-rotate --no-spin
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 12 --only modeswitch --no-auto-rotate --no-spin
+[render-verify] extra run 'sharedparts': --only sharedparts --no-auto-rotate
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 30 --only sharedparts --no-auto-rotate
+[render-verify] extra run 'detach': --only detach --no-auto-rotate --no-spin
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 30 --only detach --no-auto-rotate --no-spin
+[render-verify] extra run 'compare': --only compare
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 120 --only compare
+[render-verify] extra run 'impulse': --only impulse --no-auto-rotate
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 6 --only impulse --no-auto-rotate
+[render-verify] extra run 'floor_selfshadow': --only floor --debug-overlay shadow
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow
+[render-verify] extra run 'shadow_overlay_floor': --only floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 120 --only floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'world_placed_cast': --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 120 --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'gridspin_shadow_palette': --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 6 --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
+[render-verify] extra run 'grid_orbit_facing': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
+[render-verify] extra run 'grid_orbit_cardinals': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
+[render-verify] extra run 'cylinder_receiver': --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source
+[render-verify] extra run 'cylinder_receiver_pitched': --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45
++ fleet-run --timeout 180 IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+so3_smooth_sweep                         PASS        100.0      0      inf
+so3_offsnap_disc                         PASS        100.0      0      inf
+so3_wide_parity                          PASS      99.9999     32    81.84
+so3_grid_cross                           PASS        100.0      0      inf
+so3_offsnap_wide                         PASS        100.0      0      inf
+revoxelize_solids                        PASS        100.0      0      inf
+modeswitch:modeswitch_grid               FAIL      99.9849    107    49.54
+modeswitch:modeswitch_detached           PASS        100.0      0      inf
+modeswitch:modeswitch_revox              PASS        100.0      0      inf
+modeswitch:modeswitch_grid_return        FAIL      99.9849    107    49.54
+sharedparts:sharedparts_spin_a           PASS        100.0      0      inf
+sharedparts:sharedparts_spin_b           PASS        100.0      0      inf
+sharedparts:sharedparts_yaw              PASS        100.0      0      inf
+detach:detach_hosted                     PASS        100.0      0      inf
+detach:detach_own_canvas                 PASS        100.0      0      inf
+detach:detach_grid                       FAIL      99.9891    110    50.92
+compare:compare_yaw0                     PASS        100.0      0      inf
+compare:compare_yaw_q                    PASS        100.0      0      inf
+impulse:impulse_midspin                  FAIL      99.9588     96    44.98
+impulse:impulse_settled                  FAIL      99.9655     96    46.29
+floor_selfshadow:floor_selfshadow_offwide:shadow PASS     
+shadow_overlay_floor:shadow_overlay_floor:shadow PASS     
+world_placed_cast:shadow_overlay_floor:shadow PASS     
+gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS     
+grid_orbit_facing:grid_orbit_facing:normal-facing PASS     
+grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS     
+cylinder_receiver:cylinder_receiver_000  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_045  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_090  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_135  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_180  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_225  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_270  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_315  PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_000 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_045 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_090 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_135 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_180 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_225 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_270 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_315 PASS        100.0      0      inf
+
+[render-verify] 5 of 46 checks FAIL
+  - modeswitch:modeswitch_grid: max_delta 107 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/save_files/render_verify_diffs/modeswitch_grid.diff.png
+  - modeswitch:modeswitch_grid_return: max_delta 107 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/save_files/render_verify_diffs/modeswitch_grid_return.diff.png
+  - detach:detach_grid: max_delta 110 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/save_files/render_verify_diffs/detach_grid.diff.png
+  - impulse:impulse_midspin: max_delta 96 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/save_files/render_verify_diffs/impulse_midspin.diff.png
+  - impulse:impulse_settled: max_delta 96 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/save_files/render_verify_diffs/impulse_settled.diff.png

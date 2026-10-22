@@ -52,6 +52,71 @@ struct FrameDataSun {
     int4 fogCeilingEnabled;
 };
 
+#include "ir_sun_geometry_storage.metal"
+
+inline float sourceSunGeometrySeparation(device const uint* sunDepthBuf, uint faceIndex, float2 sunUV, float sunZ
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
+) {
+    const SourceSunGeometry geometry = readSourceSunGeometry(sunDepthBuf, faceIndex);
+#if IR_SUN_QUERY_STATS
+    if (geometry.type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
+#endif
+    return geometry.type == 0u
+        ? sourceFaceRaySeparation(sunUV, sunZ, geometry.corner, geometry.edgeU, geometry.edgeV
+#if IR_SUN_QUERY_STATS
+            , sunQueryStats
+#endif
+        )
+        : sourceShapeRaySeparation(sunUV, sunZ, geometry.type, geometry.corner, geometry.edgeU, geometry.edgeV);
+}
+
+inline bool sourceSunHierarchyBlocks(device const uint* sunDepthBuf, uint leaves, uint records,
+    float2 sunUV, float sunZ, float maxShadowThrow
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
+) {
+    uint node = 1u;
+#if IR_SUN_QUERY_STATS
+    uint visited = 0u;
+#endif
+    while (true) {
+        if (sourceSunBoundsOverlap(readSourceSunBounds(sunDepthBuf, node), sunUV, sunZ,
+                                   kShadowBiasQuantNoise, maxShadowThrow)) {
+            if (node < leaves) { node *= 2u; continue; }
+            const uint first = (node - leaves) * kSourceFaceHierarchyLeafSize;
+            for (uint i = first; i < min(records, first + kSourceFaceHierarchyLeafSize); ++i) {
+#if IR_SUN_QUERY_STATS
+                ++visited;
+                sunQueryStats.counts[kSunQueryCandidates] += 1u;
+#endif
+                const float separation = sourceSunGeometrySeparation(sunDepthBuf, i, sunUV, sunZ
+#if IR_SUN_QUERY_STATS
+                    , sunQueryStats
+#endif
+                );
+                if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
+#if IR_SUN_QUERY_STATS
+                    sunQueryStats.counts[kSunQueryBlocked] += 1u;
+                    sunQueryStats.counts[kSunQueryFirstBlockerVisits] += visited;
+#endif
+                    return true;
+                }
+            }
+        }
+        // Skip completed right subtrees; no fixed traversal budget can certify a miss.
+        while (node > 1u && (node & 1u) != 0u) node /= 2u;
+        if (node == 1u) break;
+        ++node;
+    }
+#if IR_SUN_QUERY_STATS
+    sunQueryStats.counts[kSunQueryExhausted] += 1u;
+#endif
+    return false;
+}
+
 inline float sampleCascadeShadow(
     float2 sunUV, float sunZ, float3 normal, float3 sunDir, float3 uHat, float3 vHat,
     float2 origin, float2 texelSz, int bufferOffset,
@@ -76,6 +141,23 @@ inline float sampleCascadeShadow(
             const uint count = sunDepthBuf[tileBase];
             sourceQueryComplete = sourceFaceQueryComplete(count)
                 && (count <= kSourceFaceTileCapacity || sunDepthBuf[kSourceFaceSpillCounterOffset] <= kSourceFaceSpillCapacity);
+            const uint hierarchyLeaves = !sourceQueryComplete ? sunDepthBuf[kSourceFaceHierarchyReadyOffset] : 0u;
+            const bool queryHierarchy = !sourceQueryComplete && sourceFaceCount <= kSourceFaceCapacity &&
+                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(sourceFaceCount);
+            if (queryHierarchy) {
+                sourceQueryComplete = true;
+                if (dot(normal, sunDir) > 0.0) {
+#if IR_SUN_QUERY_STATS
+                    sunQueryStats.counts[kSunQueryIndexed] += 1u;
+#endif
+                    if (sourceSunHierarchyBlocks(sunDepthBuf, hierarchyLeaves, sourceFaceCount,
+                                                 sunUV, sunZ, maxShadowThrow
+#if IR_SUN_QUERY_STATS
+                        , sunQueryStats
+#endif
+                    )) return 1.0;
+                }
+            }
             // A complete small record pool is an exact reference for an incomplete tile.
             const bool queryAllFaces = IR_SUN_FACE_OVERFLOW_REFERENCE != 0
                 && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
@@ -85,7 +167,7 @@ inline float sampleCascadeShadow(
             if (!sourceQueryComplete) sunQueryStats.counts[kSunQueryIncomplete] += 1u;
 #endif
             const uint candidateCount = queryAllFaces ? sourceFaceCount : count;
-            if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {
+            if (!queryHierarchy && sourceQueryComplete && dot(normal, sunDir) > 0.0) {
 #if IR_SUN_QUERY_STATS
                 sunQueryStats.counts[kSunQueryIndexed] += 1u;
 #endif
@@ -105,21 +187,11 @@ inline float sampleCascadeShadow(
                         faceIndex = sunDepthBuf[node];
                         spill = sunDepthBuf[node + 1u];
                     }
-                    const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * faceIndex;
-                    const float3 corner = float3(as_type<float>(sunDepthBuf[record]), as_type<float>(sunDepthBuf[record+1u]), as_type<float>(sunDepthBuf[record+2u]));
-                    const float3 edgeU = float3(as_type<float>(sunDepthBuf[record+3u]), as_type<float>(sunDepthBuf[record+4u]), as_type<float>(sunDepthBuf[record+5u]));
-                    const float3 edgeV = float3(as_type<float>(sunDepthBuf[record+6u]), as_type<float>(sunDepthBuf[record+7u]), as_type<float>(sunDepthBuf[record+8u]));
-                    const uint type = sunDepthBuf[record + 9u];
+                    const float separation = sourceSunGeometrySeparation(sunDepthBuf, faceIndex, sunUV, sunZ
 #if IR_SUN_QUERY_STATS
-                    if (type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
+                        , sunQueryStats
 #endif
-                    const float separation = type == 0u
-                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV
-#if IR_SUN_QUERY_STATS
-                            , sunQueryStats
-#endif
-                        )
-                        : sourceShapeRaySeparation(sunUV, sunZ, type, corner, edgeU, edgeV);
+                    );
                     if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
 #if IR_SUN_QUERY_STATS
                         sunQueryStats.counts[kSunQueryBlocked] += 1u;

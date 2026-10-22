@@ -82,17 +82,20 @@ varies camera yaw, zoom, subdivision and distant-caster overlap, with shadows-of
 and unlit pairs. CanvasStress now supports a bounded capture-free profile run;
 screenshots must be separate because readback/write stalls contaminate tails.
 Route samples establish which draw executed, not pixel counts or exact shadow
-coverage. Keep the known-failing
+coverage. The retained
 [crowded overlap diagnostic](../pr-screenshots/codex/crowded-shadow-overlap/README.md)
-as a correctness prerequisite: the sixteen-caster fallback is not an acceptable
-performance shortcut. Native Windows reproduction, a depth-preserving finite
-geometry query, and AC-powered Release throughput qualification remain next.
+now has an implemented unsorted finite-pool hierarchy and
+[native Metal production evidence](../pr-screenshots/codex/sun-overflow-hierarchy/README.md):
+the crowded distant-caster receiver crops exactly match their lower-only controls
+under downward and aligned oblique sun. Complete tile lists retain their existing
+path. This fixes the retained finite-pool overflow reproduction; native Windows,
+exhausted record pools, raster-only depth loss and production cost remain open.
 A capture-only finite-geometry export and exact offline quad hierarchy now
-exercise depth-preserving pruning against actual GPU records. This is a layout
-experiment, not a production overflow fix: retain its rejection-heavy linear
-worst-case control, then measure conservative GPU construction and traversal
-before selecting the production representation. Analytic records, exhausted
-record pools and raster-only layers still need their own completeness treatment.
+exercise depth-preserving pruning against actual GPU records. Those earlier
+experiments remain diagnostic evidence; retain their rejection-heavy linear
+worst-case control when validating the production hierarchy. Native analytic/mixed
+records, exhausted record pools and raster-only layers still need completeness
+and performance qualification.
 See the [capacity experiment](sun-face-index-capacity.md#captured-finite-quad-hierarchy-experiment).
 The [GPU-built hierarchy diagnostic](../perf/sun-hierarchy-gpu/README.md) now
 passes captured-pool and synthetic controls in both Metal math modes, including
@@ -101,13 +104,23 @@ candidate tests under oblique light. The
 [GPU spatial-ordering follow-up](../perf/sun-spatial-hierarchy/README.md)
 preserves coverage, reuses the existing GPU sorter and separately measures
 construction and reference-free query dispatches. Oblique candidate counts
-improve; cardinal counts can worsen. Retained timings are exploratory or
-quiet-window-rejected; the guarded retry could not acquire the busy fleet GPU.
-First obtain a qualified timing comparison, then evaluate overflow-only
-construction and query routing while retaining the complete-tile path. Establish mixed
-record/raster completeness and pool-exhaustion behavior before engine adoption,
-then validate moving geometry and OpenGL parity. Production overflow remains
-unresolved; these diagnostics are not a visual fix or an FPS gain.
+improve; cardinal counts can worsen. That experiment's retained timings remain
+exploratory or quiet-window-rejected. The subsequent
+[guarded AC distinct-grid timings](../perf/sun-hierarchy-throughput/README.md)
+support an unsorted first overflow integration: spatial ordering improves
+oblique query cost but its build cost prevents a consistent captured-order
+total win. Overflow-only query routing is implemented with GPU-gated construction,
+immutable level parameters and the complete-tile path retained. CPU controls cover
+readiness, record-pool exhaustion and preservation of the independent raster
+layer; eleven native Metal captures verify the finite-pool visual reproduction.
+The full CanvasStress regression run passed 41/46 checks; five mode-switch,
+detach and impulse golden comparisons failed. Controlled native query-disabled
+versus production runs match in all nine paired frames, with the same five
+golden differences in both variants. This isolates the query switch only;
+actual parent-revision comparison and attribution/repair remain pending before
+calling the full patch regression-free. Next qualify actual analytic/mixed modes,
+moving geometry, OpenGL parity, and production build/query plus full-frame cost. The standalone timings remain separate from these visual
+controls and establish no production FPS gain.
 The hosted Linux [performance run](https://github.com/jakildev/IrredenEngine/actions/runs/39472592142)
 also reports a zoom-1 mean regression of 11.2% against its class-matched
 baseline (zoom 4: +0.9%). Attribute this with same-revision/base controls before
@@ -120,14 +133,16 @@ were −1.8% / +3.6% versus current master, with 5.5% repeat spread; zoom 4
 was −0.7% / −0.8%. The gate's all-frame means also did not reproduce the
 regression; both series are retained. This does not certify zero cost
 or native throughput. Another native hierarchy timing attempt completed all
-geometry checks but was rejected for a breached fleet quiet window; retain
-qualified timing as the next decision gate.
+geometry checks but was rejected for a breached fleet quiet window. Its
+measurements remain rejected alongside the later guarded evidence.
 The [distinct receiver-grid controls](../perf/sun-hierarchy-query-grid/README.md)
 now support dense planar samples instead of repeating only 289 coordinates.
 The 257×257 sorted and unsorted variants match exhaustive GPU visibility in
-both math modes and record orders. Actual surface receivers and guarded timing
-remain unqualified; this removes one workload limitation without changing
-production routing.
+both math modes and record orders. Guarded synthetic-plane timing is now
+retained; production surface receiving now has bounded native visual coverage,
+while its throughput remains unqualified. After the remaining overflow/mixed-mode
+correctness and full-scene cost checks, return to the
+million-entity target with explicit visible-geometry, canvas and lighting budgets.
 For the private-canvas overlap controls, separate actual GPU work and CPU
 submission from Metal's synchronous presentation and offscreen pacing before
 selecting an optimization. Compare the existing shadows-off/unlit pairs, then

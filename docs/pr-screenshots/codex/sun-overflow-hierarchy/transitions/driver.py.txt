@@ -1,0 +1,38 @@
+from pathlib import Path
+import hashlib,json,subprocess,sys
+root=Path('/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render')
+sys.path.insert(0,str(root/'scripts'))
+from verify_common import collect_full_frames,platform_launch_argv,run_result
+from PIL import Image,ImageChops
+out=Path('/tmp/shadow-hierarchy-transitions');out.mkdir(exist_ok=False)
+shader=root/'build/creations/demos/canvas_stress/shaders/metal/ir_sun_shadow_sample.metal'
+original=shader.read_text(); (out/'original-sample.metal').write_text(original)
+changed=original.replace('const bool queryHierarchy = !sourceQueryComplete','const bool queryHierarchy = false && !sourceQueryComplete')
+assert changed!=original
+manifest=json.loads((root/'creations/demos/canvas_stress/test/references/manifest.json').read_text())
+cases=[r for r in manifest['extra_runs'] if r['name'] in ('modeswitch','detach','impulse')]
+results={'source_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'variants':{}}
+try:
+ for variant,source in [('query-disabled',changed),('production',original)]:
+  shader.write_text(source)
+  vr={'shader_sha256':hashlib.sha256(source.encode()).hexdigest(),'cases':{}}
+  for case in cases:
+   folder=out/variant/case['name'];folder.mkdir(parents=True)
+   config=folder/'config.lua';config.write_text('config={window_mode="offscreen",screenshot_output_dir='+json.dumps(str(folder))+'}\n')
+   command=['fleet-run','--timeout','180','IRCanvasStress','--config-preset',str(config),'--auto-screenshot',str(case['warmup']),*case['demo_args']]
+   with (folder/'run.log').open('w') as stream:r=subprocess.run(platform_launch_argv(command),cwd=root,stdout=stream,stderr=subprocess.STDOUT)
+   shots=collect_full_frames(folder);assert r.returncode==0 and run_result((folder/'run.log').read_text())=='CLEAN' and len(shots)==len(case['shots']),(variant,case['name'])
+   rows=[]
+   for label,p in zip(case['shots'],shots):
+    actual=Image.open(p).convert('RGB');reference=Image.open(root/f'creations/demos/canvas_stress/test/references/macos-debug/{label}.png').convert('RGB')
+    delta=ImageChops.difference(actual,reference)
+    row={'label':label,'frame':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'reference_changed_pixels':sum(x!=(0,0,0) for x in delta.get_flattened_data())}
+    actual.crop((1120,600,1420,810)).save(folder/(label+'-detail.png'))
+    if variant=='production':
+     prior=out/'query-disabled'/case['name']/p.name
+     diff=ImageChops.difference(actual,Image.open(prior).convert('RGB'));row['query_changed_pixels']=sum(x!=(0,0,0) for x in diff.get_flattened_data())
+    rows.append(row)
+   vr['cases'][case['name']]={'command':command,'result':'CLEAN','shots':rows}
+   print(variant,case['name'],rows,flush=True)
+  results['variants'][variant]=vr;(out/'results.json').write_text(json.dumps(results,indent=2)+'\n')
+finally:shader.write_text(original)

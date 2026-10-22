@@ -1,0 +1,41 @@
+{
+  "source_head": "ffbcf2161820906760fce7299c035a141fe523b4",
+  "reference_files": {
+    "modeswitch_grid": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/modeswitch_grid.png",
+      "sha256": "65ec3f225ff96810b97475d82d67ccd09888eee554a7f446cc8b33053552a602"
+    },
+    "modeswitch_detached": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/modeswitch_detached.png",
+      "sha256": "c63dd74b35037641a970f255f0dc60ea688395e2d9a58a36eaaef11cb8744ac5"
+    },
+    "modeswitch_revox": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/modeswitch_revox.png",
+      "sha256": "301eab0fd6ec50ad8fc47da940e6096e151017e81f73e6491a6eedb751a7b271"
+    },
+    "modeswitch_grid_return": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/modeswitch_grid_return.png",
+      "sha256": "65ec3f225ff96810b97475d82d67ccd09888eee554a7f446cc8b33053552a602"
+    },
+    "detach_hosted": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/detach_hosted.png",
+      "sha256": "11e5790013b4ab67251681fe3bcff4570e422296cda15ac55779ef532d67b69f"
+    },
+    "detach_own_canvas": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/detach_own_canvas.png",
+      "sha256": "5f2a3ba72ae31c368b4c6f58b1820e9afc9d046a2f54cd3f0218b6519d65bae7"
+    },
+    "detach_grid": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/detach_grid.png",
+      "sha256": "aa3aa4279c6e96b5ff3145b23c903bb8fa400c5189a0b2a5af552574f9ba1d10"
+    },
+    "impulse_midspin": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/impulse_midspin.png",
+      "sha256": "75f1f6853a56381e2e5055068745c9b295c365a34eb78966d2281525226ecd00"
+    },
+    "impulse_settled": {
+      "path": "creations/demos/canvas_stress/test/references/macos-debug/impulse_settled.png",
+      "sha256": "78ecc598358590b81fee5616e7f480766f672d43b8c4384e8a943f1c9f4ff360"
+    }
+  }
+}

@@ -1,0 +1,2127 @@
+ir-run: running debug tree /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build
+ir-run: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --config-preset /private/tmp/sun-overflow-production-final/near-128/config.lua --only shadowbox,floor --probe-source-box --probe-floor-mode grid --probe-floor-span 40 --no-spin --no-auto-rotate --pivot-origin --yaw 0 --zoom 1 --subdivisions 1 --no-ao --auto-screenshot 10 --sweep-frames 1 10 --sun-direction 0 0 -1 --sun-face-geometry-probe --probe-overlapping-source --probe-overlapping-source-count 128 --probe-overlapping-source-offset 0 0 0 (timeout: 180s) (window mode: offscreen)
+[2026-10-20 17:25:03.116] [ClientLog] [info] Starting creation: canvas_stress
+[2026-10-20 17:25:03.116] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-20 17:25:03.116] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/scripts/config.lua
+[2026-10-20 17:25:03.117] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-20 17:25:03.117] [EngineLog] [info] Lua script loaded successfully: /private/tmp/sun-overflow-production-final/near-128/config.lua
+[2026-10-20 17:25:03.117] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-20 17:25:03.117] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/scripts/config.lua
+[2026-10-20 17:25:03.117] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-20 17:25:03.117] [EngineLog] [info] Lua script loaded successfully: /private/tmp/sun-overflow-production-final/near-128/config.lua
+[2026-10-20 17:25:03.117] [EngineLog] [info] Config preset overlay: /private/tmp/sun-overflow-production-final/near-128/config.lua
+[2026-10-20 17:25:03.117] [EngineLog] [info] --window-mode / IR_WINDOW_MODE override: window_mode = offscreen
+[2026-10-20 17:25:03.165] [EngineLog] [info] Window mode 'offscreen': activation policy set to accessory (no Dock icon).
+[2026-10-20 17:25:03.165] [EngineLog] [info] Discovered 1 display monitors
+[2026-10-20 17:25:03.165] [EngineLog] [info] Monitor 0: 'Built-in Retina Display' @ (0, 0), mode=1800x1169 120Hz
+[2026-10-20 17:25:03.210] [EngineLog] [info] Created IRGLFWWindow (window mode: offscreen).
+[2026-10-20 17:25:03.210] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created SystemManager
+[2026-10-20 17:25:03.260] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-10-20 17:25:03.260] [EngineLog] [info] JobManager: started with 10 worker threads
+[2026-10-20 17:25:03.260] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-20 17:25:03.260] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-20 17:25:03.260] [EngineLog] [info] Regestered component type=N12IRComponents16C_KeyMouseButtonE, sizeof=4 with id=258
+[2026-10-20 17:25:03.260] [EngineLog] [info] Regestered component type=N12IRComponents11C_KeyStatusE, sizeof=12 with id=259
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 0 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 1 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 2 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 3 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 4 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 5 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 6 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 7 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 8 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 9 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 10 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 11 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 12 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 13 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 14 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Joystick 15 not present
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created InputManager
+[2026-10-20 17:25:03.260] [EngineLog] [info] Created CommandManager
+[2026-10-20 17:25:03.260] [EngineLog] [info] Creating an resource id pool. idCapacity=1048575
+[2026-10-20 17:25:03.261] [EngineLog] [info] Registered resource type N8IRRender11ShaderStageE with ID=0
+[2026-10-20 17:25:03.261] [EngineLog] [info] Registered resource type N8IRRender9Texture2DE with ID=1
+[2026-10-20 17:25:03.261] [EngineLog] [info] Registered resource type N8IRRender9Texture3DE with ID=2
+[2026-10-20 17:25:03.261] [EngineLog] [info] Registered resource type N8IRRender11FramebufferE with ID=3
+[2026-10-20 17:25:03.261] [EngineLog] [info] Registered resource type N8IRRender14ShaderPipelineE with ID=4
+[2026-10-20 17:25:03.261] [EngineLog] [info] Registered resource type N8IRRender6BufferE with ID=5
+[2026-10-20 17:25:03.261] [EngineLog] [info] Registered resource type N8IRRender12VertexLayoutE with ID=6
+[2026-10-20 17:25:03.261] [EngineLog] [info] Created RenderingResourceManager
+[2026-10-20 17:25:03.261] [EngineLog] [info] Initializing Metal render implementation.
+[2026-10-20 17:25:03.261] [EngineLog] [info] Created ResourceId=0, type=3
+[2026-10-20 17:25:03.261] [EngineLog] [info] Regestered component type=N12IRComponents6C_NameE, sizeof=24 with id=385
+[2026-10-20 17:25:03.261] [EngineLog] [info] Regestered component type=N12IRComponents25C_TrixelCanvasFramebufferE, sizeof=16 with id=386
+[2026-10-20 17:25:03.261] [EngineLog] [info] Regestered component type=N12IRComponents30C_FrameDataTrixelToFramebufferE, sizeof=256 with id=387
+[2026-10-20 17:25:03.261] [EngineLog] [info] Regestered component type=N12IRComponents11C_ZoomLevelE, sizeof=8 with id=388
+[2026-10-20 17:25:03.261] [EngineLog] [info] Created archetype node with components: [ 256 257 385 ], id=5
+[2026-10-20 17:25:03.261] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 ], id=6
+[2026-10-20 17:25:03.261] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 ], id=7
+[2026-10-20 17:25:03.261] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 ], id=8
+[2026-10-20 17:25:03.261] [EngineLog] [info] Regestered component type=N12IRComponents23C_VoxelPoolTeardownHookE, sizeof=4 with id=389
+[2026-10-20 17:25:03.261] [EngineLog] [info] Created archetype node with components: [ 389 ], id=9
+[2026-10-20 17:25:03.262] [EngineLog] [info] Created ResourceId=1, type=1
+[2026-10-20 17:25:03.262] [EngineLog] [info] Created ResourceId=2, type=1
+[2026-10-20 17:25:03.262] [EngineLog] [info] Created ResourceId=3, type=1
+[2026-10-20 17:25:03.262] [EngineLog] [info] Created ResourceId=4, type=1
+[2026-10-20 17:25:03.262] [EngineLog] [info] Created ResourceId=5, type=1
+[2026-10-20 17:25:03.262] [EngineLog] [info] Created ResourceId=6, type=1
+[2026-10-20 17:25:03.262] [EngineLog] [info] Created ResourceId=7, type=1
+[2026-10-20 17:25:03.262] [EngineLog] [info] Created ResourceId=8, type=1
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created ResourceId=9, type=1
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created ResourceId=10, type=1
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created ResourceId=11, type=1
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created ResourceId=12, type=1
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created ResourceId=13, type=1
+[2026-10-20 17:25:03.263] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=392
+[2026-10-20 17:25:03.263] [EngineLog] [info] Regestered component type=N12IRComponents15C_SizeTrianglesE, sizeof=8 with id=393
+[2026-10-20 17:25:03.263] [EngineLog] [info] Regestered component type=N12IRComponents24C_TriangleCanvasTexturesE, sizeof=456 with id=394
+[2026-10-20 17:25:03.263] [EngineLog] [info] Regestered component type=N12IRComponents21C_CanvasLocalRotationE, sizeof=44 with id=395
+[2026-10-20 17:25:03.263] [EngineLog] [info] Regestered component type=N12IRComponents23C_PerAxisTrixelCanvasesE, sizeof=696 with id=396
+[2026-10-20 17:25:03.263] [EngineLog] [info] Regestered component type=N12IRComponents26C_DetachedRevoxelizeBufferE, sizeof=96 with id=397
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 ], id=10
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 ], id=11
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 ], id=12
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 ], id=13
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 ], id=14
+[2026-10-20 17:25:03.263] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 ], id=15
+[2026-10-20 17:25:03.264] [EngineLog] [info] Regestered relation type=1 id=398 related to entity=384
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 ], id=16
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created voxel pool canvas 391 with framebuffer parent 384, size 642,722
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=14, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=15, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=16, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=17, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=18, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=19, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=20, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=21, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=22, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=23, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=24, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=25, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=26, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 ], id=17
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 ], id=18
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 ], id=19
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created trixel canvas 399 with framebuffer parent 384, size 642,722
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=27, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=28, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=29, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=30, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=31, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=32, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=33, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=34, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=35, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=36, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=37, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=38, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=39, type=1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created trixel canvas 400 with framebuffer parent 384, size 642,722
+[2026-10-20 17:25:03.264] [EngineLog] [info] Regestered component type=N12IRComponents8C_CameraE, sizeof=1 with id=402
+[2026-10-20 17:25:03.264] [EngineLog] [info] Regestered component type=N12IRComponents15C_Position2DIsoE, sizeof=8 with id=403
+[2026-10-20 17:25:03.264] [EngineLog] [info] Regestered component type=N12IRComponents15C_Velocity2DIsoE, sizeof=8 with id=404
+[2026-10-20 17:25:03.264] [EngineLog] [info] Regestered component type=N12IRComponents22C_CameraZoomFrameStateE, sizeof=64 with id=405
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 388 ], id=20
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 ], id=21
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 ], id=22
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 ], id=23
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 405 ], id=24
+[2026-10-20 17:25:03.264] [EngineLog] [info] Fit mode: 1
+[2026-10-20 17:25:03.264] [EngineLog] [info] Voxel pool: edge=64 (262144 voxels)
+[2026-10-20 17:25:03.264] [EngineLog] [info] Metal offscreen screen target attached (2560x1440, paced at 120 Hz).
+[2026-10-20 17:25:03.264] [EngineLog] [info] Regestered component type=N12IRComponents12C_PersistentE, sizeof=1 with id=406
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 405 406 ], id=25
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 406 ], id=26
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 ], id=27
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 ], id=28
+[2026-10-20 17:25:03.264] [EngineLog] [info] Regestered component type=N12IRComponents11C_GuiCanvasE, sizeof=1 with id=407
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 407 ], id=29
+[2026-10-20 17:25:03.264] [EngineLog] [info] Regestered component type=N12IRComponents28C_TrixelCanvasRenderBehaviorE, sizeof=24 with id=408
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 407 408 ], id=30
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=40, type=5
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=41, type=5
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=42, type=6
+[2026-10-20 17:25:03.264] [EngineLog] [info]  Resource 42 named QuadVAO
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=43, type=5
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created ResourceId=44, type=6
+[2026-10-20 17:25:03.264] [EngineLog] [info]  Resource 44 named QuadVAOArrays
+[2026-10-20 17:25:03.264] [EngineLog] [info] Created renderer.
+[2026-10-20 17:25:03.289] [EngineLog] [info] Number of devices found: 2
+[2026-10-20 17:25:03.289] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Speakers
+[2026-10-20 17:25:03.289] [EngineLog] [info] Output channels: 2
+[2026-10-20 17:25:03.289] [EngineLog] [info] This is default output device
+[2026-10-20 17:25:03.289] [EngineLog] [info] Native formats: 16
+[2026-10-20 17:25:03.289] [EngineLog] [info] Sample rates: [44100, 48000, 88200, 96000]
+[2026-10-20 17:25:03.289] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-20 17:25:03.289] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Microphone
+[2026-10-20 17:25:03.289] [EngineLog] [info] Input channels: 1
+[2026-10-20 17:25:03.289] [EngineLog] [info] This is default input device
+[2026-10-20 17:25:03.289] [EngineLog] [info] Native formats: 16
+[2026-10-20 17:25:03.289] [EngineLog] [info] Sample rates: [44100, 48000, 88200, 96000]
+[2026-10-20 17:25:03.289] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-20 17:25:03.310] [EngineLog] [info] Descovered 0 MIDI input sources
+[2026-10-20 17:25:03.310] [EngineLog] [info] Created MidiIn
+[2026-10-20 17:25:03.310] [EngineLog] [info] Descovered 0 MIDI output sources
+[2026-10-20 17:25:03.310] [EngineLog] [info] Created MidiOut
+[2026-10-20 17:25:03.347] [EngineLog] [info] AudioPlayback: file playback engine up (5 buses)
+[2026-10-20 17:25:03.347] [EngineLog] [info] Created AudioManager
+[2026-10-20 17:25:03.347] [EngineLog] [info] TimeManager initalized
+[2026-10-20 17:25:03.347] [EngineLog] [info] Created VideoRecorder instance.
+[2026-10-20 17:25:03.347] [EngineLog] [info] Regestered component type=N12IRComponents18C_GuiCanvasDisplayE, sizeof=1 with id=409
+[2026-10-20 17:25:03.347] [EngineLog] [info] Created archetype node with components: [ 409 ], id=31
+[2026-10-20 17:25:03.350] [EngineLog] [info] Loaded image width=1024, height=1053, channels=4
+[2026-10-20 17:25:03.350] [EngineLog] [info] Freeing image data
+[2026-10-20 17:25:03.351] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents21C_EntityEventHandlersE, sizeof=104 with id=411
+[2026-10-20 17:25:03.351] [EngineLog] [info] Created archetype node with components: [ 411 ], id=32
+[2026-10-20 17:25:03.351] [EngineLog] [info] Initalized game world
+[2026-10-20 17:25:03.351] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-20 17:25:03.351] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/scripts/config.lua
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents16C_ActiveLodLevelE, sizeof=4 with id=413
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents10C_AutoSpinE, sizeof=16 with id=414
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents17C_AngularVelocityE, sizeof=20 with id=415
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12_GLOBAL__N_113C_ImpulseKickE, sizeof=20 with id=416
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=417
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents14C_RotationModeE, sizeof=1 with id=418
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=419
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents10C_LifetimeE, sizeof=4 with id=420
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents10C_HitBox2DE, sizeof=32 with id=421
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N8IRSystem22C_EntityHoverDetectTagE, sizeof=1 with id=422
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents13C_MouseScrollE, sizeof=16 with id=423
+[2026-10-20 17:25:03.351] [EngineLog] [info] Created ResourceId=45, type=5
+[2026-10-20 17:25:03.351] [EngineLog] [info]  Resource 45 named LightOcclusionGridBuffer
+[2026-10-20 17:25:03.351] [EngineLog] [info] Regestered component type=N12IRComponents14C_CanvasCameraE, sizeof=32 with id=424
+[2026-10-20 17:25:03.355] [EngineLog] [info] Created ResourceId=46, type=4
+[2026-10-20 17:25:03.355] [EngineLog] [info]  Resource 46 named VoxelCompactProgram
+[2026-10-20 17:25:03.356] [EngineLog] [info] Created ResourceId=47, type=4
+[2026-10-20 17:25:03.356] [EngineLog] [info]  Resource 47 named VoxelCompactCeilingProgram
+[2026-10-20 17:25:03.357] [EngineLog] [info] Created ResourceId=48, type=4
+[2026-10-20 17:25:03.357] [EngineLog] [info]  Resource 48 named SingleVoxelProgram1
+[2026-10-20 17:25:03.358] [EngineLog] [info] Created ResourceId=49, type=4
+[2026-10-20 17:25:03.358] [EngineLog] [info]  Resource 49 named SingleVoxelProgram1Feeder
+[2026-10-20 17:25:03.359] [EngineLog] [info] Created ResourceId=50, type=4
+[2026-10-20 17:25:03.359] [EngineLog] [info]  Resource 50 named SingleVoxel2
+[2026-10-20 17:25:03.360] [EngineLog] [info] Created ResourceId=51, type=4
+[2026-10-20 17:25:03.360] [EngineLog] [info]  Resource 51 named SingleVoxelWinnerResolve
+[2026-10-20 17:25:03.362] [EngineLog] [info] Created ResourceId=52, type=4
+[2026-10-20 17:25:03.362] [EngineLog] [info]  Resource 52 named SingleVoxel2Winner
+[2026-10-20 17:25:03.362] [EngineLog] [info] Created ResourceId=53, type=4
+[2026-10-20 17:25:03.362] [EngineLog] [info]  Resource 53 named ChunkOcclusionProgram
+[2026-10-20 17:25:03.362] [EngineLog] [info] Created ResourceId=54, type=4
+[2026-10-20 17:25:03.362] [EngineLog] [info]  Resource 54 named PerAxisCellCompactProgram
+[2026-10-20 17:25:03.362] [EngineLog] [info] Created ResourceId=55, type=4
+[2026-10-20 17:25:03.362] [EngineLog] [info]  Resource 55 named PerAxisCellFinalizeProgram
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=56, type=4
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 56 named PerAxisOverflowSortProgram
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=57, type=4
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 57 named RevoxelizeDetachedProgram
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=58, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 58 named RevoxelizeDetachedParamsBuffer
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=59, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 59 named SingleVoxelFrameData
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=60, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 60 named PerAxisWinnerPlaceholder
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=61, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 61 named OverflowSortArgs
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=62, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 62 named VoxelPositionBuffer
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=63, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 63 named VoxelColorBuffer
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=64, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 64 named VoxelActiveMaskBuffer
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=65, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 65 named VoxelEntityIdBuffer
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=66, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 66 named ChunkVisibilityBuffer
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=67, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 67 named CompactedVoxelIndices
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=68, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 68 named IndirectDispatchParams
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=69, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 69 named PerAxisCompactedVoxelIndices
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=70, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 70 named PerAxisIndirectDispatchParams
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=71, type=1
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 71 named FogCullVisiblePlaceholder
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=72, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 72 named FogCullObservers
+[2026-10-20 17:25:03.363] [EngineLog] [info] Created ResourceId=73, type=5
+[2026-10-20 17:25:03.363] [EngineLog] [info]  Resource 73 named ChunkOcclusionQueryBuffer
+[2026-10-20 17:25:03.365] [EngineLog] [info] Created ResourceId=74, type=4
+[2026-10-20 17:25:03.365] [EngineLog] [info]  Resource 74 named ShapesToTrixelDepthProgram
+[2026-10-20 17:25:03.366] [EngineLog] [info] Created ResourceId=75, type=4
+[2026-10-20 17:25:03.366] [EngineLog] [info]  Resource 75 named ShapesToTrixelPublishProgram
+[2026-10-20 17:25:03.368] [EngineLog] [info] Created ResourceId=76, type=4
+[2026-10-20 17:25:03.368] [EngineLog] [info]  Resource 76 named ShapesToTrixelCasterProgram
+[2026-10-20 17:25:03.369] [EngineLog] [info] Created ResourceId=77, type=4
+[2026-10-20 17:25:03.369] [EngineLog] [info]  Resource 77 named ShapesToTrixelOwnerProgram
+[2026-10-20 17:25:03.369] [EngineLog] [info] Created ResourceId=78, type=5
+[2026-10-20 17:25:03.369] [EngineLog] [info]  Resource 78 named ShapesFrameDataBuffer
+[2026-10-20 17:25:03.369] [EngineLog] [info] Created ResourceId=79, type=5
+[2026-10-20 17:25:03.369] [EngineLog] [info]  Resource 79 named JointTransformBuffer
+[2026-10-20 17:25:03.369] [EngineLog] [info] Created ResourceId=80, type=5
+[2026-10-20 17:25:03.369] [EngineLog] [info]  Resource 80 named AnimationParamsBuffer
+[2026-10-20 17:25:03.369] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=425
+[2026-10-20 17:25:03.370] [EngineLog] [info] Created ResourceId=81, type=4
+[2026-10-20 17:25:03.370] [EngineLog] [info]  Resource 81 named ComputeVoxelAOProgram
+[2026-10-20 17:25:03.371] [EngineLog] [info] Created ResourceId=82, type=4
+[2026-10-20 17:25:03.371] [EngineLog] [info]  Resource 82 named ComputeVoxelAOShapesProgram
+[2026-10-20 17:25:03.372] [EngineLog] [info] Created ResourceId=83, type=4
+[2026-10-20 17:25:03.372] [EngineLog] [info]  Resource 83 named ComputeVoxelAOSmoothYawProgram
+[2026-10-20 17:25:03.373] [EngineLog] [info] Created ResourceId=84, type=4
+[2026-10-20 17:25:03.373] [EngineLog] [info]  Resource 84 named ComputeVoxelAOShapesSmoothYawProgram
+[2026-10-20 17:25:03.373] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasAOTextureE, sizeof=16 with id=426
+[2026-10-20 17:25:03.374] [EngineLog] [info] Created ResourceId=85, type=4
+[2026-10-20 17:25:03.374] [EngineLog] [info]  Resource 85 named ResolvePerAxisScreenDepthProgram
+[2026-10-20 17:25:03.374] [EngineLog] [info] Created ResourceId=86, type=4
+[2026-10-20 17:25:03.374] [EngineLog] [info]  Resource 86 named ResolvePerAxisBlitProgram
+[2026-10-20 17:25:03.374] [EngineLog] [info] Created ResourceId=87, type=4
+[2026-10-20 17:25:03.374] [EngineLog] [info]  Resource 87 named ClearSunShadowMapProgram
+[2026-10-20 17:25:03.375] [EngineLog] [info] Created ResourceId=88, type=4
+[2026-10-20 17:25:03.375] [EngineLog] [info]  Resource 88 named BakeSunShadowMapProgram
+[2026-10-20 17:25:03.376] [EngineLog] [info] Created ResourceId=89, type=4
+[2026-10-20 17:25:03.376] [EngineLog] [info]  Resource 89 named ResolveWorldPlacedDepthProgram
+[2026-10-20 17:25:03.376] [EngineLog] [info] Created ResourceId=90, type=4
+[2026-10-20 17:25:03.376] [EngineLog] [info]  Resource 90 named WorldPlacedDepthBlitProgram
+[2026-10-20 17:25:03.376] [EngineLog] [info] Created ResourceId=91, type=5
+[2026-10-20 17:25:03.376] [EngineLog] [info]  Resource 91 named SunShadowDepthMap
+[2026-10-20 17:25:03.376] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasSunShadowE, sizeof=16 with id=427
+[2026-10-20 17:25:03.376] [EngineLog] [info] Created ResourceId=92, type=5
+[2026-10-20 17:25:03.376] [EngineLog] [info]  Resource 92 named AnalyticCasterFrameBuffer
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=93, type=4
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 93 named BoxSunShadowProgram
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=94, type=4
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 94 named SunHierarchyProgram
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=95, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 95 named SunHierarchyFrameBuffer0
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=96, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 96 named SunHierarchyFrameBuffer1
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=97, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 97 named SunHierarchyFrameBuffer2
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=98, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 98 named SunHierarchyFrameBuffer3
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=99, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 99 named SunHierarchyFrameBuffer4
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=100, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 100 named SunHierarchyFrameBuffer5
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=101, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 101 named SunHierarchyFrameBuffer6
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=102, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 102 named SunHierarchyFrameBuffer7
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=103, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 103 named SunHierarchyFrameBuffer8
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=104, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 104 named SunHierarchyFrameBuffer9
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=105, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 105 named SunHierarchyFrameBuffer10
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=106, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 106 named SunHierarchyFrameBuffer11
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=107, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 107 named SunHierarchyFrameBuffer12
+[2026-10-20 17:25:03.378] [EngineLog] [info] Created ResourceId=108, type=5
+[2026-10-20 17:25:03.378] [EngineLog] [info]  Resource 108 named SunHierarchyFrameBuffer13
+[2026-10-20 17:25:03.380] [EngineLog] [info] Created ResourceId=109, type=4
+[2026-10-20 17:25:03.380] [EngineLog] [info]  Resource 109 named VoxelSunFacesProgram
+[2026-10-20 17:25:03.380] [EngineLog] [info] Created ResourceId=110, type=5
+[2026-10-20 17:25:03.380] [EngineLog] [info]  Resource 110 named VoxelSunFaceFrameBuffer
+[2026-10-20 17:25:03.380] [EngineLog] [info] Created ResourceId=111, type=5
+[2026-10-20 17:25:03.380] [EngineLog] [info]  Resource 111 named DetachedShadowFrameBuffer
+[2026-10-20 17:25:03.380] [EngineLog] [info] Created ResourceId=112, type=5
+[2026-10-20 17:25:03.380] [EngineLog] [info]  Resource 112 named SunShadowFogObservers
+[2026-10-20 17:25:03.382] [EngineLog] [info] Created ResourceId=113, type=4
+[2026-10-20 17:25:03.382] [EngineLog] [info]  Resource 113 named ComputeSunShadowProgram
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=114, type=4
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 114 named ComputeSunShadowShapesProgram
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=115, type=5
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 115 named ComputeSunShadowFrameData
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=116, type=5
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 116 named ShapeReceiverFrameData
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=117, type=5
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 117 named ShapeReceiverFallback
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=118, type=4
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 118 named ClearLightVolumeProgram
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=119, type=4
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 119 named SeedLightVolumeProgram
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=120, type=4
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 120 named PropagateLightVolumeProgram
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=121, type=5
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 121 named LightSourceBuffer
+[2026-10-20 17:25:03.384] [EngineLog] [info] Created ResourceId=122, type=5
+[2026-10-20 17:25:03.384] [EngineLog] [info]  Resource 122 named LightVolumeParamsBuffer
+[2026-10-20 17:25:03.384] [EngineLog] [info] Regestered component type=N12IRComponents19C_CanvasLightVolumeE, sizeof=80 with id=428
+[2026-10-20 17:25:03.387] [EngineLog] [info] Created ResourceId=123, type=4
+[2026-10-20 17:25:03.387] [EngineLog] [info]  Resource 123 named LightingToTrixelProgram
+[2026-10-20 17:25:03.389] [EngineLog] [info] Created ResourceId=124, type=4
+[2026-10-20 17:25:03.389] [EngineLog] [info]  Resource 124 named LightingToTrixelShapesProgram
+[2026-10-20 17:25:03.390] [EngineLog] [info] Created ResourceId=125, type=4
+[2026-10-20 17:25:03.390] [EngineLog] [info]  Resource 125 named LightOverflowFacesProgram
+[2026-10-20 17:25:03.390] [EngineLog] [info] Created ResourceId=126, type=5
+[2026-10-20 17:25:03.390] [EngineLog] [info]  Resource 126 named LightingToTrixelFrameData
+[2026-10-20 17:25:03.390] [EngineLog] [info] Created ResourceId=127, type=1
+[2026-10-20 17:25:03.390] [EngineLog] [info]  Resource 127 named PaletteLUT_Nearest
+[2026-10-20 17:25:03.390] [EngineLog] [info] Created ResourceId=128, type=1
+[2026-10-20 17:25:03.390] [EngineLog] [info]  Resource 128 named PaletteLUT_Linear
+[2026-10-20 17:25:03.391] [EngineLog] [info] Regestered component type=N12IRComponents24C_PerAxisSurfaceLightingE, sizeof=1 with id=429
+[2026-10-20 17:25:03.391] [EngineLog] [info] Created archetype node with components: [ 429 ], id=33
+[2026-10-20 17:25:03.395] [EngineLog] [info] Created ResourceId=129, type=4
+[2026-10-20 17:25:03.395] [EngineLog] [info]  Resource 129 named CanvasCardinalLightingProgram
+[2026-10-20 17:25:03.397] [EngineLog] [info] Created ResourceId=130, type=4
+[2026-10-20 17:25:03.397] [EngineLog] [info]  Resource 130 named CanvasShapeLightingProgram
+[2026-10-20 17:25:03.397] [EngineLog] [info] Created ResourceId=131, type=4
+[2026-10-20 17:25:03.397] [EngineLog] [info]  Resource 131 named CanvasToFramebufferProgram
+[2026-10-20 17:25:03.399] [EngineLog] [info] Created ResourceId=132, type=4
+[2026-10-20 17:25:03.399] [EngineLog] [info]  Resource 132 named CanvasSurfaceShadowProbeProgram
+[2026-10-20 17:25:03.400] [EngineLog] [info] Created ResourceId=133, type=4
+[2026-10-20 17:25:03.400] [EngineLog] [info]  Resource 133 named PerAxisScatterProgram
+[2026-10-20 17:25:03.402] [EngineLog] [info] Created ResourceId=134, type=4
+[2026-10-20 17:25:03.402] [EngineLog] [info]  Resource 134 named PerAxisSurfaceShadowProbeProgram
+[2026-10-20 17:25:03.404] [EngineLog] [info] Created ResourceId=135, type=4
+[2026-10-20 17:25:03.404] [EngineLog] [info]  Resource 135 named PerAxisSurfaceLightingProgram
+[2026-10-20 17:25:03.406] [EngineLog] [info] Created ResourceId=136, type=4
+[2026-10-20 17:25:03.406] [EngineLog] [info]  Resource 136 named PerAxisVisibleLightingProgram
+[2026-10-20 17:25:03.406] [EngineLog] [info] Created ResourceId=137, type=5
+[2026-10-20 17:25:03.406] [EngineLog] [info]  Resource 137 named TrixelToFramebufferFrameData
+[2026-10-20 17:25:03.406] [EngineLog] [info] Created ResourceId=138, type=5
+[2026-10-20 17:25:03.406] [EngineLog] [info]  Resource 138 named HoveredEntityIdBuffer
+[2026-10-20 17:25:03.406] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=431
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=139, type=4
+[2026-10-20 17:25:03.408] [EngineLog] [info]  Resource 139 named SourceFaceScatterProgram
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=140, type=4
+[2026-10-20 17:25:03.408] [EngineLog] [info]  Resource 140 named FramebufferToScreenProgram
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=141, type=5
+[2026-10-20 17:25:03.408] [EngineLog] [info]  Resource 141 named FramebufferToScreenFrameData
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=142, type=4
+[2026-10-20 17:25:03.408] [EngineLog] [info]  Resource 142 named GuiCanvasToScreenProgram
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=143, type=5
+[2026-10-20 17:25:03.408] [EngineLog] [info]  Resource 143 named GuiCanvasToScreenFrameData
+[2026-10-20 17:25:03.408] [EngineLog] [warning] tagGpuStage: unknown stage name "guiToScreen" — stage will not be timed. Check gpuStageRegistry() for the registered name.
+[2026-10-20 17:25:03.408] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=432
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 ], id=34
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=144, type=1
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 ], id=35
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=145, type=1
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 427 ], id=36
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=146, type=2
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=147, type=2
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=148, type=2
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created ResourceId=149, type=2
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 427 428 ], id=37
+[2026-10-20 17:25:03.408] [ClientLog] [info] LIGHTING-PROBE sun=(0,0,-1) shadows=true ao=false
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created archetype node with components: [ 256 257 417 ], id=38
+[2026-10-20 17:25:03.408] [EngineLog] [info] Regestered component type=N12IRComponents26C_EntityCanvasTeardownHookE, sizeof=4 with id=434
+[2026-10-20 17:25:03.408] [EngineLog] [info] Created archetype node with components: [ 434 ], id=39
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=150, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=151, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=152, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=153, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=154, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=155, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=156, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=157, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=158, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created voxel pool canvas 436 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 431 ], id=40
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 408 ], id=41
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 408 431 ], id=42
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=159, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 408 426 ], id=43
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 408 426 431 ], id=44
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created archetype node with components: [ 256 257 418 ], id=45
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created archetype node with components: [ 256 257 418 419 ], id=46
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=160, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=161, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=162, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=163, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=164, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=165, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=166, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=167, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=168, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created voxel pool canvas 439 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=169, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=170, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=171, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=172, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=173, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=174, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=175, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=176, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=177, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=178, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created voxel pool canvas 442 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=179, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=180, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=181, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=182, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=183, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=184, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=185, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=186, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=187, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=188, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created voxel pool canvas 445 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=189, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=190, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=191, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=192, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=193, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=194, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=195, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=196, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=197, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=198, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created voxel pool canvas 448 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=199, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=200, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=201, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=202, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=203, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=204, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=205, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=206, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=207, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=208, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created voxel pool canvas 451 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=209, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=210, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=211, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=212, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=213, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=214, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=215, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=216, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=217, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=218, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created voxel pool canvas 454 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=219, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=220, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=221, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=222, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=223, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=224, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=225, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=226, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=227, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=228, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created voxel pool canvas 457 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=229, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=230, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=231, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=232, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=233, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=234, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=235, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=236, type=1
+[2026-10-20 17:25:03.409] [EngineLog] [info] Created ResourceId=237, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=238, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 460 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=239, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=240, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=241, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=242, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=243, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=244, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=245, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=246, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=247, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=248, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 463 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=249, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=250, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=251, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=252, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=253, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=254, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=255, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=256, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=257, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=258, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 466 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=259, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=260, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=261, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=262, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=263, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=264, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=265, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=266, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=267, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=268, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 469 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=269, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=270, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=271, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=272, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=273, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=274, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=275, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=276, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=277, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=278, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 472 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=279, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=280, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=281, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=282, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=283, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=284, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=285, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=286, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=287, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=288, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 475 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=289, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=290, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=291, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=292, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=293, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=294, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=295, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=296, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=297, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=298, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 478 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=299, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=300, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=301, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=302, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=303, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=304, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=305, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=306, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=307, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=308, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 481 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=309, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=310, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=311, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=312, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=313, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=314, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=315, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=316, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=317, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=318, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 484 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=319, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=320, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=321, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=322, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=323, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=324, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=325, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=326, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=327, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=328, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created voxel pool canvas 487 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=329, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=330, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=331, type=1
+[2026-10-20 17:25:03.410] [EngineLog] [info] Created ResourceId=332, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=333, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=334, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=335, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=336, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=337, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=338, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 490 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=339, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=340, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=341, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=342, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=343, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=344, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=345, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=346, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=347, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=348, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 493 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=349, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=350, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=351, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=352, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=353, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=354, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=355, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=356, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=357, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=358, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 496 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=359, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=360, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=361, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=362, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=363, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=364, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=365, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=366, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=367, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=368, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 499 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=369, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=370, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=371, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=372, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=373, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=374, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=375, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=376, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=377, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=378, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 502 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=379, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=380, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=381, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=382, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=383, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=384, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=385, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=386, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=387, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=388, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 505 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=389, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=390, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=391, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=392, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=393, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=394, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=395, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=396, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=397, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=398, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 508 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=399, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=400, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=401, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=402, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=403, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=404, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=405, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=406, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=407, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=408, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 511 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=409, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=410, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=411, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=412, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=413, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=414, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=415, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=416, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=417, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=418, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 514 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=419, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=420, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=421, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=422, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=423, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=424, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=425, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=426, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=427, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=428, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created voxel pool canvas 517 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=429, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=430, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=431, type=1
+[2026-10-20 17:25:03.411] [EngineLog] [info] Created ResourceId=432, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=433, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=434, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=435, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=436, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=437, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=438, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 520 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=439, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=440, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=441, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=442, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=443, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=444, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=445, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=446, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=447, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=448, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 523 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=449, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=450, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=451, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=452, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=453, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=454, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=455, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=456, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=457, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=458, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 526 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=459, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=460, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=461, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=462, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=463, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=464, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=465, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=466, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=467, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=468, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 529 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=469, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=470, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=471, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=472, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=473, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=474, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=475, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=476, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=477, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=478, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 532 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=479, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=480, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=481, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=482, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=483, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=484, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=485, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=486, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=487, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=488, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 535 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=489, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=490, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=491, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=492, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=493, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=494, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=495, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=496, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=497, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=498, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 538 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=499, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=500, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=501, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=502, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=503, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=504, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=505, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=506, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=507, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=508, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 541 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=509, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=510, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=511, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=512, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=513, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=514, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=515, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=516, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=517, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=518, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 544 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=519, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=520, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=521, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=522, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=523, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=524, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=525, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=526, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=527, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=528, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created voxel pool canvas 547 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=529, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=530, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=531, type=1
+[2026-10-20 17:25:03.412] [EngineLog] [info] Created ResourceId=532, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=533, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=534, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=535, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=536, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=537, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=538, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 550 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=539, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=540, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=541, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=542, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=543, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=544, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=545, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=546, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=547, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=548, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 553 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=549, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=550, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=551, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=552, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=553, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=554, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=555, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=556, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=557, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=558, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 556 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=559, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=560, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=561, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=562, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=563, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=564, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=565, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=566, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=567, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=568, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 559 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=569, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=570, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=571, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=572, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=573, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=574, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=575, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=576, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=577, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=578, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 562 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=579, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=580, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=581, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=582, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=583, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=584, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=585, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=586, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=587, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=588, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 565 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=589, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=590, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=591, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=592, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=593, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=594, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=595, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=596, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=597, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=598, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 568 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=599, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=600, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=601, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=602, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=603, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=604, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=605, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=606, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=607, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=608, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 571 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=609, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=610, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=611, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=612, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=613, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=614, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=615, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=616, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=617, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=618, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 574 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=619, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=620, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=621, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=622, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=623, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=624, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=625, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=626, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=627, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=628, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created voxel pool canvas 577 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=629, type=1
+[2026-10-20 17:25:03.413] [EngineLog] [info] Created ResourceId=630, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=631, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=632, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=633, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=634, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=635, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=636, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=637, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=638, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 580 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=639, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=640, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=641, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=642, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=643, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=644, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=645, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=646, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=647, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=648, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 583 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=649, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=650, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=651, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=652, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=653, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=654, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=655, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=656, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=657, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=658, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 586 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=659, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=660, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=661, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=662, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=663, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=664, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=665, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=666, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=667, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=668, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 589 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=669, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=670, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=671, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=672, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=673, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=674, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=675, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=676, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=677, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=678, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 592 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=679, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=680, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=681, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=682, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=683, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=684, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=685, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=686, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=687, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=688, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 595 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=689, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=690, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=691, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=692, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=693, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=694, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=695, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=696, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=697, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=698, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 598 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=699, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=700, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=701, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=702, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=703, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=704, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=705, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=706, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=707, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=708, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 601 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=709, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=710, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=711, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=712, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=713, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=714, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=715, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=716, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=717, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=718, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 604 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=719, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=720, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=721, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=722, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=723, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=724, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=725, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=726, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=727, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=728, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created voxel pool canvas 607 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=729, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=730, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=731, type=1
+[2026-10-20 17:25:03.414] [EngineLog] [info] Created ResourceId=732, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=733, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=734, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=735, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=736, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=737, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=738, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 610 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=739, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=740, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=741, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=742, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=743, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=744, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=745, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=746, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=747, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=748, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 613 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=749, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=750, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=751, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=752, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=753, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=754, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=755, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=756, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=757, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=758, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 616 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=759, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=760, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=761, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=762, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=763, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=764, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=765, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=766, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=767, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=768, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 619 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=769, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=770, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=771, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=772, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=773, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=774, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=775, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=776, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=777, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=778, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 622 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=779, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=780, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=781, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=782, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=783, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=784, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=785, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=786, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=787, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=788, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 625 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=789, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=790, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=791, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=792, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=793, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=794, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=795, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=796, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=797, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=798, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 628 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=799, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=800, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=801, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=802, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=803, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=804, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=805, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=806, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=807, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=808, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 631 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=809, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=810, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=811, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=812, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=813, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=814, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=815, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=816, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=817, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=818, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 634 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=819, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=820, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=821, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=822, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=823, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=824, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=825, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=826, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=827, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=828, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created voxel pool canvas 637 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=829, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=830, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=831, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=832, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=833, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=834, type=1
+[2026-10-20 17:25:03.415] [EngineLog] [info] Created ResourceId=835, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=836, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=837, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=838, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 640 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=839, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=840, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=841, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=842, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=843, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=844, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=845, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=846, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=847, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=848, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 643 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=849, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=850, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=851, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=852, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=853, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=854, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=855, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=856, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=857, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=858, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 646 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=859, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=860, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=861, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=862, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=863, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=864, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=865, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=866, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=867, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=868, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 649 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=869, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=870, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=871, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=872, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=873, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=874, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=875, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=876, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=877, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=878, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 652 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=879, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=880, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=881, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=882, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=883, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=884, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=885, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=886, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=887, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=888, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 655 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=889, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=890, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=891, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=892, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=893, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=894, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=895, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=896, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=897, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=898, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 658 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=899, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=900, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=901, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=902, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=903, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=904, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=905, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=906, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=907, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=908, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 661 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=909, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=910, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=911, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=912, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=913, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=914, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=915, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=916, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=917, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=918, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 664 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=919, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=920, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=921, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=922, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=923, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=924, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=925, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=926, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=927, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=928, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 667 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=929, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=930, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=931, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=932, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=933, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=934, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=935, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=936, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=937, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=938, type=1
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created voxel pool canvas 670 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.416] [EngineLog] [info] Created ResourceId=939, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=940, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=941, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=942, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=943, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=944, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=945, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=946, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=947, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=948, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 673 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=949, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=950, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=951, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=952, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=953, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=954, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=955, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=956, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=957, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=958, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 676 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=959, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=960, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=961, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=962, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=963, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=964, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=965, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=966, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=967, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=968, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 679 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=969, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=970, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=971, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=972, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=973, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=974, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=975, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=976, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=977, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=978, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 682 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=979, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=980, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=981, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=982, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=983, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=984, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=985, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=986, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=987, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=988, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 685 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=989, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=990, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=991, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=992, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=993, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=994, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=995, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=996, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=997, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=998, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 688 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=999, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1000, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1001, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1002, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1003, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1004, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1005, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1006, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1007, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1008, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 691 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1009, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1010, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1011, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1012, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1013, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1014, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1015, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1016, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1017, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1018, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 694 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1019, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1020, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1021, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1022, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1023, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1024, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1025, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1026, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1027, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1028, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 697 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1029, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1030, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1031, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1032, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1033, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1034, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1035, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1036, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1037, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1038, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created voxel pool canvas 700 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1039, type=1
+[2026-10-20 17:25:03.417] [EngineLog] [info] Created ResourceId=1040, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1041, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1042, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1043, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1044, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1045, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1046, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1047, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1048, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 703 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1049, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1050, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1051, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1052, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1053, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1054, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1055, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1056, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1057, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1058, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 706 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1059, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1060, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1061, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1062, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1063, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1064, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1065, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1066, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1067, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1068, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 709 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1069, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1070, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1071, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1072, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1073, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1074, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1075, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1076, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1077, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1078, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 712 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1079, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1080, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1081, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1082, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1083, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1084, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1085, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1086, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1087, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1088, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 715 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1089, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1090, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1091, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1092, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1093, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1094, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1095, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1096, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1097, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1098, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 718 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1099, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1100, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1101, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1102, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1103, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1104, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1105, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1106, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1107, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1108, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 721 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1109, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1110, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1111, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1112, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1113, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1114, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1115, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1116, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1117, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1118, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 724 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1119, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1120, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1121, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1122, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1123, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1124, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1125, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1126, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1127, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1128, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 727 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1129, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1130, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1131, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1132, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1133, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1134, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1135, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1136, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1137, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1138, type=1
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created voxel pool canvas 730 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.418] [EngineLog] [info] Created ResourceId=1139, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1140, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1141, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1142, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1143, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1144, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1145, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1146, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1147, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1148, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 733 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1149, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1150, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1151, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1152, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1153, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1154, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1155, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1156, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1157, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1158, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 736 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1159, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1160, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1161, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1162, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1163, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1164, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1165, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1166, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1167, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1168, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 739 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1169, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1170, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1171, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1172, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1173, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1174, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1175, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1176, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1177, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1178, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 742 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1179, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1180, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1181, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1182, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1183, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1184, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1185, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1186, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1187, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1188, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 745 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1189, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1190, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1191, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1192, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1193, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1194, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1195, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1196, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1197, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1198, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 748 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1199, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1200, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1201, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1202, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1203, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1204, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1205, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1206, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1207, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1208, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 751 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1209, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1210, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1211, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1212, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1213, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1214, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1215, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1216, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1217, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1218, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 754 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1219, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1220, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1221, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1222, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1223, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1224, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1225, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1226, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1227, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1228, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 757 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1229, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1230, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1231, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1232, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1233, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1234, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1235, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1236, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1237, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1238, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created voxel pool canvas 760 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1239, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1240, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1241, type=1
+[2026-10-20 17:25:03.419] [EngineLog] [info] Created ResourceId=1242, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1243, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1244, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1245, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1246, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1247, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1248, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 763 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1249, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1250, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1251, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1252, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1253, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1254, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1255, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1256, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1257, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1258, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 766 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1259, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1260, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1261, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1262, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1263, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1264, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1265, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1266, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1267, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1268, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 769 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1269, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1270, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1271, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1272, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1273, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1274, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1275, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1276, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1277, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1278, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 772 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1279, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1280, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1281, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1282, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1283, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1284, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1285, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1286, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1287, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1288, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 775 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1289, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1290, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1291, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1292, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1293, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1294, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1295, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1296, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1297, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1298, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 778 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1299, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1300, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1301, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1302, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1303, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1304, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1305, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1306, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1307, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1308, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 781 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1309, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1310, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1311, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1312, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1313, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1314, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1315, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1316, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1317, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1318, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 784 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1319, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1320, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1321, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1322, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1323, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1324, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1325, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1326, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1327, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1328, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 787 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1329, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1330, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1331, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1332, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1333, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1334, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1335, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1336, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1337, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1338, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created voxel pool canvas 790 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1339, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1340, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1341, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1342, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1343, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1344, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1345, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1346, type=1
+[2026-10-20 17:25:03.420] [EngineLog] [info] Created ResourceId=1347, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1348, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 793 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1349, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1350, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1351, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1352, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1353, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1354, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1355, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1356, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1357, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1358, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 796 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1359, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1360, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1361, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1362, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1363, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1364, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1365, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1366, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1367, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1368, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 799 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1369, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1370, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1371, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1372, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1373, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1374, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1375, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1376, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1377, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1378, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 802 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1379, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1380, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1381, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1382, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1383, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1384, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1385, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1386, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1387, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1388, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 805 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1389, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1390, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1391, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1392, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1393, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1394, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1395, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1396, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1397, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1398, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 808 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1399, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1400, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1401, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1402, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1403, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1404, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1405, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1406, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1407, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1408, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 811 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1409, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1410, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1411, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1412, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1413, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1414, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1415, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1416, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1417, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1418, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 814 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1419, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1420, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1421, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1422, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1423, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1424, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1425, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1426, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1427, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1428, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created voxel pool canvas 817 with framebuffer parent 0, size 64,64
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1429, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1430, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1431, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1432, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1433, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1434, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1435, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1436, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1437, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1438, type=1
+[2026-10-20 17:25:03.421] [EngineLog] [info] Created ResourceId=1439, type=1
+[2026-10-20 17:25:03.422] [EngineLog] [info] Created voxel pool canvas 820 with framebuffer parent 0, size 128,128
+[2026-10-20 17:25:03.422] [EngineLog] [info] Created ResourceId=1440, type=1
+[2026-10-20 17:25:03.422] [ClientLog] [info] canvas_stress: main grid 0x0 (0 cubes), 0 GRID-spin cubes, 0 detached canvases, 2 detached re-voxelize solids (L + cube), 0 orbit-ring shapes
+[2026-10-20 17:25:03.423] [EngineLog] [info] Regestered component type=N12IRComponents15C_GuiHoverStateE, sizeof=8 with id=823
+[2026-10-20 17:25:03.423] [EngineLog] [info] Regestered component type=N12IRComponents13C_HitBox2DGuiE, sizeof=12 with id=824
+[2026-10-20 17:25:03.423] [EngineLog] [info] Created archetype node with components: [ 413 ], id=47
+[2026-10-20 17:25:03.423] [EngineLog] [info] Regestered component type=N12IRComponents16C_ResolvedFieldsE, sizeof=72 with id=826
+[2026-10-20 17:25:03.423] [EngineLog] [info] Regestered component type=N12IRComponents11C_ModifiersE, sizeof=72 with id=827
+[2026-10-20 17:25:03.424] [EngineLog] [info] Regestered component type=N12IRComponents14C_LightBlockerE, sizeof=8 with id=828
+[2026-10-20 17:25:03.424] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=829
+[2026-10-20 17:25:03.424] [EngineLog] [info] Regestered component type=N12IRComponents13C_LightSourceE, sizeof=36 with id=830
+[2026-10-20 17:25:03.425] [EngineLog] [info] Regestered component type=N12IRComponents26C_TriangleCanvasBackgroundE, sizeof=240 with id=831
+[2026-10-20 17:25:03.428] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=1, effective_subdivisions=1
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1441, type=5
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1442, type=5
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1443, type=5
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1444, type=5
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1445, type=5
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1446, type=5
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1447, type=5
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1448, type=5
+[2026-10-20 17:25:03.429] [EngineLog] [info] Created ResourceId=1449, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1450, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1451, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1452, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1453, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1454, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1455, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1456, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1457, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1458, type=5
+[2026-10-20 17:25:03.430] [EngineLog] [info] Created ResourceId=1459, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1460, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1461, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1462, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1463, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1464, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1465, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1466, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1467, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1468, type=5
+[2026-10-20 17:25:03.431] [EngineLog] [info] Created ResourceId=1469, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1470, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1471, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1472, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1473, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1474, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1475, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1476, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1477, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1478, type=5
+[2026-10-20 17:25:03.432] [EngineLog] [info] Created ResourceId=1479, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1480, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1481, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1482, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1483, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1484, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1485, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1486, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1487, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1488, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1489, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1490, type=5
+[2026-10-20 17:25:03.433] [EngineLog] [info] Created ResourceId=1491, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1492, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1493, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1494, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1495, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1496, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1497, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1498, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1499, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1500, type=5
+[2026-10-20 17:25:03.434] [EngineLog] [info] Created ResourceId=1501, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1502, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1503, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1504, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1505, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1506, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1507, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1508, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1509, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1510, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1511, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1512, type=5
+[2026-10-20 17:25:03.435] [EngineLog] [info] Created ResourceId=1513, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1514, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1515, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1516, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1517, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1518, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1519, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1520, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1521, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1522, type=5
+[2026-10-20 17:25:03.436] [EngineLog] [info] Created ResourceId=1523, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1524, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1525, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1526, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1527, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1528, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1529, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1530, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1531, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1532, type=5
+[2026-10-20 17:25:03.437] [EngineLog] [info] Created ResourceId=1533, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1534, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1535, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1536, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1537, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1538, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1539, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1540, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1541, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1542, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1543, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1544, type=5
+[2026-10-20 17:25:03.438] [EngineLog] [info] Created ResourceId=1545, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1546, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1547, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1548, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1549, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1550, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1551, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1552, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1553, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1554, type=5
+[2026-10-20 17:25:03.439] [EngineLog] [info] Created ResourceId=1555, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1556, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1557, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1558, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1559, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1560, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1561, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1562, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1563, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1564, type=5
+[2026-10-20 17:25:03.440] [EngineLog] [info] Created ResourceId=1565, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1566, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1567, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1568, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1569, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1570, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1571, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1572, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1573, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1574, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1575, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1576, type=5
+[2026-10-20 17:25:03.441] [EngineLog] [info] Created ResourceId=1577, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1578, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1579, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1580, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1581, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1582, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1583, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1584, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1585, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1586, type=5
+[2026-10-20 17:25:03.442] [EngineLog] [info] Created ResourceId=1587, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1588, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1589, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1590, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1591, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1592, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1593, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1594, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1595, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1596, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1597, type=5
+[2026-10-20 17:25:03.443] [EngineLog] [info] Created ResourceId=1598, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1599, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1600, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1601, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1602, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1603, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1604, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1605, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1606, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1607, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1608, type=5
+[2026-10-20 17:25:03.444] [EngineLog] [info] Created ResourceId=1609, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1610, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1611, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1612, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1613, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1614, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1615, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1616, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1617, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1618, type=5
+[2026-10-20 17:25:03.445] [EngineLog] [info] Created ResourceId=1619, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1620, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1621, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1622, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1623, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1624, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1625, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1626, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1627, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1628, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1629, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1630, type=5
+[2026-10-20 17:25:03.446] [EngineLog] [info] Created ResourceId=1631, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1632, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1633, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1634, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1635, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1636, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1637, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1638, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1639, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1640, type=5
+[2026-10-20 17:25:03.447] [EngineLog] [info] Created ResourceId=1641, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1642, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1643, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1644, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1645, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1646, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1647, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1648, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1649, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1650, type=5
+[2026-10-20 17:25:03.448] [EngineLog] [info] Created ResourceId=1651, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1652, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1653, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1654, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1655, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1656, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1657, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1658, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1659, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1660, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1661, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1662, type=5
+[2026-10-20 17:25:03.449] [EngineLog] [info] Created ResourceId=1663, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1664, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1665, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1666, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1667, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1668, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1669, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1670, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1671, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1672, type=5
+[2026-10-20 17:25:03.450] [EngineLog] [info] Created ResourceId=1673, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1674, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1675, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1676, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1677, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1678, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1679, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1680, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1681, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1682, type=5
+[2026-10-20 17:25:03.451] [EngineLog] [info] Created ResourceId=1683, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1684, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1685, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1686, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1687, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1688, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1689, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1690, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1691, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1692, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1693, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1694, type=5
+[2026-10-20 17:25:03.452] [EngineLog] [info] Created ResourceId=1695, type=5
+[2026-10-20 17:25:03.453] [EngineLog] [info] Created ResourceId=1696, type=5
+[2026-10-20 17:25:03.453] [EngineLog] [info] Created ResourceId=1697, type=5
+[2026-10-20 17:25:03.453] [EngineLog] [info] Created ResourceId=1698, type=5
+[2026-10-20 17:25:03.453] [EngineLog] [info] Created ResourceId=1699, type=5
+[2026-10-20 17:25:03.453] [EngineLog] [info] Regestered component type=N12IRComponents17C_LodTierOverrideE, sizeof=4 with id=832
+[2026-10-20 17:25:05.431] [ClientLog] [info] AutoScreenshot 1/1: sweep_frame_0 (zoom=1, cam=(0,0), yaw=0, cull=0)
+[2026-10-20 17:25:07.392] [ClientLog] [info] CaptureCamera: label=sweep_frame_0 yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-20 17:25:07.594] [ClientLog] [info] sun-face-index-probe: shot=0 path=sun-face-index-0.csv written=true
+[2026-10-20 17:25:07.716] [EngineLog] [info] Saved screenshot: /private/tmp/sun-overflow-production-final/near-128/screenshot_000001.png
+[2026-10-20 17:25:08.132] [EngineLog] [info] Clean shutdown complete.
+ir-run: IRCanvasStress exited cleanly after 6s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
