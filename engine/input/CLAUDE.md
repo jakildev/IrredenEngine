@@ -51,6 +51,9 @@ IRInput.isSyntheticInputActive()          -- → bool
 IRInput.injectButton(button, status)      -- integers from the tables above
 IRInput.injectMouseMove(x, y)            -- window points
 IRInput.injectScroll(dx, dy)
+
+IRInput.scrollDelta()                     -- → int, signed wheel steps this frame
+IRInput.scrollOffset()                    -- → x, y raw offset sum this frame
 ```
 
 `bindLuaInput()` is idempotent and extends the `IRInput` table created by
@@ -142,4 +145,6 @@ Callbacks are `sol::protected_function` (Lua) or plain `std::function`
   `endTick` rather than reading a single "current scroll" component —
   multiple scroll events can arrive in one frame, each as its own
   entity. The scrollZoomSystem in `creations/editors/voxel_editor/` is
-  the canonical example.
+  the canonical example. For a reader outside `INPUT`,
+  `IRInput::scrollDelta()` / `scrollOffset()` return the frame's sum, taken
+  in `processScrolls` before `LIFETIME` destroys the entities.

@@ -31,6 +31,10 @@
 //   * shot 5 moves onto the `IRGui.makeHitRegion` row, clicks it and moves
 //     off → LUA_ROW_REGION PASS (the region's onHover, onClick and onUnhover
 //     ran once each, in that order, with the region's id).
+//   * shot 6 scrolls the wheel with the pointer off the scroll list →
+//     LUA_SCROLL_OFF_PANEL PASS (the first visible row did not move).
+//   * shot 7 scrolls the wheel with the pointer over the list →
+//     LUA_SCROLL_ON_PANEL PASS (the first visible row advanced by one).
 //
 // Hand-off fixture (opt-in; absent, the demo is unchanged):
 // `--hand-off-fixture button` adds a HAND OFF button whose onClick calls
@@ -125,6 +129,11 @@ float g_portraitRetargetZoom = 0.0f;
 // letter each (H = hover, C = click, U = unhover) in call order.
 IREntity::EntityId g_rowRegion = IREntity::kNullEntity;
 std::string g_rowEvents;
+
+// The first visible label of main.lua's wheel-scrolled list, published via
+// IRTest.setScrollFirstRow, and its text when the scroll shot began.
+IREntity::EntityId g_scrollFirstRow = IREntity::kNullEntity;
+std::string g_scrollFirstRowBefore;
 bool g_rowEventIdsMatch = true;
 
 void recordRowEvent(char event, lua_Integer id) {
@@ -204,13 +213,30 @@ constexpr IRVideo::GuiInputEvent kRowEvents[] = {
     {3, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1000, 475)},
 };
 
+// The scroll list spans GUI x 260-590, y 335-405: screen x 520-1180, y 335-405.
+constexpr IRVideo::GuiInputEvent kScrollOffPanelEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1000, 475)},
+    {1, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1000, 475), IRMath::vec2(0.0f, -1.0f)},
+};
+
+constexpr IRVideo::GuiInputEvent kScrollOnPanelEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1000, 370)},
+    {2, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1000, 370), IRMath::vec2(0.0f, -1.0f)},
+};
+
+// Must match the text main.lua writes for rows 1 and 2.
+constexpr const char *kScrollFirstRowText = "SCROLL ROW 01";
+constexpr const char *kScrollAdvancedRowText = "SCROLL ROW 02";
+
 enum GuiTestShotIndex {
     kHoverShot,
     kOnClickShot,
     kPollShot,
     kPortraitShot,
     kPortraitRetargetShot,
-    kRowShot
+    kRowShot,
+    kScrollOffPanelShot,
+    kScrollOnPanelShot
 };
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
@@ -230,6 +256,12 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_row_region"},
      kRowEvents,
      static_cast<int>(sizeof(kRowEvents) / sizeof(kRowEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_scroll_off_panel"},
+     kScrollOffPanelEvents,
+     static_cast<int>(sizeof(kScrollOffPanelEvents) / sizeof(kScrollOffPanelEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_scroll_on_panel"},
+     kScrollOnPanelEvents,
+     static_cast<int>(sizeof(kScrollOnPanelEvents) / sizeof(kScrollOnPanelEvents[0]))},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 
@@ -242,6 +274,10 @@ int g_autoWarmupFrames = 0;
 
 const std::string &hoverLabelText() {
     return IREntity::getComponent<IRComponents::C_WidgetLabel>(g_hoverLabel).text_;
+}
+
+const std::string &scrollFirstRowText() {
+    return IREntity::getComponent<IRComponents::C_WidgetLabel>(g_scrollFirstRow).text_;
 }
 
 void logGuiAssert(
@@ -341,6 +377,9 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             g_rowEvents.clear();
             g_rowEventIdsMatch = true;
         }
+        if (shotIndex == kScrollOffPanelShot || shotIndex == kScrollOnPanelShot) {
+            g_scrollFirstRowBefore = scrollFirstRowText();
+        }
         if (shotIndex == kHoverShot) {
             g_hoverLabelBefore = hoverLabelText();
             g_cursorPositionHookRan = false;
@@ -408,6 +447,18 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             "row_region",
             g_rowEvents == "HCU" && g_rowEventIdsMatch && g_rowRegion != IREntity::kNullEntity,
             "events=" + g_rowEvents + (g_rowEventIdsMatch ? "" : " (wrong id)")
+        );
+    } else if (shotIndex == kScrollOffPanelShot || shotIndex == kScrollOnPanelShot) {
+        const bool onPanel = shotIndex == kScrollOnPanelShot;
+        const std::string &after = scrollFirstRowText();
+        const char *expectedAfter = onPanel ? kScrollAdvancedRowText : kScrollFirstRowText;
+        logGuiAssert(
+            shotIndex,
+            onPanel ? "LUA_SCROLL_ON_PANEL" : "LUA_SCROLL_OFF_PANEL",
+            g_scrollFirstRow,
+            "scroll_first_row",
+            g_scrollFirstRowBefore == kScrollFirstRowText && after == expectedAfter,
+            "before='" + g_scrollFirstRowBefore + "' after='" + after + "'"
         );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
@@ -503,6 +554,9 @@ void registerLuaBindings() {
         lua["IRTest"]["closeWindow"] = []() { IRWindow::closeWindow(); };
         lua["IRTest"]["setRowRegion"] = [](lua_Integer region) {
             IRLuaWidgets::g_rowRegion = static_cast<IREntity::EntityId>(region);
+        };
+        lua["IRTest"]["setScrollFirstRow"] = [](lua_Integer label) {
+            IRLuaWidgets::g_scrollFirstRow = static_cast<IREntity::EntityId>(label);
         };
         lua["IRTest"]["rowHovered"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('H', id); };
         lua["IRTest"]["rowClicked"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('C', id); };

@@ -126,6 +126,12 @@ assert_eq "$(assess feedback:engine:50 pool-3 "$DISPATCHED")" "finished" "a task
 issue '{"name":"fleet:reviewing-mac-pool-3"}'
 assert_eq "$(assess review:game:12 pool-3 "$DISPATCHED")" "abandoned" "review label standing -> abandoned"
 assert_contains "$(cat "$GH_LOG")" "repos/jakildev/irreden/issues/12" "game target read off the game repo"
+assert_eq "$(assess verdict-replay:engine:4483 pool-3 "$DISPATCHED")" "abandoned" \
+    "verdict-replay: the reviewing label standing (no verdict released it) -> abandoned"
+issue '{"name":"fleet:needs-opus-recheck"}'
+assert_eq "$(assess verdict-replay:engine:4483 pool-3 "$DISPATCHED")" "finished" \
+    "verdict-replay: finished only once the verdict's release dropped the reviewing label"
+issue '{"name":"fleet:reviewing-mac-pool-3"}'
 issue '{"name":"fleet:planning-mac-pool-3"}'
 assert_eq "$(assess plan:engine:99 pool-3 "$DISPATCHED")" "abandoned" "planning label standing -> abandoned"
 issue ''
@@ -241,6 +247,7 @@ done <<'EOF'
 review:engine:50|review-release 50 pool-3
 planreview:engine:51|review-release 51 pool-3
 smoke:engine:52|review-release 52 pool-3
+verdict-replay:engine:55|review-release 55 pool-3
 conflict:engine:53|resolving-release 53 pool-3
 plan:engine:54|planning-release 54 pool-3
 EOF

@@ -82,6 +82,14 @@ float getGamepadAxis(GamepadAxes axis, int irGamepadId) {
     return getInputManager().getGamepadAxis(axis, irGamepadId);
 }
 
+int scrollDelta() {
+    return getInputManager().getScrollSteps();
+}
+
+vec2 scrollOffset() {
+    return getInputManager().getScrollOffset();
+}
+
 void beginSyntheticInput() {
     getInputManager().beginSyntheticInput();
 }

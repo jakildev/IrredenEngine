@@ -52,7 +52,7 @@ section grows a field — that is the omission this table exists to close.
 
 | Section | Fields | Cap |
 |---|---|---|
-| `prs` | `number, title, headRefName, headRefOid, baseRefName, author, labels, mergeable, checks, isDraft, reviews[], updatedAt, closes_issues, closes_cross_repo, refs_issues, stack_position, schema` | open PRs, up to `OPEN_PR_FETCH_LIMIT` (200); `checks` = the head's `statusCheckRollup` reduced to `red` (a check failed) / `unread` (one has not concluded) / `green`; `reviews[]` keeps a body only on the latest review per PR; `closes_issues` = closing refs to the PR's own repo (bare ints), `closes_cross_repo` = `{repo, number}` for GitHub's `Closes owner/repo#N` naming the other fleet repo; `refs_issues` = own-repo `Refs #N` bare ints (non-closing link, read only by the feedback host pin); `stack_position` = the native stack position from the REST detector, or null |
+| `prs` | `number, title, headRefName, headRefOid, baseRefName, author, labels, mergeable, checks, isDraft, reviews[], updatedAt, closes_issues, closes_cross_repo, refs_issues, stack_position, fleet_review_at, verdict_event_at, schema` | open PRs, up to `OPEN_PR_FETCH_LIMIT` (200); `checks` = the head's `statusCheckRollup` reduced to `red` (a check failed) / `unread` (one has not concluded) / `green`; `reviews[]` keeps a body only on the latest review per PR; `closes_issues` = closing refs to the PR's own repo (bare ints), `closes_cross_repo` = `{repo, number}` for GitHub's `Closes owner/repo#N` naming the other fleet repo; `refs_issues` = own-repo `Refs #N` bare ints (non-closing link, read only by the feedback host pin); `stack_position` = the native stack position from the REST detector, or null; `fleet_review_at` = `submittedAt` of the newest current-head review when it is a fleet review (`fleet_review_replay.py`), else `""`; `verdict_event_at` = the newest labeled/unlabeled event on a verdict label (`""` for none), read only for a PR with a `fleet_review_at` a reviewer lane admits, else `null` (also on a failed read; never replay work) |
 | `needs_plan` | `number, title, labels, updatedAt, blocked` | `fleet:needs-plan` open issues, one REST page (100) |
 | `plan_review` | `number, title, labels, updatedAt` | `fleet:plan-review` open issues, one REST page (100) |
 | `human_approved` | `number, title, labels, updatedAt, blocked` | `human:approved` + `fleet:agent-approved` open issues, deduped; up to 300 each (600 combined) |
@@ -88,7 +88,7 @@ the mirrored wording. Stays direct: all writes, `gh pr diff --name-only`,
 | Role | Slice keys |
 |---|---|
 | worker | `tasks_open` (all classes, both repos), `needs_plan`, `feedback_prs`, `semantic_conflict_prs` |
-| sonnet-reviewer | `candidate_prs` (review-skip filter applied; targets with a live `fleet:reviewing-*` claim excluded) |
+| sonnet-reviewer | `candidate_prs` (review-skip filter applied; targets with a live `fleet:reviewing-*` claim excluded; `verdict_replay: true` marks a stranded current-head fleet review, dispatched as `verdict-replay:<repo>:<N>`) |
 | opus-reviewer | `flagged_prs` (`fleet:needs-opus-recheck`), `plan_review` (both repos; targets with a live `fleet:reviewing-*` claim excluded) |
 | smoke-worker | `smoke_pending_prs` (engine + game, tagged with `repo`, engine first; host-agnostic — the dispatcher applies the host) |
 | merger | `prs` (engine + game, approved or non-MERGEABLE, tagged with `repo`), `merger_candidates` (the PRs tier-0 can name as `merge:` targets, with `signal`) |

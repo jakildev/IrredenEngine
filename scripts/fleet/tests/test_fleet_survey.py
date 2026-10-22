@@ -442,6 +442,29 @@ class Stranded(FleetSurveyFixture):
         self.assertTrue(rows[956].startswith("stranded"))
         self.assertTrue(rows[957].startswith("resume pending"))
 
+    def _with_cached_prs(self, *prs):
+        state = copy.deepcopy(STATE)
+        state["repos"]["engine"]["prs"] = list(prs)
+        return state
+
+    def test_a_reviewed_but_unverdicted_pr_is_listed_with_its_review_time(self):
+        cached = {"number": 4483, "title": "re-bless four refs", "mergeable": "MERGEABLE",
+                  "labels": ["fleet:author-claude"], "updatedAt": "2026-10-17T20:03:38Z",
+                  "fleet_review_at": "2026-10-17T20:02:57Z", "verdict_event_at": ""}
+        settled = dict(cached, number=4484, verdict_event_at="2026-10-17T20:03:12Z")
+        unread = dict(cached, number=4485, verdict_event_at=None)
+        report = self.run_survey(state=self._with_cached_prs(cached, settled, unread))
+        rows = {r["pr"]: r for r in report["repos"]["engine"]["stranded"]}
+        self.assertEqual(set(rows), {956, 957, 4483})
+        self.assertEqual(rows[4483]["reviewed_at"], "2026-10-17T20:02:57Z")
+        self.assertIn("verdict-replay pending", rows[4483]["state"])
+        self.assertIn("PR #4483  reviewed 2026-10-17T20:02:57Z, no verdict since",
+                      _mod.render(report))
+        # The verdict event catching up removes the row.
+        caught_up = dict(cached, verdict_event_at="2026-10-21T00:00:00Z")
+        report = self.run_survey(state=self._with_cached_prs(caught_up))
+        self.assertNotIn(4483, {r["pr"] for r in report["repos"]["engine"]["stranded"]})
+
 
 class ApprovalGap(FleetSurveyFixture):
     def test_unapproved_tasks_with_epic_children_first(self):

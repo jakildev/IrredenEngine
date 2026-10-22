@@ -101,6 +101,42 @@ local rowRegion = IRGui.makeHitRegion(260, 410, 330, 30, {
 })
 IRTest.setRowRegion(rowRegion)
 
+-- A wheel-scrolled list: three visible labels over a window into SCROLL_ROWS
+-- rows. IRInput.scrollDelta() is not hover-gated, so the panel gates it on its
+-- own hit region: the window only moves while the pointer is over the region.
+local SCROLL_ROWS, SCROLL_VISIBLE = 12, 3
+local scrollTop, scrollHovered = 0, false
+local scrollLabels = {}
+local function scrollRowText(slot)
+    return string.format("SCROLL ROW %02d", scrollTop + slot)
+end
+for slot = 1, SCROLL_VISIBLE do
+    scrollLabels[slot] = IRGui.makeLabel(270, 326 + slot * 16, scrollRowText(slot))
+end
+IRGui.makeHitRegion(260, 335, 330, 70, {
+    onHover = function() scrollHovered = true end,
+    onUnhover = function() scrollHovered = false end,
+})
+IRTest.setScrollFirstRow(scrollLabels[1])
+
+local C_ScrollTick = IRComponent.register("LuaWidgetsScrollTick", { n = 0 })
+IREntity.singleton(C_ScrollTick)
+IRSystem.appendSystem(IRTime.UPDATE, IRSystem.registerSystem({
+    name = "LuaWidgetsScroll",
+    components = { C_ScrollTick },
+    tick = function()
+        local steps = IRInput.scrollDelta()
+        if not scrollHovered or steps == 0 then
+            return
+        end
+        -- A positive step is the wheel rolling up: the window moves toward row 1.
+        scrollTop = math.max(0, math.min(SCROLL_ROWS - SCROLL_VISIBLE, scrollTop - steps))
+        for slot = 1, SCROLL_VISIBLE do
+            IRGui.setLabelText(scrollLabels[slot], scrollRowText(slot))
+        end
+    end,
+}))
+
 -- Hand-off fixture (--hand-off-fixture button|auto; absent, nothing below runs).
 -- HAND OFF hands this process to a GUI-test take of the same demo and resumes
 -- when it exits. The markers print the render frame and engine tick: equal

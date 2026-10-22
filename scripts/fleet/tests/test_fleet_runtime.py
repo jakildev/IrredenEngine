@@ -160,6 +160,25 @@ class Routing(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "FLEET_REVIEW_FIRST_PASS_CLASS"):
             first_pass({"candidate_prs": [core]}, 902, env=env)
 
+    def test_verdict_replay_never_takes_the_cross_provider_review_arm(self):
+        # A replay judges nothing, so the author's provider is not excluded,
+        # and the PR's opus `review_class` stamp does not lift its class.
+        record = {"number": 4483, "repo": "engine", "labels": ["fleet:author-codex"],
+                  "review_class": "opus", "verdict_replay": True}
+        data = {"candidate_prs": [record]}
+        env = dict(self.env, FLEET_WORKER_RUNTIME="codex")
+        self.assertEqual(runtime.choose_runtime("review", record, "review:engine:4483", env),
+                         "claude")
+        self.assertEqual(runtime.choose_runtime("verdict-replay", record,
+                                                "verdict-replay:engine:4483", env), "codex")
+        with patch.object(runtime, "review_class", side_effect=AssertionError("review arm")):
+            routed = runtime.route(data, "verdict-replay:engine:4483", "sonnet-reviewer", "",
+                                   "sonnet", "high", env)
+        self.assertEqual(routed[:2], ("codex", "sonnet"))
+        self.assertEqual(runtime.target_record(data, "verdict-replay:engine:4483"),
+                         ("verdict-replay", record))
+        self.assertIn("verdict-replay", runtime.PR_KINDS)
+
     def test_unstamped_review_falls_back_to_any_available_provider(self):
         picks = {runtime.choose_runtime("review", {}, f"review:engine:{n}", self.env)
                  for n in range(1, 100)}
