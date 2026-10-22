@@ -174,7 +174,7 @@ try:
 except ValueError as exc:
     print(f"fleet-review-verdict: {exc}", file=sys.stderr)
     raise SystemExit(2)
-' "$repo_slug")" || repo_resolve_status=$?
+' "$repo_slug" | tr -d '\r')" || repo_resolve_status=$?
     if [[ "$repo_resolve_status" -ne 0 ]]; then
         exit "$repo_resolve_status"
     fi
