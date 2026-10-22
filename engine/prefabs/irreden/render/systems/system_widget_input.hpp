@@ -65,6 +65,8 @@ template <> struct System<WIDGET_INPUT> {
     bool mouseLeftDown_ = false;
     bool mouseLeftPressedThisFrame_ = false;
     bool mouseLeftReleasedThisFrame_ = false;
+    bool shiftHeld_ = false;
+    bool controlHeld_ = false;
 
     IREntity::EntityId topHoveredId_ = IREntity::kNullEntity;
     IREntity::EntityId capturedWidgetId_ = IREntity::kNullEntity;
@@ -72,6 +74,15 @@ template <> struct System<WIDGET_INPUT> {
     bool keyboardWidgetFocusedAtStart_ = false;
 
     std::vector<IREntity::EntityId> focusableWidgets_;
+
+    static void clearSliderPress(IRComponents::C_WidgetState &state) {
+        state.sliderPressPosition_ = IRMath::vec2(0.0f);
+        state.sliderPressFraction_ = 0.0f;
+        state.sliderPressValue_ = 0.0f;
+        state.sliderShiftDrag_ = false;
+        state.sliderSteppedDrag_ = false;
+        state.sliderActiveRegion_ = IRComponents::C_WidgetState::SliderPressRegion::NONE;
+    }
 
     bool hasFocusedKeyboardWidget() const {
         if (focusedWidgetId_ == IREntity::kNullEntity ||
@@ -103,6 +114,8 @@ template <> struct System<WIDGET_INPUT> {
             IRInput::ButtonStatuses::HELD
         );
         mouseLeftDown_ = heldThisFrame || mouseLeftPressedThisFrame_;
+        shiftHeld_ = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
+        controlHeld_ = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl);
 
         // Z-order routing: the captured widget holds its hover; otherwise the
         // topmost hovered widget takes it.
@@ -201,11 +214,26 @@ template <> struct System<WIDGET_INPUT> {
         const IRComponents::C_GuiPosition &guiPos
     ) {
         state.fireAction_ = false;
+        state.sliderPressStarted_ = false;
+        state.sliderReleased_ = false;
+        state.sliderDoubleClick_ = false;
         state.focused_ = (entityId == focusedWidgetId_);
+
+        if (state.sliderFirstClickRegion_ != IRComponents::C_WidgetState::SliderPressRegion::NONE) {
+            ++state.sliderClickAge_;
+            if (state.sliderClickAge_ > 18) {
+                state.sliderClickAge_ = 0;
+                state.sliderFirstClickRegion_ =
+                    IRComponents::C_WidgetState::SliderPressRegion::NONE;
+            }
+        }
 
         if (widget.disabled_) {
             state.hovered_ = false;
             state.pressed_ = false;
+            clearSliderPress(state);
+            state.sliderFirstClickRegion_ = IRComponents::C_WidgetState::SliderPressRegion::NONE;
+            state.sliderClickAge_ = 0;
             return;
         }
 
@@ -223,10 +251,15 @@ template <> struct System<WIDGET_INPUT> {
             }
             if (mouseLeftReleasedThisFrame_) {
                 state.pressed_ = false;
+                if (widget.kind_ == IRComponents::WidgetKind::SLIDER) {
+                    state.sliderReleased_ = true;
+                    clearSliderPress(state);
+                }
                 if (effectivelyHovered)
                     state.fireAction_ = true;
             } else if (!mouseLeftDown_) {
                 state.pressed_ = false;
+                clearSliderPress(state);
             }
         } else if (effectivelyHovered && mouseLeftPressedThisFrame_) {
             state.pressed_ = true;
@@ -236,6 +269,17 @@ template <> struct System<WIDGET_INPUT> {
                 const float dx = mouseGuiTrixel_.x - static_cast<float>(guiPos.pos_.x);
                 state.dragValue_ =
                     IRMath::clamp(dx / static_cast<float>(widget.size_.x), 0.0f, 1.0f);
+                state.sliderDoubleClick_ =
+                    state.sliderFirstClickRegion_ !=
+                        IRComponents::C_WidgetState::SliderPressRegion::NONE &&
+                    state.sliderClickAge_ <= 18;
+                if (!state.sliderDoubleClick_) {
+                    state.sliderPressStarted_ = true;
+                    state.sliderPressPosition_ = mouseGuiTrixel_;
+                    state.sliderPressFraction_ = state.dragValue_;
+                    state.sliderShiftDrag_ = shiftHeld_;
+                    state.sliderSteppedDrag_ = controlHeld_;
+                }
             }
         }
     }
@@ -260,12 +304,30 @@ template <> struct System<WIDGET_INPUT> {
 
     static SystemId create() {
         IRPrefab::Widget::ensureFocusRequestSingleton();
-        return registerSystem<
+        const SystemId id = registerSystem<
             WIDGET_INPUT,
             IRComponents::C_Widget,
             IRComponents::C_WidgetState,
             IRComponents::C_HitBox2DGui,
             IRComponents::C_GuiPosition>("WidgetInput");
+        auto *params = getSystemParams<System<WIDGET_INPUT>>(id);
+        IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
+            if (params->capturedWidgetId_ == destroyed) {
+                params->capturedWidgetId_ = IREntity::kNullEntity;
+            }
+            if (params->focusedWidgetId_ == destroyed) {
+                params->focusedWidgetId_ = IREntity::kNullEntity;
+            }
+            if (params->topHoveredId_ == destroyed) {
+                params->topHoveredId_ = IREntity::kNullEntity;
+            }
+            params->focusableWidgets_.clear();
+            auto *request = IREntity::singletonOrNull<IRComponents::C_WidgetFocusRequest>();
+            if (request != nullptr && request->widget_ == destroyed) {
+                request->widget_ = IREntity::kNullEntity;
+            }
+        });
+        return id;
     }
 };
 

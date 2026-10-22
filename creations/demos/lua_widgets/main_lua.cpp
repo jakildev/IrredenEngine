@@ -31,9 +31,12 @@
 //   * shot 5 moves onto the `IRGui.makeHitRegion` row, clicks it and moves
 //     off → LUA_ROW_REGION PASS (the region's onHover, onClick and onUnhover
 //     ran once each, in that order, with the region's id).
-//   * shot 6 scrolls the wheel with the pointer off the scroll list →
+//   * shot 6 double-clicks the paired slider's track → PREDICATE PASS (the
+//     first click's value mutation was restored and the number field received
+//     keyboard focus on the following INPUT frame).
+//   * shot 7 scrolls the wheel with the pointer off the scroll list →
 //     LUA_SCROLL_OFF_PANEL PASS (the first visible row did not move).
-//   * shot 7 scrolls the wheel with the pointer over the list →
+//   * shot 8 scrolls the wheel with the pointer over the list →
 //     LUA_SCROLL_ON_PANEL PASS (the first visible row advanced by one).
 //
 // Hand-off fixture (opt-in; absent, the demo is unchanged):
@@ -72,12 +75,14 @@
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
+#include <irreden/render/systems/system_widget_apply_number_field.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
-#include <irreden/render/systems/system_widget_render_slider.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
+#include <irreden/render/systems/system_widget_render_number_field.hpp>
+#include <irreden/render/systems/system_widget_render_slider.hpp>
 
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/viewport.hpp>
@@ -100,6 +105,11 @@ IRSystem::SystemId g_dispatchId = IRSystem::kNullSystemId;
 IREntity::EntityId g_onClickButton = IREntity::kNullEntity;
 IREntity::EntityId g_pollButton = IREntity::kNullEntity;
 IREntity::EntityId g_hoverLabel = IREntity::kNullEntity;
+IREntity::EntityId g_pairedSlider = IREntity::kNullEntity;
+IREntity::EntityId g_pairedField = IREntity::kNullEntity;
+float g_pairedSliderBefore = 0.0f;
+float g_pairedFieldBefore = 0.0f;
+bool g_pairedFieldStartedUnfocused = false;
 
 // Test-only signals, flipped by the IRTest instrumentation hooks main.lua
 // calls. Latched across a shot window (the onClick fires the frame fireAction_
@@ -230,6 +240,32 @@ constexpr IRVideo::GuiInputEvent kScrollOnPanelEvents[] = {
     {2, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1000, 370), IRMath::vec2(0.0f, -1.0f)},
 };
 
+// Slider spans GUI x 60-200, y 296-330. Its initial thumb is near x 126;
+// GUI x 190 (screen x 380) is unambiguously track body.
+constexpr IRVideo::GuiInputEvent kPairedSliderEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(380, 320)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(380, 320),
+     IRMath::vec2(0.0f),
+     IRInput::KeyMouseButtons::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(380, 320),
+     IRMath::vec2(0.0f),
+     IRInput::KeyMouseButtons::kMouseButtonLeft},
+    {3,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(380, 320),
+     IRMath::vec2(0.0f),
+     IRInput::KeyMouseButtons::kMouseButtonLeft},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(380, 320),
+     IRMath::vec2(0.0f),
+     IRInput::KeyMouseButtons::kMouseButtonLeft},
+};
+
 // Must match the text main.lua writes for rows 1 and 2.
 constexpr const char *kScrollFirstRowText = "SCROLL ROW 01";
 constexpr const char *kScrollAdvancedRowText = "SCROLL ROW 02";
@@ -303,6 +339,7 @@ enum GuiTestShotIndex {
     kPortraitShot,
     kPortraitRetargetShot,
     kRowShot,
+    kPairedSliderShot,
     kScrollOffPanelShot,
     kScrollOnPanelShot,
     kSliderDragShot,
@@ -327,6 +364,9 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_row_region"},
      kRowEvents,
      static_cast<int>(sizeof(kRowEvents) / sizeof(kRowEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_paired_slider"},
+     kPairedSliderEvents,
+     static_cast<int>(sizeof(kPairedSliderEvents) / sizeof(kPairedSliderEvents[0]))},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_scroll_off_panel"},
      kScrollOffPanelEvents,
      static_cast<int>(sizeof(kScrollOffPanelEvents) / sizeof(kScrollOffPanelEvents[0]))},
@@ -348,6 +388,7 @@ constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof
 // Latches fireAction_ pulses across each shot for the engine CLICK_FIRES
 // assertion (caller-owned; never a function-local static — cpp-systems.md).
 IRPrefab::GuiTest::LatchState g_clickLatch;
+IRPrefab::GuiTest::LatchState g_pairedLatch;
 int g_lastAssertShot = -1;
 
 int g_autoWarmupFrames = 0;
@@ -359,6 +400,33 @@ const std::string &hoverLabelText() {
 const std::string &scrollFirstRowText() {
     return IREntity::getComponent<IRComponents::C_WidgetLabel>(g_scrollFirstRow).text_;
 }
+
+bool pairedSliderPredicate(const void *, std::string &actual) {
+    const float sliderValue = IRPrefab::Widget::sliderValue(g_pairedSlider);
+    const float fieldValue = IRPrefab::Widget::numberFieldValue(g_pairedField);
+    const auto &sliderState = IREntity::getComponent<IRComponents::C_WidgetState>(g_pairedSlider);
+    const bool focused =
+        IREntity::getComponent<IRComponents::C_WidgetState>(g_pairedField).focused_;
+    actual = fmt::format(
+        "startedUnfocused={} slider={}->{} first={} press={} age={} region={} field={}->{} "
+        "focused={}",
+        g_pairedFieldStartedUnfocused,
+        g_pairedSliderBefore,
+        sliderValue,
+        sliderState.sliderFirstClickValue_,
+        sliderState.sliderPressValue_,
+        sliderState.sliderClickAge_,
+        static_cast<int>(sliderState.sliderFirstClickRegion_),
+        g_pairedFieldBefore,
+        fieldValue,
+        focused
+    );
+    return g_pairedFieldStartedUnfocused && focused && sliderValue == g_pairedSliderBefore &&
+           fieldValue == g_pairedFieldBefore;
+}
+
+IRPrefab::GuiTest::Assertion g_pairedAssertion =
+    IRPrefab::GuiTest::predicate(&pairedSliderPredicate, nullptr, "paired_track_focus");
 
 void logGuiAssert(
     int shotIndex,
@@ -460,6 +528,12 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         if (shotIndex == kScrollOffPanelShot || shotIndex == kScrollOnPanelShot) {
             g_scrollFirstRowBefore = scrollFirstRowText();
         }
+        if (shotIndex == kPairedSliderShot) {
+            g_pairedSliderBefore = IRPrefab::Widget::sliderValue(g_pairedSlider);
+            g_pairedFieldBefore = IRPrefab::Widget::numberFieldValue(g_pairedField);
+            g_pairedFieldStartedUnfocused =
+                !IREntity::getComponent<IRComponents::C_WidgetState>(g_pairedField).focused_;
+        }
         if (shotIndex == kHoverShot) {
             g_hoverLabelBefore = hoverLabelText();
             g_cursorPositionHookRan = false;
@@ -471,6 +545,17 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     }
 
     IRPrefab::GuiTest::detail::latchFires(g_clickLatch);
+    if (shotIndex == kPairedSliderShot) {
+        IRPrefab::GuiTest::onFrame(
+            g_pairedLatch,
+            shotIndex,
+            isCaptureFrame,
+            kGuiTestShots[shotIndex].render_.label_,
+            &g_pairedAssertion,
+            1
+        );
+        return;
+    }
     if (!isCaptureFrame) {
         return;
     }
@@ -646,6 +731,10 @@ void registerLuaBindings() {
                 IRLuaWidgets::g_pollButton = static_cast<IREntity::EntityId>(pollButton);
                 IRLuaWidgets::g_hoverLabel = static_cast<IREntity::EntityId>(hoverLabel);
             };
+        lua["IRTest"]["setPairedValueRow"] = [](lua_Integer slider, lua_Integer field) {
+            IRLuaWidgets::g_pairedSlider = static_cast<IREntity::EntityId>(slider);
+            IRLuaWidgets::g_pairedField = static_cast<IREntity::EntityId>(field);
+        };
         lua["IRTest"]["onClickFired"] = []() { IRLuaWidgets::g_luaOnClickFired = true; };
         lua["IRTest"]["onPollFired"] = []() { IRLuaWidgets::g_pollWasClickedSeen = true; };
         lua["IRTest"]["handOffFixture"] = []() {
@@ -745,10 +834,11 @@ void initSystems() {
         {
             IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
             IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
-            IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>(),
-            IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
-            IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
-            IRLuaWidgets::g_dispatchId,
+             IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>(),
+             IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
+             IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
+             IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
+             IRLuaWidgets::g_dispatchId,
         }
     );
 
@@ -770,10 +860,11 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
-            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
-            IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
-            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
-            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
+             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
+             IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
+             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),

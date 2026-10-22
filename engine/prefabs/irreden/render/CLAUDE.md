@@ -161,6 +161,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   `WIDGET_RENDER_DROPDOWN` paints open strips in `endTick`, after the headers' text dispatch, so a strip covers the headers below it.
 - The wheel scrolls the hovered list; `setListSelectedIndex` reveals the row only when the index
   changes, so a caller that mirrors its state into the list every frame never fights the wheel.
+- Sliders use plain absolute drag, press-time Shift for tenth-scale fine drag, Ctrl for step snapping, thumb double-click to restore the authored default, wheel/Shift-wheel for one/ten steps, and paired track double-click to focus a number field next INPUT frame.
 - Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`; text and number fields edit only while focused (a click, or `focus(id)` at the next `WIDGET_INPUT::beginTick`); Enter or a click off widgets commits a number and drops focus, while Escape cancels a number edit;
   `isTabFocusCandidate` filters Tab; `WIDGET_INPUT` captures command keys at either text-focus tick edge independently of widget hotkeys;
   `C_WidgetScroll` is track + thumb only — the owner positions content from `scrollPos_`.

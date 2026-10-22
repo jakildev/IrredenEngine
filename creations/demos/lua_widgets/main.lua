@@ -8,7 +8,7 @@
 -- Coords are in GUI-canvas trixels. The C++ GUI-test harness clicks at the
 -- buttons' screen-px centers (see main_lua.cpp kOnClickEvents / kPollEvents).
 
-local panel = IRGui.makePanel(40, 60, 560, 260, "LUA WIDGETS")
+local panel = IRGui.makePanel(40, 60, 560, 280, "LUA WIDGETS")
 local title = IRGui.makeLabel(60, 92, "BUILT ENTIRELY FROM LUA")
 
 -- Button A — a Lua onClick fires on click (the new WIDGET_LUA_DISPATCH path).
@@ -41,6 +41,16 @@ end)
 
 -- Hand the widget ids back to the C++ GUI-test harness for its assertions.
 IRTest.setButtons(onClickButton, pollButton, hoverLabel)
+
+-- Paired value row: the slider owns no hidden value synchronization, but a
+-- track-body double-click restores the pre-click slider value and moves
+-- keyboard focus to this field on the following INPUT frame.
+local pairedField = IRGui.makeNumberField(210, 302, 60, 24, 0.5, 0, 1, 0.1)
+local pairedSlider = IRGui.makeSlider(
+    60, 296, 140, 34, "PAIR", 0, 1, 0.5, nil,
+    { default = 0.25, step = 0.1, fieldId = pairedField }
+)
+IRTest.setPairedValueRow(pairedSlider, pairedField)
 
 -- A pure-polling Lua creation: a singleton-backed system that ticks once per
 -- frame and polls wasClicked on the poll button — no onClick callback.

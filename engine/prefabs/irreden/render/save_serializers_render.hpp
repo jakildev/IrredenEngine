@@ -127,6 +127,16 @@ struct WidgetV1 {
 
 static_assert(sizeof(WidgetV1) == 20);
 
+struct WidgetStateV1 {
+    bool hovered_;
+    bool pressed_;
+    bool focused_;
+    bool fireAction_;
+    float dragValue_;
+};
+
+static_assert(sizeof(WidgetStateV1) == 8);
+
 // An enum whose enumerators run 0..`last` is one byte on disk. Its `int`
 // underlying type admits values no enumerator names, so `read` rejects them:
 // the text draws index the glyph sets and alignment offsets by these values.
@@ -750,13 +760,51 @@ template <> struct SaveSerialize<IRComponents::C_TriangleCanvasBackground> {
 
 // ---------------------------------------------------------------------------
 // Widget family. Every widget entity carries C_Widget + C_WidgetState plus one
-// per-kind data component. C_WidgetState is trivially copyable and takes
-// SaveSerialize's fast path; C_Widget is hand-written below. Of the per-kind
-// components, only those that own a string or a vector of strings need a
-// specialization here; C_WidgetColorSwatch and C_WidgetScroll are plain data
-// and are covered by the fast path. The five text-bearing kinds read through
-// `detail::readWithTextSize`.
+// per-kind data component. Widget state has a hand-written empty-on-load
+// format because all of its fields are transient. Of the per-kind components,
+// C_WidgetColorSwatch and C_WidgetScroll remain plain data on the fast path.
 // ---------------------------------------------------------------------------
+
+template <> struct SaveSerialize<IRComponents::C_WidgetState> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetState &) {
+        w.writeU8(0);
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetState> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_WidgetState>;
+        std::uint8_t reserved = 0;
+        IR_SAVE_READ(reserved, r.readU8());
+        if (reserved != 0) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetState reserved format byte must be zero"
+            );
+        }
+        return Res::success(IRComponents::C_WidgetState{});
+    }
+};
+
+template <> struct SaveMigration<IRComponents::C_WidgetState> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_WidgetState>>>
+    migrators() {
+        return {{
+            1u,
+            [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_WidgetState> {
+                detail::WidgetStateV1 old{};
+                IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
+                if (!status.ok()) {
+                    return IRAsset::Result<IRComponents::C_WidgetState>::error(
+                        status.code_,
+                        std::move(status.message_)
+                    );
+                }
+                return IRAsset::Result<IRComponents::C_WidgetState>::success(
+                    IRComponents::C_WidgetState{}
+                );
+            },
+        }};
+    }
+};
 
 template <> struct SaveSerialize<IRComponents::C_Widget> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_Widget &value) {
@@ -877,18 +925,48 @@ template <> struct SaveSerialize<IRComponents::C_WidgetButton> {
 
 template <> struct SaveSerialize<IRComponents::C_WidgetSlider> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetSlider &value) {
+        IR_ASSERT(IRMath::isFinite(value.minValue_), "C_WidgetSlider min must be finite");
+        IR_ASSERT(IRMath::isFinite(value.maxValue_), "C_WidgetSlider max must be finite");
+        IR_ASSERT(value.minValue_ < value.maxValue_, "C_WidgetSlider range must be ordered");
+        IR_ASSERT(
+            IRMath::isFinite(value.currentValue_) && value.currentValue_ >= value.minValue_ &&
+                value.currentValue_ <= value.maxValue_,
+            "C_WidgetSlider current value must be finite and inside its range"
+        );
+        IR_ASSERT(
+            IRMath::isFinite(value.defaultValue_) && value.defaultValue_ >= value.minValue_ &&
+                value.defaultValue_ <= value.maxValue_,
+            "C_WidgetSlider default value must be finite and inside its range"
+        );
+        IR_ASSERT(
+            IRMath::isFinite(value.step_) && value.step_ > 0.0f,
+            "C_WidgetSlider step must be finite and above zero"
+        );
         w.writeString(value.label_);
         w.writeF32(value.minValue_);
         w.writeF32(value.maxValue_);
         w.writeF32(value.currentValue_);
+        w.writeF32(value.defaultValue_);
+        w.writeF32(value.step_);
+        w.writeU64(static_cast<std::uint64_t>(value.fieldId_));
         detail::writeTextSize(w, value.textSize_, "C_WidgetSlider text size");
     }
 
     static IRAsset::Result<IRComponents::C_WidgetSlider> read(IRAsset::BinaryReader &r) {
-        return detail::readWithTextSize<IRComponents::C_WidgetSlider>(
-            r,
-            "C_WidgetSlider text size"
-        );
+        using Res = IRAsset::Result<IRComponents::C_WidgetSlider>;
+        IRComponents::C_WidgetSlider value{};
+        IR_SAVE_READ(value.label_, r.readString());
+        IR_SAVE_READ(value.minValue_, r.readF32());
+        IR_SAVE_READ(value.maxValue_, r.readF32());
+        IR_SAVE_READ(value.currentValue_, r.readF32());
+        IR_SAVE_READ(value.defaultValue_, r.readF32());
+        IR_SAVE_READ(value.step_, r.readF32());
+        std::uint64_t field = 0;
+        IR_SAVE_READ(field, r.readU64());
+        value.fieldId_ = static_cast<IREntity::EntityId>(field);
+        IR_SAVE_READ_STATUS(detail::readTextSize(r, "C_WidgetSlider text size", value.textSize_));
+        IR_SAVE_READ_STATUS(validate(value));
+        return Res::success(std::move(value));
     }
 
     static IRAsset::Result<IRComponents::C_WidgetSlider> readV1(IRAsset::BinaryReader &r) {
@@ -898,7 +976,54 @@ template <> struct SaveSerialize<IRComponents::C_WidgetSlider> {
         IR_SAVE_READ(value.minValue_, r.readF32());
         IR_SAVE_READ(value.maxValue_, r.readF32());
         IR_SAVE_READ(value.currentValue_, r.readF32());
+        deriveDefaults(value);
+        IR_SAVE_READ_STATUS(validate(value));
         return Res::success(std::move(value));
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetSlider> readV2(IRAsset::BinaryReader &r) {
+        return detail::readWithTextSize<IRComponents::C_WidgetSlider>(
+            r,
+            "C_WidgetSlider text size"
+        );
+    }
+
+  private:
+    static void deriveDefaults(IRComponents::C_WidgetSlider &value) {
+        value.defaultValue_ = value.currentValue_;
+        value.step_ = (value.maxValue_ - value.minValue_) / 100.0f;
+        value.fieldId_ = IREntity::kNullEntity;
+    }
+
+    static IRAsset::BinaryStatus validate(const IRComponents::C_WidgetSlider &value) {
+        if (!IRMath::isFinite(value.minValue_) || !IRMath::isFinite(value.maxValue_) ||
+            !(value.minValue_ < value.maxValue_)) {
+            return IRAsset::BinaryStatus::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetSlider range must be finite and ordered"
+            );
+        }
+        if (!IRMath::isFinite(value.currentValue_) || value.currentValue_ < value.minValue_ ||
+            value.currentValue_ > value.maxValue_) {
+            return IRAsset::BinaryStatus::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetSlider current value must be finite and inside its range"
+            );
+        }
+        if (!IRMath::isFinite(value.defaultValue_) || value.defaultValue_ < value.minValue_ ||
+            value.defaultValue_ > value.maxValue_) {
+            return IRAsset::BinaryStatus::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetSlider default value must be finite and inside its range"
+            );
+        }
+        if (!IRMath::isFinite(value.step_) || !(value.step_ > 0.0f)) {
+            return IRAsset::BinaryStatus::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetSlider step must be finite and above zero"
+            );
+        }
+        return IRAsset::BinaryStatus::success();
     }
 };
 
@@ -977,9 +1102,15 @@ struct SaveMigration<IRComponents::C_WidgetLabel>
 template <>
 struct SaveMigration<IRComponents::C_WidgetButton>
     : detail::TextSizedWidgetMigration<IRComponents::C_WidgetButton> {};
-template <>
-struct SaveMigration<IRComponents::C_WidgetSlider>
-    : detail::TextSizedWidgetMigration<IRComponents::C_WidgetSlider> {};
+template <> struct SaveMigration<IRComponents::C_WidgetSlider> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_WidgetSlider>>>
+    migrators() {
+        return {
+            {1u, SaveSerialize<IRComponents::C_WidgetSlider>::readV1},
+            {2u, SaveSerialize<IRComponents::C_WidgetSlider>::readV2},
+        };
+    }
+};
 template <>
 struct SaveMigration<IRComponents::C_WidgetCheckbox>
     : detail::TextSizedWidgetMigration<IRComponents::C_WidgetCheckbox> {};
@@ -1029,16 +1160,25 @@ template <> struct SaveSerialize<IRComponents::C_WidgetNumberField> {
         IR_ASSERT(IRMath::isFinite(value.minValue_), "C_WidgetNumberField min must be finite");
         IR_ASSERT(IRMath::isFinite(value.maxValue_), "C_WidgetNumberField max must be finite");
         IR_ASSERT(IRMath::isFinite(value.step_), "C_WidgetNumberField step must be finite");
+        IR_ASSERT(
+            IRMath::isFinite(value.defaultValue_),
+            "C_WidgetNumberField default must be finite"
+        );
         IR_ASSERT(value.minValue_ < value.maxValue_, "C_WidgetNumberField range must be ordered");
         IR_ASSERT(value.step_ >= 0.0f, "C_WidgetNumberField step must not be negative");
         IR_ASSERT(
             value.value_ >= value.minValue_ && value.value_ <= value.maxValue_,
             "C_WidgetNumberField value must be inside its range"
         );
+        IR_ASSERT(
+            value.defaultValue_ >= value.minValue_ && value.defaultValue_ <= value.maxValue_,
+            "C_WidgetNumberField default must be inside its range"
+        );
         w.writeF32(value.value_);
         w.writeF32(value.minValue_);
         w.writeF32(value.maxValue_);
         w.writeF32(value.step_);
+        w.writeF32(value.defaultValue_);
         detail::writeTextSize(w, value.textSize_, "C_WidgetNumberField text size");
     }
 
@@ -1049,6 +1189,7 @@ template <> struct SaveSerialize<IRComponents::C_WidgetNumberField> {
         IR_SAVE_READ(value.minValue_, r.readF32());
         IR_SAVE_READ(value.maxValue_, r.readF32());
         IR_SAVE_READ(value.step_, r.readF32());
+        IR_SAVE_READ(value.defaultValue_, r.readF32());
         IR_SAVE_READ_STATUS(
             detail::readTextSize(r, "C_WidgetNumberField text size", value.textSize_)
         );
@@ -1094,9 +1235,54 @@ template <> struct SaveSerialize<IRComponents::C_WidgetNumberField> {
                 "C_WidgetNumberField value must be inside its range"
             );
         }
+        if (!IRMath::isFinite(value.defaultValue_)) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField default must be finite"
+            );
+        }
+        if (value.defaultValue_ < value.minValue_ || value.defaultValue_ > value.maxValue_) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField default must be inside its range"
+            );
+        }
         value.editBuffer_.clear();
         value.editing_ = false;
         return Res::success(std::move(value));
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetNumberField> readV1(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_WidgetNumberField>;
+        IRComponents::C_WidgetNumberField value{};
+        IR_SAVE_READ(value.value_, r.readF32());
+        IR_SAVE_READ(value.minValue_, r.readF32());
+        IR_SAVE_READ(value.maxValue_, r.readF32());
+        IR_SAVE_READ(value.step_, r.readF32());
+        value.defaultValue_ = value.value_;
+        IR_SAVE_READ_STATUS(
+            detail::readTextSize(r, "C_WidgetNumberField text size", value.textSize_)
+        );
+        if (!IRMath::isFinite(value.minValue_) || !IRMath::isFinite(value.maxValue_) ||
+            !(value.minValue_ < value.maxValue_) || !IRMath::isFinite(value.step_) ||
+            value.step_ < 0.0f || !IRMath::isFinite(value.value_) ||
+            value.value_ < value.minValue_ || value.value_ > value.maxValue_) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField version 1 values are invalid"
+            );
+        }
+        value.editBuffer_.clear();
+        value.editing_ = false;
+        return Res::success(std::move(value));
+    }
+};
+
+template <> struct SaveMigration<IRComponents::C_WidgetNumberField> {
+    static std::vector<
+        std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_WidgetNumberField>>>
+    migrators() {
+        return {{1u, SaveSerialize<IRComponents::C_WidgetNumberField>::readV1}};
     }
 };
 

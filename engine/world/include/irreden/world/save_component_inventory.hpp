@@ -421,13 +421,13 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetDropdown, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetImage, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetLabel, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetList, 1)
-IR_SAVE_OPT_IN(IRComponents::C_WidgetNumberField, 1)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_WidgetNumberField, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetPanel, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetRadio, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetScroll, 1)
-IR_SAVE_OPT_IN(IRComponents::C_WidgetSlider, 2)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_WidgetSlider, 3)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetTextInput, 1)
-IR_SAVE_OPT_IN(IRComponents::C_WidgetState, 1)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_WidgetState, 2)
 
 // C_WidgetTheme: OPT-OUT — pure defaults every run; no creation mutates it
 // at runtime today, so a world snapshot would add nothing. Revisit if a

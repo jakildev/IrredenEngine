@@ -20,6 +20,8 @@
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/systems/system_widget_input.hpp>
+#include <irreden/render/widgets.hpp>
 #include <irreden/update/components/component_angular_velocity.hpp>
 #include <irreden/update/components/component_collision_response.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
@@ -81,6 +83,7 @@ using IRComponents::C_WidgetImage;
 using IRComponents::C_WidgetLabel;
 using IRComponents::C_WidgetNumberField;
 using IRComponents::C_WidgetSlider;
+using IRComponents::C_WidgetState;
 using IREntity::EntityId;
 using IRRender::TextSize;
 
@@ -348,6 +351,8 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsTheSmallTextSize) {
     const EntityId buttonEntity = m_entity_manager.createEntity(button);
     C_WidgetSlider slider{};
     slider.label_ = "GAIN";
+    slider.defaultValue_ = 0.25f;
+    slider.step_ = 0.05f;
     slider.textSize_ = TextSize::SMALL;
     const EntityId sliderEntity = m_entity_manager.createEntity(slider);
     C_WidgetCheckbox checkbox{};
@@ -360,6 +365,7 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsTheSmallTextSize) {
     const EntityId dropdownEntity = m_entity_manager.createEntity(dropdown);
     C_WidgetNumberField numberField{};
     numberField.value_ = 3.5f;
+    numberField.defaultValue_ = 3.5f;
     numberField.minValue_ = 1.0f;
     numberField.maxValue_ = 8.0f;
     numberField.step_ = 0.5f;
@@ -390,6 +396,11 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsTheSmallTextSize) {
         m_entity_manager.getComponent<C_WidgetSlider>(sliderEntity).textSize_,
         TextSize::SMALL
     );
+    EXPECT_FLOAT_EQ(
+        m_entity_manager.getComponent<C_WidgetSlider>(sliderEntity).defaultValue_,
+        0.25f
+    );
+    EXPECT_FLOAT_EQ(m_entity_manager.getComponent<C_WidgetSlider>(sliderEntity).step_, 0.05f);
     EXPECT_EQ(
         m_entity_manager.getComponent<C_WidgetCheckbox>(checkboxEntity).textSize_,
         TextSize::SMALL
@@ -401,12 +412,87 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsTheSmallTextSize) {
     const C_WidgetNumberField &restoredNumber =
         m_entity_manager.getComponent<C_WidgetNumberField>(numberFieldEntity);
     EXPECT_FLOAT_EQ(restoredNumber.value_, 3.5f);
+    EXPECT_FLOAT_EQ(restoredNumber.defaultValue_, 3.5f);
     EXPECT_FLOAT_EQ(restoredNumber.minValue_, 1.0f);
     EXPECT_FLOAT_EQ(restoredNumber.maxValue_, 8.0f);
     EXPECT_FLOAT_EQ(restoredNumber.step_, 0.5f);
     EXPECT_EQ(restoredNumber.textSize_, TextSize::SMALL);
     EXPECT_FALSE(restoredNumber.editing_);
     EXPECT_TRUE(restoredNumber.editBuffer_.empty());
+}
+
+TEST_F(LuaWorldSnapshotTest, WidgetResetLoadRestoresAuthoredValuesButClearsTransientState) {
+    const IRSystem::SystemId inputSystem = IRSystem::createSystem<IRSystem::WIDGET_INPUT>();
+    auto *input =
+        m_system_manager.getSystemParams<IRSystem::System<IRSystem::WIDGET_INPUT>>(inputSystem);
+    ASSERT_NE(input, nullptr);
+
+    const EntityId field = IRPrefab::Widget::makeNumberField(
+        IRMath::ivec2(210, 20),
+        IRMath::ivec2(60, 18),
+        0.06f,
+        0.0f,
+        1.0f,
+        0.1f
+    );
+    const EntityId slider = IRPrefab::Widget::makeSlider(
+        IRMath::ivec2(20),
+        IRMath::ivec2(180, 30),
+        "GAIN",
+        0.0f,
+        1.0f,
+        0.7f,
+        TextSize::SMALL,
+        IRPrefab::Widget::SliderOptions{0.25f, 0.05f, field}
+    );
+    const EntityId pending = IRPrefab::Widget::makeNumberField(
+        IRMath::ivec2(280, 20),
+        IRMath::ivec2(60, 18),
+        0.5f,
+        0.0f,
+        1.0f,
+        0.1f
+    );
+
+    C_WidgetState &active = m_entity_manager.getComponent<C_WidgetState>(slider);
+    active.hovered_ = true;
+    active.pressed_ = true;
+    active.focused_ = true;
+    active.dragValue_ = 0.9f;
+    active.sliderPressStarted_ = true;
+    active.sliderFirstClickRegion_ = C_WidgetState::SliderPressRegion::TRACK;
+    active.sliderClickAge_ = 4;
+    input->capturedWidgetId_ = slider;
+    input->focusedWidgetId_ = field;
+    input->topHoveredId_ = slider;
+    input->focusableWidgets_ = {slider};
+    IRPrefab::Widget::focus(pending);
+
+    const std::string path = tempPath("widget_reset_load");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+    IREntity::resetGameplay();
+    EXPECT_EQ(input->capturedWidgetId_, IREntity::kNullEntity);
+    EXPECT_EQ(input->focusedWidgetId_, IREntity::kNullEntity);
+    EXPECT_EQ(input->topHoveredId_, IREntity::kNullEntity);
+    EXPECT_TRUE(input->focusableWidgets_.empty());
+    EXPECT_EQ(IRPrefab::Widget::takeFocusRequest(), IREntity::kNullEntity);
+
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+    const C_WidgetSlider &restoredSlider = m_entity_manager.getComponent<C_WidgetSlider>(slider);
+    EXPECT_FLOAT_EQ(restoredSlider.currentValue_, 0.7f);
+    EXPECT_FLOAT_EQ(restoredSlider.defaultValue_, 0.25f);
+    EXPECT_FLOAT_EQ(restoredSlider.step_, 0.05f);
+    EXPECT_EQ(restoredSlider.fieldId_, field);
+    const C_WidgetNumberField &restoredField =
+        m_entity_manager.getComponent<C_WidgetNumberField>(field);
+    EXPECT_FLOAT_EQ(restoredField.value_, 0.1f);
+    EXPECT_FLOAT_EQ(restoredField.defaultValue_, 0.1f);
+    const C_WidgetState &idle = m_entity_manager.getComponent<C_WidgetState>(slider);
+    EXPECT_FALSE(idle.hovered_);
+    EXPECT_FALSE(idle.pressed_);
+    EXPECT_FALSE(idle.focused_);
+    EXPECT_FALSE(idle.sliderPressStarted_);
+    EXPECT_EQ(idle.sliderFirstClickRegion_, C_WidgetState::SliderPressRegion::NONE);
 }
 
 // Rows saved before the glyph-set size existed load through the retired
