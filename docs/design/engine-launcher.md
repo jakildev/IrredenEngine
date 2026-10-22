@@ -22,7 +22,7 @@ Decisions locked with the owner on 2026-10-17 (interview in the
 | Enumerate runnables | `ir-run --targets --built` / `--plan`, grouped by directory |
 | One creation launching another | `IREngine.handOff` ([`engine-hand-off.md`](engine-hand-off.md)): drain, lend the gpu lease, block in `ir-run`, resume |
 | Durable background jobs | `fleet-jobs` (Python supervisor, `meta.json` + `job.log`) |
-| GUI widgets from Lua | `IRGui.*` over `engine/prefabs/irreden/render/widgets.hpp`: panel, label, button, list, dropdown, radio, text input, scroll, checkbox, slider, color swatch, hit region; dockspace with splitters and panel drag (`ui_dockspace`); layout serialize |
+| GUI widgets from Lua | `IRGui.*` over `engine/prefabs/irreden/render/widgets.hpp`: panel, label, button, list, dropdown, radio, text input, scroll, checkbox, slider, color swatch and hit region. The C++ prefab layer also has the `ui_dockspace` layout, but it is not part of `IRGui`. |
 | Live 3D preview in a panel | secondary viewports ([`secondary-viewport.md`](secondary-viewport.md)), `IRRender.createViewport` |
 | Pixel images on screen | the sprite layer ([`sprites.md`](sprites.md)), composited below the GUI canvas |
 | Thumbnails already rendered | render-verify references under `creations/*/test/references/<preset>/*.png`; `--auto-screenshot` output under `save_files/screenshots/` |
@@ -693,6 +693,8 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
 | `IREngine` | `spawnTool{ tool, target \| path [, editor] }` → handle (`poll`, `exit`, `kill`; `editor` is the optional editor name a `tool = "editor"` request launches); `toolEditors()` → `{ name, found }` entries; `toolRoot()`; `handOff{ argv }` → `r.verdict` (runs from `<root>/build` when a tool root is set, D5) | `engine/world` |
 | `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` (`path` relative to the image base bound by `bindWidgets`, D9); `isPressed(id)` | `engine/prefabs/irreden/render` |
 | `IRRender` | `viewportSubjectOversize(id)` | `engine/script` |
+| `IRGui` | `focus(id)` queues keyboard focus for a live value widget at the next widget-input frame | `engine/prefabs/irreden/render` |
+| `IRLayout` | `SizeMode`, `makeRow`, `makeColumn`, `makeLeaf`, `buildSplitters`, `setRoot`, `leafRect`, `revision`, `serialize`, `deserialize` | `engine/prefabs/irreden/render` |
 | `IRLauncher` | `requestUpdate()` (launcher-local, `--supervised` only, D6) | `creations/launcher` |
 
 ## Validators
@@ -878,7 +880,8 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   the lock-primitive fix (#4546, D6), and previews follow the launcher and
   the image widget. The catalog and
   the image widget take their base at bind time (D3, D9), so neither waits
-  on the tool service for the tool root.
+  on the tool service for the tool root. The dockspace follows previews, so
+  every final catalog, details, assets and log control reflows from its leaf.
 - `creations/CLAUDE.md` and `creations/demos/CLAUDE.md` gain "every creation
   ships `creation.json`" with the schema pointer; `create-creation` scaffolds
   one.
