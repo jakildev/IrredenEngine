@@ -141,18 +141,12 @@ returns a `SystemId` for any pipeline.
 
 ## Engine service bindings
 
-### IRUndo
-
-`LuaScript::bindLuaUndo()` installs the opt-in `IRUndo` history table. Records
-carry `label`, `undo`, `redo`, and optional `coalesce`; closures remain owned by
-the world-scoped history singleton while its Lua VM is alive.
+- `bindLuaUndo()` installs opt-in `IRUndo`; its singleton owns the Lua closures and dies before the VM.
 
 ### IRAsset and voxel authoring
 
-Registering the `C_VoxelSetNew` Lua trait installs
-`IRAsset.loadVoxelSet(path[, anchor[, targetCanvas]])` and the integer-backed `IRShape`
-table. Authoring contracts and methods live in
-[`engine/prefabs/irreden/voxel/CLAUDE.md`](../prefabs/irreden/voxel/CLAUDE.md).
+Registering `C_VoxelSetNew` installs `IRAsset.loadVoxelSet(path[, anchor[, targetCanvas]])` and the integer-backed `IRShape`
+table. Authoring contracts live in [`engine/prefabs/irreden/voxel/CLAUDE.md`](../prefabs/irreden/voxel/CLAUDE.md).
 The loader returns a DENSE component value and defaults its anchor to `CENTER`;
 voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
 

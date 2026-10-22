@@ -19,9 +19,8 @@ Design log, findings and the authoring-session history:
   parts from the module's recipes, a bake, LOD bands, an engine component and a
   yawed radial array,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
-  `remove_part` removes and restores a part across undo/redo and proves the
-  saved manifest omits the removed record, `undo_history` proves frame-local
-  stroke history and part removal payload restoration,
+  `remove_part` removes and restores a part and proves its record is omitted on save;
+  `undo_history` proves frame-local stroke history and part removal payload restoration,
   `tier_scrub` proves per-part LOD bands and the tier scrubber,
   `part_mode_cycle` takes a Ctrl+P part through every render mode, the Ctrl+M
   twin, an array, and a save and reload,
