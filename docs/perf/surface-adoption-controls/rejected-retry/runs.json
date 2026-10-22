@@ -1,0 +1,25 @@
+[
+  {
+    "case": "per-axis-zoom4-overlap0",
+    "command": [
+      "ir-acquire",
+      "benchmark",
+      "--",
+      "/opt/homebrew/opt/python@3.14/bin/python3.14",
+      "scripts/perf/surface_lighting_controls.py",
+      "--adoption-matrix",
+      "--case",
+      "per-axis-zoom4-overlap0",
+      "--rounds",
+      "2",
+      "--frames",
+      "240",
+      "--output",
+      "/tmp/surface-adoption-retry/per-axis-zoom4-overlap0"
+    ],
+    "returncode": 76,
+    "power_before": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=22872163)\t63%; discharging; 2:08 remaining present: true\n",
+    "power_after": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=22872163)\t63%; discharging; 2:08 remaining present: true\n",
+    "quiet": "BREACH\na8fddd4b-094d-4598-81ef-b5e9cc5c6cd7 uncovered\n"
+  }
+]

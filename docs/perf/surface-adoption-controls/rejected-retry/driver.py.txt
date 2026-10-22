@@ -1,0 +1,25 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+root = Path('/tmp/surface-adoption-retry')
+root.mkdir(exist_ok=False)
+base_env = dict(os.environ, IRREDEN_BUILD_DIR='/tmp/sun-overflow-engine-pair/guarded-depth/build')
+results = []
+for case in ['per-axis-zoom4-overlap0', 'per-axis-zoom4-overlap16', 'cardinal-zoom4-overlap16']:
+    before = subprocess.check_output(['pmset', '-g', 'batt'], text=True)
+    command = ['ir-acquire', 'benchmark', '--', sys.executable,
+               'scripts/perf/surface_lighting_controls.py', '--adoption-matrix',
+               '--case', case, '--rounds', '2', '--frames', '240',
+               '--output', str(root / case)]
+    quiet = root / (case + '.quiet')
+    result = subprocess.run(command, env=dict(base_env, IR_QUIET_REPORT_FILE=str(quiet)))
+    results.append({'case': case, 'command': command, 'returncode': result.returncode,
+                    'power_before': before,
+                    'power_after': subprocess.check_output(['pmset', '-g', 'batt'], text=True),
+                    'quiet': quiet.read_text() if quiet.exists() else None})
+    (root / 'runs.json').write_text(json.dumps(results, indent=2) + '\n')
+    if result.returncode:
+        raise SystemExit(result.returncode)

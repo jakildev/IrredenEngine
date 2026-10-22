@@ -86,6 +86,24 @@ No new default or general rendering fix follows from these controls. Next close
 the intermediate receiver defect through the shared geometry route, retaining
 full-scene cost gates before enabling the continuous opt-in more broadly.
 
+The surface-lighting driver now supports explicit surface/prepass four-arm
+comparisons with exact manifest and draw-route checks. Keep prepass counters in
+separate untimed runs: source-caster overlap is not receiver overdraw, and a
+prepass that retains every fragment cannot establish an occlusion benefit.
+The [native controls](../perf/surface-adoption-controls/README.md) witness that
+distinction, but both retained timing attempts failed outer quiet coverage and
+must not inform a performance or default-adoption claim.
+Next use overlapping GRID receivers, wider views, subdivision and nonvertical
+sunlight to qualify accurate receiving, alongside the polygon oracle at near-
+cardinal angles, fractional negative camera positions and side receivers.
+Preserve the fog fallback until albedo/fog application and the shared lighting/
+fog-observer buffer binding are made compatible; do not remove that exclusion
+as a default-switch shortcut. Any default promotion must retain a real explicit
+environment opt-out, runtime switch and producer/consumer readiness checks.
+Choose the visibility-prepass default separately from the accurate receiver
+default. Release million-entity qualification still needs explicit visible
+geometry, canvas and shadow budgets; these small Debug fixtures do not supply it.
+
 The cardinal continuous-receiver follow-up separates `cardinalSurfaceFb` and
 `perAxisSurfaceFb` GPU draws from their sampled/unlit routes. The fog-free
 [surface-lighting matrix](../../scripts/perf/README.md#surface-lighting-scene-controls)

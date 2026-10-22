@@ -29,27 +29,64 @@ def cases():
     return selected
 
 
-def verify_routes(output: Path, selected: dict[str, list[str]]) -> None:
+def adoption_cases(selected):
+    expanded, environments = {}, {}
+    for name, arguments in selected.items():
+        for surface in ('0', '1'):
+            for prepass in ('0', '1'):
+                arm = f"{name}--surface{surface}-prepass{prepass}"
+                expanded[arm] = arguments.copy()
+                environments[arm] = {
+                    "IR_PERAXIS_SURFACE_LIGHTING": surface,
+                    "IR_PERAXIS_VISIBILITY_PREPASS": prepass,
+                    "IR_PERAXIS_VISIBILITY_STATS": "0",
+                }
+    return expanded, environments
+
+
+def verify_routes(
+    output: Path, selected: dict[str, list[str]], *,
+    expected_environments: dict[str, dict[str, str]] | None = None,
+    rounds: int | None = None,
+) -> None:
     """Require completed GPU samples for the selected draw path, including negative controls.
 
     This witnesses draw submission and completion, not the number of shaded pixels
     or finite-face query hits. Screenshots and the separate overlap diagnostic own
-    receiver geometry and shadow correctness.
+    receiver geometry and shadow correctness. The combined surface timer does
+    not independently witness the visibility prepass; use separate untimed stats.
     """
     for name in selected:
         paths = list((output / name).glob("round-*/run-1.txt"))
         if not paths:
             raise ValueError(f"{name}: no profile reports")
-        unlit = name.endswith("-unlit")
+        if rounds is not None:
+            expected_paths = {output / name / f"round-{index}" / "run-1.txt"
+                              for index in range(1, rounds + 1)}
+            if set(paths) != expected_paths:
+                raise ValueError(f"{name}: incomplete profile rounds")
+            if any(not path.with_name("manifest.json").is_file() for path in paths):
+                raise ValueError(f"{name}: missing profile manifest")
+        base_name = name.split("--surface", 1)[0]
+        unlit = base_name.endswith("-unlit")
         cardinal = name.startswith("cardinal-")
+        surface = (expected_environments is None or
+                   expected_environments[name]["IR_PERAXIS_SURFACE_LIGHTING"] == "1")
         expected = ("trixelToFb" if cardinal else "perAxisScatter") if unlit else (
-            "cardinalSurfaceFb" if cardinal else "perAxisSurfaceFb")
-        forbidden = {"cardinalSurfaceFb", "perAxisSurfaceFb"} - {expected}
+            "cardinalSurfaceFb" if cardinal else
+            ("perAxisSurfaceFb" if surface else "perAxisScatter"))
+        forbidden = {"cardinalSurfaceFb", "perAxisSurfaceFb", "perAxisScatter"} - {expected}
+        if expected_environments is not None and surface and not cardinal and not unlit:
+            forbidden.add("lightingPerAxis")
         for path in paths:
             report = parse_report(path, name)
             stage = report.gpu_by_name(expected)
             if stage is None or not stage.samples:
                 raise ValueError(f"{path}: no completed {expected} GPU samples")
+            if expected_environments is not None and not surface and not cardinal and not unlit:
+                compute = report.gpu_by_name("lightingPerAxis")
+                if compute is None or not compute.samples:
+                    raise ValueError(f"{path}: no completed lightingPerAxis GPU samples")
             for other in forbidden:
                 stage = report.gpu_by_name(other)
                 if stage is not None and stage.samples:
@@ -61,29 +98,48 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--frames", type=int, default=360)
+    parser.add_argument("--adoption-matrix", action="store_true",
+                        help="Compare explicit surface 0/1 and prepass 0/1 arms")
+    parser.add_argument("--case", action="append", choices=list(cases()), dest="case_names",
+                        help="Run only this existing case; repeat to select more cases")
     args = parser.parse_args()
     if args.rounds < 1:
         parser.error("rounds must be positive")
     if args.frames < 120:
         parser.error("frames must be at least 120 to retain a steady measurement window")
+    if args.case_names and len(set(args.case_names)) != len(args.case_names):
+        parser.error("case selections must be unique")
+    selected = cases()
+    if args.case_names:
+        selected = {name: selected[name] for name in args.case_names}
+    expected_environments = None
+    if args.adoption_matrix:
+        selected, expected_environments = adoption_cases(selected)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    selected = cases()
     common = [
         "--only", "shadowbox,floor", "--probe-source-box", "--probe-floor-mode", "grid",
         "--probe-floor-span", "40", "--sun-direction", "0", "0", "-1",
         "--no-spin", "--no-auto-rotate", "--pivot-origin", "--no-ao",
         "--auto-profile", "--profile-frames", str(args.frames), "--window-mode", "offscreen",
     ]
-    write_cases(output, args.rounds, common, selected)
+    write_cases(output, args.rounds, common, selected,
+                expected_render_environment=expected_environments)
+    completed_rounds = 0
 
     def after_round():
-        verify_artifacts(output)
-        verify_routes(output, selected)
+        nonlocal completed_rounds
+        completed_rounds += 1
+        verify_artifacts(output, expected_environments=expected_environments)
+        verify_routes(output, selected, expected_environments=expected_environments,
+                      rounds=completed_rounds)
         summarize(output, selected)
 
     run_rounds(output, selected, common, args.rounds, after_round,
-               environments={name: {**os.environ, "IR_PERAXIS_SURFACE_LIGHTING": "1"}
+               environments={name: {**os.environ, **(expected_environments[name]
+                                   if expected_environments is not None else
+                                   {"IR_PERAXIS_SURFACE_LIGHTING": "1",
+                                    "IR_PERAXIS_VISIBILITY_STATS": "0"})}
                              for name in selected},
                runner_options=["--target", "IRCanvasStress"])
     return 0

@@ -1,0 +1,242 @@
+{
+  "rounds": 2,
+  "common": [
+    "--only",
+    "shadowbox,floor",
+    "--probe-source-box",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--no-ao",
+    "--auto-profile",
+    "--profile-frames",
+    "240",
+    "--window-mode",
+    "offscreen"
+  ],
+  "cases": {
+    "per-axis-zoom4-overlap0--surface0-prepass0": [
+      "--yaw",
+      "0.6",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1"
+    ],
+    "per-axis-zoom4-overlap0--surface0-prepass1": [
+      "--yaw",
+      "0.6",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1"
+    ],
+    "per-axis-zoom4-overlap0--surface1-prepass0": [
+      "--yaw",
+      "0.6",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1"
+    ],
+    "per-axis-zoom4-overlap0--surface1-prepass1": [
+      "--yaw",
+      "0.6",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1"
+    ],
+    "per-axis-zoom4-overlap16--surface0-prepass0": [
+      "--yaw",
+      "0.6",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "16",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ],
+    "per-axis-zoom4-overlap16--surface0-prepass1": [
+      "--yaw",
+      "0.6",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "16",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ],
+    "per-axis-zoom4-overlap16--surface1-prepass0": [
+      "--yaw",
+      "0.6",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "16",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ],
+    "per-axis-zoom4-overlap16--surface1-prepass1": [
+      "--yaw",
+      "0.6",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "16",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ],
+    "cardinal-zoom4-overlap16--surface0-prepass0": [
+      "--yaw",
+      "0",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "16",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ],
+    "cardinal-zoom4-overlap16--surface0-prepass1": [
+      "--yaw",
+      "0",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "16",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ],
+    "cardinal-zoom4-overlap16--surface1-prepass0": [
+      "--yaw",
+      "0",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "16",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ],
+    "cardinal-zoom4-overlap16--surface1-prepass1": [
+      "--yaw",
+      "0",
+      "--zoom",
+      "4",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "16",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60"
+    ]
+  },
+  "expected_render_environment": {
+    "per-axis-zoom4-overlap0--surface0-prepass0": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "0",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "0",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "per-axis-zoom4-overlap0--surface0-prepass1": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "0",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "1",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "per-axis-zoom4-overlap0--surface1-prepass0": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "1",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "0",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "per-axis-zoom4-overlap0--surface1-prepass1": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "1",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "1",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "per-axis-zoom4-overlap16--surface0-prepass0": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "0",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "0",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "per-axis-zoom4-overlap16--surface0-prepass1": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "0",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "1",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "per-axis-zoom4-overlap16--surface1-prepass0": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "1",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "0",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "per-axis-zoom4-overlap16--surface1-prepass1": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "1",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "1",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "cardinal-zoom4-overlap16--surface0-prepass0": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "0",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "0",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "cardinal-zoom4-overlap16--surface0-prepass1": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "0",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "1",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "cardinal-zoom4-overlap16--surface1-prepass0": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "1",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "0",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    },
+    "cardinal-zoom4-overlap16--surface1-prepass1": {
+      "IR_PERAXIS_SURFACE_LIGHTING": "1",
+      "IR_PERAXIS_VISIBILITY_PREPASS": "1",
+      "IR_PERAXIS_VISIBILITY_STATS": "0"
+    }
+  },
+  "order": "forward on odd rounds; reverse on even rounds"
+}

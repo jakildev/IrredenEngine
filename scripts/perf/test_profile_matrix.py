@@ -29,6 +29,46 @@ class ArtifactIdentityTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     verify_artifacts(root)
 
+    def test_declared_environment_differences_are_exact_not_ignored(self):
+        expected = {"first": {"SURFACE": "0", "PREPASS": "1"},
+                    "second": {"SURFACE": "1", "PREPASS": "0"}}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifests = {}
+            for case, environment in expected.items():
+                manifest = {"binary_sha256": "binary", "shader_sha256": "shaders",
+                            "runtime_scripts_sha256": "scripts", "host_power": "AC Power",
+                            "render_environment": {**environment, "OTHER": None}}
+                directory = root / case / "round-1"
+                directory.mkdir(parents=True)
+                path = directory / "manifest.json"
+                path.write_text(json.dumps(manifest))
+                manifests[case] = manifest
+            verify_artifacts(root, expected_environments=expected)
+            path = root / "second/round-1/manifest.json"
+            original = manifests["second"]
+            mutations = [
+                {**original, "render_environment": {**expected["first"], "OTHER": None}},
+                {**original, "render_environment": {"SURFACE": "1", "OTHER": None}},
+                {**original, "render_environment": {**expected["second"], "OTHER": "1"}},
+            ]
+            for key in ("binary_sha256", "shader_sha256", "runtime_scripts_sha256",
+                        "host_power"):
+                mutations.append({**original, key: "changed"})
+            for mutated in mutations:
+                with self.subTest(mutated=mutated):
+                    path.write_text(json.dumps(mutated))
+                    with self.assertRaises(ValueError):
+                        verify_artifacts(root, expected_environments=expected)
+            path.write_text(json.dumps(original))
+            with self.assertRaisesRegex(ValueError, "same keys"):
+                verify_artifacts(root, expected_environments={**expected, "third": {}})
+            with self.assertRaisesRegex(ValueError, "unexpected matrix case"):
+                verify_artifacts(root, expected_environments={"first": expected["first"]})
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, "Missing matrix case"):
+                verify_artifacts(root, expected_environments=expected)
+
     def test_empty_matrix_is_not_evidence(self):
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaises(ValueError):
