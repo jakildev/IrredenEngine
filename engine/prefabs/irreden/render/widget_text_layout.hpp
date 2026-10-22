@@ -287,14 +287,14 @@ inline GuiRect dropdownHeaderTextRegion(
     return {pos, IRMath::ivec2(IRMath::max(0, widget.size_.x - reserve), widget.size_.y)};
 }
 
-// The open item strip below the header.
+// The open item strip below the header: the visible window only.
 inline GuiRect dropdownStripRect(
     const IRComponents::C_Widget &widget,
     const IRComponents::C_WidgetDropdown &dd,
     IRMath::ivec2 pos
 ) {
     return {
-        IRMath::ivec2(pos.x, pos.y + dd.itemTopOffsetY(widget.size_.y, 0)),
+        IRMath::ivec2(pos.x, pos.y + widget.size_.y),
         IRMath::ivec2(widget.size_.x, dd.stripHeight())
     };
 }

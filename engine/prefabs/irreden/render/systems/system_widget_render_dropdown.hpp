@@ -123,7 +123,8 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         const IRComponents::C_WidgetDropdown &dd = *panel.dd_;
         const IRComponents::C_WidgetState &state = *panel.state_;
         const int itemH = dd.rowHeight();
-        const int n = static_cast<int>(dd.items_.size());
+        const int firstItem = dd.topIndex();
+        const int endItem = firstItem + dd.visibleRowCount();
         const IRPrefab::GuiRect strip =
             IRPrefab::WidgetText::dropdownStripRect(widget, dd, panel.pos_);
         const IRMath::ivec2 panelPos = strip.pos_;
@@ -141,7 +142,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         // WIDGET_APPLY_DROPDOWN to the cursor-row index, or -1 if outside).
         const int hoverRow = static_cast<int>(state.dragValue_);
 
-        for (int i = 0; i < n; ++i) {
+        for (int i = firstItem; i < endItem; ++i) {
             const IRMath::ivec2 rowPos(
                 panelPos.x,
                 panel.pos_.y + dd.itemTopOffsetY(widget.size_.y, i)

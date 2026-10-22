@@ -301,7 +301,8 @@ class Collector {
             if (dd->isOpen_ && n > 0 && !widget.coversBelow_) {
                 const GuiRect strip = Text::dropdownStripRect(widget, *dd, pos);
                 m_layout.elements_.push_back({id, strip, Surface::STRIP, interactive, false});
-                for (int i = 0; i < n; ++i) {
+                const int firstItem = dd->topIndex();
+                for (int i = firstItem; i < firstItem + dd->visibleRowCount(); ++i) {
                     addRun(id, Text::dropdownStripRow(widget, *dd, pos, m_theme, i), strip);
                 }
             }

@@ -49,6 +49,10 @@ enum class WidgetKind : int {
 // to win. The `C_Widget` ctor asserts that.
 inline constexpr int kWidgetDropdownOpenZBias = 1000;
 
+// Most item rows an expanded dropdown shows at once; a longer list scrolls
+// inside that window.
+inline constexpr int kDropdownMaxVisibleRows = 8;
+
 // Common widget header. Every widget entity carries this alongside its
 // per-kind data component (C_WidgetButton, C_WidgetSlider, etc.). Pos
 // + size are in GUI-canvas-trixel coordinates (top-left origin); the
@@ -282,6 +286,9 @@ struct C_WidgetDropdown {
     // Header and item text; row geometry stays itemHeight_.
     IRRender::TextSize textSize_ = IRRender::TextSize::LARGE;
 
+    // Index of the first row in the strip window; read it through topIndex().
+    int scrollOffset_ = 0;
+
     // --- Expanded-strip geometry ------------------------------------------
     //
     // Three consumers must agree on where the item rows are:
@@ -292,6 +299,8 @@ struct C_WidgetDropdown {
     // drifts silently, and the only symptom is a click landing on the wrong
     // row. Offsets are in GUI-canvas trixels relative to the widget's own
     // top-left; `headerHeight` is the collapsed widget's `C_Widget::size_.y`.
+    // The strip shows at most `kDropdownMaxVisibleRows` rows starting at
+    // `topIndex()`; item indices stay absolute throughout.
 
     /// `itemHeight_` floored at one trixel — the divisor every row
     /// calculation uses, so an authored zero cannot divide by zero.
@@ -299,9 +308,47 @@ struct C_WidgetDropdown {
         return IRMath::max(1, itemHeight_);
     }
 
+    /// Rows the open strip paints: every item up to `kDropdownMaxVisibleRows`.
+    int visibleRowCount() const {
+        return IRMath::min(static_cast<int>(items_.size()), kDropdownMaxVisibleRows);
+    }
+
+    /// Largest top index that still fills the window with items.
+    int maxScrollOffset() const {
+        return static_cast<int>(items_.size()) - visibleRowCount();
+    }
+
+    /// Index of the first visible item: `scrollOffset_` clamped to the content.
+    int topIndex() const {
+        return IRMath::clamp(scrollOffset_, 0, maxScrollOffset());
+    }
+
+    /// Moves the window by @p rows (positive = toward the end), stopping at
+    /// either end of the content.
+    void scrollBy(int rows) {
+        scrollOffset_ = IRMath::clamp(topIndex() + rows, 0, maxScrollOffset());
+    }
+
+    /// Brings item @p index into the window with the least movement. An index
+    /// outside `items_` is ignored.
+    void scrollIntoView(int index) {
+        const int rows = visibleRowCount();
+        if (index < 0 || index >= static_cast<int>(items_.size())) {
+            return;
+        }
+        const int top = topIndex();
+        if (index < top) {
+            scrollOffset_ = index;
+        } else if (index >= top + rows) {
+            scrollOffset_ = index - rows + 1;
+        } else {
+            scrollOffset_ = top;
+        }
+    }
+
     /// Height of the expanded item strip alone, excluding the header.
     int stripHeight() const {
-        return rowHeight() * static_cast<int>(items_.size());
+        return rowHeight() * visibleRowCount();
     }
 
     /// Total height of the header plus the expanded item strip.
@@ -310,9 +357,10 @@ struct C_WidgetDropdown {
     }
 
     /// Offset from the widget's top edge to the top edge of item @p itemIndex.
-    /// Index 0 is the strip's own origin, so it doubles as the header/strip seam.
+    /// The strip's own origin is `headerHeight`; an item above the window
+    /// lands above it and one below the window lands past `expandedHeight`.
     int itemTopOffsetY(int headerHeight, int itemIndex) const {
-        return headerHeight + itemIndex * rowHeight();
+        return headerHeight + (itemIndex - topIndex()) * rowHeight();
     }
 
     /// Offset from the widget's top edge to the center of item @p itemIndex.
@@ -321,15 +369,15 @@ struct C_WidgetDropdown {
                0.5f * static_cast<float>(rowHeight());
     }
 
-    /// Item index @p offsetY trixels below the widget's top edge, or -1 when
-    /// that point is on the header or past the last row.
+    /// Absolute item index @p offsetY trixels below the widget's top edge, or
+    /// -1 when that point is on the header or past the last visible row.
     int itemAtOffsetY(int headerHeight, float offsetY) const {
         const float withinStrip = offsetY - static_cast<float>(headerHeight);
         if (withinStrip < 0.0f) {
             return -1;
         }
-        const int index = static_cast<int>(withinStrip / static_cast<float>(rowHeight()));
-        return index < static_cast<int>(items_.size()) ? index : -1;
+        const int row = static_cast<int>(withinStrip / static_cast<float>(rowHeight()));
+        return row < visibleRowCount() ? topIndex() + row : -1;
     }
 };
 

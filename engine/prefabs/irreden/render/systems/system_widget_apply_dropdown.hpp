@@ -7,6 +7,7 @@
 
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/input/components/component_mouse_scroll.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/render/layout.hpp>
 
@@ -32,22 +33,37 @@ namespace IRSystem {
 // settings menu (expand DEBUG OVERLAY, then ROTATION PIVOT above it). Ordering
 // them needs an open-order rank, not a flat bias.
 
-// Per-kind follower for dropdowns. Owns four pieces of behavior:
+// Per-kind follower for dropdowns. Owns five pieces of behavior:
 //   1. While open, grows the hitbox to cover the expanded item panel and
 //      biases zOrder_ so WIDGET_INPUT's hover routing reaches this widget
 //      rather than whatever the panel covers.
-//   2. Caches the cursor's row index in state.dragValue_ for the render
-//      system to highlight, mirroring the list pattern.
-//   3. Handles click semantics — first click opens the dropdown; a
+//   2. Scrolls the open item window one row per mouse-wheel event while the
+//      dropdown is the topmost hovered widget, and reveals the selected item
+//      when the panel opens.
+//   3. Caches the cursor's absolute item index in state.dragValue_ for the
+//      render system to highlight.
+//   4. Handles click semantics — first click opens the dropdown; a
 //      second click on a row selects that row and closes; a click on
 //      the header while open closes without selection; a click outside
 //      while open also closes (handled via a press-released-outside
 //      check on the global mouse-button state).
 template <> struct System<WIDGET_APPLY_DROPDOWN> {
     IRMath::vec2 mouseGuiTrixel_ = IRMath::vec2(0.0f);
+    // Rows the frame's wheel events ask for; positive scrolls toward the end.
+    int wheelRows_ = 0;
 
     void beginTick() {
         mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
+        wheelRows_ = 0;
+        IREntity::forEachComponent<IRComponents::C_MouseScroll>(
+            [this](IREntity::EntityId &, IRComponents::C_MouseScroll &scroll) {
+                if (scroll.yoffset_ > 0.0) {
+                    --wheelRows_;
+                } else if (scroll.yoffset_ < 0.0) {
+                    ++wheelRows_;
+                }
+            }
+        );
     }
 
     // Bias zOrder_ up while expanded and back down when collapsed. Derived from
@@ -74,6 +90,12 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
             syncFloatingZOrder(widget, false);
             state.dragValue_ = -1.0f;
             return;
+        }
+
+        // Scroll before the hover row is resolved so the highlight and the
+        // painted rows come from the same window.
+        if (dd.isOpen_ && state.hovered_) {
+            dd.scrollBy(wheelRows_);
         }
 
         // Sync hitbox extent and z-order to current open state so WIDGET_INPUT's
@@ -104,6 +126,7 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
 
         if (!dd.isOpen_) {
             dd.isOpen_ = true;
+            dd.scrollIntoView(dd.selectedIndex_);
             return;
         }
 
@@ -127,7 +150,8 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
             IRComponents::C_WidgetState,
             IRComponents::C_WidgetDropdown,
             IRComponents::C_HitBox2DGui,
-            IRComponents::C_GuiPosition>("WidgetApplyDropdown");
+            IRComponents::C_GuiPosition,
+            AlsoReads<IRComponents::C_MouseScroll>>("WidgetApplyDropdown");
     }
 };
 

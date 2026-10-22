@@ -186,6 +186,22 @@ TEST_F(LuaWidgetValues, SetDropdownOpenOpensAndClosesTheStrip) {
     EXPECT_FALSE(eval<bool>("IRGui.isDropdownOpen(dd)"));
 }
 
+TEST_F(LuaWidgetValues, SetDropdownOpenRevealsTheSelectedItem) {
+    run(R"lua(
+        local items = {}
+        for i = 1, 20 do items[i] = "ITEM " .. i end
+        dd = IRGui.makeDropdown(0, 0, 100, 14, items, 16)
+    )lua");
+    const IREntity::EntityId id = entity("dd");
+    EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(id).topIndex(), 0);
+    run("IRGui.setDropdownOpen(dd, true)");
+    const C_WidgetDropdown &dropdown = IREntity::getComponent<C_WidgetDropdown>(id);
+    EXPECT_GT(dropdown.topIndex(), 0);
+    EXPECT_LE(dropdown.topIndex(), 15);
+    EXPECT_GE(dropdown.topIndex() + dropdown.visibleRowCount(), 16)
+        << "selected item 16 (index 15) is inside the window";
+}
+
 TEST_F(LuaWidgetValues, DropdownZeroMeansNothingSelected) {
     run(R"lua(dd = IRGui.makeDropdown(0, 0, 100, 14, { "A", "B", "C" }, 0))lua");
     const IREntity::EntityId id = entity("dd");
