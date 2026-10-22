@@ -3389,10 +3389,14 @@ dispatch_role() {
             # the two tier-0 executables never interleave and a refusal,
             # failure or disabled lane still hands the tick to fleet-rebase
             # (`;`, not `&&`). It reads its enablement from the daemon conf
-            # alone; the dispatcher passes no class and no environment.
+            # alone; the dispatcher passes no class and no environment. It
+            # runs once per repo: FLEET_AUTOMERGE_REPOS in that conf decides
+            # which of them it may merge in (default engine only).
             if command -v fleet-automerge >/dev/null 2>&1; then
-                nohup bash -c 'fleet-automerge --auto --repo jakildev/IrredenEngine \
-                        >>"$HOME/.fleet/logs/fleet-automerge.log" 2>&1; \
+                nohup bash -c 'for repo in engine game; do \
+                        fleet-automerge --auto --repo "$repo" \
+                            >>"$HOME/.fleet/logs/fleet-automerge.log" 2>&1; \
+                    done; \
                     exec fleet-rebase --auto --rearm-trigger' \
                     >>"$HOME/.fleet/logs/fleet-rebase.log" 2>&1 &
                 log "merger: tier-0 auto-merge pass runs first (fleet-automerge --auto)"

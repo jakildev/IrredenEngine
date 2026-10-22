@@ -516,10 +516,16 @@
 # and PR screenshots; the first wave), `docs` (Markdown outside the
 # instruction tiers; keep off until a week of rebless merges reads zero
 # rollbacks in `fleet-health --since 7d`). Review the operator dry-run
-# (`fleet-automerge --dry-run`) before the first enablement, and grant the
-# fleet's GitHub App "Contents: read & write" first: the lane merges as the
-# App, and a read-only App turns every attempt into a merge-failed event.
+# (`fleet-automerge --dry-run`, or `fleet-merge-preview`) before the first
+# enablement, and grant the fleet's GitHub App "Contents: read & write"
+# first: the lane merges as the App, and a read-only App turns every attempt
+# into a merge-failed event.
 # FLEET_AUTOMERGE_CLASSES="rebless"
+# Repo keys the lane may merge in (engine, game); unset or empty = engine
+# only. Before adding game, run `fleet-labels` so that repo has
+# fleet:auto-merged and human:hold, and review
+# `fleet-merge-preview --repo game`.
+# FLEET_AUTOMERGE_REPOS="engine game"
 # Seconds a PR must have carried fleet:approved before it merges (the human's
 # veto window; 0 = merge on the first tick). `human:hold` on a PR and
 # ~/.fleet/automerge.off on a host stop the lane regardless.

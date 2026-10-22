@@ -358,7 +358,7 @@ restrictions.
   merge`, never `fleet-automerge`.** No LLM role merges. The human merges,
   and the tier-0 `fleet-automerge` script, run only by the dispatcher under
   the human-owned enablement, merges the classes FLEET.md §"Who merges"
-  names.
+  names. Its read-only partition, `fleet-merge-preview`, is allowed.
 - **Never run `cmake --preset`** — only `cmake --build` (via `fleet-build`)
   against the configured tree.
 - **Never touch the `.claude/worktrees/` layout.**

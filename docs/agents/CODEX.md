@@ -152,7 +152,8 @@ that posture. Both adapters forbid `gh pr merge` and every spelling of
 `fleet-automerge` for every LLM role (the generated Codex rules and the
 Claude `deny` list); the dispatcher daemon is the lane's only automatic
 caller, and its enablement is read from the human-owned conf alone
-([`FLEET.md`](FLEET.md) § Who merges).
+([`FLEET.md`](FLEET.md) § Who merges). Both allow `fleet-merge-preview`, which
+runs the executor only as `--dry-run`.
 
 ## Capability qualification
 

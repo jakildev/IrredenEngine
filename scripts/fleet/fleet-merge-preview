@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+# fleet-merge-preview — the tier-0 auto-merge lane's read-only partition, for
+# agents. Runs `fleet-automerge --dry-run` and nothing else: the merge queue
+# split into auto:<class> / human with the decisive reason, the enabled
+# classes and repos, zero writes.
+#
+# The executor itself stays denied to every LLM role (its --auto mode
+# merges). This wrapper is the one form a role may run: it accepts only
+# --repo, validates that value, and always passes --dry-run, so no argument
+# reaches the executor's mutating modes.
+#
+# Usage:
+#   fleet-merge-preview [--repo engine|game|owner/name]
+#
+# Source of truth: scripts/fleet/fleet-merge-preview in the engine repo.
+# Installed to ~/bin/fleet-merge-preview by scripts/fleet/install.sh.
+
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+PROG = "fleet-merge-preview"
+EXECUTOR = Path(__file__).resolve().parent / "fleet-automerge"
+REPO_RE = re.compile(r"^(?:engine|game|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog=PROG, description="read-only auto-merge partition "
+                                 "(fleet-automerge --dry-run)")
+    ap.add_argument("--repo", default="engine", help="engine | game | owner/name")
+    args = ap.parse_args(argv)
+    if not REPO_RE.match(args.repo):
+        print(f"{PROG}: --repo must be engine, game or owner/name (got {args.repo!r})",
+              file=sys.stderr)
+        return 2
+    return subprocess.run([sys.executable, str(EXECUTOR), "--dry-run", "--repo", args.repo],
+                          check=False).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())

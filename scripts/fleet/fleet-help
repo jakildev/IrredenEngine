@@ -325,9 +325,15 @@ Parallel-agent fleet (tmux + Claude)
                                  (dispatcher-only, denied to every role)
                                  merges at most one eligible PR of an enabled
                                  class (FLEET_AUTOMERGE_CLASSES in
-                                 fleet-up.conf; default off); --reconcile
-                                 records revert PRs in the audit ledger
-                                 (docs/agents/FLEET.md "Who merges")
+                                 fleet-up.conf; default off) in an enabled
+                                 repo (FLEET_AUTOMERGE_REPOS; default
+                                 engine); --reconcile records revert PRs in
+                                 the audit ledger (docs/agents/FLEET.md
+                                 "Who merges")
+  fleet-merge-preview [--repo engine|game|owner/name]
+                                 the same --dry-run partition, the one form
+                                 of the lane a role may run; refuses every
+                                 other argument
   fleet-gate-status [--json]     show benchmark quiet window, usage gate
                                  (Anthropic + GitHub API pools), and cooldowns
   fleet-net-doctor [--kill-hung] TCP socket / ephemeral-port pressure report

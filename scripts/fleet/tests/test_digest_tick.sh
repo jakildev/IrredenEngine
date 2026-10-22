@@ -147,7 +147,7 @@ ledger_len=$(wc -c < "$LEDGER" | tr -d ' ')
 
 status=$(run_tick)
 assert_eq "$status" "0" "ledger tick exits 0"
-assert_eq "$(cat "$TMP/automerge.log")" "--reconcile --repo jakildev/IrredenEngine" "the rollback pass runs before the digest"
+assert_eq "$(tr '\n' '|' < "$TMP/automerge.log")" "--reconcile --repo engine|--reconcile --repo game|" "the rollback pass runs for each repo before the digest"
 assert_eq "$(cat "$TMP/seen-end")" "$ledger_len" "fleet-decisions is handed the pinned ledger end"
 assert_eq "$(cat "$TMP/fleet-home/digest/automerge-cursor")" "$ledger_len" "cursor advanced to the pinned end after a successful digest"
 

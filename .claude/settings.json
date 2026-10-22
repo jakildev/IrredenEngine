@@ -50,6 +50,7 @@
       "Bash(fleet-pr-claim-feedback:*)", "Bash(fleet-rules-sweep:*)",
       "Bash(fleet-review-verdict:*)", "Bash(fleet-transition:*)",
       "Bash(fleet-rebase:*)", "Bash(fleet-nit-close-for-pr:*)",
+      "Bash(fleet-merge-preview:*)",
       "Bash(fleet-validate-stack:*)", "Bash(fleet-validate-roles:*)",
       "Bash(fleet-epic-status:*)", "Bash(fleet-decisions:*)",
       "Bash(fleet-triage-sweep:*)", "Bash(fleet-positive-control:*)",
