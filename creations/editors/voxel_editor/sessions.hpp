@@ -2322,6 +2322,28 @@ inline Recipe build(
         builder.segment("reremove_part");
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
         builder.expectPartCount(0, "part_redo_removes_again");
+
+        builder.segment("create_remove_replay_setup");
+        builder.addVoxelPart();
+        builder.applyRadialArray(2);
+        builder.removeSelectedPart();
+        builder.expectPartCount(2, "array_copy_removed");
+
+        builder.segment("create_remove_replay_restore");
+        builder.undoRemovedPart();
+        builder.expectPartCount(3, "array_copy_restored");
+
+        builder.segment("create_remove_replay_undo_create");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartCount(1, "restored_copy_removed_with_creation");
+
+        builder.segment("create_remove_replay_redo_create");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectPartCount(3, "array_copies_restored_without_duplicates");
+
+        builder.segment("create_remove_replay_redo_remove");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectPartCount(2, "restored_copy_removed_again");
         return builder.finish();
     }
     case Id::TIER_SCRUB: {

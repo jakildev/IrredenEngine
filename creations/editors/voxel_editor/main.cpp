@@ -1366,6 +1366,15 @@ void addEditorShapePart() {
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
+std::optional<RemovedEditorPart> snapshotEditorPartById(const std::string &partId) {
+    for (const EditorPart &part : g_entityScene.parts()) {
+        if (part.id_ == partId) {
+            return g_entityScene.snapshotPart(part.entity_);
+        }
+    }
+    return std::nullopt;
+}
+
 void removeSelectedPart() {
     if (!g_entitySceneMode || g_entityScene.selectedPart() == nullptr) {
         return;
@@ -1382,19 +1391,18 @@ void removeSelectedPart() {
                 g_entityScene.restorePart(g_moduleHost.script(), *state);
             if (!restored.ok()) {
                 IR_LOG_ERROR("Part restore failed: {}", restored.error_);
-                state->part_.entity_ = IREntity::kNullEntity;
                 return;
             }
-            state->part_.entity_ = restored.entity_;
             selectEditorPart(g_entityScene.selectedIndex());
         },
         [state]() {
-            if (state->part_.entity_ == IREntity::kNullEntity ||
-                !IREntity::entityExists(state->part_.entity_)) {
+            std::optional<RemovedEditorPart> live = snapshotEditorPartById(state->part_.id_);
+            if (!live) {
                 return;
             }
-            g_entityScene.removeParts({state->part_.entity_});
-            state->part_.entity_ = IREntity::kNullEntity;
+            const IREntity::EntityId entity = live->part_.entity_;
+            *state = std::move(*live);
+            g_entityScene.removeParts({entity});
             selectEditorPart(g_entityScene.selectedIndex());
         },
         {},
@@ -1419,11 +1427,12 @@ void commitPartCreation(std::vector<IREntity::EntityId> created) {
             std::vector<IREntity::EntityId> entities;
             entities.reserve(states->size());
             for (RemovedEditorPart &state : *states) {
-                if (state.part_.entity_ != IREntity::kNullEntity &&
-                    IREntity::entityExists(state.part_.entity_)) {
-                    entities.push_back(state.part_.entity_);
+                std::optional<RemovedEditorPart> live = snapshotEditorPartById(state.part_.id_);
+                if (!live) {
+                    continue;
                 }
-                state.part_.entity_ = IREntity::kNullEntity;
+                entities.push_back(live->part_.entity_);
+                state = std::move(*live);
             }
             g_entityScene.removeParts(entities);
             selectEditorPart(g_entityScene.selectedIndex());
@@ -1434,10 +1443,8 @@ void commitPartCreation(std::vector<IREntity::EntityId> created) {
                     g_entityScene.restorePart(g_moduleHost.script(), state);
                 if (!restored.ok()) {
                     IR_LOG_ERROR("Part restore failed: {}", restored.error_);
-                    state.part_.entity_ = IREntity::kNullEntity;
                     continue;
                 }
-                state.part_.entity_ = restored.entity_;
             }
             selectEditorPart(g_entityScene.selectedIndex());
         },
