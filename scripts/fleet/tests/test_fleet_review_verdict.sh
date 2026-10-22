@@ -366,6 +366,37 @@ for repo in engine game owner/explicit; do
         { FAIL=$((FAIL+1)); echo "  FAIL: T19 $repo did not reach fleet-transition as $expected_repo"; }
 done
 
+echo "T21: native Python CRLF does not contaminate repository arguments"
+export VERDICT_TEST_PYTHON
+VERDICT_TEST_PYTHON=$(command -v python3)
+cat >"$BIN/python3" <<'PYEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-c" && "${2:-}" == *fleet_runtime.resolve_repo* ]]; then
+    shift
+    code="$1"; shift
+    exec "$VERDICT_TEST_PYTHON" -c $'import sys; sys.stdout.reconfigure(newline="\\r\\n")\n'"$code" "$@"
+fi
+exec "$VERDICT_TEST_PYTHON" "$@"
+PYEOF
+chmod +x "$BIN/python3"
+reset_logs
+assert_eq "$(run verdict-approve 117 --repo engine --dry-run)" "0" "T21 CRLF resolver succeeds"
+if "$VERDICT_TEST_PYTHON" - "$GH_LOG" "$FT_LOG" <<'PY'
+from pathlib import Path
+import sys
+
+for name in sys.argv[1:]:
+    data = Path(name).read_bytes()
+    if b"owner/engine" not in data or b"\r" in data:
+        raise SystemExit(f"invalid repository argument bytes in {name}: {data!r}")
+PY
+then
+    PASS=$((PASS+1)); echo "  ok: T21 GitHub and transition arguments contain no CR bytes"
+else
+    FAIL=$((FAIL+1)); echo "  FAIL: T21 repository argument bytes are contaminated"
+fi
+
 echo "T20: unknown repo namespace rejects before gh"
 reset_logs
 assert_eq "$(run verdict-approve 117 --repo unknown --dry-run)" "2" "T20 unknown repo exits 2"
