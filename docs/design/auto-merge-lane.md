@@ -70,7 +70,9 @@ whole merge queue and writes nothing.
 `FLEET_AUTOMERGE_CLASSES` and `FLEET_AUTOMERGE_HOLD_SECS` in
 `~/.fleet/fleet-up.conf` are the only inputs. The executor parses the file
 itself; it reads no environment variable and takes no class flag, and an
-unknown class or a malformed hold enables nothing. The dispatcher spawns
+unknown class, a malformed hold, or a knob value that is not one quoted or
+bare shell word (an unterminated quote, text glued to a closing quote, a
+second word) enables nothing. The dispatcher spawns
 `fleet-automerge --auto --repo jakildev/IrredenEngine` ahead of
 `fleet-rebase` in one background chain joined by `;`, so a refusal, failure
 or disabled lane still hands the tick to tier-0's rebase pass; a state-dir

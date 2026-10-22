@@ -5,6 +5,8 @@ park sets), the enablement parser, and the historical 100-PR profile fixture."""
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -286,21 +288,54 @@ class Enablement(unittest.TestCase):
         self.assertFalse(en.enabled)
         self.assertTrue(any("HOLD_SECS" in p for p in en.problems))
 
-    def test_unterminated_quote_enables_nothing(self):
+    def test_malformed_value_enables_nothing(self):
         for text in ('FLEET_AUTOMERGE_CLASSES="rebless\n',
                      "FLEET_AUTOMERGE_CLASSES='rebless\n",
-                     'FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_HOLD_SECS="60\n'):
+                     'FLEET_AUTOMERGE_CLASSES="rebless"junk\n',
+                     "FLEET_AUTOMERGE_CLASSES='rebless'junk\n",
+                     'FLEET_AUTOMERGE_CLASSES="rebless"#x\n',
+                     'FLEET_AUTOMERGE_CLASSES="rebless""docs"\n',
+                     'FLEET_AUTOMERGE_CLASSES="rebless" junk\n',
+                     "FLEET_AUTOMERGE_CLASSES=rebless rebless\n",
+                     'FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_HOLD_SECS="60\n',
+                     'FLEET_AUTOMERGE_CLASSES=rebless\nFLEET_AUTOMERGE_HOLD_SECS="60"0\n'):
             with self.subTest(text=text):
                 en = self.read(text)
                 self.assertFalse(en.enabled)
                 self.assertEqual(en.classes, frozenset())
-                self.assertTrue(any("unterminated quote" in p for p in en.problems))
+                self.assertTrue(any("malformed" in p for p in en.problems))
 
-    def test_unterminated_quote_parses_to_none(self):
+    def test_malformed_value_parses_to_none(self):
         self.assertIsNone(mc.parse_conf_text('FLEET_AUTOMERGE_CLASSES="rebless\n')
+                          ["FLEET_AUTOMERGE_CLASSES"])
+        self.assertIsNone(mc.parse_conf_text('FLEET_AUTOMERGE_CLASSES="rebless"junk\n')
                           ["FLEET_AUTOMERGE_CLASSES"])
         self.assertEqual(mc.parse_conf_text('FLEET_AUTOMERGE_CLASSES=""\n')
                          ["FLEET_AUTOMERGE_CLASSES"], "")
+
+    @unittest.skipUnless(shutil.which("bash"), "bash not on PATH")
+    def test_accepted_values_match_what_bash_sources(self):
+        # The parser's admitted values are the ones bash itself would assign;
+        # a glued-on suffix is where the two diverge, so it must be refused.
+        for line in ('FLEET_AUTOMERGE_CLASSES=rebless',
+                     'FLEET_AUTOMERGE_CLASSES="rebless, docs"  # both waves',
+                     "FLEET_AUTOMERGE_CLASSES='rebless'",
+                     'export FLEET_AUTOMERGE_CLASSES=rebless,docs # c',
+                     'FLEET_AUTOMERGE_CLASSES=rebless#x',
+                     'FLEET_AUTOMERGE_CLASSES= # empty',
+                     'FLEET_AUTOMERGE_CLASSES=',
+                     'FLEET_AUTOMERGE_CLASSES="rebless"junk',
+                     'FLEET_AUTOMERGE_CLASSES="rebless""docs"'):
+            with self.subTest(line=line):
+                self.conf.write_text(line + "\n", encoding="utf-8")
+                sourced = subprocess.run(
+                    ["bash", "-c", 'source "$1"; printf %s "$FLEET_AUTOMERGE_CLASSES"', "_",
+                     str(self.conf)], capture_output=True, text=True, check=True).stdout
+                parsed = mc.parse_conf_text(line)["FLEET_AUTOMERGE_CLASSES"]
+                if parsed is not None:
+                    self.assertEqual(parsed, sourced)
+                else:
+                    self.assertNotIn(sourced, ("rebless", "rebless, docs"))
 
     def test_comment_and_last_assignment(self):
         en = self.read("# FLEET_AUTOMERGE_CLASSES=docs\nFLEET_AUTOMERGE_CLASSES=docs\n"

@@ -174,26 +174,22 @@ class Enablement:
 
 
 _ASSIGN_RE = re.compile(r"^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$")
+_VALUE_RE = re.compile(r"""(?:"([^"]*)"|'([^']*)'|([^\s'"]*))(?:\s+#.*|\s*)""")
 
 
 def parse_conf_text(text):
-    """The `NAME=value` assignments of a bash-sourceable conf, last one wins;
-    surrounding quotes and a trailing `# comment` after a quoted value drop.
-    A quoted value with no closing quote on its line maps to None: bash would
-    not read it as written, so callers treat it as malformed."""
+    """The `NAME=value` assignments of a bash-sourceable conf, last one wins.
+    A value is one quoted string or one bare word, optionally followed by
+    whitespace and a `# comment`. Anything else — an unterminated quote, text
+    glued to a closing quote, a second word — maps to None: bash would not read
+    the value as written, so callers treat it as malformed."""
     values = {}
     for line in text.splitlines():
         m = _ASSIGN_RE.match(line)
         if not m or line.lstrip().startswith("#"):
             continue
-        raw = m.group(2).strip()
-        if raw[:1] in ("'", '"'):
-            quote = raw[0]
-            end = raw.find(quote, 1)
-            raw = raw[1:end] if end > 0 else None
-        else:
-            raw = raw.split("#", 1)[0].strip()
-        values[m.group(1)] = raw
+        v = _VALUE_RE.fullmatch(m.group(2))
+        values[m.group(1)] = next((g for g in v.groups() if g is not None), "") if v else None
     return values
 
 
@@ -210,7 +206,7 @@ def read_enablement(conf_path):
     classes = set()
     raw = values.get("FLEET_AUTOMERGE_CLASSES", "")
     if raw is None:
-        problems.append("FLEET_AUTOMERGE_CLASSES has an unterminated quote")
+        problems.append("FLEET_AUTOMERGE_CLASSES is malformed (not one quoted or bare word)")
         raw = ""
     for token in re.split(r"[,\s]+", raw):
         if not token:
@@ -222,7 +218,7 @@ def read_enablement(conf_path):
     hold_raw = "0" if hold_raw == "" else hold_raw
     hold = 0
     if hold_raw is None:
-        problems.append("FLEET_AUTOMERGE_HOLD_SECS has an unterminated quote")
+        problems.append("FLEET_AUTOMERGE_HOLD_SECS is malformed (not one quoted or bare word)")
     elif hold_raw.isdigit():
         hold = int(hold_raw)
     else:
