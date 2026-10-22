@@ -142,3 +142,6 @@ full-frame cost. A complete hierarchy cannot recover geometry absent from the
 pool or raster layers. The retained finite-geometry proof and native Metal
 fixture do not establish closure of the original moving-block Windows report,
 general shadow correctness, FPS gains, or million-entity throughput.
+
+The readable `render-verify.log` has trailing console padding removed for text
+hygiene. `render-verify.log.gz` preserves the original captured bytes.

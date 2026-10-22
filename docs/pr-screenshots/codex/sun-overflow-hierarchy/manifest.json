@@ -16,8 +16,8 @@
   ],
   "files": {
     "README.md": {
-      "sha256": "3421c9f984c97ade748f9ddaafc3430931f04616e3ce200ff75259c66b31e112",
-      "bytes": 8518
+      "sha256": "dbe484dcc620d560983c261ed04e9c6cb407040ecee625da6e1e8fe59286bfe6",
+      "bytes": 8669
     },
     "actual-parent/detach/config.lua": {
       "sha256": "a5ae49101643dd70f67cb3f642c269d1c78a9acd9a2b13c56c89897313ad9ce0",
@@ -328,8 +328,8 @@
       "bytes": 147095
     },
     "render-verify.log": {
-      "sha256": "0379156591a9b81b0ef0b9eb9a52689c330c9332eda9c41cd23b263452fd8bd7",
-      "bytes": 9166
+      "sha256": "4bf2378427f87ef31d29a6581e1cda18ab98aefd572d1780e09ab12fc875dcc9",
+      "bytes": 9116
     },
     "source-engine.patch": {
       "sha256": "34613d1554f0d9c00c218dc3746275a0fe2c9d2b398c921a4474bf1de3ac43b0",
@@ -574,6 +574,11 @@
     "untracked-source/engine/render/src/shaders/metal/ir_sun_hierarchy_bounds.metal": {
       "sha256": "f11006019da110ac5b6333a716caf89022d9f60763e76fcee9736b1d32e30bde",
       "bytes": 2253
+    },
+    "render-verify.log.gz": {
+      "sha256": "c888c613aa4595076585c747390cf1e7c2f50c8b2b04c9a6672fe1e65b916046",
+      "bytes": 1409,
+      "uncompressed_sha256": "0379156591a9b81b0ef0b9eb9a52689c330c9332eda9c41cd23b263452fd8bd7"
     }
   },
   "transition_controls": {
