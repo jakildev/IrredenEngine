@@ -1,0 +1,29 @@
+{
+  "command": "python3 scripts/render-verify.py --target IRCanvasStress --no-build --timeout 180",
+  "exit_code": 1,
+  "checks": 46,
+  "passed": 41,
+  "failures": {
+    "modeswitch:modeswitch_grid": {
+      "max_delta": 107,
+      "match_percent": 99.9849
+    },
+    "modeswitch:modeswitch_grid_return": {
+      "max_delta": 107,
+      "match_percent": 99.9849
+    },
+    "detach:detach_grid": {
+      "max_delta": 110,
+      "match_percent": 99.9891
+    },
+    "impulse:impulse_midspin": {
+      "max_delta": 96,
+      "match_percent": 99.9588
+    },
+    "impulse:impulse_settled": {
+      "max_delta": 96,
+      "match_percent": 99.9655
+    }
+  },
+  "note": "Same five failures and aggregate comparator results as original overflow run. Prior actual-parent control captures independently establish those failures already exist on ffbcf216. No reference images refreshed. so3_wide_parity also matches prior result:99.9999%,maxdelta32. This is a transcription of the observed terminal verdict, not an archived full raw log."
+}

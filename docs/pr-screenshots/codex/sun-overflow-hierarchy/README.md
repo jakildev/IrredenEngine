@@ -115,11 +115,25 @@ The archive retains all 18 full frames, details, configs and logs, the
 [disabled-query shader](transitions/query-disabled-sample.metal), and
 [reference hashes](transitions/reference-manifest.json).
 
-This isolates the hierarchy-query switch in those scenes; it does **not** prove
-that the failures predate the whole engine patch. Construction, layout and other
-changes remain active in both variants. **An actual parent-revision comparison
-is pending**, along with attribution or repair of the five golden differences.
-The full regression suite is not green.
+That switch-only control left construction and layout changes active. A subsequent
+[actual parent-artifact comparison](actual-parent/results.json) now captures the
+same three scenes from clean parent `ffbcf2161820906760fce7299c035a141fe523b4`:
+three CLEAN runs, nine full frames, all pixel-identical to production, with the
+same five golden differences. Its binary/shader artifact hashes, commands,
+configs and logs are retained beside the frames. This establishes that these
+specific differences also occur without the whole hierarchy patch; it does not
+explain their underlying cause or excuse refreshing the goldens. The full suite
+remains **41/46**, with those five existing mismatches still needing attribution
+or repair.
+
+The [initial engine profile matrix](../../../perf/sun-overflow-production/README.md)
+exposed a major crowded-cardinal cost increase. The subsequent
+[guarded early-depth implementation](../../../perf/sun-overflow-production/guarded-depth/README.md)
+preserves these eleven images and eight additional touching/intersection pairs.
+Its retained GUARDED parent/optimized/parent timing comparison is provisional on
+battery power: crowded cardinal means are 70.60 ms versus 66.61/67.23 ms on the
+parent. The original large overdraw amplification is absent, but remaining cost
+and native Windows parity still require qualification.
 
 Pending: native Windows/OpenGL reproduction and parity, actual analytic/mixed
 render-mode controls, motion and stale-publication transitions, exhausted global

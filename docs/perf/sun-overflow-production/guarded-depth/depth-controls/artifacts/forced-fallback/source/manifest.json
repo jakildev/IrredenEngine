@@ -1,0 +1,16 @@
+{
+  "base": "d832ed2ec5de4813e77a309bed0e1ab43719a346",
+  "files": {
+    "engine.patch": "b3a3a4ef33be60133cbf225ccdb14a3471d1f861fd9f9c25e20ab3f0e3e143fd",
+    "engine/render/src/shaders/ir_source_face_depth.glsl": "982382f56a313905040d83cacd27c83bb831d25710af9aba547a788f0e594824",
+    "engine/render/src/shaders/ir_source_face_scatter_fragment.glsl": "d8fb14a6d1fc0e304a06f49910b5bd55e4b30516f36c0dd489e07a3fb0b66100",
+    "engine/render/src/shaders/v_source_face_scatter_early.glsl": "1c79916c2e8a549af88047415afb5d1c09f8560a87e4ba128349f28374743f25",
+    "engine/render/src/shaders/f_source_face_scatter_early.glsl": "672cceaf7d50f5e22262e827cf82dd5ed8b1231542dccce404ed6ffb8e4f4a0f",
+    "engine/render/src/shaders/ir_source_face_scatter_vertex.glsl": "d56f97eed4ad4768aeb4347d361ed48b16a741f55a94b132b66b29e650868768",
+    "engine/render/src/shaders/metal/source_face_scatter_early.metal": "db8e258cf72b15467ba891c6461039cfcb1bf0cc2bfc97ace826bd7b3eafc542",
+    "engine/render/src/shaders/metal/ir_source_face_scatter_body.metal": "4325e5957e008591626b571c26429fbd6aaffcb9104f5973b4ba5c8b2b67d63e",
+    "engine/render/src/shaders/metal/ir_source_face_depth.metal": "cec7824873265ab526957b6f2e77cbe9529f0140ce0e22a825297122b55b8f19"
+  },
+  "original_manifest_sha256": "7a95ee033220b38a2386b2c4c5721fa4fec1818213b63f343f3c8fe097042a78",
+  "transformation": "Only shared sourceCanvasEarlyDepth final eligible return replaced with false, in both backends. Runtime shader overlay; identical native executable."
+}

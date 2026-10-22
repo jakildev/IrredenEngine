@@ -16,8 +16,72 @@
   ],
   "files": {
     "README.md": {
-      "sha256": "b54101d0931da37e362439e83648d89d10360e972fc4c10f29798fcfdfb51863",
-      "bytes": 7525
+      "sha256": "3421c9f984c97ade748f9ddaafc3430931f04616e3ce200ff75259c66b31e112",
+      "bytes": 8518
+    },
+    "actual-parent/detach/config.lua": {
+      "sha256": "a5ae49101643dd70f67cb3f642c269d1c78a9acd9a2b13c56c89897313ad9ce0",
+      "bytes": 99
+    },
+    "actual-parent/detach/run.log": {
+      "sha256": "d630e2754c641f0f9c5f94e3620464c581ed0eef66ebb652546884edc4ef05b3",
+      "bytes": 47575
+    },
+    "actual-parent/detach/screenshot_000001.png": {
+      "sha256": "11e5790013b4ab67251681fe3bcff4570e422296cda15ac55779ef532d67b69f",
+      "bytes": 154290
+    },
+    "actual-parent/detach/screenshot_000002.png": {
+      "sha256": "5f2a3ba72ae31c368b4c6f58b1820e9afc9d046a2f54cd3f0218b6519d65bae7",
+      "bytes": 154368
+    },
+    "actual-parent/detach/screenshot_000003.png": {
+      "sha256": "55a6a4ddd60fcec1d9439ed0b5d9438f6869a357480f280add20ca6e661dae81",
+      "bytes": 155653
+    },
+    "actual-parent/impulse/config.lua": {
+      "sha256": "e45c7c8649990d7cc3038291fafa4eef61e7f720462e7f2f01fe9eccdcfa7906",
+      "bytes": 100
+    },
+    "actual-parent/impulse/run.log": {
+      "sha256": "e636767402122578c71dfa723f079fba8c29a7c916c95f33db4740a43a6a0160",
+      "bytes": 100834
+    },
+    "actual-parent/impulse/screenshot_000001.png": {
+      "sha256": "03231d6ff2de906dd75b0778e7fb5e321c558a4b4d447a655837451b05d2f0ae",
+      "bytes": 168767
+    },
+    "actual-parent/impulse/screenshot_000002.png": {
+      "sha256": "7edd8f3d5bc4c207498bf2c3c32afc3357d053eb3b8fb294b4399494af9666cb",
+      "bytes": 169982
+    },
+    "actual-parent/modeswitch/config.lua": {
+      "sha256": "67fe0d550af3e7258991e726e9e601e5b1ed81b950a539d98f607f81292d249b",
+      "bytes": 103
+    },
+    "actual-parent/modeswitch/run.log": {
+      "sha256": "50860c2fddd05eeafc5c7de6d6de3825a583a1a655943d4b34c01dd8a4ddb9ac",
+      "bytes": 57266
+    },
+    "actual-parent/modeswitch/screenshot_000001.png": {
+      "sha256": "bbb94a07cf29464007602385b835f58e598f662fb77aeae6facd320a599b7555",
+      "bytes": 148221
+    },
+    "actual-parent/modeswitch/screenshot_000002.png": {
+      "sha256": "c63dd74b35037641a970f255f0dc60ea688395e2d9a58a36eaaef11cb8744ac5",
+      "bytes": 146639
+    },
+    "actual-parent/modeswitch/screenshot_000003.png": {
+      "sha256": "301eab0fd6ec50ad8fc47da940e6096e151017e81f73e6491a6eedb751a7b271",
+      "bytes": 148329
+    },
+    "actual-parent/modeswitch/screenshot_000004.png": {
+      "sha256": "bbb94a07cf29464007602385b835f58e598f662fb77aeae6facd320a599b7555",
+      "bytes": 148221
+    },
+    "actual-parent/results.json": {
+      "sha256": "b0fb10b93bdc56f60537522ae818a5594a482e66c8a9e6c401e86401905ac178",
+      "bytes": 48650
     },
     "baseline/captures.json": {
       "sha256": "295a34bf973787b063d04dad3340e6fecb2292d4a416156286eb6c90366e4fe2",
@@ -519,6 +583,6 @@
     "pixel_identical_pairs": 9,
     "full_regression_passed": 41,
     "full_regression_total": 46,
-    "parent_comparison": "pending"
+    "parent_comparison": "nine actual clean-parent frames pixel-identical to production; same five golden mismatches"
   }
 }

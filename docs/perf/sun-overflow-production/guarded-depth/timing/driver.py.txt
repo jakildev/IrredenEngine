@@ -1,0 +1,37 @@
+from pathlib import Path
+import hashlib,json,os,subprocess,sys,time
+root=Path.cwd()
+sys.path.insert(0,str(root/'scripts/perf'))
+from repeat_profile import host_power_source, host_power_report
+out=Path('/tmp/sun-overflow-guarded-depth-timing');out.mkdir(exist_ok=False)
+artifactroot=Path('/tmp/sun-overflow-engine-pair')
+results=[]
+common=['--only','shadowbox,floor','--probe-source-box','--probe-floor-mode','grid','--probe-floor-span','40','--sun-direction','0','0','-1','--no-spin','--no-auto-rotate','--pivot-origin','--no-ao','--auto-profile','--profile-frames','360','--window-mode','offscreen','--subdivisions','1']
+cases=[('complete-cardinal','0','1',0),('complete-oblique','0.6','4',0),('crowded-cardinal','0','1',128),('crowded-oblique','0.6','4',128)]
+manifest={'power_before':host_power_source(),'qualification':'provisional; user requested continuation despite unstable power','power_report_before':host_power_report(),'runs':results,'provenance_note':'Runner checkout describes integration checkout. Frozen artifact and source-overlay manifests identify executable and shaders. No checkout mutation during this run.'}
+def save(): (out/'matrix.json').write_text(json.dumps(manifest,indent=2)+'\n')
+save()
+try:
+ for passname,variant in [('parent-a','parent'),('guarded-depth','guarded-depth'),('parent-b','parent')]:
+  artifact=artifactroot/variant
+  metadata=json.loads((artifact/'artifact.json').read_text())
+  for rel,expected in metadata['files'].items():
+   if hashlib.sha256((artifact/rel).read_bytes()).hexdigest()!=expected:raise RuntimeError('Artifact mutated: '+rel)
+  env={**os.environ,'IRREDEN_BUILD_DIR':str(artifact/'build'),'IR_PERAXIS_SURFACE_LIGHTING':'1'}
+  for name,yaw,zoom,count in cases:
+   power_report_before=host_power_report()
+   args=[*common,'--yaw',yaw,'--zoom',zoom]
+   if count:args+=['--probe-overlapping-source','--probe-overlapping-source-count',str(count),'--probe-overlapping-source-offset','0','0','-60']
+   command=['python3','scripts/perf/repeat_profile.py','--target','IRCanvasStress','--output',str(out/passname/name),'--repeats','1','--timeout','180','--',*args]
+   print(passname,name,flush=True)
+   started=time.time()
+   result=subprocess.run(command,cwd=root,env=env)
+   results.append({'pass':passname,'variant':variant,'case':name,'artifact_head':metadata['head'],'command':command,'exit_code':result.returncode,'power_after':host_power_source(),'power_report_before':power_report_before,'power_report_after':host_power_report(),'wall_seconds':time.time()-started})
+   save()
+   if result.returncode:raise RuntimeError('Profile failed')
+ manifest['power_after']=host_power_source()
+ manifest['qualification']='provisional due unstable host power; outer quiet report retained separately'
+ manifest['power_report_after']=host_power_report()
+except BaseException as exc:
+ manifest['qualification']='rejected';manifest['failure']=str(exc);raise
+finally:save()

@@ -1,0 +1,21 @@
+from pathlib import Path
+import json,os,subprocess,sys
+root=Path.cwd()
+sys.path.insert(0,str(root/'scripts/perf'))
+from repeat_profile import host_power_source
+out=Path('/tmp/sun-overflow-early-depth-timing');out.mkdir(exist_ok=False)
+artifactroot=Path('/tmp/sun-overflow-engine-pair')
+power_before=host_power_source()
+assert power_before=='AC Power',power_before
+args=['--only','shadowbox,floor','--probe-source-box','--probe-floor-mode','grid','--probe-floor-span','40','--sun-direction','0','0','-1','--no-spin','--no-auto-rotate','--pivot-origin','--no-ao','--auto-profile','--profile-frames','360','--window-mode','offscreen','--subdivisions','1','--yaw','0','--zoom','1','--probe-overlapping-source','--probe-overlapping-source-count','128','--probe-overlapping-source-offset','0','0','-60']
+results=[]
+for variant in ('parent','head','early-depth'):
+ artifact=artifactroot/variant
+ env={**os.environ,'IRREDEN_BUILD_DIR':str(artifact/'build'),'IR_PERAXIS_SURFACE_LIGHTING':'1'}
+ command=['python3','scripts/perf/repeat_profile.py','--target','IRCanvasStress','--output',str(out/variant),'--repeats','1','--timeout','180','--',*args]
+ print(variant,flush=True)
+ subprocess.run(command,cwd=root,env=env,check=True)
+ results.append({'variant':variant,'artifact':json.loads((artifact/'artifact.json').read_text()),'command':command})
+power_after=host_power_source()
+assert power_after=='AC Power',power_after
+(out/'matrix.json').write_text(json.dumps({'power_before':power_before,'power_after':power_after,'runs':results,'provenance_note':'Runner checkout head/status describes current integration checkout, not frozen binary source. Artifact manifests identify built source; early-depth adds experiment overlay to head artifact.'},indent=2)+'\n')

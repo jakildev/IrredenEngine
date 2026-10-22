@@ -1,0 +1,4 @@
+#define IR_SOURCE_FACE_EARLY_DEPTH 1
+#define IR_SOURCE_FACE_VERTEX v_source_face_scatter_early
+#define IR_SOURCE_FACE_FRAGMENT f_source_face_scatter_early
+#include "ir_source_face_scatter_body.metal"

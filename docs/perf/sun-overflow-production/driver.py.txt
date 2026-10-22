@@ -1,0 +1,24 @@
+from pathlib import Path
+import json,os,subprocess
+root=Path.cwd()
+out=Path('/tmp/sun-overflow-production-timing');out.mkdir(exist_ok=False)
+artifactroot=Path('/tmp/sun-overflow-engine-pair')
+cases=[('complete-cardinal','0','1',0),('complete-oblique','0.6','4',0),('crowded-cardinal','0','1',128),('crowded-oblique','0.6','4',128)]
+common=['--only','shadowbox,floor','--probe-source-box','--probe-floor-mode','grid','--probe-floor-span','40','--sun-direction','0','0','-1','--no-spin','--no-auto-rotate','--pivot-origin','--no-ao','--auto-profile','--profile-frames','360','--window-mode','offscreen','--subdivisions','1']
+results=[]
+try:
+ for passname,variant in [('parent-a','parent'),('head','head'),('parent-b','parent')]:
+  artifact=artifactroot/variant
+  metadata=json.loads((artifact/'artifact.json').read_text())
+  subprocess.run(['git','switch','--detach',metadata['head']],cwd=root,check=True)
+  env={**os.environ,'IRREDEN_BUILD_DIR':str(artifact/'build'),'IR_PERAXIS_SURFACE_LIGHTING':'1'}
+  for name,yaw,zoom,count in cases:
+   args=[*common,'--yaw',yaw,'--zoom',zoom]
+   if count:args+=['--probe-overlapping-source','--probe-overlapping-source-count',str(count),'--probe-overlapping-source-offset','0','0','-60']
+   command=['python3','scripts/perf/repeat_profile.py','--target','IRCanvasStress','--output',str(out/passname/name),'--repeats','1','--timeout','180','--',*args]
+   print(passname,name,flush=True)
+   subprocess.run(command,cwd=root,env=env,check=True)
+   results.append({'pass':passname,'variant':variant,'case':name,'artifact_head':metadata['head'],'command':command})
+   (out/'matrix.json').write_text(json.dumps(results,indent=2)+'\n')
+finally:
+ subprocess.run(['git','switch','codex/sun-overflow-hierarchy'],cwd=root,check=True)
