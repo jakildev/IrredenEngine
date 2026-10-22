@@ -1,0 +1,23 @@
+from pathlib import Path
+import hashlib,json,os,subprocess,sys
+root=Path.cwd();sys.path.insert(0,str(root/'scripts'))
+from verify_common import collect_full_frames,platform_launch_argv,run_result
+from PIL import Image,ImageChops
+out=Path('/tmp/shadow-grid-receiver-edge-oblique');out.mkdir(exist_ok=False)
+artifact=Path('/tmp/sun-overflow-engine-pair/head')
+results={'artifact':json.loads((artifact/'artifact.json').read_text()),'cases':{}}
+common=['--only','shadowbox,floor','--probe-grid','--probe-floor-mode','grid','--probe-floor-span','40','--sun-direction','0','0','-1','--no-spin','--no-auto-rotate','--pivot-origin','--zoom','4','--subdivisions','1','--no-ao','--auto-screenshot','10','--sweep-frames','1','10','--probe-overlapping-source']
+for yaw in ('0.6','2.17079632679','3.74159265359','5.31238898038'):
+ for surface in ('0','1'):
+  label=f'yaw{yaw}-surface{surface}'
+  folder=out/label;folder.mkdir()
+  config=folder/'config.lua';config.write_text('config={window_mode="offscreen",profiling_enabled=false,gpu_stage_timing=false,init_window_width=1280,init_window_height=720,game_resolution_width=1280,game_resolution_height=720,screenshot_output_dir='+json.dumps(str(folder))+'}\n')
+  command=['fleet-run','--timeout','180','--build-dir',str(artifact/'build'),'IRCanvasStress','--config-preset',str(config),*common,'--yaw',yaw]
+  env={**os.environ,'IR_PERAXIS_SURFACE_LIGHTING':surface}
+  with (folder/'run.log').open('w') as stream:r=subprocess.run(platform_launch_argv(command),cwd=root,env=env,stdout=stream,stderr=subprocess.STDOUT)
+  shots=collect_full_frames(folder)
+  assert r.returncode==0 and run_result((folder/'run.log').read_text())=='CLEAN' and len(shots)==1
+  image=Image.open(shots[0]).convert('RGB');image.crop((1050,350,1500,700)).save(folder/'receiver-detail.png')
+  results['cases'][label]={'command':command,'environment':{'IR_PERAXIS_SURFACE_LIGHTING':surface},'result':'CLEAN','frame':shots[0].name,'sha256':hashlib.sha256(shots[0].read_bytes()).hexdigest()}
+  (out/'captures.json').write_text(json.dumps(results,indent=2)+'\n')
+  print(label,'CLEAN',flush=True)
