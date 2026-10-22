@@ -51,6 +51,16 @@ class InputManager {
     int getButtonPressesThisFrame(KeyMouseButtons button) const;
     int getButtonReleasesThisFrame(KeyMouseButtons button) const;
     bool hasAnyButtonPressedThisFrame() const;
+    // This frame's summed wheel steps (+1 per event with yoffset > 0, -1 per
+    // event below, the CAMERA_SCROLL_ZOOM rule) and raw offset sum. Filled in
+    // `tick()`, so INPUT, UPDATE and RENDER readers see the same value even
+    // after LIFETIME destroys the C_MouseScroll entities.
+    int getScrollSteps() const {
+        return m_scrollStepsThisFrame;
+    }
+    IRMath::vec2 getScrollOffset() const {
+        return IRMath::vec2(m_scrollOffsetThisFrame);
+    }
     bool checkGamepadButton(GamepadButtons button, ButtonStatuses status, int irGamepadId = 0) const;
     float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0) const;
 
@@ -76,6 +86,8 @@ class InputManager {
     std::vector<EntityId> m_gamepadEntities;
 
     std::vector<EntityId> m_scrollEntitiesThisFrame;
+    int m_scrollStepsThisFrame = 0;
+    IRMath::dvec2 m_scrollOffsetThisFrame{0.0, 0.0};
     std::vector<int> m_buttonPressesThisFrame;
     std::vector<int> m_buttonReleasesThisFrame;
 
