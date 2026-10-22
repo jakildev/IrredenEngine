@@ -44,6 +44,15 @@ bool checkGamepadButton(GamepadButtons button, ButtonStatuses buttonStatus, int 
 /// Asserts if no gamepad was connected at engine startup.
 float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0);
 
+/// This frame's summed wheel steps: +1 per scroll event with `yoffset > 0`, -1
+/// per event below (the `CAMERA_SCROLL_ZOOM` rule; a trackpad's fractional
+/// offset still counts as one step). Not hover-gated. Reads the same value
+/// from INPUT, UPDATE and RENDER, after the ephemeral `C_MouseScroll`
+/// entities are gone. Zero on a frame with no event.
+int scrollDelta();
+/// This frame's raw summed scroll offset `(x, y)`. Zero on a frame with no event.
+IRMath::vec2 scrollOffset();
+
 /// @name Synthetic input (headless GUI/mouse verification harness)
 /// Flip the active `InputManager` to consume injected events instead of GLFW
 /// for the rest of the run, so a headless run can move the cursor and press

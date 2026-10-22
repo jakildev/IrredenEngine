@@ -45,6 +45,8 @@ InputManager::~InputManager() {
 
 void InputManager::tick() {
     m_scrollEntitiesThisFrame.clear();
+    m_scrollStepsThisFrame = 0;
+    m_scrollOffsetThisFrame = IRMath::dvec2(0.0, 0.0);
     std::fill(m_buttonPressesThisFrame.begin(), m_buttonPressesThisFrame.end(), 0);
     std::fill(m_buttonReleasesThisFrame.begin(), m_buttonReleasesThisFrame.end(), 0);
 
@@ -246,6 +248,12 @@ void InputManager::processScrolls(std::queue<std::pair<double, double>> &queueOf
         std::pair<double, double> scroll = queueOfScrolls.front();
         EntityId entityScroll = IREntity::createEntity<kMouseScroll>(scroll.first, scroll.second);
         m_scrollEntitiesThisFrame.push_back(entityScroll);
+        if (scroll.second > 0.0) {
+            ++m_scrollStepsThisFrame;
+        } else if (scroll.second < 0.0) {
+            --m_scrollStepsThisFrame;
+        }
+        m_scrollOffsetThisFrame += IRMath::dvec2(scroll.first, scroll.second);
         queueOfScrolls.pop();
 
         IRE_LOG_DEBUG("Processed scroll xoffset={}, yoffset={}", scroll.first, scroll.second);

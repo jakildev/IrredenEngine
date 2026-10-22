@@ -8,6 +8,7 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_window.hpp>
+#include <irreden/input/components/component_mouse_scroll_lua.hpp>
 #include <irreden/script/lua_input_bindings.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/time/ir_time_types.hpp>
@@ -132,6 +133,29 @@ TEST_F(LuaInputBindingsTest, SyntheticInputFunctionsBound) {
     EXPECT_TRUE(isFunction("IRInput.injectScroll"));
 }
 
+// ---- Scroll query + C_MouseScroll binding presence ------------------------
+
+TEST_F(LuaInputBindingsTest, ScrollQueryFunctionsBound) {
+    EXPECT_TRUE(isFunction("IRInput.scrollDelta"));
+    EXPECT_TRUE(isFunction("IRInput.scrollOffset"));
+}
+
+TEST_F(LuaInputBindingsTest, MouseScrollComponentBindsXAndYOffset) {
+    static_assert(IRScript::kHasLuaBinding<IRComponents::C_MouseScroll>);
+    IRScript::bindLuaType<IRComponents::C_MouseScroll>(m_lua);
+    auto result = m_lua.lua().safe_script(
+        R"(
+        local scroll = C_MouseScroll.new(1.5, -2)
+        return scroll.xoffset, scroll.yoffset
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    const std::pair<double, double> offsets = result;
+    EXPECT_DOUBLE_EQ(offsets.first, 1.5);
+    EXPECT_DOUBLE_EQ(offsets.second, -2.0);
+}
+
 // ---- Idempotency: second bindLuaInput() call is a no-op ------------------
 
 TEST_F(LuaInputBindingsTest, BindLuaInputIdempotent) {
@@ -252,6 +276,60 @@ TEST_F(LuaInputInjectionTest, InjectWithNoCommandBoundLeavesStateClear) {
 
     const bool flag = lua["flag"];
     EXPECT_FALSE(flag) << "flag must stay false when no command is wired to SPACE";
+}
+
+// scrollDelta()/scrollOffset() hold the frame's summed wheel events for every
+// pipeline event, not just INPUT, and reset on a frame with none.
+TEST_F(LuaInputInjectionTest, ScrollQuerySumsFrameAcrossPipelineEvents) {
+    IRInput::beginSyntheticInput();
+    EXPECT_EQ(IRInput::scrollDelta(), 0);
+    EXPECT_EQ(IRInput::scrollOffset(), IRMath::vec2(0.0f, 0.0f));
+
+    IRInput::injectScroll(0.0, 1.0);
+    IRInput::injectScroll(0.0, 1.0);
+    IRInput::injectScroll(0.0, -2.5);
+    pumpInputFrame();
+    for (const IRTime::Events event : {IRTime::Events::UPDATE, IRTime::Events::RENDER}) {
+        IRInput::g_inputManager->advanceInputState(event);
+        EXPECT_EQ(IRInput::scrollDelta(), 1);
+        EXPECT_EQ(IRInput::scrollOffset(), IRMath::vec2(0.0f, -0.5f));
+    }
+
+    pumpInputFrame();
+    EXPECT_EQ(IRInput::scrollDelta(), 0);
+    EXPECT_EQ(IRInput::scrollOffset(), IRMath::vec2(0.0f, 0.0f));
+}
+
+TEST_F(LuaInputInjectionTest, LuaScrollQueryReadsInjectedEvents) {
+    auto &lua = m_lua->lua();
+    auto before = lua.safe_script(
+        "return IRInput.scrollDelta(), IRInput.scrollOffset()",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(before.valid()) << before.get<sol::error>().what();
+    EXPECT_EQ(before.get<int>(0), 0);
+    EXPECT_DOUBLE_EQ(before.get<double>(1), 0.0);
+    EXPECT_DOUBLE_EQ(before.get<double>(2), 0.0);
+
+    auto result = lua.safe_script(
+        R"(
+        IRInput.beginSyntheticInput()
+        IRInput.injectScroll(0.5, 1)
+        IRInput.injectScroll(0, 1)
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    pumpInputFrame();
+
+    auto after = lua.safe_script(
+        "return IRInput.scrollDelta(), IRInput.scrollOffset()",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(after.valid()) << after.get<sol::error>().what();
+    EXPECT_EQ(after.get<int>(0), 2);
+    EXPECT_DOUBLE_EQ(after.get<double>(1), 0.5);
+    EXPECT_DOUBLE_EQ(after.get<double>(2), 2.0);
 }
 
 // isSyntheticInputActive() reflects the mode set by beginSyntheticInput().
