@@ -22,6 +22,7 @@
 #include <irreden/input/components/component_hitbox_2d.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -486,6 +487,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         auto *canvasProgram =
             IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
         auto *sourceProgram = IRRender::getNamedResource<ShaderProgram>("SourceFaceScatterProgram");
+        auto *sourceEarlyProgram =
+            IRRender::getNamedResource<ShaderProgram>("SourceFaceScatterEarlyProgram");
         auto *activeMask = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
         auto *compacted = IRRender::getNamedResource<Buffer>("CompactedVoxelIndices");
         auto *sunFrame = IRRender::getNamedResourceOrNull<Buffer>("ComputeSunShadowFrameData");
@@ -518,7 +521,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
             inst.textures_->bind(0, 1, 2);
             if (inst.textures_->renderedSampleLayout_ == TrixelSampleLayout::SOURCE_FACES) {
-                sourceProgram->use();
                 inst.textures_->sourceFaces_.second->bindBase(
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_SourceVoxelFaces
@@ -527,12 +529,17 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_PerAxisCellCompacted
                 );
-                IRRender::device()->drawElementsInstancedIndirect(
-                    DrawMode::TRIANGLES,
-                    IndexType::UNSIGNED_SHORT,
-                    inst.textures_->sourceFaces_.second,
-                    0
-                );
+                // The GPU producer bounds the entire canvas. Exactly one shader
+                // accepts it, preserving face order even at clamp boundaries.
+                for (auto *program : std::array{sourceEarlyProgram, sourceProgram}) {
+                    program->use();
+                    IRRender::device()->drawElementsInstancedIndirect(
+                        DrawMode::TRIANGLES,
+                        IndexType::UNSIGNED_SHORT,
+                        inst.textures_->sourceFaces_.second,
+                        0
+                    );
+                }
                 activeMask->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
                 compacted->bindBase(
                     BufferTarget::SHADER_STORAGE,
@@ -561,6 +568,14 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             std::vector<ShaderStage>{
                 ShaderStage{IRRender::kFileVertSourceFaceScatter, ShaderType::VERTEX},
                 ShaderStage{IRRender::kFileFragSourceFaceScatter, ShaderType::FRAGMENT}
+            }
+        );
+
+        IRRender::createNamedResource<ShaderProgram>(
+            "SourceFaceScatterEarlyProgram",
+            std::vector<ShaderStage>{
+                ShaderStage{IRRender::kFileVertSourceFaceScatterEarly, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragSourceFaceScatterEarly, ShaderType::FRAGMENT}
             }
         );
 

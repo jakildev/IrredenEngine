@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 from shader_contract_helpers import extract_block, extract_function
+from test_render_source_face_index import load_shader
 
 SHADERS = Path(__file__).resolve().parents[2] / "engine/render/src/shaders"
 COMPILER = shutil.which("c++")
@@ -31,6 +32,7 @@ using std::min;
 using std::max;
 struct vec2 {
     float x,y;
+    vec2()=default;
     vec2(float a,float b):x(a),y(b){}
     explicit vec2(float a):x(a),y(a){}
     template<class T> explicit vec2(T a):x(a.x),y(a.y){}
@@ -41,8 +43,27 @@ struct ivec2 {
     explicit ivec2(int a):x(a),y(a){}
     explicit ivec2(vec2 a):x(int(a.x)),y(int(a.y)){}
 };
-struct vec3 {float x,y,z; vec3(float a,float b,float c):x(a),y(b),z(c){}};
-struct vec4 {float x,y,z,w;};
+struct vec3 {
+    float x,y,z;
+    vec3():x(0),y(0),z(0){}
+    vec3(float a,float b,float c):x(a),y(b),z(c){}
+    explicit vec3(float a):x(a),y(a),z(a){}
+    vec2 xy()const{return {x,y};}
+    float& operator[](uint i){return i==0?x:(i==1?y:z);}
+    float operator[](uint i)const{return i==0?x:(i==1?y:z);}
+};
+struct vec4 {
+    float x,y,z,w;
+    vec4():x(0),y(0),z(0),w(0){}
+    vec4(float a,float b,float c,float d):x(a),y(b),z(c),w(d){}
+    explicit vec4(float a):x(a),y(a),z(a),w(a){}
+    vec4(vec2 a,float c,float d):x(a.x),y(a.y),z(c),w(d){}
+    vec4(vec3 a,float d):x(a.x),y(a.y),z(a.z),w(d){}
+    vec2 xy()const{return {x,y};}
+    vec3 xyz()const{return {x,y,z};}
+    float& operator[](uint i){return i==0?x:(i==1?y:(i==2?z:w));}
+    float operator[](uint i)const{return i==0?x:(i==1?y:(i==2?z:w));}
+};
 vec2 operator+(vec2 a,vec2 b){return {a.x+b.x,a.y+b.y};}
 vec2 operator-(vec2 a,vec2 b){return {a.x-b.x,a.y-b.y};}
 vec2 operator*(vec2 a,float b){return {a.x*b,a.y*b};}
@@ -57,17 +78,26 @@ ivec2 operator-(ivec2 a,ivec2 b){return {a.x-b.x,a.y-b.y};}
 float mix(float a,float b,float t){return a*(1-t)+b*t;}
 bool operator>=(ivec2 a,ivec2 b){return a.x>=b.x && a.y>=b.y;}
 bool operator<(ivec2 a,ivec2 b){return a.x<b.x && a.y<b.y;}
+bool operator>=(vec2 a,vec2 b){return a.x>=b.x && a.y>=b.y;}
+bool operator<=(vec2 a,vec2 b){return a.x<=b.x && a.y<=b.y;}
 bool greaterThanEqual(ivec2 a,ivec2 b){return a>=b;}
 bool lessThan(ivec2 a,ivec2 b){return a<b;}
 bool all(bool a){return a;}
 vec2 floor(vec2 a){return {std::floor(a.x),std::floor(a.y)};}
+vec2 abs(vec2 a){return {std::abs(a.x),std::abs(a.y)};}
+float min(float a,float b){return std::min(a,b);}
+float max(float a,float b){return std::max(a,b);}
+vec3 min(vec3 a,vec3 b){return {min(a.x,b.x),min(a.y,b.y),min(a.z,b.z)};}
+vec3 max(vec3 a,vec3 b){return {max(a.x,b.x),max(a.y,b.y),max(a.z,b.z)};}
+bool greaterThanEqual(vec2 a,vec2 b){return a.x>=b.x && a.y>=b.y;}
+bool lessThanEqual(vec2 a,vec2 b){return a.x<=b.x && a.y<=b.y;}
 float dot(vec2 a,vec2 b){return a.x*b.x+a.y*b.y;}
 float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
 vec3 faceOutwardNormal6(int id){if(id!=5)std::abort();return {0,0,1};}
 vec3 rotateByQuat(vec3 a,vec4 q){if(q.w!=1)std::abort();return a;}
 float uintBitsToFloat(uint a){float b;std::memcpy(&b,&a,4);return b;}
 uint floatBitsToUint(float a){uint b;std::memcpy(&b,&a,4);return b;}
-template<class T> T as_type(uint a){T b;std::memcpy(&b,&a,4);return b;}
+template<class T,class U> T as_type(U a){T b;std::memcpy(&b,&a,4);return b;}
 const int kSunShadowMapDim=1024,kCascadeTexelCount=1024*1024;
 const float kSunDepthScale=1024,kSunDepthOffset=512;
 const float kShadowBiasQuantNoise=4.0/kSunDepthScale;
@@ -76,7 +106,7 @@ struct BoundBuffer {
     std::vector<uint> words;
     uint recordOffset=0,recordEnd=0,readCount=0;
     uint spillCounterOffset=0,spillCounterReads=0;
-    uint operator[](uint i){
+    uint& operator[](uint i){
         if(i>=words.size()){std::cerr<<"out-of-bounds read\n";std::exit(90);}
         if(i>=recordOffset && i<recordEnd)++readCount;
         if(i==spillCounterOffset)++spillCounterReads;
@@ -103,6 +133,8 @@ void reset(uint count,uint tileCount,uint cascade=0) {
     sunDepthBuf.spillCounterReads=0;
     sunDepthBuf.words[kSourceFaceHeaderOffset]=count;
     sunDepthBuf.words[kSourceFaceSpillCounterOffset]=0;
+    sunDepthBuf.words[kSourceFaceHierarchyNeededOffset]=0;
+    sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]=0;
     sunDepthBuf.words[tileBase(cascade)]=tileCount;
     for(uint i=0;i<64;++i)sunDepthBuf.words[tileBase(cascade)+1+i]=63-i;
     if(tileCount>64 && tileCount<=kSourceFaceTileQueryCapacity){
@@ -372,6 +404,8 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
     body = extract_function(sampler, "sampleCascadeShadow")
     if not include_pcf:
         body = body[:body.index("    float slope =")] + "    return 0.0;\n}\n"
+    body = "\n".join(extract_function(sampler, name) for name in (
+        "sourceSunGeometrySeparation", "sourceSunHierarchyBlocks")) + body
     if mutation:
         old, new = mutation
         if old not in body:
@@ -387,18 +421,27 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
     if query_stats:
         define += "#define IR_SUN_QUERY_STATS 1\n"
         define += (SHADERS / directory / f"ir_sun_query_stats.{suffix}").read_text()
-    code = PREAMBLE + define + constants[0] + "\n" + layout + helpers + body
+    storage = load_shader(SHADERS / directory, "ir_sun_geometry_storage", suffix)
+    code = PREAMBLE + define + constants[0] + "\n" + layout + storage + helpers + body
     code += f"static_assert(IR_SUN_FACE_OVERFLOW_REFERENCE == {int(enabled)});\n"
     if query_stats:
         code += "SunQueryStats sunQueryStats{};\n"
     code += cases.replace("SAMPLE_CALL", call)
-    return (code.replace("constant uint", "const uint").replace("constant float", "const float")
+    code = (code.replace("constant uint", "const uint").replace("constant float", "const float")
             .replace("pcfOffset.xy", "vec2(pcfOffset)")
             .replace("inout SunQueryStats sunQueryStats", "SunQueryStats &sunQueryStats")
             .replace("thread SunQueryStats &sunQueryStats", "SunQueryStats &sunQueryStats")
             .replace("device const uint *sunDepthBuf", "BoundBuffer& sunDepthBuf")
+            .replace("device const uint* sunDepthBuf", "BoundBuffer& sunDepthBuf")
+            .replace("thread ", "")
             .replace("float2", "vec2").replace("float3", "vec3")
             .replace("float4", "vec4").replace("int2", "ivec2"))
+    code = re.sub(r"\bout (vec2|float) (\w+)", r"\1 &\2", code)
+    code = re.sub(r"\.(xy|xyz)\b(?!\()", r".\1()", code)
+    code = code.replace("uint type; };", "uint type; SourceSunGeometry(vec3 c,vec3 u,"
+                        "vec3 v,uint t):corner(c),edgeU(u),edgeV(v),type(t){} };")
+    return code.replace("vec4 high; };", "vec4 high; SourceSunBounds()=default; "
+                        "SourceSunBounds(vec4 l,vec4 h):low(l),high(h){} };")
 
 
 @unittest.skipUnless(COMPILER, "finite receiver controls require a C++ compiler")
@@ -437,7 +480,8 @@ class SourceFaceOverflowTest(unittest.TestCase):
     def test_incomplete_lists_do_not_choose_coverage_by_reservation_order(self):
         partial_query = (
             "const uint candidateCount = queryAllFaces ? sourceFaceCount : count;\n"
-            "            if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {",
+            "            if (!queryHierarchy && sourceQueryComplete && "
+            "dot(normal, sunDir) > 0.0) {",
             "const uint candidateCount = queryAllFaces ? sourceFaceCount\n"
             "                : min(count, kSourceFaceTileCapacity);\n"
             "            if ((sourceQueryComplete || sourceFaceCount <= kSourceFaceCapacity)\n"

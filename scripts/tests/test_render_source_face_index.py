@@ -95,6 +95,8 @@ void reset() {
     std::fill(sunDepthBuf.data,sunDepthBuf.data+kSourceFaceBufferWords,unwritten);
     sunDepthBuf[kSourceFaceHeaderOffset]=0;
     sunDepthBuf[kSourceFaceSpillCounterOffset]=0;
+    sunDepthBuf[kSourceFaceHierarchyNeededOffset]=0;
+    sunDepthBuf[kSourceFaceHierarchyReadyOffset]=0;
     for(uint tile=0;tile<32768;++tile) {
         sunDepthBuf[kSourceFaceTileOffset+tile*65]=0;
         sunDepthBuf[kSourceFaceSpillHeadOffset+tile]=0xffffffffu;
@@ -145,10 +147,18 @@ void emit(vec3 corner,vec3 u,vec3 v,const std::vector<uint>& tiles) {
             }
             const uint count=list[0]++;
             ++expectedAdds;
+            if(count==256) {
+                oracle[kSourceFaceHierarchyNeededOffset]=1;
+                expectedExchanges+=HIERARCHY_FLAG_USES_EXCHANGE;
+            }
             if(count<64) list[count+1]=id;
             else if(count<256) {
                 const uint slot=oracle[kSourceFaceSpillCounterOffset]++;
                 ++expectedAdds;
+                if(slot==262144) {
+                    oracle[kSourceFaceHierarchyNeededOffset]=1;
+                    expectedExchanges+=HIERARCHY_FLAG_USES_EXCHANGE;
+                }
                 if(slot>=262144) {
                     list[0]=std::max(list[0],257u);
                     ++expectedMaxes;
@@ -299,17 +309,19 @@ int main() {
     emit({32,32,2},u,v,{387,388,515,516,16514});
     if(!check("full pool leaves primary lists usable") || !allCandidates(516,66,1)) return 26;
 
+    sunDepthBuf[kSourceFaceHierarchyReadyOffset]=oracle[kSourceFaceHierarchyReadyOffset]=8192;
     const auto stale=actual;
     for(uint index=0;index<kSourceFaceFallbackOffset+17;++index) clearIndex(index);
     for(uint i=0;i<kSourceFaceFallbackOffset*2;++i) oracle[i]=0xffffffffu;
     oracle[kSourceFaceHeaderOffset]=oracle[kSourceFaceSpillCounterOffset]=0;
+    oracle[kSourceFaceHierarchyNeededOffset]=oracle[kSourceFaceHierarchyReadyOffset]=0;
     for(uint tile=0;tile<32768;++tile) {
         oracle[kSourceFaceTileOffset+tile*65]=0;
         oracle[kSourceFaceSpillHeadOffset+tile]=0xffffffffu;
     }
     if(!check("production clear resets counters and heads without erasing records")) return 27;
     if(!std::equal(actual.begin()+guardWords+kSourceFaceSpillNodeOffset,
-                   actual.begin()+guardWords+kSourceFaceBufferWords,
+                   actual.begin()+guardWords+kSourceFaceHierarchyNeededOffset,
                    stale.begin()+guardWords+kSourceFaceSpillNodeOffset)) return 28;
     for(uint n=0;n<65;++n) emit(corner,u,v,{0,1,128,129,16384,16385});
     if(!check("reused nodes have no stale tail") || !allCandidates(0,0,65)) return 29;
@@ -393,6 +405,12 @@ class SourceFaceIndexTest(unittest.TestCase):
                 else indexer.replace("&sunDepthBuf[node], faceIndex", "&sunDepthBuf[node], 0u"),
                 "stale_spill_heads": indexer,
                 "stale_spill_counter": indexer,
+                "stale_hierarchy_needed": indexer,
+                "stale_hierarchy_ready": indexer,
+                "missing_tile_hierarchy_request": indexer.replace(
+                    "slot == kSourceFaceTileQueryCapacity", "false"),
+                "missing_spill_hierarchy_request": indexer.replace(
+                    "spill == kSourceFaceSpillCapacity", "false"),
             }
             layouts = dict.fromkeys(variants, layout)
             clears = dict.fromkeys(variants, clear)
@@ -401,6 +419,10 @@ class SourceFaceIndexTest(unittest.TestCase):
             clears["stale_spill_counter"] = re.sub(
                 r"[^\n]*(?:sourceFaceSpillCounterIndex|kSourceFaceSpillCounterOffset)[^\n]*\n",
                 "", clear)
+            for name in ("Needed", "Ready"):
+                clears[f"stale_hierarchy_{name.lower()}"] = re.sub(
+                    rf"[^\n]*(?:sourceFaceHierarchy{name}Index|"
+                    rf"kSourceFaceHierarchy{name}Offset)[^\n]*\n", "", clear)
             if suffix == "glsl":
                 variants["header_index_off_by_one"] = indexer
                 layouts["header_index_off_by_one"] = layout.replace(
@@ -416,7 +438,8 @@ class SourceFaceIndexTest(unittest.TestCase):
                     "indexSourceSunFace(sunDepthBuf.data,corner,u,v,sunFrame);")
             degenerate = ("indexSourceSunFace(corner,u,u);" if suffix == "glsl" else
                           "indexSourceSunFace(sunDepthBuf.data,corner,u,u,sunFrame);")
-            cases = CASES.replace("CALL_INDEX", call).replace("INDEX_DEGENERATE", degenerate)
+            cases = (CASES.replace("CALL_INDEX", call).replace("INDEX_DEGENERATE", degenerate)
+                     .replace("HIERARCHY_FLAG_USES_EXCHANGE", str(int(suffix == "glsl"))))
             for variant, body in variants.items():
                 with (self.subTest(backend=suffix, variant=variant),
                       tempfile.TemporaryDirectory() as temporary):

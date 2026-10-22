@@ -184,12 +184,15 @@ TEST_F(GpuComputeDispatchTest, DeviceUnbindClearsIndexedStorageBinding) {
     Buffer buffer{&seed, sizeof(seed), BUFFER_STORAGE_NONE};
     buffer.bindBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
 
+    const auto getIndexedInteger =
+        reinterpret_cast<PFNGLGETINTEGERI_VPROC>(glfwGetProcAddress("glGetIntegeri_v"));
+    ASSERT_NE(getIndexedInteger, nullptr);
     GLint binding = 0;
-    ENG_API->glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, kBorrowedSlot, &binding);
+    getIndexedInteger(GL_SHADER_STORAGE_BUFFER_BINDING, kBorrowedSlot, &binding);
     ASSERT_EQ(binding, static_cast<GLint>(buffer.getHandle()));
 
     device()->unbindBufferBase(BufferTarget::SHADER_STORAGE, kBorrowedSlot);
-    ENG_API->glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, kBorrowedSlot, &binding);
+    getIndexedInteger(GL_SHADER_STORAGE_BUFFER_BINDING, kBorrowedSlot, &binding);
     EXPECT_EQ(binding, 0);
 }
 

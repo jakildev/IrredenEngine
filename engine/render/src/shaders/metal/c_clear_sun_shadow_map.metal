@@ -20,6 +20,8 @@ kernel void c_clear_sun_shadow_map(
     }
     if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 0u, memory_order_relaxed);
     if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceSpillCounterOffset], 0u, memory_order_relaxed);
+    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 0u, memory_order_relaxed);
+    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyReadyOffset], 0u, memory_order_relaxed);
     if (uint(linearIdx) < kSourceFaceTileCount) {
         atomic_store_explicit(&sunDepthBuf[sourceFaceTileBase(uint(linearIdx))], 0u, memory_order_relaxed);
         atomic_store_explicit(&sunDepthBuf[kSourceFaceSpillHeadOffset + uint(linearIdx)], 0xFFFFFFFFu, memory_order_relaxed);

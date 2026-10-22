@@ -334,6 +334,16 @@ kernel void IR_STAGE2_KERNEL_NAME(
         if (frameData.isDetachedCanvas > 1.5f) {
             if (zIdx != 0) return;
             const uint index = atomic_fetch_add_explicit(&sourceFaces.count, 1u, memory_order_relaxed);
+            // Bound actual emitted positions, including GPU-authored geometry.
+            if (sourceFacePositionFinite(voxelPosition.xyz)) {
+                atomic_fetch_max_explicit(&sourceFaces.maxAbsPositionBits,
+                    sourceFacePositionMagnitudeBits(voxelPosition.xyz), memory_order_relaxed);
+            } else {
+                atomic_fetch_or_explicit(&sourceFaces.depthInvalid, 1u, memory_order_relaxed);
+            }
+            atomic_fetch_max_explicit(&sourceFaces.maxPriority,
+                decodePriority(packedEntityId), memory_order_relaxed);
+
             sourceFaces.faces[index].centerAndFace = float4(voxelPosition.xyz, float(faceId));
             sourceFaces.faces[index].color = voxelColor;
             sourceFaces.faces[index].directSunAndExposure = float4(0.0);

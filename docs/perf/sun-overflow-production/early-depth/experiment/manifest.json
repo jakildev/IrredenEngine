@@ -1,0 +1,15 @@
+{
+  "scope": "Fixture-only diagnostic, not production-safe across clamp boundaries. No GPU or build run by author.",
+  "parent_head": "463ed00cbbe97b23e961eaa8150afea3b85944cf",
+  "source_artifact": "/tmp/sun-overflow-engine-pair/head",
+  "changed_file": "build/creations/demos/canvas_stress/shaders/metal/source_face_scatter.metal",
+  "original_sha256": "1827eb2deb590b75ce865eab4e80b63bc6e1f1ffd87224822af74cae01a365be",
+  "experiment_sha256": "0ac252907cd409f26bd0e971e82bbad62f68891e7c2ad7590448369828e37972",
+  "fixture_assumptions": [
+    "tier0",
+    "subdivisions1",
+    "128 coincident rotated 3x3x3 casters at approximately z=-84",
+    "all source face depths strictly interior to world depth clamp interval"
+  ],
+  "validation": "Parent will run visual comparisons and guarded native timing."
+}

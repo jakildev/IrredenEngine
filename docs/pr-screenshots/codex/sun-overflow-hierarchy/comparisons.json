@@ -1,0 +1,57 @@
+{
+  "pixel_format": "RGB",
+  "receiver_roi": [
+    1100,
+    600,
+    1460,
+    840
+  ],
+  "baseline_changed_pixels": {
+    "lower": 0,
+    "far-8": 0,
+    "far-16": 200,
+    "far-128": 280,
+    "near-128": 88,
+    "oblique-lower": 0,
+    "oblique-far-128": 0,
+    "lower-no-probe": 0,
+    "far-128-no-probe": 280
+  },
+  "first_production_changed_pixels": {
+    "lower": 0,
+    "far-8": 0,
+    "far-16": 0,
+    "far-128": 0,
+    "near-128": 0,
+    "oblique-lower": 0,
+    "oblique-far-128": 0,
+    "lower-no-probe": 0,
+    "far-128-no-probe": 0
+  },
+  "receiver_roi_changed_pixels": {
+    "far-8": {
+      "reference": "lower",
+      "changed_pixels": 0
+    },
+    "far-16": {
+      "reference": "lower",
+      "changed_pixels": 0
+    },
+    "far-128": {
+      "reference": "lower",
+      "changed_pixels": 0
+    },
+    "oblique-aligned-16": {
+      "reference": "oblique-lower",
+      "changed_pixels": 0
+    },
+    "oblique-aligned-128": {
+      "reference": "oblique-lower",
+      "changed_pixels": 0
+    }
+  },
+  "probe_changed_pixels": {
+    "lower-no-probe": 0,
+    "far-128-no-probe": 0
+  }
+}

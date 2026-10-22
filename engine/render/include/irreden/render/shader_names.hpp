@@ -42,6 +42,8 @@ const char *const kFileFragTrixelToFramebufferShapes =
 // metal/peraxis_scatter.metal).
 const char *const kFileVertSourceFaceScatter = "shaders/v_source_face_scatter.glsl";
 const char *const kFileFragSourceFaceScatter = "shaders/f_source_face_scatter.glsl";
+const char *const kFileVertSourceFaceScatterEarly = "shaders/v_source_face_scatter_early.glsl";
+const char *const kFileFragSourceFaceScatterEarly = "shaders/f_source_face_scatter_early.glsl";
 const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisSurfaceShadow = "shaders/f_peraxis_surface_shadow.glsl";
@@ -138,6 +140,7 @@ const char *const kFileCompResolvePerAxisBlit = "shaders/c_resolve_per_axis_blit
 // metal/c_resolve_world_placed_depth.metal.
 const char *const kFileCompResolveWorldPlacedDepth = "shaders/c_resolve_world_placed_depth.glsl";
 const char *const kFileCompClearSunShadowMap = "shaders/c_clear_sun_shadow_map.glsl";
+const char *const kFileCompBuildSunHierarchy = "shaders/c_build_sun_hierarchy.glsl";
 const char *const kFileCompBakeVoxelSunFaces = "shaders/c_bake_voxel_sun_faces.glsl";
 const char *const kFileCompBakeBoxSunShadow = "shaders/c_bake_box_sun_shadow.glsl";
 const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.glsl";

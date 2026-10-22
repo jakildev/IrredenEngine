@@ -1,0 +1,34 @@
+{
+  "parent_artifact": "/tmp/sun-overflow-engine-pair/guarded-depth",
+  "parent_artifact_manifest_sha256": "108ac7589cc7e2a0facc1262046b96a2f6ec6b51d818a6ccf05eca1eccb7cbcb",
+  "parent_source_manifest_sha256": "7a95ee033220b38a2386b2c4c5721fa4fec1818213b63f343f3c8fe097042a78",
+  "base_commit": "d832ed2ec5de4813e77a309bed0e1ab43719a346",
+  "mutations": [
+    {
+      "path": "build/creations/demos/canvas_stress/shaders/ir_source_face_depth.glsl",
+      "original_sha256": "d2249a1f4d5b6b7f8bfa3a31defa317d6e257234015cd6f18e8db836bcf9239b",
+      "modified_sha256": "982382f56a313905040d83cacd27c83bb831d25710af9aba547a788f0e594824"
+    },
+    {
+      "path": "build/creations/demos/canvas_stress/shaders/metal/ir_source_face_depth.metal",
+      "original_sha256": "4322f41f2d01e9786cf450b881bd1d3b40d896c05c92f21517cca7aee1e5fd5c",
+      "modified_sha256": "cec7824873265ab526957b6f2e77cbe9529f0140ce0e22a825297122b55b8f19"
+    },
+    {
+      "path": "source/engine/render/src/shaders/ir_source_face_depth.glsl",
+      "original_sha256": "d2249a1f4d5b6b7f8bfa3a31defa317d6e257234015cd6f18e8db836bcf9239b",
+      "modified_sha256": "982382f56a313905040d83cacd27c83bb831d25710af9aba547a788f0e594824"
+    },
+    {
+      "path": "source/engine/render/src/shaders/metal/ir_source_face_depth.metal",
+      "original_sha256": "4322f41f2d01e9786cf450b881bd1d3b40d896c05c92f21517cca7aee1e5fd5c",
+      "modified_sha256": "cec7824873265ab526957b6f2e77cbe9529f0140ce0e22a825297122b55b8f19"
+    }
+  ],
+  "source_snapshot_note": "source/engine.patch is the original parent patch; helper snapshots and source/manifest.json include the overlay transformation. No rebuild; runtime shader loading supplies the control.",
+  "executable_sha256": "ff093ee5053bb699b6a48bbc3dba08fddf8fe85b0a0631b98a4b4d02cebe8206",
+  "replacement": {
+    "old": "    return low > float(minDepth + kDepthForegroundBandWidth + 1) + 4.0 &&\n           high < float(maxDepth) - 4.0;",
+    "new": "    return false; // A/B control: route every source canvas through fragment depth."
+  }
+}

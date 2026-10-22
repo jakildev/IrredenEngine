@@ -51,6 +51,7 @@ on:
       - 'engine/render/include/irreden/render/ir_render_types.hpp'
       - 'engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp'
       - 'engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp'
+      - 'engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp'
       - 'engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp'
       - 'engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp'
       - 'engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp'
@@ -74,6 +75,7 @@ on:
       - 'engine/render/include/irreden/render/ir_render_types.hpp'
       - 'engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp'
       - 'engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp'
+      - 'engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp'
       - 'engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp'
       - 'engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp'
       - 'engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp'
@@ -162,3 +164,9 @@ jobs:
 
       - name: Assert the cardinal voxel receiver contract executed
         run: grep -a -E '^PASS  test_render_cardinal_voxel_receiver\.py \([1-9][0-9]* tests\)$' run_all.log
+
+      - name: Assert the sun hierarchy contract executed
+        run: grep -a -E '^PASS  test_render_sun_hierarchy\.py \([1-9][0-9]* tests\)$' run_all.log
+
+      - name: Assert the source-face early-depth contract executed
+        run: grep -a -E '^PASS  test_render_source_face_early_depth\.py \([1-9][0-9]* tests\)$' run_all.log

@@ -134,7 +134,8 @@ layout(std140, binding = 23) uniform LightVolumeParams {
 };
 
 layout(std430, binding = 8) buffer SourceVoxelFaces {
-    uint sourceIndexCount; uint sourceFaceCount; uint sourcePadding[6];
+    uint sourceIndexCount; uint sourceFaceCount; uint sourcePadding[3];
+    uint sourceMaxAbsPositionBits; uint sourceMaxPriority; uint sourceDepthInvalid;
     SourceVoxelFace sourceFaces[];
 };
 

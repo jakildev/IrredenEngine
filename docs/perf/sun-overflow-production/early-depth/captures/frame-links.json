@@ -1,0 +1,68 @@
+{
+  "lower": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/lower/screenshot_000001.png",
+    "sha256": "8dfac42472a12fb9f726b486c93d90f82fc11bcd7a1c710bfff266f319a01949",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "far-8": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/far-8/screenshot_000001.png",
+    "sha256": "7c865d0eefd246da12c52050ad18fdec76572b3dcb9fdcccc688141af0732900",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "far-16": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/far-16/screenshot_000001.png",
+    "sha256": "7c865d0eefd246da12c52050ad18fdec76572b3dcb9fdcccc688141af0732900",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "far-128": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/far-128/screenshot_000001.png",
+    "sha256": "7c865d0eefd246da12c52050ad18fdec76572b3dcb9fdcccc688141af0732900",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "near-128": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/near-128/screenshot_000001.png",
+    "sha256": "cb66222a85d212119b4b2d703d1cfddfa34b6d788b1595687396262107dfcd41",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "oblique-lower": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/oblique-lower/screenshot_000001.png",
+    "sha256": "76655dc422ce2f5d5b76ae3afe7147b66ff21721556fbf647345cd50e1a1bb7a",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "oblique-far-128": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/oblique-far-128/screenshot_000001.png",
+    "sha256": "815b8e494a70d2fb29ea5cd4412aecc76cdcee3cd50c045e189c42bd4bc1aeca",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "lower-no-probe": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/lower-no-probe/screenshot_000001.png",
+    "sha256": "8dfac42472a12fb9f726b486c93d90f82fc11bcd7a1c710bfff266f319a01949",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "far-128-no-probe": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/far-128-no-probe/screenshot_000001.png",
+    "sha256": "7c865d0eefd246da12c52050ad18fdec76572b3dcb9fdcccc688141af0732900",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "oblique-aligned-16": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/oblique-aligned-16/screenshot_000001.png",
+    "sha256": "062237fee7239098abcae6399ff16c8605e3ea5cb1694895ab8831a6e868296c",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  },
+  "oblique-aligned-128": {
+    "frame": "../../../../pr-screenshots/codex/sun-overflow-hierarchy/oblique-aligned-128/screenshot_000001.png",
+    "sha256": "062237fee7239098abcae6399ff16c8605e3ea5cb1694895ab8831a6e868296c",
+    "pixel_comparison": "identical RGB; identical PNG bytes",
+    "changed_pixels": 0
+  }
+}

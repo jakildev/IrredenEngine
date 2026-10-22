@@ -1,0 +1,481 @@
+diff --git a/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp b/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
+index 9badb129a..05d944136 100644
+--- a/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
++++ b/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
+@@ -22,6 +22,7 @@
+ #include <irreden/input/components/component_hitbox_2d.hpp>
+ 
+ #include <algorithm>
++#include <array>
+ #include <cstdint>
+ #include <utility>
+ #include <vector>
+@@ -486,6 +487,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+         auto *canvasProgram =
+             IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+         auto *sourceProgram = IRRender::getNamedResource<ShaderProgram>("SourceFaceScatterProgram");
++        auto *sourceEarlyProgram =
++            IRRender::getNamedResource<ShaderProgram>("SourceFaceScatterEarlyProgram");
+         auto *activeMask = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
+         auto *compacted = IRRender::getNamedResource<Buffer>("CompactedVoxelIndices");
+         auto *sunFrame = IRRender::getNamedResourceOrNull<Buffer>("ComputeSunShadowFrameData");
+@@ -518,7 +521,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+             frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
+             inst.textures_->bind(0, 1, 2);
+             if (inst.textures_->renderedSampleLayout_ == TrixelSampleLayout::SOURCE_FACES) {
+-                sourceProgram->use();
+                 inst.textures_->sourceFaces_.second->bindBase(
+                     BufferTarget::SHADER_STORAGE,
+                     kBufferIndex_SourceVoxelFaces
+@@ -527,12 +529,17 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+                     BufferTarget::SHADER_STORAGE,
+                     kBufferIndex_PerAxisCellCompacted
+                 );
+-                IRRender::device()->drawElementsInstancedIndirect(
+-                    DrawMode::TRIANGLES,
+-                    IndexType::UNSIGNED_SHORT,
+-                    inst.textures_->sourceFaces_.second,
+-                    0
+-                );
++                // The GPU producer bounds the entire canvas. Exactly one shader
++                // accepts it, preserving face order even at clamp boundaries.
++                for (auto *program : std::array{sourceEarlyProgram, sourceProgram}) {
++                    program->use();
++                    IRRender::device()->drawElementsInstancedIndirect(
++                        DrawMode::TRIANGLES,
++                        IndexType::UNSIGNED_SHORT,
++                        inst.textures_->sourceFaces_.second,
++                        0
++                    );
++                }
+                 activeMask->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
+                 compacted->bindBase(
+                     BufferTarget::SHADER_STORAGE,
+@@ -564,6 +571,14 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+             }
+         );
+ 
++        IRRender::createNamedResource<ShaderProgram>(
++            "SourceFaceScatterEarlyProgram",
++            std::vector<ShaderStage>{
++                ShaderStage{IRRender::kFileVertSourceFaceScatterEarly, ShaderType::VERTEX},
++                ShaderStage{IRRender::kFileFragSourceFaceScatterEarly, ShaderType::FRAGMENT}
++            }
++        );
++
+         SystemId s = registerSystem<
+             ENTITY_CANVAS_TO_FRAMEBUFFER,
+             C_EntityCanvas,
+diff --git a/engine/render/include/irreden/render/ir_render_types.hpp b/engine/render/include/irreden/render/ir_render_types.hpp
+index 761d48bb3..b856de032 100644
+--- a/engine/render/include/irreden/render/ir_render_types.hpp
++++ b/engine/render/include/irreden/render/ir_render_types.hpp
+@@ -78,7 +78,7 @@ static_assert(sizeof(GpuSpriteInstance) == 48, "GpuSpriteInstance must remain 48
+ /// project into a GpuSpriteInstance during upload.
+ struct SpriteRenderEntry {
+     ResourceId textureHandle_ = 0;
+-    int isoDepth_ = 0; ///< pos3DtoDistance(world); larger = farther
++    int isoDepth_ = 0;            ///< pos3DtoDistance(world); larger = farther
+     vec2 screenPos_ = vec2(0.0f); ///< quad origin, viewport pixels
+     vec2 size_ = vec2(0.0f);      ///< viewport pixels: C_Sprite::size_ × output scale
+     vec4 uvRect_ = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+@@ -98,12 +98,19 @@ struct HoveredEntityIdLayout {
+ 
+ enum class TrixelSampleLayout : int { RECTANGULAR = 0, LOCAL_TRIANGLES = 1, SOURCE_FACES = 2 };
+ 
+-// Prefix is an indexed indirect draw command followed by reserved words.
++// Prefix is an indexed indirect draw command followed by producer depth bounds.
+ struct SourceVoxelFaceHeader {
+     std::uint32_t indexCount_ = 6;
+     std::uint32_t count_ = 0;
+-    std::uint32_t reserved_[6]{};
++    std::uint32_t reserved_[3]{}; // firstIndex, baseVertex, baseInstance
++    std::uint32_t maxAbsPositionBits_ = 0;
++    std::uint32_t maxPriority_ = 0;
++    std::uint32_t depthInvalid_ = 0;
+ };
++static_assert(
++    offsetof(SourceVoxelFaceHeader, maxAbsPositionBits_) == 20,
++    "Source depth metadata follows the five indirect command words"
++);
+ static_assert(
+     sizeof(SourceVoxelFaceHeader) == 32, "Source face header matches both shader backends"
+ );
+diff --git a/engine/render/include/irreden/render/shader_names.hpp b/engine/render/include/irreden/render/shader_names.hpp
+index 3d37b3a89..eb08cc579 100644
+--- a/engine/render/include/irreden/render/shader_names.hpp
++++ b/engine/render/include/irreden/render/shader_names.hpp
+@@ -42,6 +42,8 @@ const char *const kFileFragTrixelToFramebufferShapes =
+ // metal/peraxis_scatter.metal).
+ const char *const kFileVertSourceFaceScatter = "shaders/v_source_face_scatter.glsl";
+ const char *const kFileFragSourceFaceScatter = "shaders/f_source_face_scatter.glsl";
++const char *const kFileVertSourceFaceScatterEarly = "shaders/v_source_face_scatter_early.glsl";
++const char *const kFileFragSourceFaceScatterEarly = "shaders/f_source_face_scatter_early.glsl";
+ const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
+ const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
+ const char *const kFileFragPerAxisSurfaceShadow = "shaders/f_peraxis_surface_shadow.glsl";
+diff --git a/engine/render/src/shaders/c_lighting_to_trixel_body.glsl b/engine/render/src/shaders/c_lighting_to_trixel_body.glsl
+index 8b2adedae..ae433149d 100644
+--- a/engine/render/src/shaders/c_lighting_to_trixel_body.glsl
++++ b/engine/render/src/shaders/c_lighting_to_trixel_body.glsl
+@@ -134,7 +134,8 @@ layout(std140, binding = 23) uniform LightVolumeParams {
+ };
+ 
+ layout(std430, binding = 8) buffer SourceVoxelFaces {
+-    uint sourceIndexCount; uint sourceFaceCount; uint sourcePadding[6];
++    uint sourceIndexCount; uint sourceFaceCount; uint sourcePadding[3];
++    uint sourceMaxAbsPositionBits; uint sourceMaxPriority; uint sourceDepthInvalid;
+     SourceVoxelFace sourceFaces[];
+ };
+ 
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+index bd4b4d059..ccf9a2174 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+@@ -1,3 +1,4 @@
++#include "ir_source_face_depth.glsl"
+ /*
+  * Project: Irreden Engine
+  * File: c_voxel_to_trixel_stage_2_body.glsl
+@@ -38,7 +39,8 @@
+ layout(std430, binding = 8) buffer SourceVoxelFaces {
+     uint sourceIndexCount;
+     uint sourceFaceCount;
+-    uint sourcePadding[6];
++    uint sourcePadding[3];
++    uint sourceMaxAbsPositionBits; uint sourceMaxPriority; uint sourceDepthInvalid;
+     SourceVoxelFace sourceFaces[];
+ };
+ 
+@@ -356,6 +358,14 @@ void main() {
+         if (isDetachedCanvas > 1.5) {
+             if (zIdx != 0) return;
+             const uint index = atomicAdd(sourceFaceCount, 1u);
++            // Bound actual emitted positions, including GPU-authored geometry.
++            if (sourceFacePositionFinite(voxelPosition.xyz)) {
++                atomicMax(sourceMaxAbsPositionBits, sourceFacePositionMagnitudeBits(voxelPosition.xyz));
++            } else {
++                atomicOr(sourceDepthInvalid, 1u);
++            }
++            atomicMax(sourceMaxPriority, decodePriority(packedEntityId));
++
+             sourceFaces[index].centerAndFace = vec4(voxelPosition.xyz, float(faceId));
+             sourceFaces[index].color = voxelColor;
+             sourceFaces[index].directSunAndExposure = vec4(0.0);
+diff --git a/engine/render/src/shaders/f_source_face_scatter.glsl b/engine/render/src/shaders/f_source_face_scatter.glsl
+index a6f1b8cb5..04b869a78 100644
+--- a/engine/render/src/shaders/f_source_face_scatter.glsl
++++ b/engine/render/src/shaders/f_source_face_scatter.glsl
+@@ -1,69 +1,3 @@
+ #version 450 core
+-#include "ir_iso_common.glsl"
+-#include "ir_fog_color.glsl"
+-#include "ir_sun_face_query_layout.glsl"
+-#include "ir_sun_shadow_sample.glsl"
+-#include "ir_source_face_lighting.glsl"
+-layout(std140, binding = 1) uniform GlobalConstants {
+-    int kMinTriangleDistance; int kMaxTriangleDistance;
+-};
+-layout (std140, binding = 3) uniform FrameDataIsoTriangles {
+-    mat4 mpMatrix;
+-    vec2 zoomLevel;
+-    vec2 canvasOffset;
+-    vec2 textureOffset;
+-    vec2 mouseHoveredTriangleIndex;
+-    vec2 effectiveSubdivisionsForHover;
+-    float showHoverHighlight;
+-    int distanceOffset;
+-    ivec2 perAxisBase;
+-    float visualYaw;
+-    int scatterDebugMode;
+-    ivec4 visibleFaceIds;
+-    vec4 _detachedResidualPad;
+-    vec4 viewToWorldRotation;
+-    vec4 scatterFbResolution;
+-    int depthColorMode;
+-    float depthColorExtent;
+-    int anyPerTrixelPriority;
+-    int depthPriorityMode;
+-    int overflowMode;
+-    int trixelSampleLayout;
+-    uint fogBodyFactorEncoded;
+-    uint fogUnexploredColorPacked;
+-};
+-flat in vec4 faceColor;
+-flat in uint facePriority;
+-in float faceDepth;
+-noperspective in vec3 faceWorldPosition;
+-flat in vec3 faceWorldNormal;
+-flat in vec4 faceDirectSunAndExposure;
+-flat in float faceAO;
+-flat in uint faceLightingMode;
+-layout(location = 0) out vec4 FragColor;
+-void main() {
+-    if (faceColor.a < 0.1) discard;
+-    const int tier = max(depthPriorityMode, int(facePriority));
+-    float depth = faceDepth + float(distanceOffset);
+-    if (tier > 0) depth = clamp(faceDepth + float(depthForegroundTierCenter(kMinTriangleDistance, tier)),
+-        float(depthForegroundTierLo(kMinTriangleDistance, tier)),
+-        float(depthForegroundTierHi(kMinTriangleDistance, tier)));
+-    else depth = max(depth, float(kMinTriangleDistance + kDepthForegroundBandWidth + 1));
+-    gl_FragDepth = (depth - float(kMinTriangleDistance)) /
+-        float(kMaxTriangleDistance - kMinTriangleDistance);
+-    FragColor = faceColor;
+-    if (faceLightingMode != kSourceLightingBaked) {
+-        const float visibility = worldSurfaceSunShadowFactor(faceWorldPosition, faceWorldNormal,
+-            pos3DtoDistance(faceWorldPosition), viewToWorldRotation);
+-        FragColor = sourceFaceLitColor(faceColor, faceDirectSunAndExposure, faceAO,
+-            faceLightingMode, visibility);
+-    }
+-    if (fogBodyFactorEncoded != 0u) {
+-        const float fogFactor = float(fogBodyFactorEncoded - 1u) / 255.0;
+-        FragColor.rgb = fogStateColor(
+-            fogFactor,
+-            FragColor.rgb,
+-            unpackColor(fogUnexploredColorPacked).rgb
+-        );
+-    }
+-}
++#define IR_SOURCE_FACE_EARLY_DEPTH 0
++#include "ir_source_face_scatter_fragment.glsl"
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+index bca2f0d75..2440baa9b 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+@@ -1,3 +1,4 @@
++#include "ir_source_face_depth.metal"
+ // Shared stage-2 compute BODY — Metal twin of c_voxel_to_trixel_stage_2_body.glsl.
+ // An include-FRAGMENT, not a standalone shader: the thin wrappers supply the
+ // prerequisite includes, the `#define IR_STORE_WINNER_ELECTION {0|1}`, and the
+@@ -334,6 +335,16 @@ kernel void IR_STAGE2_KERNEL_NAME(
+         if (frameData.isDetachedCanvas > 1.5f) {
+             if (zIdx != 0) return;
+             const uint index = atomic_fetch_add_explicit(&sourceFaces.count, 1u, memory_order_relaxed);
++            // Bound actual emitted positions, including GPU-authored geometry.
++            if (sourceFacePositionFinite(voxelPosition.xyz)) {
++                atomic_fetch_max_explicit(&sourceFaces.maxAbsPositionBits,
++                    sourceFacePositionMagnitudeBits(voxelPosition.xyz), memory_order_relaxed);
++            } else {
++                atomic_fetch_or_explicit(&sourceFaces.depthInvalid, 1u, memory_order_relaxed);
++            }
++            atomic_fetch_max_explicit(&sourceFaces.maxPriority,
++                decodePriority(packedEntityId), memory_order_relaxed);
++
+             sourceFaces.faces[index].centerAndFace = float4(voxelPosition.xyz, float(faceId));
+             sourceFaces.faces[index].color = voxelColor;
+             sourceFaces.faces[index].directSunAndExposure = float4(0.0);
+diff --git a/engine/render/src/shaders/metal/ir_iso_common.metal b/engine/render/src/shaders/metal/ir_iso_common.metal
+index eec1eeede..16fce91ce 100644
+--- a/engine/render/src/shaders/metal/ir_iso_common.metal
++++ b/engine/render/src/shaders/metal/ir_iso_common.metal
+@@ -1298,7 +1298,10 @@ struct SourceVoxelFace {
+ struct SourceVoxelFaces {
+     uint indexCount;
+     atomic_uint count;
+-    uint padding[6];
++    uint padding[3]; // firstIndex, baseVertex, baseInstance
++    atomic_uint maxAbsPositionBits;
++    atomic_uint maxPriority;
++    atomic_uint depthInvalid;
+     SourceVoxelFace faces[1];
+ };
+ 
+diff --git a/engine/render/src/shaders/metal/source_face_scatter.metal b/engine/render/src/shaders/metal/source_face_scatter.metal
+index c442cce38..fc0b3f70d 100644
+--- a/engine/render/src/shaders/metal/source_face_scatter.metal
++++ b/engine/render/src/shaders/metal/source_face_scatter.metal
+@@ -1,114 +1,4 @@
+-#include <metal_stdlib>
+-using namespace metal;
+-#include "ir_iso_common.metal"
+-#include "ir_fog_color.metal"
+-#include "ir_sun_face_query_layout.metal"
+-#include "ir_sun_shadow_sample.metal"
+-#include "ir_source_face_lighting.metal"
+-struct VertexIn { float2 position [[attribute(0)]]; };
+-struct GlobalConstants { int kMinTriangleDistance; int kMaxTriangleDistance; };
+-struct FrameDataIsoTriangles {
+-    float4x4 mpMatrix;
+-    float2 zoomLevel;
+-    float2 canvasOffset;
+-    float2 textureOffset;
+-    float2 mouseHoveredTriangleIndex;
+-    float2 effectiveSubdivisionsForHover;
+-    float showHoverHighlight;
+-    int distanceOffset;
+-    int2 perAxisBase;
+-    float visualYaw;
+-    int scatterDebugMode;
+-    int4 visibleFaceIds;
+-    float4 _detachedResidualPad;
+-    float4 viewToWorldRotation;
+-    float4 scatterFbResolution;
+-    int depthColorMode;
+-    float depthColorExtent;
+-    int anyPerTrixelPriority;
+-    int depthPriorityMode;
+-    int overflowMode;
+-    int trixelSampleLayout;
+-    uint fogBodyFactorEncoded;
+-    uint fogUnexploredColorPacked;
+-};
+-struct SourceFaceVertex {
+-    float4 position [[position]];
+-    float4 color [[flat]];
+-    uint priority [[flat]];
+-    float depth [[center_no_perspective]];
+-    float3 worldPosition [[center_no_perspective]];
+-    float3 worldNormal [[flat]];
+-    float4 directSunAndExposure [[flat]];
+-    float ao [[flat]];
+-    uint lightingMode [[flat]];
+-};
+-struct SourceFaceFragment { float4 color [[color(0)]]; float depth [[depth(any)]]; };
+-vertex SourceFaceVertex v_source_face_scatter(
+-    VertexIn in [[stage_in]], uint instanceId [[instance_id]],
+-    texture2d<float> triangleColors [[texture(0)]],
+-    constant FrameDataIsoTriangles& frameData [[buffer(3)]],
+-    device const SourceVoxelFaces& sourceFaces [[buffer(8)]],
+-    device const uint* sourceOrder [[buffer(25)]]) {
+-    const SourceVoxelFace face = sourceFaces.faces[sourceOrder[128u + instanceId * 3u + 1u]];
+-    const int faceId = int(face.centerAndFace.w);
+-    const int axis = faceId >> 1;
+-    float3 eu, ev;
+-    faceInPlaneUnitAxes(axis, eu, ev);
+-    float3 corner = face.centerAndFace.xyz - float3(0.5);
+-    corner[axis] += float(faceId & 1);
+-    corner += eu * (in.position.x + 0.5) + ev * (in.position.y + 0.5);
+-    const float3 viewCorner = rotateByQuat(corner, frameData._detachedResidualPad);
+-    const float density = frameData.effectiveSubdivisionsForHover.x;
+-    const float2 iso = pos3DtoPos2DIsoYawed(viewCorner, 0.0) * density + float2(density - 1.0);
+-    const float2 extent = float2(triangleColors.get_width(), triangleColors.get_height());
+-    SourceFaceVertex out;
+-    out.position = frameData.mpMatrix * float4(iso.x / extent.x, -iso.y / extent.y, 0.0, 1.0);
+-    out.position.y = -out.position.y;
+-    out.depth = dot(viewCorner, float3(1.0)) * density * float(kDepthEncodeShift) *
+-        frameData.effectiveSubdivisionsForHover.y;
+-    const float3 modelNormal = faceOutwardNormal6(faceId);
+-    const float3 localCenter = face.centerAndFace.xyz + modelNormal * 0.5;
+-    out.worldPosition = face.worldCenterAndAO.xyz + rotateByQuat(
+-        viewCorner - rotateByQuat(localCenter, frameData._detachedResidualPad), frameData.viewToWorldRotation);
+-    out.worldNormal = rotateByQuat(rotateByQuat(modelNormal, frameData._detachedResidualPad), frameData.viewToWorldRotation);
+-    out.directSunAndExposure = face.directSunAndExposure;
+-    out.ao = face.worldCenterAndAO.w;
+-    out.lightingMode = face.owner.z;
+-    out.color = face.color;
+-    out.priority = decodePriority(face.owner.xy);
+-    return out;
+-}
+-fragment SourceFaceFragment f_source_face_scatter(
+-    SourceFaceVertex in [[stage_in]],
+-    constant FrameDataIsoTriangles& frameData [[buffer(3)]],
+-    constant GlobalConstants& globals [[buffer(1)]],
+-    constant FrameDataSun& sunFrameData [[buffer(29)]],
+-    device const uint* sunDepthBuf [[buffer(28)]]) {
+-    if (in.color.a < 0.1) discard_fragment();
+-    const int tier = max(frameData.depthPriorityMode, int(in.priority));
+-    float depth = in.depth + float(frameData.distanceOffset);
+-    if (tier > 0) depth = clamp(in.depth + float(depthForegroundTierCenter(globals.kMinTriangleDistance, tier)),
+-        float(depthForegroundTierLo(globals.kMinTriangleDistance, tier)),
+-        float(depthForegroundTierHi(globals.kMinTriangleDistance, tier)));
+-    else depth = max(depth, float(globals.kMinTriangleDistance + kDepthForegroundBandWidth + 1));
+-    SourceFaceFragment out;
+-    out.depth = (depth - float(globals.kMinTriangleDistance)) /
+-        float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
+-    out.color = in.color;
+-    if (in.lightingMode != kSourceLightingBaked) {
+-        const float visibility = worldSurfaceSunShadowFactor(in.worldPosition, in.worldNormal,
+-            pos3DtoDistance(in.worldPosition), frameData.viewToWorldRotation, sunFrameData, sunDepthBuf);
+-        out.color = sourceFaceLitColor(in.color, in.directSunAndExposure, in.ao,
+-            in.lightingMode, visibility);
+-    }
+-    if (frameData.fogBodyFactorEncoded != 0u) {
+-        const float fogFactor = float(frameData.fogBodyFactorEncoded - 1u) / 255.0f;
+-        out.color.rgb = fogStateColor(
+-            fogFactor,
+-            out.color.rgb,
+-            unpackColor(frameData.fogUnexploredColorPacked).rgb
+-        );
+-    }
+-    return out;
+-}
++#define IR_SOURCE_FACE_EARLY_DEPTH 0
++#define IR_SOURCE_FACE_VERTEX v_source_face_scatter
++#define IR_SOURCE_FACE_FRAGMENT f_source_face_scatter
++#include "ir_source_face_scatter_body.metal"
+diff --git a/engine/render/src/shaders/v_source_face_scatter.glsl b/engine/render/src/shaders/v_source_face_scatter.glsl
+index b6923806d..60417f6c1 100644
+--- a/engine/render/src/shaders/v_source_face_scatter.glsl
++++ b/engine/render/src/shaders/v_source_face_scatter.glsl
+@@ -1,69 +1,3 @@
+ #version 450 core
+-#include "ir_iso_common.glsl"
+-layout(location = 0) in vec2 aPos;
+-layout(binding = 0) uniform sampler2D triangleColors;
+-layout(std430, binding = 8) readonly buffer SourceVoxelFaces {
+-    uint sourceIndexCount; uint sourceFaceCount; uint sourcePadding[6];
+-    SourceVoxelFace sourceFaces[];
+-};
+-layout (std140, binding = 3) uniform FrameDataIsoTriangles {
+-    mat4 mpMatrix;
+-    vec2 zoomLevel;
+-    vec2 canvasOffset;
+-    vec2 textureOffset;
+-    vec2 mouseHoveredTriangleIndex;
+-    vec2 effectiveSubdivisionsForHover;
+-    float showHoverHighlight;
+-    int distanceOffset;
+-    ivec2 perAxisBase;
+-    float visualYaw;
+-    int scatterDebugMode;
+-    ivec4 visibleFaceIds;
+-    vec4 _detachedResidualPad;
+-    vec4 viewToWorldRotation;
+-    vec4 scatterFbResolution;
+-    int depthColorMode;
+-    float depthColorExtent;
+-    int anyPerTrixelPriority;
+-    int depthPriorityMode;
+-    int overflowMode;
+-    int trixelSampleLayout;
+-    uint fogBodyFactorEncoded;
+-    uint fogUnexploredColorPacked;
+-};
+-layout(std430, binding = 25) readonly buffer SourceFaceOrder { uint sourceOrder[]; };
+-flat out vec4 faceColor;
+-flat out uint facePriority;
+-out float faceDepth;
+-noperspective out vec3 faceWorldPosition;
+-flat out vec3 faceWorldNormal;
+-flat out vec4 faceDirectSunAndExposure;
+-flat out float faceAO;
+-flat out uint faceLightingMode;
+-void main() {
+-    const SourceVoxelFace face = sourceFaces[sourceOrder[128u + uint(gl_InstanceID) * 3u + 1u]];
+-    const int faceId = int(face.centerAndFace.w);
+-    const int axis = faceId >> 1;
+-    vec3 eu, ev;
+-    faceInPlaneUnitAxes(axis, eu, ev);
+-    vec3 corner = face.centerAndFace.xyz - vec3(0.5);
+-    corner[axis] += float(faceId & 1);
+-    corner += eu * (aPos.x + 0.5) + ev * (aPos.y + 0.5);
+-    const vec3 viewCorner = rotateByQuat(corner, _detachedResidualPad);
+-    const float density = effectiveSubdivisionsForHover.x;
+-    const vec2 iso = pos3DtoPos2DIsoYawed(viewCorner, 0.0) * density + vec2(density - 1.0);
+-    const vec2 extent = vec2(textureSize(triangleColors, 0));
+-    gl_Position = mpMatrix * vec4(iso.x / extent.x, -iso.y / extent.y, 0.0, 1.0);
+-    faceDepth = dot(viewCorner, vec3(1.0)) * density * float(kDepthEncodeShift) *
+-        effectiveSubdivisionsForHover.y;
+-    const vec3 modelNormal = faceOutwardNormal6(faceId);
+-    const vec3 localCenter = face.centerAndFace.xyz + modelNormal * 0.5;
+-    faceWorldPosition = face.worldCenterAndAO.xyz + rotateByQuat(
+-        viewCorner - rotateByQuat(localCenter, _detachedResidualPad), viewToWorldRotation);
+-    faceWorldNormal = rotateByQuat(rotateByQuat(modelNormal, _detachedResidualPad), viewToWorldRotation);
+-    faceDirectSunAndExposure = face.directSunAndExposure;
+-    faceAO = face.worldCenterAndAO.w;
+-    faceLightingMode = face.owner.z;
+-    faceColor = face.color;
+-    facePriority = decodePriority(face.owner.xy);
+-}
++#define IR_SOURCE_FACE_EARLY_DEPTH 0
++#include "ir_source_face_scatter_vertex.glsl"

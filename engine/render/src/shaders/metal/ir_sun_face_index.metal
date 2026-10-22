@@ -62,10 +62,12 @@ inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corne
                 continue;
             }
             const uint slot = atomic_fetch_add_explicit(&sunDepthBuf[base], 1u, memory_order_relaxed);
+            if (slot == kSourceFaceTileQueryCapacity) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 1u, memory_order_relaxed);
             if (slot < kSourceFaceTileCapacity) {
                 atomic_store_explicit(&sunDepthBuf[base + 1u + slot], faceIndex, memory_order_relaxed);
             } else if (slot < kSourceFaceTileQueryCapacity) {
                 const uint spill = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceSpillCounterOffset], 1u, memory_order_relaxed);
+                if (spill == kSourceFaceSpillCapacity) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 1u, memory_order_relaxed);
                 if (spill < kSourceFaceSpillCapacity) {
                     const uint node = kSourceFaceSpillNodeOffset + spill * kSourceFaceSpillNodeWords;
                     atomic_store_explicit(&sunDepthBuf[node], faceIndex, memory_order_relaxed);

@@ -98,12 +98,19 @@ struct HoveredEntityIdLayout {
 
 enum class TrixelSampleLayout : int { RECTANGULAR = 0, LOCAL_TRIANGLES = 1, SOURCE_FACES = 2 };
 
-// Prefix is an indexed indirect draw command followed by reserved words.
+// Prefix is an indexed indirect draw command followed by producer depth bounds.
 struct SourceVoxelFaceHeader {
     std::uint32_t indexCount_ = 6;
     std::uint32_t count_ = 0;
-    std::uint32_t reserved_[6]{};
+    std::uint32_t reserved_[3]{}; // firstIndex, baseVertex, baseInstance
+    std::uint32_t maxAbsPositionBits_ = 0;
+    std::uint32_t maxPriority_ = 0;
+    std::uint32_t depthInvalid_ = 0;
 };
+static_assert(
+    offsetof(SourceVoxelFaceHeader, maxAbsPositionBits_) == 20,
+    "Source depth metadata follows the five indirect command words"
+);
 static_assert(
     sizeof(SourceVoxelFaceHeader) == 32, "Source face header matches both shader backends"
 );

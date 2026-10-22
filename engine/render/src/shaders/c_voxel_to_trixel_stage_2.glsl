@@ -20,4 +20,5 @@
 #include "ir_constants.glsl"
 #include "ir_voxel_dispatch.glsl"
 #include "ir_voxel_face_select.glsl"
+#include "ir_source_face_depth.glsl"
 #include "c_voxel_to_trixel_stage_2_body.glsl"
