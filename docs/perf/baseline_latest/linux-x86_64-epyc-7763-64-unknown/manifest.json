@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "02ff9eb78",
+  "git_sha": "77fdc3ab7",
   "git_dirty": false,
-  "run_name": "02ff9eb78-ci",
-  "started_at": "2026-10-22T02:14:29Z",
+  "run_name": "77fdc3ab7-ci",
+  "started_at": "2026-10-22T02:16:36Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,13 +17,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 103.49,
+        "before": 103.565,
         "before_samples": [
-          103.49,
-          103.56,
-          103.158
+          103.563,
+          103.565,
+          103.614
         ],
-        "after": 103.415
+        "after": 103.581
       }
     },
     {
@@ -36,25 +36,25 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 103.331,
+        "before": 103.357,
         "before_samples": [
-          102.943,
-          103.331,
-          103.596
+          103.357,
+          103.23,
+          103.485
         ],
-        "after": 103.731
+        "after": 104.3
       }
     }
   ],
-  "finished_at": "2026-10-22T02:17:08Z",
+  "finished_at": "2026-10-22T02:19:08Z",
   "calibration": {
-    "ref_ms": 103.824,
+    "ref_ms": 103.525,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-7763-64-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3305,
+        "mhz": 3242,
         "model": "AMD EPYC 7763 64-Core Processor",
         "threads": 4
       },
@@ -63,7 +63,7 @@
       },
       "os": {
         "distro": "Ubuntu 24.04.5 LTS",
-        "kernel": "Linux 7.0.0-1017-azure"
+        "kernel": "Linux 6.17.0-1022-azure"
       },
       "ram": {
         "gb": 15
