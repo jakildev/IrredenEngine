@@ -128,8 +128,11 @@ and falls through to the next priority tier.
   the underlying GLFW push semantics naturally. Consume
   `C_MouseScroll` in the `INPUT` pipeline (same stage the entities
   are created, before `LIFETIME` destroys them in `UPDATE`) or you
-  miss it. A unified `IRInput::getScrollDelta()` query API —
-  analogous to `checkKeyMouseButton()` — does not yet exist.
+  miss it. From `UPDATE` or `RENDER`, read the frame's sum with
+  `IRInput::scrollDelta()` (signed wheel steps) or `scrollOffset()` (raw
+  `(x, y)` sum) instead; Lua mirrors both as `IRInput.scrollDelta()` /
+  `IRInput.scrollOffset()`. The query is not hover-gated — the consumer
+  gates it.
 - **`C_KeyStatus` transitions after counts.** The system updates press/
   release counts first, then transitions the state machine. If you read
   state and counts in the same system, make sure you read them in the

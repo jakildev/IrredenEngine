@@ -603,6 +603,11 @@ inline void bindCursorPosition(LuaScript &script) {
         const IRMath::vec2 screenPosition = IRRender::mousePosition2DIsoScreenRender();
         return std::make_tuple(screenPosition.x, screenPosition.y);
     };
+    input["scrollDelta"] = []() { return IRInput::scrollDelta(); };
+    input["scrollOffset"] = []() {
+        const IRMath::vec2 offset = IRInput::scrollOffset();
+        return std::make_tuple(offset.x, offset.y);
+    };
 }
 
 } // namespace IRScript::detail
