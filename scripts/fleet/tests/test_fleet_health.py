@@ -417,6 +417,100 @@ class MasterCiAlerts(Env):
         self.assertFalse(any(w.startswith("master CI red:") for w in rep["warnings"]))
 
 
+AUTOMERGE_LEDGER = "\n".join([
+    json.dumps({"ts": "2026-09-08T20:00:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
+                "pr": 2900, "class": "rebless"}),
+    json.dumps({"ts": "2026-09-09T05:00:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
+                "pr": 3101, "class": "rebless", "head": "a" * 40}),
+    json.dumps({"ts": "2026-09-09T05:00:02Z", "event": "audit-complete",
+                "repo": "jakildev/IrredenEngine", "pr": 3101}),
+    json.dumps({"ts": "2026-09-09T05:10:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
+                "pr": 3102, "class": "rebless", "head": "b" * 40}),
+    json.dumps({"ts": "2026-09-09T05:10:01Z", "event": "audit-error",
+                "repo": "jakildev/IrredenEngine", "pr": 3102, "step": "comment"}),
+    json.dumps({"ts": "2026-09-09T06:00:00Z", "event": "rollback", "repo": "jakildev/IrredenEngine",
+                "pr": 3101, "revert_pr": 3110}),
+    "not json",
+]) + "\n"
+
+AUTOMERGE_LOG = "\n".join([
+    _line("2026-09-09T05:00:00Z", "fleet-automerge",
+          "PR #3103: refused: blocked by label fleet:has-nits (class=auto:rebless)"),
+    _line("2026-09-09T05:00:03Z", "fleet-automerge",
+          "run complete: candidates=3 merged=1 enabled=rebless"),
+    _line("2026-09-09T05:10:02Z", "fleet-automerge",
+          "run complete: candidates=2 merged=1 enabled=rebless"),
+]) + "\n"
+
+
+class AutomergeLane(Env):
+    def write_lane(self, ledger=AUTOMERGE_LEDGER, log=AUTOMERGE_LOG,
+                   conf='FLEET_RUNTIMES="claude,codex"\nFLEET_AUTOMERGE_CLASSES="rebless"\n'):
+        (self.root / "logs" / "automerge-audit.log").write_text(ledger)
+        (self.root / "logs" / "fleet-automerge.log").write_text(log)
+        (self.root / "fleet-up.conf").write_text(conf)
+
+    def test_no_ledger_reads_off_and_quiet(self):
+        rc, report = self.run_report()
+        a = report["automerge"]
+        self.assertEqual((a["enabled"], a["merges"], a["rollbacks"], a["partial_audits"]),
+                         ([], 0, 0, []))
+        self.assertFalse([w for w in report["warnings"] if "auto-merge" in w])
+
+    def test_counts_inside_the_window_and_warns_on_rollback_and_partial_audit(self):
+        self.write_lane()
+        rc, report = self.run_report()
+        a = report["automerge"]
+        self.assertEqual(a["enabled"], ["rebless"])
+        self.assertEqual(a["merges"], 2, "the 2026-09-08 merge predates the boot window")
+        self.assertEqual([m["pr"] for m in a["merged_prs"]], [3101, 3102])
+        self.assertEqual(a["rollbacks"], 1)
+        self.assertEqual(a["partial_audits"], [3102])
+        self.assertEqual((a["runs"], a["refusals"]), (2, 1))
+        self.assertEqual(rc, 1)
+        self.assertTrue(any("1 rollback(s) of an auto-merged PR" in w for w in report["warnings"]))
+        self.assertTrue(any("audit incomplete on #3102" in w for w in report["warnings"]))
+
+    def test_clean_week_is_the_widening_bar(self):
+        ledger = "\n".join(json.dumps(e) for e in (
+            {"ts": "2026-09-09T05:00:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
+             "pr": 3101, "class": "rebless"},
+            {"ts": "2026-09-09T05:00:02Z", "event": "audit-complete",
+             "repo": "jakildev/IrredenEngine", "pr": 3101})) + "\n"
+        self.write_lane(ledger=ledger)
+        rc, report = self.run_report()
+        a = report["automerge"]
+        self.assertEqual((a["merges"], a["rollbacks"], a["partial_audits"]), (1, 0, []))
+        self.assertFalse([w for w in report["warnings"] if "auto-merge" in w])
+
+    def test_incomplete_rollback_scan_blocks_the_widening_bar(self):
+        ledger = "\n".join(json.dumps(e) for e in (
+            {"ts": "2026-09-09T05:00:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
+             "pr": 3101, "class": "rebless"},
+            {"ts": "2026-09-09T05:00:02Z", "event": "audit-complete",
+             "repo": "jakildev/IrredenEngine", "pr": 3101},
+            {"ts": "2026-09-09T06:00:00Z", "event": "rollback-scan-incomplete",
+             "repo": "jakildev/IrredenEngine", "read": 1000, "recorded": 0})) + "\n"
+        self.write_lane(ledger=ledger)
+        rc, report = self.run_report()
+        a = report["automerge"]
+        self.assertEqual((a["rollbacks"], a["rollback_scans_incomplete"]), (0, 1))
+        self.assertEqual(rc, 1)
+        self.assertTrue(any("1 rollback scan(s) hit the search ceiling" in w
+                            for w in report["warnings"]))
+
+    def test_text_section_names_the_lane(self):
+        self.write_lane()
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        text = out.getvalue()
+        self.assertIn("## Auto-merge lane (tier-0 fleet-automerge)", text)
+        self.assertIn("enabled=rebless  runs=2 refusals=1  merges=2 rollbacks=1 partial-audits=1",
+                      text)
+        self.assertIn("merged PR #3101 (rebless) at 2026-09-09T05:00:00Z", text)
+
+
 class DaemonsAndWindow(Env):
     @unittest.skipUnless(os.name == "nt", "native-Windows pid probe")
     def test_windows_pid_probe_reads_native_and_msys_pids(self):

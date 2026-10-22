@@ -35,8 +35,10 @@ sessions alike. This file is the overview; each mechanism has one owner:
 
 ### Who merges
 
-Every PR is merged by the human; `fleet-rebase` only rebases and re-arms
-the LLM merger pass, which resolves mechanical conflicts, never merges.
+The human merges, and so does `fleet-automerge`, the merger ladder's first
+rung, for an approved, all-green, master-based PR whose every file is in a
+class enabled in `fleet-up.conf` (default none): [`docs/design/auto-merge-lane.md`](../design/auto-merge-lane.md).
+`fleet-rebase` only rebases and re-arms the LLM merger pass; no LLM role merges.
 
 ### Claims
 

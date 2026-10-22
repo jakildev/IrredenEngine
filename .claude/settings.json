@@ -67,10 +67,15 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:api.github.com)"
     ],
-    "ask": [
-      "Bash(gh pr merge:*)"
-    ],
+    "ask": [],
     "deny": [
+      "Bash(gh pr merge:*)",
+      "Bash(fleet-automerge:*)",
+      "Bash(scripts/fleet/fleet-automerge:*)",
+      "Bash(./scripts/fleet/fleet-automerge:*)",
+      "Bash(python3 scripts/fleet/fleet-automerge:*)",
+      "Bash(python3 ./scripts/fleet/fleet-automerge:*)",
+
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git push --force-with-lease origin master:*)",

@@ -40,6 +40,27 @@ resolve_tool() {
 
 decisions_bin=$(resolve_tool fleet-decisions)
 notify_bin=$(resolve_tool fleet-notify)
+automerge_bin=$(resolve_tool fleet-automerge)
+
+# The auto-merge ledger renders in exactly one SUCCESSFUL digest: this tick
+# owns the cursor, fleet-decisions stays stateless. The rollback pass runs
+# first so a revert merged since the last tick lands in the same digest; the
+# ledger end is pinned BEFORE fleet-decisions reads it, so an event appended
+# mid-run waits for the next tick instead of being skipped by the cursor.
+LEDGER="$FLEET_HOME/logs/automerge-audit.log"
+if command -v "$automerge_bin" >/dev/null 2>&1; then
+    "$automerge_bin" --reconcile --repo jakildev/IrredenEngine >/dev/null 2>&1 || true
+fi
+ledger_end=0
+if [[ -f "$LEDGER" ]]; then
+    ledger_end=$(python3 - "$LEDGER" <<'PY' | tr -d '\r'
+import sys
+data = open(sys.argv[1], "rb").read()
+print(data.rfind(b"\n") + 1)
+PY
+    ) || ledger_end=0
+fi
+export FLEET_AUTOMERGE_LEDGER_END="$ledger_end"
 
 digest=$("$decisions_bin" 2>/dev/null)
 if [[ $? -ne 0 || -z "$digest" ]]; then
@@ -48,6 +69,7 @@ if [[ $? -ne 0 || -z "$digest" ]]; then
 fi
 
 printf '%s\n' "$digest" > "$DIGEST_DIR/latest.md"
+printf '%s\n' "$ledger_end" > "$DIGEST_DIR/automerge-cursor"
 
 decision_slice=$(printf '%s\n' "$digest" | awk '/^## Status/{exit} {print}')
 new_hash=$(printf '%s' "$decision_slice" | cksum | awk '{print $1}')

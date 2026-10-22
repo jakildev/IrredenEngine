@@ -608,6 +608,7 @@ struct ComponentValueCheck {
 struct Segment {
     std::string label_;
     float zoom_ = kSessionZoom;
+    IRMath::vec2 cameraIso_ = IRMath::vec2(0.0f);
     std::vector<IRVideo::GuiInputEvent> events_;
     std::vector<AimFixup> aims_;
     std::vector<GuiAimFixup> guiAims_;
@@ -683,6 +684,7 @@ inline void resolveShots(Recipe &recipe) {
     for (const Segment &segment : recipe.segments_) {
         IRVideo::GuiTestShot shot{};
         shot.render_.zoom_ = segment.zoom_;
+        shot.render_.cameraIso_ = segment.cameraIso_;
         shot.render_.label_ = segment.label_.c_str();
         shot.inputs_ = segment.events_.data();
         shot.numInputs_ = static_cast<int>(segment.events_.size());
@@ -818,11 +820,14 @@ class Builder {
     // "before" the click in source order. To pre-arm a check before a click,
     // close the arm in its own segment (via segment(...)) before the click's
     // segment opens — the carve_arm / carve pair is the reference shape.
-    void segment(const char *label, float zoom = kSessionZoom) {
+    void segment(
+        const char *label, float zoom = kSessionZoom, IRMath::vec2 cameraIso = IRMath::vec2(0.0f)
+    ) {
         flushSegment();
         m_current = Segment{};
         m_current.label_ = m_recipe.name_ + "_" + label;
         m_current.zoom_ = zoom;
+        m_current.cameraIso_ = cameraIso;
         m_frame = 0;
     }
 
