@@ -200,9 +200,11 @@ void initEntities() {
     setRoot(rootRow, ivec2(0, 0), canvasSize);
 
     // Verify serialize/deserialize round-trip in-memory.
+    compute();
     const std::string json = serialize();
     const bool ok = deserialize(json);
-    if (!ok) {
+    compute();
+    if (!ok || serialize() != json) {
         IR_LOG_WARN("ui_dockspace: layout serialize/deserialize round-trip FAILED");
     } else {
         IR_LOG_INFO("ui_dockspace: layout serialize/deserialize round-trip OK");

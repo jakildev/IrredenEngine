@@ -13,6 +13,7 @@
 #include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_debug_overlay_bindings.hpp>
 #include <irreden/script/lua_input_bindings.hpp>
+#include <irreden/script/lua_layout_bindings.hpp>
 #include <irreden/script/lua_fog_bindings.hpp>
 #include <irreden/script/lua_hierarchy_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
@@ -1002,6 +1003,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindPrefabApi(*this);
     detail::bindSpatialApi(*this);
     detail::bindRenderGlue(*this);
+    detail::bindLayout(*this);
     bindLuaText();
     detail::bindWidgets(*this);
     detail::bindDebugOverlay(*this);

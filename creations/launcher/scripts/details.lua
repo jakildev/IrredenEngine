@@ -101,8 +101,12 @@ end
 
 function M.new(app)
     local details = { widgets = {}, presets = {}, page = 0 }
-    IRGui.makePanel(L.details.x, L.details.y, L.details.w, L.details.h, "DETAILS")
+    details.panel = IRGui.makePanel(L.details.x, L.details.y, L.details.w, L.details.h, "DETAILS")
     return details
+end
+
+function M.reflow(app, details)
+    M.show(app, details, app.selected())
 end
 
 local function add(details, id)
@@ -171,6 +175,7 @@ end
 
 function M.show(app, details, creation)
     M.clear(details)
+    details.placed = { x = L.details.name.x, y = L.details.name.y, w = 0, h = 0 }
     if not creation then
         add(details, IRGui.makeLabel(L.details.name.x, L.details.name.y, "SELECT A CREATION"))
         return

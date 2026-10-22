@@ -19,6 +19,9 @@
 #include <string>
 #include <vector>
 #include <string_view>
+#include <cctype>
+#include <cstdint>
+#include <limits>
 
 namespace IRPrefab::Layout {
 
@@ -44,6 +47,10 @@ inline int addNode(LayoutNode node, int parentIdx) {
         ls.nodes_[parentIdx].children_.push_back(idx);
     }
     return idx;
+}
+
+inline bool isContainerNode(const LayoutNode &node) {
+    return node.type_ == LayoutNode::Type::ROW || node.type_ == LayoutNode::Type::COLUMN;
 }
 
 inline int makeRow(int parentIdx, SizeSpec spec, std::string id = "") {
@@ -92,6 +99,16 @@ inline void setRoot(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
     ls.rootSize_ = size;
 }
 
+inline std::uint64_t revision() {
+    return getLayout().revision_;
+}
+
+inline IRMath::ivec4 leafRect(IREntity::EntityId widget) {
+    const auto &leaf = IREntity::getComponent<IRComponents::C_LayoutLeaf>(widget);
+    const auto &node = getLayout().nodes_[leaf.nodeIdx_];
+    return IRMath::ivec4(node.pos_.x, node.pos_.y, node.size_.x, node.size_.y);
+}
+
 // -----------------------------------------------------------------------
 // Layout computation (called each frame by LAYOUT_COMPUTE beginTick)
 // -----------------------------------------------------------------------
@@ -102,7 +119,11 @@ inline void compute() {
     auto &ls = getLayout();
     if (ls.root_ < 0)
         return;
+    ls.rectanglesChanged_ = false;
     computeNode(ls.root_, ls.rootPos_, ls.rootSize_);
+    if (ls.rectanglesChanged_) {
+        ++ls.revision_;
+    }
 }
 
 inline const LayoutNode &getNode(int idx) {
@@ -112,6 +133,7 @@ inline const LayoutNode &getNode(int idx) {
 inline void computeNode(int nodeIdx, IRMath::ivec2 pos, IRMath::ivec2 size) {
     auto &ls = getLayout();
     auto &node = ls.nodes_[nodeIdx];
+    ls.rectanglesChanged_ = ls.rectanglesChanged_ || node.pos_ != pos || node.size_ != size;
     node.pos_ = pos;
     node.size_ = size;
 
@@ -237,6 +259,7 @@ inline void buildSplitters() {
             node.splitterEntities_[i] = se;
         }
     }
+    ls.topologySealed_ = true;
 }
 
 // -----------------------------------------------------------------------
@@ -375,6 +398,7 @@ inline void endPanelDragImpl(int fromNodeIdx, int toNodeIdx) {
         IREntity::setComponent(from.widgetEntity_, IRComponents::C_LayoutLeaf{fromNodeIdx});
     if (to.widgetEntity_ != IREntity::kNullEntity)
         IREntity::setComponent(to.widgetEntity_, IRComponents::C_LayoutLeaf{toNodeIdx});
+    ++ls.revision_;
 }
 
 inline void cancelPanelDrag() {
@@ -466,66 +490,115 @@ inline std::string serialize() {
 // Minimal parser for the above format. Restores splitter sizes (not leaf
 // IDs since those are always driven by compute). Returns true on success.
 inline bool deserialize(std::string_view json) {
-    auto findField = [&](std::string_view key, size_t from, size_t to) -> size_t {
-        const std::string needle = std::string("\"") + std::string(key) + "\":";
-        const size_t pos = json.find(needle, from);
-        return (pos != std::string_view::npos && pos < to) ? pos + needle.size()
-                                                           : std::string_view::npos;
+    struct Allocation {
+        int parent_;
+        int child_;
+        int sizeA_;
+        int sizeB_;
     };
-    auto readInt = [&](size_t pos) -> int {
-        if (pos == std::string_view::npos)
-            return -1;
-        size_t end = pos;
-        while (end < json.size() && (std::isdigit(json[end]) || json[end] == '-'))
-            ++end;
-        int val = 0;
-        bool neg = false;
-        size_t s = pos;
-        if (s < end && json[s] == '-') {
-            neg = true;
-            ++s;
+
+    auto skipSpace = [&json](std::size_t &cursor) {
+        while (cursor < json.size() && std::isspace(static_cast<unsigned char>(json[cursor]))) {
+            ++cursor;
         }
-        for (; s < end; ++s)
-            val = val * 10 + (json[s] - '0');
-        return neg ? -val : val;
     };
+    auto consume = [&json, &skipSpace](std::size_t &cursor, std::string_view token) {
+        skipSpace(cursor);
+        if (json.substr(cursor, token.size()) != token) {
+            return false;
+        }
+        cursor += token.size();
+        return true;
+    };
+    auto readUnsigned = [&json, &skipSpace](std::size_t &cursor, int &value) {
+        skipSpace(cursor);
+        if (cursor >= json.size() || !std::isdigit(static_cast<unsigned char>(json[cursor]))) {
+            return false;
+        }
+        long long parsed = 0;
+        while (cursor < json.size() && std::isdigit(static_cast<unsigned char>(json[cursor]))) {
+            parsed = parsed * 10 + (json[cursor] - '0');
+            if (parsed > std::numeric_limits<int>::max()) {
+                return false;
+            }
+            ++cursor;
+        }
+        value = static_cast<int>(parsed);
+        return true;
+    };
+
+    const std::size_t version = json.find("\"v\":1,");
+    const std::size_t splitters = json.find("\"splitters\"");
+    if (version == std::string_view::npos || splitters == std::string_view::npos) {
+        return false;
+    }
 
     auto &ls = getLayout();
+    std::vector<Allocation> parsed;
+    std::size_t expectedCount = 0;
+    for (const auto &node : ls.nodes_) {
+        if (isContainerNode(node) && !node.children_.empty()) {
+            expectedCount += node.children_.size() - 1;
+        }
+    }
+    parsed.reserve(expectedCount);
 
-    // Read splitters array
-    size_t splPos = json.find("\"splitters\":[");
-    if (splPos == std::string_view::npos)
+    std::size_t cursor = splitters + std::string_view("\"splitters\"").size();
+    if (!consume(cursor, ":[")) {
         return false;
-    splPos += 13; // skip past "\"splitters\":["
+    }
+    while (true) {
+        skipSpace(cursor);
+        if (cursor < json.size() && json[cursor] == ']') {
+            ++cursor;
+            break;
+        }
+        if (!parsed.empty() && !consume(cursor, ",")) {
+            return false;
+        }
+        Allocation value{};
+        if (!consume(cursor, "{\"p\":") || !readUnsigned(cursor, value.parent_) ||
+            !consume(cursor, ",\"i\":")) {
+            return false;
+        }
+        if (!readUnsigned(cursor, value.child_) || !consume(cursor, ",\"a\":") ||
+            !readUnsigned(cursor, value.sizeA_) || value.sizeA_ <= 0 ||
+            !consume(cursor, ",\"b\":") || !readUnsigned(cursor, value.sizeB_) ||
+            value.sizeB_ <= 0 || !consume(cursor, "}")) {
+            return false;
+        }
+        parsed.push_back(value);
+    }
+    if (parsed.size() != expectedCount || !consume(cursor, "}")) {
+        return false;
+    }
+    skipSpace(cursor);
+    if (cursor != json.size()) {
+        return false;
+    }
 
-    size_t cur = splPos;
-    while (cur < json.size() && json[cur] != ']') {
-        if (json[cur] != '{') {
-            ++cur;
+    std::size_t record = 0;
+    for (int parent = 0; parent < static_cast<int>(ls.nodes_.size()); ++parent) {
+        const auto &node = ls.nodes_[parent];
+        if (!isContainerNode(node)) {
             continue;
         }
-        size_t entryEnd = json.find('}', cur);
-        if (entryEnd == std::string_view::npos)
-            break;
-
-        const int pi = readInt(findField("p", cur, entryEnd));
-        const int idx = readInt(findField("i", cur, entryEnd));
-        const int sizeA = readInt(findField("a", cur, entryEnd));
-        const int sizeB = readInt(findField("b", cur, entryEnd));
-
-        if (pi >= 0 && pi < static_cast<int>(ls.nodes_.size()) && idx >= 0 && sizeA > 0 &&
-            sizeB > 0) {
-            auto &pn = ls.nodes_[pi];
-            if (idx + 1 < static_cast<int>(pn.children_.size())) {
-                auto &childA = ls.nodes_[pn.children_[idx]];
-                auto &childB = ls.nodes_[pn.children_[idx + 1]];
-                childA.spec_.mode_ = SizeMode::FIXED_PX;
-                childA.spec_.value_ = static_cast<float>(sizeA);
-                childB.spec_.mode_ = SizeMode::FIXED_PX;
-                childB.spec_.value_ = static_cast<float>(sizeB);
+        for (int child = 0; child + 1 < static_cast<int>(node.children_.size()); ++child) {
+            const auto &allocation = parsed[record++];
+            if (allocation.parent_ != parent || allocation.child_ != child) {
+                return false;
             }
         }
-        cur = entryEnd + 1;
+    }
+
+    for (const auto &allocation : parsed) {
+        auto &parent = ls.nodes_[allocation.parent_];
+        auto &childA = ls.nodes_[parent.children_[allocation.child_]];
+        auto &childB = ls.nodes_[parent.children_[allocation.child_ + 1]];
+        childA.spec_.mode_ = SizeMode::FIXED_PX;
+        childA.spec_.value_ = static_cast<float>(allocation.sizeA_);
+        childB.spec_.mode_ = SizeMode::FIXED_PX;
+        childB.spec_.value_ = static_cast<float>(allocation.sizeB_);
     }
     return true;
 }

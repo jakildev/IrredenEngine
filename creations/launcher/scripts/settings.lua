@@ -37,6 +37,7 @@ function M.new(store)
         favourites = {},
         collapsed = {},
         presets = {},
+        layout = "",
         widgets = {},
         open = false,
     }
@@ -49,6 +50,7 @@ function M.load(settings)
     settings.favourites = listToSet(IRSave.get(store, "favourites"))
     settings.collapsed = listToSet(IRSave.get(store, "collapsed"))
     settings.presets = {}
+    settings.layout = IRSave.get(store, "layout", "")
     local presets = IRSave.get(store, "presets")
     if type(presets) == "table" then
         for index = 1, #presets do
@@ -70,6 +72,8 @@ function M.save(settings)
         presets[#presets + 1] = target .. "=" .. settings.presets[target]
     end
     IRSave.set(store, "presets", presets)
+    settings.layout = IRLayout.serialize()
+    IRSave.set(store, "layout", settings.layout)
     return IRSave.save(store)
 end
 
@@ -129,6 +133,7 @@ function M.show(app, settings)
     local e = L.settings.editor
     settings.dropdown = add(settings,
         IRGui.makeDropdown(e.x, e.y, e.w, e.h, items, selected, e.h, SMALL))
+    settings.placed = { x = e.x, y = e.y, w = e.w, h = e.h }
     settings.selected = selected
     if selected > 0 then
         settings.editor = settings.editors[selected].name
