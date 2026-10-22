@@ -20,8 +20,8 @@
 #       dropped rather than blocking the lane; the next line launches
 #   T7: the per-target dispatch cap parks a target that keeps being launched
 #   T7b: the next tick after the park does not re-launch it
-#   T8: with fleet-automerge on PATH the tier-0 chain runs it BEFORE
-#       fleet-rebase, passing no class and no environment override
+#   T8: with fleet-automerge on PATH the tier-0 chain runs it once per repo
+#       key BEFORE fleet-rebase, passing no class and no environment override
 #   T9: a failing or absent fleet-automerge still hands the tick to
 #       fleet-rebase (the chain is `;`, never `&&`)
 #
@@ -227,9 +227,11 @@ out=$(tick)
 assert_contains "$out" "merger: tier-0 auto-merge pass runs first (fleet-automerge --auto)" "auto-merge pass logged"
 assert_contains "$out" "merger: spawned tier-0 fleet-rebase" "tier-0 spawn still logged (the line other suites key on)"
 spawned_tier0 && ok "fleet-rebase --auto --rearm-trigger was spawned after the auto-merge pass" || bad "fleet-rebase not spawned: $(cat "$STUB_LOG")"
-assert_eq "$(grep -c '^fleet-automerge --auto --repo jakildev/IrredenEngine classes_env=unset$' "$STUB_LOG")" "1" "fleet-automerge --auto ran once, engine-only, with no class in its environment"
-first_line=$(head -1 "$STUB_LOG")
-[[ "$first_line" == fleet-automerge* ]] && ok "fleet-automerge ran before fleet-rebase" || bad "order wrong: $(cat "$STUB_LOG")"
+assert_eq "$(grep -c '^fleet-automerge --auto --repo engine classes_env=unset$' "$STUB_LOG")" "1" "fleet-automerge --auto ran once for engine, with no class in its environment"
+assert_eq "$(grep -c '^fleet-automerge --auto --repo game classes_env=unset$' "$STUB_LOG")" "1" "fleet-automerge --auto ran once for game (its own conf gate decides)"
+assert_eq "$(grep -c '^fleet-automerge' "$STUB_LOG")" "2" "exactly one auto-merge pass per repo"
+first_two=$(head -2 "$STUB_LOG" | cut -d' ' -f1 | sort -u)
+[[ "$first_two" == fleet-automerge ]] && ok "both fleet-automerge passes ran before fleet-rebase" || bad "order wrong: $(cat "$STUB_LOG")"
 [[ -e "$TRIGGER" ]] && bad "trigger consumed with the chain" || ok "trigger consumed with the chain"
 
 echo "T9: a failing fleet-automerge still hands the tick to fleet-rebase"
@@ -238,6 +240,7 @@ printf '#!/usr/bin/env bash\nprintf "fleet-automerge %%s\\n" "$*" >> "$STUB_LOG"
 : > "$TRIGGER"
 out=$(tick)
 spawned_tier0 && ok "fleet-rebase spawned despite the auto-merge failure" || bad "fleet-rebase not spawned after a failing auto-merge: $(cat "$STUB_LOG")"
+assert_eq "$(grep -c '^fleet-automerge --auto --repo game$' "$STUB_LOG")" "1" "a failing engine pass still runs the game pass"
 rm -f "$STUB_BIN/fleet-automerge"
 
 echo "T6: under provider routing an unroutable line is dropped, not a standing block"

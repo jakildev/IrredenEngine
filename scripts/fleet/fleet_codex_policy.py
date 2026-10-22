@@ -113,6 +113,7 @@ def check(path, role):
              (["gh", "pr", "merge", "123"], "forbidden"),
              (["fleet-automerge", "--auto"], "forbidden"),
              (["scripts/fleet/fleet-automerge", "--dry-run"], "forbidden"),
+             (["fleet-merge-preview", "--repo", "game"], "allow"),
              (["git", "push", "origin", "master"], "forbidden"),
              (["git", "push", "--force", "origin", "HEAD"], "forbidden"),
              (["git", "push", "--force-with-lease", "origin", "HEAD:x"],

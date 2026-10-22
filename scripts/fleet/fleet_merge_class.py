@@ -10,10 +10,10 @@ of its inputs so the hermetic suite pins every arm:
   is required, and every label the merger ladder parks on (plus the lane's own
   additions) refuses. `covers` lets a drift test prove it stays a superset of
   the scout's and `fleet-rebase`'s park sets.
-- `read_enablement` parses `~/.fleet/fleet-up.conf` for the enabled classes
-  and the hold window. It is the only enablement input: no CLI flag and no
-  environment variable can turn a class on, and anything malformed means an
-  empty enabled set.
+- `read_enablement` parses `~/.fleet/fleet-up.conf` for the enabled classes,
+  the repos the lane may merge in, and the hold window. It is the only
+  enablement input: no CLI flag and no environment variable can turn a class
+  or a repo on, and anything malformed means an empty enabled set.
 
 `profile_class` is the historical eight-row profile from the lane's design
 issue; it exists for the checked-in fixture and never grants a merge.
@@ -24,9 +24,12 @@ import re
 from dataclasses import dataclass, field
 
 KNOWN_CLASSES = ("rebless", "docs")
+KNOWN_REPOS = ("engine", "game")
+DEFAULT_REPOS = frozenset({"engine"})
 REQUIRED_LABEL = "fleet:approved"
 
-_REBLESS_RE = re.compile(r"^(?:creations/demos/[^/]+/test/references/|docs/pr-screenshots/)")
+_REFERENCES_RE = re.compile(r"(?:^|/)test/references/")
+_SCREENSHOTS_PREFIX = "docs/pr-screenshots/"
 _DOCS_EXCLUDED_PREFIXES = (".claude/", "docs/design/objectives/", "docs/agents/")
 _DOCS_EXCLUDED_BASENAME = "CLAUDE.md"
 
@@ -52,7 +55,15 @@ BLOCKING_PREFIXES = ("human:", "fleet:design-", "fleet:claim-", "fleet:amending-
 
 
 def is_rebless_path(path):
-    return bool(_REBLESS_RE.match(path))
+    """A PR screenshot, or a file in any `test/references/` tree that is not
+    nested inside another test tree (a test fixture's own references). The
+    rule names no repo's layout, so it holds for every repo the lane serves."""
+    if path.startswith(_SCREENSHOTS_PREFIX):
+        return True
+    m = _REFERENCES_RE.search(path)
+    if not m:
+        return False
+    return not any(seg in ("test", "tests") for seg in path[:m.start()].split("/"))
 
 
 def is_docs_path(path):
@@ -167,6 +178,7 @@ class Enablement:
     classes: frozenset
     hold_secs: int
     problems: tuple
+    repos: frozenset = frozenset()  # repo keys (engine | game) the lane may merge in
 
     @property
     def enabled(self):
@@ -193,27 +205,30 @@ def parse_conf_text(text):
     return values
 
 
+def _tokens(values, name, noun, known, problems):
+    raw = values.get(name, "")
+    if raw is None:
+        problems.append(f"{name} is malformed (not one quoted or bare word)")
+        return set()
+    tokens = {t for t in re.split(r"[,\s]+", raw) if t}
+    for token in sorted(tokens - set(known)):
+        problems.append(f"{name} names unknown {noun} {token!r}")
+    return tokens
+
+
 def read_enablement(conf_path):
     """The lane's configuration from the daemon's conf file alone. A missing,
-    unreadable or malformed file enables nothing; a malformed hold also
-    enables nothing, because the two knobs are read as one contract."""
+    unreadable or malformed file enables nothing; a malformed hold or repo
+    list also enables nothing, because the knobs are read as one contract.
+    `FLEET_AUTOMERGE_REPOS` unset or empty means the engine repo alone."""
     problems = []
     try:
         with open(conf_path, encoding="utf-8") as f:
             values = parse_conf_text(f.read())
     except OSError as exc:
         return Enablement(frozenset(), 0, (f"conf unreadable: {exc.strerror or exc}",))
-    classes = set()
-    raw = values.get("FLEET_AUTOMERGE_CLASSES", "")
-    if raw is None:
-        problems.append("FLEET_AUTOMERGE_CLASSES is malformed (not one quoted or bare word)")
-        raw = ""
-    for token in re.split(r"[,\s]+", raw):
-        if not token:
-            continue
-        if token not in KNOWN_CLASSES:
-            problems.append(f"FLEET_AUTOMERGE_CLASSES names unknown class {token!r}")
-        classes.add(token)
+    classes = _tokens(values, "FLEET_AUTOMERGE_CLASSES", "class", KNOWN_CLASSES, problems)
+    repos = _tokens(values, "FLEET_AUTOMERGE_REPOS", "repo", KNOWN_REPOS, problems)
     hold_raw = values.get("FLEET_AUTOMERGE_HOLD_SECS", "0")
     hold_raw = "0" if hold_raw == "" else hold_raw
     hold = 0
@@ -225,4 +240,4 @@ def read_enablement(conf_path):
         problems.append(f"FLEET_AUTOMERGE_HOLD_SECS is not a non-negative integer: {hold_raw!r}")
     if problems:
         return Enablement(frozenset(), 0, tuple(problems))
-    return Enablement(frozenset(classes), hold, ())
+    return Enablement(frozenset(classes), hold, (), frozenset(repos) or DEFAULT_REPOS)
