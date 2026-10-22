@@ -105,28 +105,35 @@ TEST_F(LuaLayoutBindings, BuildsComputesSerializesAndRestoresFourLeaves) {
 TEST_F(LuaLayoutBindings, RejectsMalformedBuilderCallsBeforeMutation) {
     run(R"lua(
         panel = IRGui.makePanel(0, 0, 10, 10, "PANEL")
+        unattached = IRGui.makePanel(0, 0, 10, 10, "UNATTACHED")
         root = IRLayout.makeRow(nil,
             { mode = IRLayout.SizeMode.FRACTION, value = 1 }, "root")
         leaf = IRLayout.makeLeaf(root,
             { mode = IRLayout.SizeMode.FIXED_PX, value = 10 }, panel, "panel")
     )lua");
+    m_lua.lua()["nonWidget"] = static_cast<lua_Integer>(IREntity::createEntity());
     const std::size_t nodesBefore = IRPrefab::Layout::getLayout().nodes_.size();
     const auto entitiesBefore = m_entityManager.getLiveEntityCount();
+    const auto expectRefusal = [&](const char *script) {
+        EXPECT_FALSE(error(script).empty()) << script;
+        EXPECT_EQ(IRPrefab::Layout::getLayout().nodes_.size(), nodesBefore);
+        EXPECT_EQ(m_entityManager.getLiveEntityCount(), entitiesBefore);
+    };
 
-    EXPECT_NE(
-        error("IRLayout.makeRow(leaf, { mode = 1, value = 1 })").find("row/column"),
-        std::string::npos
-    );
-    EXPECT_NE(
-        error("IRLayout.makeLeaf(root, { mode = 0, value = 10 }, panel)").find("already attached"),
-        std::string::npos
-    );
-    EXPECT_NE(
-        error("IRLayout.makeColumn(root, { mode = 99, value = 1 })").find("SizeMode"),
-        std::string::npos
-    );
-    EXPECT_EQ(IRPrefab::Layout::getLayout().nodes_.size(), nodesBefore);
-    EXPECT_EQ(m_entityManager.getLiveEntityCount(), entitiesBefore);
+    expectRefusal("IRLayout.makeRow(leaf, { mode = 1, value = 1 })");
+    expectRefusal("IRLayout.makeLeaf(root, { mode = 0, value = 10 }, panel)");
+    expectRefusal("IRLayout.makeColumn(root, { mode = 99, value = 1 })");
+    expectRefusal("IRLayout.makeRow(root, { mode = 'FRACTION', value = 1 })");
+    expectRefusal("IRLayout.makeRow(root, { value = 1 })");
+    expectRefusal("IRLayout.makeRow(root, { mode = 1.7, value = 1 })");
+    expectRefusal("IRLayout.makeRow(1.5, { mode = 1, value = 1 })");
+    expectRefusal("IRLayout.makeRow(nil, { mode = 1, value = 1 })");
+    expectRefusal("IRLayout.makeRow(root, { mode = 0, value = 0 })");
+    expectRefusal("IRLayout.makeRow(root, { mode = 0, value = 1, minPx = 5, maxPx = 4 })");
+    expectRefusal("IRLayout.setRoot(root, 0, 0, 0, 10)");
+    expectRefusal("IRLayout.setRoot(99, 0, 0, 10, 10)");
+    expectRefusal("IRLayout.leafRect(unattached)");
+    expectRefusal("IRLayout.makeLeaf(root, { mode = 1, value = 1 }, nonWidget)");
 
     run("IRLayout.buildSplitters()");
     const auto entitiesAfterBuild = m_entityManager.getLiveEntityCount();
