@@ -224,7 +224,8 @@ fleet_install_refresh() {
 # --- Dispatch targets ---------------------------------------------------------
 #
 # A dispatch target names one item of one lane, `<kind>:<repo>:<N>[:<extra>]`
-# (`stack` carries its base PR number as <extra>). The kind vocabulary and each
+# (`stack` carries its base PR number as <extra>; `verdict-replay` re-applies
+# the verdict edge a PR's existing current-head review names). The kind vocabulary and each
 # kind's fleet-claim acquire/release pair live HERE, once: fleet-dispatcher
 # takes the claim (claim_target), fleet-dispatch-wrap parses and exports the
 # target (FLEET_DISPATCH_*), fleet_task_class.py produces the lines, and the
@@ -241,12 +242,14 @@ declare -A FLEET_TARGET_CLAIM=(
     [task]=claim [stack]=claim
     [feedback]=amending-claim [conflict]=resolving-claim [plan]=planning-claim
     [review]=review-claim [planreview]=review-claim [smoke]=review-claim
+    [verdict-replay]=review-claim
     [merge]=""
 )
 declare -A FLEET_TARGET_RELEASE=(
     [task]=release [stack]=release
     [feedback]=amending-release [conflict]=resolving-release [plan]=planning-release
     [review]=review-release [planreview]=review-release [smoke]=review-release
+    [verdict-replay]=review-release
     [merge]=""
 )
 # The lane claim LABEL prefix each kind's claim writes (`<prefix><host>-<agent>`)
@@ -259,6 +262,7 @@ declare -A FLEET_TARGET_LABEL=(
     [task]="fleet:claim-" [stack]="fleet:claim-" [feedback]="fleet:amending-"
     [conflict]="fleet:resolving-" [plan]="fleet:planning-"
     [review]="fleet:reviewing-" [planreview]="fleet:reviewing-" [smoke]="fleet:reviewing-"
+    [verdict-replay]="fleet:reviewing-"
     [merge]=""
 )
 

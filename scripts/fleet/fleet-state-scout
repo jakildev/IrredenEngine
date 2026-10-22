@@ -50,6 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fleet_gh_fallback
 import fleet_github
 import fleet_poll_topology
+import fleet_review_replay
 from fleet_blocked_by import (
     is_no_blocker_value,
     parse_blocked_by,
@@ -684,7 +685,11 @@ def derive_closes_refs(body, repo):
 # 6 -> 7: stack_position added. The merger wake projection reads it; a
 # schema-6 record would miss a retargeted native-stack child until the next
 # ETag flip.
-PR_RECORD_SCHEMA = 7
+#
+# 7 -> 8: fleet_review_at and verdict_event_at added. The verdict-replay
+# predicate reads both; a schema-7 record lacks them and would hide every
+# stranded review until the next ETag flip.
+PR_RECORD_SCHEMA = 8
 
 # statusCheckRollup reduced to the one reading the merger signal needs.
 # mergeStateStatus cannot make this cut: GitHub reports UNSTABLE for a check
@@ -760,6 +765,42 @@ def _rest_checks_reading(repo, sha, keep):
     return reading if reading is not None else "unread"
 
 
+VERDICT_EVENTS_MAX_PAGES = 10
+_verdict_events_overflow_logged = set()  # (repo, number), logged once each
+
+
+def _verdict_events_needed(labels):
+    """A lane can act on a stranded review only on a PR some reviewer lane
+    admits: no verdict label, a re-review trigger, or the opus escalation.
+    A PR carrying a settled verdict label and no trigger is never offered,
+    so its events are not read."""
+    return (not (labels & REVIEW_VERDICT_LABELS)
+            or bool(labels & (RECHECK_LABELS | OPUS_REVIEWER_FLAG_LABELS)))
+
+
+def _verdict_event_at(repo, pr):
+    """The newest verdict-label event on a PR whose current head carries a
+    fleet review (`fleet_review_replay.newest_verdict_event`; "" for none),
+    or None when it was not read: no such review, a lane could not act on
+    it, or the fetch failed — None is never replay work. The label list
+    carries no application time, so this reads the issue's events; each page
+    is a conditional GET, so an unchanged PR costs no quota."""
+    if not pr.get("fleet_review_at") or not _verdict_events_needed(set(pr.get("labels") or ())):
+        return None
+    events = _rest_list(repo, f"issues/{pr.get('number')}/events", {},
+                        max_pages=VERDICT_EVENTS_MAX_PAGES)
+    if events is None:
+        return None
+    if len(events) >= 100 * VERDICT_EVENTS_MAX_PAGES:
+        key = (repo, pr.get("number"))
+        if key not in _verdict_events_overflow_logged:
+            _verdict_events_overflow_logged.add(key)
+            log(f"{repo}#{pr.get('number')}: issue events fill {VERDICT_EVENTS_MAX_PAGES} "
+                f"pages; verdict replay cannot vouch for a complete read")
+        return None
+    return fleet_review_replay.newest_verdict_event(events)
+
+
 def _fetch_prs_graphql(repo, keep=None):
     global _last_capture_stderr
     denied = _rollup_denied(repo)
@@ -808,6 +849,10 @@ def _fetch_prs_graphql(repo, keep=None):
         # every role hits at startup. The schema is unchanged (older entries keep
         # the key, valued ""), so neither predicate moves.
         raw_reviews = pr.get("reviews", []) or []
+        # Derived while every review body is live; see _verdict_event_at.
+        pr["fleet_review_at"] = fleet_review_replay.fleet_review_at(
+            raw_reviews, pr.get("headRefOid"))
+        pr["verdict_event_at"] = _verdict_event_at(repo, pr)
         latest_index = max(
             range(len(raw_reviews)),
             key=lambda i: (raw_reviews[i].get("submittedAt") or "", i),
@@ -3731,6 +3776,12 @@ def _reviewable(pr, labels, head_labels):
 def sonnet_review_admissible(pr, labels, head_labels):
     if not _reviewable(pr, labels, head_labels) or pr.get("isDraft"):
         return False
+    # A current-head fleet review newer than every verdict event is the
+    # sonnet lane's `verdict-replay` target, whichever lane wrote the review:
+    # the replay re-applies the edge that review names, which is cheaper
+    # than any second pass over a head already reviewed.
+    if fleet_review_replay.replay_pending(pr):
+        return True
     # Re-review triggers override every standing-state check below.
     if labels & RECHECK_LABELS:
         return True
@@ -3750,7 +3801,8 @@ def sonnet_review_admissible(pr, labels, head_labels):
 
 def opus_review_admissible(pr, labels, head_labels):
     return (_reviewable(pr, labels, head_labels)
-            and bool(labels & OPUS_REVIEWER_FLAG_LABELS))
+            and bool(labels & OPUS_REVIEWER_FLAG_LABELS)
+            and not fleet_review_replay.replay_pending(pr))
 
 
 def project_sonnet_reviewer(state):
@@ -3761,8 +3813,10 @@ def project_sonnet_reviewer(state):
         for pr in prs:
             if not sonnet_review_admissible(pr, set(pr["labels"]), head_labels):
                 continue
-            items.append({"repo": repo, "pr": pr["number"],
-                          "head": pr["headRefName"]})
+            item = {"repo": repo, "pr": pr["number"], "head": pr["headRefName"]}
+            if fleet_review_replay.replay_pending(pr):
+                item["verdict_replay"] = True
+            items.append(item)
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -4541,9 +4595,13 @@ def slice_sonnet_reviewer(state):
         for pr in prs:
             if sonnet_review_admissible(pr, set(pr["labels"]), head_labels):
                 record = _slice_pr_with_repo(repo_key, pr)
-                review_cls = _review_class(repo_key, pr)
-                if review_cls is not None:
-                    record["review_class"] = review_cls
+                if fleet_review_replay.replay_pending(pr):
+                    # fleet_task_class.pick_role emits `verdict-replay:` for it.
+                    record["verdict_replay"] = True
+                else:
+                    review_cls = _review_class(repo_key, pr)
+                    if review_cls is not None:
+                        record["review_class"] = review_cls
                 out["candidate_prs"].append(record)
     return out
 

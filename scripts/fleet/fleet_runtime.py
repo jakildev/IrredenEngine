@@ -29,6 +29,7 @@ TARGET_RECORDS = {
     "task": ("tasks_open",), "stack": ("tasks_open",),
     "plan": ("needs_plan",), "review": ("candidate_prs", "flagged_prs"),
     "planreview": ("plan_review",), "smoke": ("smoke_pending_prs",),
+    "verdict-replay": ("candidate_prs",),
     "feedback": ("feedback_prs",), "conflict": ("semantic_conflict_prs",),
     "merge": ("merger_candidates",),
 }
@@ -73,7 +74,7 @@ def routing_problem(state, key, message=None):
         print(f"fleet-runtime: {key}: {message}{suffix}", file=sys.stderr)
 
 
-PR_KINDS = {"review", "smoke", "feedback", "conflict", "merge"}
+PR_KINDS = {"review", "verdict-replay", "smoke", "feedback", "conflict", "merge"}
 ISSUE_KINDS = {"task", "stack", "plan", "planreview"}
 # An issue can sit in any open-issue slice while a record keyed on it is live
 # (a `plan` target is a needs_plan row, never a task row), so issue kinds
@@ -175,6 +176,9 @@ def choose_runtime(kind, record, target, env, claude_gate="open"):
     authors = [x for x in RUNTIMES if f"fleet:author-{x}" in labels]
     if len(authors) > 1:
         raise ValueError("conflicting author runtime labels")
+    # `verdict-replay` is deliberately not a review here: it re-applies the
+    # edge an existing review names and judges nothing, so it is never forced
+    # onto the provider opposite the author.
     if kind == "review" and env.get("FLEET_CROSS_PROVIDER_REVIEW", "1") == "1":
         # The author label is a preference: absent, any available provider reviews.
         chosen = ("claude" if authors == ["codex"] else "codex") if authors \
