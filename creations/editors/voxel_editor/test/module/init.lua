@@ -272,7 +272,7 @@ end)
 IREditor.registerSession("test_yaw", function(session)
     session:segment("bake")
     session:addVoxelPart()
-    session:bakeSphere(2)
+    session:bakeSphere(1.9)
 
     session:segment("yaw_array")
     session:applyRadialArray(3, 4, 60)
