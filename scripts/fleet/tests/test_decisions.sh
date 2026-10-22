@@ -958,4 +958,56 @@ run_decisions --repo=engine > /dev/null
 assert_contains "$(cat "$TMP/out.txt")" "## Agent-approved since last digest (1)" "a replaced log renders from its start"
 assert_contains "$(stamp_section "$(cat "$TMP/out.txt")")" "#211" "the replaced log's stamp renders"
 
+# --- auto-merge ledger: rendered from the digest-tick cursor, never moved here --
+
+AM_LEDGER="$TMP/fleet-home/logs/automerge-audit.log"
+AM_CURSOR="$TMP/fleet-home/digest/automerge-cursor"
+mkdir -p "$(dirname "$AM_LEDGER")" "$(dirname "$AM_CURSOR")"
+am_section() {
+    printf '%s\n' "$1" | awk '/^## Auto-merged since last digest/{p=1; next} /^## /{p=0} p'
+}
+cat > "$AM_LEDGER" << 'EOF'
+{"ts":"2026-10-20T12:00:00Z","event":"merge","repo":"jakildev/IrredenEngine","pr":301,"class":"rebless","title":"test(macos): re-bless nine refs","provenance":{"review_author":"jakildev"}}
+{"ts":"2026-10-20T12:00:01Z","event":"audit-complete","repo":"jakildev/IrredenEngine","pr":301}
+{"ts":"2026-10-20T12:30:00Z","event":"merge","repo":"jakildev/irreden","pr":44,"class":"rebless","title":"game re-bless","provenance":{"review_author":"jakildev"}}
+{"ts":"2026-10-20T13:00:00Z","event":"rollback","repo":"jakildev/IrredenEngine","pr":301,"revert_pr":305}
+EOF
+rm -f "$AM_CURSOR"
+run_decisions --repo=engine > /dev/null
+out=$(cat "$TMP/out.txt")
+assert_contains "$out" "## Auto-merged since last digest (2)" "engine merge and rollback render; the other repo's merge does not"
+assert_contains "$(am_section "$out")" "engine PR #301  test(macos): re-bless nine refs  [auto-merged class=rebless, approved by jakildev, 2026-10-20T12:00:00Z]" "merge line names PR, title, class, approver, time"
+assert_contains "$(am_section "$out")" "engine PR #301  ROLLED BACK by revert PR #305" "rollback line names the revert PR"
+assert_absent "$(am_section "$out")" "#44" "a scoped-out repo's merge does not render"
+assert_absent "$(am_section "$out")" "audit-complete" "audit bookkeeping events do not render"
+[[ -e "$AM_CURSOR" ]] && bad "fleet-decisions wrote the auto-merge cursor (the digest tick owns it)" || ok "fleet-decisions never writes the auto-merge cursor"
+
+run_decisions --repo=engine > /dev/null
+assert_contains "$(cat "$TMP/out.txt")" "## Auto-merged since last digest (2)" "with no cursor movement a hand-run digest renders the same events again"
+
+# The digest tick's cursor past the first two lines hides them.
+head -2 "$AM_LEDGER" | wc -c | tr -d ' ' > "$AM_CURSOR"
+run_decisions --repo=engine > /dev/null
+out=$(cat "$TMP/out.txt")
+assert_contains "$out" "## Auto-merged since last digest (1)" "events before the cursor are not rendered again"
+assert_contains "$(am_section "$out")" "ROLLED BACK" "the event past the cursor renders"
+
+# The tick's pinned end hides a line appended after the pin.
+pinned=$(head -3 "$AM_LEDGER" | wc -c | tr -d ' ')
+printf '0\n' > "$AM_CURSOR"
+PATH="$TMP/bin:$PATH" FLEET_HOME="$TMP/fleet-home" FLEET_AUTOMERGE_LEDGER_END="$pinned" \
+    "$FLEET_DECISIONS" --repo=engine > "$TMP/out.txt" 2> "$TMP/err.txt"
+out=$(cat "$TMP/out.txt")
+assert_contains "$out" "## Auto-merged since last digest (1)" "only events before the pinned end render"
+assert_absent "$(am_section "$out")" "ROLLED BACK" "the event appended after the pin waits"
+
+# An off-boundary cursor (replaced ledger) reads from the start.
+printf '7\n' > "$AM_CURSOR"
+run_decisions --repo=engine > /dev/null
+assert_contains "$(cat "$TMP/out.txt")" "## Auto-merged since last digest (2)" "an off-boundary cursor reads the ledger from its start"
+
+rm -f "$AM_LEDGER" "$AM_CURSOR"
+run_decisions --repo=engine > /dev/null
+assert_absent "$(cat "$TMP/out.txt")" "Auto-merged since last digest" "no ledger, no section"
+
 summarize "fleet-decisions tests"

@@ -289,6 +289,46 @@ class Transport(unittest.TestCase):
                             check=True, capture_output=True, text=True, timeout=15)
                         self.assertEqual(json.loads(result.stdout).get("decision"), expected)
 
+    def test_every_role_is_forbidden_the_merge_paths(self):
+        """`gh pr merge` and every spelling of the tier-0 executor are
+        forbidden for every role (FLEET.md "Who merges"); the merger's
+        force-with-lease carve-out does not reach them."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            for role in ("worker", "sonnet-reviewer", "opus-reviewer", "merger",
+                         "smoke-worker"):
+                with self.subTest(role=role):
+                    text = policy.rules(root, role)
+                    self.assertIn('pattern=["gh", "pr", "merge"], decision="forbidden"', text)
+                    for form in ('["fleet-automerge"]', '["scripts/fleet/fleet-automerge"]',
+                                 '["./scripts/fleet/fleet-automerge"]',
+                                 json.dumps([str(root / "scripts/fleet/fleet-automerge")]),
+                                 '["python3", "scripts/fleet/fleet-automerge"]',
+                                 '["python3", "./scripts/fleet/fleet-automerge"]',
+                                 json.dumps(["python3",
+                                             str(root / "scripts/fleet/fleet-automerge")])):
+                        self.assertIn(f"pattern={form}, decision=\"forbidden\"", text)
+                    self.assertNotIn('pattern=["fleet-automerge"], decision="allow"', text)
+
+    @unittest.skipUnless(shutil.which("codex"), "codex CLI absent; text-level case above")
+    def test_every_role_execpolicy_forbids_each_executor_spelling(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            executor = "scripts/fleet/fleet-automerge"
+            spellings = (["fleet-automerge", "--auto"], [executor, "--auto"],
+                         ["./" + executor, "--auto"], [str(root / executor), "--auto"],
+                         ["python3", executor, "--auto"], ["python3", "./" + executor, "--auto"],
+                         ["python3", str(root / executor), "--auto"])
+            for role in ("worker", "sonnet-reviewer", "opus-reviewer", "merger",
+                         "smoke-worker"):
+                path = policy.prepare(root, role)
+                for cmd in spellings:
+                    with self.subTest(role=role, cmd=cmd):
+                        result = subprocess.run(
+                            ["codex", "execpolicy", "check", "--rules", str(path), "--", *cmd],
+                            check=True, capture_output=True, text=True, timeout=15)
+                        self.assertEqual(json.loads(result.stdout).get("decision"), "forbidden")
+
     def test_display_validator_list_covers_every_fleet_run_driver(self):
         # A new driver that launches a demo through fleet-run times out on a
         # macOS Codex worker until it is named in DISPLAY_VALIDATORS.

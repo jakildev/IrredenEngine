@@ -367,6 +367,18 @@
       "scope": "pr",
       "color": "5319e7",
       "description": "Human pushed changes; reviewer agent should re-review"
+    },
+    {
+      "name": "human:hold",
+      "scope": "pr",
+      "color": "5319e7",
+      "description": "Human hold on a PR: the tier-0 auto-merge lane (fleet-automerge) never merges it; never removed by an agent"
+    },
+    {
+      "name": "fleet:auto-merged",
+      "scope": "pr",
+      "color": "0e8a16",
+      "description": "Permanent audit trail: fleet-automerge squash-merged this PR (class and approval provenance in its audit comment and ~/.fleet/logs/automerge-audit.log)"
     }
   ],
   "transitions": [

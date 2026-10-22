@@ -2100,10 +2100,13 @@ inline Recipe build(
             builder.recordError(error);
         if (!componentSpec.errors_.empty())
             return builder.finish();
-        const IRMath::ivec3 edited(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2 - 3);
         const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 edited = center + IRMath::ivec3(0, 0, -3);
         const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
-        const IRMath::ivec3 groupEdit = center + IRMath::ivec3(0, 0, -3);
+        const IRMath::ivec3 groupEdit = edited;
+        // The moved source sits beneath the module panels with the default
+        // camera. Pan these paint shots so their deferred aims reach the scene.
+        const IRMath::vec2 editCameraIso(16.0f, 0.0f);
         const IRMath::vec3 groupAxis(0.0f, 0.0f, 1.0f);
         const IRMath::ivec3 groupPartA = rotateCell(groupEdit, sceneSize, groupAxis, -2, 3);
         const IRMath::ivec3 groupPartB = rotateCell(groupEdit, sceneSize, groupAxis, -1, 3);
@@ -2164,7 +2167,7 @@ inline Recipe build(
             "source_component_has_distinct_value"
         );
 
-        builder.segment("array_and_edit_source");
+        builder.segment("array_and_edit_source", kSessionZoom, editCameraIso);
         builder.applyRadialArray(3);
         builder.nextPart();
         builder.nextPart();
@@ -2239,7 +2242,7 @@ inline Recipe build(
         builder.expectPartCount(4, "rotation_group_shrinks_by_one");
         builder.expectSelectedPartVisible(3, "short_group_selects_surviving_neighbor");
 
-        builder.segment("short_group_edit");
+        builder.segment("short_group_edit", kSessionZoom, editCameraIso);
         builder.click(groupEdit);
         builder.expectPartOccupancy(3, groupEdit, true, "short_group_edits_selected_survivor");
         builder.expectPartOccupancy(2, groupPartA, false, "short_group_does_not_fan_out");
@@ -2253,7 +2256,7 @@ inline Recipe build(
         builder.expectPartCount(5, "rotation_group_member_restored");
         builder.expectSelectedPartVisible(4, "restored_group_member_reselected");
 
-        builder.segment("restored_group_edit");
+        builder.segment("restored_group_edit", kSessionZoom, editCameraIso);
         builder.click(groupEdit);
         builder
             .expectPartOccupancy(2, groupPartA, true, "restored_group_first_member_receives_edit");

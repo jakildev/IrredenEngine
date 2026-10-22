@@ -126,4 +126,52 @@ assert_contains "$(cat "$TMP/fleet-home/digest/latest.md")" "engine PR #102" "pr
 assert_eq "$(notify_count)" "2" "failure does not notify"
 rm -f "$TMP/decisions-fail"
 
+# --- auto-merge ledger cursor: pinned end, advanced only on success ---------
+
+cat > "$TMP/bin/fleet-decisions" << EOF
+#!/usr/bin/env bash
+[[ -f "$TMP/decisions-fail" ]] && exit 1
+printf '%s\n' "\${FLEET_AUTOMERGE_LEDGER_END:-unset}" > "$TMP/seen-end"
+cat "$TMP/fixture.md"
+EOF
+cat > "$TMP/bin/fleet-automerge" << EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$TMP/automerge.log"
+exit 0
+EOF
+chmod +x "$TMP/bin/fleet-decisions" "$TMP/bin/fleet-automerge"
+LEDGER="$TMP/fleet-home/logs/automerge-audit.log"
+mkdir -p "$(dirname "$LEDGER")"
+printf '{"event":"merge","pr":10,"ts":"2026-10-20T12:00:00Z"}\n{"event":"audit-complete","pr":10}\n' > "$LEDGER"
+ledger_len=$(wc -c < "$LEDGER" | tr -d ' ')
+
+status=$(run_tick)
+assert_eq "$status" "0" "ledger tick exits 0"
+assert_eq "$(cat "$TMP/automerge.log")" "--reconcile --repo jakildev/IrredenEngine" "the rollback pass runs before the digest"
+assert_eq "$(cat "$TMP/seen-end")" "$ledger_len" "fleet-decisions is handed the pinned ledger end"
+assert_eq "$(cat "$TMP/fleet-home/digest/automerge-cursor")" "$ledger_len" "cursor advanced to the pinned end after a successful digest"
+
+printf '{"event":"merge","pr":11,"ts":"2026-10-20T13:00:00Z"}\n' >> "$LEDGER"
+touch "$TMP/decisions-fail"
+status=$(run_tick)
+assert_eq "$status" "0" "failed digest exits 0"
+assert_eq "$(cat "$TMP/fleet-home/digest/automerge-cursor")" "$ledger_len" "cursor does not advance when fleet-decisions fails"
+rm -f "$TMP/decisions-fail"
+
+printf '{"event":"merge","pr":12,"ts":"2026-10-20T14:00:00Z"' >> "$LEDGER"   # unterminated line
+status=$(run_tick)
+expected_end=$(python3 - "$LEDGER" <<'PY' | tr -d '\r'
+import sys
+data = open(sys.argv[1], "rb").read()
+print(data.rfind(b"\n") + 1)
+PY
+)
+assert_eq "$(cat "$TMP/seen-end")" "$expected_end" "an unterminated trailing line is left for the next tick"
+assert_eq "$(cat "$TMP/fleet-home/digest/automerge-cursor")" "$expected_end" "cursor lands on the last newline"
+
+rm -f "$TMP/bin/fleet-automerge" "$LEDGER" "$TMP/fleet-home/digest/automerge-cursor"
+status=$(run_tick)
+assert_eq "$status" "0" "no ledger and no executor: tick still exits 0"
+assert_eq "$(cat "$TMP/seen-end")" "0" "no ledger pins end 0"
+
 summarize "fleet-digest-tick tests"

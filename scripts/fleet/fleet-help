@@ -318,6 +318,16 @@ Parallel-agent fleet (tmux + Claude)
                                  stacked/conflicting PRs for zero tokens;
                                  conflicts or unhandled merger states re-arm
                                  the LLM merger pass
+  fleet-automerge --dry-run [--repo engine|game|owner/name]
+                                 tier-0 auto-merge lane: prints the merge
+                                 queue partitioned auto:<class> / human with
+                                 the decisive reason, writes nothing. --auto
+                                 (dispatcher-only, denied to every role)
+                                 merges at most one eligible PR of an enabled
+                                 class (FLEET_AUTOMERGE_CLASSES in
+                                 fleet-up.conf; default off); --reconcile
+                                 records revert PRs in the audit ledger
+                                 (docs/agents/FLEET.md "Who merges")
   fleet-gate-status [--json]     show benchmark quiet window, usage gate
                                  (Anthropic + GitHub API pools), and cooldowns
   fleet-net-doctor [--kill-hung] TCP socket / ephemeral-port pressure report
