@@ -24,9 +24,13 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 constexpr u8vec4 kFramebufferSeed{128, 128, 128, 128};
 
 void seedMainFramebuffer() {
-    const auto &framebuffer =
+    auto &framebuffer =
         IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer");
-    IRRender::device()->clearTexImage(&framebuffer.getTextureColor(), 0, &kFramebufferSeed[0]);
+    framebuffer.getTextureColorForWrite().clear(
+        IRRender::PixelDataFormat::RGBA,
+        IRRender::PixelDataType::UNSIGNED_BYTE,
+        &kFramebufferSeed[0]
+    );
 }
 
 } // namespace
