@@ -105,3 +105,7 @@ These are image correctness controls on native Metal only: no Windows/OpenGL
 qualification, performance claim, all-angle proof or arbitrary-material claim.
 The pending work is a cohesive, affordable continuous receiver route at
 intermediate yaw, with the same geometry oracle guarding any optimization.
+Additional [camera-phase controls](../receiver-shadow-phase/README.md) exercise
+near-cardinal and shifted views. The checker accepts `--camera-iso X Y` for
+the fixed Metal snapped-camera contract; its default remains the origin used
+by every capture in this directory.

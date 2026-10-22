@@ -1,0 +1,13 @@
+import json, os, subprocess, sys
+from pathlib import Path
+out=Path('/tmp/grid-receiver-timing'); out.mkdir(exist_ok=False)
+quiet=out/'quiet.txt'
+env=dict(os.environ, IRREDEN_BUILD_DIR='/tmp/sun-overflow-engine-pair/guarded-depth/build', IR_QUIET_REPORT_FILE=str(quiet))
+cmd=['ir-acquire','benchmark','--',sys.executable,'scripts/perf/surface_lighting_controls.py','--scene','grid-overlap','--adoption-matrix','--case','per-axis-zoom4-receivers-subdiv1','--rounds','2','--frames','360','--output',str(out/'timing')]
+before=subprocess.check_output(['pmset','-g','batt'],text=True)
+with (out/'run.log').open('w') as stream:
+ r=subprocess.run(cmd,env=env,stdout=stream,stderr=subprocess.STDOUT)
+record=dict(command=cmd,returncode=r.returncode,power_before=before,power_after=subprocess.check_output(['pmset','-g','batt'],text=True),quiet=quiet.read_text() if quiet.exists() else None)
+(out/'run.json').write_text(json.dumps(record,indent=2)+'\n')
+print(json.dumps(record,indent=2))
+raise SystemExit(r.returncode)
