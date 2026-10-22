@@ -14,7 +14,7 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 46;
+inline constexpr std::size_t kGpuStageCount = 47;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
@@ -68,6 +68,8 @@ struct GpuStageTiming {
     float framebufferGlitchMs_ = 0.0f;
     // Zeroed by TRIXEL_GLITCH on every frame with no active subject.
     float trixelGlitchMs_ = 0.0f;
+    // Zeroed when TRIXEL_GLITCH has no live per-axis route.
+    float trixelGlitchPerAxisMs_ = 0.0f;
     std::uint32_t visibleShapeCount_ = 0;
     std::uint32_t shapeGroupsZ_ = 0;
     // Last sampled compact dispatch; axis entries count repeated face routes.
@@ -434,7 +436,8 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 // hold-tick history copy plus the fullscreen draw that replaces the
 // main framebuffer's screen blit on enabled frames. TRIXEL_GLITCH likewise:
 // `trixelGlitch` brackets its tick-start history copies and its canvas
-// dispatch.
+// dispatch; `trixelGlitchPerAxis` owns the corresponding per-axis copies and
+// compacted-cell dispatches.
 //
 // SDF scopes are non-nested and per canvas: owner clear, depth, owner election,
 // publication and separate analytic clear/box/fallback/resolve/bake scopes.
@@ -490,6 +493,7 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"fbToScreen", &GpuStageTiming::fbToScreenMs_, 0.05f},
         {"framebufferGlitch", &GpuStageTiming::framebufferGlitchMs_, 0.05f},
         {"trixelGlitch", &GpuStageTiming::trixelGlitchMs_, 0.05f},
+        {"trixelGlitchPerAxis", &GpuStageTiming::trixelGlitchPerAxisMs_, 0.05f},
     }};
     return registry;
 }

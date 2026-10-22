@@ -43,6 +43,9 @@ class RenderDevice {
     virtual void dispatchCompute(std::uint32_t x, std::uint32_t y, std::uint32_t z) = 0;
     virtual void dispatchComputeIndirect(const Buffer *indirectBuffer, std::ptrdiff_t offset) = 0;
     virtual void memoryBarrier(BarrierType barrierType) = 0;
+    // Clear one indexed UNIFORM or SHADER_STORAGE binding without disturbing
+    // the other binding table at the same index.
+    virtual void unbindBufferBase(BufferTarget target, std::uint32_t index) = 0;
     virtual void drawElements(DrawMode drawMode, int count, IndexType indexType) = 0;
     virtual void
     drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) = 0;

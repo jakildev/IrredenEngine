@@ -275,6 +275,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
             return "FB-GLITCH";
         if (name == "trixelGlitch")
             return "TRIXEL-GLITCH";
+        if (name == "trixelGlitchPerAxis")
+            return "TRIXEL-GLITCH-AXIS";
         return nullptr;
     }
 
