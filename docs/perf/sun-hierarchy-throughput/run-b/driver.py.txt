@@ -1,0 +1,11 @@
+import subprocess
+from pathlib import Path
+root = Path.cwd()
+for scene, spatial in [("oblique-far-128", False), ("oblique-far-128", True), ("far-128", True), ("far-128", False)]:
+    label = "spatial" if spatial else "unsorted"
+    output = Path("/tmp/shadow-distinct-qualified-b") / scene / label
+    print(f"Measuring {scene}/{label}", flush=True)
+    command = ["python3", "scripts/perf/sun_hierarchy_probe.py", f"docs/pr-screenshots/codex/sun-geometry-capture/{scene}/index.csv.gz", "--query-side", "257", "--measure", "--dispatches", "64", "--rounds", "15", "--output", str(output)]
+    if spatial:
+        command.append("--spatial")
+    subprocess.run(command, cwd=root, check=True)
