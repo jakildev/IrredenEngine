@@ -1,0 +1,82 @@
+{
+  "scope": "Guarded AC native Metal finite-shadow hierarchy microbenchmark; no frame-throughput claim",
+  "measured_revision": "5fe9e07918efb6ed32d365f63bfdcb090b732f84",
+  "runs": {
+    "a": {
+      "wrapper_exit": 0,
+      "wrapper_exit_source": "observed by the coordinating interactive session",
+      "quiet_status": "GUARDED",
+      "rounds": 7,
+      "dispatches_per_sample": 8,
+      "variant_order": [
+        "far-128/unsorted",
+        "far-128/spatial",
+        "oblique-far-128/spatial",
+        "oblique-far-128/unsorted"
+      ],
+      "reports": [
+        {
+          "file": "run-a/far-128-unsorted.json.gz",
+          "uncompressed_sha256": "5a72c36faf861d5dc533042a5aa510202f864d60a97cbadbdf234bb3e8d6c934"
+        },
+        {
+          "file": "run-a/far-128-spatial.json.gz",
+          "uncompressed_sha256": "287b422001c61f91e164aa47a80ed1793ab87c0a804c772ae0e5c4cc190830ba"
+        },
+        {
+          "file": "run-a/oblique-far-128-spatial.json.gz",
+          "uncompressed_sha256": "180823bb0844d3f193bc4a8d915dc6a676e34199b8a936411411ba8ee44316fe"
+        },
+        {
+          "file": "run-a/oblique-far-128-unsorted.json.gz",
+          "uncompressed_sha256": "bfe470f1685abea424eb06d7ab0cc6ff9e546147c3d17584546b9b70fa1aef7a"
+        }
+      ]
+    },
+    "b": {
+      "wrapper_exit": 0,
+      "wrapper_exit_source": "observed by the coordinating interactive session",
+      "quiet_status": "GUARDED",
+      "rounds": 15,
+      "dispatches_per_sample": 64,
+      "variant_order": [
+        "oblique-far-128/unsorted",
+        "oblique-far-128/spatial",
+        "far-128/spatial",
+        "far-128/unsorted"
+      ],
+      "reports": [
+        {
+          "file": "run-b/oblique-far-128-unsorted.json.gz",
+          "uncompressed_sha256": "e9dae8b3939d03f8fb11d006e5366e9f9cd4e789462f91ce7710753c80ef890e"
+        },
+        {
+          "file": "run-b/oblique-far-128-spatial.json.gz",
+          "uncompressed_sha256": "aa0e00be1105b601f1225a903a6e3a13069288757b23e614e9b2088514a9c4d9"
+        },
+        {
+          "file": "run-b/far-128-spatial.json.gz",
+          "uncompressed_sha256": "ceda4184f2df04a132f0af64042beecf128eb922b0da74ac0d168d4f12e837da"
+        },
+        {
+          "file": "run-b/far-128-unsorted.json.gz",
+          "uncompressed_sha256": "e9c3cca74f333fcb7345f70238d3248fc6493de7f217836b69ed72a0848d7739"
+        }
+      ]
+    }
+  },
+  "files": {
+    "run-a/driver.py.txt": "57303d294540f23f600351f1a856e27dd35d9ae1f45e712d0c52a4ab55305663",
+    "run-a/far-128-spatial.json.gz": "ee04bb8bc63976b9b3fee966d6604b7e71130555b56c236637e44927f37a85dc",
+    "run-a/far-128-unsorted.json.gz": "42b338fc260ad938a52ebb3d359ffb4d7747733da29a67d7d8ce0ed9fa605508",
+    "run-a/oblique-far-128-spatial.json.gz": "8172458c9eee25a353a3b0061bb5ba9e238b877232e757ae54d527a16ccc3371",
+    "run-a/oblique-far-128-unsorted.json.gz": "eac848b1367806ac916e8f6e0ec750ba61d9c9b734cd8c64e2e11967025e4eca",
+    "run-a/quiet.txt": "0a7fda1d0a56142a0a949440de478393cf58a0f1749c5e8a8b454e2a3da1b414",
+    "run-b/driver.py.txt": "a16291e8505a1e6a73ae6cf5c76572831828e4a58c7d002144e6024d1e476962",
+    "run-b/far-128-spatial.json.gz": "f5e6b107c0b9f47e9d088d6193f8d7d404d48efd50cb0300416501e21fc7cbb4",
+    "run-b/far-128-unsorted.json.gz": "8a6e721e2b4241de3d365cc4aeb7bea88d11c21575bce6853e28624012703b7e",
+    "run-b/oblique-far-128-spatial.json.gz": "ecc1a286ab3285c0bc0d58ed564cc3f029961dcbbbdbfe1afb3fe4aefd81e3f6",
+    "run-b/oblique-far-128-unsorted.json.gz": "6b60210a981e99dac137582e1ed1ab806695647decbe57a3b64d07a9a8bc6f2c",
+    "run-b/quiet.txt": "0a7fda1d0a56142a0a949440de478393cf58a0f1749c5e8a8b454e2a3da1b414"
+  }
+}
