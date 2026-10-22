@@ -492,7 +492,7 @@ def reconcile(paths, slug):
                              revert_pr=int(r["number"]), merge_sha=merge.get("merge_sha"),
                              revert_merge_sha=(r.get("mergeCommit") or {}).get("oid"))
                 log(f"PR #{pr}: rolled back by revert PR #{r['number']}")
-                rolled.add(pr)
+                del pending[pr]
                 found += 1
     return found
 

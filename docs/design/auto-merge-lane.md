@@ -102,7 +102,8 @@ Ledger events (JSONL, one object per line, `ts` first): `merge` (`repo`,
 A rollback is a merged, master-based GitHub revert PR whose title begins
 `Revert "` and whose body contains `Reverts <slug>#<auto-merged PR>`.
 `fleet-automerge --reconcile` joins such PRs to merge events and appends one
-`rollback` per pair, idempotently; a lookalike title without the backlink,
+`rollback` per auto-merged PR, idempotently (a second revert of the same PR
+adds nothing); a lookalike title without the backlink,
 or a backlink without the title, does not count. A manual rollback must carry
 the backlink to count.
 

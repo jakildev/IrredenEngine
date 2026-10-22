@@ -601,6 +601,23 @@ class Rollbacks(AutomergeCase):
         self.assertEqual(rollbacks[0]["merge_sha"], "m" * 39 + "0")
         self.assertEqual(rollbacks[0]["revert_merge_sha"], "r" * 40)
 
+    def test_two_reverts_of_one_pr_record_one_rollback(self):
+        self.merged_ledger()
+        state = self.state()
+        state["reverts"] = [
+            {"number": 20, "title": 'Revert "test(macos): re-bless 10"',
+             "body": f"Reverts {SLUG}#10\n", "mergeCommit": {"oid": "r" * 40}},
+            {"number": 21, "title": 'Revert "test(macos): re-bless 10"',
+             "body": f"Reverts {SLUG}#10\n", "mergeCommit": {"oid": "s" * 40}},
+        ]
+        self.state_file.write_text(json.dumps(state), encoding="utf-8")
+        result = self.run_tool("--reconcile", "--repo", SLUG)
+        self.assertIn("rollbacks recorded=1", result.stderr)
+        self.run_tool("--reconcile", "--repo", SLUG)
+        rollbacks = self.events("rollback")
+        self.assertEqual(len(rollbacks), 1)
+        self.assertEqual((rollbacks[0]["pr"], rollbacks[0]["revert_pr"]), (10, 20))
+
     def test_lookalikes_do_not_count(self):
         self.merged_ledger()
         state = self.state()
