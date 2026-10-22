@@ -5,6 +5,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/render/layout_types.hpp>
 
+#include <cstdint>
 #include <vector>
 
 namespace IRComponents {
@@ -14,6 +15,9 @@ struct C_LayoutState {
     int root_ = -1;
     IRMath::ivec2 rootPos_ = {};
     IRMath::ivec2 rootSize_ = {};
+    std::uint64_t revision_ = 0;
+    bool topologySealed_ = false;
+    bool rectanglesChanged_ = false;
 
     // Splitter drag
     int dragSplitterParent_ = -1;

@@ -349,6 +349,10 @@ Parallel-agent fleet (tmux + Claude)
                                  comments: live gh read (cache only if gh
                                  fails, warned on stderr); view/diff: scout's
                                  per-PR snapshot, stamped on stderr
+  fleet-pr fork-of <N> [--repo engine|game]
+                                 live merger verdict from a clone of the repo:
+                                 `fork-of:` and `merged-parent:` lines (none |
+                                 PR + SHA); any failure exits non-zero, no stdout
   fleet-pr-clear-feedback-labels <N> [--repo …] [--labels …]
                                  idempotently strip feedback labels from a PR
                                  (skips absent labels; one --remove-label per

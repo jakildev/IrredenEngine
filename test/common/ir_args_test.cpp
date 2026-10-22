@@ -313,6 +313,28 @@ TEST(IRArgsAutoRecordTest, BareRecordBeforeRealTimeKeepsDefaultWindow) {
     EXPECT_TRUE(p.autoRecordRealTime());
 }
 
+TEST(IRArgsExitAfterFramesTest, SpaceAndInlineFormsReadBack) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--exit-after-frames", "60"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_TRUE(p.wasProvided("--exit-after-frames"));
+    EXPECT_EQ(p.exitAfterFrames(), 60);
+
+    Parser q(nullptr, Common::ENGINE);
+    Argv b({"prog", "--exit-after-frames=60"});
+    q.parse(b.argc(), b.argv());
+    EXPECT_EQ(q.exitAfterFrames(), 60);
+}
+
+TEST(IRArgsExitAfterFramesTest, AbsentReadsBackZeroAndUsageAdvertisesFlag) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_FALSE(p.wasProvided("--exit-after-frames"));
+    EXPECT_EQ(p.exitAfterFrames(), 0);
+    EXPECT_NE(p.usage().find("--exit-after-frames <int>"), std::string::npos);
+}
+
 // ─────────────────────────────────────────────
 // Positionals / standalone path
 // ─────────────────────────────────────────────
@@ -567,4 +589,10 @@ TEST(IRArgsWindowModeDeathTest, StandaloneParserRejectsTheFlag) {
 
 TEST(IRArgsWorkerThreadsDeathTest, StandaloneParserRejectsTheFlag) {
     expectStandaloneParserRejects("--worker-threads", "2");
+}
+
+TEST(IRArgsExitAfterFramesDeathTest, StandaloneParserRejectsTheFlag) {
+    Parser p(nullptr, Common::NONE);
+    EXPECT_EQ(p.usage().find("--exit-after-frames"), std::string::npos);
+    expectStandaloneParserRejects("--exit-after-frames", "5");
 }

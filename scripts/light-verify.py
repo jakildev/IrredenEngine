@@ -415,6 +415,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         domain_states = _parse_domain_state(output)
         result = verify_common.run_result(output)
+        if result == verify_common.NO_DISPLAY:
+            verify_common.report_no_display("[light-verify] ")
+            return verify_common.EXIT_ENV_FAIL
         run_completed = rc == 0 and result == "CLEAN"
         if not run_completed:
             any_run_failed = True

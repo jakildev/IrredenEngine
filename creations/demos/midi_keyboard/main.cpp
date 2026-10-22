@@ -8,7 +8,7 @@
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: your-creation-here");
 
-    IREngine::init(argv[0], IREngine::kTestLuaConfig);
+    IREngine::init(argc, argv, IREngine::kTestLuaConfig);
 
     // Initialize entities, command, and systems here
     // ...

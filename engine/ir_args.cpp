@@ -111,6 +111,11 @@ Parser::Parser(const char *programDescription, Common common)
         "Headless capture: record an mp4 clip then exit; optional frame count",
         kDefaultAutoRecordFrames
     );
+    integer(
+        "--exit-after-frames",
+        "Close the window after this many rendered frames, allowing normal teardown",
+        0
+    );
     flag(
         "--auto-record-realtime",
         "Pace auto-record against wall clock for external audio or MIDI synchronization"
@@ -519,6 +524,10 @@ int Parser::autoScreenshotWarmupFrames() const {
 
 int Parser::autoRecordFrames() const {
     return wasProvided("--auto-record") ? getInt("--auto-record") : 0;
+}
+
+int Parser::exitAfterFrames() const {
+    return getInt("--exit-after-frames");
 }
 
 bool Parser::autoRecordRealTime() const {
