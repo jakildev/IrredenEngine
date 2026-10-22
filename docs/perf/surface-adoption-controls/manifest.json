@@ -1,0 +1,629 @@
+{
+  "format": 1,
+  "files": {
+    "README.md": {
+      "sha256": "9409d755f808a1dc0a121056c0c6ade146811af3d90ad7180079629f24c9b939",
+      "bytes": 5449
+    },
+    "rejected-retry/driver.py.txt": {
+      "sha256": "eeaab035430e2ad5944974fb2e4bbb30ed3131a080af9dd3fc63496d7c70a447",
+      "bytes": 1261
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/budget-summary.md": {
+      "sha256": "fa5e540ae2cf75eb0a770c66661e993ec140d6dc1390c38ca0a3c8385ae3599d",
+      "bytes": 607
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/cases.json": {
+      "sha256": "da69b8783681868dbd459179d30ef92ed8900a37cce203f6ee72952b5fae7e42",
+      "bytes": 1849
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/gpu-summary.md": {
+      "sha256": "ea7272b8f2083be5395d8595b7a79a25be5e4b155196faf400ebbb3f34de6908",
+      "bytes": 7647
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass0/round-1/manifest.json": {
+      "sha256": "2baa80f3ce490806efc407587468bd5577e7e2ce9f7a43b3988140abfd65147d",
+      "bytes": 2592
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass0/round-1/run-1.log.gz": {
+      "sha256": "67639db90cd66b55418ac009ae01aac4455eb7f09162e4e263bda6908503f84d",
+      "bytes": 7100
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass0/round-1/run-1.txt.gz": {
+      "sha256": "0c4e5da85ba059be872a8e85b4f239f3b974be8e0e5704ee98e48df57ad38cd4",
+      "bytes": 3025
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass0/round-1/summary.md": {
+      "sha256": "0f0913e5f862944ff5f986cba92fc1cde1d0507821b5d6675729c9a8f7e59113",
+      "bytes": 2286
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass0/round-2/manifest.json": {
+      "sha256": "6d4ed9cebf474e29fb929f4699848bf601f14d175f1885c84445a8fe3f7911dc",
+      "bytes": 2633
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass0/round-2/run-1.log.gz": {
+      "sha256": "798d1e6352a45f8bf553c2844174eec00b83b08bb431af5b1179bb3ab6cfcfab",
+      "bytes": 7074
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass0/round-2/run-1.txt.gz": {
+      "sha256": "87dc0f2feac8e779238760cdce5cb9beaaf6390fb89907946aa40899dc19b99c",
+      "bytes": 2997
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass0/round-2/summary.md": {
+      "sha256": "ed288dc9bf8e09c8fdf7044a0dfc483405eaf67e02a666fa967d632800275dab",
+      "bytes": 2275
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass1/round-1/manifest.json": {
+      "sha256": "f6b7f3cd5f7a7682c80518222ebc5ceba2faa6592294ce2bfeccda79d1089a7a",
+      "bytes": 2633
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass1/round-1/run-1.log.gz": {
+      "sha256": "e667e48c18dd0b808e5bd5bc1d53e23043681dc0787fb6ed3b63d7c4c204099a",
+      "bytes": 7086
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass1/round-1/run-1.txt.gz": {
+      "sha256": "6d3a1a58f3661616ac76bf3a7adf104b8b4c96e16fe4fd26f7affd2e9876495c",
+      "bytes": 3055
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass1/round-1/summary.md": {
+      "sha256": "13b67e22c38d2da8e94a1f9227986d61062b6e80a36e2fa4667f685468e36ecd",
+      "bytes": 2286
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass1/round-2/manifest.json": {
+      "sha256": "394209a58a518a28d35bc4b2797b0b232073e498a73b42f6236b1975990d15dd",
+      "bytes": 2633
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass1/round-2/run-1.log.gz": {
+      "sha256": "957278979e6f848e7a2c4316fe96b4d2df6ff986e3c15719ff66b5d38acc9a56",
+      "bytes": 7111
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass1/round-2/run-1.txt.gz": {
+      "sha256": "0b6e487debaa7093dbcd8c189bc9e1b14bbb0e628147b9b0720b81640098e2ef",
+      "bytes": 2980
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface0-prepass1/round-2/summary.md": {
+      "sha256": "39d0fc86a4f27de4a894e96196e0445bdbb58b35834796c46cf88e378edc6b0a",
+      "bytes": 2279
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass0/round-1/manifest.json": {
+      "sha256": "f89076ce40f855b39b099d91dd472ab593f12a8c8893f8a71593fa5981543088",
+      "bytes": 2633
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass0/round-1/run-1.log.gz": {
+      "sha256": "71aa19c26c7be88e4fdc84f68cc38d913353ab2ed9620f62fa2232080257a6b1",
+      "bytes": 7137
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass0/round-1/run-1.txt.gz": {
+      "sha256": "dd347d251575aa95423038133ecae33c286919e466ff7018915bc7d78899199f",
+      "bytes": 3037
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass0/round-1/summary.md": {
+      "sha256": "80ece8b0928f5d5acea6395c79631b0bc715eac35165378ef4dfd7db71450c21",
+      "bytes": 2186
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass0/round-2/manifest.json": {
+      "sha256": "59556f9438ab444f16a308a1be35f44f636985c4bad186adad438e9564f3d277",
+      "bytes": 2633
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass0/round-2/run-1.log.gz": {
+      "sha256": "3c43dee24dccc85707fc5e6bcecb5b2f5bc61f21c7718d1887c14c598113e3f7",
+      "bytes": 7082
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass0/round-2/run-1.txt.gz": {
+      "sha256": "3fabab1d438b751a380eab54830509b7b1341859ba068963ff499911bd13199b",
+      "bytes": 2976
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass0/round-2/summary.md": {
+      "sha256": "dce5ef99bfea96d3fe5b705ac77b123d036d38864605423d0eeb007d7e98f294",
+      "bytes": 2172
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass1/round-1/manifest.json": {
+      "sha256": "f2d10bc929145a140238d77456a6bcdaf8a386325fc7bb5706d88bc42b0bab0d",
+      "bytes": 2633
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass1/round-1/run-1.log.gz": {
+      "sha256": "eabedeaad44daa1a223946fb8069df2f014225e6e7ccdd21f08f9ed2cff32d8f",
+      "bytes": 7065
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass1/round-1/run-1.txt.gz": {
+      "sha256": "98e1adb18cc93cdb176d49b0ca7d7307509ddabf05ad9a9d0b207560f56fddfb",
+      "bytes": 2993
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass1/round-1/summary.md": {
+      "sha256": "5b74c5735f6a676b40f599bbeb666e0f8603b0928a01c5c104e89d3585c02251",
+      "bytes": 2179
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass1/round-2/manifest.json": {
+      "sha256": "a81176c35314c51e681c3689f6e23ff149b96d6fe847e674b92c5ace9bddf762",
+      "bytes": 2633
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass1/round-2/run-1.log.gz": {
+      "sha256": "651ad814ccce8a18c05c6897bee71cce5a663c2f97911c57af2791ad4738e6a9",
+      "bytes": 7149
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass1/round-2/run-1.txt.gz": {
+      "sha256": "289ace4dd83d31ca719e6e0f573e9cb98dc968399fb3471a5634a3378e44eff9",
+      "bytes": 3070
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/per-axis-zoom4-overlap0--surface1-prepass1/round-2/summary.md": {
+      "sha256": "b7f20625a5da757c3ce5a88b3f48addc78ed91d52610dda9442454e0c356a6c9",
+      "bytes": 2186
+    },
+    "rejected-retry/per-axis-zoom4-overlap0/summary.md": {
+      "sha256": "8b9fcaceb3b42832fe36923573d02c518b4681813e04fa990d1a553d32578786",
+      "bytes": 563
+    },
+    "rejected-retry/per-axis-zoom4-overlap0.quiet": {
+      "sha256": "9f22b1a1fe032dc71c53a4957bfe3a63fba5ab5020ff0bdf4b39c5dfb261637a",
+      "bytes": 54
+    },
+    "rejected-retry/runs.json": {
+      "sha256": "293fcce72a4633f2bea1d4d310ed66d17ea7a46abd48057fdb6f642f70dfe4bf",
+      "bytes": 820
+    },
+    "rejected-window/diagnostic-surface0-prepass1/manifest.json": {
+      "sha256": "40a817f85a75928d33e495683b04e375dfa7a05ff0247aeaa38fb6edbeb905ea",
+      "bytes": 2730
+    },
+    "rejected-window/diagnostic-surface0-prepass1/run-1.log.gz": {
+      "sha256": "7fab32222a754ba70c6a612fd1eb9dc559aa70e1af3b7e35f0c99993f882065e",
+      "bytes": 7710
+    },
+    "rejected-window/diagnostic-surface0-prepass1/run-1.txt.gz": {
+      "sha256": "3f9b85a333232933e849e7429fea5de3b8174aac782e04017eec3c974fbc5842",
+      "bytes": 3072
+    },
+    "rejected-window/diagnostic-surface0-prepass1/summary.md": {
+      "sha256": "6ecdaad77f0c15d500490598995909d40a6795e11bc06b1018d2d8cee75724cb",
+      "bytes": 2293
+    },
+    "rejected-window/diagnostic-surface1-prepass0/manifest.json": {
+      "sha256": "1843ecff0dd2a5e8ed1c6e8837d403170b5c73c7863241c215fffd13afb23e48",
+      "bytes": 2730
+    },
+    "rejected-window/diagnostic-surface1-prepass0/run-1.log.gz": {
+      "sha256": "c905a23c38474b5e01282878dbbfd8f8c1cf1fc024a4a0c7391505ef08e50edc",
+      "bytes": 7709
+    },
+    "rejected-window/diagnostic-surface1-prepass0/run-1.txt.gz": {
+      "sha256": "2182c80507fb9fcc366603359fb7bb3f3e900932a307423adb65ae6adfbd48cf",
+      "bytes": 3040
+    },
+    "rejected-window/diagnostic-surface1-prepass0/summary.md": {
+      "sha256": "ffbd530f7dc659169fd52fc7bcc743dcab4919c962d409c6963a851768c07a1f",
+      "bytes": 2186
+    },
+    "rejected-window/diagnostic-surface1-prepass1/manifest.json": {
+      "sha256": "1af40ae21f4d3c36a3d1d6fba9f8073357845fb9de48195749146019e4866edc",
+      "bytes": 2705
+    },
+    "rejected-window/diagnostic-surface1-prepass1/run-1.log.gz": {
+      "sha256": "15e25276b22326c26f825b873be03c6516b82c99c063c6180ee5e18ca09875d9",
+      "bytes": 7896
+    },
+    "rejected-window/diagnostic-surface1-prepass1/run-1.txt.gz": {
+      "sha256": "dd6d5fa752d6718d4129a9773fcc749a385e1d978f89aaafdc13bb9c3afe9cb2",
+      "bytes": 3036
+    },
+    "rejected-window/diagnostic-surface1-prepass1/summary.md": {
+      "sha256": "3c6530209351cd16eddb20904f99cb0bca2162bc591565c1a2e4c14e13afa3c5",
+      "bytes": 2186
+    },
+    "rejected-window/diagnostic-verdict.json": {
+      "sha256": "ed5a5d35eb28d6f8b86a64d166923cfa1e297b804475aee52137b05ca886de61",
+      "bytes": 287
+    },
+    "rejected-window/driver.py.txt": {
+      "sha256": "7add241724a762068306040ec9d2b976e2ada7c8db7af6c15e4be3d9aed46e65",
+      "bytes": 1920
+    },
+    "rejected-window/power.json": {
+      "sha256": "f998ecab79690a897bcb4db79b131515fe7db86ce74d3995ec02ab587c906287",
+      "bytes": 523
+    },
+    "rejected-window/quiet.txt": {
+      "sha256": "1160bd603dddf7eb29905ef73765f2ad7ff34d26348fca93a790724314cbc0f4",
+      "bytes": 101
+    },
+    "rejected-window/timing/budget-summary.md": {
+      "sha256": "168064cba241141fb5124d2fe2c30a7f34c748fd522cc2d61c2a545ffb663957",
+      "bytes": 1317
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass0/round-1/manifest.json": {
+      "sha256": "6fbd7d36a6bb0b63108e26df90112814d097a3b1f6cdfe01784a2cf6b9b2d3d4",
+      "bytes": 2696
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass0/round-1/run-1.log.gz": {
+      "sha256": "dcbeb1103f87cd1d94674e5c94abedd4b9b8a44c50a5fd5b2ead99d315a1313e",
+      "bytes": 7880
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass0/round-1/run-1.txt.gz": {
+      "sha256": "e442e986ec19a169896944ddbc63bcaf21e179e1dc7809a3959f09cccee83c43",
+      "bytes": 3044
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass0/round-1/summary.md": {
+      "sha256": "d61ff745f6272aa1e8c8171bc10c045cb3252829567e6b5ea9d098d38fe60750",
+      "bytes": 1886
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass0/round-2/manifest.json": {
+      "sha256": "b1bbf791f8a3875fa36683855d819bddd64403c047ad787b1824f02254fd3fb9",
+      "bytes": 2696
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass0/round-2/run-1.log.gz": {
+      "sha256": "d9d5551b7ba07b56de465c29616b46071facf3f1d7b8e967664be4b67bf1a00c",
+      "bytes": 7821
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass0/round-2/run-1.txt.gz": {
+      "sha256": "25428f9da8d7dfcce5f80649ff192433a0f697ce32d719ff780b6d34cbccc637",
+      "bytes": 3016
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass0/round-2/summary.md": {
+      "sha256": "a6e8d68a8db477510151920cb1d1658dcbb5ec4b3ca8bb9b14bdec5bc21418ad",
+      "bytes": 1886
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass1/round-1/manifest.json": {
+      "sha256": "5695c64ab4c16c3fe7641bb76cb5f39d50ab77feb1a4218a595db79549e41dcb",
+      "bytes": 2696
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass1/round-1/run-1.log.gz": {
+      "sha256": "d270f584be601f66e22438039f64f2d75e5bfff11769e5002d70bd331709d350",
+      "bytes": 7865
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass1/round-1/run-1.txt.gz": {
+      "sha256": "438fa1d88ea922fbf23f3748d05e010564a279d9720d573497bda63f00b98473",
+      "bytes": 3046
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass1/round-1/summary.md": {
+      "sha256": "f69afeeeee04ef2cea5c2c6a3ddef405b3c1339b2b4f7ca675b9bad77beb0df4",
+      "bytes": 1886
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass1/round-2/manifest.json": {
+      "sha256": "d2da98eab073b36cffdf98c1a8ea16e743b8325e7d11a93d26af9ecbff662db6",
+      "bytes": 2696
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass1/round-2/run-1.log.gz": {
+      "sha256": "e2014c84997d5df90cb1ef3f783fecf8e334c1d33dedc4cc23cb9b14c69281e1",
+      "bytes": 7862
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass1/round-2/run-1.txt.gz": {
+      "sha256": "d3653aa0bd7fcad8c7df8a61a3c6b4d7749e59a2450644bf1f2180634fae2479",
+      "bytes": 3038
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface0-prepass1/round-2/summary.md": {
+      "sha256": "a1a2057b72f19db7e94ebbdea24cac54e064fdd0ff44b52cb8c5fac02abc0d25",
+      "bytes": 1886
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass0/round-1/manifest.json": {
+      "sha256": "d8612a01febb9874d3b3acdadb34ac4d434d540c4ef088322e0b9db1eef6bb1c",
+      "bytes": 2696
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass0/round-1/run-1.log.gz": {
+      "sha256": "0a1917e7b1497caa2e0d0e77343267683c58d8958d2ea6bd99a34e60220cb391",
+      "bytes": 7850
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass0/round-1/run-1.txt.gz": {
+      "sha256": "20fd5fd9d0c1919c86fdf76177b310d776c54245f8342b6852cd1b24cf741f69",
+      "bytes": 3027
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass0/round-1/summary.md": {
+      "sha256": "43cb16b2dad1e6537c5fa608d06e3b66f323fa0e56e3faf54066d1126a8e429a",
+      "bytes": 1886
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass0/round-2/manifest.json": {
+      "sha256": "a8942fe4a7fed28d03128416d8a54c4028046eff57620758af7e0128942a6ef8",
+      "bytes": 2696
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass0/round-2/run-1.log.gz": {
+      "sha256": "8c660c43073f090cb1b1be75d0c749736c9d340313d22b14a6bd062a3c37957a",
+      "bytes": 7861
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass0/round-2/run-1.txt.gz": {
+      "sha256": "08246ff5a67445c39489133861173bd0fc1ecef64d46fca4fdd7e6e65b329966",
+      "bytes": 3030
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass0/round-2/summary.md": {
+      "sha256": "0d229656de8e8c57ca126dc262bb5216f4c58e66230242300c39ca38ba9561ba",
+      "bytes": 1886
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass1/round-1/manifest.json": {
+      "sha256": "071265abc8a96ca01bb151c067c39b3fa6c2889eb02c7ce264a63fd0466cde71",
+      "bytes": 2696
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass1/round-1/run-1.log.gz": {
+      "sha256": "ae5e7b28981453a8d5929e943b2b1d20861c3490ac123323251cbed428f33288",
+      "bytes": 7915
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass1/round-1/run-1.txt.gz": {
+      "sha256": "9be8cb4a5c4d836a7f3d88e75bb433a937d3623c57b11b7866a8b2a1e1f1df0d",
+      "bytes": 3050
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass1/round-1/summary.md": {
+      "sha256": "b1679e42ccddc9ab8b582cc7414ce6e796f7ff0b5bb1da663acabddf4bc4f0e5",
+      "bytes": 1886
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass1/round-2/manifest.json": {
+      "sha256": "cde8a041d3bf05d10045a817463140f2b22460fdca44c6e916212ea3c7878800",
+      "bytes": 2696
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass1/round-2/run-1.log.gz": {
+      "sha256": "75a243aff18441ad1a9276692e950f49374398f96344e7894900a86e74023e9b",
+      "bytes": 7856
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass1/round-2/run-1.txt.gz": {
+      "sha256": "f65a70f890bfa3ad82b995fa9643383b1bbaf1f79c3b52fa362c63774f1c1649",
+      "bytes": 3061
+    },
+    "rejected-window/timing/cardinal-zoom4-overlap16--surface1-prepass1/round-2/summary.md": {
+      "sha256": "f067a216e61c7e2c5c2b4534377b4376c8de8f82c7023b24183aae4406e8fd57",
+      "bytes": 1886
+    },
+    "rejected-window/timing/cases.json": {
+      "sha256": "306e51217ffc3aad7bf1bfdd7b7ece19c55d66f90c29cc1ac8722ae7c3bb8e39",
+      "bytes": 5873
+    },
+    "rejected-window/timing/gpu-summary.md": {
+      "sha256": "a0df5514574bdd9a7f2571f8e4c05ea65b36bf92e57fc0f0c5dbc01fac2390d5",
+      "bytes": 20585
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass0/round-1/manifest.json": {
+      "sha256": "82d9af1227613b4044b4c61d7ec7bcb1edbdc1271e98360edef2133021c93278",
+      "bytes": 2576
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass0/round-1/run-1.log.gz": {
+      "sha256": "251dcd8857fcb8ba0095715f4e9c22c624dba509a65216ce8daf9b4c430bb318",
+      "bytes": 7094
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass0/round-1/run-1.txt.gz": {
+      "sha256": "65757142c612c8d0611b4f7debec4c3ac3c26426c99363c854f9edcdc6c99c19",
+      "bytes": 2965
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass0/round-1/summary.md": {
+      "sha256": "6f6705d02b05109b4bad54323bee9db7d44b8fec3b792ccc345475191a4ff64e",
+      "bytes": 2275
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass0/round-2/manifest.json": {
+      "sha256": "62f14a1126e4c74232071910a50902a2f327be1c7a816f228f550d5265fe2b5e",
+      "bytes": 2552
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass0/round-2/run-1.log.gz": {
+      "sha256": "02295edcff0ca70919c576cd181de55a95ad33dc717e791ae39842adb8627870",
+      "bytes": 7076
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass0/round-2/run-1.txt.gz": {
+      "sha256": "19c9c0158c82ed05ef5b56fbbde14b2cb614e957e52e802ce96f738fcefd81f2",
+      "bytes": 2901
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass0/round-2/summary.md": {
+      "sha256": "51c18f54d3edfcabcecaed6eef28be446eda87a78a89a4565a3be1d936e0d11d",
+      "bytes": 2274
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass1/round-1/manifest.json": {
+      "sha256": "60f17060d387e008e0c09cd032cb873ec3a261bb49f000afd527b648ad95d4bc",
+      "bytes": 2575
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass1/round-1/run-1.log.gz": {
+      "sha256": "0543636ca5c2c9f2deaf26e409dba64209eafbc4ae3f081feb9cfaf208bed280",
+      "bytes": 7077
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass1/round-1/run-1.txt.gz": {
+      "sha256": "910a4b0f34963d5bb3edc9a04f2392c5f8d6caf1d65fd985c4b973f7884eefbb",
+      "bytes": 2969
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass1/round-1/summary.md": {
+      "sha256": "0532506848cbf7c18c975aa242df1b0418a3ce953c5956c1d19807d9fc161bcc",
+      "bytes": 2275
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass1/round-2/manifest.json": {
+      "sha256": "3024b8312cc3c52d950abb498e4f293a8425dc1c5ebd21a0cf30568e0b566fb7",
+      "bytes": 2552
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass1/round-2/run-1.log.gz": {
+      "sha256": "1235bbd943ed1f8870b58d736a0c0cacb7c03ad5df8d47567e48af8e4bb2b22c",
+      "bytes": 7102
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass1/round-2/run-1.txt.gz": {
+      "sha256": "3d6c41a15ec9bdae3d8db663231935b2ef33e5e02ffb829908e4642471a4015c",
+      "bytes": 2917
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface0-prepass1/round-2/summary.md": {
+      "sha256": "dabfa2c1e1e7d49d5a480419b98467a2cfbf3b6b357b7a9563abcc54fc417fbd",
+      "bytes": 2274
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass0/round-1/manifest.json": {
+      "sha256": "b7ff25a633ef10f6a55cd50076e5ca97b74eba6fdf5f3b0503e50025b747a4d9",
+      "bytes": 2576
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass0/round-1/run-1.log.gz": {
+      "sha256": "fe1c7db440e87917eb84aacc4cd181f42ba5ce972034613046b6766d94d32f65",
+      "bytes": 7071
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass0/round-1/run-1.txt.gz": {
+      "sha256": "56a415b33567d3c9e9cf886273a95d2d67b7bf2ed35f33c1214d34d7b0c39ba3",
+      "bytes": 2930
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass0/round-1/summary.md": {
+      "sha256": "91167ba38117c0563bb63b594399733ebaf5770c90d1e54f07d35a79b3199c8a",
+      "bytes": 2168
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass0/round-2/manifest.json": {
+      "sha256": "8785196517b9aab743f0b26332c85aee52e48622a6c88f71a589d59b9cc17464",
+      "bytes": 2552
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass0/round-2/run-1.log.gz": {
+      "sha256": "1bef873deafd51096f5a0f5dca91a4f4a5c8c299efbf8966c929f5229d021201",
+      "bytes": 7065
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass0/round-2/run-1.txt.gz": {
+      "sha256": "844272d2c9e81390a00abf71afcd6a5098566b95702c92ab37eb5fc8949abcac",
+      "bytes": 2917
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass0/round-2/summary.md": {
+      "sha256": "17d2b4f92a826b4b12049dda214e1ad3c546f4d619112dfaecacdda21de80809",
+      "bytes": 2168
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass1/round-1/manifest.json": {
+      "sha256": "9e879c63fa4a22c7fb6ae96422870e945da4cfafe5559bfbd34ca4180adcd1fc",
+      "bytes": 2576
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass1/round-1/run-1.log.gz": {
+      "sha256": "8a7e6f5ef02b38c001be089709757ff05eb38c47ee24653741d76e3e0d4202f3",
+      "bytes": 7066
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass1/round-1/run-1.txt.gz": {
+      "sha256": "9932350dec07a142578e83609ce40efb99bdd898c1c30bccdd3bb90b5eb03023",
+      "bytes": 2944
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass1/round-1/summary.md": {
+      "sha256": "4c1192998e331b4192ebd7f253ed91f070e0b6970b5065f80b444bc28d68c2aa",
+      "bytes": 2168
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass1/round-2/manifest.json": {
+      "sha256": "257a2e46c7560a99114730ab22a40713b6fee18928d80910dbafdc497f191fb0",
+      "bytes": 2552
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass1/round-2/run-1.log.gz": {
+      "sha256": "e81ae1bcb03abf6865d313907de127910129610d674f9b47038669a935f77ab8",
+      "bytes": 7053
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass1/round-2/run-1.txt.gz": {
+      "sha256": "f608942abc5ddf41668f38ead43fefbde87016fb846dffcbe257b556a4a4fba7",
+      "bytes": 2873
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap0--surface1-prepass1/round-2/summary.md": {
+      "sha256": "25d911b00623bde5fd82ac971a5a06481cb055bf91db0890e46a4ba58c2512f7",
+      "bytes": 2168
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass0/round-1/manifest.json": {
+      "sha256": "e3d52c42ff54550e1083058c2913e7351bea60dc30532b03e80cf32dc605a45e",
+      "bytes": 2730
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass0/round-1/run-1.log.gz": {
+      "sha256": "0ee6f03d580e512ca8f8f1d041a7546f8d8a5a441c89e51624f7c5dfa6a09a9f",
+      "bytes": 7995
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass0/round-1/run-1.txt.gz": {
+      "sha256": "2b262958d9a8be1f732e15e00527c1a3cda607d5ccef34f75a324f917e7e964b",
+      "bytes": 3211
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass0/round-1/summary.md": {
+      "sha256": "c44540e7d9ac6ae1284ec3044d64ddb84c7596fedb0555051add786a028b0c81",
+      "bytes": 2293
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass0/round-2/manifest.json": {
+      "sha256": "5bed40617feaee6b65a83ff237713cc80fc2cc04c30281eda1bcc7c305b4a805",
+      "bytes": 2706
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass0/round-2/run-1.log.gz": {
+      "sha256": "a2a896bead729f0e970e582aee364bbe2ca6d37e89af279edf66e89726343a3b",
+      "bytes": 7961
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass0/round-2/run-1.txt.gz": {
+      "sha256": "0b9a26402bc2a915600efe8af5e6ead26c0af10a2912628262fb6c72b95d98ac",
+      "bytes": 3209
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass0/round-2/summary.md": {
+      "sha256": "667172a7ca50df8662f807ff60db7fa6369e1cf2267aa1db63f7558d79e15a13",
+      "bytes": 2293
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass1/round-1/manifest.json": {
+      "sha256": "6f04e7d4a785bcc1dfc0209b3758eb0f6f0392defc6dbe58f37481069aba3de6",
+      "bytes": 2730
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass1/round-1/run-1.log.gz": {
+      "sha256": "c5e49d55114cf826cac805a4cb5dff698303ca143cd390ace35ea03a4c18c88b",
+      "bytes": 7979
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass1/round-1/run-1.txt.gz": {
+      "sha256": "bbe0b3439943da6ba3938edf36122fe2c4f3a77aa212b9e308894942ec27e59b",
+      "bytes": 3215
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass1/round-1/summary.md": {
+      "sha256": "3a8af895e437af14fb4d9451406b5ac843a440e4ab53aba1964464d8cc352b39",
+      "bytes": 2293
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass1/round-2/manifest.json": {
+      "sha256": "7506d5475a15ac8b40415be528f3cbc545fb6dbbe0429d0f48026be7b35fb646",
+      "bytes": 2706
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass1/round-2/run-1.log.gz": {
+      "sha256": "da5442ff5f1922562ebe16bbe4c699335c5ce244d57910478a617e0c75ede321",
+      "bytes": 8000
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass1/round-2/run-1.txt.gz": {
+      "sha256": "e01607315de7106f43b8549138381823b69ff68151b09f37a6e26f11c144b75a",
+      "bytes": 3197
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface0-prepass1/round-2/summary.md": {
+      "sha256": "1528945b1d8e37cf91fce055a30851db6a660cede604eca7e21d41456cc72e78",
+      "bytes": 2293
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass0/round-1/manifest.json": {
+      "sha256": "6bdb80833b6af09088414a98edbd05cf6ac82879d27318a534dbcc7760db428b",
+      "bytes": 2730
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass0/round-1/run-1.log.gz": {
+      "sha256": "4a98bbcb5ef19756d44c9182ac1b293c41b13bd1d00a815a678d7bb4a485a660",
+      "bytes": 7986
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass0/round-1/run-1.txt.gz": {
+      "sha256": "889971b82311b8fe23bd93f8948fef21860f5b1002a2995219195d7647e401db",
+      "bytes": 3168
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass0/round-1/summary.md": {
+      "sha256": "d3ddce4e6b1254f96f780c3b9a72c4c7a5b42365b2fc22995b0bb0acfff82bd2",
+      "bytes": 2186
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass0/round-2/manifest.json": {
+      "sha256": "7f93773ecbe258c2f9533428f5b0d2d6b965b24739381f02350c20a1525c67da",
+      "bytes": 2706
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass0/round-2/run-1.log.gz": {
+      "sha256": "2e8a3599c4c5da240a0725257a93887c23db87705afb70c17000ba96fcaa5bbe",
+      "bytes": 8014
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass0/round-2/run-1.txt.gz": {
+      "sha256": "57b152b68ee86fdb51e92a275d40f3424df3b4956763e214194b1612ae576c0d",
+      "bytes": 3195
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass0/round-2/summary.md": {
+      "sha256": "4227bb3b26b03e9fff4dc878c35e0e0cb81400192fa513e4c5615b9a99d17a4d",
+      "bytes": 2186
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass1/round-1/manifest.json": {
+      "sha256": "42866b81acb17a2d3851b7eaffb9e5682a5ec15d4483a7f7c3c584f867855ee4",
+      "bytes": 2730
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass1/round-1/run-1.log.gz": {
+      "sha256": "cb6c2bffb9d68d7a10422542f2113da3707c42371d96a12657ec1bfb649c095e",
+      "bytes": 7971
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass1/round-1/run-1.txt.gz": {
+      "sha256": "f717a2b7b2bc769fbec8e2736255be5c02cd03997afe8efb9349284a7256f410",
+      "bytes": 3180
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass1/round-1/summary.md": {
+      "sha256": "64df48b3c373b90fbc93184f32b6345d5765ebbf0d42c29f769378c013c1459c",
+      "bytes": 2186
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass1/round-2/manifest.json": {
+      "sha256": "d1d90e0f191d313231fb29149dc248436daeb00b709f2dcb83f5245888050eb6",
+      "bytes": 2705
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass1/round-2/run-1.log.gz": {
+      "sha256": "fc803f5656cafc23e6770e55e2349c8d021f6b6992b61500265714e64f5b813c",
+      "bytes": 7963
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass1/round-2/run-1.txt.gz": {
+      "sha256": "34af55156620e0003c2ca1486079e7f70ba8705c98fb46d6ffbdf4db8ecfbb69",
+      "bytes": 3149
+    },
+    "rejected-window/timing/per-axis-zoom4-overlap16--surface1-prepass1/round-2/summary.md": {
+      "sha256": "5567d81080ebe8447f872a4400e3593e3d7380319a4aa537b551862d5045c3e1",
+      "bytes": 2186
+    },
+    "rejected-window/timing/summary.md": {
+      "sha256": "3c9226a0c1dc7d6babbcf366669d183be22902f6f6b8f39dc21df09462fc4994",
+      "bytes": 1400
+    }
+  }
+}

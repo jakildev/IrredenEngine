@@ -1,0 +1,35 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+root = Path('/tmp/surface-adoption-native')
+root.mkdir(exist_ok=False)
+env = dict(os.environ, IRREDEN_BUILD_DIR='/tmp/sun-overflow-engine-pair/guarded-depth/build')
+common = ['--only', 'shadowbox,floor', '--probe-source-box', '--probe-floor-mode', 'grid',
+          '--probe-floor-span', '40', '--sun-direction', '0', '0', '-1', '--no-spin',
+          '--no-auto-rotate', '--pivot-origin', '--no-ao', '--auto-profile',
+          '--profile-frames', '200', '--window-mode', 'offscreen', '--yaw', '0.6',
+          '--zoom', '4', '--subdivisions', '1', '--probe-overlapping-source',
+          '--probe-overlapping-source-count', '16', '--probe-overlapping-source-offset',
+          '0', '0', '-60']
+power = []
+def sample(label):
+    power.append({'label': label, 'power': subprocess.check_output(['pmset', '-g', 'batt'], text=True)})
+    (root / 'power.json').write_text(json.dumps(power, indent=2) + '\n')
+
+sample('before-diagnostics')
+for surface, prepass in [('1', '1'), ('0', '1'), ('1', '0')]:
+    output = root / f'diagnostic-surface{surface}-prepass{prepass}'
+    subprocess.run([sys.executable, 'scripts/perf/repeat_profile.py', '--target',
+                    'IRCanvasStress', '--output', str(output), '--repeats', '1', '--', *common],
+                   env=dict(env, IR_PERAXIS_SURFACE_LIGHTING=surface,
+                            IR_PERAXIS_VISIBILITY_PREPASS=prepass, IR_PERAXIS_VISIBILITY_STATS='1'),
+                   check=True)
+sample('before-timing')
+subprocess.run([sys.executable, 'scripts/perf/surface_lighting_controls.py', '--adoption-matrix',
+                '--case', 'per-axis-zoom4-overlap0', '--case', 'per-axis-zoom4-overlap16',
+                '--case', 'cardinal-zoom4-overlap16', '--rounds', '2', '--frames', '240',
+                '--output', str(root / 'timing')], env=env, check=True)
+sample('after-timing')

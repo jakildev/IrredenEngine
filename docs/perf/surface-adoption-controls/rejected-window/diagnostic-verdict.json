@@ -1,0 +1,14 @@
+{
+  "diagnostic-surface0-prepass1": {
+    "visibility_probe_absent": true
+  },
+  "diagnostic-surface1-prepass0": {
+    "visibility_probe_absent": true
+  },
+  "diagnostic-surface1-prepass1": {
+    "fragments": 119310,
+    "retained": 119310,
+    "rejected": 0,
+    "pixels": 927048
+  }
+}

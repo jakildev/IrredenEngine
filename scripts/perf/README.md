@@ -16,15 +16,30 @@ ir-acquire benchmark -- python3 scripts/perf/surface_lighting_controls.py --outp
 
 The fog-free `IRCanvasStress` matrix compares cardinal and continuous-yaw GRID
 receivers at zoom 1/4 with 0/8/16 coincident distant source casters. Shadows-off
-and unlit pairs keep the geometry and camera fixed. Every case explicitly enables
+and unlit pairs keep the geometry and camera fixed. By default every case enables
 the `IR_PERAXIS_SURFACE_LIGHTING=1` experiment, recorded in its manifest.
 The eight-caster pair also runs at subdivision 4 at both zooms.
 Completed `cardinalSurfaceFb`
 or `perAxisSurfaceFb` GPU samples are required in every lit report; unlit controls
 must have neither. This certifies the selected draw path, not pixel coverage or
-shadow correctness. The known-failing crowded-overlap diagnostic owns that check.
+shadow correctness. The independent receiver-polygon and crowded-overlap
+diagnostics own those checks.
 The usual `IRPerfGrid` fog pipeline disables surface lighting, so its perf gate
 does not qualify these paths.
+
+Use `--adoption-matrix` to compare all four explicit surface-lighting 0/1 ×
+visibility-prepass 0/1 arms. Repeated `--case` arguments select a bounded subset,
+for example `--case per-axis-zoom1-overlap0 --case per-axis-zoom1-overlap16`.
+Every arm overrides ambient values of both switches and disables visibility
+statistics to keep diagnostic readbacks outside the timed window. The manifest
+must match the requested arm; all other rendering environment, power-source and
+runtime artifact identities must agree across the matrix. Missing rounds fail.
+Surface-off intermediate-yaw arms require completed compute lighting and scatter
+samples; surface-on arms require continuous surface samples without compute
+relighting. Cardinal receiving remains active for either surface-switch value.
+The combined surface timer does not independently prove prepass execution:
+capture its `VISIBILITY-PROBE` counters in a separate untimed stats-enabled run,
+alongside inactive surface-off and prepass-off controls.
 
 Results retain runtime fingerprints, pose/overflow witnesses and
 forward/reverse rounds through `repeat_profile.py` and `profile_matrix.py`.

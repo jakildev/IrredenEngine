@@ -90,13 +90,37 @@ def write_gpu_summary(path: Path, reports_by_case: dict[str, list], note: str) -
     path.write_text("\n".join(lines) + "\n")
 
 
-def verify_artifacts(output: Path) -> None:
+def verify_artifacts(
+    output: Path, *, expected_environments: dict[str, dict[str, str]] | None = None,
+) -> None:
     identities = set()
+    witnessed_cases = set()
+    expected_keys = None
+    if expected_environments is not None:
+        key_sets = {frozenset(values) for values in expected_environments.values()}
+        if len(key_sets) != 1:
+            raise ValueError("Expected environments must cover the same keys for every case")
+        expected_keys = next(iter(key_sets))
     for path in output.glob("*/round-*/manifest.json"):
         manifest = json.loads(path.read_text())
+        if not isinstance(manifest["render_environment"], dict):
+            raise ValueError(f"{path}: render environment must be a mapping")
+        environment = manifest["render_environment"].copy()
+        if expected_environments is not None:
+            case = path.parent.parent.name
+            if case not in expected_environments:
+                raise ValueError(f"{path}: unexpected matrix case")
+            witnessed_cases.add(case)
+            expected = expected_environments[case]
+            for key in expected_keys:
+                if key not in environment or environment[key] != expected[key]:
+                    raise ValueError(f"{path}: unexpected render environment for {key}")
+                del environment[key]
         identities.add((manifest["binary_sha256"], manifest["shader_sha256"],
                         manifest["runtime_scripts_sha256"], manifest["host_power"],
-                        json.dumps(manifest["render_environment"], sort_keys=True)))
+                        json.dumps(environment, sort_keys=True)))
+    if expected_environments is not None and witnessed_cases != set(expected_environments):
+        raise ValueError("Missing matrix case manifests")
     if len(identities) != 1:
         raise ValueError(
             "Matrix must use unchanged runtime artifacts, render environment and power source")

@@ -1,0 +1,14 @@
+[
+  {
+    "label": "before-diagnostics",
+    "power": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=22872163)\t66%; discharging; 1:29 remaining present: true\n"
+  },
+  {
+    "label": "before-timing",
+    "power": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=22872163)\t65%; discharging; 1:46 remaining present: true\n"
+  },
+  {
+    "label": "after-timing",
+    "power": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=22872163)\t64%; discharging; 1:49 remaining present: true\n"
+  }
+]
