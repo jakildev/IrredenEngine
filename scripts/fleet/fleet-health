@@ -488,7 +488,9 @@ def collect_automerge(ledger_path, log_lines, since, conf):
                     complete.add(key)
     except OSError:
         pass
-    partial = sorted({pr for (repo, pr) in errors if (repo, pr) not in complete})
+    partial = sorted(({"repo": REPO_KEYS.get(repo, repo), "pr": pr}
+                      for (repo, pr) in errors if (repo, pr) not in complete),
+                     key=lambda p: (str(p["repo"]), str(p["pr"]).zfill(12)))
     runs = 0
     refusals = 0
     for ts, source, msg in log_lines:
@@ -689,7 +691,8 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktree
             w.append(f"auto-merge lane: {automerge['rollback_scans_incomplete']} rollback scan(s) "
                      "hit the search ceiling; the rollback count may be low, widen no class")
         if automerge["partial_audits"]:
-            prs = ", ".join(f"#{p}" for p in automerge["partial_audits"])
+            prs = ", ".join(("" if p["repo"] == "engine" else str(p["repo"])) + f"#{p['pr']}"
+                            for p in automerge["partial_audits"])
             w.append(f"auto-merge lane: audit incomplete on {prs} (label/comment/nit-close); "
                      "finish by hand")
     if not daemons["dispatcher"]["alive"]:
