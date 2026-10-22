@@ -329,8 +329,9 @@ class Enablement(unittest.TestCase):
             with self.subTest(line=line):
                 self.conf.write_text(line + "\n", encoding="utf-8")
                 sourced = subprocess.run(
-                    ["bash", "-c", 'source "$1"; printf %s "$FLEET_AUTOMERGE_CLASSES"', "_",
-                     str(self.conf)], capture_output=True, text=True, check=True).stdout
+                    [shutil.which("bash") or "bash", "-c",
+                     'source "$1"; printf %s "$FLEET_AUTOMERGE_CLASSES"', "_", str(self.conf)],
+                    capture_output=True, text=True, check=True).stdout
                 parsed = mc.parse_conf_text(line)["FLEET_AUTOMERGE_CLASSES"]
                 if parsed is not None:
                     self.assertEqual(parsed, sourced)

@@ -1,7 +1,7 @@
 """Hermetic tests for fleet-automerge, the tier-0 auto-merge executor.
 
 `gh` is a fail-closed PATH stub over one JSON state file: it models exactly
-the shapes the executor issues (candidate list, PR view, paginated files,
+the shapes the executor issues (paged candidate list, PR view, paginated files,
 label events, comments, the expected-head squash merge, label and comment
 writes, the merged-revert search) and exits 2 on anything else. The conf, the
 kill switch, the ledger and the lock all live under a temp HOME.
@@ -40,6 +40,7 @@ REBLESS_FILES = ["creations/demos/fixture_demo/test/references/macos-debug/zoom4
                  "docs/pr-screenshots/fixture/after.png"]
 DOCS_FILE = "docs/design/fixture-topic.md"
 OBJECTIVE_FILE = "docs/design/objectives/fixture-objective.md"
+CANDIDATE_READ = f"api repos/{SLUG}/pulls?"
 
 GH_STUB = r'''#!/usr/bin/env python3
 import json, os, sys
@@ -81,17 +82,35 @@ def main():
     log(argv)
     state = load()
     if argv[:2] == ["pr", "list"]:
+        # Real `gh pr list` returns newest first and stops at --limit (default 30).
         st = opt(argv, "--state"); base = opt(argv, "--base"); label = opt(argv, "--label")
+        limit = int(opt(argv, "--limit") or 30)
         fields = (opt(argv, "--json") or "").split(",")
         if st == "merged":
-            rows = [r for r in state.get("reverts", [])]
+            rows = [r for r in state.get("reverts", [])][:limit]
             print(json.dumps([{k: r.get(k) for k in fields} for r in rows])); return
         rows = []
-        for num, rec in sorted(state["pulls"].items(), key=lambda kv: int(kv[0])):
+        for num, rec in sorted(state["pulls"].items(), key=lambda kv: -int(kv[0])):
             if rec["state"] != "OPEN" or rec.get("base", "master") != base: continue
             if label and label not in rec.get("labels", []): continue
             rows.append({k: view_obj(rec, int(num))[k] for k in fields})
-        print(json.dumps(rows)); return
+        print(json.dumps(rows[:limit])); return
+    if argv[:1] == ["api"] and argv[1].startswith("repos/") and "/pulls?" in argv[1]:
+        # GET /pulls is newest first, one per_page page unless --paginate walks them all.
+        path, _, query = argv[1].partition("?")
+        params = dict(kv.split("=", 1) for kv in query.split("&"))
+        if path.split("/")[3:] != ["pulls"] or params.get("state") != "open":
+            die("unmodeled api " + argv[1])
+        want = '.[] | select(any(.labels[]; .name == "fleet:approved")) | .number'
+        if opt(argv, "--jq") != want: die("unmodeled jq " + str(opt(argv, "--jq")))
+        rows = [(int(num), rec) for num, rec in sorted(state["pulls"].items(),
+                                                       key=lambda kv: -int(kv[0]))
+                if rec["state"] == "OPEN"
+                and rec.get("base", "master") == params.get("base", rec.get("base", "master"))]
+        if "--paginate" not in argv:
+            rows = rows[:int(params.get("per_page", 30))]
+        print("\n".join(str(n) for n, rec in rows if "fleet:approved" in rec.get("labels", [])))
+        return
     if argv[:2] == ["pr", "view"]:
         num = argv[2]; rec = state["pulls"].get(num) or die("no PR " + num, 1)
         obj = view_obj(rec, int(num)); fields = (opt(argv, "--json") or "").split(",")
@@ -258,7 +277,7 @@ class Enablement(AutomergeCase):
         self.assertIn("lane disabled", first.stderr)
         self.assertNotIn("lane disabled", second.stderr)
         self.assert_no_writes()
-        self.assertEqual(self.gh_calls("pr list"), [])
+        self.assertEqual(self.gh_calls(CANDIDATE_READ), [])
         self.assertFalse(self.ledger.exists())
 
     def test_disabled_log_rearms_after_enablement(self):
@@ -536,6 +555,64 @@ class PositiveFire(AutomergeCase):
         self.assertIn(f"repo={SLUG}", result.stdout)
         bad = self.run_tool("--dry-run", "--repo", "nope")
         self.assertEqual(bad.returncode, 2)
+
+
+class QueueCompleteness(AutomergeCase):
+    """More approved PRs than one 100-row page: the oldest must stay reachable."""
+
+    COUNT = 101
+
+    def set_full_queue(self):
+        pulls = {str(n): eligible_pr(n, HEAD_B, draft=True) for n in range(2, self.COUNT + 1)}
+        pulls["1"] = eligible_pr(1, HEAD_A)
+        self.set_state(pulls)
+
+    def stub(self, *args):
+        return subprocess.run([sys.executable, str(self.bin / "gh"), *args], capture_output=True,
+                              text=True, timeout=60, env=self.env, check=True).stdout
+
+    def test_stub_truncates_like_gh(self):
+        self.set_full_queue()
+        listed = json.loads(self.stub("pr", "list", "--repo", SLUG, "--state", "open", "--base",
+                                      "master", "--label", "fleet:approved", "--limit", "100",
+                                      "--json", "number"))
+        self.assertEqual(len(listed), 100)
+        self.assertNotIn({"number": 1}, listed)
+        jq = '.[] | select(any(.labels[]; .name == "fleet:approved")) | .number'
+        page = self.stub("api", f"repos/{SLUG}/pulls?state=open&base=master&per_page=100",
+                         "--jq", jq).split()
+        self.assertEqual(len(page), 100)
+        self.assertNotIn("1", page)
+
+    def test_every_candidate_is_partitioned_and_the_oldest_merges(self):
+        self.set_full_queue()
+        dry = self.run_tool("--dry-run", "--repo", SLUG)
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertIn(f"{self.COUNT} candidate(s), 1 would merge, 0 writes", dry.stdout)
+        for n in range(1, self.COUNT + 1):
+            self.assertIn(f"PR #{n}  ", dry.stdout)
+        self.assert_no_writes()
+
+        result = self.run_tool("--auto", "--repo", SLUG)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"candidates={self.COUNT} merged=1", result.stderr)
+        self.assertEqual([e["pr"] for e in self.events("merge")], [1])
+        self.assertEqual(self.state()["pulls"]["1"]["state"], "MERGED")
+
+    def test_unreadable_candidate_list_fails_closed(self):
+        bad = self.dir / "garbage-gh"
+        bad.mkdir()
+        self.env["PATH"] = f"{bad}{os.pathsep}{self.env['PATH']}"
+        (bad / "gh").write_text("#!/usr/bin/env bash\necho garbage\n", encoding="utf-8")
+        (bad / "gh").chmod(0o755)
+        (bad / "gh.bat").write_text("@echo off\necho garbage\n", encoding="utf-8")
+        dry = self.run_tool("--dry-run", "--repo", SLUG)
+        self.assertEqual(dry.returncode, 1)
+        self.assertIn("candidate list unreadable", dry.stdout)
+        auto = self.run_tool("--auto", "--repo", SLUG)
+        self.assertEqual(auto.returncode, 1)
+        self.assertIn("candidate list unreadable", auto.stderr)
+        self.assertEqual(self.events("merge"), [])
 
 
 class AuditRecovery(AutomergeCase):

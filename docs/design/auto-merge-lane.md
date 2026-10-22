@@ -63,7 +63,9 @@ fixture so enabling it is a configuration change, not a code change.
 
 A missing, empty or unreadable field refuses. A refusal is logged with the
 decisive reason and the class; `--dry-run` prints the same partition for the
-whole merge queue and writes nothing.
+whole merge queue and writes nothing. The candidate read walks every page of
+the open-PR list, so no queue length hides an approved PR; an unreadable list
+merges nothing and exits 1.
 
 ## Enablement
 

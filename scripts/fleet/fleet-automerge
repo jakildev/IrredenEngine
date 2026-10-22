@@ -64,7 +64,6 @@ AUDIT_LABEL = "fleet:auto-merged"
 AUDIT_COMMENT_PREFIX = "Auto-merged (class="
 AUDIT_STEPS = ("label", "comment", "nit-close")
 MAX_AUDIT_ATTEMPTS = 3
-CANDIDATE_LIMIT = 100
 REVERT_TITLE_PREFIX = 'Revert "'
 REREVIEW_WORKFLOW_PREFIX = "Auto re-review"
 GREEN_CONCLUSIONS = ("SUCCESS", "SKIPPED")
@@ -333,10 +332,16 @@ def assess(slug, number, enablement, now):
 
 
 def candidates(slug):
-    rows = gh_json(["pr", "list", "--repo", slug, "--state", "open", "--base", "master",
-                    "--label", mc.REQUIRED_LABEL, "--limit", str(CANDIDATE_LIMIT),
-                    "--json", "number"])
-    return sorted(int(r["number"]) for r in rows if isinstance(r, dict) and r.get("number"))
+    # Every page, not `gh pr list --limit N`: that stops at N newest-first, and
+    # the older approved PRs past it would never be assessed by --auto or shown
+    # by --dry-run.
+    lines = gh_lines(["api", f"repos/{slug}/pulls?state=open&base=master&per_page=100",
+                      "--paginate", "--jq",
+                      f'.[] | select(any(.labels[]; .name == "{mc.REQUIRED_LABEL}")) | .number'])
+    try:
+        return sorted({int(line) for line in lines})
+    except ValueError as exc:
+        raise GhError(f"open-PR list returned a non-number: {exc}") from exc
 
 
 # --- audit -----------------------------------------------------------------------------
@@ -548,8 +553,13 @@ def mode_dry_run(paths, slug):
     for problem in en.problems:
         print(f"  conf: {problem}")
     now = now_utc()
+    try:
+        numbers = candidates(slug)
+    except GhError as exc:
+        print(f"dry-run: candidate list unreadable: {exc}")
+        return 1
     rows = []
-    for number in candidates(slug):
+    for number in numbers:
         try:
             rows.append(assess(slug, number, en, now))
         except GhError as exc:
