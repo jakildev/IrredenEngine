@@ -69,7 +69,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import fleet_github  # noqa: E402
 
-RE_LOG =re.compile(r"^\[(\S+) (dispatcher|fleet-rebase|state-scout)\] (.*)$")
+RE_LOG =re.compile(r"^\[(\S+) (dispatcher|fleet-rebase|fleet-automerge|state-scout)\] (.*)$")
 RE_DISPATCH = re.compile(
     r"^dispatching (\S+) -> (%\d+)(?: \[(.*?)\])?(?: runtime=(\S+))?$"
 )
@@ -444,6 +444,60 @@ def collect_rebase(log_lines, since):
     return {"runs": runs, "totals": totals, "llm_rearms": llm_rearms}
 
 
+# --- Auto-merge lane ---------------------------------------------------------------
+
+def collect_automerge(ledger_path, log_lines, since, conf):
+    """The tier-0 auto-merge ledger (JSONL) inside the window, plus the
+    executor's own run and refusal lines. A merge whose audit never completed
+    and has at least one audit-error is a partial audit. An incomplete
+    rollback scan means `rollbacks` may undercount."""
+    merges = []
+    rollbacks = 0
+    scans_incomplete = 0
+    errors = {}
+    complete = set()
+    try:
+        with open(ledger_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(e, dict):
+                    continue
+                ts = parse_ts(e.get("ts") or "")
+                if ts is None or ts < since:
+                    continue
+                kind = e.get("event")
+                if kind == "merge":
+                    merges.append({"pr": e.get("pr"), "class": e.get("class"),
+                                   "repo": e.get("repo"), "ts": e.get("ts")})
+                elif kind == "rollback":
+                    rollbacks += 1
+                elif kind == "rollback-scan-incomplete":
+                    scans_incomplete += 1
+                elif kind == "audit-error":
+                    errors[e.get("pr")] = errors.get(e.get("pr"), 0) + 1
+                elif kind == "audit-complete":
+                    complete.add(e.get("pr"))
+    except OSError:
+        pass
+    partial = sorted(pr for pr in errors if pr not in complete)
+    runs = 0
+    refusals = 0
+    for ts, source, msg in log_lines:
+        if source != "fleet-automerge" or ts < since:
+            continue
+        if msg.startswith("run complete:"):
+            runs += 1
+        elif ": refused: " in msg:
+            refusals += 1
+    classes = [c for c in re.split(r"[,\s]+", conf.get("FLEET_AUTOMERGE_CLASSES", "")) if c]
+    return {"enabled": classes, "runs": runs, "refusals": refusals, "merges": len(merges),
+            "merged_prs": merges, "rollbacks": rollbacks, "partial_audits": partial,
+            "rollback_scans_incomplete": scans_incomplete}
+
+
 # --- Runtimes --------------------------------------------------------------------
 
 def collect_runtimes(conf, state_dir, alerts_dir, state_json, rows):
@@ -616,8 +670,20 @@ NO_OP_MIN_SAMPLE = 3
 NO_OP_RATIO = 0.5
 
 
-def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktrees):
+def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktrees,
+                    automerge=None):
     w = []
+    if automerge:
+        if automerge["rollbacks"]:
+            w.append(f"auto-merge lane: {automerge['rollbacks']} rollback(s) of an auto-merged PR "
+                     "in the window; widen no class until the cause is understood")
+        if automerge["rollback_scans_incomplete"]:
+            w.append(f"auto-merge lane: {automerge['rollback_scans_incomplete']} rollback scan(s) "
+                     "hit the search ceiling; the rollback count may be low, widen no class")
+        if automerge["partial_audits"]:
+            prs = ", ".join(f"#{p}" for p in automerge["partial_audits"])
+            w.append(f"auto-merge lane: audit incomplete on {prs} (label/comment/nit-close); "
+                     "finish by hand")
     if not daemons["dispatcher"]["alive"]:
         w.append("dispatcher is not running")
     if not daemons["scout"]["alive"]:
@@ -728,6 +794,14 @@ def render_text(report):
     o.append("## Merger ladder (tier-0 fleet-rebase)")
     tot = " ".join(f"{k}={v}" for k, v in sorted(r["totals"].items()))
     o.append(f"  runs={r['runs']} llm-rearms={r['llm_rearms']}  {tot}")
+    a = report["automerge"]
+    o.append("")
+    o.append("## Auto-merge lane (tier-0 fleet-automerge)")
+    o.append(f"  enabled={','.join(a['enabled']) or 'off'}  runs={a['runs']} "
+             f"refusals={a['refusals']}  merges={a['merges']} rollbacks={a['rollbacks']} "
+             f"partial-audits={len(a['partial_audits'])}")
+    for m in a["merged_prs"]:
+        o.append(f"    merged PR #{m['pr']} ({m['class']}) at {m['ts']}")
     u = report["runtimes"]
     o.append("")
     o.append("## Runtimes")
@@ -817,7 +891,7 @@ def build_report(args):
     dispatch_dir = state_dir / "dispatch"
 
     log_lines = []
-    for name in ("dispatcher.log", "fleet-rebase.log", "state-scout.log"):
+    for name in ("dispatcher.log", "fleet-rebase.log", "fleet-automerge.log", "state-scout.log"):
         log_lines.extend(read_log(logs_dir / name))
     log_lines.sort(key=lambda x: x[0])
 
@@ -827,6 +901,7 @@ def build_report(args):
     triggers = collect_triggers(log_lines, since)
     rebase = collect_rebase(log_lines, since)
     conf = load_conf(conf_path)
+    automerge = collect_automerge(logs_dir / "automerge-audit.log", log_lines, since, conf)
     runtimes = collect_runtimes(conf, state_dir, alerts_dir, state_dir / "state.json", rows)
     dpid, dalive = pid_alive(state_dir / "dispatcher.pid")
     spid, salive = pid_alive(state_dir / "scout.pid")
@@ -855,6 +930,7 @@ def build_report(args):
         ],
         "triggers": triggers,
         "rebase": rebase,
+        "automerge": automerge,
         "runtimes": runtimes,
         "live": collect_live(dispatch_dir, sessions_dir),
         "streaks": collect_streaks(state_dir),
@@ -863,7 +939,7 @@ def build_report(args):
         "github": collect_github(state_dir / "gh-accounting", since, now_utc()),
     }
     report["warnings"] = derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts,
-                                     worktrees)
+                                     worktrees, automerge)
     return report
 
 

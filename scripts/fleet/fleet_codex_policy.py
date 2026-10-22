@@ -48,6 +48,13 @@ def rules(worktree, role):
     rule(["gh", "pr", ["list", "view", "diff", "checks", "edit", "review"]], "allow")
     rule(["gh", "issue", ["list", "view", "edit", "comment"]], "allow")
     rule(["gh", "pr", "merge"], "forbidden")
+    # The tier-0 auto-merge executor is the daemon's alone (FLEET.md "Who
+    # merges"); every role is refused the bare and checkout-relative forms.
+    executor = "scripts/fleet/fleet-automerge"
+    for form in (["fleet-automerge"], [executor], ["./" + executor], [str(worktree / executor)],
+                 ["python3", executor], ["python3", "./" + executor],
+                 ["python3", str(worktree / executor)]):
+        rule(form, "forbidden")
     rule(["gh", "pr", "create"], "forbidden" if role in REVIEW_ROLES else "allow")
     rule(["gh", "auth", "status"], "allow")
     # Fleet wrappers enforce their own assignment scope and network timeouts.
@@ -56,8 +63,8 @@ def rules(worktree, role):
     # fleet-jobs launches a child, so a bare ["fleet-jobs"] allow would carry
     # every profile outside the sandbox; only the display profiles get rules.
     excluded = {"fleet-up", "fleet-down", "fleet-dispatcher", "fleet-babysit", "fleet-rebase",
-                "fleet-dispatch-wrap", "fleet-state-scout", "fleet-claude-stream", "fleet-runtime",
-                "fleet-jobs"}
+                "fleet-automerge", "fleet-dispatch-wrap", "fleet-state-scout",
+                "fleet-claude-stream", "fleet-runtime", "fleet-jobs"}
     for entry in settings.get("permissions", {}).get("allow", []):
         if entry.startswith("Bash(fleet-") and entry.endswith(":*)"):
             name = entry[5:-3]
@@ -104,6 +111,8 @@ def prepare(worktree, role):
 def check(path, role):
     cases = [(["git", "status"], "allow"), (["gh", "pr", "list"], "allow"),
              (["gh", "pr", "merge", "123"], "forbidden"),
+             (["fleet-automerge", "--auto"], "forbidden"),
+             (["scripts/fleet/fleet-automerge", "--dry-run"], "forbidden"),
              (["git", "push", "origin", "master"], "forbidden"),
              (["git", "push", "--force", "origin", "HEAD"], "forbidden"),
              (["git", "push", "--force-with-lease", "origin", "HEAD:x"],

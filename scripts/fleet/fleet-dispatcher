@@ -3385,8 +3385,21 @@ dispatch_role() {
                 return
             fi
             mkdir -p "$HOME/.fleet/logs"
-            nohup fleet-rebase --auto --rearm-trigger \
-                >>"$HOME/.fleet/logs/fleet-rebase.log" 2>&1 &
+            # The auto-merge pass runs first, in the same background chain, so
+            # the two tier-0 executables never interleave and a refusal,
+            # failure or disabled lane still hands the tick to fleet-rebase
+            # (`;`, not `&&`). It reads its enablement from the daemon conf
+            # alone; the dispatcher passes no class and no environment.
+            if command -v fleet-automerge >/dev/null 2>&1; then
+                nohup bash -c 'fleet-automerge --auto --repo jakildev/IrredenEngine \
+                        >>"$HOME/.fleet/logs/fleet-automerge.log" 2>&1; \
+                    exec fleet-rebase --auto --rearm-trigger' \
+                    >>"$HOME/.fleet/logs/fleet-rebase.log" 2>&1 &
+                log "merger: tier-0 auto-merge pass runs first (fleet-automerge --auto)"
+            else
+                nohup fleet-rebase --auto --rearm-trigger \
+                    >>"$HOME/.fleet/logs/fleet-rebase.log" 2>&1 &
+            fi
             log "merger: spawned tier-0 fleet-rebase (LLM pass only for the targets it emits)"
             return
         fi

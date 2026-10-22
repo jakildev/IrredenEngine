@@ -297,7 +297,7 @@ any one missing means unconfigured. One table carries the whole contract:
 | Item | What |
 |---|---|
 | Setup 1 — create | a GitHub App (Settings → Developer settings → GitHub Apps), no webhook |
-| Setup 2 — permissions | Metadata read, Contents read, Issues read & write, Pull requests read & write, Actions read, Checks read, Commit statuses read — the fleet never merges, and git pushes stay on SSH |
+| Setup 2 — permissions | Metadata read, Contents read & write (the tier-0 auto-merge lane's squash merge and branch delete run as the App; read suffices while `FLEET_AUTOMERGE_CLASSES` is unset), Issues read & write, Pull requests read & write, Actions read, Checks read, Commit statuses read — no LLM role merges, and git pushes stay on SSH |
 | Setup 3 — install | on **both** `jakildev/IrredenEngine` and `jakildev/irreden` (an installation token only sees the repos it is installed on) |
 | Setup 4 — key | generate a private key; store it `chmod 600` outside the repo |
 | Knob `FLEET_GH_APP_ID` | the App's numeric ID, in `~/.fleet/fleet-up.conf` (sample: `scripts/fleet/fleet-up.conf.sample`) |

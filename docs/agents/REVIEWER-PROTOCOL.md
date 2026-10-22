@@ -113,6 +113,13 @@ fleet-review-verdict verdict-needs-fix <N> --agent <your-worktree-name>
 
 For a non-default repository, append `--repo engine|game|<owner/name>`.
 
+On a PR whose every changed file falls in an enabled auto-merge class
+([`FLEET.md`](FLEET.md) § Who merges; first wave: reference re-blesses and
+PR screenshots), `verdict-approve` is the merge decision: the tier-0 lane
+squash-merges it on the next merger tick with no human click, so grade the
+before/after pairs as if your approval were the merge. `verdict-approve-nits`
+holds it (`fleet:has-nits` refuses the lane) until the nits are cleared.
+
 A send-back is always `verdict-needs-fix` — there is no severity-specific
 edge (the severity verdict was retired in #3077: no lane consumed it).
 When the approach itself is wrong, add `fleet:fable` so the fix dispatches

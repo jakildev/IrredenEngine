@@ -1,0 +1,679 @@
+#!/usr/bin/env python3
+# fleet-automerge — tier-0 of the merger ladder: the deterministic auto-merge
+# lane. No LLM, no claim fabric, one fixed predicate.
+#
+# A PR merges here only when every gate holds, all read live immediately
+# before the mutation: open, not a draft, base exactly `master`,
+# `mergeable == MERGEABLE`, the canonical label predicate
+# (fleet_merge_class.label_block_reason: `fleet:approved` present, nothing
+# parked, held, claimed, or human-owned), a non-empty check rollup with every
+# check SUCCESS or SKIPPED, a changed-file set whose every path falls in an
+# ENABLED class (fleet_merge_class.classify_paths + grant), a review on the
+# current head (or a completed auto-rereview run that kept fleet:approved
+# across a mechanical push), and the hold window since the approval label.
+#
+# Enablement comes from the human-owned daemon configuration alone:
+# `FLEET_AUTOMERGE_CLASSES` in ~/.fleet/fleet-up.conf (default empty = lane
+# off; `rebless` is the first wave) and `FLEET_AUTOMERGE_HOLD_SECS` (default
+# 0). There is no CLI flag and no environment variable that enables a class; a
+# malformed conf enables nothing. `~/.fleet/automerge.off` stops the lane on
+# this host without a restart; `human:hold` on a PR stops it for that PR and
+# is never removed by an agent.
+#
+# The merge is a squash guarded by `--match-head-commit <classified head>`,
+# with the PR title as the subject and the PR body as the message. On success
+# the lane appends one `merge` event to ~/.fleet/logs/automerge-audit.log
+# BEFORE any audit step, then stamps `fleet:auto-merged`, posts one audit
+# comment, and runs fleet-nit-close-for-pr; an audit step that fails appends
+# an `audit-error` event and the next run completes the missing steps
+# idempotently (bounded by MAX_AUDIT_ATTEMPTS failed passes) without ever
+# merging again. `--reconcile` joins merged GitHub revert PRs (title
+# `Revert "…"`, body `Reverts <slug>#<N>`) to their merge events as `rollback`
+# events; a scan that cannot read every revert since the oldest unrolled merge
+# appends `rollback-scan-incomplete` and exits 1. fleet-digest-tick runs it,
+# fleet-decisions and fleet-health read the ledger.
+#
+# Usage:
+#   fleet-automerge --auto      [--repo engine|game|owner/name]   at most one merge
+#   fleet-automerge --dry-run   [--repo …]                         partition, zero writes
+#   fleet-automerge --reconcile [--repo …]                         rollback ledger pass
+#
+# Only the dispatcher invokes --auto (serialized through a state-dir lock);
+# every LLM role's command policy forbids this executable and `gh pr merge`.
+#
+# Source of truth: scripts/fleet/fleet-automerge in the engine repo.
+# Installed to ~/bin/fleet-automerge by scripts/fleet/install.sh.
+
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import fleet_github  # noqa: E402
+import fleet_merge_class as mc  # noqa: E402
+from fleet_runtime import REPO_SLUGS  # noqa: E402
+
+PROG = "fleet-automerge"
+AUDIT_LABEL = "fleet:auto-merged"
+AUDIT_COMMENT_PREFIX = "Auto-merged (class="
+AUDIT_STEPS = ("label", "comment", "nit-close")
+MAX_AUDIT_ATTEMPTS = 3
+REVERT_TITLE_PREFIX = 'Revert "'
+# GitHub search returns at most 1000 results, however far `--limit` reaches.
+REVERT_SCAN_LIMIT = 1000
+REREVIEW_WORKFLOW_PREFIX = "Auto re-review"
+GREEN_CONCLUSIONS = ("SUCCESS", "SKIPPED")
+VIEW_FIELDS = ("number,title,body,state,isDraft,baseRefName,mergeable,headRefOid,labels,"
+               "reviews,statusCheckRollup,changedFiles,url")
+
+
+class GhError(Exception):
+    pass
+
+
+def log(msg):
+    ts = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"[{ts} {PROG}] {msg}", file=sys.stderr, flush=True)
+
+
+def now_utc():
+    pinned = os.environ.get("FLEET_AUTOMERGE_NOW")
+    if pinned:
+        return dt.datetime.fromisoformat(pinned.replace("Z", "+00:00"))
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def parse_ts(text):
+    try:
+        return dt.datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+# --- paths -----------------------------------------------------------------------------
+
+class Paths:
+    def __init__(self):
+        home = Path(os.environ.get("HOME") or Path.home())
+        self.fleet = home / ".fleet"
+        self.conf = self.fleet / "fleet-up.conf"
+        self.kill_switch = self.fleet / "automerge.off"
+        self.ledger = self.fleet / "logs" / "automerge-audit.log"
+        self.state = Path(os.environ.get("FLEET_STATE_DIR") or self.fleet / "state")
+        self.lock = self.state / "automerge.lock.d"
+        self.disabled_marker = self.state / ".automerge-disabled-logged"
+        self.kill_marker = self.state / ".automerge-killswitch-logged"
+        self.repos = self.state / "repos.json"
+
+
+def log_once(marker, active, message):
+    """Log `message` on the first run a standing condition holds and stay
+    quiet until it clears; the marker file is the memory between runs."""
+    if not active:
+        if marker.exists():
+            marker.unlink()
+        return
+    if marker.exists():
+        return
+    log(message)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("")
+
+
+def resolve_slug(paths, value):
+    if "/" in value:
+        return value
+    try:
+        repos = json.loads(paths.repos.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        repos = {}
+    slug = repos.get(value) if isinstance(repos, dict) else None
+    return slug or REPO_SLUGS.get(value)
+
+
+# --- gh ----------------------------------------------------------------------------------
+
+def gh(args):
+    proc = fleet_github.run(list(args), capture_output=True, text=True)
+    return proc.returncode, proc.stdout.replace("\r", ""), proc.stderr.replace("\r", "")
+
+
+def gh_json(args):
+    rc, out, err = gh(args)
+    if rc != 0:
+        raise GhError(f"gh {' '.join(args[:3])} failed (rc={rc}): {err.strip()[:200]}")
+    try:
+        return json.loads(out)
+    except ValueError as exc:
+        raise GhError(f"gh {' '.join(args[:3])} returned no JSON: {exc}") from exc
+
+
+def gh_lines(args):
+    rc, out, err = gh(args)
+    if rc != 0:
+        raise GhError(f"gh {' '.join(args[:3])} failed (rc={rc}): {err.strip()[:200]}")
+    return [line for line in out.split("\n") if line]
+
+
+# --- ledger ------------------------------------------------------------------------------
+
+def read_ledger(path):
+    events = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(entry, dict) and entry.get("event"):
+                    events.append(entry)
+    except OSError:
+        pass
+    return events
+
+
+def append_event(path, **fields):
+    entry = {"ts": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"), **fields}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(entry, sort_keys=True) + "\n")
+    return entry
+
+
+# --- assessment --------------------------------------------------------------------------
+
+class Assessment:
+    def __init__(self, number, title, kind, reason, eligible, head=None, body="",
+                 provenance=None):
+        self.number = number
+        self.title = title
+        self.kind = kind
+        self.reason = reason
+        self.eligible = eligible
+        self.head = head
+        self.body = body
+        self.provenance = provenance or {}
+
+    @property
+    def class_name(self):
+        return self.kind.split(":", 1)[1] if ":" in self.kind else None
+
+    def line(self):
+        verdict = self.kind if self.eligible else "human"
+        extra = f"  class={self.kind}" if (not self.eligible and self.kind != "human") else ""
+        return f"PR #{self.number}  {verdict:<13} {self.title}  reason={self.reason}{extra}"
+
+
+def pr_files(slug, number):
+    return gh_lines(["api", f"repos/{slug}/pulls/{number}/files", "--paginate",
+                     "--jq", ".[].filename"])
+
+
+def check_block_reason(rollup):
+    if not isinstance(rollup, list) or not rollup:
+        return "no checks on the head"
+    for item in rollup:
+        if not isinstance(item, dict):
+            return "unreadable check entry"
+        kind = item.get("__typename")
+        name = item.get("name") or item.get("context") or "?"
+        if kind == "CheckRun":
+            if item.get("status") != "COMPLETED" or item.get("conclusion") not in GREEN_CONCLUSIONS:
+                return (f"check {name} is {item.get('status') or '?'}/"
+                        f"{item.get('conclusion') or '?'}")
+        elif kind == "StatusContext":
+            if item.get("state") != "SUCCESS":
+                return f"status {name} is {item.get('state') or '?'}"
+        else:
+            return f"check {name} has unknown type {kind!r}"
+    return None
+
+
+def provenance_of(view, head):
+    """The approval chain: the newest non-empty review on the current head,
+    or the newest non-empty review plus a completed auto-rereview run on the
+    head. None when neither holds."""
+    reviews = [r for r in (view.get("reviews") or []) if isinstance(r, dict)
+               and (r.get("body") or "").strip()]
+    reviews.sort(key=lambda r: r.get("submittedAt") or "")
+    on_head = [r for r in reviews if ((r.get("commit") or {}).get("oid")) == head]
+    if on_head:
+        r = on_head[-1]
+        return {"review_author": (r.get("author") or {}).get("login"),
+                "review_sha": head, "review_at": r.get("submittedAt"), "rereview_run": None}
+    for item in view.get("statusCheckRollup") or []:
+        if (isinstance(item, dict) and item.get("__typename") == "CheckRun"
+                and str(item.get("workflowName") or "").startswith(REREVIEW_WORKFLOW_PREFIX)
+                and item.get("status") == "COMPLETED" and item.get("conclusion") == "SUCCESS"
+                and reviews):
+            r = reviews[-1]
+            return {"review_author": (r.get("author") or {}).get("login"),
+                    "review_sha": (r.get("commit") or {}).get("oid"),
+                    "review_at": r.get("submittedAt"),
+                    "rereview_run": item.get("detailsUrl") or item.get("name")}
+    return None
+
+
+def approved_label_age(slug, number, now):
+    events = gh_json(["api", f"repos/{slug}/issues/{number}/events", "--paginate"])
+    if not isinstance(events, list):
+        return None
+    stamped = [parse_ts(e.get("created_at")) for e in events if isinstance(e, dict)
+               and e.get("event") == "labeled"
+               and (e.get("label") or {}).get("name") == mc.REQUIRED_LABEL]
+    stamped = [t for t in stamped if t]
+    if not stamped:
+        return None
+    return (now - max(stamped)).total_seconds()
+
+
+def assess(slug, number, enablement, now):
+    view = gh_json(["pr", "view", str(number), "--repo", slug, "--json", VIEW_FIELDS])
+    missing = [f for f in ("state", "isDraft", "baseRefName", "mergeable", "headRefOid", "labels",
+                           "statusCheckRollup", "changedFiles", "title")
+               if view.get(f) is None or view.get(f) == ""]
+    title = str(view.get("title") or f"#{number}")
+    if missing:
+        return Assessment(number, title, "human", f"unreadable field(s) {','.join(missing)}", False)
+    head = view["headRefOid"]
+    body = view.get("body") or ""
+
+    files = pr_files(slug, number)
+    if len(files) != int(view["changedFiles"]):
+        return Assessment(number, title, "human",
+                          f"changed-file count {view['changedFiles']} != listed {len(files)}",
+                          False, head, body)
+    verdict = mc.classify_paths(files)
+    kind = verdict.kind
+
+    def refuse(reason):
+        return Assessment(number, title, kind, reason, False, head, body)
+
+    if view["state"] != "OPEN":
+        return refuse(f"state {view['state']}")
+    if view["isDraft"]:
+        return refuse("draft")
+    if view["baseRefName"] != "master":
+        return refuse(f"base {view['baseRefName']}")
+    if view["mergeable"] != "MERGEABLE":
+        return refuse(f"mergeable={view['mergeable']}")
+    labels = [lab.get("name") for lab in view["labels"] if isinstance(lab, dict)]
+    reason = mc.label_block_reason(labels)
+    if reason:
+        return refuse(reason)
+    reason = check_block_reason(view["statusCheckRollup"])
+    if reason:
+        return refuse(reason)
+    eligible, reason = mc.grant(verdict, enablement.classes)
+    if not eligible:
+        return refuse(reason)
+    provenance = provenance_of(view, head)
+    if provenance is None:
+        return refuse("no review on the current head and no completed auto-rereview run")
+    if enablement.hold_secs > 0:
+        age = approved_label_age(slug, number, now)
+        if age is None:
+            return refuse("no fleet:approved label event in the PR history")
+        if age < enablement.hold_secs:
+            return refuse(f"hold window: {int(enablement.hold_secs - age)}s left")
+    summary = (f"would merge: approved by {provenance.get('review_author') or '?'} on "
+               f"{str(provenance.get('review_sha') or '?')[:9]}"
+               + (", auto-rereview kept fleet:approved" if provenance.get("rereview_run") else "")
+               + ", checks green")
+    return Assessment(number, title, kind, summary, True, head, body, provenance)
+
+
+def candidates(slug):
+    # Every page, not `gh pr list --limit N`: that stops at N newest-first, and
+    # the older approved PRs past it would never be assessed by --auto or shown
+    # by --dry-run.
+    lines = gh_lines(["api", f"repos/{slug}/pulls?state=open&base=master&per_page=100",
+                      "--paginate", "--jq",
+                      f'.[] | select(any(.labels[]; .name == "{mc.REQUIRED_LABEL}")) | .number'])
+    try:
+        return sorted({int(line) for line in lines})
+    except ValueError as exc:
+        raise GhError(f"open-PR list returned a non-number: {exc}") from exc
+
+
+# --- audit -----------------------------------------------------------------------------
+
+def audit_comment(assessment, hold_secs):
+    p = assessment.provenance
+    via = (f", auto-rereview kept fleet:approved on {str(assessment.head)[:9]}"
+           if p.get("rereview_run") else "")
+    return (f"{AUDIT_COMMENT_PREFIX}{assessment.class_name}): approved by "
+            f"{p.get('review_author') or '?'} on {str(p.get('review_sha') or '?')[:9]}{via}, "
+            f"checks green, hold {hold_secs}s elapsed. — fleet automerge")
+
+
+def label_present(slug, number):
+    names = gh_lines(["pr", "view", str(number), "--repo", slug, "--json", "labels",
+                      "--jq", ".labels[].name"])
+    return AUDIT_LABEL in names
+
+
+def comment_present(slug, number):
+    bodies = gh_lines(["api", f"repos/{slug}/issues/{number}/comments", "--paginate",
+                       "--jq", ".[].body | split(\"\\n\")[0]"])
+    return any(b.startswith(AUDIT_COMMENT_PREFIX) for b in bodies)
+
+
+def run_nit_close(slug):
+    tool = shutil.which("fleet-nit-close-for-pr") or str(HERE / "fleet-nit-close-for-pr")
+    bash = shutil.which("bash") or "bash"
+    proc = subprocess.run([bash, tool, "--repo", slug], capture_output=True, text=True,
+                          check=False)
+    if proc.returncode != 0:
+        raise GhError(f"fleet-nit-close-for-pr rc={proc.returncode}: {proc.stderr.strip()[:200]}")
+    return [line for line in proc.stdout.replace("\r", "").split("\n") if line]
+
+
+def run_audit(paths, slug, number, comment_text, done, attempt):
+    """Complete the audit steps not in `done`; append one audit-error per
+    failing step, each tagged with this pass's `attempt`, and an
+    audit-complete once every step holds."""
+    errors = 0
+    closed = []
+    for step in AUDIT_STEPS:
+        if step in done:
+            continue
+        try:
+            if step == "label":
+                if not label_present(slug, number):
+                    rc, _, err = gh(["pr", "edit", str(number), "--repo", slug,
+                                     "--add-label", AUDIT_LABEL])
+                    if rc != 0:
+                        raise GhError(err.strip()[:200])
+            elif step == "comment":
+                if not comment_present(slug, number):
+                    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
+                                                     encoding="utf-8") as f:
+                        f.write(comment_text + "\n")
+                        body_path = f.name
+                    try:
+                        rc, _, err = gh(["pr", "comment", str(number), "--repo", slug,
+                                         "--body-file", body_path])
+                    finally:
+                        os.unlink(body_path)
+                    if rc != 0:
+                        raise GhError(err.strip()[:200])
+            else:
+                closed = run_nit_close(slug)
+            done.add(step)
+        except GhError as exc:
+            errors += 1
+            log(f"audit step {step} failed for PR #{number}: {exc}")
+            append_event(paths.ledger, event="audit-error", repo=slug, pr=number, step=step,
+                         attempt=attempt, error=str(exc)[:300])
+    if errors == 0:
+        append_event(paths.ledger, event="audit-complete", repo=slug, pr=number,
+                     steps=list(AUDIT_STEPS), nit_closed=closed)
+    return errors == 0
+
+
+def recover_partial_audits(paths, slug):
+    events = read_ledger(paths.ledger)
+    merges = {e["pr"]: e for e in events if e.get("event") == "merge" and e.get("repo") == slug}
+    complete = {e["pr"] for e in events if e.get("event") == "audit-complete"
+                and e.get("repo") == slug}
+    # A pass that fails several steps writes several audit-errors under one
+    # attempt; the budget counts passes, not steps.
+    failed_passes = {}
+    for e in events:
+        if e.get("event") == "audit-error" and e.get("repo") == slug:
+            failed_passes.setdefault(e["pr"], set()).add(e.get("attempt"))
+    for pr, merge in sorted(merges.items()):
+        if pr in complete:
+            continue
+        attempts = len(failed_passes.get(pr, ()))
+        if attempts >= MAX_AUDIT_ATTEMPTS:
+            log(f"PR #{pr}: audit left incomplete after {attempts} failed pass(es); "
+                "a human finishes it")
+            continue
+        log(f"PR #{pr}: completing the audit left behind by an earlier run")
+        stub = Assessment(pr, merge.get("title") or "", f"auto:{merge.get('class')}",
+                          "", True, merge.get("head"), "", merge.get("provenance") or {})
+        # The comment states the hold the merge ran under, not today's conf.
+        run_audit(paths, slug, pr, audit_comment(stub, merge.get("hold_secs", "?")), set(),
+                  attempts + 1)
+
+
+# --- merge -------------------------------------------------------------------------------
+
+def merge_one(paths, slug, assessment, hold_secs):
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
+        f.write(assessment.body)
+        body_path = f.name
+    try:
+        rc, _, err = gh(["pr", "merge", str(assessment.number), "--repo", slug, "--squash",
+                         "--delete-branch", "--match-head-commit", assessment.head,
+                         "--subject", assessment.title, "--body-file", body_path])
+    finally:
+        os.unlink(body_path)
+    if rc != 0:
+        log(f"PR #{assessment.number}: merge refused by GitHub (rc={rc}): {err.strip()[:200]}")
+        append_event(paths.ledger, event="merge-failed", repo=slug, pr=assessment.number,
+                     head=assessment.head, error=err.strip()[:300])
+        return False
+    merge_sha = None
+    try:
+        post = gh_json(["pr", "view", str(assessment.number), "--repo", slug,
+                        "--json", "state,mergeCommit"])
+        merge_sha = (post.get("mergeCommit") or {}).get("oid")
+    except GhError as exc:
+        log(f"PR #{assessment.number}: merged, but the merge commit could not be read: {exc}")
+    append_event(paths.ledger, event="merge", repo=slug, pr=assessment.number,
+                 **{"class": assessment.class_name}, head=assessment.head, merge_sha=merge_sha,
+                 title=assessment.title, provenance=assessment.provenance, hold_secs=hold_secs)
+    log(f"PR #{assessment.number}: merged ({assessment.kind}) head={assessment.head[:9]} "
+        f"merge={str(merge_sha)[:9]}")
+    run_audit(paths, slug, assessment.number, audit_comment(assessment, hold_secs), set(), 1)
+    return True
+
+
+# --- rollback reconciliation ---------------------------------------------------------------
+
+def reconcile(paths, slug):
+    events = read_ledger(paths.ledger)
+    merges = {e["pr"]: e for e in events if e.get("event") == "merge" and e.get("repo") == slug}
+    rolled = {e["pr"] for e in events if e.get("event") == "rollback" and e.get("repo") == slug}
+    pending = {pr: e for pr, e in merges.items() if pr not in rolled}
+    if not pending:
+        return 0
+    # A revert merges after the PR it reverts, so the oldest pending merge
+    # bounds the scan; the extra day covers a revert merged in the seconds
+    # between a merge and its ledger write across midnight.
+    stamps = [parse_ts(e.get("ts")) for e in pending.values()]
+    since = min((t for t in stamps if t), default=None)
+    query = "Revert in:title"
+    if since is not None:
+        query += f" merged:>={(since - dt.timedelta(days=1)).strftime('%Y-%m-%d')}"
+    reverts = gh_json(["pr", "list", "--repo", slug, "--state", "merged", "--base", "master",
+                       "--search", query, "--limit", str(REVERT_SCAN_LIMIT),
+                       "--json", "number,title,body,mergeCommit"])
+    if not isinstance(reverts, list):
+        raise GhError("merged-revert search returned no list")
+    found = 0
+    for r in reverts:
+        if not str(r.get("title") or "").startswith(REVERT_TITLE_PREFIX):
+            continue
+        body = str(r.get("body") or "")
+        for pr, merge in sorted(pending.items()):
+            if re.search(rf"Reverts {re.escape(slug)}#{pr}(?!\d)", body):
+                append_event(paths.ledger, event="rollback", repo=slug, pr=pr,
+                             revert_pr=int(r["number"]), merge_sha=merge.get("merge_sha"),
+                             revert_merge_sha=(r.get("mergeCommit") or {}).get("oid"))
+                log(f"PR #{pr}: rolled back by revert PR #{r['number']}")
+                del pending[pr]
+                found += 1
+    if len(reverts) >= REVERT_SCAN_LIMIT:
+        append_event(paths.ledger, event="rollback-scan-incomplete", repo=slug, query=query,
+                     read=len(reverts), recorded=found)
+        raise GhError(f"{len(reverts)} merged reverts match '{query}', the search ceiling; "
+                      f"older ones are unread ({found} rollback(s) recorded)")
+    return found
+
+
+# --- lock --------------------------------------------------------------------------------
+
+def pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+class Lock:
+    def __init__(self, path):
+        self.path = path
+        self.held = False
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.path.mkdir()
+        except FileExistsError:
+            holder = ""
+            try:
+                holder = (self.path / "pid").read_text().strip()
+            except OSError:
+                pass
+            if holder and pid_alive(holder):
+                return self
+            shutil.rmtree(self.path, ignore_errors=True)
+            try:
+                self.path.mkdir()
+            except FileExistsError:
+                return self
+        (self.path / "pid").write_text(f"{os.getpid()}\n")
+        self.held = True
+        return self
+
+    def __exit__(self, *exc):
+        if self.held:
+            shutil.rmtree(self.path, ignore_errors=True)
+
+
+# --- modes -------------------------------------------------------------------------------
+
+def mode_dry_run(paths, slug):
+    en = mc.read_enablement(paths.conf)
+    kill = paths.kill_switch.exists()
+    print(f"{PROG} --dry-run  repo={slug}  enabled={','.join(sorted(en.classes)) or 'off'}  "
+          f"hold={en.hold_secs}s  kill-switch={'present' if kill else 'absent'}")
+    for problem in en.problems:
+        print(f"  conf: {problem}")
+    now = now_utc()
+    try:
+        numbers = candidates(slug)
+    except GhError as exc:
+        print(f"dry-run: candidate list unreadable: {exc}")
+        return 1
+    rows = []
+    for number in numbers:
+        try:
+            rows.append(assess(slug, number, en, now))
+        except GhError as exc:
+            rows.append(Assessment(number, f"#{number}", "human", f"unreadable: {exc}", False))
+    for a in rows:
+        print("  " + a.line())
+    would = sum(1 for a in rows if a.eligible and not kill)
+    print(f"dry-run: {len(rows)} candidate(s), {would} would merge, 0 writes")
+    return 0
+
+
+def mode_auto(paths, slug):
+    with Lock(paths.lock) as lock:
+        if not lock.held:
+            log("another fleet-automerge holds the lock; standing down")
+            return 0
+        en = mc.read_enablement(paths.conf)
+        try:
+            recover_partial_audits(paths, slug)
+        except GhError as exc:
+            log(f"audit recovery skipped: {exc}")
+        killed = paths.kill_switch.exists()
+        log_once(paths.kill_marker, killed,
+                 f"kill switch {paths.kill_switch} present; merging nothing until it is removed "
+                 "(logged once)")
+        if killed:
+            return 0
+        why = "; ".join(en.problems) if en.problems else "FLEET_AUTOMERGE_CLASSES unset"
+        log_once(paths.disabled_marker, not en.enabled,
+                 f"lane disabled ({why}); merging nothing until the daemon conf enables a class "
+                 "(logged once)")
+        if not en.enabled:
+            return 0
+        now = now_utc()
+        try:
+            numbers = candidates(slug)
+        except GhError as exc:
+            log(f"candidate list unreadable: {exc}")
+            return 1
+        merged = 0
+        for number in numbers:
+            try:
+                a = assess(slug, number, en, now)
+            except GhError as exc:
+                log(f"PR #{number}: refused: unreadable: {exc}")
+                continue
+            if not a.eligible:
+                log(f"PR #{number}: refused: {a.reason}" + (f" (class={a.kind})"
+                                                            if a.kind != "human" else ""))
+                continue
+            if merge_one(paths, slug, a, en.hold_secs):
+                merged = 1
+                break
+        log(f"run complete: candidates={len(numbers)} merged={merged} "
+            f"enabled={','.join(sorted(en.classes))}")
+    return 0
+
+
+def mode_reconcile(paths, slug):
+    try:
+        found = reconcile(paths, slug)
+    except GhError as exc:
+        log(f"reconcile incomplete: {exc}")
+        return 1
+    log(f"reconcile complete: rollbacks recorded={found}")
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog=PROG, add_help=True,
+                                 description="tier-0 auto-merge lane (see the header)")
+    mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--auto", action="store_true", help="merge at most one eligible PR")
+    mode.add_argument("--dry-run", action="store_true", help="print the partition; write nothing")
+    mode.add_argument("--reconcile", action="store_true", help="record rollbacks in the ledger")
+    ap.add_argument("--repo", default="engine", help="engine | game | owner/name")
+    args = ap.parse_args(argv)
+    paths = Paths()
+    slug = resolve_slug(paths, args.repo)
+    if not slug:
+        print(f"{PROG}: --repo must be engine, game or owner/name (got {args.repo!r})",
+              file=sys.stderr)
+        return 2
+    if args.dry_run:
+        return mode_dry_run(paths, slug)
+    if args.reconcile:
+        return mode_reconcile(paths, slug)
+    return mode_auto(paths, slug)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

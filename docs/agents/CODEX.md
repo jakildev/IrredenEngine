@@ -148,7 +148,11 @@ own roots). Command rules prevent common workflow mistakes (merge,
 force-push, reviewer push) but are not a security boundary against
 arbitrary programs holding the same GitHub credentials; GitHub branch
 protection stays the merge boundary, and enabling a Codex worker accepts
-that posture.
+that posture. Both adapters forbid `gh pr merge` and every spelling of
+`fleet-automerge` for every LLM role (the generated Codex rules and the
+Claude `deny` list); the dispatcher daemon is the lane's only automatic
+caller, and its enablement is read from the human-owned conf alone
+([`FLEET.md`](FLEET.md) § Who merges).
 
 ## Capability qualification
 

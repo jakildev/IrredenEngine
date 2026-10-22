@@ -128,6 +128,7 @@ LABELS=(
     "fleet:needs-opus-recheck|1d76db|Sonnet approved but flagged 'Opus recheck required'; wakes the opus-reviewer, which removes it"
     "fleet:semantic-conflict|d73a4a|Merger hit non-mechanical conflict; opus+-class worker resolves or escalates"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
+    "fleet:auto-merged|0e8a16|Tier-0 fleet-automerge squash-merged this PR (class in its audit comment); permanent audit trail"
     "fleet:sweep-cooldown|bfdadc|cleanup --gh swept a claim it could not vouch was dead; dispatcher defers the PR ~30 min"
     "fleet:design-blocked|fbca04|Worker escalated for architectural input mid-task; architect should respond"
     "fleet:design-unblocked|c5def5|Architect responded; worker resumes per the architect comment + plan corrections"
@@ -158,6 +159,7 @@ LABELS=(
     "human:needs-fix|d4c5f9|Human flagged a fix request; agent should address"
     "human:blocker|d4c5f9|Human flagged a blocker; do not merge"
     "human:re-review|5319e7|Human pushed changes; reviewer agent should re-review"
+    "human:hold|5319e7|Human hold: fleet-automerge never merges this PR; never removed by an agent"
     # NOTE: fleet:reviewing-<host>-<agent> is dynamic — it encodes host +
     # agent identity, and there's a combinatorial explosion of valid names
     # (mac/windows/linux × {worker-N, opus-reviewer,

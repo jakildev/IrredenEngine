@@ -166,7 +166,8 @@ fi
 
 # PYTHONIOENCODING forces UTF-8 stdout for native-Windows consoles (cp1252
 # default raises on the report's em-dash / middle-dot glyphs).
-PYTHONIOENCODING=utf-8 python3 - "$manifest" "$workdir" "$feedback_f" "$marker_age_days" "$survey_f" "$FLEET_HOME/triage" << 'PYEOF'
+PYTHONIOENCODING=utf-8 python3 - "$manifest" "$workdir" "$feedback_f" "$marker_age_days" "$survey_f" "$FLEET_HOME/triage" \
+    "$FLEET_HOME/logs/automerge-audit.log" "$FLEET_HOME/digest/automerge-cursor" "${FLEET_AUTOMERGE_LEDGER_END:-}" << 'PYEOF'
 import base64
 import json
 import os
@@ -602,6 +603,43 @@ while line_end < log_end:
         stamps.append((ts, repo, entry))
 advanced = {**seen, **{repo: log_end for repo in in_scope}}
 
+# Auto-merge ledger (FLEET.md § Who merges), each merge and rollback seen in
+# exactly one SUCCESSFUL digest. This digest is stateless about it: the
+# cursor (a byte offset) is written by fleet-digest-tick after the digest
+# lands, and the tick pins the ledger end it hands us in
+# FLEET_AUTOMERGE_LEDGER_END so an event appended mid-run waits for the next
+# tick. A hand-run digest reads from the cursor to the current end and moves
+# nothing. An off-boundary cursor means the ledger was replaced: read it all.
+automerge_ledger, automerge_cursor_path, automerge_end_arg = sys.argv[7], sys.argv[8], sys.argv[9]
+try:
+    with open(automerge_ledger, "rb") as f:
+        am_bytes = f.read()
+except OSError:
+    am_bytes = b""
+am_end = am_bytes.rfind(b"\n") + 1
+if automerge_end_arg.isdigit() and int(automerge_end_arg) <= am_end:
+    am_end = int(automerge_end_arg)
+try:
+    with open(automerge_cursor_path, encoding="utf-8") as f:
+        am_start = int(f.read().strip() or 0)
+except (OSError, ValueError):
+    am_start = 0
+if not (0 <= am_start <= am_end and (am_start == 0 or am_bytes[am_start - 1:am_start] == b"\n")):
+    am_start = 0
+automerges = []
+for raw in am_bytes[am_start:am_end].split(b"\n"):
+    if not raw.strip():
+        continue
+    try:
+        entry = json.loads(raw)
+    except ValueError:
+        continue
+    if not isinstance(entry, dict):
+        continue
+    repo = SHORT.get(entry.get("repo"), entry.get("repo"))
+    if repo in in_scope and entry.get("event") in ("merge", "rollback", "merge-failed"):
+        automerges.append((repo, entry))
+
 total = len(merge_queue) + len(decisions) + len(closeouts)
 scope = "+".join(repo for repo, _, _, _ in repos)
 print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
@@ -647,6 +685,23 @@ if stamps:
         title = titles.get((repo, number), "(not open)")
         print(f"  {repo} issue #{number}  {title}  "
               f"[{entry.get('class') or '?'} via {entry.get('mode') or 'apply'}, {ts}]")
+
+if automerges:
+    print(f"\n## Auto-merged since last digest ({len(automerges)})")
+    for repo, entry in automerges:
+        kind = entry.get("event")
+        if kind == "merge":
+            who = (entry.get("provenance") or {}).get("review_author") or "?"
+            print(f"  {repo} PR #{entry.get('pr')}  {entry.get('title') or ''}  "
+                  f"[auto-merged class={entry.get('class') or '?'}, approved by {who}, "
+                  f"{entry.get('ts') or '?'}]")
+        elif kind == "rollback":
+            print(f"  {repo} PR #{entry.get('pr')}  ROLLED BACK by revert PR "
+                  f"#{entry.get('revert_pr')}  [{entry.get('ts') or '?'}] — hold the lane's "
+                  "widening until the cause is understood")
+        else:
+            print(f"  {repo} PR #{entry.get('pr')}  merge refused by GitHub  "
+                  f"[{entry.get('ts') or '?'}] {str(entry.get('error') or '')[:80]}")
 
 if log_end and advanced != seen:
     try:
