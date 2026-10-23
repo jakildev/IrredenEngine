@@ -214,7 +214,9 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                 "glitch_exclusion": replace_once(
                     source,
                     "worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&",
-                    "worldSurfaceLightingEligible && findSystem(TRIXEL_GLITCH) == kNullSystemId && mainVoxelPool_ != nullptr &&",
+                    "worldSurfaceLightingEligible && "
+                    "findSystem(TRIXEL_GLITCH) == kNullSystemId && "
+                    "mainVoxelPool_ != nullptr &&",
                 ),
                 "cut_face": source.replace("!decodeCutFace(rawId)", "true"),
             }
