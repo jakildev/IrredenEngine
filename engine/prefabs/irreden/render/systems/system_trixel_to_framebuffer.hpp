@@ -599,6 +599,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // Each axis owns a compacted-list region and GPU-authored indirect draw count.
         Buffer *cellCompacted = axes.cellCompacted_.second;
         Buffer *cellIndirect = axes.cellIndirect_.second;
+        Buffer *cellIndirectArgs = axes.cellIndirectArgs_.second;
         const int regionStride = axes.cellRegionStride_;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             const C_PerAxisTrixelCanvases::AxisTextures &tex = axes.axes_[axis];
@@ -617,7 +618,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             IRRender::device()->drawElementsInstancedIndirect(
                 DrawMode::TRIANGLES,
                 IndexType::UNSIGNED_SHORT,
-                cellIndirect,
+                cellIndirectArgs,
                 static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes
             );
         }
@@ -637,8 +638,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             IRRender::device()->drawElementsInstancedIndirect(
                 DrawMode::TRIANGLES,
                 IndexType::UNSIGNED_SHORT,
-                overflowScratch,
-                static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t)
+                axes.overflowDrawArgs_.second,
+                0
             );
             frameData.frameData_.overflowMode_ = 0;
         }
@@ -670,10 +671,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             IR_PROFILE_SCOPE("ttf_hover_reset");
             // A CPU write here would wait for last frame's composite, which
             // still owns the buffer on the GPU; the copy queues behind it.
-            IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
-            IRRender::device()->copyBufferSubData(
+            IRRender::resetBufferFromSeed(
                 hoveredIdResetBuf_,
-                0,
                 hoveredIdBuf_,
                 0,
                 sizeof(HoveredEntityIdLayout)

@@ -339,7 +339,7 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
         );
         bindPerAxisWorklist(axis);
         IRRender::device()->dispatchComputeIndirect(
-            m_perAxis->cellIndirect_.second,
+            m_perAxis->cellIndirectArgs_.second,
             static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes +
                 kPerAxisCellDispatchArgsOffsetBytes
         );

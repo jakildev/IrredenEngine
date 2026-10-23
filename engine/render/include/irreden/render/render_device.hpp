@@ -169,6 +169,31 @@ class RenderDevice {
 RenderDevice *device();
 void setDevice(RenderDevice *renderDevice);
 
+// Overwrite @p bytes of @p target at @p targetOffset from @p seed on the GPU
+// timeline, ordered after every queued shader write to @p target. A CPU
+// subData there would block until those writes retired.
+inline void resetBufferFromSeed(
+    const Buffer *seed, const Buffer *target, std::ptrdiff_t targetOffset, std::size_t bytes
+) {
+    device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
+    device()->copyBufferSubData(seed, 0, target, targetOffset, bytes);
+}
+
+// Copy shader-written indirect arguments into @p args, a buffer no program
+// binds, so the indirect dispatches and draws that follow read them without
+// the CPU draining the queue on NVIDIA GL.
+inline void publishIndirectArgs(
+    const Buffer *source,
+    std::ptrdiff_t sourceOffset,
+    const Buffer *args,
+    std::ptrdiff_t argsOffset,
+    std::size_t bytes
+) {
+    device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
+    device()->copyBufferSubData(source, sourceOffset, args, argsOffset, bytes);
+    device()->memoryBarrier(BarrierType::COMMAND);
+}
+
 } // namespace IRRender
 
 #endif /* RENDER_DEVICE_H */

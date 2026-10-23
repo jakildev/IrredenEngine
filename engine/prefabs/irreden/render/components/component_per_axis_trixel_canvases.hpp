@@ -6,6 +6,7 @@
 
 #include <irreden/render/texture.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/voxel_pool_config.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
@@ -191,6 +192,14 @@ struct PerAxisCanvasStore {
     // component (no cross-system named-resource resize, which the RRM forbids).
     std::pair<ResourceId, Buffer *> cellCompacted_{0, nullptr};
     std::pair<ResourceId, Buffer *> cellIndirect_{0, nullptr};
+    // GPU-side copy of cellIndirect_ that no program binds: every indirect
+    // dispatch and draw over the cell lists sources its arguments here, so
+    // NVIDIA GL never waits on the shader-written original. Refreshed by
+    // VOXEL_TO_TRIXEL_STAGE_1 after the cell finalize pass.
+    std::pair<ResourceId, Buffer *> cellIndirectArgs_{0, nullptr};
+    // Constant per-axis reset pattern for cellIndirect_ (quad index count, zero
+    // counters), copied in at the top of each rotating frame.
+    std::pair<ResourceId, Buffer *> cellIndirectReset_{0, nullptr};
     int cellRegionStride_ = 0; // uints per axis region (>= axis cells, 64-aligned)
 
     // TRIXEL_GLITCH marks only the store tiles reached by an active subject,
@@ -296,7 +305,24 @@ struct PerAxisCanvasStore {
     // A Buffer (not textures) because Metal has only one image-atomic scratch
     // slot (held by distances_). Sized/freed with the axis textures.
     std::pair<ResourceId, Buffer *> winnerIds_{0, nullptr};
+    // Constant seed for the ctrl block, copied in at the top of each rotating
+    // frame; a CPU write there would wait for the previous frame's atomics.
+    std::pair<ResourceId, Buffer *> overflowCtrlSeed_{0, nullptr};
+    // Copy of the settled ctrl block the overflow indirect draw sources.
+    std::pair<ResourceId, Buffer *> overflowDrawArgs_{0, nullptr};
+    // Ring of settled ctrl-block copies for the CPU drop/count readback: the
+    // slot written two rotating frames ago has completed, so reading it never
+    // waits for the GPU. The sort-span bound it feeds therefore lags two frames
+    // and leans on overflowSortDispatchSpan's headroom.
+    static constexpr int kOverflowCtrlRingSlots = 3;
+    std::array<std::pair<ResourceId, Buffer *>, kOverflowCtrlRingSlots> overflowCtrlRing_{};
+    std::array<bool, kOverflowCtrlRingSlots> overflowCtrlRingValid_{};
+    int overflowCtrlRingWrite_ = 0;
     int ctrlBaseUints_ = 0;
+    static constexpr std::size_t kOverflowCtrlUints = 8;
+    std::ptrdiff_t ctrlOffsetBytes() const {
+        return static_cast<std::ptrdiff_t>(ctrlBaseUints_) * sizeof(std::uint32_t);
+    }
     int entriesBaseUints_ = 0;
     int overflowCap_ = 0;
     static constexpr std::uint32_t kOverflowSortBlockBits = 11;
@@ -448,6 +474,26 @@ struct PerAxisCanvasStore {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisCellIndirect
         );
+        constexpr std::size_t kCellIndirectUints = static_cast<std::size_t>(kAxisCount) *
+                                                   kPerAxisCellIndirectStrideBytes /
+                                                   sizeof(std::uint32_t);
+        constexpr std::size_t kCellIndirectStrideUints =
+            kPerAxisCellIndirectStrideBytes / sizeof(std::uint32_t);
+        std::array<std::uint32_t, kCellIndirectUints> cellIndirectReset{};
+        for (int axis = 0; axis < kAxisCount; ++axis) {
+            cellIndirectReset[static_cast<std::size_t>(axis) * kCellIndirectStrideUints] =
+                static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength);
+        }
+        cellIndirectReset_ = IRRender::createResource<Buffer>(
+            cellIndirectReset.data(),
+            sizeof(cellIndirectReset),
+            BUFFER_STORAGE_NONE
+        );
+        cellIndirectArgs_ = IRRender::createResource<Buffer>(
+            nullptr,
+            sizeof(cellIndirectReset),
+            BUFFER_STORAGE_NONE
+        );
         // Unified resolve scratch for the winner region, control block, and overflow entries.
         // Regions start on 256 B boundaries so bindRange windows stay SSBO-alignment-safe; the
         // whole buffer is bindBase'd at 28 during the per-axis dispatches, with region offsets
@@ -471,12 +517,36 @@ struct PerAxisCanvasStore {
         // Word 0 stays zero only until the first rotating frame's reset writes
         // the quad index count; the sort-span bound reads a zero there as "no
         // completed frame" and encodes the full merge ladder.
-        const std::array<std::uint32_t, 8> ctrlSeed{};
+        const std::array<std::uint32_t, kOverflowCtrlUints> ctrlSeed{};
         winnerIds_.second->subData(
             static_cast<std::ptrdiff_t>(ctrlBaseUints_) * sizeof(std::uint32_t),
             sizeof(ctrlSeed),
             ctrlSeed.data()
         );
+        // Per-frame ctrl reset: {indexCount, instanceCount, firstIndex, baseVertex,
+        // baseInstance, droppedCount, pad, pad}, so word 0 carries the quad index
+        // count and every counter restarts at zero.
+        std::array<std::uint32_t, kOverflowCtrlUints> ctrlReset{};
+        ctrlReset[0] = static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength);
+        overflowCtrlSeed_ = IRRender::createResource<Buffer>(
+            ctrlReset.data(),
+            sizeof(ctrlReset),
+            BUFFER_STORAGE_NONE
+        );
+        overflowDrawArgs_ = IRRender::createResource<Buffer>(
+            ctrlSeed.data(),
+            sizeof(ctrlSeed),
+            BUFFER_STORAGE_NONE
+        );
+        for (int slot = 0; slot < kOverflowCtrlRingSlots; ++slot) {
+            overflowCtrlRing_[slot] = IRRender::createResource<Buffer>(
+                ctrlSeed.data(),
+                sizeof(ctrlSeed),
+                BUFFER_STORAGE_DYNAMIC
+            );
+            overflowCtrlRingValid_[slot] = false;
+        }
+        overflowCtrlRingWrite_ = 0;
     }
 
     // Release all three axis texture sets + the resolve texture and reset to the
@@ -506,6 +576,10 @@ struct PerAxisCanvasStore {
         cellCompacted_ = {0, nullptr};
         IRRender::destroyResource<Buffer>(cellIndirect_.first);
         cellIndirect_ = {0, nullptr};
+        IRRender::destroyResource<Buffer>(cellIndirectArgs_.first);
+        cellIndirectArgs_ = {0, nullptr};
+        IRRender::destroyResource<Buffer>(cellIndirectReset_.first);
+        cellIndirectReset_ = {0, nullptr};
         cellRegionStride_ = 0;
         if (glitchTileFlags_.second != nullptr) {
             IRRender::destroyResource<Buffer>(glitchTileFlags_.first);
@@ -519,6 +593,16 @@ struct PerAxisCanvasStore {
         glitchTileRegionStride_ = 0;
         IRRender::destroyResource<Buffer>(winnerIds_.first);
         winnerIds_ = {0, nullptr};
+        IRRender::destroyResource<Buffer>(overflowCtrlSeed_.first);
+        overflowCtrlSeed_ = {0, nullptr};
+        IRRender::destroyResource<Buffer>(overflowDrawArgs_.first);
+        overflowDrawArgs_ = {0, nullptr};
+        for (int slot = 0; slot < kOverflowCtrlRingSlots; ++slot) {
+            IRRender::destroyResource<Buffer>(overflowCtrlRing_[slot].first);
+            overflowCtrlRing_[slot] = {0, nullptr};
+            overflowCtrlRingValid_[slot] = false;
+        }
+        overflowCtrlRingWrite_ = 0;
         ctrlBaseUints_ = 0;
         entriesBaseUints_ = 0;
         overflowCap_ = 0;

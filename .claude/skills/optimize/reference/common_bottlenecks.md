@@ -220,16 +220,19 @@ that found a new one; never add a pattern that was only suspected.
   on them, because `present()` already waits a frame; the flip side is that a
   Metal `getSubData` reads shared storage without waiting, so the readback
   must still gate on completion (pattern 8's fix).
-- **Where**: `system_trixel_to_framebuffer.hpp` hovered-id reset,
-  `system_voxel_to_trixel.hpp` cardinal dispatches and cull-stats readback.
+- **Where**: `system_trixel_to_framebuffer.hpp` hovered-id reset and overflow
+  draw, `system_voxel_to_trixel.hpp` cardinal and per-axis dispatches,
+  cell-indirect and ctrl-block resets, overflow sort ladder, cull-stats and
+  overflow-ctrl readbacks; `per_axis_canvas.hpp` cell dispatches.
 - **Symptom**: a render system's CPU row tracks the GPU stage durations
   (`vs1_stage1` / `vs1_stage2` CPU ≈ `voxelStage1` / `voxelStage2` GPU), the
   frame is CPU-bound while the GPU idles, and fixed-update catch-up ticks
   per frame climb. Windows Debug, 262K entities, zoom 4, cardinal:
   `ttf_hover_reset` 3.6 ms, `vs1_stage1` 3.7 ms, `vs1_stage2` 3.7 ms,
   `vs1_cull_readback` 2.2 ms, steady frame 31.4 ms.
-- **Fix**: `device()->copyBufferSubData` for all three — reset from a
-  constant buffer, dispatch from an args copy no program binds, read a ring
-  slot once its submission has completed. Steady frame 31.4 → 10.6 ms at
-  that cell; the stall rows fall to 0.01–0.08 ms. GPU-timeline copies are
-  never tracked as shader writes, so none of them stalls.
+- **Fix**: GPU-timeline copies for all three — `IRRender::resetBufferFromSeed`
+  from a constant buffer, `IRRender::publishIndirectArgs` into an args copy no
+  program binds, and a `GpuReadbackRing` slot read once its submission has
+  completed. Steady frame 31.4 → 10.6 ms at that cell; the stall rows fall
+  to 0.01–0.08 ms. GPU-timeline copies are never tracked as shader writes,
+  so none of them stalls.

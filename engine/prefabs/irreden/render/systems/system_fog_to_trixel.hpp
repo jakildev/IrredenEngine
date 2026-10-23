@@ -166,7 +166,7 @@ template <> struct System<FOG_TO_TRIXEL> {
             kBufferIndex_OverflowLightingScratch
         );
         IRRender::device()->dispatchComputeIndirect(
-            axes.cellIndirect_.second,
+            axes.cellIndirectArgs_.second,
             kOverflowLightingDispatchArgsOffsetBytes
         );
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
