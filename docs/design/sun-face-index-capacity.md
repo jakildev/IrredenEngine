@@ -52,12 +52,16 @@ This is projected face testing, not distance stepping through empty space.
 
 The index sets a GPU flag on the first tile overflow or shared spill exhaustion.
 The existing clear resets that flag and readiness. After all current-frame
-casters, the bake system submits one leaf pass and thirteen reduction passes,
-with storage barriers between them. Kernels skip work when no overflow exists,
-the pool is empty, or any record allocation failed. Each pass binds an immutable
-parameter buffer; no per-frame CPU readback, sorting, or parameter allocation is
-needed. Readiness publishes the dynamic power-of-two leaf count only after the
-root is written. Old nodes remain unreachable after clear or pool shrinkage.
+casters, the bake system submits two cooperative passes with storage barriers
+between them and before consumers. Each 128-thread workgroup uses an 8 KiB shared
+heap: the first pass builds disjoint subtrees of up to 128 leaves, and one second
+workgroup joins their roots. Every used node keeps its global binary-heap index.
+Local reductions synchronize every level; no group polls another group. Kernels
+skip work when no overflow exists, the pool is empty, or any record allocation
+failed. Each pass binds an immutable parameter buffer; no per-frame CPU readback,
+sorting, or parameter allocation is needed. Only the second pass publishes the
+dynamic power-of-two leaf count, after the root is complete. Old nodes remain
+unreachable after clear or pool shrinkage.
 
 Only incomplete, in-bounds surface tiles can use the ready hierarchy. Complete
 tiles keep their local index, including when unrelated faces exhaust the global
@@ -68,7 +72,7 @@ visit limit and short-circuits only on a valid blocker.
 
 The [guarded prototype timings](../perf/sun-hierarchy-throughput/README.md)
 support starting without spatial sorting. Those timings do **not** measure this
-engine schedule: even empty builds still incur fourteen dispatch submissions.
+engine schedule: even empty builds still incur two dispatch submissions.
 Full-scene parent/head measurements, native Windows execution and global-pool
 scaling remain required before claiming a throughput gain.
 

@@ -44,6 +44,21 @@ constexpr std::uint32_t kSourceFaceBufferWords =
     kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
 
 constexpr int kSourceFaceHierarchyLevels = 14;
+constexpr int kSourceFaceHierarchyBuildPasses = 2;
+constexpr std::uint32_t kSourceFaceHierarchyWorkgroupSize = 128u;
+static_assert(kSourceFaceHierarchyWorkgroupSize > 0u, "Hierarchy workgroups must contain lanes");
+static_assert(
+    kSourceFaceHierarchyBuildPasses == 2, "Hierarchy construction requires subtree and root passes"
+);
+static_assert(
+    (kSourceFaceHierarchyWorkgroupSize & (kSourceFaceHierarchyWorkgroupSize - 1u)) == 0u,
+    "Hierarchy workgroup width must be a power of two"
+);
+static_assert(
+    kSourceFaceHierarchyMaxLeaves <=
+        kSourceFaceHierarchyWorkgroupSize * kSourceFaceHierarchyWorkgroupSize,
+    "Two hierarchy passes must cover the whole leaf allocation"
+);
 static_assert(kSourceFaceHierarchyLeafSize > 0u, "Hierarchy leaves must hold records");
 static_assert(
     kSourceFaceCapacity % kSourceFaceHierarchyLeafSize == 0u,

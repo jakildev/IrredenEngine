@@ -1,0 +1,19 @@
+{
+  "barrier_at": 1792727362.3835058,
+  "drain_seconds": 600,
+  "draining_at": 1792727347.902984,
+  "id": "1498-1792727284206308000",
+  "linger_seconds": 30,
+  "max_seconds": 1200,
+  "owner": "",
+  "owner_token": "",
+  "phase": "released",
+  "pid": 1450,
+  "released_at": 1792727424.779584,
+  "requested_at": 1792727284.206424,
+  "settle_cpu": 0.25,
+  "settle_sample_seconds": 2,
+  "snapshot": [
+    "9cb30f5f-29d7-4e98-b55c-aa798eb099f0"
+  ]
+}

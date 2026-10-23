@@ -134,6 +134,13 @@ cannot isolate sunlight from ambient/local light after tone mapping and clipping
 Choose the visibility-prepass default separately from the accurate receiver
 default. Release million-entity qualification still needs explicit visible
 geometry, canvas and shadow budgets; these small Debug fixtures do not supply it.
+The [cooperative production build](../perf/sun-cooperative-build/README.md) now
+reduces fourteen submissions to two without changing the tree or predicates.
+Native Metal node readbacks and all eleven crowded-shadow frames are unchanged;
+its guarded AC microbenchmark measures the isolated build, not whole-frame
+throughput. Next qualify the same-runner OpenGL cost and resume the intermediate
+receiver-edge/fog compatibility work; retain global-pool overflow and
+million-entity profiling as separate open items.
 
 The cardinal continuous-receiver follow-up separates `cardinalSurfaceFb` and
 `perAxisSurfaceFb` GPU draws from their sampled/unlit routes. The fog-free

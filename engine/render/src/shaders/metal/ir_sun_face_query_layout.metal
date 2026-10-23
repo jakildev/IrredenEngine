@@ -27,6 +27,8 @@ constant uint kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
 constant uint kSourceFaceHierarchyLeafSize = 8u;
 constant uint kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
 constant uint kSourceFaceHierarchyNodeWords = 8u;
+constant uint kSourceFaceHierarchyWorkgroupSize = 128u;
+constant uint kSourceFaceHierarchyBuildPasses = 2u;
 constant uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
 
 inline uint sourceFaceTileBase(uint tileIndex) {

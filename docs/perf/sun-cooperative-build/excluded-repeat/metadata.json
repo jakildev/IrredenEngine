@@ -1,0 +1,62 @@
+{
+  "base_ref": "e766f2bb80f5e06d346fc96a9b3dcf70906fa823",
+  "head": "4ef8a31b6607cbcce2c3d7845cbe05c3d6874dfd",
+  "status": "M .github/workflows/render-harness-tests.yml\n M docs/design/rendering-audit-todo.md\n M docs/design/sun-face-index-capacity.md\n M engine/prefabs/irreden/render/sun_face_query_layout.hpp\n M engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp\n M engine/render/src/metal/metal_pipeline.cpp\n M engine/render/src/shaders/c_build_sun_hierarchy.glsl\n M engine/render/src/shaders/ir_sun_face_query_layout.glsl\n M engine/render/src/shaders/metal/c_build_sun_hierarchy.metal\n M engine/render/src/shaders/metal/ir_sun_face_query_layout.metal\n M scripts/tests/test_render_sun_hierarchy.py\n?? docs/perf/sun-cooperative-build/\n?? docs/pr-screenshots/codex/sun-cooperative-build/\n?? scripts/perf/sun_hierarchy_build_probe.py\n?? scripts/tests/test_sun_hierarchy_build_probe.py",
+  "argv": [
+    "scripts/perf/sun_hierarchy_build_probe.py",
+    "--base-ref",
+    "e766f2bb8",
+    "--output",
+    "/tmp/sun-cooperative-measure-20261022-3",
+    "--measure",
+    "--rounds",
+    "8",
+    "--builds-per-sample",
+    "32"
+  ],
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "sources": {
+    "base": {
+      "expanded_sha256": "aa677275165e414f00a7d20a80780b324dc76ea889a54d3bed6047a5f950854d",
+      "dependencies": {
+        "c_build_sun_hierarchy.metal": "4f84ab8fb8c66bdd0154387267606baa0387e41d1b4313f8f71e503b80f03442",
+        "ir_sun_face_query_layout.metal": "2eab3db00cfa70fd44f71f989235e242761de237c5e83a70d0a3f5e22ed33c8d",
+        "ir_projected_face.metal": "5f6d37a278afca5b9846566dd63f7fd2f3c4ae046312517042fab63b0b64e37d",
+        "ir_sun_geometry_storage.metal": "e88d9da389a9597db5dfdfee103c0a337f5638ba4ec82c1a9e9f623458341d6d",
+        "ir_sun_hierarchy_bounds.metal": "f11006019da110ac5b6333a716caf89022d9f60763e76fcee9736b1d32e30bde",
+        "ir_sun_face_bounds.metal": "fc6c0ed331d646374f54d588e756dcd9124ba44e587f9cbe33ad55ebe723af00"
+      }
+    },
+    "head": {
+      "expanded_sha256": "907a3146c0d00e2157e4b4d6fcaab04bbfb3fb84dd7621f078428fb98ebf086a",
+      "dependencies": {
+        "c_build_sun_hierarchy.metal": "27ff42becad6dc5978ddda4e42874bbb4459d6a63e14da361f913559bcc460e2",
+        "ir_sun_face_query_layout.metal": "ab32107ac26a6ca974746fcac618cd2cb571e2af8f6adfcc23a793bed4103442",
+        "ir_projected_face.metal": "5f6d37a278afca5b9846566dd63f7fd2f3c4ae046312517042fab63b0b64e37d",
+        "ir_sun_geometry_storage.metal": "e88d9da389a9597db5dfdfee103c0a337f5638ba4ec82c1a9e9f623458341d6d",
+        "ir_sun_hierarchy_bounds.metal": "f11006019da110ac5b6333a716caf89022d9f60763e76fcee9736b1d32e30bde",
+        "ir_sun_face_bounds.metal": "fc6c0ed331d646374f54d588e756dcd9124ba44e587f9cbe33ad55ebe723af00"
+      }
+    }
+  },
+  "script_sha256": "60c01fe915e8ec6f00b672dc7bfc7b7472a65414367e8c553c29663862724f3c",
+  "launcher_sha256": "51c53f551fd5c4e6136c6ee6af0b081cf43b02fc7939127da9c1f36fbfbfa1a3",
+  "job_sha256": "2f37c0f25f06a37879f3e57d96fabd8811f2b325f601f509e016abd523df8152",
+  "compile_command": [
+    "/usr/bin/clang++",
+    "-std=c++17",
+    "-O2",
+    "-fobjc-arc",
+    "/private/tmp/sun-cooperative-measure-20261022-3/probe.mm",
+    "-framework",
+    "Metal",
+    "-framework",
+    "Foundation",
+    "-o",
+    "/private/tmp/sun-cooperative-measure-20261022-3/probe"
+  ],
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+  "power_before": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t99%; finishing charge; 0:00 remaining present: true",
+  "binary_sha256": "f8591bacee95c1826e376ed0a86a2b8bb4c1c08a27e199de3ad37545b378a326",
+  "power_after": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t99%; finishing charge; 0:00 remaining present: true"
+}
