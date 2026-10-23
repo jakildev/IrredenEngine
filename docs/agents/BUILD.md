@@ -123,6 +123,18 @@ regenerated the tree — the case where `--target` names a target added since
 the last configure — so a target-added branch switch never needs a manual
 `cmake -S`/`-B` reconfigure.
 
+**Undefined symbols from a library whose sources did not change.** An
+interrupted or raced `ar` can leave a static archive holding only its symbol
+table (96 bytes on macOS, `__.SYMDEF SORTED`). Its mtime is newer than its
+objects, so `make` treats it as up to date and every target that links it
+fails to link with errors that read like a source regression. Check with
+`ar t build/engine/libIrredenEngine.a`: a healthy archive lists `.o` members.
+`ir-build` / `fleet-build` run this check on every build, delete each
+member-less `*.a` under the build dir and log
+`fleet-build: removed member-less archive <path>` (`ir-build:` when invoked
+directly) so the build regenerates it. Building with raw `cmake --build`
+skips the check; `rm` the archive by hand.
+
 ## Linux / WSL build (fleet environment)
 
 ```bash

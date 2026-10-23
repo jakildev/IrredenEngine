@@ -64,6 +64,9 @@ while (( i < ${#args[@]} )); do
     fi
 done
 
+# Names this wrapper in ir-build's own log lines.
+export IR_BUILD_TOOL_NAME=fleet-build
+
 # A detached build runs the same adjacent ir-build under a fleet-jobs
 # supervisor that outlives this tool call (docs/agents/FLEET-RUNTIME.md
 # § "Long-running jobs").
