@@ -32,9 +32,35 @@ class OpenGLRenderDevice final : public RenderDevice {
             // Nothing to show. A flush keeps the submission cadence of an
             // unthrottled swap (swapInterval 0) without blocking on the GPU.
             ENG_API->glFlush();
-            return;
+        } else {
+            IRWindow::getWindow().swapBuffers();
         }
-        IRWindow::getWindow().swapBuffers();
+        throttleSubmissionsInFlight();
+    }
+
+    // The CPU may run at most this many presented frames ahead of the GPU.
+    // Nothing else bounds it once no readback blocks: an unthrottled
+    // offscreen or swapInterval-0 loop queues frames until the driver
+    // stalls for hundreds of milliseconds at once, and every
+    // GpuReadbackRing overruns its slots. Two frames keep the GPU fed while
+    // the CPU encodes the next.
+    static constexpr std::uint64_t kMaxSubmissionsInFlight = 2;
+
+    void throttleSubmissionsInFlight() {
+        while (!m_submissionFences.empty()) {
+            const std::uint64_t pending = m_submissionSerial - 1 - completedSubmissionSerial();
+            if (pending <= kMaxSubmissionsInFlight || m_submissionFences.empty()) {
+                return;
+            }
+            // GL_QUERY_RESULT blocks until the oldest fence is available; the
+            // next completedSubmissionSerial() retires it.
+            GLuint64 ignored = 0;
+            ENG_API->glGetQueryObjectui64v(
+                m_submissionFences.front().query_,
+                GL_QUERY_RESULT,
+                &ignored
+            );
+        }
     }
 
     // OFFSCREEN window mode: an engine-owned framebuffer stands in for the
