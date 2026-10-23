@@ -115,6 +115,15 @@ class RenderDevice {
         std::size_t sizeBytes
     ) = 0;
     virtual void finish() = 0;
+    // GPU completion without a CPU wait. Work encoded now belongs to
+    // submissionSerial(); it has finished on the GPU once
+    // completedSubmissionSerial() reaches that value, so a CPU read of what
+    // it wrote returns the final bytes and never stalls. Metal's getSubData
+    // is a plain read of shared storage with no implicit sync, so a readback
+    // of GPU-written data must gate on this rather than on call order.
+    // Polling never blocks; both serials only increase.
+    virtual std::uint64_t submissionSerial() const = 0;
+    virtual std::uint64_t completedSubmissionSerial() = 0;
 
     // Make @p texture's **level 0** contents reflect its image-atomic state. A
     // no-op on backends whose image atomics write the texture directly (OpenGL's

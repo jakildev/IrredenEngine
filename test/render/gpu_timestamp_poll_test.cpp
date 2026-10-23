@@ -50,6 +50,12 @@ class TimestampDevice : public RenderDevice {
     void copyBufferSubData(
         const Buffer *, std::ptrdiff_t, const Buffer *, std::ptrdiff_t, std::size_t
     ) override {}
+    std::uint64_t submissionSerial() const override {
+        return 0;
+    }
+    std::uint64_t completedSubmissionSerial() override {
+        return 0;
+    }
     void finish() override {
         ++finishes_;
     }

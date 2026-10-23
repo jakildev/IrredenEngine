@@ -351,6 +351,12 @@ class RecordingRenderDevice final : public IRRender::RenderDevice {
         std::ptrdiff_t,
         std::size_t
     ) override {}
+    std::uint64_t submissionSerial() const override {
+        return 0;
+    }
+    std::uint64_t completedSubmissionSerial() override {
+        return 0;
+    }
     void finish() override {}
 
   private:

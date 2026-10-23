@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <unordered_map>
 #include <vector>
 
@@ -26,6 +27,7 @@ class OpenGLRenderDevice final : public RenderDevice {
     void beginFrame() override {}
 
     void present() override {
+        endSubmission();
         if (isOffscreen()) {
             // Nothing to show. A flush keeps the submission cadence of an
             // unthrottled swap (swapInterval 0) without blocking on the GPU.
@@ -307,6 +309,31 @@ class OpenGLRenderDevice final : public RenderDevice {
 
     void finish() override {
         ENG_API->glFinish();
+        for (const SubmissionFence &fence : m_submissionFences) {
+            m_freeFenceQueries.push_back(fence.query_);
+        }
+        m_submissionFences.clear();
+        m_completedSubmissionSerial = m_submissionSerial;
+        ++m_submissionSerial;
+    }
+
+    std::uint64_t submissionSerial() const override {
+        return m_submissionSerial;
+    }
+
+    std::uint64_t completedSubmissionSerial() override {
+        while (!m_submissionFences.empty()) {
+            const SubmissionFence &fence = m_submissionFences.front();
+            GLint available = GL_FALSE;
+            ENG_API->glGetQueryObjectiv(fence.query_, GL_QUERY_RESULT_AVAILABLE, &available);
+            if (available != GL_TRUE) {
+                break;
+            }
+            m_completedSubmissionSerial = fence.serial_;
+            m_freeFenceQueries.push_back(fence.query_);
+            m_submissionFences.pop_front();
+        }
+        return m_completedSubmissionSerial;
     }
 
     GpuTimestampHandle createTimestampPair() override {
@@ -382,6 +409,32 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
   private:
+    // A timestamp query becomes available only once every command issued
+    // before it has completed, so it fences a submission without a sync
+    // object. Polling before each new fence keeps the queue bounded when no
+    // reader asks for the completed serial.
+    void endSubmission() {
+        completedSubmissionSerial();
+        GLuint query = 0;
+        if (m_freeFenceQueries.empty()) {
+            ENG_API->glGenQueries(1, &query);
+        } else {
+            query = m_freeFenceQueries.back();
+            m_freeFenceQueries.pop_back();
+        }
+        ENG_API->glQueryCounter(query, GL_TIMESTAMP);
+        m_submissionFences.push_back({query, m_submissionSerial});
+        ++m_submissionSerial;
+    }
+
+    struct SubmissionFence {
+        GLuint query_ = 0;
+        std::uint64_t serial_ = 0;
+    };
+    std::deque<SubmissionFence> m_submissionFences;
+    std::vector<GLuint> m_freeFenceQueries;
+    std::uint64_t m_submissionSerial = 1;
+    std::uint64_t m_completedSubmissionSerial = 0;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::unordered_map<GpuTimestampHandle, OpenGLTimestampPair> m_timestamps;
     // 0 = the window's default framebuffer (every mode but OFFSCREEN).

@@ -409,6 +409,7 @@ class MetalRenderDevice final : public RenderDevice {
     void present() override {
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer == nullptr) {
+            ++m_submissionSerial;
             m_gpuFrameTiming.endFrame();
             return;
         }
@@ -417,6 +418,7 @@ class MetalRenderDevice final : public RenderDevice {
         }
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        ++m_submissionSerial;
         recordCompletedFrameBuffer(commandBuffer);
         for (auto &pair : m_timestamps) {
             if (pair.completionBuffer_ != nullptr) {
@@ -1083,9 +1085,20 @@ class MetalRenderDevice final : public RenderDevice {
         }
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        ++m_submissionSerial;
         recordCompletedFrameBuffer(commandBuffer);
         releaseDeferredMetalBuffers();
         setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
+    }
+
+    std::uint64_t submissionSerial() const override {
+        return m_submissionSerial;
+    }
+
+    // Every commit waits for its command buffer (present() and finish()),
+    // so all work before the one now recording has completed.
+    std::uint64_t completedSubmissionSerial() override {
+        return m_submissionSerial - 1;
     }
 
     GpuTimestampHandle createTimestampPair() override {
@@ -1306,6 +1319,8 @@ class MetalRenderDevice final : public RenderDevice {
     // Persists across draws, encoders, and frames until the matching
     // disable, like GL_BLEND; starts off to match the GL default.
     bool m_blendingEnabled = false;
+    // The command buffer now recording; a commit-and-wait advances it.
+    std::uint64_t m_submissionSerial = 1;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::vector<MetalTimestampPair> m_timestamps;
     MTL::CounterSet *m_timestampCounterSet = nullptr;

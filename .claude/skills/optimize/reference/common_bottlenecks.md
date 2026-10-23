@@ -104,13 +104,16 @@ that found a new one; never add a pattern that was only suspected.
 - **Pattern**: `glReadPixels`, `glGetBufferSubData`, `Buffer::getSubData`
   inline in a tick or render stage.
 - **Where**: the cull-stats readback in `system_voxel_to_trixel.hpp` reads a
-  three-slot ring of GPU-side copies two compacts late (gated on
+  ring of GPU-side copies once their submission has completed (gated on
   `gpuStageTiming().enabled_`); pattern 17 has the measurements.
 - **Symptom**: ~16 ms frames that should be fast; the preceding pass shows
   "full GPU utilisation" because the CPU is stalled.
-- **Fix**: a multi-slot ring filled by `copyBufferSubData` and read a slot
-  late (`cullStatsRing_`), or persistent mapped buffers (`PERSISTENT |
-  COHERENT`).
+- **Fix**: a multi-slot ring filled by `copyBufferSubData`, each slot read
+  only once `device()->completedSubmissionSerial()` reaches the serial that
+  encoded its copy (`IRRender::detail::GpuReadbackRing`, `cullStatsRing_`), or
+  persistent mapped buffers (`PERSISTENT | COHERENT`). Never gate on "N
+  writes ago": on Metal several writes share one uncommitted command buffer,
+  and `getSubData` there reads shared storage with no implicit wait.
 
 ### 9. Shadow-feeder sweep inflates cull bounds at high zoom
 
@@ -213,8 +216,10 @@ that found a new one; never add a pattern that was only suspected.
   until the GPU drains: `Buffer::subData` into a buffer a queued shader
   wrote (a per-frame counter reset), `dispatchComputeIndirect` from a buffer
   a shader wrote this frame (compact → stage 1 → stage 2), and
-  `Buffer::getSubData` of the newest GPU-written counters. Metal hides all
-  three because `present()` already waits a frame.
+  `Buffer::getSubData` of the newest GPU-written counters. Metal never stalls
+  on them, because `present()` already waits a frame; the flip side is that a
+  Metal `getSubData` reads shared storage without waiting, so the readback
+  must still gate on completion (pattern 8's fix).
 - **Where**: `system_trixel_to_framebuffer.hpp` hovered-id reset,
   `system_voxel_to_trixel.hpp` cardinal dispatches and cull-stats readback.
 - **Symptom**: a render system's CPU row tracks the GPU stage durations
@@ -224,7 +229,7 @@ that found a new one; never add a pattern that was only suspected.
   `ttf_hover_reset` 3.6 ms, `vs1_stage1` 3.7 ms, `vs1_stage2` 3.7 ms,
   `vs1_cull_readback` 2.2 ms, steady frame 31.4 ms.
 - **Fix**: `device()->copyBufferSubData` for all three — reset from a
-  constant buffer, dispatch from an args copy no program binds, read a
-  three-slot ring two compacts late. Steady frame 31.4 → 10.6 ms at that cell;
-  the stall rows fall to 0.01–0.08 ms. GPU-timeline copies are never tracked
-  as shader writes, so none of them stalls.
+  constant buffer, dispatch from an args copy no program binds, read a ring
+  slot once its submission has completed. Steady frame 31.4 → 10.6 ms at
+  that cell; the stall rows fall to 0.01–0.08 ms. GPU-timeline copies are
+  never tracked as shader writes, so none of them stalls.
