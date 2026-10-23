@@ -23,6 +23,9 @@
 # against the enclosing engine with -DIRREDEN_USER_PROJECTS=<worktree>.
 # IRREDEN_BUILD_DIR still overrides the build dir in every case.
 #
+# Before building, any static archive under the build dir with no object
+# members (an interrupted `ar`) is deleted so make regenerates it.
+#
 # On a build failure, ir-build runs CMake's own cmake_check_build_system
 # check and retries the build once if that regenerated the tree — the case
 # where --target names a target added since the build dir's last configure
@@ -134,6 +137,26 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     fi
     echo "ir-build: configure done."
 fi
+
+# --- Drop member-less static archives ---
+#
+# An interrupted or raced `ar` leaves an archive with a symbol table and no
+# object members. Its mtime is newer than its objects, so make treats it as
+# up to date and every target linking it fails with undefined symbols that
+# look like a source regression. Deleting it makes make regenerate it.
+# `ar t` failing (not an archive at all) leaves the file alone.
+ir_remove_memberless_archives() {
+    [[ -d "$BUILD_DIR" ]] || return 0
+    local archive members
+    while IFS= read -r archive; do
+        members="$(ar t "$archive" 2>/dev/null)" || continue
+        if ! grep -Eq '\.(o|obj)[[:space:]]*$' <<<"$members"; then
+            rm -f "$archive"
+            echo "${IR_BUILD_TOOL_NAME:-ir-build}: removed member-less archive $archive" >&2
+        fi
+    done < <(find "$BUILD_DIR" -name '*.a' -type f)
+}
+ir_remove_memberless_archives
 
 # --- Detect or compute -j N for cmake AND the ir-acquire cpu count ---
 #
