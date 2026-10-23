@@ -195,10 +195,6 @@ inline std::expected<void, std::string> selectToolRoot(std::string_view id) {
     return getWorld().selectToolRoot(id);
 }
 
-inline std::optional<std::filesystem::path> activeToolRoot() {
-    return getWorld().activeToolRoot();
-}
-
 inline std::expected<ToolHandle, std::string> spawnTool(const ToolSpawnRequest &request) {
     return getWorld().spawnTool(request);
 }

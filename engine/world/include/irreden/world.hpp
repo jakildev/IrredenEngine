@@ -57,7 +57,6 @@ class World {
     void setToolRoot(const std::filesystem::path &root);
     std::optional<std::filesystem::path> toolRoot() const;
     std::expected<void, std::string> selectToolRoot(std::string_view id);
-    std::optional<std::filesystem::path> activeToolRoot() const;
     std::expected<ToolHandle, std::string> spawnTool(const ToolSpawnRequest &request);
 
     // void setPlayer(const IREntity::EntityId& player);
