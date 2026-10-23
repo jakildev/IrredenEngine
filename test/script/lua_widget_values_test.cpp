@@ -98,6 +98,46 @@ TEST_F(LuaWidgetValues, SliderBuildsReadsAndClamps) {
         error("IRGui.makeSlider(0, 0, 10, 10, 'X', 1, 1, 1)").find("min must be below max"),
         std::string::npos
     );
+
+    const C_WidgetSlider &legacy = IREntity::getComponent<C_WidgetSlider>(id);
+    EXPECT_FLOAT_EQ(legacy.defaultValue_, 60.0f);
+    EXPECT_FLOAT_EQ(legacy.step_, 2.2f);
+    EXPECT_EQ(legacy.fieldId_, IREntity::kNullEntity);
+}
+
+TEST_F(LuaWidgetValues, SliderOptionsPopulateAndRejectBeforeCreation) {
+    run(R"lua(
+        field = IRGui.makeNumberField(0, 20, 60, 18, 0.06, 0, 1, 0.1)
+        slider = IRGui.makeSlider(
+            0, 0, 100, 18, "GAIN", 0, 1, 0.75, nil,
+            { default = 0.25, step = 0.1, fieldId = field }
+        )
+    )lua");
+    const C_WidgetSlider &slider = IREntity::getComponent<C_WidgetSlider>(entity("slider"));
+    EXPECT_FLOAT_EQ(slider.currentValue_, 0.75f);
+    EXPECT_FLOAT_EQ(slider.defaultValue_, 0.25f);
+    EXPECT_FLOAT_EQ(slider.step_, 0.1f);
+    EXPECT_EQ(slider.fieldId_, entity("field"));
+
+    const C_WidgetNumberField &field = IREntity::getComponent<C_WidgetNumberField>(entity("field"));
+    EXPECT_FLOAT_EQ(field.value_, 0.1f);
+    EXPECT_FLOAT_EQ(field.defaultValue_, 0.1f)
+        << "the authored default is the post-snap creation value";
+
+    const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
+    run("label = IRGui.makeLabel(0, 0, 'not a number field')");
+    EXPECT_GT(m_entityManager.getLiveEntityCount(), before);
+    for (const char *call : {
+             "IRGui.makeSlider(0,0,10,10,'S',0,1,0,nil,{step=0})",
+             "IRGui.makeSlider(0,0,10,10,'S',0,1,0,nil,{step=math.huge})",
+             "IRGui.makeSlider(0,0,10,10,'S',0,1,0,nil,{mystery=1})",
+             "IRGui.makeSlider(0,0,10,10,'S',0,1,0,nil,{fieldId=12345})",
+             "IRGui.makeSlider(0,0,10,10,'S',0,1,0,nil,{fieldId=label})",
+         }) {
+        const IREntity::EntityId count = m_entityManager.getLiveEntityCount();
+        EXPECT_FALSE(error(call).empty()) << call;
+        EXPECT_EQ(m_entityManager.getLiveEntityCount(), count) << call;
+    }
 }
 
 TEST_F(LuaWidgetValues, CheckboxBuildsReadsAndSets) {
@@ -281,6 +321,13 @@ TEST_F(LuaWidgetValues, NumberFieldEditCycleCommitsCancelsAndFilters) {
     field.editBuffer_ = "12";
     field.updateEdit(true, true, "", false, false, 16);
     EXPECT_FLOAT_EQ(field.value_, 3.0f);
+
+    field.setValue(9.0f);
+    field.updateEdit(true, false, "", false, false, 16);
+    field.editBuffer_.clear();
+    field.updateEdit(true, false, "", true, false, 16);
+    EXPECT_FLOAT_EQ(field.value_, 4.0f);
+    EXPECT_EQ(field.editBuffer_, "4");
 }
 
 TEST_F(LuaWidgetValues, NumberFieldFormattingPreservesUneditedValues) {

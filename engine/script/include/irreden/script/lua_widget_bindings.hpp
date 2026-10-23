@@ -10,6 +10,7 @@
 //   IRGui.setLabelText(label, text)
 //   local button = IRGui.makeButton(x, y, w, h, label, onClick?, size?)   -- onClick(id)
 //   if IRGui.wasClicked(button) then ... end
+//   local slider = IRGui.makeSlider(x, y, w, h, label, min, max, value, size?, options?)
 //   local number = IRGui.makeNumberField(x, y, w, h, value, min, max, step?, size?)
 //   local value  = IRGui.numberFieldValue(number)
 //   IRGui.setNumberFieldValue(number, value)
@@ -85,6 +86,12 @@
 #include <vector>
 
 namespace IRScript::detail {
+
+inline constexpr std::array<std::string_view, 3> kSliderOptionKeys{
+    "default",
+    "step",
+    "fieldId",
+};
 
 // Resolve the live WIDGET_LUA_DISPATCH instance via the LuaScript's
 // prefab-system-id map, raising a Lua-visible error that points at the
@@ -420,11 +427,58 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
                            float minValue,
                            float maxValue,
                            float value,
-                           sol::object size) -> lua_Integer {
+                           sol::object size,
+                           sol::optional<sol::table> options) -> lua_Integer {
         if (!(minValue < maxValue)) {
             throw sol::error{"IRGui.makeSlider: min must be below max"};
         }
         const IRRender::TextSize textSize = textSizeFromLua(size, "IRGui.makeSlider");
+        IRPrefab::Widget::SliderOptions sliderOptions;
+        if (options.has_value()) {
+            const sol::table &opts = options.value();
+            for (const auto &[key, ignored] : opts) {
+                const bool known =
+                    key.get_type() == sol::type::string && std::find(
+                                                               kSliderOptionKeys.begin(),
+                                                               kSliderOptionKeys.end(),
+                                                               key.as<std::string_view>()
+                                                           ) != kSliderOptionKeys.end();
+                if (!known) {
+                    throw sol::error{
+                        "IRGui.makeSlider: unknown option; valid keys are default, step, fieldId"
+                    };
+                }
+            }
+            const sol::object defaultValue = opts["default"];
+            if (defaultValue.valid() && defaultValue.get_type() != sol::type::lua_nil) {
+                sliderOptions.defaultValue_ =
+                    finiteNumber(defaultValue, "IRGui.makeSlider", "default");
+            }
+            const sol::object step = opts["step"];
+            if (step.valid() && step.get_type() != sol::type::lua_nil) {
+                const float resolvedStep = finiteNumber(step, "IRGui.makeSlider", "step");
+                if (!(resolvedStep > 0.0f)) {
+                    throw sol::error{"IRGui.makeSlider: step must be above zero"};
+                }
+                sliderOptions.step_ = resolvedStep;
+            }
+            const sol::object fieldId = opts["fieldId"];
+            if (fieldId.valid() && fieldId.get_type() != sol::type::lua_nil) {
+                if (fieldId.get_type() != sol::type::number) {
+                    throw sol::error{"IRGui.makeSlider: fieldId must name a number field"};
+                }
+                const lua_Integer rawFieldId = fieldId.as<lua_Integer>();
+                const IREntity::EntityId resolvedFieldId =
+                    static_cast<IREntity::EntityId>(rawFieldId);
+                if (rawFieldId <= 0 || !IREntity::entityExists(resolvedFieldId) ||
+                    !IREntity::getComponentOptional<IRComponents::C_WidgetNumberField>(
+                        resolvedFieldId
+                    )) {
+                    throw sol::error{"IRGui.makeSlider: fieldId must name a live number field"};
+                }
+                sliderOptions.fieldId_ = resolvedFieldId;
+            }
+        }
         return static_cast<lua_Integer>(IRPrefab::Widget::makeSlider(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
@@ -432,7 +486,8 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
             minValue,
             maxValue,
             IRMath::clamp(value, minValue, maxValue),
-            textSize
+            textSize,
+            sliderOptions
         ));
     };
     gui["sliderValue"] = [](lua_Integer id) -> float {

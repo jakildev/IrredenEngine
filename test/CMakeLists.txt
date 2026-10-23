@@ -160,6 +160,7 @@ add_executable(IrredenEngineTest
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
   render/widget_list_scroll_test.cpp
+  render/widget_slider_gesture_test.cpp
   render/widget_theme_singleton_test.cpp
   render/widget_hit_region_test.cpp
   render/widget_image_test.cpp
