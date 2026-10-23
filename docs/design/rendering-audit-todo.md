@@ -93,8 +93,12 @@ prepass that retains every fragment cannot establish an occlusion benefit.
 The [native controls](../perf/surface-adoption-controls/README.md) witness that
 distinction, but both retained timing attempts failed outer quiet coverage and
 must not inform a performance or default-adoption claim.
-Next use overlapping GRID receivers, wider views, subdivision and nonvertical
-sunlight to qualify accurate receiving, alongside the polygon oracle at near-
+The [overlapping GRID controls](../pr-screenshots/codex/grid-receiver-prepass/README.md)
+now reject roughly 23% of candidate fragments with exact decoded-RGBA equality
+in four prepass pairs at intermediate yaw, zoom 1/4 and base subdivisions 1/4.
+These are untimed Metal controls, and both subdivision settings produce the
+same image and counters. Next qualify cost on a guarded host and add geometry
+whose subdivision changes the workload, alongside the polygon oracle at near-
 cardinal angles, fractional negative camera positions and side receivers.
 Preserve the fog fallback until albedo/fog application and the shared lighting/
 fog-observer buffer binding are made compatible; do not remove that exclusion

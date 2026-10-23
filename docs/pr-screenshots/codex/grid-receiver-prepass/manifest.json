@@ -1,0 +1,25 @@
+{
+  "kind": "untimed Metal image-equivalence controls",
+  "runtime_artifact": "../../../perf/sun-overflow-production/guarded-depth/timing/artifacts/guarded-depth/artifact.json",
+  "runtime_files_verified": 319,
+  "files": {
+    "capture.py": "e31eb04cb99318de5b6dd36a32beb2b8090c53a30bbb65027d8a1807e9b58aa9",
+    "captures.json": "e88ef279c896099ffc264cd554fb8103fc38495fb8d348963509cf726cf01e23",
+    "per-axis-zoom1-receivers-subdiv1-prepass0.log.gz": "54cab178823e293f3f972bde206fea3e2dcea42aba380dedd15763406c3013ac",
+    "per-axis-zoom1-receivers-subdiv1-prepass0.png": "fe743a46be18851ef3a6c34ebb9d54fac60649c5774a933b5e7bd75d2f79e642",
+    "per-axis-zoom1-receivers-subdiv1-prepass1.log.gz": "234697733844f227a73b0ab6a3fc8c5203b9a9f6b68f1a1062fecad90c3a3272",
+    "per-axis-zoom1-receivers-subdiv1-prepass1.png": "fe743a46be18851ef3a6c34ebb9d54fac60649c5774a933b5e7bd75d2f79e642",
+    "per-axis-zoom1-receivers-subdiv4-prepass0.log.gz": "51fb13397bbc4b0165f587e51d29813689679b6f704b14dd98cb8045c865f9c7",
+    "per-axis-zoom1-receivers-subdiv4-prepass0.png": "fe743a46be18851ef3a6c34ebb9d54fac60649c5774a933b5e7bd75d2f79e642",
+    "per-axis-zoom1-receivers-subdiv4-prepass1.log.gz": "6f7311c511bbacb8d9e7ed9f663d097e1657644e984061e72e999ed46a6e5c35",
+    "per-axis-zoom1-receivers-subdiv4-prepass1.png": "fe743a46be18851ef3a6c34ebb9d54fac60649c5774a933b5e7bd75d2f79e642",
+    "per-axis-zoom4-receivers-subdiv1-prepass0.log.gz": "59f0871916634a3cdf3a88af49ba9f12cd2435e3efe744fc71e4a04c5495f41f",
+    "per-axis-zoom4-receivers-subdiv1-prepass0.png": "4aa88781a6def396b52ffdd5427c5f403c3459a70562ec51d42cbfd1635fc2e9",
+    "per-axis-zoom4-receivers-subdiv1-prepass1.log.gz": "8d2bb6c1531b35b3927911b4a77d5ae2e92838e47674b8d7dac617f3b2e17c02",
+    "per-axis-zoom4-receivers-subdiv1-prepass1.png": "4aa88781a6def396b52ffdd5427c5f403c3459a70562ec51d42cbfd1635fc2e9",
+    "per-axis-zoom4-receivers-subdiv4-prepass0.log.gz": "cb2857197d0a993b5be2f61b6ce7b0c0555920d0df6fff21c6199596602a6b9d",
+    "per-axis-zoom4-receivers-subdiv4-prepass0.png": "4aa88781a6def396b52ffdd5427c5f403c3459a70562ec51d42cbfd1635fc2e9",
+    "per-axis-zoom4-receivers-subdiv4-prepass1.log.gz": "e01e3ebe51462c4f75f2b518cdd56c056bfdda39529e604bfe5aed7ee2b3c4b5",
+    "per-axis-zoom4-receivers-subdiv4-prepass1.png": "4aa88781a6def396b52ffdd5427c5f403c3459a70562ec51d42cbfd1635fc2e9"
+  }
+}
