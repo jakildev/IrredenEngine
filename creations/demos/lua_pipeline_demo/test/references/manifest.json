@@ -1,6 +1,7 @@
 {
   "demo": "lua_pipeline_demo",
   "target": "IRLuaPipelineDemo",
+  "sweep_backends": ["macos-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "shots": [
     "lua_pipeline_demo_zoom4"

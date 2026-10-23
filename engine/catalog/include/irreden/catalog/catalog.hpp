@@ -26,6 +26,10 @@ struct TargetState {
     std::string exePath_;
     double mtime_ = 0.0;
     std::optional<RunVerdict> lastRun_;
+    /// Tool-root-relative path of the newest `<name>-<os>-<arch>.zip` directly
+    /// under the build directory, for a target whose manifest sets `package`;
+    /// empty when there is none. It may predate the last Package run.
+    std::string packagePath_;
 };
 
 struct Creation {

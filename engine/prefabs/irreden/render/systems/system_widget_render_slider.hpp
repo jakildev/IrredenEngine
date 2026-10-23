@@ -12,6 +12,7 @@
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_draw.hpp>
 #include <irreden/render/widget_text_layout.hpp>
+#include <irreden/render/widgets.hpp>
 #include <irreden/render/trixel_rect.hpp>
 
 #include <string>
@@ -67,22 +68,15 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
         );
 
         // Thumb
-        const float range = (slider.maxValue_ - slider.minValue_) != 0.0f
-                                ? (slider.maxValue_ - slider.minValue_)
-                                : 1.0f;
-        const float t =
-            IRMath::clamp((slider.currentValue_ - slider.minValue_) / range, 0.0f, 1.0f);
-        const int thumbW = theme_.sliderThumbWidth_;
-        const int thumbH = H - labelH;
-        const int thumbX = guiPos.pos_.x + static_cast<int>(t * static_cast<float>(W - thumbW));
-        const int thumbY = guiPos.pos_.y + labelH;
+        const IRPrefab::GuiRect thumb =
+            IRPrefab::Widget::sliderThumbRect(widget, slider, guiPos, theme_);
         const IRMath::Color thumbColor = widget.disabled_ ? theme_.backgroundDisabled_
                                          : state.hovered_ ? theme_.sliderThumbHover_
                                                           : theme_.sliderThumbIdle_;
         IRRender::fillRect(
             *canvas_,
-            IRMath::ivec2(thumbX, thumbY),
-            IRMath::ivec2(thumbW, thumbH),
+            thumb.pos_,
+            thumb.size_,
             thumbColor,
             IRRender::kWidgetBorderDistance,
             scratch_

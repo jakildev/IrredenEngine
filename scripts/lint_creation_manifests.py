@@ -71,7 +71,7 @@ def validate_tracked_path(
     return True
 
 
-def validate(path: Path, root: Path, tracked_files: set[str]) -> list[str] | None:
+def validate(path: Path, root: Path, tracked_files: set[str]) -> list[tuple[str, bool]] | None:
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as error:
@@ -112,7 +112,7 @@ def validate(path: Path, root: Path, tracked_files: set[str]) -> list[str] | Non
     if not isinstance(data["targets"], list) or not data["targets"]:
         fail(path, "targets must be a non-empty array")
         return None
-    names = []
+    targets = []
     for target_index, target in enumerate(data["targets"]):
         target_key = f"targets[{target_index}]"
         if not isinstance(target, dict):
@@ -120,11 +120,15 @@ def validate(path: Path, root: Path, tracked_files: set[str]) -> list[str] | Non
             return None
         if not validate_target_name(path, f"{target_key}.name", target.get("name")):
             return None
-        names.append(target["name"])
         for key in ("display", "description"):
             if key in target and not isinstance(target[key], str):
                 fail(path, f"{target_key}.{key} must be a string")
                 return None
+        package = target.get("package", False)
+        if not isinstance(package, bool):
+            fail(path, f"{target_key}.package must be a boolean")
+            return None
+        targets.append((target["name"], package))
         presets = target.get("presets", [])
         if not isinstance(presets, list):
             fail(path, f"{target_key}.presets must be an array")
@@ -141,7 +145,7 @@ def validate(path: Path, root: Path, tracked_files: set[str]) -> list[str] | Non
             if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
                 fail(path, f"{preset_key}.args must contain only strings")
                 return None
-    return names
+    return targets
 
 
 def git_tracked_files(root: Path) -> set[str]:
@@ -191,15 +195,22 @@ def main() -> int:
             fail(directory, "missing creation.json")
             valid = False
             continue
-        names = validate(manifest, args.root, tracked_files)
-        if names is None:
+        targets = validate(manifest, args.root, tracked_files)
+        if targets is None:
             valid = False
             continue
         manifests += 1
         if target_names is not None:
-            for name in names:
+            for name, package in targets:
                 if name not in target_names:
                     fail(manifest, f"unknown build target: {name}")
+                    valid = False
+                package_target = f"{name}Package"
+                if package and package_target not in target_names:
+                    fail(manifest, f"{name} sets package; no build target {package_target}")
+                    valid = False
+                elif not package and package_target in target_names:
+                    fail(manifest, f"build target {package_target} needs package: true on {name}")
                     valid = False
     print(f"creation manifests: {manifests}/{len(creation_dirs(args.root))}")
     return 0 if valid else 1

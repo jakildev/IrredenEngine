@@ -26,6 +26,9 @@
 ///                                           isTargetName
 ///           "display": "Shape debug",       optional, defaults to name
 ///           "description": "...",           optional string
+///           "package": true,                optional boolean (default false): the
+///                                           target has a `<name>Package` build
+///                                           target (`irreden_package_target`)
 ///           "presets": [                    optional array; the first is Run's default
 ///             { "name": "Interactive",      required, non-empty
 ///               "args": ["--flag", "v"] }   optional array of strings (exe arguments)
@@ -50,7 +53,8 @@
 ///
 /// Version history
 /// ---------------
-/// v1 (initial) — the schema above.
+/// v1 (initial) — the schema above. `targets[].package` is an additive v1
+/// key: an older reader ignores it as unknown.
 
 #include <cstdint>
 #include <expected>
@@ -79,6 +83,7 @@ struct CreationTarget {
     std::string name_;
     std::string display_;
     std::string description_;
+    bool package_ = false;
     std::vector<CreationPreset> presets_;
 };
 

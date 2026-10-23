@@ -12,6 +12,7 @@
     {
       "name": "IRSceneReset",
       "description": "Repeats gameplay scene resets while checking render and voxel-pool stability.",
+      "package": true,
       "presets": [
         {
           "name": "Interactive",

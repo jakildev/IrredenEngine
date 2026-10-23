@@ -1,6 +1,7 @@
 {
   "demo": "editors/font_maker",
   "target": "EditorFontMaker",
+  "sweep_backends": ["macos-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "demo_args": ["--font-maker-test", "sample"],
   "shots": [

@@ -334,6 +334,17 @@ def detect_worktree_root(start: Path) -> Path:
     return Path(proc.stdout.strip())
 
 
+_PRESET_BY_SYSTEM = {
+    "darwin": "macos-debug",
+    "linux": "linux-debug",
+    "windows": "windows-debug",
+}
+
+# Every preset detect_backend can name for a supported host. Any other return
+# value is the unknown-OS fallback, which owns no reference set.
+KNOWN_PRESETS = tuple(_PRESET_BY_SYSTEM.values())
+
+
 def detect_backend(build_dir: Path) -> str:
     """Return the preset name for the host, e.g. 'macos-debug'.
 
@@ -349,13 +360,7 @@ def detect_backend(build_dir: Path) -> str:
             f"no CMakeCache.txt at {cache} — run `cmake --preset <name>` first"
         )
     system = platform.system().lower()
-    if system == "darwin":
-        return "macos-debug"
-    if system == "linux":
-        return "linux-debug"
-    if system == "windows":
-        return "windows-debug"
-    return f"{system}-debug"
+    return _PRESET_BY_SYSTEM.get(system, f"{system}-debug")
 
 
 def find_exe(build_dir: Path, target_name: str, demo_name: str) -> Path:

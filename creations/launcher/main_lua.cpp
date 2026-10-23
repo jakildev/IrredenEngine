@@ -18,6 +18,10 @@
 //     tree to one creation, and `/` focusing the filter with no click.
 //   * details_build — Build on the fixture's stub target streams the stub
 //     tool's three lines into the log and reports exit 0.
+//   * details_package — the package-enabled stub target shows one PACKAGE
+//     control and no archive; PACKAGE builds `IRLauncherStubPackage` through
+//     the stub, and the rescan finds and shows the archive it wrote. A target
+//     without `package` shows no control.
 //   * run_hand_off — Run hands off to IRLuaWidgetsDemo's screenshot take
 //     (built in <root>/build first) and shows its CLEAN verdict.
 //   * settings_roundtrip — with only a stub `code` on PATH, opening settings
@@ -96,6 +100,7 @@ enum class Session {
     NONE,
     CATALOG_TREE,
     DETAILS_BUILD,
+    DETAILS_PACKAGE,
     RUN_HAND_OFF,
     SETTINGS_ROUNDTRIP,
     ASSET_PREVIEW,
@@ -117,6 +122,9 @@ Session parseSession(const std::string &name) {
     }
     if (name == "details_build") {
         return Session::DETAILS_BUILD;
+    }
+    if (name == "details_package") {
+        return Session::DETAILS_PACKAGE;
     }
     if (name == "run_hand_off") {
         return Session::RUN_HAND_OFF;
@@ -167,6 +175,28 @@ void useStubBuildTool() {
         stubDir("stub_bin").string() + kPathSeparator + (path == nullptr ? "" : path);
     setEnvVar("PATH", augmented.c_str());
     setEnvVar("IR_RUN_WRAPPER", nullptr);
+}
+
+// The details_package session's seam, beside useStubBuildTool: the stub
+// writes its archive into the tool root's real build tree, where it outlives
+// the run, so a leftover would satisfy the session's discovered-path check
+// with nothing written. Selected by the session, never by a Lua value.
+void removeStubArchives() {
+    std::error_code error;
+    std::filesystem::directory_iterator iterator(
+        std::filesystem::path{IR_LAUNCHER_ROOT} / "build",
+        error
+    );
+    const std::filesystem::directory_iterator end;
+    while (!error && iterator != end) {
+        const std::string name = iterator->path().filename().string();
+        std::error_code entryError;
+        if (name.starts_with("IRLauncherStub-") && name.ends_with(".zip") &&
+            iterator->is_regular_file(entryError)) {
+            std::filesystem::remove(iterator->path(), entryError);
+        }
+        iterator.increment(error);
+    }
 }
 
 // The settings_roundtrip session's seam: PATH becomes a fixed directory under
@@ -228,6 +258,7 @@ constexpr IRMath::ivec2 treeRow(int row) {
 constexpr IRMath::ivec2 kFilter{200, 56};
 constexpr IRMath::ivec2 kBuildFirstTarget{776, 208};
 constexpr IRMath::ivec2 kRunFirstTarget{864, 208};
+constexpr IRMath::ivec2 kPackageFirstTarget{950, 208};
 constexpr IRMath::ivec2 kFavourite{928, 54};
 constexpr IRMath::ivec2 kSettings{1202, 14};
 constexpr IRMath::ivec2 kEditorHeader{704, 89};
@@ -281,6 +312,12 @@ constexpr Event kBuildEvents[] = {
     IR_LAUNCHER_CLICK(6, kBuildFirstTarget),
     move(60, kBuildFirstTarget),
 };
+constexpr Event kSelectAlphaEvents[] = {IR_LAUNCHER_CLICK(0, treeRow(2))};
+constexpr Event kPackageEvents[] = {
+    IR_LAUNCHER_CLICK(0, kPackageFirstTarget),
+    move(60, kPackageFirstTarget),
+};
+constexpr Event kSelectBetaEvents[] = {IR_LAUNCHER_CLICK(0, treeRow(4))};
 constexpr Event kRunEvents[] = {
     IR_LAUNCHER_CLICK(0, treeRow(4)),
     IR_LAUNCHER_CLICK(6, kRunFirstTarget),
@@ -386,6 +423,11 @@ constexpr IRVideo::GuiTestShot kCatalogTreeShots[] = {
     shot("catalog_tree_slash_focus", kTreeSlashFocusEvents),
 };
 constexpr IRVideo::GuiTestShot kDetailsBuildShots[] = {shot("details_build", kBuildEvents)};
+constexpr IRVideo::GuiTestShot kDetailsPackageShots[] = {
+    shot("package_control_shown", kSelectAlphaEvents),
+    shot("package_built", kPackageEvents),
+    shot("package_control_absent", kSelectBetaEvents),
+};
 constexpr IRVideo::GuiTestShot kRunHandOffShots[] = {shot("run_hand_off", kRunEvents)};
 constexpr IRVideo::GuiTestShot kSettingsShots[] = {
     shot("settings_favourite", kFavouriteEvents),
@@ -416,6 +458,8 @@ std::span<const IRVideo::GuiTestShot> sessionShots(Session session) {
         return kCatalogTreeShots;
     case Session::DETAILS_BUILD:
         return kDetailsBuildShots;
+    case Session::DETAILS_PACKAGE:
+        return kDetailsPackageShots;
     case Session::RUN_HAND_OFF:
         return kRunHandOffShots;
     case Session::SETTINGS_ROUNDTRIP:
@@ -485,6 +529,23 @@ const ReportCheck kStubLines[] = {
 };
 const ReportCheck kBuildExit{"buildExit", "IRLauncherStub=0"};
 const ReportCheck kBuildExitLogged{"log", "BUILD IRLauncherStub exit 0", true};
+const ReportCheck kOnePackageControl{"packageControls", "1"};
+const ReportCheck kNoPackageControl{"packageControls", "0"};
+const ReportCheck kNoArchiveYet{"packagePaths", "IRLauncherStub="};
+const ReportCheck kPackageStubLines[] = {
+    {"log", "IR_LAUNCHER_STUB line 1 --target IRLauncherStubPackage", true},
+    {"log", "IR_LAUNCHER_STUB line 2 --target IRLauncherStubPackage", true},
+    {"log", "IR_LAUNCHER_STUB line 3 --target IRLauncherStubPackage", true},
+};
+const ReportCheck kPackageArgc{"log", "IR_LAUNCHER_STUB argc 2", true};
+const ReportCheck kPackageExit{"packageExit", "IRLauncherStub=0"};
+const ReportCheck kPackageExitLogged{"log", "PACKAGE IRLauncherStub exit 0", true};
+const ReportCheck kArchiveDiscovered{
+    "packagePaths", "IRLauncherStub=build/IRLauncherStub-fixture-test.zip"
+};
+const ReportCheck kArchiveLogged{
+    "log", "PACKAGE IRLauncherStub archive build/IRLauncherStub-fixture-test.zip", true
+};
 const ReportCheck kRunVerdict{"verdict", "CLEAN"};
 const ReportCheck kVerdictShown{"lastRun", "verdict CLEAN", true};
 const ReportCheck kFavouriteAdded{"settings", "|" IR_LAUNCHER_FAVOURITE};
@@ -536,6 +597,20 @@ const ShotAssertions kDetailsBuildAssertions[] = {
      predicate(&reportMatches, &kBuildExit, "build_exit"),
      predicate(&reportMatches, &kBuildExitLogged, "exit_logged")},
 };
+const ShotAssertions kDetailsPackageAssertions[] = {
+    {predicate(&reportMatches, &kOnePackageControl, "package_control_shown"),
+     predicate(&reportMatches, &kNoArchiveYet, "no_archive_before_package")},
+    {predicate(&reportMatches, &kPackageStubLines[0], "package_stub_line_1"),
+     predicate(&reportMatches, &kPackageStubLines[1], "package_stub_line_2"),
+     predicate(&reportMatches, &kPackageStubLines[2], "package_stub_line_3"),
+     predicate(&reportMatches, &kPackageArgc, "package_stub_argc"),
+     predicate(&reportMatches, &kPackageExit, "package_exit"),
+     predicate(&reportMatches, &kPackageExitLogged, "package_exit_logged"),
+     predicate(&reportMatches, &kArchiveDiscovered, "archive_discovered"),
+     predicate(&reportMatches, &kArchiveLogged, "archive_logged"),
+     predicate(&reportMatches, &kOnePackageControl, "package_control_kept")},
+    {predicate(&reportMatches, &kNoPackageControl, "package_control_absent")},
+};
 const ShotAssertions kRunHandOffAssertions[] = {
     {predicate(&reportMatches, &kRunVerdict, "run_verdict"),
      predicate(&reportMatches, &kVerdictShown, "verdict_shown")},
@@ -583,6 +658,8 @@ std::span<const ShotAssertions> sessionAssertions(Session session) {
         return kCatalogTreeAssertions;
     case Session::DETAILS_BUILD:
         return kDetailsBuildAssertions;
+    case Session::DETAILS_PACKAGE:
+        return kDetailsPackageAssertions;
     case Session::RUN_HAND_OFF:
         return kRunHandOffAssertions;
     case Session::SETTINGS_ROUNDTRIP:
@@ -601,6 +678,7 @@ std::span<const ShotAssertions> sessionAssertions(Session session) {
 
 static_assert(std::size(kCatalogTreeAssertions) == std::size(kCatalogTreeShots));
 static_assert(std::size(kDetailsBuildAssertions) == std::size(kDetailsBuildShots));
+static_assert(std::size(kDetailsPackageAssertions) == std::size(kDetailsPackageShots));
 static_assert(std::size(kRunHandOffAssertions) == std::size(kRunHandOffShots));
 static_assert(std::size(kSettingsAssertions) == std::size(kSettingsShots));
 static_assert(std::size(kAssetPreviewAssertions) == std::size(kAssetPreviewShots));
@@ -650,6 +728,7 @@ int main(int argc, char **argv) {
         {"none",
          "catalog_tree",
          "details_build",
+         "details_package",
          "run_hand_off",
          "settings_roundtrip",
          "asset_preview",
@@ -662,6 +741,9 @@ int main(int argc, char **argv) {
     IRLauncher::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     if (IRLauncher::g_session == IRLauncher::Session::DETAILS_BUILD) {
         IRLauncher::useStubBuildTool();
+    } else if (IRLauncher::g_session == IRLauncher::Session::DETAILS_PACKAGE) {
+        IRLauncher::useStubBuildTool();
+        IRLauncher::removeStubArchives();
     } else if (IRLauncher::g_session == IRLauncher::Session::SETTINGS_ROUNDTRIP) {
         IRLauncher::useStubEditors();
     }

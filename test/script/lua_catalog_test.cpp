@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <string>
 
@@ -59,6 +60,7 @@ TEST(LuaCatalogTest, MirrorsCatalogAndAssetFields) {
         assert(valid.manifest.targets[2].display == "Missing fixture")
         assert(valid.manifest.targets[2].description == "")
         assert(#valid.manifest.targets[2].presets == 0)
+        assert(valid.manifest.targets[1].package == false)
         assert(valid.targets[1].name == "IRFixtureBuilt")
         assert(valid.targets[1].display == "Built fixture")
         assert(valid.targets[1].built == true)
@@ -71,6 +73,7 @@ TEST(LuaCatalogTest, MirrorsCatalogAndAssetFields) {
         assert(valid.targets[1].lastRun.argv[1] == "IRFixtureBuilt")
         assert(valid.targets[1].lastRun.argv[2] == "--fixture")
         assert(valid.targets[1].lastRun.at == "2026-10-17T12:00:00Z")
+        assert(valid.targets[1].packagePath == "")
         assert(valid.targets[2].name == "IRFixtureMissing")
         assert(valid.targets[2].display == "Missing fixture")
         assert(valid.targets[2].built == false)
@@ -123,6 +126,37 @@ TEST(LuaCatalogTest, MirrorsCatalogAndAssetFields) {
         assert(data.mtime > 0 and next(data.fields) == nil and #data.parts == 0)
     )lua");
     ASSERT_TRUE(result.valid()) << sol::error(result).what();
+}
+
+TEST(LuaCatalogTest, MirrorsPackageFlagAndArchivePath) {
+    const auto base = std::filesystem::temp_directory_path() /
+                      ("ir_lua_catalog_package_test_" + std::to_string(std::random_device{}()));
+    std::error_code error;
+    std::filesystem::create_directories(base / "creations/demos/packaged", error);
+    ASSERT_FALSE(error);
+    std::filesystem::create_directories(base / "build", error);
+    ASSERT_FALSE(error);
+    std::ofstream(base / "creations/demos/packaged/creation.json") << R"json({
+  "version": 1,
+  "name": "Packaged",
+  "targets": [{"name": "IRPack", "package": true}, {"name": "IRPlain"}]
+})json";
+    std::ofstream(base / "build/IRPack-linux-x86_64.zip") << "zip";
+    std::ofstream(base / "build/IRPlain-linux-x86_64.zip") << "zip";
+
+    IRScript::LuaScript script;
+    script.bindLuaCatalog(base);
+    const auto result = script.lua().safe_script(R"lua(
+        local creation = IRCatalog.scan{}.creations[1]
+        assert(creation.dir == "creations/demos/packaged")
+        assert(creation.manifest.targets[1].package == true)
+        assert(creation.manifest.targets[2].package == false)
+        assert(creation.targets[1].packagePath == "build/IRPack-linux-x86_64.zip")
+        assert(creation.targets[2].packagePath == "")
+    )lua");
+    EXPECT_TRUE(result.valid()) << sol::error(result).what();
+
+    std::filesystem::remove_all(base, error);
 }
 
 TEST(LuaCatalogTest, RefusesEscapingPathsBeforeScanning) {

@@ -41,6 +41,13 @@ Every tracked demo and editor ships a `creation.json` v1 manifest for the
 launcher. The schema is [`docs/design/engine-launcher.md`](../docs/design/engine-launcher.md)
 §D2; validate it with `python3 scripts/lint_creation_manifests.py`.
 
+A creation with render references keeps them in
+`test/references/<preset>/` beside a `manifest.json`. Its `sweep_backends`
+list names the presets whose sets `render-verify --all` gates; it never
+affects a direct `--target` run. Blessing a set for a new preset uses
+`--target … --update-references`, and the same change adds that preset to
+`sweep_backends`.
+
 Minimum for a C++-only creation:
 
 - `CMakeLists.txt`
@@ -66,7 +73,9 @@ is gitignored).
 > hand-rolled `add_custom_target(*Assets ...)` / `add_custom_command(...
 > copy_directory ...)` block.** The helper (`cmake/ir_functions.cmake`) wires
 > the exe-relative `data/`/`shaders/`/`scripts/` layout + Windows DLLs;
-> `irreden_package_target(<target>)` adds the one-command distributable bundle.
+> `irreden_package_target(<target>)` adds the one-command distributable bundle;
+> a target that calls it sets `"package": true` in `creation.json`, which the
+> manifest lint checks against the configured `<target>Package`.
 
 Use `creations/demos/shape_debug/CMakeLists.txt` as the canonical reference.
 See [`docs/agents/BUILD.md`](../docs/agents/BUILD.md) §"Packaging a

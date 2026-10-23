@@ -1,6 +1,7 @@
 {
   "demo": "analytic_oracle",
   "target": "IRAnalyticOracle",
+  "sweep_backends": ["macos-debug", "windows-debug", "linux-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "warmup": 20,
   "shots": [

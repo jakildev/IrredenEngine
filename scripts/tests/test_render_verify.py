@@ -28,6 +28,7 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -764,6 +765,55 @@ class CommittedManifestsResolve(unittest.TestCase):
         self.assertIn("IRLightingSdfBlocker", mismatched)
         self.assertEqual(mismatched["IRLightingSdfBlocker"], "demos/lighting")
 
+    # Which presets each committed reference set gates under --all. A preset
+    # listed here without a committed set (perf_grid on linux-debug) is a
+    # known coverage hole that must keep failing that host's sweep.
+    EXPECTED_SWEEP_SCOPE = {
+        "demos/analytic_oracle": {"macos-debug", "windows-debug", "linux-debug"},
+        "demos/canvas_stress": {"macos-debug", "windows-debug", "linux-debug"},
+        "demos/perf_grid": {"macos-debug", "windows-debug", "linux-debug"},
+        "demos/fog_demo": {"macos-debug", "windows-debug"},
+        "demos/lighting": {"macos-debug", "windows-debug"},
+        "demos/shape_debug": {"macos-debug", "windows-debug"},
+        "demos/lua_pipeline_demo": {"macos-debug"},
+        "demos/ui_widgets": {"macos-debug"},
+        "demos/metal_clear_test": {"macos-debug"},
+        "editors/font_maker": {"macos-debug"},
+        "editors/voxel_editor": {"macos-debug"},
+        "launcher": {"macos-debug"},
+    }
+
+    def _scopes(self):
+        """creation -> (declared scope or None, committed preset dirs).
+
+        Preset dirs come from each creation's own references dir, so test
+        fixtures nested deeper in a creation never count as its coverage.
+        """
+        creations = REPO_ROOT / "creations"
+        scopes = {}
+        for path in self._manifests():
+            creation = path.parents[2].relative_to(creations).as_posix()
+            scope = _rv._parse_sweep_backends(json.loads(path.read_text()))
+            committed = {d.name for d in path.parent.iterdir()
+                         if d.is_dir() and any(d.glob("*.png"))}
+            scopes[creation] = (scope, committed)
+        return scopes
+
+    def test_committed_scope_matches_the_coverage_matrix(self):
+        scopes = self._scopes()
+        for creation, expected in self.EXPECTED_SWEEP_SCOPE.items():
+            with self.subTest(creation=creation):
+                self.assertIn(creation, scopes)
+                self.assertEqual(set(scopes[creation][0] or ()), expected)
+
+    def test_every_committed_reference_set_is_in_its_sweep_scope(self):
+        # A committed set the scope omits would gate nothing under --all.
+        for creation, (scope, committed) in self._scopes().items():
+            with self.subTest(creation=creation):
+                self.assertLessEqual(committed, set(_rv.verify_common.KNOWN_PRESETS))
+                if scope is not None:
+                    self.assertLessEqual(committed, set(scope))
+
 
 class RunResultToken(unittest.TestCase):
     """verify_common.run_result reads ir-run's verdict token."""
@@ -1025,6 +1075,186 @@ class SweepSummary(unittest.TestCase):
         ])
         self.assertIn("total: 39 checks across 2 demos, 0 FAIL", out)
         self.assertEqual(err, "")
+
+    def test_out_of_scope_row_is_its_own_verdict(self):
+        oos = self._row("IRLauncher", "launcher", 0, 0)
+        oos["out_of_scope"] = "windows-debug"
+        out, err = self._summary([self._row("IRShapeDebug", "shape_debug", 0, 24), oos])
+        self.assertRegex(out, r"IRLauncher .* OUT-OF-SCOPE \(windows-debug not declared\)")
+        self.assertNotRegex(out, r"IRLauncher .* PASS")
+        self.assertIn("total: 24 checks across 2 demos, 0 FAIL, 0 skipped, "
+                      "1 out of scope", out)
+        self.assertIn("1 demo(s) OUT-OF-SCOPE on windows-debug: IRLauncher", out)
+        self.assertEqual(err, "")
+
+
+class ParseSweepBackends(unittest.TestCase):
+    def test_absent_key_is_none(self):
+        self.assertIsNone(_rv._parse_sweep_backends({}))
+
+    def test_valid_scope_round_trips(self):
+        self.assertEqual(
+            _rv._parse_sweep_backends({"sweep_backends": ["macos-debug", "windows-debug"]}),
+            ("macos-debug", "windows-debug"))
+
+    def test_rejects_malformed_scope(self):
+        bad = [
+            "macos-debug",                      # not a list
+            [],                                 # empty: would opt out everywhere
+            [None],                             # non-string entry
+            ["macos-debug", "macos-debug"],     # duplicate
+            ["macos"],                          # API family, not a preset
+            ["freebsd-debug"],                  # unknown preset
+        ]
+        for value in bad:
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                _rv._parse_sweep_backends({"sweep_backends": value})
+
+    def test_unknown_host_preset_excludes_nothing(self):
+        manifest = {"sweep_backends": ["macos-debug"]}
+        self.assertTrue(_rv._sweep_excludes(manifest, "windows-debug"))
+        self.assertFalse(_rv._sweep_excludes(manifest, "macos-debug"))
+        self.assertFalse(_rv._sweep_excludes(manifest, "freebsd-debug"))
+        self.assertFalse(_rv._sweep_excludes({}, "windows-debug"))
+
+
+class SweepScope(unittest.TestCase):
+    """``main()`` end to end over a synthetic tree: real ``_verify_one``,
+    real comparator, a fake ``fleet-run`` that writes one black frame."""
+
+    CLEAN_OUT = "ir-run: RESULT=CLEAN exe=IRFake exit=0\n"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.worktree = Path(self._tmp.name)
+        self.exes: dict[str, Path] = {}
+        self.run_targets: list[str] = []
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _demo(self, name, target, *, refs_for=(), **manifest):
+        demo = self.worktree / "creations" / "demos" / name
+        refs = demo / "test" / "references"
+        refs.mkdir(parents=True)
+        (refs / "manifest.json").write_text(json.dumps(
+            {"demo": name, "target": target, "shots": ["a"], **manifest}))
+        for preset in refs_for:
+            (refs / preset).mkdir()
+            _write(refs / preset / "a.png", 16, 16, lambda x, y: BLACK)
+        exe = self.worktree / "build" / name / target
+        exe.parent.mkdir(parents=True)
+        exe.touch()
+        self.exes[target] = exe
+        return refs
+
+    def _main(self, backend, *argv):
+        real_run = _rv.subprocess.run
+
+        def fake_run(cmd, *a, **kw):
+            joined = " ".join(cmd)
+            if "fleet-run" not in joined:
+                return real_run(cmd, *a, **kw)
+            target = next(t for t in self.exes if f" {t} " in joined)
+            self.run_targets.append(target)
+            shots = self.exes[target].parent / "save_files" / "screenshots"
+            _write(shots / "screenshot_000000.png", 16, 16, lambda x, y: BLACK)
+            return _rv.subprocess.CompletedProcess(cmd, 0, self.CLEAN_OUT, "")
+
+        out, err = io.StringIO(), io.StringIO()
+        with patch.object(_rv.subprocess, "run", side_effect=fake_run), \
+                patch.object(_rv.verify_common, "detect_worktree_root",
+                             return_value=self.worktree), \
+                patch.object(_rv.verify_common, "detect_backend", return_value=backend), \
+                patch.object(_rv.verify_common, "find_exe",
+                             side_effect=lambda _b, target, _d: self.exes[target]), \
+                patch.object(_rv, "_verify_one", wraps=_rv._verify_one) as verify, \
+                patch.object(_rv, "_compare_shot", wraps=_rv._compare_shot) as compare, \
+                redirect_stdout(out), redirect_stderr(err):
+            rc = _rv.main(["--no-build", *argv])
+        self.verified = [c.kwargs["target"] for c in verify.call_args_list]
+        self.compares = compare.call_count
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_declared_preset_without_references_still_errors(self):
+        self._demo("owned", "IROwned", refs_for=["windows-debug"],
+                   sweep_backends=["windows-debug"])
+        self._demo("missing", "IRMissing", refs_for=["macos-debug"],
+                   sweep_backends=["macos-debug", "windows-debug"])
+        rc, out, err = self._main("windows-debug", "--all")
+        self.assertEqual(rc, 1)
+        self.assertRegex(out, r"IRMissing .* ERROR \(exit 2\)")
+        self.assertIn("produced NO checks: IRMissing", err)
+        self.assertNotIn("OUT-OF-SCOPE", out)
+
+    def test_omitted_scope_keeps_the_target_in_scope(self):
+        self._demo("legacy", "IRLegacy", refs_for=["macos-debug"])
+        rc, out, err = self._main("windows-debug", "--all")
+        self.assertEqual(rc, 1)
+        self.assertIn("produced NO checks: IRLegacy", err)
+
+    def test_deleting_an_in_scope_reference_set_fails_the_sweep(self):
+        refs = self._demo("owned", "IROwned", refs_for=["windows-debug"],
+                          sweep_backends=["windows-debug"])
+        rc, out, _ = self._main("windows-debug", "--all")
+        self.assertEqual(rc, 0)
+        self.assertIn("total: 1 checks across 1 demos, 0 FAIL", out)
+        shutil.rmtree(refs / "windows-debug")
+        rc, out, err = self._main("windows-debug", "--all")
+        self.assertEqual(rc, 1)
+        self.assertRegex(out, r"IROwned .* ERROR")
+        self.assertIn("produced NO checks: IROwned", err)
+
+    def test_excluded_target_is_out_of_scope_and_never_executes(self):
+        self._demo("owned", "IROwned", refs_for=["windows-debug"],
+                   sweep_backends=["macos-debug", "windows-debug"])
+        self._demo("mac_only", "IRMacOnly", refs_for=["macos-debug"],
+                   sweep_backends=["macos-debug"])
+        rc, out, err = self._main("windows-debug", "--all")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.count("OUT-OF-SCOPE (windows-debug not declared)"), 1)
+        self.assertRegex(out, r"IRMacOnly .* OUT-OF-SCOPE \(windows-debug not declared\)")
+        self.assertIn("1 checks across 2 demos, 0 FAIL, 0 skipped, 1 out of scope", out)
+        self.assertIn("OUT-OF-SCOPE on windows-debug: IRMacOnly", out)
+        self.assertEqual(err, "")
+        self.assertEqual(self.verified, ["IROwned"])
+        self.assertEqual(self.run_targets, ["IROwned"])
+        self.assertEqual(self.compares, 1, "only the in-scope target is compared")
+
+    def test_sweep_update_references_never_blesses_an_excluded_target(self):
+        refs = self._demo("mac_only", "IRMacOnly", refs_for=["macos-debug"],
+                          sweep_backends=["macos-debug"])
+        rc, _, _ = self._main("windows-debug", "--all", "--update-references", "--force")
+        self.assertEqual(rc, 0)
+        self.assertEqual((self.verified, self.run_targets), ([], []))
+        self.assertFalse((refs / "windows-debug").exists())
+
+    def test_unknown_host_preset_keeps_every_target_in_scope(self):
+        self._demo("mac_only", "IRMacOnly", refs_for=["macos-debug"],
+                   sweep_backends=["macos-debug"])
+        rc, out, err = self._main("freebsd-debug", "--all")
+        self.assertEqual(rc, 1)
+        self.assertNotIn("OUT-OF-SCOPE", out)
+        self.assertIn("produced NO checks: IRMacOnly", err)
+
+    def test_malformed_scope_errors_instead_of_shrinking_coverage(self):
+        self._demo("typo", "IRTypo", refs_for=["windows-debug"], sweep_backends=[])
+        rc, out, err = self._main("windows-debug", "--all")
+        self.assertEqual(rc, 1)
+        self.assertRegex(out, r"IRTypo .* ERROR \(manifest 'sweep_backends'")
+        self.assertEqual(self.run_targets, [])
+
+    def test_direct_target_run_ignores_the_scope(self):
+        refs = self._demo("mac_only", "IRMacOnly", refs_for=["macos-debug"],
+                          sweep_backends=["macos-debug"])
+        rc, _, err = self._main("windows-debug", "--target", "IRMacOnly")
+        self.assertEqual(rc, 2)
+        self.assertIn("no references found for backend 'windows-debug'", err)
+        rc, _, _ = self._main("windows-debug", "--target", "IRMacOnly",
+                              "--update-references", "--force")
+        self.assertEqual(rc, 0)
+        self.assertTrue((refs / "windows-debug" / "a.png").is_file())
+        self.assertEqual(self.run_targets, ["IRMacOnly", "IRMacOnly"])
 
 
 if __name__ == "__main__":

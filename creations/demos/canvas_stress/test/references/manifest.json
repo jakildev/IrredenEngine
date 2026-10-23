@@ -1,6 +1,7 @@
 {
   "demo": "canvas_stress",
   "target": "IRCanvasStress",
+  "sweep_backends": ["macos-debug", "windows-debug", "linux-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "warmup": 120,
   "shots": [

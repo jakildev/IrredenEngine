@@ -66,10 +66,11 @@ inline sol::table manifestToLua(sol::state_view lua, const IRAsset::CreationMani
     sol::table targets = lua.create_table(static_cast<int>(manifest.targets_.size()), 0);
     for (std::size_t targetIndex = 0; targetIndex < manifest.targets_.size(); ++targetIndex) {
         const auto &target = manifest.targets_[targetIndex];
-        sol::table targetTable = lua.create_table(0, 4);
+        sol::table targetTable = lua.create_table(0, 5);
         targetTable["name"] = target.name_;
         targetTable["display"] = target.display_;
         targetTable["description"] = target.description_;
+        targetTable["package"] = target.package_;
         sol::table presets = lua.create_table(static_cast<int>(target.presets_.size()), 0);
         for (std::size_t presetIndex = 0; presetIndex < target.presets_.size(); ++presetIndex) {
             sol::table preset = lua.create_table(0, 2);
@@ -129,6 +130,7 @@ inline sol::table catalogToLua(sol::state_view lua, const IRCatalog::Catalog &ca
             targetTable["built"] = target.built_;
             targetTable["exePath"] = target.exePath_;
             targetTable["mtime"] = target.mtime_;
+            targetTable["packagePath"] = target.packagePath_;
             if (target.lastRun_) {
                 targetTable["lastRun"] = verdictToLua(lua, *target.lastRun_);
             }

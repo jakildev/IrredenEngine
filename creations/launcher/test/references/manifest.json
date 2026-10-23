@@ -1,6 +1,7 @@
 {
   "demo": "launcher",
   "target": "IRLauncher",
+  "sweep_backends": ["macos-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "demo_args": ["--catalog-root", "creations/launcher/test/fixture_root"],
   "shots": ["launcher_main"],

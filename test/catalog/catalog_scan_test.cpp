@@ -116,6 +116,76 @@ TEST(CatalogScanTest, MtimeIsUnixSeconds) {
     std::filesystem::remove_all(base, error);
 }
 
+const IRCatalog::TargetState *
+findTarget(const IRCatalog::Creation &creation, const std::string &name) {
+    for (const auto &target : creation.targets_) {
+        if (target.name_ == name) {
+            return &target;
+        }
+    }
+    return nullptr;
+}
+
+TEST(CatalogScanTest, PackagePathNamesTheNewestExactArchive) {
+    const auto base = std::filesystem::temp_directory_path() / "ir_catalog_package_test";
+    std::error_code error;
+    std::filesystem::remove_all(base, error);
+
+    writeText(base / "creations/demos/packaged/creation.json", R"json({
+  "version": 1,
+  "name": "Packaged",
+  "targets": [
+    {"name": "IRPack", "package": true},
+    {"name": "IRPackEmpty", "package": true},
+    {"name": "IRPlain"}
+  ]
+})json");
+    const auto build = base / "build";
+    const auto older = build / "IRPack-linux-x86_64.zip";
+    const auto newer = build / "IRPack-macos-arm64.zip";
+    const auto decoy = build / "IRPack-bar-macos-arm64.zip";
+    const auto nested = build / "package/IRPack-macos-arm64.zip";
+    for (const auto &path :
+         {older,
+          newer,
+          decoy,
+          nested,
+          build / "IRPack-macos.zip",
+          build / "IRPack--arm64.zip",
+          build / "unrelated.zip",
+          build / "IRPlain-macos-arm64.zip"}) {
+        writeText(path, "zip");
+    }
+    const auto now = std::filesystem::file_time_type::clock::now();
+    std::filesystem::last_write_time(older, now - std::chrono::hours(2));
+    std::filesystem::last_write_time(newer, now - std::chrono::hours(1));
+    std::filesystem::last_write_time(decoy, now);
+    std::filesystem::last_write_time(nested, now);
+
+    const IRCatalog::CatalogService service(base);
+    const auto catalog = service.scan(".", "build");
+    const auto *packaged = findCreation(catalog, "creations/demos/packaged");
+    ASSERT_NE(packaged, nullptr);
+    ASSERT_TRUE(packaged->manifest_.has_value());
+    const auto *pack = findTarget(*packaged, "IRPack");
+    const auto *empty = findTarget(*packaged, "IRPackEmpty");
+    const auto *plain = findTarget(*packaged, "IRPlain");
+    ASSERT_NE(pack, nullptr);
+    ASSERT_NE(empty, nullptr);
+    ASSERT_NE(plain, nullptr);
+    EXPECT_EQ(pack->packagePath_, "build/IRPack-macos-arm64.zip");
+    EXPECT_EQ(empty->packagePath_, "");
+    EXPECT_EQ(plain->packagePath_, "") << "a target without package never reports an archive";
+
+    std::filesystem::last_write_time(older, now - std::chrono::hours(1));
+    const auto tied = service.scan(".", "build");
+    const auto *tiedPack = findTarget(*findCreation(tied, "creations/demos/packaged"), "IRPack");
+    ASSERT_NE(tiedPack, nullptr);
+    EXPECT_EQ(tiedPack->packagePath_, "build/IRPack-linux-x86_64.zip");
+
+    std::filesystem::remove_all(base, error);
+}
+
 TEST(CatalogScanTest, RefusesPathsOutsideToolRoot) {
     const IRCatalog::CatalogService service(kFixtureRoot);
     EXPECT_THROW(service.scan("../root", "build"), std::invalid_argument);

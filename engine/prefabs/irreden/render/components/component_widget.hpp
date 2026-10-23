@@ -1,6 +1,7 @@
 #ifndef COMPONENT_WIDGET_H
 #define COMPONENT_WIDGET_H
 
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/render/trixel_font.hpp>
@@ -90,6 +91,24 @@ struct C_WidgetState {
     bool focused_ = false;    // keyboard focus; text inputs are pointer-focus-only
     bool fireAction_ = false; // true for one frame on click-released-over-widget
     float dragValue_ = 0.0f;  // slider's normalized drag value while pressed
+    IRMath::vec2 sliderPressPosition_ = IRMath::vec2(0.0f);
+    float sliderPressFraction_ = 0.0f;
+    float sliderPressValue_ = 0.0f;
+    float sliderFirstClickValue_ = 0.0f;
+    std::uint8_t sliderClickAge_ = 0;
+    bool sliderShiftDrag_ = false;
+    bool sliderSteppedDrag_ = false;
+    bool sliderPressStarted_ = false;
+    bool sliderReleased_ = false;
+    bool sliderDoubleClick_ = false;
+
+    enum class SliderPressRegion : std::uint8_t {
+        NONE = 0,
+        THUMB = 1,
+        TRACK = 2,
+    };
+    SliderPressRegion sliderActiveRegion_ = SliderPressRegion::NONE;
+    SliderPressRegion sliderFirstClickRegion_ = SliderPressRegion::NONE;
 };
 
 // PANEL — bounded rectangle container with an optional title bar.
@@ -125,6 +144,9 @@ struct C_WidgetSlider {
     float minValue_ = 0.0f;
     float maxValue_ = 1.0f;
     float currentValue_ = 0.5f;
+    float defaultValue_ = 0.5f;
+    float step_ = 0.01f;
+    IREntity::EntityId fieldId_ = IREntity::kNullEntity;
     // The label row is one line of this size; label and value readout share it.
     IRRender::TextSize textSize_ = IRRender::TextSize::LARGE;
 };
@@ -336,6 +358,7 @@ struct C_WidgetTextInput {
 
 struct C_WidgetNumberField {
     float value_ = 0.0f;
+    float defaultValue_ = 0.0f;
     float minValue_ = 0.0f;
     float maxValue_ = 1.0f;
     float step_ = 0.0f;
@@ -421,8 +444,13 @@ struct C_WidgetNumberField {
                 editBuffer_.push_back(character);
             }
         }
-        if (backspace && !editBuffer_.empty()) {
-            editBuffer_.pop_back();
+        if (backspace) {
+            if (!editBuffer_.empty()) {
+                editBuffer_.pop_back();
+            } else {
+                value_ = defaultValue_;
+                formatValue(editBuffer_);
+            }
         }
         if (focused) {
             return;

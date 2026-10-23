@@ -1215,15 +1215,92 @@ TEST(SaveSerializers, WidgetSliderRoundTrips) {
     slider.minValue_ = -2.0f;
     slider.maxValue_ = 8.0f;
     slider.currentValue_ = 3.25f;
+    slider.defaultValue_ = 1.5f;
+    slider.step_ = 0.25f;
+    slider.fieldId_ = 912u;
     slider.textSize_ = IRRender::TextSize::SMALL;
     const C_WidgetSlider restored = roundTrip(slider);
     EXPECT_EQ(restored.label_, "Zoom");
     EXPECT_FLOAT_EQ(restored.minValue_, -2.0f);
     EXPECT_FLOAT_EQ(restored.maxValue_, 8.0f);
     EXPECT_FLOAT_EQ(restored.currentValue_, 3.25f);
+    EXPECT_FLOAT_EQ(restored.defaultValue_, 1.5f);
+    EXPECT_FLOAT_EQ(restored.step_, 0.25f);
+    EXPECT_EQ(restored.fieldId_, 912u);
     EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
     expectConsumesAllBytes(slider);
     expectOutOfRangeTextSizeIsRejected(slider, 2);
+}
+
+TEST(SaveSerializers, WidgetSliderRejectsInvalidStoredValues) {
+    const auto invalid = [](float current, float authoredDefault, float step) {
+        IRAsset::MemoryBinaryWriter writer;
+        writer.writeString("S");
+        writer.writeF32(0.0f);
+        writer.writeF32(1.0f);
+        writer.writeF32(current);
+        writer.writeF32(authoredDefault);
+        writer.writeF32(step);
+        writer.writeU64(0);
+        writer.writeU8(static_cast<std::uint8_t>(IRRender::TextSize::LARGE));
+        return deserialize<C_WidgetSlider>(writer.buffer());
+    };
+    EXPECT_FALSE(invalid(2.0f, 0.5f, 0.1f).ok());
+    EXPECT_FALSE(invalid(0.5f, -1.0f, 0.1f).ok());
+    EXPECT_FALSE(invalid(0.5f, 0.5f, 0.0f).ok());
+    EXPECT_FALSE(invalid(0.5f, 0.5f, std::numeric_limits<float>::infinity()).ok());
+}
+
+#ifndef IR_RELEASE
+TEST(SaveSerializers, WidgetAuthoredValueWriterGuardsFire) {
+    IRAsset::MemoryBinaryWriter writer;
+    C_WidgetSlider slider{};
+    slider.defaultValue_ = 2.0f;
+    EXPECT_THROW(IRWorld::SaveSerialize<C_WidgetSlider>::write(writer, slider), std::runtime_error);
+    slider.defaultValue_ = 0.5f;
+    slider.step_ = 0.0f;
+    EXPECT_THROW(IRWorld::SaveSerialize<C_WidgetSlider>::write(writer, slider), std::runtime_error);
+
+    C_WidgetNumberField field{};
+    field.defaultValue_ = 2.0f;
+    EXPECT_THROW(
+        IRWorld::SaveSerialize<C_WidgetNumberField>::write(writer, field),
+        std::runtime_error
+    );
+}
+#endif
+
+TEST(SaveSerializers, WidgetStateRoundTripsAndMigratesIdle) {
+    C_WidgetState active{};
+    active.hovered_ = true;
+    active.pressed_ = true;
+    active.focused_ = true;
+    active.fireAction_ = true;
+    active.dragValue_ = 0.75f;
+    active.sliderPressStarted_ = true;
+    active.sliderDoubleClick_ = true;
+    active.sliderFirstClickRegion_ = C_WidgetState::SliderPressRegion::TRACK;
+
+    const C_WidgetState current = roundTrip(active);
+    EXPECT_FALSE(current.hovered_);
+    EXPECT_FALSE(current.pressed_);
+    EXPECT_FALSE(current.focused_);
+    EXPECT_FALSE(current.fireAction_);
+    EXPECT_FALSE(current.sliderPressStarted_);
+    EXPECT_FALSE(current.sliderDoubleClick_);
+    EXPECT_EQ(current.sliderFirstClickRegion_, C_WidgetState::SliderPressRegion::NONE);
+
+    IRAsset::MemoryBinaryWriter v1;
+    for (int byte = 0; byte < 8; ++byte) {
+        v1.writeU8(0xff);
+    }
+    const IRAsset::Result<C_WidgetState> migrated = migrate<C_WidgetState>(1u, v1.buffer());
+    ASSERT_TRUE(migrated.ok()) << migrated.status_.message_;
+    EXPECT_FALSE(migrated.value_.hovered_);
+    EXPECT_FALSE(migrated.value_.pressed_);
+    EXPECT_FALSE(migrated.value_.focused_);
+    EXPECT_EQ(migrated.value_.sliderFirstClickRegion_, C_WidgetState::SliderPressRegion::NONE);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetState>(), 2u);
 }
 
 TEST(SaveSerializers, WidgetCheckboxRoundTrips) {
@@ -1366,7 +1443,24 @@ TEST(SaveSerializers, TextBearingWidgetV1MigrationsPreserveEveryFieldAndReadLarg
         EXPECT_FLOAT_EQ(slider.value_.minValue_, -2.0f);
         EXPECT_FLOAT_EQ(slider.value_.maxValue_, 8.0f);
         EXPECT_FLOAT_EQ(slider.value_.currentValue_, 3.25f);
+        EXPECT_FLOAT_EQ(slider.value_.defaultValue_, 3.25f);
+        EXPECT_FLOAT_EQ(slider.value_.step_, 0.1f);
+        EXPECT_EQ(slider.value_.fieldId_, IREntity::kNullEntity);
         EXPECT_EQ(slider.value_.textSize_, IRRender::TextSize::LARGE);
+    }
+    {
+        IRAsset::MemoryBinaryWriter v2;
+        v2.writeString("Zoom");
+        v2.writeF32(-2.0f);
+        v2.writeF32(8.0f);
+        v2.writeF32(3.25f);
+        v2.writeU8(static_cast<std::uint8_t>(IRRender::TextSize::SMALL));
+        const IRAsset::Result<C_WidgetSlider> slider = migrate<C_WidgetSlider>(2u, v2.buffer());
+        ASSERT_TRUE(slider.ok()) << slider.status_.message_;
+        EXPECT_FLOAT_EQ(slider.value_.defaultValue_, 3.25f);
+        EXPECT_FLOAT_EQ(slider.value_.step_, 0.1f);
+        EXPECT_EQ(slider.value_.fieldId_, IREntity::kNullEntity);
+        EXPECT_EQ(slider.value_.textSize_, IRRender::TextSize::SMALL);
     }
     {
         IRAsset::MemoryBinaryWriter v1;
@@ -1397,7 +1491,7 @@ TEST(SaveSerializers, TextBearingWidgetV1MigrationsPreserveEveryFieldAndReadLarg
     }
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetLabel>(), 2u);
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetButton>(), 2u);
-    EXPECT_EQ(IRWorld::saveVersion<C_WidgetSlider>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetSlider>(), 3u);
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetCheckbox>(), 2u);
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetDropdown>(), 2u);
 }
@@ -1431,6 +1525,7 @@ TEST(SaveSerializers, WidgetTextInputRoundTrips) {
 TEST(SaveSerializers, WidgetNumberFieldRoundTripsAndDropsEditState) {
     C_WidgetNumberField field{};
     field.value_ = 3.5f;
+    field.defaultValue_ = 1.5f;
     field.minValue_ = -2.0f;
     field.maxValue_ = 8.0f;
     field.step_ = 0.5f;
@@ -1439,6 +1534,7 @@ TEST(SaveSerializers, WidgetNumberFieldRoundTripsAndDropsEditState) {
     field.editing_ = true;
     const C_WidgetNumberField restored = roundTrip(field);
     EXPECT_FLOAT_EQ(restored.value_, 3.5f);
+    EXPECT_FLOAT_EQ(restored.defaultValue_, 1.5f);
     EXPECT_FLOAT_EQ(restored.minValue_, -2.0f);
     EXPECT_FLOAT_EQ(restored.maxValue_, 8.0f);
     EXPECT_FLOAT_EQ(restored.step_, 0.5f);
@@ -1451,15 +1547,17 @@ TEST(SaveSerializers, WidgetNumberFieldRoundTripsAndDropsEditState) {
 }
 
 TEST(SaveSerializers, WidgetNumberFieldRejectsInvalidStoredValues) {
-    const auto invalid = [](float value, float minValue, float maxValue, float step) {
-        IRAsset::MemoryBinaryWriter writer;
-        writer.writeF32(value);
-        writer.writeF32(minValue);
-        writer.writeF32(maxValue);
-        writer.writeF32(step);
-        writer.writeU8(static_cast<std::uint8_t>(IRRender::TextSize::LARGE));
-        return deserialize<C_WidgetNumberField>(writer.buffer());
-    };
+    const auto invalid =
+        [](float value, float minValue, float maxValue, float step, float authoredDefault = 0.0f) {
+            IRAsset::MemoryBinaryWriter writer;
+            writer.writeF32(value);
+            writer.writeF32(minValue);
+            writer.writeF32(maxValue);
+            writer.writeF32(step);
+            writer.writeF32(authoredDefault);
+            writer.writeU8(static_cast<std::uint8_t>(IRRender::TextSize::LARGE));
+            return deserialize<C_WidgetNumberField>(writer.buffer());
+        };
     EXPECT_FALSE(invalid(0.0f, 1.0f, 1.0f, 0.0f).ok());
     EXPECT_FALSE(invalid(0.0f, std::numeric_limits<float>::infinity(), 1.0f, 0.0f).ok());
     EXPECT_FALSE(invalid(0.0f, 0.0f, std::numeric_limits<float>::infinity(), 0.0f).ok());
@@ -1467,6 +1565,25 @@ TEST(SaveSerializers, WidgetNumberFieldRejectsInvalidStoredValues) {
     EXPECT_FALSE(invalid(2.0f, 0.0f, 1.0f, 0.0f).ok());
     EXPECT_FALSE(invalid(std::numeric_limits<float>::infinity(), 0.0f, 1.0f, 0.0f).ok());
     EXPECT_FALSE(invalid(0.0f, 0.0f, 1.0f, std::numeric_limits<float>::infinity()).ok());
+    EXPECT_FALSE(invalid(0.5f, 0.0f, 1.0f, 0.1f, 2.0f).ok());
+    EXPECT_FALSE(invalid(0.5f, 0.0f, 1.0f, 0.1f, std::numeric_limits<float>::infinity()).ok());
+}
+
+TEST(SaveSerializers, WidgetNumberFieldV1MigrationDerivesDefault) {
+    IRAsset::MemoryBinaryWriter v1;
+    v1.writeF32(3.5f);
+    v1.writeF32(-2.0f);
+    v1.writeF32(8.0f);
+    v1.writeF32(0.5f);
+    v1.writeU8(static_cast<std::uint8_t>(IRRender::TextSize::SMALL));
+    const IRAsset::Result<C_WidgetNumberField> field =
+        migrate<C_WidgetNumberField>(1u, v1.buffer());
+    ASSERT_TRUE(field.ok()) << field.status_.message_;
+    EXPECT_FLOAT_EQ(field.value_.value_, 3.5f);
+    EXPECT_FLOAT_EQ(field.value_.defaultValue_, 3.5f);
+    EXPECT_FLOAT_EQ(field.value_.step_, 0.5f);
+    EXPECT_EQ(field.value_.textSize_, IRRender::TextSize::SMALL);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetNumberField>(), 2u);
 }
 
 // --- truncation ------------------------------------------------------------

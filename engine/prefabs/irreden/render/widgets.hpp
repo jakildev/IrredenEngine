@@ -13,17 +13,72 @@
 #include <irreden/render/components/component_widget_focus_request.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
+#include <irreden/render/gui_rect.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
+#include <irreden/render/widget_text_layout.hpp>
 
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace IRPrefab::Widget {
+
+struct SliderOptions {
+    std::optional<float> defaultValue_;
+    std::optional<float> step_;
+    IREntity::EntityId fieldId_ = IREntity::kNullEntity;
+};
+
+inline float clampSliderValue(const IRComponents::C_WidgetSlider &slider, float value) {
+    return IRMath::clamp(value, slider.minValue_, slider.maxValue_);
+}
+
+inline float snapSliderValue(const IRComponents::C_WidgetSlider &slider, float value) {
+    const float clamped = clampSliderValue(slider, value);
+    const float steps = (clamped - slider.minValue_) / slider.step_;
+    return clampSliderValue(
+        slider,
+        slider.minValue_ + static_cast<float>(IRMath::roundHalfUp(steps)) * slider.step_
+    );
+}
+
+inline void setSliderValue(IRComponents::C_WidgetSlider &slider, float value) {
+    slider.currentValue_ = clampSliderValue(slider, value);
+}
+
+inline void resetSliderValue(IRComponents::C_WidgetSlider &slider) {
+    slider.currentValue_ = slider.defaultValue_;
+}
+
+inline void nudgeSliderValue(IRComponents::C_WidgetSlider &slider, int steps) {
+    setSliderValue(slider, slider.currentValue_ + static_cast<float>(steps) * slider.step_);
+}
+
+inline IRPrefab::GuiRect sliderThumbRect(
+    const IRComponents::C_Widget &widget,
+    const IRComponents::C_WidgetSlider &slider,
+    const IRComponents::C_GuiPosition &guiPos,
+    const WidgetTheme &theme
+) {
+    const int labelHeight = IRPrefab::WidgetText::sliderLabelHeight(slider);
+    const float range = slider.maxValue_ - slider.minValue_;
+    const float fraction =
+        IRMath::clamp((slider.currentValue_ - slider.minValue_) / range, 0.0f, 1.0f);
+    const int thumbWidth = theme.sliderThumbWidth_;
+    return {
+        IRMath::ivec2(
+            guiPos.pos_.x +
+                static_cast<int>(fraction * static_cast<float>(widget.size_.x - thumbWidth)),
+            guiPos.pos_.y + labelHeight
+        ),
+        IRMath::ivec2(thumbWidth, widget.size_.y - labelHeight),
+    };
+}
 
 // A hit region draws nothing, so keyboard focus on one would be invisible.
 inline bool isTabFocusCandidate(const IRComponents::C_Widget &widget) {
@@ -144,13 +199,22 @@ inline IREntity::EntityId makeSlider(
     float minValue,
     float maxValue,
     float initialValue,
-    IRRender::TextSize textSize = IRRender::TextSize::LARGE
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE,
+    SliderOptions options = {}
 ) {
     IRComponents::C_WidgetSlider sliderData;
     sliderData.label_ = std::move(label);
     sliderData.minValue_ = minValue;
     sliderData.maxValue_ = maxValue;
-    sliderData.currentValue_ = initialValue;
+    sliderData.currentValue_ = IRMath::clamp(initialValue, minValue, maxValue);
+    sliderData.defaultValue_ =
+        IRMath::clamp(options.defaultValue_.value_or(sliderData.currentValue_), minValue, maxValue);
+    sliderData.step_ = options.step_.value_or((maxValue - minValue) / 100.0f);
+    IR_ASSERT(
+        IRMath::isFinite(sliderData.step_) && sliderData.step_ > 0.0f,
+        "C_WidgetSlider step must be finite and above zero"
+    );
+    sliderData.fieldId_ = options.fieldId_;
     sliderData.textSize_ = textSize;
     return IREntity::createEntity(
         IRComponents::C_Widget{IRComponents::WidgetKind::SLIDER, size},
@@ -264,7 +328,7 @@ inline IREntity::EntityId hoveredWidget() {
 
 inline void setSliderValue(IREntity::EntityId widget, float value) {
     auto &slider = IREntity::getComponent<IRComponents::C_WidgetSlider>(widget);
-    slider.currentValue_ = IRMath::clamp(value, slider.minValue_, slider.maxValue_);
+    setSliderValue(slider, value);
 }
 
 inline void setCheckboxState(IREntity::EntityId widget, bool checked) {
@@ -398,6 +462,7 @@ inline IREntity::EntityId makeNumberField(
     field.step_ = step;
     field.textSize_ = textSize;
     field.setValue(value);
+    field.defaultValue_ = field.value_;
     return IREntity::createEntity(
         IRComponents::C_Widget{IRComponents::WidgetKind::NUMBER_FIELD, size},
         IRComponents::C_GuiPosition{pos},

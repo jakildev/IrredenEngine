@@ -16,23 +16,25 @@ python3 scripts/render-verify.py --target IRLauncher
 bash scripts/fleet/tests/run_all.sh --only ir_launcher
 ```
 
-Sessions: `catalog_tree`, `details_build`, `run_hand_off`, `settings_roundtrip`,
-`asset_preview`, `thumbnail_chain`, and `dockspace_roundtrip` (`main_lua.cpp`
-shot tables). `run_hand_off` needs the `ir-run` beside this checkout's sources
+Sessions: `catalog_tree`, `details_build`, `details_package`, `run_hand_off`,
+`settings_roundtrip`, `asset_preview`, `thumbnail_chain`, and
+`dockspace_roundtrip` (`main_lua.cpp` shot tables). `run_hand_off` needs the `ir-run` beside this checkout's sources
 on PATH first, or an `ir-run` that knows `--result-file`.
 
 ## Layout
 
 - `main_lua.cpp` — pipelines, the tool root (`IR_LAUNCHER_ROOT`, set before
   any script), the launcher-local `IRLauncher` table, the session shot tables.
-- `main.lua` — the app: catalog, Build / Run / editor flows, keyboard, systems.
+- `main.lua` — the app: catalog, Build / Package / Run / editor flows, keyboard,
+  systems.
 - `scripts/launcher_layout.lua` — the dock tree's leaf-relative widget geometry.
   The session shot tables click at these numbers; move both together.
 - `scripts/catalog_view.lua`, `details.lua`, `log_panel.lua`, `settings.lua`,
   `assets.lua` — one zone each; `scripts/widget_list.lua` is the shared
   destroy-and-empty helper for a zone's widget ids.
 - `test/fixture_root/` — the catalog the sessions and the reference show;
-  `test/stub_bin/ir-build` — the build tool `details_build` runs;
+  `test/stub_bin/ir-build` — the build tool `details_build` and
+  `details_package` run;
   `test/stub_editors/` — the whole PATH `settings_roundtrip` sees (`code` only).
 
 ## Gotchas

@@ -1,7 +1,9 @@
 -- Center zone: the selected creation. Name, description, tags, docs links,
 -- Open in IDE / Open folder, and one row per target with its built state,
--- last verdict, preset dropdown, Build and Run. Every widget here is rebuilt
--- on selection, so the zone holds nothing between selections but its panel.
+-- last verdict, preset dropdown, Build and Run, plus Package and the latest
+-- archive for a target whose manifest sets `package`. Every widget here is
+-- rebuilt on selection, so the zone holds nothing between selections but its
+-- panel.
 
 local L = require("launcher_layout")
 local WidgetList = require("widget_list")
@@ -90,6 +92,16 @@ local function builtText(target)
     return "BUILT " .. IRLauncher.formatTime(target.mtime)
 end
 
+-- The newest archive on disk, which may predate the last Package run: the
+-- run's own result is its exit line in the log.
+local function packageText(target, cols)
+    if target.packagePath == "" then
+        return "NO PACKAGE YET"
+    end
+    local prefix = "LATEST "
+    return prefix .. clip(target.packagePath, cols - #prefix)
+end
+
 local function verdictText(target)
     local run = target.lastRun
     if not run then
@@ -100,7 +112,7 @@ local function verdictText(target)
 end
 
 function M.new(app)
-    local details = { widgets = {}, presets = {}, page = 0 }
+    local details = { widgets = {}, presets = {}, packages = {}, page = 0 }
     details.panel = IRGui.makePanel(L.details.x, L.details.y, L.details.w, L.details.h, "DETAILS")
     return details
 end
@@ -159,6 +171,16 @@ local function showTargets(app, details, creation)
             app.selectTarget(index)
             app.run(index)
         end, SMALL))
+        if manifestTargets[index].package then
+            local k = L.details.package
+            add(details, IRGui.makeButton(k.x, y + k.dy, k.w, k.h, "PACKAGE", function()
+                app.selectTarget(index)
+                app.package(target.name)
+            end, SMALL))
+            add(details, IRGui.makeLabel(L.details.left, y + L.details.packageDy,
+                packageText(target, L.details.cols), nil, SMALL))
+            details.packages[#details.packages + 1] = target.name .. "=" .. target.packagePath
+        end
     end
     if #targets > perPage then
         local m = L.details.more
@@ -173,11 +195,20 @@ local function showTargets(app, details, creation)
     end
 end
 
+local function reportPackages(details)
+    if IRTest then
+        IRTest.report("packageControls", tostring(#details.packages))
+        IRTest.report("packagePaths", table.concat(details.packages, "|"))
+    end
+end
+
 function M.show(app, details, creation)
     M.clear(details)
+    details.packages = {}
     details.placed = { x = L.details.name.x, y = L.details.name.y, w = 0, h = 0 }
     if not creation then
         add(details, IRGui.makeLabel(L.details.name.x, L.details.name.y, "SELECT A CREATION"))
+        reportPackages(details)
         return
     end
     add(details, IRGui.makeLabel(L.details.name.x, L.details.name.y,
@@ -232,6 +263,7 @@ function M.show(app, details, creation)
         end
         showTargets(app, details, creation)
     end
+    reportPackages(details)
 end
 
 -- Records a preset dropdown change so the next show and Enter use it.

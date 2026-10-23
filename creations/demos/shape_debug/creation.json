@@ -13,6 +13,7 @@
     {
       "name": "IRShapeDebug",
       "description": "Runs the SDF shape-debug and render-verification reference scene.",
+      "package": true,
       "presets": [
         {
           "name": "Interactive",
