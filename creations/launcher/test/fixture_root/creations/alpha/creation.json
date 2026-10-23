@@ -9,6 +9,7 @@
     {
       "name": "IRLauncherStub",
       "display": "Stub target",
+      "package": true,
       "presets": [{ "name": "Default", "args": [] }]
     }
   ]

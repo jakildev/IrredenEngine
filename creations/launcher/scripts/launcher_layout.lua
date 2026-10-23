@@ -42,6 +42,8 @@ L.details.targets = 5
 L.details.preset = { x = 372, w = 124, h = 14 }
 L.details.build = { x = 372, dy = 18, w = 40, h = 16 }
 L.details.run = { x = 416, dy = 18, w = 40, h = 16 }
+L.details.package = { x = 458, dy = 18, w = 42, h = 16 }
+L.details.packageDy = 36
 L.details.more = { x = 460, y = 460, w = 36, h = 16 }
 
 L.settings = {}
@@ -111,6 +113,7 @@ function L.update(tree, details, assets, log)
     L.details.preset.x = details.x + details.w - 130
     L.details.build.x = details.x + details.w - 130
     L.details.run.x = details.x + details.w - 86
+    L.details.package.x = details.x + details.w - 44
     L.details.more.x, L.details.more.y = details.x + details.w - 42, details.y + details.h - 20
     setRect(L.details.thumbnail, details.x + details.w - 90, details.y + 34,
         math.min(82, details.w - 16), 54)

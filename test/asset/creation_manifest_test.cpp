@@ -145,7 +145,36 @@ TEST(CreationManifestTest, MinimalManifestTakesDefaults) {
     ASSERT_EQ(m.targets_.size(), 1u);
     EXPECT_EQ(m.targets_[0].display_, "IRTiny");
     EXPECT_TRUE(m.targets_[0].description_.empty());
+    EXPECT_FALSE(m.targets_[0].package_);
     EXPECT_TRUE(m.targets_[0].presets_.empty());
+}
+
+TEST(CreationManifestTest, PackageFlagReachesTheTarget) {
+    const CreationManifest m = parseOk(R"({
+  "version": 1,
+  "name": "Packaged",
+  "targets": [
+    {"name": "IRPackaged", "package": true},
+    {"name": "IRExplicitlyNot", "package": false},
+    {"name": "IRAbsent"}
+  ]
+})");
+    ASSERT_EQ(m.targets_.size(), 3u);
+    EXPECT_TRUE(m.targets_[0].package_);
+    EXPECT_FALSE(m.targets_[1].package_);
+    EXPECT_FALSE(m.targets_[2].package_);
+}
+
+TEST(CreationManifestTest, NonBooleanPackageFailsTheManifest) {
+    for (const std::string_view value : {R"("true")", "1", "null", "[]"}) {
+        const std::string text = R"({"version": 1, "name": "N", "targets": [{"name": "IRN", )"
+                                 R"("package": )" +
+                                 std::string(value) + "}]}";
+        EXPECT_NE(
+            expectKeyError(text, "targets[0].package").find("expected a boolean"),
+            std::string::npos
+        ) << value;
+    }
 }
 
 TEST(CreationManifestTest, EveryKindParses) {

@@ -78,6 +78,70 @@ findExecutables(const std::filesystem::path &buildDir) {
     return executables;
 }
 
+struct PackageArchive {
+    std::string filename_;
+    std::filesystem::path path_;
+    std::filesystem::file_time_type modified_;
+};
+
+// Regular files directly under @p buildDir ending in `.zip`; symlinks are skipped.
+std::vector<PackageArchive> findArchives(const std::filesystem::path &buildDir) {
+    std::vector<PackageArchive> archives;
+    std::error_code error;
+    std::filesystem::directory_iterator iterator(
+        buildDir,
+        std::filesystem::directory_options::skip_permission_denied,
+        error
+    );
+    const std::filesystem::directory_iterator end;
+    while (!error && iterator != end) {
+        const auto &entry = *iterator;
+        std::string filename = entry.path().filename().string();
+        std::error_code entryError;
+        if (filename.ends_with(".zip") && !entry.is_symlink(entryError) &&
+            entry.is_regular_file(entryError)) {
+            const auto modified = entry.last_write_time(entryError);
+            if (!entryError) {
+                archives.push_back({std::move(filename), entry.path(), modified});
+            }
+        }
+        iterator.increment(error);
+    }
+    return archives;
+}
+
+// `<target>-<os>-<arch>.zip`, the name irreden_package_target writes: exactly one
+// `-` between two non-empty parts after the prefix, so `IRFoo` never claims the
+// archive of a target named `IRFoo-bar`.
+bool isPackageArchiveOf(std::string_view filename, std::string_view target) {
+    constexpr std::string_view kExtension = ".zip";
+    if (filename.size() <= target.size() + 1 + kExtension.size() || !filename.starts_with(target) ||
+        filename[target.size()] != '-') {
+        return false;
+    }
+    const std::string_view tag =
+        filename.substr(target.size() + 1, filename.size() - target.size() - 1 - kExtension.size());
+    const std::size_t dash = tag.find('-');
+    return dash != std::string_view::npos && dash > 0 && dash + 1 < tag.size() &&
+           tag.find('-', dash + 1) == std::string_view::npos;
+}
+
+// The newest archive of @p target; equal times resolve to the lexically first name.
+const PackageArchive *
+newestPackageArchive(const std::vector<PackageArchive> &archives, std::string_view target) {
+    const PackageArchive *newest = nullptr;
+    for (const auto &archive : archives) {
+        if (!isPackageArchiveOf(archive.filename_, target)) {
+            continue;
+        }
+        if (newest == nullptr || archive.modified_ > newest->modified_ ||
+            (archive.modified_ == newest->modified_ && archive.filename_ < newest->filename_)) {
+            newest = &archive;
+        }
+    }
+    return newest;
+}
+
 std::optional<std::int64_t>
 optionalInteger(const IRAsset::JsonValue &object, std::string_view key) {
     const auto *value = object.find(key);
@@ -227,6 +291,7 @@ Catalog CatalogService::scan(std::string_view root, std::string_view buildDir) c
     const auto resolvedRoot = resolve(root, "root");
     const auto resolvedBuildDir = resolve(buildDir, "buildDir");
     const auto executables = findExecutables(resolvedBuildDir);
+    const auto archives = findArchives(resolvedBuildDir);
 
     Catalog catalog;
     for (const auto &directory : creationCandidates(resolvedRoot)) {
@@ -279,6 +344,11 @@ Catalog CatalogService::scan(std::string_view root, std::string_view buildDir) c
                     state.lastRun_ = readVerdict(
                         resolvedBuildDir / "ir-run-results" / (target.name_ + ".last.json")
                     );
+                }
+            }
+            if (target.package_) {
+                if (const auto *archive = newestPackageArchive(archives, target.name_)) {
+                    state.packagePath_ = detail::relativeString(archive->path_, m_toolRoot);
                 }
             }
             creation.targets_.push_back(std::move(state));

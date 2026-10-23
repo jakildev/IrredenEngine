@@ -7,6 +7,7 @@ before \`__\` in its filename is the key path the diagnostic must name.
   device stem.
 - \`targets[0].display__*.json\` and \`targets[0].description__*.json\`: a
   non-string optional target label.
+- \`targets[0].package__*.json\`: a non-boolean package flag.
 - \`targets[0].presets[0].name__*.json\`: a missing, empty, or non-string
   required preset name.
 - \`thumbnail__*.json\`: an empty, NUL-containing, absolute, or escaping

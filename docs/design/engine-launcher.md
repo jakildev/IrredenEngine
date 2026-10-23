@@ -110,6 +110,12 @@ targets (the lighting family). Schema v1:
   separate cleanup, not a launcher blocker.
 - `presets[].args` are the exe's own arguments; the first preset is the Run
   button's default.
+- `targets[].package` (optional boolean, default `false`) says the creation
+  calls `irreden_package_target` for that target, so a `<name>Package` build
+  target exists. It is declared, not inferred, so an unconfigured tree still
+  knows it. `lint_creation_manifests.py --build-dir` requires the flag and the
+  configured `<name>Package` target to agree in both directions. It is an
+  additive v1 key: an older reader ignores it.
 - The two path keys have different bases. `thumbnail` (optional) is
   relative to the **creation directory**: a manifest need not know its own
   location, and thumbnails live under the creation's `test/references/`.
@@ -658,9 +664,9 @@ scope; the asset's own tool is.
 
 ### D11 — Non-goals
 
-No fleet integration (jobs, PRs, claims); no package or export button in v1
-(a `<target>Package` button is a follow-up under the cross-host-shippability
-objective); no target renaming; no multi-root; no embedding a running demo in
+No fleet integration (jobs, PRs, claims); no export button, and the Package
+button (see UI) builds the archive only: the clean-box smoke stays with the
+cross-host-shippability objective; no target renaming; no multi-root; no embedding a running demo in
 the launcher window.
 
 ## UI
@@ -674,7 +680,12 @@ A four-zone dockspace (`ui_dockspace` layout API, serialized to settings):
 - **Center — details.** Thumbnail, name, description, docs links (open in
   editor), tags, and one row per target: display name, built state and mtime,
   last verdict with time, preset dropdown, Build, Run, Open in IDE, Open
-  folder.
+  folder. A target with `package` also gets Package, which builds
+  `<name>Package` through the same `ir-build` tool slot as Build, and a
+  "latest package" line. That path is the newest `<name>-<os>-<arch>.zip`
+  directly under the build directory, as `IRCatalog.scan` finds it
+  (`packagePath`); it may predate the last run, whose own result is its exit
+  line in the log.
 - **Bottom — log.** The live `ir-build` stream (scroll list over a line
   ring; tail follows unless scrolled up), the last hand-off result, and
   "Open log in IDE" for the full file.
@@ -887,7 +898,7 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   one.
 - Target-name normalisation is a separate sonnet task once `display` carries
   the shown names.
-- The `<target>Package` button and a clean-box smoke row belong to
-  `docs/design/objectives/cross-host-shippability.md`.
+- The `<target>Package` button has landed (UI, details). The clean-box smoke
+  row belongs to `docs/design/objectives/cross-host-shippability.md`.
 - Multi-root and a worktree picker are the first v2 slice; a fleet status
   panel is deliberately not planned.

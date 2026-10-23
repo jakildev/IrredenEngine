@@ -1,9 +1,9 @@
 -- IRLauncher: browse, build and run the creations of the checkout this
--- launcher was built from. The catalog comes from IRCatalog, Build is the
--- `ir-build` tool run through IREngine.spawnTool and polled into the log
--- from a RENDER-phase system, and Run hands the process off to the target
--- through IREngine.handOff from an INPUT-phase system, after a Build when the
--- target is not built yet. Only one child runs at a time.
+-- launcher was built from. The catalog comes from IRCatalog, Build and
+-- Package are the `ir-build` tool run through IREngine.spawnTool and polled
+-- into the log from a RENDER-phase system, and Run hands the process off to
+-- the target through IREngine.handOff from an INPUT-phase system, after a
+-- Build when the target is not built yet. Only one child runs at a time.
 
 package.path = "scripts/?.lua;" .. package.path
 
@@ -170,6 +170,43 @@ function app.build(targetName, onSuccess)
                 onSuccess()
             elseif onSuccess then
                 app.log("RUN " .. targetName .. " cancelled: the build failed")
+            end
+        end)
+end
+
+local function findTargetState(targetName)
+    for _, creation in ipairs(app.creations) do
+        for _, target in ipairs(creation.targets) do
+            if target.name == targetName then
+                return target
+            end
+        end
+    end
+    return nil
+end
+
+-- Builds `<target>Package`, the target irreden_package_target adds. The
+-- archive path is what the rescan finds on disk, never one predicted here.
+function app.package(targetName)
+    local label = "PACKAGE " .. targetName
+    if busy(label) then
+        return
+    end
+    spawn("package", label, { tool = "ir-build", target = targetName .. "Package" },
+        function(code)
+            app.log(string.format("%s exit %d", label, code))
+            if IRTest then
+                IRTest.report("packageExit", targetName .. "=" .. code)
+            end
+            app.rescan()
+            if code ~= 0 then
+                return
+            end
+            local target = findTargetState(targetName)
+            if target and target.packagePath ~= "" then
+                app.log(label .. " archive " .. target.packagePath)
+            else
+                app.log(label .. ": no archive found in the build directory")
             end
         end)
 end
