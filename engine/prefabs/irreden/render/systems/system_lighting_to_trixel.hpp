@@ -38,7 +38,7 @@ namespace IRSystem {
 
 // Must match local_size in c_lighting_to_trixel.glsl / .metal.
 constexpr int kLightingToTrixelGroupSize = 16;
-constexpr int kGlitchSourceImageUnit = IRPlatform::kIsOpenGL ? 7 : 8;
+constexpr int kGlitchSourceImageUnit = IRPlatform::kIsOpenGL ? 3 : 8;
 
 // CPU-side mirror of the GLSL/MSL `FrameDataLightingToTrixel` UBO.
 // `lutEnabled_` activates palette LUT shading, which replaces the plain

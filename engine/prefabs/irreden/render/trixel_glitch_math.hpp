@@ -216,6 +216,8 @@ inline IRMath::uvec4 packSigned(int x, int y, int z, int w) {
 }
 
 // Header word 1: table mask, table base word, record base word, max spill.
+// Header word 2: per-axis frame base, force-scan flag, cardinal-presentation
+// flag, reserved.
 struct SubjectBufferLayout {
     std::uint32_t tableMask_ = 0u;
     std::uint32_t tableBase_ = kSubjectHeaderWords;
@@ -308,6 +310,11 @@ inline void setPerAxisFrameWords(
     words[2].y = forceScan ? 1u : 0u;
     words[base] = packSigned(storeFrame.x, storeFrame.y, storeFrame.z, kPerAxisFaceStep);
     words[base + 1u] = packSigned(snapshotOrigin.x, snapshotOrigin.y, depthScale, depthBias);
+}
+
+inline void
+setCardinalPresentationFlag(std::vector<IRMath::uvec4> &words, bool cardinalPresentation) {
+    words[2].z = cardinalPresentation ? 1u : 0u;
 }
 
 // The kernel's id -> slot probe: -1 for the null id or an id with no subject.

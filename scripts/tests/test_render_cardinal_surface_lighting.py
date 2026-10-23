@@ -13,6 +13,36 @@ from pathlib import Path
 from shader_contract_helpers import extract_block, extract_function, replace_once
 from test_render_cardinal_voxel_receiver import COMPILER, ROOT, shader_directory
 
+
+def glsl_include_closure(path, seen=None):
+    if seen is None:
+        seen = set()
+    path = path.resolve()
+    if path in seen:
+        return ""
+    seen.add(path)
+    source = path.read_text()
+    includes = re.findall(r'^\s*#include\s+"([^"]+)"', source, re.MULTILINE)
+    return "\n".join(
+        [source, *(glsl_include_closure(path.parent / include, seen) for include in includes)]
+    )
+
+
+def glsl_image_bindings(source):
+    declarations = re.finditer(
+        r"layout\((?P<layout>[^)]*)\)\s*"
+        r"(?:(?:readonly|writeonly)\s+)?uniform\s+"
+        r"[iu]?image\w+\s+(?P<name>\w+)",
+        source,
+    )
+    bindings = []
+    for declaration in declarations:
+        binding = re.search(r"\bbinding\s*=\s*(\d+)", declaration.group("layout"))
+        if binding:
+            bindings.append((int(binding.group(1)), declaration.group("name")))
+    return bindings
+
+
 PREAMBLE = r"""
 #include <cstdio>
 #include <cstdlib>
@@ -255,7 +285,7 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
         self.assertIn("LightingToTrixelGlitchSourceProgram", ensure_programs)
         self.assertIn("ensureGlitchSourcePrograms();", producer)
         self.assertIn("ensureGlitchPresentationImages(textures);", producer)
-        self.assertIn("IRPlatform::kIsOpenGL ? 7 : 8", producer)
+        self.assertIn("IRPlatform::kIsOpenGL ? 3 : 8", producer)
         selection = re.search(
             r"ShaderProgram \*lightingProgram\s*=.*?;",
             producer,
@@ -281,9 +311,6 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                 else "static uint4 glitchLoadEffectColour(",
             )
             self.assertIn("isCardinalVoxelSurface", effect)
-            mutated_effect = effect.replace("isCardinalVoxelSurface", "alwaysSourceLit", 1)
-            self.assertNotEqual(mutated_effect, effect)
-            self.assertNotIn("isCardinalVoxelSurface", mutated_effect)
 
             refresh = (
                 "imageStore(glitchSourceLitColors, pixel, imageLoad(trixelColors, pixel));"
@@ -292,8 +319,6 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
             )
             empty = "if (encoded >="
             self.assertLess(lighting.index(refresh), lighting.index(empty))
-            mutated_lighting = lighting.replace(refresh, "removedSourceRefresh", 1)
-            self.assertNotIn(refresh, mutated_lighting[:mutated_lighting.index(empty)])
 
             shape_gate = re.search(
                 r"#if IR_SHAPE_LIGHTING\s*if \(!glitchPresentationOverride",
@@ -301,9 +326,21 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
             )
             self.assertIsNotNone(shape_gate)
 
-        glsl = (shader_directory("glsl") / "c_lighting_to_trixel_body.glsl").read_text()
+        glsl_path = shader_directory("glsl") / "c_lighting_to_trixel_body.glsl"
+        glsl = glsl_path.read_text()
         metal = (shader_directory("metal") / "c_lighting_to_trixel_body.metal").read_text()
-        self.assertIn("layout(rgba8, binding = 7) writeonly", glsl)
+        self.assertIn("layout(rgba8, binding = 3) writeonly", glsl)
+        source_binding = next(
+            binding
+            for binding, name in glsl_image_bindings(glsl)
+            if name == "glitchSourceLitColors"
+        )
+        collisions = [
+            name
+            for binding, name in glsl_image_bindings(glsl_include_closure(glsl_path))
+            if binding == source_binding
+        ]
+        self.assertEqual(collisions, ["glitchSourceLitColors"])
         self.assertIn("glitchSourceLitColors [[texture(8)]]", metal)
 
         glitch_system = (systems / "system_trixel_glitch.hpp").read_text()

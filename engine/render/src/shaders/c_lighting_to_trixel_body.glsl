@@ -102,7 +102,7 @@ layout(binding = 5) uniform sampler3D lightVolume;
 // set the flag.
 layout(rg32ui, binding = 6) readonly uniform uimage2D trixelEntityIds;
 #if IR_GLITCH_SOURCE_OUTPUT
-layout(rgba8, binding = 7) writeonly uniform image2D glitchSourceLitColors;
+layout(rgba8, binding = 3) writeonly uniform image2D glitchSourceLitColors;
 #endif
 
 // Per-axis empty-cell compaction: on the per-axis route (perAxisRoute !=

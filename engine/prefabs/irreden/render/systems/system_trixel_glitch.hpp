@@ -586,7 +586,7 @@ template <> struct System<TRIXEL_GLITCH> {
         bool cardinalPresentation = false
     ) {
         enabledThisFrame_ = true;
-        words_[2].z = cardinalPresentation ? 1u : 0u;
+        IRPrefab::Glitch::setCardinalPresentationFlag(words_, cardinalPresentation);
         const TrixelGlitchPerAxisFramePlan perAxisPlan = planTrixelGlitchPerAxisFrame(
             perAxisInput,
             perAxisDisabled_,
