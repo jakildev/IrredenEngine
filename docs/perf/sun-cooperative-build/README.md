@@ -18,6 +18,11 @@ dependencies and hashes, compiler, power snapshots and command arguments are in
 and [probe.mm](probe.mm) preserve the exact native inputs; the executable is not
 committed. Raw record inputs and full tree readbacks are retained as `.bin.gz`.
 
+The portable test suites read none of these archived `.bin.gz` files: they
+generate their own inputs and validate current production source. Native probe
+replays also generate fresh inputs and readbacks. The compressed files retain
+the measured run for independent auditing; they are not test fixtures.
+
 All **38 paired builds** match byte-for-byte in fast and safe Metal math modes.
 The independent corner/enclosure oracle checks **70,658 used nodes** across
 empty, unneeded, exhausted-pool, 1/8/9/1023/1024/1025/65536-record, mixed analytic

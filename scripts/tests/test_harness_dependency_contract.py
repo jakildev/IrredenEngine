@@ -66,6 +66,7 @@ _POPULATION_FILES = (
     "scripts/perf/compare_perf_runs.py",
     "scripts/perf/sun_face_index_probe.py",
     "scripts/perf/sun_geometry_probe.py",
+    "scripts/perf/sun_hierarchy_build_probe.py",
     "scripts/perf/sun_hierarchy_probe.py",
     "scripts/perf/sun_query_probe.py",
 )
@@ -213,6 +214,13 @@ class ContractMutationControlTest(unittest.TestCase):
 
     def test_geometry_dependency_cannot_hide_a_third_party_import(self):
         target = "scripts/perf/sun_face_index_probe.py"
+        _append(self.root / target, "import numpy")
+        violations = check_contract(self.root)
+        self.assertTrue(any(v.startswith("(b)") and target in v and "numpy" in v
+                            for v in violations), violations)
+
+    def test_hierarchy_build_probe_cannot_hide_a_third_party_import(self):
+        target = "scripts/perf/sun_hierarchy_build_probe.py"
         _append(self.root / target, "import numpy")
         violations = check_contract(self.root)
         self.assertTrue(any(v.startswith("(b)") and target in v and "numpy" in v
