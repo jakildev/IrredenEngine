@@ -1,0 +1,24 @@
+from pathlib import Path
+import hashlib, json, math, os, subprocess, sys
+sys.path.insert(0, str(Path('scripts').resolve()))
+from verify_common import collect_full_frames, platform_launch_argv, run_result
+out=Path('/tmp/receiver-phase-controls'); out.mkdir(exist_ok=False)
+artifact=Path('/tmp/sun-overflow-engine-pair/guarded-depth')
+common=['--only','shadowbox,floor','--probe-grid','--probe-floor-mode','grid','--probe-floor-span','40','--sun-direction','0','0','-1','--no-spin','--no-auto-rotate','--pivot-origin','--zoom','4','--subdivisions','1','--no-ao','--auto-screenshot','10','--sweep-frames','1','10','--probe-overlapping-source']
+poses=[(f'near{k}-{side}', k*math.pi/2+sign*.002,(-.375,.625),'1') for k in range(4) for side,sign in [('before',-1),('after',1)]]
+poses += [(f'mid{k}-phase', k*math.pi/2+.6,(-1.375,-.625),'1') for k in range(4)]
+poses += [('sampled-phase',.6,(-1.375,-.625),'0')]
+rows=[]
+for label,yaw,camera,surface in poses:
+ folder=out/label; folder.mkdir()
+ config=folder/'config.lua'
+ config.write_text('config={window_mode="offscreen",profiling_enabled=false,gpu_stage_timing=false,init_window_width=1280,init_window_height=720,game_resolution_width=1280,game_resolution_height=720,screenshot_output_dir='+json.dumps(str(folder))+'}\n')
+ cmd=['fleet-run','--timeout','120','--build-dir',str(artifact/'build'),'IRCanvasStress','--config-preset',str(config),*common,'--yaw',str(yaw),'--camera-iso',*map(str,camera)]
+ env=dict(os.environ,IR_PERAXIS_SURFACE_LIGHTING=surface,IR_PERAXIS_VISIBILITY_PREPASS='0',IR_PERAXIS_VISIBILITY_STATS='0')
+ with (folder/'run.log').open('w') as stream: r=subprocess.run(platform_launch_argv(cmd),env=env,stdout=stream,stderr=subprocess.STDOUT)
+ shots=collect_full_frames(folder)
+ if r.returncode or run_result((folder/'run.log').read_text())!='CLEAN' or len(shots)!=1:
+  raise SystemExit(label+' failed')
+ rows.append(dict(case=label,yaw=yaw,camera_iso=camera,surface=surface,command=cmd,environment={k:env[k] for k in ['IR_PERAXIS_SURFACE_LIGHTING','IR_PERAXIS_VISIBILITY_PREPASS','IR_PERAXIS_VISIBILITY_STATS']},image=str(shots[0].relative_to(out)),sha256=hashlib.sha256(shots[0].read_bytes()).hexdigest()))
+ (out/'captures.json').write_text(json.dumps(rows,indent=2)+'\n')
+ print(label,'CLEAN',flush=True)

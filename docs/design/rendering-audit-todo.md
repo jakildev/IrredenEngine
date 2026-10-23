@@ -85,6 +85,13 @@ PR #4597 cardinal capture fails this oracle; the current cardinal capture passes
 No new default or general rendering fix follows from these controls. Next close
 the intermediate receiver defect through the shared geometry route, retaining
 full-scene cost gates before enabling the continuous opt-in more broadly.
+The [camera-phase controls](../pr-screenshots/codex/receiver-shadow-phase/README.md)
+extend this to fourteen passing continuous captures: both sides of all four
+cardinals, negative fractional iso positions and noninteger ideal pixel offsets.
+Two sampled controls still fail 18 missing/638 excess pixels each. The oracle
+models snapped Metal camera placement including float32 phase; it does not fit
+shadows or widen the boundary tolerance. Side receivers, nonvertical sunlight
+and live route transitions remain open.
 
 The surface-lighting driver now supports explicit surface/prepass four-arm
 comparisons with exact manifest and draw-route checks. Keep prepass counters in
@@ -92,7 +99,19 @@ separate untimed runs: source-caster overlap is not receiver overdraw, and a
 prepass that retains every fragment cannot establish an occlusion benefit.
 The [native controls](../perf/surface-adoption-controls/README.md) witness that
 distinction, but both retained timing attempts failed outer quiet coverage and
-must not inform a performance or default-adoption claim.
+must not inform a performance or default-adoption claim. A subsequent
+[guarded GRID comparison](../perf/grid-receiver-adoption/README.md) completes
+eight Debug runs with successful quiet coverage on provisional battery power.
+Continuous receiving costs more than sampled receiving in that small scene.
+The prepass improves wall-frame means but increases its combined surface draw
+timer, so these measurements do not select a prepass default.
+Prioritize hierarchy build cost before broader adoption: the final
+[Linux software-renderer gate](https://github.com/jakildev/IrredenEngine/pull/4682#issuecomment-6333941158)
+reports a 10.5% zoom-1 mean-frame regression and a 58.30 ms shadow-bake stage
+against a historical zero-stage baseline. This is not the Metal receiver
+measurement, and a same-runner parent/head control is needed for attribution.
+Keep complete/no-overflow and crowded controls while reducing hierarchy launch
+and reduction work; preserve readiness publication and exact finite predicates.
 The [overlapping GRID controls](../pr-screenshots/codex/grid-receiver-prepass/README.md)
 now reject roughly 23% of candidate fragments with exact decoded-RGBA equality
 in four prepass pairs at intermediate yaw, zoom 1/4 and base subdivisions 1/4.
@@ -104,6 +123,14 @@ Preserve the fog fallback until albedo/fog application and the shared lighting/
 fog-observer buffer binding are made compatible; do not remove that exclusion
 as a default-switch shortcut. Any default promotion must retain a real explicit
 environment opt-out, runtime switch and producer/consumer readiness checks.
+The next bounded fog integration can keep continuous receiving opt-in and admit
+only canvases whose current fog LOS source mask is zero. Preserve albedo through
+lighting and fog, retain FIELD/BODY/EXEMPT and cut-face provenance, then apply
+the existing fog color transform once after surface lighting. Bind the main
+observer snapshot explicitly in a non-conflicting presentation slot. Gated LOS
+must retain its compute fallback; calling its visibility marches per output
+fragment would add an unqualified cost. A post-hoc multiplier on stored lit RGB
+cannot isolate sunlight from ambient/local light after tone mapping and clipping.
 Choose the visibility-prepass default separately from the accurate receiver
 default. Release million-entity qualification still needs explicit visible
 geometry, canvas and shadow budgets; these small Debug fixtures do not supply it.

@@ -1,0 +1,24 @@
+{
+  "command": [
+    "ir-acquire",
+    "benchmark",
+    "--",
+    "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "scripts/perf/surface_lighting_controls.py",
+    "--scene",
+    "grid-overlap",
+    "--adoption-matrix",
+    "--case",
+    "per-axis-zoom4-receivers-subdiv1",
+    "--rounds",
+    "2",
+    "--frames",
+    "360",
+    "--output",
+    "/tmp/grid-receiver-timing/timing"
+  ],
+  "returncode": 0,
+  "power_before": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=22872163)\t73%; discharging; 14:03 remaining present: true\n",
+  "power_after": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=22872163)\t72%; discharging; 13:53 remaining present: true\n",
+  "quiet": "GUARDED\n"
+}

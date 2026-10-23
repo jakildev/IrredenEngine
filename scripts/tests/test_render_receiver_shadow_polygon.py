@@ -1,6 +1,8 @@
+import io
 import json
 import math
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -27,6 +29,89 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
                 result = oracle.check_image(self.image(yaw), yaw)
                 self.assertTrue(result["passed"], result["counts"])
                 self.assertEqual(result["counts"]["eligible"], result["counts"]["valid"])
+
+    def test_fractional_camera_positions_match_independently_shifted_rasters(self):
+        # Literal screen translations derive from zoom4 * iso pitch(2,1) * output2.
+        # The raster never calls the camera-aware polygon projection.
+        positions = (((-.375, -.625), (-6, -5)), ((.4375, .375), (7, 3)),
+                     ((-1.25, .875), (-20, 7)), ((1.375, -.875), (22, -7)),
+                     ((.1, -.2), (1, -2)), ((-.1, .2), (-2, 1)),
+                     ((-.001, -.001), (-1, -1)))
+        for yaw in (0, .6):
+            for camera_iso, (dx, dy) in positions:
+                with self.subTest(yaw=yaw, camera_iso=camera_iso):
+                    image = self.image(yaw, transform=lambda x, y: (x + dx, y + dy))
+                    result = oracle.check_image(image, yaw, camera_iso)
+                    self.assertTrue(result["passed"], result["counts"])
+                    self.assertEqual(result["camera_iso"], list(camera_iso))
+                    self.assertEqual(result["camera_shift_pixels"], [dx, dy])
+                    wrong = oracle.check_image(image, yaw, (-camera_iso[0], -camera_iso[1]))
+                    self.assertFalse(wrong["passed"])
+                    self.assertGreater(wrong["counts"]["missing"] + wrong["counts"]["excess"], 0)
+
+    def test_camera_translation_is_after_yaw_and_snaps_fractional_pixels(self):
+        for yaw in (0, .6, math.pi / 2):
+            base = oracle.fixture_polygons(yaw)
+            translated = oracle.fixture_polygons(yaw, (-.1, .2))
+            for name in base:
+                for point, shifted in zip(base[name], translated[name], strict=True):
+                    self.assertAlmostEqual(shifted[0] - point[0], -2)
+                    self.assertAlmostEqual(shifted[1] - point[1], 1)
+
+    def test_float32_camera_rounding_at_pixel_and_negative_integer_boundaries(self):
+        for camera, expected in (((.0624999999, .1249999999), (1, 1)),
+                                 ((-1e-10, -1e-10), (0, 0)),
+                                 ((-1.00000001, -1.00000001), (-16, -8))):
+            with self.subTest(camera=camera):
+                self.assertEqual(oracle.camera_screen_offset(camera), expected)
+                image = self.image(.6, transform=lambda x, y: (x + expected[0], y + expected[1]))
+                self.assertTrue(oracle.check_image(image, .6, camera)["passed"])
+
+    def test_unsnapped_oracle_misses_independently_rasterized_camera_shadow(self):
+        camera = (-.001, -.001)
+        image = self.image(.6, transform=lambda x, y: (x - 1, y - 1))
+        self.assertTrue(oracle.check_image(image, .6, camera)["passed"])
+        with patch.object(oracle, "camera_screen_offset", return_value=(-.016, -.008)):
+            result = oracle.check_image(image, .6, camera)
+        self.assertFalse(result["passed"])
+        self.assertGreater(result["counts"]["missing"], 0)
+        self.assertGreater(result["counts"]["excess"], 0)
+
+    def test_sampling_clips_all_image_edges_and_offscreen_coverage_fails(self):
+        width, height = oracle.IMAGE_SIZE
+        for left, top in ((-10, -10), (width - 10, -10),
+                          (-10, height - 10), (width - 10, height - 10)):
+            receiver = [(left, top), (left + 20, top),
+                        (left + 20, top + 20), (left, top + 20)]
+            polygons = dict(receiver=receiver, shadow=receiver,
+                            occluder=[(-100, -100), (-90, -100), (-90, -90), (-100, -90)])
+            samples = list(oracle.receiver_samples(polygons))
+            self.assertTrue(samples)
+            self.assertTrue(all(0 <= x < width and 0 <= y < height for x, y, _ in samples))
+        image = Image.new("RGB", oracle.IMAGE_SIZE, oracle.LIT_COLOR)
+        for position in ((-200, 0), (200, 0), (0, -200), (0, 200), (-1e30, 1e30)):
+            with self.subTest(position=position):
+                result = oracle.check_image(image, .6, position)
+                self.assertEqual(result["counts"]["eligible"], 0)
+                self.assertFalse(result["coverage_valid"])
+                self.assertFalse(result["passed"])
+
+    def test_camera_input_validation_and_cli_json(self):
+        for position in ((math.nan, 0), (0, math.inf), (-math.inf, 0),
+                         (0,), (0, 0, 0), None, (1e308, 0)):
+            with self.subTest(position=position), self.assertRaises(ValueError):
+                oracle.fixture_polygons(0, position)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "shifted.png"
+            self.image(.6, transform=lambda x, y: (x - 6, y + 3)).save(path)
+            stdout = io.StringIO()
+            with patch("sys.argv", ["oracle", str(path), "--yaw", ".6",
+                                     "--camera-iso", "-.375", ".375"]), \
+                    patch("sys.stdout", stdout):
+                self.assertEqual(oracle.main(), 0)
+            result = json.loads(stdout.getvalue())
+            self.assertEqual(result["camera_iso"], [-.375, .375])
+            self.assertTrue(result["passed"])
 
     def test_missing_and_all_shadow_are_rejected(self):
         for color, error in ((oracle.LIT_COLOR, "missing"),
@@ -123,6 +208,27 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
         self.assertEqual(len(polygons["shadow"]), 6)
         self.assertAlmostEqual(min(p[1] for p in polygons["shadow"]), 440)
         self.assertAlmostEqual(max(p[1] for p in polygons["shadow"]), 488)
+
+    def test_retained_native_camera_phase_pass_and_failure_controls(self):
+        root = Path(__file__).resolve().parents[2]
+        evidence = root / "docs/pr-screenshots/codex/receiver-shadow-phase"
+        expected = {row["case"]: row for row in
+                    json.loads((evidence / "results.json").read_text())}
+        for case, passed in (("near0-before", True), ("mid0-phase", True),
+                             ("sampled-phase", False), ("subpixel-positive", True),
+                             ("subpixel-negative", True), ("subpixel-sampled", False)):
+            with self.subTest(case=case):
+                row = expected[case]
+                with Image.open(evidence / case / "screenshot_000001.png") as image:
+                    result = oracle.check_image(image, row["yaw"], row["camera_iso"])
+                self.assertEqual(result["counts"], row["counts"])
+                self.assertEqual(result["camera_iso"], row["camera_iso"])
+                self.assertEqual(result["camera_shift_pixels"], row["camera_shift_pixels"])
+                self.assertTrue(result["coverage_valid"])
+                self.assertEqual(result["passed"], passed)
+                if not passed:
+                    self.assertEqual(result["counts"]["missing"], 18)
+                    self.assertEqual(result["counts"]["excess"], 638)
 
 
 if __name__ == "__main__":
