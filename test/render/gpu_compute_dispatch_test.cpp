@@ -1466,6 +1466,7 @@ TEST(GpuComputeDispatchTest, SkippedOnUnsupportedBackend) {
 #endif // IR_GRAPHICS_OPENGL / IR_GRAPHICS_METAL
 
 #if defined(IR_GRAPHICS_OPENGL) || defined(IR_GRAPHICS_METAL)
+#include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <algorithm>
 #include <array>
@@ -1579,6 +1580,55 @@ TEST_F(CanvasBackingResizeTest, CardinalGrowthClearsBackingAndPreservesAncillary
     canvas.reset();
     EXPECT_EQ(resources.liveResourceCount(), 0);
     EXPECT_EQ(resources.freeIdCount(), 128u);
+}
+
+TEST_F(CanvasBackingResizeTest, GlitchPresentationImagesSurviveOrdinaryCreationAndFollowBacking) {
+    using namespace IRRender;
+    using Canvas = IRComponents::C_TriangleCanvasTextures;
+    RenderingResourceManager resources{32};
+    const auto destroyCanvas = [](Canvas *canvas) {
+        canvas->onDestroy();
+        delete canvas;
+    };
+    std::unique_ptr<Canvas, decltype(destroyCanvas)> canvas(
+        new Canvas(IRMath::ivec2(8)),
+        destroyCanvas
+    );
+
+    EXPECT_TRUE(canvas->ensureGlitchPresentationImages());
+    const auto source = canvas->glitchSourceLitColors_;
+    const auto overrides = canvas->glitchPresentationOverrides_;
+    EXPECT_FALSE(canvas->ensureGlitchPresentationImages());
+    EXPECT_EQ(canvas->glitchSourceLitColors_, source);
+    EXPECT_EQ(canvas->glitchPresentationOverrides_, overrides);
+    canvas->createGlitchImages();
+    EXPECT_EQ(canvas->glitchSourceLitColors_, source);
+    EXPECT_EQ(canvas->glitchPresentationOverrides_, overrides);
+    EXPECT_TRUE(canvas->hasGlitchImages());
+    EXPECT_TRUE(canvas->hasGlitchPresentationImages());
+
+    canvas->resizeBacking(IRMath::ivec2(16, 12));
+    EXPECT_FALSE(canvas->hasGlitchImages());
+    EXPECT_FALSE(canvas->hasGlitchPresentationImages());
+    EXPECT_TRUE(canvas->ensureGlitchPresentationImages());
+    EXPECT_EQ(canvas->glitchSourceLitColors_.second->getSize(), IRMath::uvec2(16, 12));
+    EXPECT_EQ(canvas->glitchPresentationOverrides_.second->getSize(), IRMath::uvec2(16, 12));
+
+    IRSystem::System<IRSystem::LIGHTING_TO_TRIXEL> lighting;
+    Canvas secondCanvas(IRMath::ivec2(8));
+    EXPECT_EQ(lighting.glitchPresentationImageCreationCount_, 0u);
+    lighting.ensureGlitchPresentationImages(secondCanvas);
+    EXPECT_EQ(lighting.glitchPresentationImageCreationCount_, 1u);
+    const auto secondSource = secondCanvas.glitchSourceLitColors_;
+    const auto secondOverrides = secondCanvas.glitchPresentationOverrides_;
+    lighting.ensureGlitchPresentationImages(secondCanvas);
+    EXPECT_EQ(lighting.glitchPresentationImageCreationCount_, 1u);
+    EXPECT_EQ(secondCanvas.glitchSourceLitColors_, secondSource);
+    EXPECT_EQ(secondCanvas.glitchPresentationOverrides_, secondOverrides);
+    secondCanvas.onDestroy();
+
+    canvas.reset();
+    EXPECT_EQ(resources.liveResourceCount(), 0);
 }
 
 TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAndScratch) {

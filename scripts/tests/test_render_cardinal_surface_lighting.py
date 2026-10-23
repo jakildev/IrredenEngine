@@ -13,6 +13,36 @@ from pathlib import Path
 from shader_contract_helpers import extract_block, extract_function, replace_once
 from test_render_cardinal_voxel_receiver import COMPILER, ROOT, shader_directory
 
+
+def glsl_include_closure(path, seen=None):
+    if seen is None:
+        seen = set()
+    path = path.resolve()
+    if path in seen:
+        return ""
+    seen.add(path)
+    source = path.read_text()
+    includes = re.findall(r'^\s*#include\s+"([^"]+)"', source, re.MULTILINE)
+    return "\n".join(
+        [source, *(glsl_include_closure(path.parent / include, seen) for include in includes)]
+    )
+
+
+def glsl_image_bindings(source):
+    declarations = re.finditer(
+        r"layout\((?P<layout>[^)]*)\)\s*"
+        r"(?:(?:readonly|writeonly)\s+)?uniform\s+"
+        r"[iu]?image\w+\s+(?P<name>\w+)",
+        source,
+    )
+    bindings = []
+    for declaration in declarations:
+        binding = re.search(r"\bbinding\s*=\s*(\d+)", declaration.group("layout"))
+        if binding:
+            bindings.append((int(binding.group(1)), declaration.group("name")))
+    return bindings
+
+
 PREAMBLE = r"""
 #include <cstdio>
 #include <cstdlib>
@@ -23,7 +53,7 @@ uvec2 id;
 struct {int y;} normalOptions;
 struct {float a;} color;
 int lightingEnabled=1,scatterDebugMode=1,perAxisRoute=0;
-bool sourceMode=false;
+bool sourceMode=false,glitchPresentationOverride=false;
 float isDetachedCanvas=0,residualYaw=0;
 void require(bool okay,const char* label){
  if(!okay){std::fprintf(stderr,"%s\n",label);std::exit(1);}
@@ -53,13 +83,15 @@ Axis* perAxisCanvases_=nullptr;
 int perAxisCanvasEntity_=1;
 struct Producer {
  bool cardinalSurfaceLightingEligible_=false,cardinalSurfaceLightingReady_=false;
+ bool cardinalGlitchPresentationActive_=false,cardinalGlitchSourceReady_=false;
  bool perAxisSurfaceLightingEligible_=false;
  void begin(){RESET GATE}
  void tick(int entity){PUBLISH}
  void prepare(int entity){PREPARE}
 } producer;
 Producer* lighting_=&producer;
-bool cardinalLightingEnabled_=false,shapeProbeEnabled_=false,shapeLightingEnabled_=false;
+bool cardinalLightingEnabled_=false,cardinalGlitchOverrideEnabled_=false;
+bool shapeProbeEnabled_=false,shapeLightingEnabled_=false;
 int selected=0,shapeBindings=0,sunBindings=0;
 struct Program {int id;void use(){selected=id;}} shapeProgram{2},probeProgram{3},cardinalProgram{1};
 Program *shapeLightingProgram_=&shapeProgram,*shapeProbeProgram_=&probeProgram;
@@ -94,11 +126,12 @@ int main(){
   if(bad==13)hasBehavior=false;
   producer.cardinalSurfaceLightingEligible_=producer.cardinalSurfaceLightingReady_=true;
   producer.begin();consume();
-  require(producer.cardinalSurfaceLightingEligible_==(bad<0),"producer eligibility");
+  const bool eligible=bad<0||bad==9;
+  require(producer.cardinalSurfaceLightingEligible_==eligible,"producer eligibility");
   require(!cardinalLightingEnabled_,"begin resets readiness before main tick");
   producer.tick(2);consume();require(!cardinalLightingEnabled_,"secondary tick cannot publish");
   producer.tick(1);consume();
-  require(cardinalLightingEnabled_==(bad<0),"main tick publishes readiness");
+  require(cardinalLightingEnabled_==eligible,"main tick publishes readiness");
  }
  lighting_=nullptr;consume();require(!cardinalLightingEnabled_,"missing producer is not ready");
  lighting_=&producer;
@@ -126,9 +159,10 @@ int main(){
   const bool cardinal=(tag&(1u<<18u))!=0;
   require(skip()==bool(enabled&&deferred&&!axis&&!detached&&!yaw&&!source&&cardinal&&!cut),
           "compute preserves only eligible cardinal albedo");
-  for(int flag:{0,1})for(float alpha:{0.f,1.f}){
+  for(int flag:{0,1,2})for(float alpha:{0.f,1.f})for(bool override:{false,true}){
    scatterDebugMode=flag;color.a=alpha;
-   require(fragment()==bool(alpha&&enabled&&flag&&cardinal&&!cut),
+   glitchPresentationOverride=override;
+   require(fragment()==bool(alpha&&enabled&&flag&&cardinal&&!cut&&!override),
            "fragment lighting gate");
   }
  }
@@ -147,6 +181,11 @@ def source_for(backend):
     consumer = (systems / "system_trixel_to_framebuffer.hpp").read_text()
     gate = re.search(r"bool worldSurfaceLightingEligible = false;.*?"
                      r"perAxisSurfaceLightingEligible_\s*=[^;]+;", producer, re.DOTALL).group()
+    active_scan = extract_block(
+        gate,
+        "if (cardinalSurfaceLightingEligible_ && findSystem(TRIXEL_GLITCH) != kNullSystemId) {",
+    )
+    gate = gate.replace(active_scan, "")
     publish = extract_block(producer, "if (entity == perAxisCanvasEntity_) {")
     reset = re.search(r"cardinalSurfaceLightingEligible_ = false;\s*"
                       r"cardinalSurfaceLightingReady_ = false;", producer).group()
@@ -168,13 +207,13 @@ def source_for(backend):
     helpers += extract_function(common, "decodeEntityIdCardinalVoxel")
     helpers += extract_function(common, "decodeCutFace")
     helpers += extract_function(common, "isCardinalVoxelSurface")
-    skip = re.search(r"if \((?:frameData\.)?normalOptions.y != 0.*?\) return;",
+    skip = re.search(r"if \((?:frameData\.)?normalOptions.y != 0 && !sourceMode.*?\) return;",
                      compute, re.DOTALL).group()
     disabled = re.search(r"if \((?:frameData\.)?lightingEnabled == 0\) \{\s*return;\s*\}",
                          compute).group()
     # The shape branch also has a lighting gate; the cardinal branch owns the provenance read.
     condition = next(match.group() for match in re.finditer(
-        r"if \(color.a >= 0.1[^\{]+\{", fragment)
+        r"if \(!glitchPresentationOverride[^\{]+\{", fragment)
         if "isCardinalVoxelSurface" in match.group())
     predicates = (helpers + "\nbool skip(){" + disabled.replace("return;", "return false;")
                   + skip.replace("return;", "return true;") + "return false;}\n"
@@ -202,14 +241,23 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                 "eligible_not_ready": replace_once(
                     source, "lighting_->cardinalSurfaceLightingReady_",
                     "lighting_->cardinalSurfaceLightingEligible_"),
-                "glitch_pipeline": replace_once(
-                    source, "findSystem(TRIXEL_GLITCH) == kNullSystemId", "true"),
+                "glitch_exclusion": replace_once(
+                    source,
+                    "worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&",
+                    "worldSurfaceLightingEligible && "
+                    "findSystem(TRIXEL_GLITCH) == kNullSystemId && "
+                    "mainVoxelPool_ != nullptr &&",
+                ),
+                "destination_relighting": replace_once(
+                    source, "!glitchPresentationOverride &&", "true &&"
+                ),
                 "cut_face": source.replace("!decodeCutFace(rawId)", "true"),
             }
             messages = {"lighting_disabled": "fragment lighting gate",
                         "stale_ready": "begin resets readiness before main tick",
                         "eligible_not_ready": "begin resets readiness before main tick",
-                        "glitch_pipeline": "producer eligibility",
+                        "glitch_exclusion": "producer eligibility",
+                        "destination_relighting": "fragment lighting gate",
                         "cut_face": "fragment lighting gate"}
             for name, candidate in variants.items():
                 with (self.subTest(backend=backend, variant=name),
@@ -227,6 +275,77 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                         self.assertNotEqual(candidate, source)
                         self.assertEqual(run.returncode, 1, run.stderr)
                         self.assertIn(messages[name], run.stderr)
+
+    def test_glitch_source_route_lifetime_and_bindings(self):
+        systems = ROOT / "engine/prefabs/irreden/render/systems"
+        producer = (systems / "system_lighting_to_trixel.hpp").read_text()
+        create = extract_block(producer, "static SystemId create() {")
+        ensure_programs = extract_function(producer, "ensureGlitchSourcePrograms")
+        self.assertNotIn("LightingToTrixelGlitchSourceProgram", create)
+        self.assertIn("LightingToTrixelGlitchSourceProgram", ensure_programs)
+        self.assertIn("ensureGlitchSourcePrograms();", producer)
+        self.assertIn("ensureGlitchPresentationImages(textures);", producer)
+        self.assertIn("IRPlatform::kIsOpenGL ? 3 : 8", producer)
+        selection = re.search(
+            r"ShaderProgram \*lightingProgram\s*=.*?;",
+            producer,
+            re.DOTALL,
+        ).group()
+        self.assertIn("glitchSource ? shapeGlitchSourceProgram_ : shapeProgram_", selection)
+        self.assertIn("glitchSource ? glitchSourceProgram_ : program_", selection)
+
+        component = (ROOT / "engine/prefabs/irreden/render/components/"
+                     "component_triangle_canvas_textures.hpp").read_text()
+        ensure_images = extract_function(component, "ensureGlitchPresentationImages")
+        self.assertIn("if (hasGlitchPresentationImages())", ensure_images)
+        self.assertIn("return false;", ensure_images)
+
+        for backend in ("glsl", "metal"):
+            directory = shader_directory(backend)
+            glitch = (directory / f"c_trixel_glitch.{backend}").read_text()
+            lighting = (directory / f"c_lighting_to_trixel_body.{backend}").read_text()
+            gather = (directory / f"ir_trixel_to_framebuffer_body.{backend}").read_text()
+            effect = extract_block(
+                glitch,
+                "uvec4 loadEffectColour(" if backend == "glsl"
+                else "static uint4 glitchLoadEffectColour(",
+            )
+            self.assertIn("isCardinalVoxelSurface", effect)
+
+            refresh = (
+                "imageStore(glitchSourceLitColors, pixel, imageLoad(trixelColors, pixel));"
+                if backend == "glsl"
+                else "glitchSourceLitColors.write(trixelColors.read(uint2(pixel)), uint2(pixel));"
+            )
+            empty = "if (encoded >="
+            self.assertLess(lighting.index(refresh), lighting.index(empty))
+
+            shape_gate = re.search(
+                r"#if IR_SHAPE_LIGHTING\s*if \(!glitchPresentationOverride",
+                gather,
+            )
+            self.assertIsNotNone(shape_gate)
+
+        glsl_path = shader_directory("glsl") / "c_lighting_to_trixel_body.glsl"
+        glsl = glsl_path.read_text()
+        metal = (shader_directory("metal") / "c_lighting_to_trixel_body.metal").read_text()
+        self.assertIn("layout(rgba8, binding = 3) writeonly", glsl)
+        source_binding = next(
+            binding
+            for binding, name in glsl_image_bindings(glsl)
+            if name == "glitchSourceLitColors"
+        )
+        collisions = [
+            name
+            for binding, name in glsl_image_bindings(glsl_include_closure(glsl_path))
+            if binding == source_binding
+        ]
+        self.assertEqual(collisions, ["glitchSourceLitColors"])
+        self.assertIn("glitchSourceLitColors [[texture(8)]]", metal)
+
+        glitch_system = (systems / "system_trixel_glitch.hpp").read_text()
+        dispatch = extract_block(glitch_system, "void dispatch() override {")
+        self.assertIn("memoryBarrier(BarrierType::ALL);", dispatch)
 
 
 if __name__ == "__main__":

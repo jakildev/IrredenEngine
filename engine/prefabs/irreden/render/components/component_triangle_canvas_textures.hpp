@@ -152,6 +152,8 @@ struct C_TriangleCanvasTextures {
     std::pair<ResourceId, Texture2D *> glitchScratchColors_{0, nullptr};
     std::pair<ResourceId, Texture2D *> glitchHistoryColors_{0, nullptr};
     std::pair<ResourceId, Texture2D *> glitchHistoryEntityIds_{0, nullptr};
+    std::pair<ResourceId, Texture2D *> glitchSourceLitColors_{0, nullptr};
+    std::pair<ResourceId, Texture2D *> glitchPresentationOverrides_{0, nullptr};
 
     C_TriangleCanvasTextures(ivec2 size)
         : size_{size}
@@ -199,13 +201,27 @@ struct C_TriangleCanvasTextures {
         return glitchScratchColors_.second != nullptr;
     }
 
-    // Replaces the three glitch images with ones at the canvas's size, in the
-    // live planes' formats so the colour swap and history copies match.
+    bool hasGlitchPresentationImages() const {
+        return glitchSourceLitColors_.second != nullptr;
+    }
+
+    // Adds the three ordinary glitch images without replacing presentation
+    // images that an earlier lighting tick may already have written.
     void createGlitchImages() {
-        destroyGlitchImages();
+        destroyOrdinaryGlitchImages();
         glitchScratchColors_ = detail::makeCanvasColorTexture(size_);
         glitchHistoryColors_ = detail::makeCanvasColorTexture(size_);
         glitchHistoryEntityIds_ = detail::makeCanvasEntityIdTexture(size_);
+    }
+
+    bool ensureGlitchPresentationImages() {
+        if (hasGlitchPresentationImages()) {
+            return false;
+        }
+        destroyGlitchPresentationImages();
+        glitchSourceLitColors_ = detail::makeCanvasColorTexture(size_);
+        glitchPresentationOverrides_ = detail::makeCanvasColorTexture(size_);
+        return true;
     }
 
     // Publishes the glitch output as the live colour plane; the previous live
@@ -387,6 +403,14 @@ struct C_TriangleCanvasTextures {
         readEntityIdTexture(glitchHistoryEntityIds_.second, out);
     }
 
+    void readGlitchSourceLitColors(std::vector<Color> &out) const {
+        readColorTexture(glitchSourceLitColors_.second, out);
+    }
+
+    void readGlitchPresentationOverrides(std::vector<Color> &out) const {
+        readColorTexture(glitchPresentationOverrides_.second, out);
+    }
+
     void clearDistances() const {
         shapeGeometry_.invalidateSamples();
         textureTriangleDistances_.second->clear(
@@ -410,13 +434,28 @@ struct C_TriangleCanvasTextures {
     }
 
     void destroyGlitchImages() {
+        destroyOrdinaryGlitchImages();
+        destroyGlitchPresentationImages();
+    }
+
+    void destroyOrdinaryGlitchImages() {
         for (auto *image :
              {&glitchScratchColors_, &glitchHistoryColors_, &glitchHistoryEntityIds_}) {
-            if (image->second != nullptr) {
-                IRRender::destroyResource<Texture2D>(image->first);
-            }
-            *image = {0, nullptr};
+            destroyGlitchImage(*image);
         }
+    }
+
+    void destroyGlitchPresentationImages() {
+        for (auto *image : {&glitchSourceLitColors_, &glitchPresentationOverrides_}) {
+            destroyGlitchImage(*image);
+        }
+    }
+
+    void destroyGlitchImage(std::pair<ResourceId, Texture2D *> &image) {
+        if (image.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(image.first);
+        }
+        image = {0, nullptr};
     }
 
     void readEntityIdTexture(const Texture2D *texture, std::vector<uvec2> &out) const {

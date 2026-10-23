@@ -648,7 +648,8 @@ class TrixelGlitchScheduleProbeTest : public PrefabSystemProbeTest {
         bool resized = false,
         std::int64_t tickAdvance = 0,
         bool perAxisAllocated = false,
-        int perAxisCardinal = 0
+        int perAxisCardinal = 0,
+        bool cardinalPresentation = false
     ) {
         m_log.clear();
         m_trixel->beginTick();
@@ -667,7 +668,12 @@ class TrixelGlitchScheduleProbeTest : public PrefabSystemProbeTest {
             perAxisInput.historyAllocated_ = m_encoder.perAxisHistory_;
             perAxisInput.size_ = IRMath::ivec2(64);
             perAxisInput.storeFrame_ = IRMath::ivec4(0, 0, perAxisCardinal, 0);
-            m_trixel->encodeFrame(m_encoder, m_encoder.liveImages_ == 3, perAxisInput);
+            m_trixel->encodeFrame(
+                m_encoder,
+                m_encoder.liveImages_ == 3,
+                perAxisInput,
+                cardinalPresentation
+            );
         } else {
             m_trixel->endTick();
         }
@@ -816,6 +822,27 @@ TEST_F(TrixelGlitchScheduleProbeTest, SubjectsUploadSortedByIdWithTheirSlots) {
     EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 12u), 0);
     EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 55u), 1);
     EXPECT_EQ(IRPrefab::Glitch::lookupSubjectSlot(words, 90u), 2);
+}
+
+TEST_F(TrixelGlitchScheduleProbeTest, CardinalPresentationPublishesOnlyAfterItsDispatch) {
+    IRComponents::C_GlitchSubject tear;
+    tear.tearWeight_ = 1.0f;
+    m_subjects = {{57u, tear}};
+
+    EXPECT_FALSE(m_trixel->cardinalPresentationOverrideReady_);
+    renderFrame(false, 0, false, 0, true);
+    EXPECT_TRUE(m_trixel->cardinalPresentationOverrideReady_);
+    ASSERT_GT(m_encoder.lastWords_.size(), 2u);
+    EXPECT_EQ(m_encoder.lastWords_[2].z, 1u);
+
+    renderFrame();
+    EXPECT_FALSE(m_trixel->cardinalPresentationOverrideReady_);
+    EXPECT_EQ(m_encoder.lastWords_[2].z, 0u);
+
+    m_subjects.clear();
+    renderFrame(false, 0, false, 0, true);
+    EXPECT_FALSE(m_trixel->cardinalPresentationOverrideReady_)
+        << "an inactive frame cannot publish a stale override";
 }
 
 TEST_F(TrixelGlitchScheduleProbeTest, AllocatedPerAxisStoreRunsTileWorklistEveryAxis) {

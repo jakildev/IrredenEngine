@@ -25,6 +25,8 @@ layout(rg32ui, binding = 2) readonly uniform uimage2D liveEntityIds;
 layout(rgba8, binding = 3) readonly uniform image2D historyColors;
 layout(rg32ui, binding = 4) readonly uniform uimage2D historyEntityIds;
 layout(rgba8, binding = 5) writeonly uniform image2D scratchColors;
+layout(rgba8, binding = 6) readonly uniform image2D sourceLitColors;
+layout(rgba8, binding = 7) writeonly uniform image2D presentationOverrides;
 
 // Subject slot of every texel within kGlitchSubjectHalo of this group, -1 for
 // none or off-canvas. The spill scan and the echo edge test read only this.
@@ -58,14 +60,22 @@ struct GlitchFrame {
     uint seed;
     uvec2 tick;
     ivec2 tileOrigin;
+    bool cardinalPresentation;
 };
 
 bool inCanvas(ivec2 q, ivec2 size) {
     return q.x >= 0 && q.y >= 0 && q.x < size.x && q.y < size.y;
 }
 
-uvec4 loadColour(ivec2 q) {
+uvec4 loadLiveColour(ivec2 q) {
     return uvec4(imageLoad(liveColors, q) * 255.0 + 0.5);
+}
+
+uvec4 loadEffectColour(ivec2 q, GlitchFrame frame) {
+    const bool sourceLit = frame.cardinalPresentation &&
+                           isCardinalVoxelSurface(imageLoad(liveEntityIds, q).xy);
+    const vec4 colour = sourceLit ? imageLoad(sourceLitColors, q) : imageLoad(liveColors, q);
+    return uvec4(colour * 255.0 + 0.5);
 }
 
 uvec2 loadId(ivec2 q) {
@@ -174,15 +184,15 @@ uvec4 applySubject(ivec2 p, int slot, uvec2 acceptId, GlitchFrame frame) {
             }
         }
     }
-    uvec4 colour = loadColour(source);
+    uvec4 colour = loadEffectColour(source, frame);
 
     if (record.splitTrixels != 0) {
         ivec2 redAt = source + ivec2(record.splitTrixels, 0);
         ivec2 blueAt = source - ivec2(record.splitTrixels, 0);
-        uvec4 red = inCanvas(redAt, frame.size) && loadId(redAt) == acceptId ? loadColour(redAt)
+        uvec4 red = inCanvas(redAt, frame.size) && loadId(redAt) == acceptId ? loadEffectColour(redAt, frame)
                                                                               : colour;
         uvec4 blue = inCanvas(blueAt, frame.size) && loadId(blueAt) == acceptId
-                         ? loadColour(blueAt)
+                         ? loadEffectColour(blueAt, frame)
                          : colour;
         colour = uvec4(red.r, colour.g, blue.b, max(max(red.a, colour.a), blue.a));
     }
@@ -222,7 +232,8 @@ bool influenceBefore(int slot, int dist, int otherSlot, int otherDist) {
     return dist < otherDist || (dist == otherDist && slot < otherSlot);
 }
 
-uvec4 glitchTexel(ivec2 p, int radius, GlitchFrame frame) {
+uvec4 glitchTexel(ivec2 p, int radius, GlitchFrame frame, out bool influenced) {
+    influenced = false;
     // The two nearest distinct subjects whose spill reaches p, nearer first,
     // ties by ascending slot (= ascending entity id).
     int slotA = -1;
@@ -258,8 +269,9 @@ uvec4 glitchTexel(ivec2 p, int radius, GlitchFrame frame) {
         }
     }
     if (slotA < 0) {
-        return loadColour(p);
+        return loadLiveColour(p);
     }
+    influenced = true;
     uvec2 idA = subjectWords[recordBase(slotA)].xy;
     if (slotB < 0) {
         return applySubject(p, slotA, idA, frame);
@@ -292,6 +304,7 @@ void main() {
     frame.seed = subjectWords[0].x;
     frame.tick = subjectWords[0].yz;
     frame.tileOrigin = ivec2(gl_WorkGroupID.xy) * 16 - ivec2(kGlitchSubjectHalo);
+    frame.cardinalPresentation = subjectWords[2].z != 0u;
 
     if (gl_LocalInvocationIndex == 0u) {
         tileReach = 0;
@@ -318,6 +331,11 @@ void main() {
     if (!inCanvas(p, frame.size)) {
         return;
     }
-    uvec4 colour = tileReach == 0 ? loadColour(p) : glitchTexel(p, tileReach - 1, frame);
+    bool influenced = false;
+    uvec4 colour = tileReach == 0 ? loadLiveColour(p)
+                                  : glitchTexel(p, tileReach - 1, frame, influenced);
     imageStore(scratchColors, p, vec4(colour) / 255.0);
+    if (frame.cardinalPresentation) {
+        imageStore(presentationOverrides, p, influenced ? vec4(1.0) : vec4(0.0));
+    }
 }

@@ -31,6 +31,7 @@
 #if !IR_SHAPE_LIGHTING
 layout(binding = 4) uniform sampler2D surfaceAO;
 #endif
+layout(binding = 6) uniform sampler2D glitchPresentationOverrides;
 #endif
 
 layout (binding = 0) uniform sampler2D triangleColors;
@@ -110,6 +111,11 @@ void main() {
     ivec2 sampleCoord = trixelCanvasReadCoord(displayOrigin, textureSize);
     vec4 color = texelFetch(triangleColors, sampleCoord, 0);
     int rawDist = texelFetch(triangleDistances, sampleCoord, 0).r;
+#if IR_CARDINAL_LIGHTING
+    const bool glitchPresentationOverride =
+        cardinalLightingEnabled == 2 &&
+        texelFetch(glitchPresentationOverrides, sampleCoord, 0).r >= 0.5;
+#endif
 #if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
     if (color.a >= 0.1) {
         vec3 position = vec3(0.0), normal = vec3(0.0);
@@ -126,7 +132,7 @@ void main() {
 
 
 #if IR_SHAPE_LIGHTING
-    if (color.a >= 0.1 && lightingEnabled != 0) {
+    if (!glitchPresentationOverride && color.a >= 0.1 && lightingEnabled != 0) {
         vec3 position = vec3(0.0), normal = vec3(0.0);
         if (selectedShapeBoxReceiver(sampleCoord, textureSize.x,
                                      shapeFragmentQueryPixel(originRaw, textureSize), true,
@@ -137,7 +143,7 @@ void main() {
 #endif
 
 #if IR_CARDINAL_LIGHTING
-    if (color.a >= 0.1 && lightingEnabled != 0 && cardinalLightingEnabled != 0 &&
+    if (!glitchPresentationOverride && color.a >= 0.1 && lightingEnabled != 0 && cardinalLightingEnabled != 0 &&
         isCardinalVoxelSurface(texelFetch(triangleEntityIds, sampleCoord, 0).rg)) {
         const vec3 position = cardinalVoxelSurfacePoint(
             originRaw, ivec2(sampleCoord), rawDist, perAxisBase,

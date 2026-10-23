@@ -63,12 +63,14 @@ to extrapolate finite caster footprints.
 The producer publishes readiness only after the main canvas tick. Consumer
 resources alone cannot establish that color is albedo. Both stages require the
 cardinal-voxel carrier and exclude cut faces, which retain their fully lit
-cross-section behavior. Missing lighting resources, debug/depth views, fog and
-trixel-glitch pipelines retain compute lighting. The latter two consume lit
-canvas colors and need a separate presentation-composition design. Secondary,
-detached, and shape-owned pixels keep their existing routes. A combined shader
-handles mixed shape/voxel canvases; a voxel-only specialization needs no retained
-shape owners. No extra texture, map capacity, blur, or subdivision is introduced.
+cross-section behavior. Missing lighting resources, debug/depth views and fog
+retain compute lighting. An active cardinal trixel-glitch route instead
+publishes source-lit input beside the preserved albedo: affected pixels bypass
+destination relighting, while unaffected pixels keep this continuous receiver
+path. Secondary, detached, and shape-owned pixels keep their existing routes. A
+combined shader handles mixed shape/voxel canvases; a voxel-only specialization
+needs no retained shape owners. The ordinary route adds no texture, map capacity,
+blur, or subdivision; the glitch presentation planes are allocated lazily.
 
 `test_render_cardinal_voxel_receiver.py` checks points on and beyond each
 micro-square against independent projected cube-face vertices, across densities,
@@ -195,9 +197,9 @@ Native sparse-scene acceptance and outstanding limits are recorded in the
 - [Finite defaults](finite-shadow-defaults.md) cover shape-only and non-main
   producer lifecycles; particle pipelines retain legacy casting.
 - Preserve both the four GRID cubes and detached/attached entities in sweeps.
-- Cardinal fog/trixel-glitch pipelines and detached local triangles still use
-  sampled receiver lighting. Unify their presentation composition without
-  blurring or changing the geometry; eligible cardinal and per-axis presentation
-  receivers already use continuous surface points.
+- Cardinal fog pipelines and detached local triangles still use sampled
+  receiver lighting. Unify their presentation composition without blurring or
+  changing the geometry; eligible cardinal, trixel-glitch, and per-axis
+  presentation receivers already use continuous surface points.
 - OpenGL execution still requires a suitable host; shader changes are mirrored.
 - Profile GPU stages and CPU update costs with repeated runs before optimizing.

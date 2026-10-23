@@ -275,6 +275,12 @@ def routing_harness(variant):
         r"perAxisSurfaceLighting(?:Eligible|Ready)_\s*=\s*false\s*;", begin))
     gate = re.search(r"bool worldSurfaceLightingEligible = false;.*?"
                      r"perAxisSurfaceLightingEligible_\s*=[^;]+;", begin, re.DOTALL)[0]
+    active_scan = braced_block(
+        gate,
+        r"if\s*\(cardinalSurfaceLightingEligible_\s*&&\s*"
+        r"findSystem\(TRIXEL_GLITCH\)\s*!=\s*kNullSystemId\)",
+    )
+    gate = gate.replace(active_scan, "")
     tick = functions(producer, "tick")
     skip_detached = braced_block(tick, r"if\s*\(\s*!behavior\.useCameraPositionIso_\b")
     publish = braced_block(

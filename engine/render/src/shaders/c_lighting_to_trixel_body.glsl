@@ -101,6 +101,9 @@ layout(binding = 5) uniform sampler3D lightVolume;
 // unbound and the `perAxisRoute == 0` guard skips the read. Non-fog scenes never
 // set the flag.
 layout(rg32ui, binding = 6) readonly uniform uimage2D trixelEntityIds;
+#if IR_GLITCH_SOURCE_OUTPUT
+layout(rgba8, binding = 3) writeonly uniform image2D glitchSourceLitColors;
+#endif
 
 // Per-axis empty-cell compaction: on the per-axis route (perAxisRoute !=
 // 0) this kernel is dispatched indirectly over only each axis's OCCUPIED cells
@@ -148,8 +151,18 @@ layout(std430, binding = 30) readonly buffer LightingShapeTiles {
 };
 #endif
 void writeLitTrixel(bool sourceMode, uint index, ivec2 pixel, vec4 color) {
-    if (sourceMode) sourceFaces[index].color = color;
-    else imageStore(trixelColors, pixel, color);
+    if (sourceMode) {
+        sourceFaces[index].color = color;
+        return;
+    }
+#if IR_GLITCH_SOURCE_OUTPUT
+    imageStore(glitchSourceLitColors, pixel, color);
+    if (normalOptions.y != 0 && perAxisRoute == 0 && isDetachedCanvas == 0.0 &&
+        residualYaw == 0.0 && isCardinalVoxelSurface(imageLoad(trixelEntityIds, pixel).xy)) {
+        return;
+    }
+#endif
+    imageStore(trixelColors, pixel, color);
 }
 
 void main() {
@@ -213,15 +226,25 @@ void main() {
         }
     }
 
+    // The active glitch-source specialization refreshes every texel before the
+    // empty-distance return so retained images cannot expose stale background.
+#if IR_GLITCH_SOURCE_OUTPUT
+    if (!sourceMode && perAxisRoute == 0 && isDetachedCanvas == 0.0) {
+        imageStore(glitchSourceLitColors, pixel, imageLoad(trixelColors, pixel));
+    }
+#endif
+
     // Empty/background pixels: single-canvas uses 65535; per-axis uses INT_MAX.
     const int encoded = sourceMode ? encodeDepthWithFace(0, int(sourceFaces[sourceIndex].centerAndFace.w) >> 1) : imageLoad(trixelDistances, pixel).x;
     if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : 65535)) {
         return;
     }
 
+#if !IR_GLITCH_SOURCE_OUTPUT
     if (normalOptions.y != 0 && !sourceMode && perAxisRoute == 0 &&
         isDetachedCanvas == 0.0 && residualYaw == 0.0 &&
         isCardinalVoxelSurface(imageLoad(trixelEntityIds, pixel).xy)) return;
+#endif
 
     const vec4 sourceColor = sourceMode ? sourceFaces[sourceIndex].color : imageLoad(trixelColors, pixel);
     // A detached re-voxelize canvas is lit by AO + directional sun + sky

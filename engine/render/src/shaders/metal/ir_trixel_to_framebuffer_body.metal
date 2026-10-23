@@ -126,6 +126,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     texture2d<float> paletteLUT [[texture(3)]],
     texture2d<float> surfaceAO [[texture(4)]],
     texture3d<float> lightVolume [[texture(5)]],
+    texture2d<float> glitchPresentationOverrides [[texture(6)]],
     texture3d<float, access::read> lightVolumeId [[texture(7)]],
 #endif
     device HoveredEntityIdBuffer& hovered [[buffer(14)]]
@@ -152,6 +153,11 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 
     float4 color = triangleColors.read(sampleCoord);
     const int rawDist = triangleDistances.read(sampleCoord).r;
+#if IR_CARDINAL_LIGHTING
+    const bool glitchPresentationOverride =
+        frameData.cardinalLightingEnabled == 2 &&
+        glitchPresentationOverrides.read(sampleCoord).r >= 0.5f;
+#endif
 #if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
     if (color.a >= 0.1) {
         float3 position = float3(0.0), normal = float3(0.0);
@@ -171,7 +177,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 
 
 #if IR_SHAPE_LIGHTING
-    if (color.a >= 0.1 && lighting.lightingEnabled != 0) {
+    if (!glitchPresentationOverride && color.a >= 0.1 && lighting.lightingEnabled != 0) {
         float3 position = float3(0.0), normal = float3(0.0);
         if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x),
                                      shapeFragmentQueryPixel(originRaw, int2(textureSize)),
@@ -186,7 +192,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 #endif
 
 #if IR_CARDINAL_LIGHTING
-    if (color.a >= 0.1 && lighting.lightingEnabled != 0 && frameData.cardinalLightingEnabled != 0 &&
+    if (!glitchPresentationOverride && color.a >= 0.1 && lighting.lightingEnabled != 0 && frameData.cardinalLightingEnabled != 0 &&
         isCardinalVoxelSurface(triangleEntityIds.read(sampleCoord).rg)) {
         const float3 position = cardinalVoxelSurfacePoint(
             originRaw, int2(sampleCoord), rawDist, frameData.perAxisBase,

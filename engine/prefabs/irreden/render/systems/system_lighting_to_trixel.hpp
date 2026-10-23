@@ -4,6 +4,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_platform.hpp>
 
 #include <array>
 #include <cstddef>
@@ -17,6 +18,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
+#include <irreden/render/components/component_glitch_subject.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/per_axis_surface_lighting.hpp>
@@ -25,6 +27,7 @@
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
+#include <irreden/render/trixel_glitch_math.hpp>
 #include <irreden/ir_profile.hpp>
 
 using namespace IRComponents;
@@ -35,6 +38,7 @@ namespace IRSystem {
 
 // Must match local_size in c_lighting_to_trixel.glsl / .metal.
 constexpr int kLightingToTrixelGroupSize = 16;
+constexpr int kGlitchSourceImageUnit = IRPlatform::kIsOpenGL ? 3 : 8;
 
 // CPU-side mirror of the GLSL/MSL `FrameDataLightingToTrixel` UBO.
 // `lutEnabled_` activates palette LUT shading, which replaces the plain
@@ -93,6 +97,8 @@ static_assert(sizeof(FrameDataLightingToTrixel) == 96, "Lighting frame must matc
 template <> struct System<LIGHTING_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
     ShaderProgram *shapeProgram_ = nullptr;
+    ShaderProgram *glitchSourceProgram_ = nullptr;
+    ShaderProgram *shapeGlitchSourceProgram_ = nullptr;
     // Overflow-face relight kernel: a bounded compute
     // dispatch at the tail of per-axis lighting that relights overflow entries
     // at their world position and rewrites their stored colour in
@@ -105,6 +111,35 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // Readiness requires an executed main-canvas tick preserving voxel albedo.
     bool cardinalSurfaceLightingEligible_ = false;
     bool cardinalSurfaceLightingReady_ = false;
+    bool cardinalGlitchPresentationActive_ = false;
+    bool cardinalGlitchSourceReady_ = false;
+    std::uint64_t glitchPresentationImageCreationCount_ = 0;
+
+    void ensureGlitchSourcePrograms() {
+        if (glitchSourceProgram_ != nullptr) {
+            return;
+        }
+        glitchSourceProgram_ = IRRender::createNamedResource<ShaderProgram>(
+                                   "LightingToTrixelGlitchSourceProgram",
+                                   std::vector{ShaderStage{
+                                       IRRender::kFileCompLightingToTrixelGlitchSource,
+                                       ShaderType::COMPUTE
+                                   }}
+        ).second;
+        shapeGlitchSourceProgram_ = IRRender::createNamedResource<ShaderProgram>(
+                                        "LightingToTrixelShapesGlitchSourceProgram",
+                                        std::vector{ShaderStage{
+                                            IRRender::kFileCompLightingToTrixelShapesGlitchSource,
+                                            ShaderType::COMPUTE
+                                        }}
+        ).second;
+    }
+
+    void ensureGlitchPresentationImages(C_TriangleCanvasTextures &textures) {
+        if (textures.ensureGlitchPresentationImages()) {
+            ++glitchPresentationImageCreationCount_;
+        }
+    }
     // Opt-in presentation lighting keeps the existing per-axis colors and
     // overflow entries as albedo. Publish readiness only after the main tick
     // skips their in-place relight; an eligible frame may have no main tick.
@@ -195,7 +230,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const bool useShapeReceiver = entity == perAxisCanvasEntity_ &&
                                       mainCanvasSunShadow_ != nullptr &&
                                       shapeGeometry.samplesValid();
-        (useShapeReceiver ? shapeProgram_ : program_)->use();
+        const bool glitchSource =
+            entity == perAxisCanvasEntity_ && cardinalGlitchPresentationActive_;
+        ShaderProgram *lightingProgram =
+            useShapeReceiver ? (glitchSource ? shapeGlitchSourceProgram_ : shapeProgram_)
+                             : (glitchSource ? glitchSourceProgram_ : program_);
+        lightingProgram->use();
         frameData_.normalOptions_.x = entity == perAxisCanvasEntity_ ? 1 : 0;
         frameData_.normalOptions_.y =
             entity == perAxisCanvasEntity_ && cardinalSurfaceLightingEligible_ ? 1 : 0;
@@ -264,11 +304,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             ao.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             // Texture/image unit layout (must match GLSL + MSL):
-            //   3: paletteLUT (sampler2D)
+            //   3: paletteLUT (sampler2D; source-output GLSL also uses image2D 3)
             //   4: canvasSunShadow (image2D, R/O)
             //   5: lightVolume (sampler3D)
-            // Metal flattens the sampler and image namespaces into a
-            // shared setTexture slot space, so all three slots must be
+            // OpenGL sampler and image units are separate namespaces. Metal
+            // flattens them into a shared setTexture slot space, so all three slots must be
             // unique across both kinds.
             paletteLUT_->bind(3);
             // Metal requires every setTexture slot to be populated (it does not
@@ -318,6 +358,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             // perAxisRoute != 0 skips the read.
             canvasTextures.getTextureEntityIds()
                 ->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+            if (glitchSource) {
+                canvasTextures.glitchSourceLitColors_.second->bindAsImage(
+                    kGlitchSourceImageUnit,
+                    TextureAccess::WRITE_ONLY,
+                    TextureFormat::RGBA8
+                );
+            }
             frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel);
             voxelFrameDataBuf_->bindBase(
                 BufferTarget::UNIFORM,
@@ -374,6 +421,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
 
         if (entity == perAxisCanvasEntity_) {
             cardinalSurfaceLightingReady_ = cardinalSurfaceLightingEligible_;
+            cardinalGlitchSourceReady_ = cardinalGlitchPresentationActive_;
         }
         if (sourceFaces) {
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
@@ -521,6 +569,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     void beginTick() {
         cardinalSurfaceLightingEligible_ = false;
         cardinalSurfaceLightingReady_ = false;
+        cardinalGlitchPresentationActive_ = false;
+        cardinalGlitchSourceReady_ = false;
         perAxisSurfaceLightingEligible_ = false;
         perAxisSurfaceLightingReady_ = false;
         if (animationParamsBuf_ == nullptr && findSystem(SHAPES_TO_TRIXEL) != kNullSystemId) {
@@ -613,8 +663,28 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         }
         cardinalSurfaceLightingEligible_ =
             worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&
-            (perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated()) &&
-            findSystem(TRIXEL_GLITCH) == kNullSystemId;
+            (perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated());
+        if (cardinalSurfaceLightingEligible_ && findSystem(TRIXEL_GLITCH) != kNullSystemId) {
+            const auto subjectNodes =
+                IREntity::queryArchetypeNodesSimple(IREntity::getArchetype<C_GlitchSubject>());
+            for (auto *node : subjectNodes) {
+                const auto &subjects = IREntity::getComponentData<C_GlitchSubject>(node);
+                for (const C_GlitchSubject &subject : subjects) {
+                    if (IRPrefab::Glitch::isSubjectActive(subject)) {
+                        cardinalGlitchPresentationActive_ = true;
+                        break;
+                    }
+                }
+                if (cardinalGlitchPresentationActive_) {
+                    break;
+                }
+            }
+            if (cardinalGlitchPresentationActive_) {
+                auto &textures = const_cast<C_TriangleCanvasTextures &>(*mainCanvasTextures_);
+                ensureGlitchSourcePrograms();
+                ensureGlitchPresentationImages(textures);
+            }
+        }
         const C_PerAxisSurfaceLighting *surfaceLighting =
             IREntity::singletonOrNull<C_PerAxisSurfaceLighting>();
         perAxisSurfaceLightingEligible_ = worldSurfaceLightingEligible &&

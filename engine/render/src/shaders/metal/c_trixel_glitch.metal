@@ -41,15 +41,25 @@ struct GlitchFrame {
     texture2d<uint, access::read> liveEntityIds;
     texture2d<float, access::read> historyColors;
     texture2d<uint, access::read> historyEntityIds;
+    texture2d<float, access::read> sourceLitColors;
     threadgroup int *tileSlots;
+    bool cardinalPresentation;
 };
 
 static bool glitchInCanvas(int2 q, int2 size) {
     return q.x >= 0 && q.y >= 0 && q.x < size.x && q.y < size.y;
 }
 
-static uint4 glitchLoadColour(thread const GlitchFrame &frame, int2 q) {
+static uint4 glitchLoadLiveColour(thread const GlitchFrame &frame, int2 q) {
     return uint4(frame.liveColors.read(uint2(q)) * 255.0 + 0.5);
+}
+
+static uint4 glitchLoadEffectColour(thread const GlitchFrame &frame, int2 q) {
+    const bool sourceLit = frame.cardinalPresentation &&
+                           isCardinalVoxelSurface(frame.liveEntityIds.read(uint2(q)).xy);
+    const float4 colour = sourceLit ? frame.sourceLitColors.read(uint2(q))
+                                    : frame.liveColors.read(uint2(q));
+    return uint4(colour * 255.0 + 0.5);
 }
 
 static uint2 glitchLoadId(thread const GlitchFrame &frame, int2 q) {
@@ -165,18 +175,18 @@ static uint4 glitchApplySubject(thread const GlitchFrame &frame, int2 p, int slo
             }
         }
     }
-    uint4 colour = glitchLoadColour(frame, source);
+    uint4 colour = glitchLoadEffectColour(frame, source);
 
     if (record.splitTrixels != 0) {
         const int2 redAt = source + int2(record.splitTrixels, 0);
         const int2 blueAt = source - int2(record.splitTrixels, 0);
         const uint4 red = glitchInCanvas(redAt, frame.size) &&
                                   glitchSameId(glitchLoadId(frame, redAt), acceptId)
-                              ? glitchLoadColour(frame, redAt)
+                              ? glitchLoadEffectColour(frame, redAt)
                               : colour;
         const uint4 blue = glitchInCanvas(blueAt, frame.size) &&
                                    glitchSameId(glitchLoadId(frame, blueAt), acceptId)
-                               ? glitchLoadColour(frame, blueAt)
+                               ? glitchLoadEffectColour(frame, blueAt)
                                : colour;
         colour = uint4(red.r, colour.g, blue.b, max(max(red.a, colour.a), blue.a));
     }
@@ -217,7 +227,8 @@ static bool glitchInfluenceBefore(int slot, int dist, int otherSlot, int otherDi
     return dist < otherDist || (dist == otherDist && slot < otherSlot);
 }
 
-static uint4 glitchTexel(thread const GlitchFrame &frame, int2 p, int radius) {
+static uint4 glitchTexel(thread const GlitchFrame &frame, int2 p, int radius, thread bool &influenced) {
+    influenced = false;
     // The two nearest distinct subjects whose spill reaches p, nearer first,
     // ties by ascending slot (= ascending entity id).
     int slotA = -1;
@@ -253,8 +264,9 @@ static uint4 glitchTexel(thread const GlitchFrame &frame, int2 p, int radius) {
         }
     }
     if (slotA < 0) {
-        return glitchLoadColour(frame, p);
+        return glitchLoadLiveColour(frame, p);
     }
+    influenced = true;
     const uint2 idA = frame.words[glitchRecordBase(frame.words, slotA)].xy;
     if (slotB < 0) {
         return glitchApplySubject(frame, p, slotA, idA);
@@ -289,6 +301,8 @@ kernel void c_trixel_glitch(
     texture2d<float, access::read> historyColors [[texture(3)]],
     texture2d<uint, access::read> historyEntityIds [[texture(4)]],
     texture2d<float, access::write> scratchColors [[texture(5)]],
+    texture2d<float, access::read> sourceLitColors [[texture(6)]],
+    texture2d<float, access::write> presentationOverrides [[texture(7)]],
     // buffer(8) ALIASES kBufferIndex_VoxelActiveMask for this dispatch only
     // (kBufferIndex_TrixelGlitchSubjects).
     const device uint4 *subjectWords [[buffer(8)]],
@@ -310,7 +324,9 @@ kernel void c_trixel_glitch(
     frame.liveEntityIds = liveEntityIds;
     frame.historyColors = historyColors;
     frame.historyEntityIds = historyEntityIds;
+    frame.sourceLitColors = sourceLitColors;
     frame.tileSlots = tileSlots;
+    frame.cardinalPresentation = subjectWords[2].z != 0u;
 
     if (localIndex == 0u) {
         atomic_store_explicit(&tileReach, 0, memory_order_relaxed);
@@ -338,6 +354,11 @@ kernel void c_trixel_glitch(
         return;
     }
     const int reach = atomic_load_explicit(&tileReach, memory_order_relaxed);
-    const uint4 colour = reach == 0 ? glitchLoadColour(frame, p) : glitchTexel(frame, p, reach - 1);
+    bool influenced = false;
+    const uint4 colour = reach == 0 ? glitchLoadLiveColour(frame, p)
+                                    : glitchTexel(frame, p, reach - 1, influenced);
     scratchColors.write(float4(colour) / 255.0, uint2(p));
+    if (frame.cardinalPresentation) {
+        presentationOverrides.write(influenced ? float4(1.0f) : float4(0.0f), uint2(p));
+    }
 }
