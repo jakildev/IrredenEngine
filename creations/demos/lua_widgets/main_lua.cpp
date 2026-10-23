@@ -54,6 +54,7 @@
 #include <irreden/ir_time.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
+#include <irreden/common/undo.hpp>
 
 // Systems composed into the pipelines (visible so createSystem<N> can
 // instantiate at the call sites).
@@ -71,8 +72,10 @@
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
+#include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
+#include <irreden/render/systems/system_widget_render_slider.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
 
@@ -135,6 +138,9 @@ std::string g_rowEvents;
 IREntity::EntityId g_scrollFirstRow = IREntity::kNullEntity;
 std::string g_scrollFirstRowBefore;
 bool g_rowEventIdsMatch = true;
+IREntity::EntityId g_undoSlider = IREntity::kNullEntity;
+float g_undoSliderStart = 0.0f;
+float g_undoSliderFinal = 0.0f;
 
 void recordRowEvent(char event, lua_Integer id) {
     g_rowEvents.push_back(event);
@@ -228,6 +234,68 @@ constexpr IRVideo::GuiInputEvent kScrollOnPanelEvents[] = {
 constexpr const char *kScrollFirstRowText = "SCROLL ROW 01";
 constexpr const char *kScrollAdvancedRowText = "SCROLL ROW 02";
 
+constexpr IRVideo::GuiInputEvent kSliderDragEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(220, 320)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(220, 320),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(380, 320)},
+    {3, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(560, 320)},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(560, 320),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+};
+
+constexpr IRVideo::GuiInputEvent kSliderUndoEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+    {2,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonZ},
+    {3,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonZ},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+};
+
+constexpr IRVideo::GuiInputEvent kSliderRedoEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+    {2,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonY},
+    {3,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonY},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftControl},
+};
+
 enum GuiTestShotIndex {
     kHoverShot,
     kOnClickShot,
@@ -236,7 +304,10 @@ enum GuiTestShotIndex {
     kPortraitRetargetShot,
     kRowShot,
     kScrollOffPanelShot,
-    kScrollOnPanelShot
+    kScrollOnPanelShot,
+    kSliderDragShot,
+    kSliderUndoShot,
+    kSliderRedoShot
 };
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
@@ -262,6 +333,15 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_scroll_on_panel"},
      kScrollOnPanelEvents,
      static_cast<int>(sizeof(kScrollOnPanelEvents) / sizeof(kScrollOnPanelEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_slider_drag"},
+     kSliderDragEvents,
+     static_cast<int>(sizeof(kSliderDragEvents) / sizeof(kSliderDragEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_slider_undo"},
+     kSliderUndoEvents,
+     static_cast<int>(sizeof(kSliderUndoEvents) / sizeof(kSliderUndoEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_slider_redo"},
+     kSliderRedoEvents,
+     static_cast<int>(sizeof(kSliderRedoEvents) / sizeof(kSliderRedoEvents[0]))},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 
@@ -460,6 +540,24 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             g_scrollFirstRowBefore == kScrollFirstRowText && after == expectedAfter,
             "before='" + g_scrollFirstRowBefore + "' after='" + after + "'"
         );
+    } else if (
+        shotIndex == kSliderDragShot || shotIndex == kSliderUndoShot || shotIndex == kSliderRedoShot
+    ) {
+        const float value = IRPrefab::Widget::sliderValue(g_undoSlider);
+        const float expected = shotIndex == kSliderUndoShot ? g_undoSliderStart : g_undoSliderFinal;
+        const bool pass = g_undoSlider != IREntity::kNullEntity &&
+                          IRMath::abs(value - expected) <= 0.001f &&
+                          g_undoSliderFinal != g_undoSliderStart;
+        logGuiAssert(
+            shotIndex,
+            "LUA_UNDO_SLIDER",
+            g_undoSlider,
+            shotIndex == kSliderDragShot
+                ? "slider_dragged"
+                : (shotIndex == kSliderUndoShot ? "slider_undone" : "slider_redone"),
+            pass,
+            fmt::format("value={} expected={}", value, expected)
+        );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
             IRPrefab::GuiTest::detail::firedThisShot(g_clickLatch, g_onClickButton);
@@ -489,6 +587,7 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             g_pollWasClickedSeen ? "polled-true" : "never"
         );
     }
+
     g_clickLatch.firedWidgets_.clear();
 }
 
@@ -513,6 +612,7 @@ int main(int argc, char **argv) {
         IREngine::setToolRoot(IR_LUA_WIDGETS_TOOL_ROOT);
     }
     IRLuaWidgets::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    IRPrefab::Undo::registerUndoCommands();
     initSystems();
     IREngine::runScript("main.lua"); // builds widgets + registers onClick / poll system
     IREngine::gameLoop();
@@ -528,6 +628,7 @@ void registerLuaBindings() {
         script.bindLuaCommands();
         // IRRender.createViewport / setViewport* — the portrait main.lua builds.
         script.bindLuaViewport();
+        script.bindLuaUndo();
 
         // Register the dispatch system ONCE here so its single instance is in
         // the prefab-system-id map (the binding resolves THIS instance) and so
@@ -557,6 +658,14 @@ void registerLuaBindings() {
         };
         lua["IRTest"]["setScrollFirstRow"] = [](lua_Integer label) {
             IRLuaWidgets::g_scrollFirstRow = static_cast<IREntity::EntityId>(label);
+        };
+        lua["IRTest"]["setUndoSlider"] = [](lua_Integer slider, float start) {
+            IRLuaWidgets::g_undoSlider = static_cast<IREntity::EntityId>(slider);
+            IRLuaWidgets::g_undoSliderStart = start;
+            IRLuaWidgets::g_undoSliderFinal = start;
+        };
+        lua["IRTest"]["undoSliderChanged"] = [](float value) {
+            IRLuaWidgets::g_undoSliderFinal = value;
         };
         lua["IRTest"]["rowHovered"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('H', id); };
         lua["IRTest"]["rowClicked"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('C', id); };
@@ -638,6 +747,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
             IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>(),
             IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
             IRLuaWidgets::g_dispatchId,
         }
     );
@@ -662,6 +772,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),

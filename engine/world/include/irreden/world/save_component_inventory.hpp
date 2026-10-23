@@ -43,6 +43,7 @@
 #include <irreden/common/components/component_stopwatch.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/common/components/component_timer.hpp>
+#include <irreden/common/components/component_undo_history.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/settings_registry.hpp>
 #include <irreden/demo/components/component_example.hpp>
@@ -273,6 +274,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_Modifiers)
 // on-disk form. Never write a serializer that substitutes defaults for these;
 // a load would silently drop every registered handler and report success.
 IR_SAVE_OPT_OUT(IRComponents::C_EntityEventHandlers)
+
+// C_UndoHistory owns process-local callbacks, including protected Lua
+// functions. A serialized callback cannot retain an executable target.
+IR_SAVE_OPT_OUT(IRComponents::C_UndoHistory)
 
 // C_LerpEntity holds a std::function member — same non-serializable shape
 // as C_LambdaModifiers above, so it opts out too.
@@ -552,6 +557,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_LambdaModifiers,
     IRComponents::C_Modifiers,
     IRComponents::C_EntityEventHandlers,
+    IRComponents::C_UndoHistory,
     IRComponents::C_VoxelSetNew,
     IRComponents::C_FogField,
     IRComponents::C_FogExempt,

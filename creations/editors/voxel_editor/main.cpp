@@ -32,6 +32,7 @@
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/common/rotation_mode.hpp>
+#include <irreden/common/undo.hpp>
 
 // Gizmo primitives
 #include <irreden/render/gizmo.hpp>
@@ -132,7 +133,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -211,27 +211,9 @@ constexpr Color kBoneColors[kBoneSwatchCount] = {
 struct UndoEdit {
     IREntity::EntityId voxelSet_;
     ivec3 localIdx_;
-    C_Voxel prev_;
+    C_Voxel before_;
+    C_Voxel after_;
 };
-
-struct UndoRecord {
-    std::vector<UndoEdit> edits_;
-    std::vector<IREntity::EntityId> createdParts_;
-    std::optional<RemovedEditorPart> removedPart_;
-
-    std::size_t byteSize() const {
-        return sizeof(UndoEdit) * edits_.size() +
-               sizeof(IREntity::EntityId) * createdParts_.size() +
-               (removedPart_ ? removedPart_->byteSize() : 0);
-    }
-};
-
-// Per-stroke byte budget with whole-stroke eviction. One mebibyte
-// is enough headroom for a 1024-edit stroke (24 KiB) to live ~40 strokes
-// deep before the oldest evicts. Applied per frame: each animation frame
-// has its own independent undo stack capped at this limit; total in-memory
-// undo cost is at most kUndoByteBudget × frameCount.
-constexpr std::size_t kUndoByteBudget = 1u << 20;
 
 // Reserve capacity for the per-stroke edits vector at stroke-begin so
 // the per-voxel write hot path doesn't allocate. The brush is
@@ -242,7 +224,7 @@ constexpr std::size_t kUndoStrokeReserve = 1024;
 // Module-level state captured into systems via SystemParams. Holds the
 // palette swatch entity ids (built at init), the active swatch index
 // (driven by swatch clicks), the editable voxel set's entity id, the
-// undo stack, and the in-flight stroke buffer.
+// frame-local undo contexts and the in-flight stroke buffer.
 struct EditorState {
     std::vector<IREntity::EntityId> paletteSwatches_;
     IREntity::EntityId palettePanel_ = IREntity::kNullEntity;
@@ -251,18 +233,8 @@ struct EditorState {
     // pass; runtime place/erase resolves the target set via the picker
     // hit rather than reading this field, so it has no per-frame use.
     IREntity::EntityId editableVoxelSet_ = IREntity::kNullEntity;
-    std::deque<UndoRecord> undoRecords_;
-    std::size_t undoTotalBytes_ = 0;
-    UndoRecord pendingStroke_;
-
-    // Per-frame undo stacks. Index i stores the saved undo state for
-    // g_anim.frames_[i] when that frame is not active. The active frame's
-    // live undo state always lives in undoRecords_ / undoTotalBytes_
-    // (the "hot" slot). switchToFrame swaps the hot slot in and out.
-    // Size must equal g_anim.frameCount(); frame-add and frame-delete
-    // handlers insert/erase entries in parallel with g_anim.frames_.
-    std::vector<std::deque<UndoRecord>> perFrameUndoStacks_;
-    std::vector<std::size_t> perFrameUndoBytes_;
+    std::vector<UndoEdit> pendingStroke_;
+    std::vector<IRPrefab::Undo::ContextId> frameUndoContexts_;
 };
 
 EditorState g_editor;
@@ -1249,14 +1221,16 @@ void reseatEditorMirrorAxes() {
 }
 
 void clearUndoHistory() {
-    g_editor.undoRecords_.clear();
-    g_editor.undoTotalBytes_ = 0;
-    g_editor.pendingStroke_.edits_.clear();
-    g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
-    for (std::deque<UndoRecord> &records : g_editor.perFrameUndoStacks_) {
-        records.clear();
+    IRPrefab::Undo::clear();
+    g_editor.pendingStroke_.clear();
+    g_editor.pendingStroke_.reserve(kUndoStrokeReserve);
+    g_editor.frameUndoContexts_.clear();
+    for (int i = 0; i < g_anim.frameCount(); ++i) {
+        g_editor.frameUndoContexts_.push_back(IRPrefab::Undo::createContext());
     }
-    std::fill(g_editor.perFrameUndoBytes_.begin(), g_editor.perFrameUndoBytes_.end(), 0);
+    if (!g_editor.frameUndoContexts_.empty()) {
+        IRPrefab::Undo::selectContext(g_editor.frameUndoContexts_[g_anim.activeFrame_]);
+    }
 }
 
 void selectEditorPart(int index, bool createGizmos = true) {
@@ -1392,13 +1366,13 @@ void addEditorShapePart() {
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
-void pushUndoRecord(UndoRecord record) {
-    g_editor.undoTotalBytes_ += record.byteSize();
-    g_editor.undoRecords_.push_back(std::move(record));
-    while (g_editor.undoTotalBytes_ > kUndoByteBudget && g_editor.undoRecords_.size() > 1) {
-        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
-        g_editor.undoRecords_.pop_front();
+std::optional<RemovedEditorPart> snapshotEditorPartById(const std::string &partId) {
+    for (const EditorPart &part : g_entityScene.parts()) {
+        if (part.id_ == partId) {
+            return g_entityScene.snapshotPart(part.entity_);
+        }
     }
+    return std::nullopt;
 }
 
 void removeSelectedPart() {
@@ -1409,9 +1383,30 @@ void removeSelectedPart() {
     if (!removed) {
         return;
     }
-    UndoRecord record;
-    record.removedPart_ = std::move(removed);
-    pushUndoRecord(std::move(record));
+    auto state = std::make_shared<RemovedEditorPart>(std::move(*removed));
+    IRPrefab::Undo::push({
+        "REMOVE PART",
+        [state]() {
+            const EntitySceneRestoreResult restored =
+                g_entityScene.restorePart(g_moduleHost.script(), *state);
+            if (!restored.ok()) {
+                IR_LOG_ERROR("Part restore failed: {}", restored.error_);
+                return;
+            }
+            selectEditorPart(g_entityScene.selectedIndex());
+        },
+        [state]() {
+            std::optional<RemovedEditorPart> live = snapshotEditorPartById(state->part_.id_);
+            if (!live) {
+                return;
+            }
+            const IREntity::EntityId entity = live->part_.entity_;
+            *state = std::move(*live);
+            g_entityScene.removeParts({entity});
+            selectEditorPart(g_entityScene.selectedIndex());
+        },
+        {},
+    });
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
@@ -1419,9 +1414,42 @@ void commitPartCreation(std::vector<IREntity::EntityId> created) {
     if (created.empty()) {
         return;
     }
-    UndoRecord record;
-    record.createdParts_ = std::move(created);
-    pushUndoRecord(std::move(record));
+    auto states = std::make_shared<std::vector<RemovedEditorPart>>();
+    states->reserve(created.size());
+    for (IREntity::EntityId entity : created) {
+        if (auto snapshot = g_entityScene.snapshotPart(entity)) {
+            states->push_back(std::move(*snapshot));
+        }
+    }
+    IRPrefab::Undo::push({
+        "CREATE PARTS",
+        [states]() {
+            std::vector<IREntity::EntityId> entities;
+            entities.reserve(states->size());
+            for (RemovedEditorPart &state : *states) {
+                std::optional<RemovedEditorPart> live = snapshotEditorPartById(state.part_.id_);
+                if (!live) {
+                    continue;
+                }
+                entities.push_back(live->part_.entity_);
+                state = std::move(*live);
+            }
+            g_entityScene.removeParts(entities);
+            selectEditorPart(g_entityScene.selectedIndex());
+        },
+        [states]() {
+            for (RemovedEditorPart &state : *states) {
+                const EntitySceneRestoreResult restored =
+                    g_entityScene.restorePart(g_moduleHost.script(), state);
+                if (!restored.ok()) {
+                    IR_LOG_ERROR("Part restore failed: {}", restored.error_);
+                    continue;
+                }
+            }
+            selectEditorPart(g_entityScene.selectedIndex());
+        },
+        {},
+    });
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
@@ -1540,8 +1568,7 @@ void applyEditRaw(
     Color placeColor,
     std::uint8_t boneId
 ) {
-    UndoEdit edit{voxelSetEntity, localIdx, set.voxels_[flat]};
-    g_editor.pendingStroke_.edits_.push_back(edit);
+    UndoEdit edit{voxelSetEntity, localIdx, set.voxels_[flat], {}};
     if (place) {
         set.voxels_[flat].color_ = placeColor;
         set.voxels_[flat].bone_id_ = boneId;
@@ -1555,6 +1582,8 @@ void applyEditRaw(
         set.voxels_[flat].deactivate();
         set.voxels_[flat].layer_id_ = 0;
     }
+    edit.after_ = set.voxels_[flat];
+    g_editor.pendingStroke_.push_back(std::move(edit));
 }
 
 // Scratch buffer for the mirror expansion, retained across edits so a symmetric
@@ -1673,101 +1702,85 @@ void applyEdit(
 }
 
 void commitStroke(bool derivedStateAlreadySynced = false) {
-    if (g_editor.pendingStroke_.edits_.empty()) {
+    if (g_editor.pendingStroke_.empty()) {
         return;
     }
-    std::vector<IREntity::EntityId> touchedSets;
-    if (!derivedStateAlreadySynced) {
-        for (const UndoEdit &edit : g_editor.pendingStroke_.edits_) {
-            if (std::find(touchedSets.begin(), touchedSets.end(), edit.voxelSet_) ==
-                touchedSets.end()) {
-                touchedSets.push_back(edit.voxelSet_);
+    std::vector<std::pair<IREntity::EntityId, std::string>> editedSets;
+    for (const UndoEdit &edit : g_editor.pendingStroke_) {
+        const auto existing =
+            std::find_if(editedSets.begin(), editedSets.end(), [&](const auto &set) {
+                return set.first == edit.voxelSet_;
+            });
+        if (existing != editedSets.end()) {
+            continue;
+        }
+        std::string partId;
+        for (const EditorPart &part : g_entityScene.parts()) {
+            if (part.entity_ == edit.voxelSet_) {
+                partId = part.id_;
+                break;
             }
         }
+        editedSets.emplace_back(edit.voxelSet_, std::move(partId));
     }
-    pushUndoRecord(std::move(g_editor.pendingStroke_));
-    g_editor.pendingStroke_.edits_.clear();
-    g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
-    for (IREntity::EntityId entity : touchedSets) {
-        IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
-    }
-}
-
-void remapUndoRecordEntity(
-    UndoRecord &record, IREntity::EntityId removed, IREntity::EntityId restored
-) {
-    for (UndoEdit &edit : record.edits_) {
-        if (edit.voxelSet_ == removed) {
-            edit.voxelSet_ = restored;
+    auto edits = std::make_shared<std::vector<UndoEdit>>(std::move(g_editor.pendingStroke_));
+    auto applyEdits = [edits, editedSets](bool redo) {
+        std::unordered_map<IREntity::EntityId, IREntity::EntityId> liveEntities;
+        liveEntities.reserve(editedSets.size());
+        for (const auto &[originalEntity, partId] : editedSets) {
+            IREntity::EntityId liveEntity = originalEntity;
+            if (!partId.empty()) {
+                liveEntity = IREntity::kNullEntity;
+                for (const EditorPart &part : g_entityScene.parts()) {
+                    if (part.id_ == partId) {
+                        liveEntity = part.entity_;
+                        break;
+                    }
+                }
+            }
+            liveEntities.emplace(originalEntity, liveEntity);
         }
-    }
-    for (IREntity::EntityId &created : record.createdParts_) {
-        if (created == removed) {
-            created = restored;
+        std::vector<IREntity::EntityId> touchedSets;
+        auto apply = [&](const UndoEdit &edit) {
+            const IREntity::EntityId entity = liveEntities.at(edit.voxelSet_);
+            if (entity == IREntity::kNullEntity || !IREntity::entityExists(entity)) {
+                return;
+            }
+            auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+            const std::size_t flat =
+                static_cast<std::size_t>(IRMath::index3DtoIndex1D(edit.localIdx_, set.size_));
+            if (flat < set.voxels_.size()) {
+                set.voxels_[flat] = redo ? edit.after_ : edit.before_;
+            }
+            if (std::find(touchedSets.begin(), touchedSets.end(), entity) == touchedSets.end()) {
+                touchedSets.push_back(entity);
+            }
+        };
+        if (redo) {
+            for (const UndoEdit &edit : *edits) {
+                apply(edit);
+            }
+        } else {
+            for (auto it = edits->rbegin(); it != edits->rend(); ++it) {
+                apply(*it);
+            }
         }
-    }
-}
-
-void remapUndoEntity(IREntity::EntityId removed, IREntity::EntityId restored) {
-    for (UndoRecord &record : g_editor.undoRecords_) {
-        remapUndoRecordEntity(record, removed, restored);
-    }
-    for (std::deque<UndoRecord> &records : g_editor.perFrameUndoStacks_) {
-        for (UndoRecord &record : records) {
-            remapUndoRecordEntity(record, removed, restored);
+        for (IREntity::EntityId entity : touchedSets) {
+            IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
         }
-    }
-    remapUndoRecordEntity(g_editor.pendingStroke_, removed, restored);
-}
-
-void undoOne() {
-    if (g_editor.undoRecords_.empty()) {
-        return;
-    }
-    UndoRecord rec = std::move(g_editor.undoRecords_.back());
-    g_editor.undoRecords_.pop_back();
-    g_editor.undoTotalBytes_ -= rec.byteSize();
-    if (rec.removedPart_) {
-        const IREntity::EntityId removed = rec.removedPart_->part_.entity_;
-        const EntitySceneRestoreResult restored =
-            g_entityScene.restorePart(g_moduleHost.script(), *rec.removedPart_);
-        if (!restored.ok()) {
-            IR_LOG_ERROR("Part restore failed: {}", restored.error_);
-            pushUndoRecord(std::move(rec));
-            return;
+    };
+    IRPrefab::Undo::push({
+        "VOXEL STROKE",
+        [applyEdits]() { applyEdits(false); },
+        [applyEdits]() { applyEdits(true); },
+        {},
+    });
+    g_editor.pendingStroke_.clear();
+    g_editor.pendingStroke_.reserve(kUndoStrokeReserve);
+    if (!derivedStateAlreadySynced) {
+        for (const auto &editedSet : editedSets) {
+            IREntity::getComponent<C_VoxelSetNew>(editedSet.first).resyncAfterRawEdits();
         }
-        remapUndoEntity(removed, restored.entity_);
-        selectEditorPart(g_entityScene.selectedIndex());
-        return;
-    }
-    if (!rec.createdParts_.empty()) {
-        g_entityScene.removeParts(rec.createdParts_);
-        selectEditorPart(g_entityScene.selectedIndex());
-    }
-    // Replay in reverse so overlapping edits inside a stroke restore
-    // in last-write-wins order — same property the forward edit chain
-    // produced when authoring.
-    std::vector<IREntity::EntityId> touchedSets;
-    for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
-        if (!IREntity::entityExists(it->voxelSet_)) {
-            continue;
-        }
-        auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
-        const std::size_t flat =
-            static_cast<std::size_t>(IRMath::index3DtoIndex1D(it->localIdx_, set.size_));
-        if (flat < set.voxels_.size()) {
-            set.voxels_[flat] = it->prev_;
-        }
-        if (std::find(touchedSets.begin(), touchedSets.end(), it->voxelSet_) == touchedSets.end()) {
-            touchedSets.push_back(it->voxelSet_);
-        }
-    }
-    for (auto id : touchedSets) {
-        if (!IREntity::entityExists(id)) {
-            continue;
-        }
-        auto &set = IREntity::getComponent<C_VoxelSetNew>(id);
-        set.resyncAfterRawEdits();
     }
 }
 
@@ -2072,7 +2085,7 @@ void loadFrameToLive(int idx) {
     }
     // Both branches write the raw `voxels_` span, so the set's derived state has
     // to be rebuilt for the arriving frame — the same contract every edit path
-    // here already honours through commitStroke / undoOne
+    // here already honours through commitStroke and history replay
     // (engine/prefabs/irreden/voxel/CLAUDE.md).
     //
     // The load-bearing half is the pool's active mask. It mirrors
@@ -2089,34 +2102,19 @@ void loadFrameToLive(int idx) {
 
 // Snapshot the live voxels into the active frame, then load frame
 // `frameIndex` into the live target. Out-of-range and same-frame are
-// no-ops. Swaps the per-frame undo hot slot so undo (Ctrl-Z) only
-// reaches into the history of the active frame.
+// no-ops. Selects the frame's history context so undo reaches only into the
+// active frame.
 void switchToFrame(int frameIndex) {
     if (frameIndex < 0 || frameIndex >= g_anim.frameCount())
         return;
     if (frameIndex == g_anim.activeFrame_)
         return;
 
-    const int oldFrame = g_anim.activeFrame_;
-
-    // Save the departing frame's undo state into the cold slot.
-    if (oldFrame < static_cast<int>(g_editor.perFrameUndoStacks_.size())) {
-        g_editor.perFrameUndoStacks_[oldFrame] = std::move(g_editor.undoRecords_);
-        g_editor.perFrameUndoBytes_[oldFrame] = g_editor.undoTotalBytes_;
-    }
-
-    snapshotLiveToFrame(oldFrame);
+    snapshotLiveToFrame(g_anim.activeFrame_);
     g_anim.activeFrame_ = frameIndex;
     loadFrameToLive(frameIndex);
-
-    // Restore the arriving frame's undo state into the hot slot.
-    g_editor.undoRecords_ = {};
-    g_editor.undoTotalBytes_ = 0;
-    if (frameIndex < static_cast<int>(g_editor.perFrameUndoStacks_.size())) {
-        g_editor.undoRecords_ = std::move(g_editor.perFrameUndoStacks_[frameIndex]);
-        g_editor.undoTotalBytes_ = g_editor.perFrameUndoBytes_[frameIndex];
-        g_editor.perFrameUndoStacks_[frameIndex] = {};
-        g_editor.perFrameUndoBytes_[frameIndex] = 0;
+    if (frameIndex < static_cast<int>(g_editor.frameUndoContexts_.size())) {
+        IRPrefab::Undo::selectContext(g_editor.frameUndoContexts_[frameIndex]);
     }
 
     // Mirror the new frame index onto the scrubber widget (keyboard nav).
@@ -3839,7 +3837,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
     IR_LOG_INFO("  Space: re-center + reset yaw");
-    IR_LOG_INFO("  Ctrl+Z: undo last stroke");
+    IR_LOG_INFO("  Ctrl+Z: undo  Ctrl+Y / Ctrl+Shift+Z: redo");
     IR_LOG_INFO("  X/Y/Z: toggle X/Y/Z mirror symmetry");
     IR_LOG_INFO("  Left/Right arrow: previous/next frame");
     IR_LOG_INFO("  P: play/pause  A: add blank frame  D: duplicate  Backspace: delete frame");
@@ -3861,7 +3859,8 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | "
-        "tier_scrub | remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
+        "tier_scrub | remove_part | undo_history | radial_array | linear_array | nway_symmetry | "
+        "mode_preview | "
         "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
         "component_field_key | text_input_command_capture | part_sizes | part_gizmo_reach | "
@@ -3878,6 +3877,7 @@ int main(int argc, char **argv) {
          "tree",
          "parts_roundtrip",
          "remove_part",
+         "undo_history",
          "tier_scrub",
          "radial_array",
          "linear_array",
@@ -5244,6 +5244,7 @@ void initCommands() {
     // pair's eligibility once, at the press, so the Ctrl+S save chord shadows
     // both halves or neither, and no per-creation mask is needed.
     IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
+    IRPrefab::Undo::registerUndoCommands();
 
     // F1 opens the registry-driven command help overlay. Every
     // named PRESSED binding registered below appears automatically.
@@ -5335,21 +5336,6 @@ void initCommands() {
         IRInput::kModifierControl,
         "MIRROR Y",
         "TOGGLE Y-AXIS MIRROR SYMMETRY"
-    );
-    // Ctrl+Z — undo. Bare Z — toggle Z-mirror. Both share the same key, so the
-    // masks below are what disambiguate them: CommandManager fires the
-    // modifier-specific binding and suppresses the bare one on the same key.
-    // The masks are also what the help overlay renders, so a guard written
-    // inline instead would advertise both rows as plain "Z".
-    IRCommand::createCommand(
-        IRInput::InputTypes::KEY_MOUSE,
-        IRInput::ButtonStatuses::PRESSED,
-        IRInput::KeyMouseButtons::kKeyButtonZ,
-        []() { IRVoxelEditor::undoOne(); },
-        IRInput::kModifierControl,
-        IRInput::kModifierNone,
-        "UNDO",
-        "UNDO LAST EDIT"
     );
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -5495,26 +5481,11 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonA,
         []() {
             auto &anim = IRVoxelEditor::g_anim;
-            auto &editor = IRVoxelEditor::g_editor;
             IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
-            // Save departing frame's undo state; new frame starts clean.
-            const int oldFrame = anim.activeFrame_;
-            if (oldFrame < static_cast<int>(editor.perFrameUndoStacks_.size())) {
-                editor.perFrameUndoStacks_[oldFrame] = std::move(editor.undoRecords_);
-                editor.perFrameUndoBytes_[oldFrame] = editor.undoTotalBytes_;
-            }
-            editor.undoRecords_ = {};
-            editor.undoTotalBytes_ = 0;
             anim.addBlankFrame();
-            // Keep perFrameUndoStacks_ in sync: insert empty slot for new frame.
-            editor.perFrameUndoStacks_.insert(
-                editor.perFrameUndoStacks_.begin() + anim.activeFrame_,
-                {}
-            );
-            editor.perFrameUndoBytes_.insert(
-                editor.perFrameUndoBytes_.begin() + anim.activeFrame_,
-                std::size_t{0}
-            );
+            auto &contexts = IRVoxelEditor::g_editor.frameUndoContexts_;
+            contexts.insert(contexts.begin() + anim.activeFrame_, IRPrefab::Undo::createContext());
+            IRPrefab::Undo::selectContext(contexts[anim.activeFrame_]);
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
             IR_LOG_INFO("Added blank frame {} / {}", anim.activeFrame_ + 1, anim.frameCount());
         },
@@ -5535,26 +5506,11 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonD,
         []() {
             auto &anim = IRVoxelEditor::g_anim;
-            auto &editor = IRVoxelEditor::g_editor;
             IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
-            // Save source frame's undo state; the duplicate starts clean.
-            const int oldFrame = anim.activeFrame_;
-            if (oldFrame < static_cast<int>(editor.perFrameUndoStacks_.size())) {
-                editor.perFrameUndoStacks_[oldFrame] = std::move(editor.undoRecords_);
-                editor.perFrameUndoBytes_[oldFrame] = editor.undoTotalBytes_;
-            }
-            editor.undoRecords_ = {};
-            editor.undoTotalBytes_ = 0;
             anim.duplicateCurrentFrame();
-            // Insert empty undo slot for the duplicate frame.
-            editor.perFrameUndoStacks_.insert(
-                editor.perFrameUndoStacks_.begin() + anim.activeFrame_,
-                {}
-            );
-            editor.perFrameUndoBytes_.insert(
-                editor.perFrameUndoBytes_.begin() + anim.activeFrame_,
-                std::size_t{0}
-            );
+            auto &contexts = IRVoxelEditor::g_editor.frameUndoContexts_;
+            contexts.insert(contexts.begin() + anim.activeFrame_, IRPrefab::Undo::createContext());
+            IRPrefab::Undo::selectContext(contexts[anim.activeFrame_]);
             IR_LOG_INFO("Duplicated frame {} / {}", anim.activeFrame_ + 1, anim.frameCount());
         },
         IRInput::kModifierNone,
@@ -5563,37 +5519,28 @@ void initCommands() {
         "DUPLICATE THE CURRENT FRAME"
     );
 
-    // Backspace — delete the current frame (minimum 1 frame). The
-    // deleted frame's undo history is discarded; the surviving active
-    // frame's saved undo state is promoted into the hot slot.
+    // Backspace — delete the current frame (minimum 1 frame). The deleted
+    // frame's history context is discarded and the surviving frame's context
+    // becomes active.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonBackspace,
         []() {
             auto &anim = IRVoxelEditor::g_anim;
-            auto &editor = IRVoxelEditor::g_editor;
             if (anim.frameCount() <= 1) {
                 IR_LOG_INFO("Cannot delete the only frame.");
                 return;
             }
             const int deletedFrame = anim.activeFrame_;
-            // Discard the deleted frame's hot undo state.
-            editor.undoRecords_ = {};
-            editor.undoTotalBytes_ = 0;
-            // Remove the cold slot for the frame being deleted.
-            if (deletedFrame < static_cast<int>(editor.perFrameUndoStacks_.size())) {
-                editor.perFrameUndoStacks_.erase(editor.perFrameUndoStacks_.begin() + deletedFrame);
-                editor.perFrameUndoBytes_.erase(editor.perFrameUndoBytes_.begin() + deletedFrame);
+            auto &contexts = IRVoxelEditor::g_editor.frameUndoContexts_;
+            if (deletedFrame < static_cast<int>(contexts.size())) {
+                IRPrefab::Undo::eraseContext(contexts[deletedFrame]);
+                contexts.erase(contexts.begin() + deletedFrame);
             }
             anim.deleteCurrentFrame();
-            // Promote the new active frame's cold undo state to the hot slot.
-            const int newFrame = anim.activeFrame_;
-            if (newFrame < static_cast<int>(editor.perFrameUndoStacks_.size())) {
-                editor.undoRecords_ = std::move(editor.perFrameUndoStacks_[newFrame]);
-                editor.undoTotalBytes_ = editor.perFrameUndoBytes_[newFrame];
-                editor.perFrameUndoStacks_[newFrame] = {};
-                editor.perFrameUndoBytes_[newFrame] = 0;
+            if (anim.activeFrame_ < static_cast<int>(contexts.size())) {
+                IRPrefab::Undo::selectContext(contexts[anim.activeFrame_]);
             }
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
             IR_LOG_INFO("Deleted frame (now {} / {})", anim.activeFrame_ + 1, anim.frameCount());
@@ -6101,8 +6048,6 @@ void initCommands() {
                 return;
             }
             auto &anim = IRVoxelEditor::g_anim;
-            auto &editor = IRVoxelEditor::g_editor;
-
             // Replace animation frames.
             anim.frames_.clear();
             for (auto &snap : loaded.frameSnapshots_)
@@ -6121,11 +6066,7 @@ void initCommands() {
                 IRVoxelEditor::g_layerManager
                     .resetAndLoad(loaded.layers_, loaded.activeLayerId_, loaded.nextLayerId_);
 
-            // Reset per-frame undo state to match the new frame count.
-            editor.undoRecords_ = {};
-            editor.undoTotalBytes_ = 0;
-            editor.perFrameUndoStacks_.assign(static_cast<std::size_t>(anim.frameCount()), {});
-            editor.perFrameUndoBytes_.assign(static_cast<std::size_t>(anim.frameCount()), 0);
+            IRVoxelEditor::clearUndoHistory();
 
             IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
 
@@ -6247,12 +6188,8 @@ void initEntities() {
 
     // Pre-size the in-flight stroke buffer so a click's append doesn't
     // pay a first-time allocation cost.
-    g_editor.pendingStroke_.edits_.reserve(IRVoxelEditor::kUndoStrokeReserve);
-
-    // Per-frame undo slots — one per animation frame, always kept in sync
-    // with g_anim.frames_. Starts with one entry for the initial frame.
-    g_editor.perFrameUndoStacks_.resize(IRVoxelEditor::g_anim.frameCount());
-    g_editor.perFrameUndoBytes_.resize(IRVoxelEditor::g_anim.frameCount(), 0);
+    g_editor.pendingStroke_.reserve(IRVoxelEditor::kUndoStrokeReserve);
+    IRVoxelEditor::clearUndoHistory();
 
     // An entity-authoring session builds on a bare stage — nothing but the
     // editable set — so its captures show the entity alone and no gizmo handle

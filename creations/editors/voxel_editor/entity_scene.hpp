@@ -427,9 +427,26 @@ class EntityScene {
         }
 
         const EditorPart &selected = *selectedPart();
+        std::optional<RemovedEditorPart> removed = snapshotPart(selected.entity_);
+        if (!removed) {
+            return std::nullopt;
+        }
+        removeParts({selected.entity_});
+        return removed;
+    }
+
+    std::optional<RemovedEditorPart> snapshotPart(IREntity::EntityId entity) const {
+        const auto selectedIt =
+            std::find_if(m_parts.begin(), m_parts.end(), [entity](const auto &part) {
+                return part.entity_ == entity;
+            });
+        if (selectedIt == m_parts.end()) {
+            return std::nullopt;
+        }
+        const EditorPart &selected = *selectedIt;
         RemovedEditorPart removed;
         removed.part_ = selected;
-        removed.index_ = static_cast<std::size_t>(m_selected);
+        removed.index_ = static_cast<std::size_t>(std::distance(m_parts.begin(), selectedIt));
         removed.transform_ =
             IREntity::getComponent<IRComponents::C_LocalTransform>(selected.entity_);
         if (selected.kind_ == EditorPartKind::SHAPE) {
@@ -440,7 +457,6 @@ class EntityScene {
             removed.voxelAnchor_ = set.anchor_;
             removed.payload_ = IRPrefab::DenseVoxel::fromComponent(set);
         }
-        removeParts({selected.entity_});
         return removed;
     }
 

@@ -27,6 +27,7 @@ add_executable(IrredenEngineTest
   catalog/catalog_scan_test.cpp
   command/default_binding_manifest_test.cpp
   command/keyboard_dispatch_test.cpp
+  command/undo_commands_test.cpp
   # Replaces the global operator new/delete for the whole binary.
   common/allocation_counter.cpp
   common/array_transforms_test.cpp
@@ -66,6 +67,7 @@ add_executable(IrredenEngineTest
   ecs/skinning_pipeline_consistency_test.cpp
   ecs/spatial_grid_test.cpp
   ecs/system_exclude_test.cpp
+  ecs/undo_history_test.cpp
   ecs/voxel_bone_slot_seed_test.cpp
   ecs/voxel_pool_teardown_test.cpp
   ecs/voxel_set_anchor_test.cpp
@@ -191,6 +193,7 @@ add_executable(IrredenEngineTest
   script/lua_widget_layout_test.cpp
   script/lua_voxel_seam_test.cpp
   script/lua_text_style_voxel_test.cpp
+  script/lua_undo_test.cpp
   script/lua_hierarchy_test.cpp
   script/lua_enum_register_test.cpp
   script/lua_persistence_test.cpp

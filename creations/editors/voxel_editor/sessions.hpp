@@ -145,6 +145,7 @@ enum class Id {
     TREE,
     PARTS_ROUNDTRIP,
     REMOVE_PART,
+    UNDO_HISTORY,
     TIER_SCRUB,
     RADIAL_ARRAY,
     LINEAR_ARRAY,
@@ -192,6 +193,8 @@ inline Id idFromName(const std::string &name) {
         return Id::PARTS_ROUNDTRIP;
     if (name == "remove_part")
         return Id::REMOVE_PART;
+    if (name == "undo_history")
+        return Id::UNDO_HISTORY;
     if (name == "tier_scrub")
         return Id::TIER_SCRUB;
     if (name == "radial_array")
@@ -2281,6 +2284,69 @@ inline Recipe build(
         builder.reload();
         builder.expectPartCount(4, "reload_keeps_only_surviving_parts");
         builder.expectPartOccupancy(1, blobFront, true, "surviving_group_state_survives_reload");
+        return builder.finish();
+    }
+    case Id::UNDO_HISTORY: {
+        Builder builder("undo_history", sceneSize, sceneOrigin, moduleView);
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 edited = center + IRMath::ivec3(0, 0, -3);
+
+        builder.segment("setup");
+        builder.addVoxelPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+
+        builder.segment("stroke");
+        builder.click(edited);
+        builder.expectPartOccupancy(0, edited, true, "stroke_changes_cell");
+
+        builder.segment("other_frame_undo_isolated");
+        builder.duplicateFrame();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartOccupancy(0, edited, true, "other_frame_does_not_consume_source_history");
+
+        builder.segment("source_undo");
+        builder.prevFrame();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartOccupancy(0, edited, false, "stroke_undo_restores_cell");
+
+        builder.segment("source_redo");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectPartOccupancy(0, edited, true, "stroke_redo_restores_final_cell");
+
+        builder.segment("remove_part");
+        builder.removeSelectedPart();
+        builder.expectPartCount(0, "part_removed");
+
+        builder.segment("restore_part");
+        builder.undoRemovedPart();
+        builder.expectPartCount(1, "part_restored");
+        builder.expectPartOccupancy(0, edited, true, "restored_part_keeps_authored_payload");
+
+        builder.segment("reremove_part");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectPartCount(0, "part_redo_removes_again");
+
+        builder.segment("create_remove_replay_setup");
+        builder.addVoxelPart();
+        builder.applyRadialArray(2);
+        builder.removeSelectedPart();
+        builder.expectPartCount(2, "array_copy_removed");
+
+        builder.segment("create_remove_replay_restore");
+        builder.undoRemovedPart();
+        builder.expectPartCount(3, "array_copy_restored");
+
+        builder.segment("create_remove_replay_undo_create");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartCount(1, "restored_copy_removed_with_creation");
+
+        builder.segment("create_remove_replay_redo_create");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectPartCount(3, "array_copies_restored_without_duplicates");
+
+        builder.segment("create_remove_replay_redo_remove");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectPartCount(2, "restored_copy_removed_again");
         return builder.finish();
     }
     case Id::TIER_SCRUB: {

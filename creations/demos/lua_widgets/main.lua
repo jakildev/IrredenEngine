@@ -137,6 +137,37 @@ IRSystem.appendSystem(IRTime.UPDATE, IRSystem.registerSystem({
     end,
 }))
 
+local undoSliderStart = 0.25
+local undoSlider = IRGui.makeSlider(80, 305, 240, 24, "UNDOABLE", 0, 1, undoSliderStart, IRText.Size.SMALL)
+IRTest.setUndoSlider(undoSlider, undoSliderStart)
+local undoSliderLast = undoSliderStart
+local C_UndoSliderPoll = IRComponent.register("LuaWidgetsUndoSliderPoll", { n = 0 })
+IREntity.singleton(C_UndoSliderPoll)
+IRSystem.appendSystem(IRTime.UPDATE, IRSystem.registerSystem({
+    name = "LuaWidgetsUndoSliderPoll",
+    components = { C_UndoSliderPoll },
+    tick = function()
+        local current = IRGui.sliderValue(undoSlider)
+        if current ~= undoSliderLast then
+            local before, after = undoSliderLast, current
+            IRUndo.push{
+                label = "LUA SLIDER",
+                coalesce = "lua_widgets.slider",
+                undo = function()
+                    IRGui.setSliderValue(undoSlider, before)
+                    undoSliderLast = before
+                end,
+                redo = function()
+                    IRGui.setSliderValue(undoSlider, after)
+                    undoSliderLast = after
+                end,
+            }
+            undoSliderLast = current
+            IRTest.undoSliderChanged(current)
+        end
+    end,
+}))
+
 -- Hand-off fixture (--hand-off-fixture button|auto; absent, nothing below runs).
 -- HAND OFF hands this process to a GUI-test take of the same demo and resumes
 -- when it exits. The markers print the render frame and engine tick: equal

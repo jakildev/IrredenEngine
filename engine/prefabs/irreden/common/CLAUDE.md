@@ -134,6 +134,15 @@ wrapper, such as `IRPrefab::Camera::registerStandardKeyboardCommands`, rather
 than copying a suite or calling its bare registration function. See
 [`engine/command/CLAUDE.md`](../../../command/CLAUDE.md).
 
+## Undo history service
+
+`IRPrefab::Undo` owns a world-scoped `C_UndoHistory` singleton. `push` records
+an edit the caller already applied; undo and redo execute the supplied closures.
+Equal non-empty coalescing keys within the sliding 0.5-second window keep the
+first undo and latest redo. Contexts isolate independent documents or animation
+frames. `registerUndoCommands()` materializes the singleton and opts a creation
+into Ctrl+Z, Ctrl+Y, and Ctrl+Shift+Z. The opt-in Lua table is `IRUndo`.
+
 ## Checks
 
 - `fleet-build --target header-checks`

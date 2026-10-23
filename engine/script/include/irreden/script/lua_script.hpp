@@ -92,6 +92,10 @@ class LuaScript {
     // collision. See engine/script/CLAUDE.md "Engine service bindings".
     void bindLuaFog();
 
+    // Bind the opt-in world-scoped undo service. The history singleton owns
+    // protected Lua closures and is destroyed while this VM is still alive.
+    void bindLuaUndo();
+
     // Bind the opt-in secondary-viewport service onto IRRender
     // (createViewport, setViewportRect/Camera/Focus/Visible/Subject,
     // getViewportSubject, destroyViewport). Extends an existing IRRender
