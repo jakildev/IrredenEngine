@@ -100,6 +100,20 @@ class RenderDevice {
     // gotcha in engine/prefabs/CLAUDE.md).
     virtual void
     fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) = 0;
+    // GPU-timeline copy of @p sizeBytes from @p source into @p destination:
+    // glCopyNamedBufferSubData on GL, a blit on Metal. A transfer, not a
+    // shader write, so the destination is never tracked as shader-written:
+    // NVIDIA GL reads indirect arguments from such a buffer without draining
+    // the queue, and unlike subData into a GPU-written buffer the copy never
+    // blocks the CPU. Shader writes feeding the copy need a BUFFER_UPDATE
+    // barrier first.
+    virtual void copyBufferSubData(
+        const Buffer *source,
+        std::ptrdiff_t sourceOffset,
+        const Buffer *destination,
+        std::ptrdiff_t destinationOffset,
+        std::size_t sizeBytes
+    ) = 0;
     virtual void finish() = 0;
 
     // Make @p texture's **level 0** contents reflect its image-atomic state. A

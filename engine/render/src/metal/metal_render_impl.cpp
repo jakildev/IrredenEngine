@@ -1033,6 +1033,44 @@ class MetalRenderDevice final : public RenderDevice {
         }
     }
 
+    void copyBufferSubData(
+        const Buffer *source,
+        std::ptrdiff_t sourceOffset,
+        const Buffer *destination,
+        std::ptrdiff_t destinationOffset,
+        std::size_t sizeBytes
+    ) override {
+        if (source == nullptr || destination == nullptr || sizeBytes == 0) {
+            return;
+        }
+        auto *src = static_cast<MTL::Buffer *>(source->getNativeBuffer());
+        auto *dst = static_cast<MTL::Buffer *>(destination->getNativeBuffer());
+        if (src == nullptr || dst == nullptr) {
+            return;
+        }
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer != nullptr) {
+            auto *blit = createBlitEncoder(commandBuffer);
+            blit->copyFromBuffer(
+                src,
+                static_cast<NS::UInteger>(sourceOffset),
+                dst,
+                static_cast<NS::UInteger>(destinationOffset),
+                static_cast<NS::UInteger>(sizeBytes)
+            );
+            blit->endEncoding();
+            markMetalBufferEncoded(src);
+            markMetalBufferEncoded(dst);
+        } else if (src->contents() != nullptr && dst->contents() != nullptr) {
+            // No command buffer yet, so no queued work can touch either side.
+            std::memcpy(
+                static_cast<std::uint8_t *>(dst->contents()) + destinationOffset,
+                static_cast<const std::uint8_t *>(src->contents()) + sourceOffset,
+                sizeBytes
+            );
+        }
+    }
+
     void finish() override {
         // Block until prior GPU work completes, then start a fresh command
         // buffer for subsequent encoders. Mirrors OpenGL glFinish(). The

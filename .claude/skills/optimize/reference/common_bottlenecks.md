@@ -103,12 +103,14 @@ that found a new one; never add a pattern that was only suspected.
 
 - **Pattern**: `glReadPixels`, `glGetBufferSubData`, `Buffer::getSubData`
   inline in a tick or render stage.
-- **Where**: the cull-stats readback in `system_voxel_to_trixel.hpp` is the
-  sanctioned exception (gated on `gpuStageTiming().enabled_`).
+- **Where**: the cull-stats readback in `system_voxel_to_trixel.hpp` reads a
+  three-slot ring of GPU-side copies two compacts late (gated on
+  `gpuStageTiming().enabled_`); pattern 17 has the measurements.
 - **Symptom**: ~16 ms frames that should be fast; the preceding pass shows
   "full GPU utilisation" because the CPU is stalled.
-- **Fix**: fence + multi-frame ring buffer, prior-frame reads (the cull-stats
-  pattern), or persistent mapped buffers (`PERSISTENT | COHERENT`).
+- **Fix**: a multi-slot ring filled by `copyBufferSubData` and read a slot
+  late (`cullStatsRing_`), or persistent mapped buffers (`PERSISTENT |
+  COHERENT`).
 
 ### 9. Shadow-feeder sweep inflates cull bounds at high zoom
 
@@ -204,3 +206,25 @@ that found a new one; never add a pattern that was only suspected.
   master's 0.5476 ms (1.030×); both fog lanes passed their acceptance limits.
   Raw reports: `docs/perf/fog-ceiling-retention/`. Also verify native image
   identity after reordering a shader predicate.
+
+### 17. GL CPU-GPU synchronisation hidden inside ordinary calls
+
+- **Pattern**: on NVIDIA OpenGL three innocent-looking calls block the CPU
+  until the GPU drains: `Buffer::subData` into a buffer a queued shader
+  wrote (a per-frame counter reset), `dispatchComputeIndirect` from a buffer
+  a shader wrote this frame (compact → stage 1 → stage 2), and
+  `Buffer::getSubData` of the newest GPU-written counters. Metal hides all
+  three because `present()` already waits a frame.
+- **Where**: `system_trixel_to_framebuffer.hpp` hovered-id reset,
+  `system_voxel_to_trixel.hpp` cardinal dispatches and cull-stats readback.
+- **Symptom**: a render system's CPU row tracks the GPU stage durations
+  (`vs1_stage1` / `vs1_stage2` CPU ≈ `voxelStage1` / `voxelStage2` GPU), the
+  frame is CPU-bound while the GPU idles, and fixed-update catch-up ticks
+  per frame climb. Windows Debug, 262K entities, zoom 4, cardinal:
+  `ttf_hover_reset` 3.6 ms, `vs1_stage1` 3.7 ms, `vs1_stage2` 3.7 ms,
+  `vs1_cull_readback` 2.2 ms, steady frame 31.4 ms.
+- **Fix**: `device()->copyBufferSubData` for all three — reset from a
+  constant buffer, dispatch from an args copy no program binds, read a
+  three-slot ring two compacts late. Steady frame 31.4 → 10.6 ms at that cell;
+  the stall rows fall to 0.01–0.08 ms. GPU-timeline copies are never tracked
+  as shader writes, so none of them stalls.

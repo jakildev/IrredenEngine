@@ -286,6 +286,25 @@ class OpenGLRenderDevice final : public RenderDevice {
         );
     }
 
+    void copyBufferSubData(
+        const Buffer *source,
+        std::ptrdiff_t sourceOffset,
+        const Buffer *destination,
+        std::ptrdiff_t destinationOffset,
+        std::size_t sizeBytes
+    ) override {
+        if (source == nullptr || destination == nullptr || sizeBytes == 0) {
+            return;
+        }
+        ENG_API->glCopyNamedBufferSubData(
+            source->getHandle(),
+            destination->getHandle(),
+            static_cast<GLintptr>(sourceOffset),
+            static_cast<GLintptr>(destinationOffset),
+            static_cast<GLsizeiptr>(sizeBytes)
+        );
+    }
+
     void finish() override {
         ENG_API->glFinish();
     }

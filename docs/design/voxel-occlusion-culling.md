@@ -484,8 +484,9 @@ Two operational notes this change surfaced, both worth carrying forward:
   value, and a fresh allocation does **not** read back as zero on GL/NVIDIA
   (observed: 6.36 M "visible" against a 262,144-voxel pool, and a saturated
   4,294,967,295 feeder count). One junk sample swamped a 300-sample average —
-  the pv-off feeder mean came out 14.4 M instead of 47,995. `cullReadbackPrimed_`
-  drops that sample.
+  the pv-off feeder mean came out 14.4 M instead of 47,995. A `cullStatsRing_`
+  slot is read only once a compact has been copied into it, which drops that
+  sample.
 - **Metal numbers are now carried (#3042).** #2475's gates ran on GL and the
   pre-#2898 Metal baseline measured exactly **0** ring capture (the
   sentinel-ring gap). Both readings are superseded by the re-measurement above:
