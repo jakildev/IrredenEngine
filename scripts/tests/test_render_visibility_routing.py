@@ -109,7 +109,8 @@ struct Device{
   check(residentMode==0||residentMode==1,"resident overflow selector");
   if(residentMode==0){
    const int axis=int(offset/kPerAxisCellIndirectStrideBytes);
-   check(axis>=0&&axis<3&&offset==axis*32&&args->id==127,"regular arguments from the copied cell args");
+   check(axis>=0&&axis<3&&offset==axis*32&&args->id==127,
+         "regular arguments from the copied cell args");
    check(storage[25]&&storage[25]->id==25&&offsets[25]==axis*16*4,"regular cell region");
    check(textures[0]==100+axis&&textures[1]==200+axis,"regular textures");
    if(used==1||visibility)check(textures[4]==300+axis,"axis AO texture");
