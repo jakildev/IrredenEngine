@@ -125,8 +125,8 @@ render, because the aim and the pick share one screen mapping.
   editor never runs `PREFAB_LOD_PARTS`. The LOD panel's TIER slider and `,` /
   `.` pin `C_LodTierOverride` on the root and every part; FOLLOW ZOOM removes
   it. Neither touches the camera zoom.
-- Radial and linear arrays create independently editable parts. Radial
-  RADIUS/X and COPY YAW apply whole units and degrees; linear X stays
+- Radial and linear arrays create independently editable parts. Module sessions
+  set radial RADIUS/X and COPY YAW through `applyRadialArray`; linear X stays
   continuous. One array is one undo record; rotational symmetry replays a
   stroke across the radial copy group through the same stroke buffer. The
   selected source stays outside the copy group: radial copies start at the
