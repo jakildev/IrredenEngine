@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRSpriteDemo",
+      "display": "Sprite demo",
       "description": "Shows animated sprite-sheet playback over a voxel reference scene.",
       "presets": [
         {

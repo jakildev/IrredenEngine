@@ -9,12 +9,12 @@ import sys
 from pathlib import Path
 
 KINDS = {"demo", "editor", "game", "tool", "test"}
-TARGET_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
 WINDOWS_DEVICE_PATTERN = re.compile(r"^(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$")
 # The editors .gitignore tracks; every other creations/editors/* is private.
 TRACKED_EDITORS = ("font_maker", "voxel_editor")
 # Prefixes of the build targets a manifest may name.
-TARGET_PREFIXES = ("IR", "Demo", "Editor")
+TARGET_PREFIXES = ("IR",)
+TARGET_NAME_PATTERN = re.compile(r"^IR[A-Z][A-Za-z0-9]*$")
 
 
 def creation_dirs(root: Path) -> list[Path]:
@@ -30,8 +30,8 @@ def validate_target_name(path: Path, key: str, name: object) -> bool:
     if not isinstance(name, str):
         fail(path, f"{key} must be a string")
         return False
-    if not TARGET_NAME_PATTERN.fullmatch(name):
-        fail(path, f"{key} has invalid target-name syntax")
+    if not TARGET_NAME_PATTERN.fullmatch(name) or "Ui" in name:
+        fail(path, f"{key} {name!r} must be IR followed by PascalCase words (with UI capitalized)")
         return False
     stem = name.split(".", maxsplit=1)[0]
     if WINDOWS_DEVICE_PATTERN.fullmatch(stem.upper()):
@@ -145,6 +145,9 @@ def validate(path: Path, root: Path, tracked_files: set[str]) -> list[tuple[str,
             if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
                 fail(path, f"{preset_key}.args must contain only strings")
                 return None
+        if not isinstance(target.get("display"), str) or not target["display"]:
+            fail(path, f"{target_key}.display must be a non-empty string")
+            return None
     return targets
 
 

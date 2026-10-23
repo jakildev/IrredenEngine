@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRAnalyticOracle",
+      "display": "Analytic oracle",
       "description": "Renders the analytic shadow oracle scene and structural metric probe.",
       "presets": [
         {

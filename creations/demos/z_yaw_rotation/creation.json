@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRZYawStatic",
+      "display": "Z yaw static",
       "description": "Shows automatic Z-yaw rotation on a lit voxel and shape scene.",
       "presets": [
         {
@@ -28,6 +29,7 @@
     },
     {
       "name": "IRZYawInteractive",
+      "display": "Z yaw interactive",
       "description": "Lets input drive continuous Z-yaw rotation through the render stack.",
       "presets": [
         {
@@ -45,6 +47,7 @@
     },
     {
       "name": "IRZYawCoverage",
+      "display": "Z yaw coverage",
       "description": "Covers Z-yaw rotation behavior with the compact coverage scene.",
       "presets": [
         {

@@ -12,6 +12,7 @@
   "targets": [
     {
       "name": "IRLightingAO",
+      "display": "Lighting: ambient occlusion",
       "description": "Visualizes ambient-occlusion computation on the lighting reference scene.",
       "presets": [
         {
@@ -29,6 +30,7 @@
     },
     {
       "name": "IRLightingSunShadow",
+      "display": "Lighting: sun shadow",
       "description": "Renders directional sun shadows and their receiver geometry.",
       "presets": [
         {
@@ -46,6 +48,7 @@
     },
     {
       "name": "IRLightingEmissive",
+      "display": "Lighting: emissive",
       "description": "Shows emissive geometry contributing to the lit scene.",
       "presets": [
         {
@@ -63,6 +66,7 @@
     },
     {
       "name": "IRLightingCombined",
+      "display": "Lighting: combined",
       "description": "Combines ambient occlusion, sun shadows, and colored light volumes.",
       "presets": [
         {
@@ -80,6 +84,7 @@
     },
     {
       "name": "IRLightingDebugOverlays",
+      "display": "Lighting: debug overlays",
       "description": "Displays diagnostic overlays for lighting intermediate buffers.",
       "presets": [
         {
@@ -97,6 +102,7 @@
     },
     {
       "name": "IRLightingPoint",
+      "display": "Lighting: point",
       "description": "Demonstrates local point-light volume shading.",
       "presets": [
         {
@@ -114,6 +120,7 @@
     },
     {
       "name": "IRLightingSpot",
+      "display": "Lighting: spot",
       "description": "Demonstrates cone-limited spot-light volume shading.",
       "presets": [
         {
@@ -131,6 +138,7 @@
     },
     {
       "name": "IRLightingDirectional",
+      "display": "Lighting: directional",
       "description": "Demonstrates directional-light volume shading.",
       "presets": [
         {
@@ -148,6 +156,7 @@
     },
     {
       "name": "IRLightingSunShading",
+      "display": "Lighting: sun shading",
       "description": "Shows sun shading across the voxel and shape scene.",
       "presets": [
         {
@@ -165,6 +174,7 @@
     },
     {
       "name": "IRLightingSdfCascade",
+      "display": "Lighting: SDF cascade",
       "description": "Exercises cascaded SDF shadowing for the sun-light path.",
       "presets": [
         {
@@ -182,6 +192,7 @@
     },
     {
       "name": "IRLightingSdfBlocker",
+      "display": "Lighting: SDF blocker",
       "description": "Places an SDF blocker to inspect its shadow contribution.",
       "presets": [
         {
@@ -199,6 +210,7 @@
     },
     {
       "name": "IRLightingSunOrbit",
+      "display": "Lighting: sun orbit",
       "description": "Animates the sun direction around the scene.",
       "presets": [
         {
@@ -216,6 +228,7 @@
     },
     {
       "name": "IRLightingSunElevationOrbit",
+      "display": "Lighting: sun elevation orbit",
       "description": "Varies sun elevation while orbiting the lighting scene.",
       "presets": [
         {
@@ -233,6 +246,7 @@
     },
     {
       "name": "IRLightingPerCanvasScope",
+      "display": "Lighting: per-canvas scope",
       "description": "Scopes lighting independently for each render canvas.",
       "presets": [
         {
@@ -250,6 +264,7 @@
     },
     {
       "name": "IRLightingHDR",
+      "display": "Lighting: HDR",
       "description": "Tests high-dynamic-range lighting and tone response.",
       "presets": [
         {
@@ -267,6 +282,7 @@
     },
     {
       "name": "IRLightingOccludedBoundary",
+      "display": "Lighting: occluded boundary",
       "description": "Exercises occluded boundaries in the lighting volume.",
       "presets": [
         {

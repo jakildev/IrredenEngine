@@ -1,4 +1,4 @@
-# EditorFontMaker
+# IRFontMaker
 
 Draws and edits the GUI canvas's trixel-font glyphs on their lattice, then
 writes an edited glyph back into its header's bitmap literal in place. The
@@ -8,9 +8,9 @@ display geometry and the authoring rules are in
 ## Launch
 
 ```bash
-fleet-build --target EditorFontMaker
-fleet-run EditorFontMaker
-fleet-run EditorFontMaker --font-header path/to/my_font.hpp
+fleet-build --target IRFontMaker
+fleet-run IRFontMaker
+fleet-run IRFontMaker --font-header path/to/my_font.hpp
 ```
 
 Without `--font-header` the editor opens the shipped LARGE
@@ -82,9 +82,9 @@ widgets and everywhere else.
 ## Tests
 
 ```bash
-python3 scripts/gui-verify.py EditorFontMaker -- --font-maker-test table
-python3 scripts/gui-verify.py EditorFontMaker -- --font-maker-test edit
-python3 scripts/render-verify.py --target EditorFontMaker
+python3 scripts/gui-verify.py IRFontMaker -- --font-maker-test table
+python3 scripts/gui-verify.py IRFontMaker -- --font-maker-test edit
+python3 scripts/render-verify.py --target IRFontMaker
 fleet-run IrredenEngineTest --gtest_filter='TrixelFont.*:FontMakerSource.*'
 ```
 

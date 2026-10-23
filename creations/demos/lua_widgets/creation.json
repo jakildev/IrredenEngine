@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRLuaWidgetsDemo",
+      "display": "Lua widgets demo",
       "description": "Launches the Lua-driven widgets demonstration.",
       "presets": [
         {

@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRCanvasStress",
+      "display": "Canvas stress",
       "description": "Exercises dense canvas and detached-canvas render stress scenes.",
       "presets": [
         {

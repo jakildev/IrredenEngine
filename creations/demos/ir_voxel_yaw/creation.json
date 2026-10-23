@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRVoxelYaw",
+      "display": "Voxel yaw",
       "description": "Exercises yawed voxel compositing with shadows, ambient occlusion, and lamps.",
       "presets": [
         {

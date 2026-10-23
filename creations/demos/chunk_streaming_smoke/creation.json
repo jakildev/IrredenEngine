@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRChunkStreamingSmoke",
+      "display": "Chunk streaming smoke",
       "description": "Validates chunk disk round trips against live voxel residency.",
       "presets": [
         {

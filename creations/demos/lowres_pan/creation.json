@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRLowresPan",
+      "display": "Low-resolution pan",
       "description": "Shows camera panning in the low-resolution render configuration.",
       "presets": [
         {

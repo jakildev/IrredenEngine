@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRPersistRoundtrip",
+      "display": "Persistence round trip",
       "description": "Verifies persisted scene state through a save and reload cycle.",
       "package": true,
       "presets": [

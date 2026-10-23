@@ -34,9 +34,8 @@ Decisions locked with the owner on 2026-10-17 (interview in the
 
 1. **No creation metadata.** No demo or editor carries a description, group,
    tags, or run presets; `creations/CMakeLists.txt` is the only registry; the
-   lighting directory owns 16 executables that nothing groups; target names are
-   inconsistent (`DemoMidiDevice`, `EditorFontMaker`, `IRCreationDefault`,
-   `IRUIWidgetsDemo` beside `IRUiDockspace`).
+   lighting directory owns 16 executables that nothing groups; implementation-
+   oriented target names such as `IRCreationDefault` double as display labels.
 2. **No catalog.** Nothing joins source-level creations (including gitignored
    private ones) with build-tree state: built or not, last `RESULT=`, where its
    screenshots landed.
