@@ -64,6 +64,7 @@
 #include <irreden/input/systems/system_entity_hover_detect.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
+#include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/render/camera_controls.hpp>
@@ -240,28 +241,28 @@ constexpr IRVideo::GuiInputEvent kScrollOnPanelEvents[] = {
     {2, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1000, 370), IRMath::vec2(0.0f, -1.0f)},
 };
 
-// Slider spans GUI x 60-200, y 296-330. Its initial thumb is near x 126;
-// GUI x 190 (screen x 380) is unambiguously track body.
+// Slider spans GUI x 340-480, y 296-330. Its initial thumb is near x 406;
+// GUI x 470 (screen x 940) is unambiguously track body.
 constexpr IRVideo::GuiInputEvent kPairedSliderEvents[] = {
-    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(380, 320)},
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(940, 320)},
     {1,
      IRVideo::GuiInputEvent::Type::PRESS,
-     IRMath::ivec2(380, 320),
+     IRMath::ivec2(940, 320),
      IRMath::vec2(0.0f),
      IRInput::KeyMouseButtons::kMouseButtonLeft},
     {2,
      IRVideo::GuiInputEvent::Type::RELEASE,
-     IRMath::ivec2(380, 320),
+     IRMath::ivec2(940, 320),
      IRMath::vec2(0.0f),
      IRInput::KeyMouseButtons::kMouseButtonLeft},
     {3,
      IRVideo::GuiInputEvent::Type::PRESS,
-     IRMath::ivec2(380, 320),
+     IRMath::ivec2(940, 320),
      IRMath::vec2(0.0f),
      IRInput::KeyMouseButtons::kMouseButtonLeft},
     {4,
      IRVideo::GuiInputEvent::Type::RELEASE,
-     IRMath::ivec2(380, 320),
+     IRMath::ivec2(940, 320),
      IRMath::vec2(0.0f),
      IRInput::KeyMouseButtons::kMouseButtonLeft},
 };
@@ -271,10 +272,11 @@ constexpr const char *kScrollFirstRowText = "SCROLL ROW 01";
 constexpr const char *kScrollAdvancedRowText = "SCROLL ROW 02";
 
 constexpr IRVideo::GuiInputEvent kSliderDragEvents[] = {
-    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(220, 320)},
+    // Begin on the initial thumb so this fixture records one drag gesture.
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(276, 320)},
     {1,
      IRVideo::GuiInputEvent::Type::PRESS,
-     IRMath::ivec2(220, 320),
+     IRMath::ivec2(276, 320),
      IRMath::vec2(0.0f),
      IRInput::kMouseButtonLeft},
     {2, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(380, 320)},
@@ -834,11 +836,11 @@ void initSystems() {
         {
             IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
             IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
-             IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>(),
-             IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
-             IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
-             IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
-             IRLuaWidgets::g_dispatchId,
+            IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
+            IRLuaWidgets::g_dispatchId,
         }
     );
 
@@ -849,6 +851,7 @@ void initSystems() {
         {
             IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
             IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+            IRSystem::createSystem<IRSystem::LIFETIME>(),
         }
     );
 
@@ -860,11 +863,11 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
-             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
-             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
-             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
-             IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
-             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),

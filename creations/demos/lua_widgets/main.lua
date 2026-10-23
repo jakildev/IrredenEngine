@@ -45,9 +45,9 @@ IRTest.setButtons(onClickButton, pollButton, hoverLabel)
 -- Paired value row: the slider owns no hidden value synchronization, but a
 -- track-body double-click restores the pre-click slider value and moves
 -- keyboard focus to this field on the following INPUT frame.
-local pairedField = IRGui.makeNumberField(210, 302, 60, 24, 0.5, 0, 1, 0.1)
+local pairedField = IRGui.makeNumberField(490, 302, 60, 24, 0.5, 0, 1, 0.1)
 local pairedSlider = IRGui.makeSlider(
-    60, 296, 140, 34, "PAIR", 0, 1, 0.5, nil,
+    340, 296, 140, 34, "PAIR", 0, 1, 0.5, nil,
     { default = 0.25, step = 0.1, fieldId = pairedField }
 )
 IRTest.setPairedValueRow(pairedSlider, pairedField)
