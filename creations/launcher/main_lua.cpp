@@ -336,6 +336,16 @@ constexpr Event kDockSaveEvents[] = {
     move(4, kCatalogSplitterSaved),
     release(5, kCatalogSplitterSaved, IRInput::kMouseButtonLeft),
 };
+constexpr Event kDockDefaultRevertEvents[] = {
+    move(0, kCatalogSplitter),
+    press(1, kCatalogSplitter, IRInput::kMouseButtonLeft),
+    move(4, kCatalogSplitterSaved),
+    release(5, kCatalogSplitterSaved, IRInput::kMouseButtonLeft),
+    IR_LAUNCHER_CLICK(10, kSettings),
+    IR_LAUNCHER_CLICK(16, kDockSettingsRevert),
+    IR_LAUNCHER_CLICK(22, kSettingsClose),
+    move(30, kSettingsClose),
+};
 constexpr Event kDockPersistEvents[] = {
     IR_LAUNCHER_CLICK(0, kSettings),
     IR_LAUNCHER_CLICK(8, kDockSettingsSave),
@@ -392,6 +402,7 @@ constexpr IRVideo::GuiTestShot kAssetPreviewShots[] = {
 constexpr IRVideo::GuiTestShot kThumbnailShots[] = {shot("thumbnail_chain")};
 constexpr IRVideo::GuiTestShot kDockspaceShots[] = {
     shot("dockspace_initial"),
+    shot("dockspace_default_reverted", kDockDefaultRevertEvents),
     shot("dockspace_resized", kDockSaveEvents),
     shot("dockspace_save_clicked", kDockPersistEvents),
     shot("dockspace_saved"),
@@ -495,12 +506,13 @@ const ReportCheck kThumbnailProbes{
     "thumbnailProbes", "230,140,40,255|84,86,92,255|56,71,77,255|120,124,132,255"
 };
 const ReportCheck kDockInitial{"layoutWidths", "200"};
-const ReportCheck kDockSaved{"layoutWidths", "200|230"};
-const ReportCheck kDockReverted{"layoutWidths", "200|230|249|230"};
+const ReportCheck kDockDefaultReverted{"layoutWidths", "200|230|200"};
+const ReportCheck kDockSaved{"layoutWidths", "200|230|200|230"};
+const ReportCheck kDockReverted{"layoutWidths", "200|230|200|230|249|230"};
 const ReportCheck kDockRestored{"layoutRestored", "true"};
-const ReportCheck kDockSwapped{"layoutPanelXs", "236|504"};
+const ReportCheck kDockSwapped{"layoutPanelXs", "236|534"};
 const ReportCheck kDockContained{"layoutContained", "true"};
-const ReportCheck kDockPreviewRect{"layoutPreviewRect", "242,230,250,176"};
+const ReportCheck kDockPreviewRect{"layoutPreviewRect", "242,230,280,176"};
 
 #undef IR_LAUNCHER_FAVOURITE
 
@@ -553,6 +565,7 @@ const ShotAssertions kThumbnailAssertions[] = {
 };
 const ShotAssertions kDockspaceAssertions[] = {
     {predicate(&reportMatches, &kDockInitial, "initial_catalog_width")},
+    {predicate(&reportMatches, &kDockDefaultReverted, "default_splitter_reverted")},
     {predicate(&reportMatches, &kDockSaved, "splitter_saved")},
     {predicate(&reportMatches, &kDockSaved, "save_keeps_width")},
     {predicate(&reportMatches, &kDockRestored, "layout_serialized_on_save")},

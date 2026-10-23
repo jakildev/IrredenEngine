@@ -70,6 +70,7 @@ if app.settings.layout ~= "" then
 end
 app.layoutRevision = IRLayout.revision()
 app.layoutWidths = {}
+app.defaultLayout = nil
 
 function app.selected()
     return app.selectedDir and app.byDir[app.selectedDir] or nil
@@ -292,8 +293,9 @@ end
 
 function app.revertSettings()
     settingsModule.load(app.settings)
-    if app.settings.layout ~= "" then
-        IRLayout.deserialize(app.settings.layout)
+    local layout = app.settings.layout ~= "" and app.settings.layout or app.defaultLayout
+    if layout and not IRLayout.deserialize(layout) then
+        app.log("settings layout could not be restored")
     end
     app.tree.collapsed = app.settings.collapsed
     settingsModule.show(app, app.settings)
@@ -357,6 +359,7 @@ local function poll()
     local revision = IRLayout.revision()
     if revision ~= app.layoutRevision then
         app.layoutRevision = revision
+        app.defaultLayout = app.defaultLayout or IRLayout.serialize()
         local tx, ty, tw, th = IRLayout.leafRect(app.tree.panel)
         local dx, dy, dw, dh = IRLayout.leafRect(app.details.panel)
         local ax, ay, aw, ah = IRLayout.leafRect(app.assetBrowser.panel)
