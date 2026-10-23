@@ -374,7 +374,7 @@ const std::vector<std::string> kRejectedTargetNames = {
 TEST(CreationManifestTest, IsTargetName) {
     for (std::string_view name :
          {"IRShapeDebug",
-          "DemoMidiDevice",
+          "IRMidiDevice",
           "a.b+c-d",
           "_x",
           "COM10",
@@ -488,7 +488,7 @@ TEST(CreationManifestTest, SharedAcceptedTargetNames) {
     for (const CreationTarget &target : m.targets_) {
         names.push_back(target.name_);
     }
-    EXPECT_EQ(names, (std::vector<std::string>{"NULL", "LPT10", "nul_x", "x.nul"}));
+    EXPECT_EQ(names, (std::vector<std::string>{"IRNull", "IRLptTen", "IRNulX", "IRXNul"}));
 }
 
 } // namespace

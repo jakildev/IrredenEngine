@@ -10,6 +10,7 @@
   "targets": [
     {
       "name": "IRLuaPerfGrid",
+      "display": "Lua performance grid",
       "description": "Builds and updates the Lua performance grid scene.",
       "presets": [
         {

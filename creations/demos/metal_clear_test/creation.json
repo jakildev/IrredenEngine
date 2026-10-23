@@ -12,6 +12,7 @@
   "targets": [
     {
       "name": "IRMetalClearTest",
+      "display": "Metal clear test",
       "description": "Runs the minimal Metal clear test scene.",
       "presets": [
         {

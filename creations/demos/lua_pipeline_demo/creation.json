@@ -12,6 +12,7 @@
   "targets": [
     {
       "name": "IRLuaPipelineDemo",
+      "display": "Lua pipeline demo",
       "description": "Runs the Lua-defined pipeline and its voxel scene.",
       "presets": [
         {

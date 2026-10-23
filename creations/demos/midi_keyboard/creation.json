@@ -9,7 +9,7 @@
   "kind": "demo",
   "targets": [
     {
-      "name": "DemoMidiDevice",
+      "name": "IRMidiDevice",
       "display": "MIDI device",
       "description": "Receives and displays MIDI device input.",
       "presets": [

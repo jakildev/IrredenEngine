@@ -395,7 +395,7 @@ emit_plan() {
         matches=$(
             {
                 echo "$help_lines" | grep -E '^IRLighting' | grep -Ev '^IRLightingDemo' || true
-                echo "$help_lines" | grep -E '^(DemoMidiDevice|EditorFontMaker|IRCreationDefault|IRShapeDebug|IRModifierDemo|IRMetalClearTest|IRMidiPolyrhythm|IRMidiOp1Echo|IRMidiKeyboard|IRMidiAll|IRGame|IRGameAll|IrredenEngineTest)$' || true
+                echo "$help_lines" | grep -E '^(IRMidiDevice|IRFontMaker|IRCreationDefault|IRShapeDebug|IRModifierDemo|IRMetalClearTest|IRMidiPolyrhythm|IRMidiOp1Echo|IRMidiKeyboard|IRMidiAll|IRGame|IRGameAll|IrredenEngineTest)$' || true
             } | LC_ALL=C sort -u
         )
     fi

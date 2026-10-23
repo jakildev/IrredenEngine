@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-// The editing model behind EditorFontMaker: two loaded glyph sets (the LARGE
+// The editing model behind IRFontMaker: two loaded glyph sets (the LARGE
 // slot and the SMALL slot), each a parsed header plus a mutable working copy
 // of every literal's rows, and the selected character. Nothing here touches
 // the ECS or the GPU.

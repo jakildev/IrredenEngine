@@ -32,7 +32,11 @@ class CreationManifestLintTest(unittest.TestCase):
                         "tags": [],
                         "kind": "demo",
                         "targets": [
-                            {"name": "IRValid", "presets": [{"name": "Interactive", "args": []}]}
+                            {
+                                "name": "IRValid",
+                                "display": "Valid",
+                                "presets": [{"name": "Interactive", "args": []}],
+                            }
                         ],
                     }
                 )
@@ -100,17 +104,31 @@ class CreationManifestLintTest(unittest.TestCase):
             self.assertNotEqual(missing.returncode, 0)
             self.assertIn("font_maker: missing creation.json", missing.stderr)
 
-    def test_editor_build_target_resolves(self) -> None:
+    def test_target_name_and_display_rules(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "root"
             root.mkdir()
             self.fixture(root)
             manifest = root / "creations/editors/font_maker/creation.json"
             data = json.loads(manifest.read_text())
-            data["targets"][0]["name"] = "EditorValid"
+            data["targets"][0]["name"] = "DemoThing"
             manifest.write_text(json.dumps(data))
-            result = self.run_lint_with_targets(temporary, root, "IRValid", "EditorValid")
-            self.assertEqual(result.returncode, 0, result.stderr)
+            rejected_prefix = self.run_lint(root)
+            self.assertNotEqual(rejected_prefix.returncode, 0)
+            self.assertIn("DemoThing", rejected_prefix.stderr)
+
+            data["targets"][0]["name"] = "IRUiThing"
+            manifest.write_text(json.dumps(data))
+            rejected_ui = self.run_lint(root)
+            self.assertNotEqual(rejected_ui.returncode, 0)
+            self.assertIn("IRUiThing", rejected_ui.stderr)
+
+            data["targets"][0]["name"] = "IRThing"
+            data["targets"][0].pop("display")
+            manifest.write_text(json.dumps(data))
+            missing_display = self.run_lint(root)
+            self.assertNotEqual(missing_display.returncode, 0)
+            self.assertIn("display", missing_display.stderr)
 
     def run_lint_with_targets(
         self, temporary: str, root: Path, *targets: str

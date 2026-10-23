@@ -12,6 +12,7 @@
   "targets": [
     {
       "name": "IRShapeDebug",
+      "display": "Shape debug",
       "description": "Runs the SDF shape-debug and render-verification reference scene.",
       "package": true,
       "presets": [

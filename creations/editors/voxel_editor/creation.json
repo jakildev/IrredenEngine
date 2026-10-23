@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRVoxelEditor",
+      "display": "Voxel editor",
       "description": "Launches the voxel editor and its scripted authoring workspace.",
       "presets": [
         {

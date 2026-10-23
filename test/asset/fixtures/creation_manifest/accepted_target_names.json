@@ -9,7 +9,8 @@
   "kind": "demo",
   "targets": [
     {
-      "name": "NULL",
+      "name": "IRNull",
+      "display": "Null",
       "presets": [
         {
           "name": "Interactive",
@@ -18,7 +19,8 @@
       ]
     },
     {
-      "name": "LPT10",
+      "name": "IRLptTen",
+      "display": "LPT ten",
       "presets": [
         {
           "name": "Interactive",
@@ -27,7 +29,8 @@
       ]
     },
     {
-      "name": "nul_x",
+      "name": "IRNulX",
+      "display": "NUL X",
       "presets": [
         {
           "name": "Interactive",
@@ -36,7 +39,8 @@
       ]
     },
     {
-      "name": "x.nul",
+      "name": "IRXNul",
+      "display": "X NUL",
       "presets": [
         {
           "name": "Interactive",

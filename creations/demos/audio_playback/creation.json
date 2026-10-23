@@ -10,6 +10,7 @@
   "targets": [
     {
       "name": "IRAudioPlayback",
+      "display": "Audio playback",
       "description": "Exercises the Lua audio playback and mixing surface.",
       "presets": [
         {

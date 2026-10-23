@@ -15,7 +15,8 @@
   ],
   "targets": [
     {
-      "name": "EditorFontMaker",
+      "name": "IRFontMaker",
+      "display": "Font maker",
       "description": "Runs the font maker on the shipped LARGE and SMALL glyph sets.",
       "presets": [
         {

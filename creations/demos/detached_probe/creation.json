@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRDetachedProbe",
+      "display": "Detached probe",
       "description": "Checks detached and revoxelized totems against grid reference placement.",
       "presets": [
         {

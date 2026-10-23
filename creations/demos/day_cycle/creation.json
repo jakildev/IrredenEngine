@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRDayCycle",
+      "display": "Day cycle",
       "description": "Shows continuous day-cycle lighting alongside boundary and timer events.",
       "presets": [
         {

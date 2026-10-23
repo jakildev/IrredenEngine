@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRModifierDemo",
+      "display": "Modifier demo",
       "description": "Runs the voxel modifier and command demonstration scene.",
       "presets": [
         {

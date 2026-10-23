@@ -48,6 +48,10 @@ affects a direct `--target` run. Blessing a set for a new preset uses
 `--target … --update-references`, and the same change adds that preset to
 `sweep_backends`.
 
+Every manifest target name is `IR` followed by PascalCase words; `UI` is
+capitalized as an initialism. There are no exceptions. Every target also has
+a non-empty `display` name for the launcher catalog.
+
 Minimum for a C++-only creation:
 
 - `CMakeLists.txt`

@@ -139,7 +139,7 @@ step. `fontSize` scales either set the same way.
 
 ### Authoring glyphs
 
-Draw and edit glyphs in `EditorFontMaker`
+Draw and edit glyphs in `IRFontMaker`
 ([README](../../creations/editors/font_maker/README.md)). It shows every
 character on its lattice, flags each rule finding as you toggle texels,
 previews the unsaved set in sample text at both sizes, scales and composite

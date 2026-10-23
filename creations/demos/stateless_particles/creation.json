@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRStatelessParticles",
+      "display": "Stateless particles",
       "description": "Displays stateless particle emitters with voxel lighting.",
       "presets": [
         {

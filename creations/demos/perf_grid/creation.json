@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRPerfGrid",
+      "display": "Performance grid",
       "description": "Renders the dense performance grid scene.",
       "presets": [
         {

@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRUIWidgetsDemo",
+      "display": "UI widgets demo",
       "description": "Shows the interactive trixel GUI widget set and image states.",
       "presets": [
         {

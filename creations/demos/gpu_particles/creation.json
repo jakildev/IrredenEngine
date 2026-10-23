@@ -11,6 +11,7 @@
   "targets": [
     {
       "name": "IRGpuParticles",
+      "display": "GPU particles",
       "description": "Displays GPU-simulated particles with the voxel render stack.",
       "presets": [
         {

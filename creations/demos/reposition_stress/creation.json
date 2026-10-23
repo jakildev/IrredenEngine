@@ -10,6 +10,7 @@
   "targets": [
     {
       "name": "IRRepositionStress",
+      "display": "Reposition stress",
       "description": "Exercises live entity repositioning, churn, and stale-handle probes.",
       "presets": [
         {

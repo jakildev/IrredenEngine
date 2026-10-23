@@ -12,6 +12,7 @@
   "targets": [
     {
       "name": "IRFogDemo",
+      "display": "Fog demo",
       "description": "Renders fog-of-war transitions and an optional moving observer.",
       "presets": [
         {
