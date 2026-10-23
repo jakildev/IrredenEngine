@@ -6,6 +6,7 @@
 
 #include <irreden/render/texture.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/gpu_readback_ring.hpp>
 #include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/voxel_pool_config.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -310,14 +311,20 @@ struct PerAxisCanvasStore {
     std::pair<ResourceId, Buffer *> overflowCtrlSeed_{0, nullptr};
     // Copy of the settled ctrl block the overflow indirect draw sources.
     std::pair<ResourceId, Buffer *> overflowDrawArgs_{0, nullptr};
-    // Ring of settled ctrl-block copies for the CPU drop/count readback: the
-    // slot written two rotating frames ago has completed, so reading it never
-    // waits for the GPU. The sort-span bound it feeds therefore lags two frames
-    // and leans on overflowSortDispatchSpan's headroom.
-    static constexpr int kOverflowCtrlRingSlots = 3;
-    std::array<std::pair<ResourceId, Buffer *>, kOverflowCtrlRingSlots> overflowCtrlRing_{};
-    std::array<bool, kOverflowCtrlRingSlots> overflowCtrlRingValid_{};
-    int overflowCtrlRingWrite_ = 0;
+    // Settled ctrl-block copies for the CPU drop/count readback, one write per
+    // rotating frame; a slot is read only once its submission has completed,
+    // so the read never waits. The sort-span bound it feeds lags by however
+    // many frames the backend queues and leans on overflowSortDispatchSpan's
+    // headroom; until the first sample lands the bound is the cap.
+    struct OverflowCtrlProducer {
+        std::uint64_t frame_ = 0;
+    };
+    static constexpr int kMaxOverflowCtrlSlots = 8;
+    IRRender::detail::GpuReadbackRing<OverflowCtrlProducer, kMaxOverflowCtrlSlots>
+        overflowCtrlRing_{};
+    std::vector<std::pair<ResourceId, Buffer *>> overflowCtrlBuffers_;
+    std::uint64_t overflowCtrlFrames_ = 0;
+    bool overflowCtrlSampled_ = false;
     int ctrlBaseUints_ = 0;
     static constexpr std::size_t kOverflowCtrlUints = 8;
     std::ptrdiff_t ctrlOffsetBytes() const {
@@ -538,15 +545,10 @@ struct PerAxisCanvasStore {
             sizeof(ctrlSeed),
             BUFFER_STORAGE_NONE
         );
-        for (int slot = 0; slot < kOverflowCtrlRingSlots; ++slot) {
-            overflowCtrlRing_[slot] = IRRender::createResource<Buffer>(
-                ctrlSeed.data(),
-                sizeof(ctrlSeed),
-                BUFFER_STORAGE_DYNAMIC
-            );
-            overflowCtrlRingValid_[slot] = false;
-        }
-        overflowCtrlRingWrite_ = 0;
+        overflowCtrlRing_ = {};
+        overflowCtrlBuffers_.reserve(kMaxOverflowCtrlSlots);
+        overflowCtrlFrames_ = 0;
+        overflowCtrlSampled_ = false;
     }
 
     // Release all three axis texture sets + the resolve texture and reset to the
@@ -597,12 +599,14 @@ struct PerAxisCanvasStore {
         overflowCtrlSeed_ = {0, nullptr};
         IRRender::destroyResource<Buffer>(overflowDrawArgs_.first);
         overflowDrawArgs_ = {0, nullptr};
-        for (int slot = 0; slot < kOverflowCtrlRingSlots; ++slot) {
-            IRRender::destroyResource<Buffer>(overflowCtrlRing_[slot].first);
-            overflowCtrlRing_[slot] = {0, nullptr};
-            overflowCtrlRingValid_[slot] = false;
+        for (auto &slotBuffer : overflowCtrlBuffers_) {
+            IRRender::destroyResource<Buffer>(slotBuffer.first);
         }
-        overflowCtrlRingWrite_ = 0;
+        overflowCtrlBuffers_.clear();
+        overflowCtrlRing_ = {};
+        overflowCtrlFrames_ = 0;
+        overflowCtrlSampled_ = false;
+
         ctrlBaseUints_ = 0;
         entriesBaseUints_ = 0;
         overflowCap_ = 0;

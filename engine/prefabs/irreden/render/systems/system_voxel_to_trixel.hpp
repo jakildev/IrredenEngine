@@ -753,25 +753,45 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     static constexpr std::size_t kOverflowCtrlBytes =
         C_PerAxisTrixelCanvases::kOverflowCtrlUints * sizeof(std::uint32_t);
 
-    // Cap overflow must never be silent: read the ctrl block copied two
-    // rotating frames ago, whose GPU work has completed, so the read never
-    // waits (a read of the live block would drain the queue on GL), and
-    // one-shot-warn when entries were dropped. The count also bounds this
-    // frame's encoded sort stages, the cap until a copy exists; current GPU
-    // counts still author the indirect grids for every encoded stage.
+    // Cap overflow must never be silent: read every settled ctrl-block copy
+    // whose submission has completed (a read of the live block would drain
+    // the queue on GL), record each in the run witness, and one-shot-warn
+    // when the newest dropped entries. The newest count also bounds this
+    // frame's encoded sort stages, the cap until the first sample lands;
+    // current GPU counts still author the indirect grids for every encoded
+    // stage.
     void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
         IR_PROFILE_SCOPE("vs1_pa_ctrl_readback");
-        std::array<std::uint32_t, C_PerAxisTrixelCanvases::kOverflowCtrlUints> ctrl{};
-        const int readSlot =
-            (axes.overflowCtrlRingWrite_ + 1) % C_PerAxisTrixelCanvases::kOverflowCtrlRingSlots;
-        if (axes.overflowCtrlRingValid_[readSlot]) {
-            axes.overflowCtrlRing_[readSlot].second->getSubData(0, sizeof(ctrl), ctrl.data());
+        using CtrlBlock = std::array<std::uint32_t, C_PerAxisTrixelCanvases::kOverflowCtrlUints>;
+        CtrlBlock ctrl{};
+        std::uint64_t newestFrame = 0;
+        axes.overflowCtrlRing_.drainCompleted(
+            IRRender::device()->completedSubmissionSerial(),
+            [&](int slot, const C_PerAxisTrixelCanvases::OverflowCtrlProducer &producer) {
+                CtrlBlock sample{};
+                axes.overflowCtrlBuffers_[static_cast<std::size_t>(slot)]
+                    .second->getSubData(0, sizeof(sample), sample.data());
+                renderRunWitness().recordOverflow(
+                    sample[1],
+                    sample[5],
+                    static_cast<std::uint32_t>(axes.overflowCap_)
+                );
+                if (producer.frame_ >= newestFrame) {
+                    newestFrame = producer.frame_;
+                    ctrl = sample;
+                }
+            }
+        );
+        if (newestFrame == 0) {
+            if (!axes.overflowCtrlSampled_) {
+                axes.laggedOverflowCount_ = static_cast<std::uint32_t>(axes.overflowCap_);
+            }
+            return;
         }
+        axes.overflowCtrlSampled_ = true;
         axes.laggedOverflowCount_ =
             detail::overflowSortLaggedBound(ctrl, static_cast<std::uint32_t>(axes.overflowCap_));
         const std::uint32_t dropped = ctrl[5];
-        renderRunWitness()
-            .recordOverflow(ctrl[1], dropped, static_cast<std::uint32_t>(axes.overflowCap_));
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
                 "Per-axis overflow list dropped {} entries last "
@@ -1103,16 +1123,26 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 0,
                 kOverflowCtrlBytes
             );
+            const int ctrlSlot = axes.overflowCtrlRing_.write(
+                IRRender::device()->submissionSerial(),
+                {++axes.overflowCtrlFrames_}
+            );
+            if (ctrlSlot == static_cast<int>(axes.overflowCtrlBuffers_.size())) {
+                axes.overflowCtrlBuffers_.push_back(
+                    IRRender::createResource<Buffer>(
+                        nullptr,
+                        kOverflowCtrlBytes,
+                        BUFFER_STORAGE_DYNAMIC
+                    )
+                );
+            }
             IRRender::device()->copyBufferSubData(
                 axes.winnerIds_.second,
                 axes.ctrlOffsetBytes(),
-                axes.overflowCtrlRing_[axes.overflowCtrlRingWrite_].second,
+                axes.overflowCtrlBuffers_[static_cast<std::size_t>(ctrlSlot)].second,
                 0,
                 kOverflowCtrlBytes
             );
-            axes.overflowCtrlRingValid_[axes.overflowCtrlRingWrite_] = true;
-            axes.overflowCtrlRingWrite_ =
-                (axes.overflowCtrlRingWrite_ + 1) % C_PerAxisTrixelCanvases::kOverflowCtrlRingSlots;
         }
 
         {
