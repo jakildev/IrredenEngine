@@ -23,7 +23,7 @@ Read-only: never writes a label, never closes, never claims. The judgment
 layer (verdicts, staging, filing, the human checklist) is the skill's.
 
 Usage:
-  fleet-survey [--repo engine|game|all] [--json]
+  fleet-survey [--repo engine|game|all] [--json] [--alerts-dir <dir>]
   fleet-survey --state <state.json> --issues engine=<issues.json> --prs engine=<prs.json>
                [--log <dispatcher.log>] [--usage-dir <dir>]        (hermetic; tests)
 """
@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fleet_alerts  # noqa: E402
 import fleet_blocked_by  # noqa: E402
 import fleet_branch_match  # noqa: E402
 import fleet_completion  # noqa: E402
@@ -93,10 +94,29 @@ def load_pairs(pairs):
 
 # --- sections ---------------------------------------------------------------
 
-def dispatch_section(state, usage_dir, log_path, now):
+def dispatch_section(state, usage_dir, log_path, alerts_dir, now):
     out = {"generated_at": state.get("generated_at"),
            "cache_age_s": int(cache_age_seconds(state, now)),
-           "pools": {}, "last_dispatch": None, "idle_ticks": 0, "usage_gate": None}
+           "pools": {}, "last_dispatch": None, "idle_ticks": 0, "usage_gate": None,
+           "claim_gate": None,
+           "clone_alerts": fleet_alerts.clone_freshness_records(alerts_dir)}
+    freshness = state.get("clone_freshness") or {}
+    if freshness.get("fresh") is False:
+        engine = state.get("repos", {}).get("engine", {})
+        root = engine.get("path") or "IrredenEngine"
+        alert_name = f"clone-freshness-{Path(root).name}"
+        alert = next((item for item in out["clone_alerts"]
+                      if item.get("name") == alert_name), {})
+        behind = freshness.get("behind")
+        alert_reason = alert.get("reason")
+        reason = f"{alert_reason} ({behind} behind)" if alert_reason else f"{behind} behind"
+        out["claim_gate"] = {
+            "root": alert.get("root") or root,
+            "reason": reason,
+            "behind": behind,
+            "since": alert.get("since") or "?",
+            "remedy": alert.get("remedy") or "rerun fleet-up",
+        }
     # read_quota also returns the legacy unqualified file; the newest observation wins.
     samples = {}
     for identity in ("app", "user"):
@@ -316,9 +336,13 @@ def untriaged_section(open_issues):
             if not any(lab.startswith(("fleet:", "human:")) for lab in label_set(issue))]
 
 
-def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=None):
+def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path,
+           alerts_dir=None, now=None):
     now = now or datetime.now(timezone.utc)
-    report = {"host": host, "dispatch": dispatch_section(state, usage_dir, log_path, now),
+    alerts_dir = alerts_dir or Path(
+        os.environ.get("FLEET_ALERTS_DIR", Path.home() / ".fleet/alerts"))
+    report = {"host": host,
+              "dispatch": dispatch_section(state, usage_dir, log_path, alerts_dir, now),
               "repos": {}}
     # Every surveyed repo's listing is gathered before any park is judged, so
     # a park naming the other repo's issue resolves against that listing.
@@ -337,6 +361,8 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=No
         open_issues, open_prs, ghosts = listings[key]
         prs = list(open_prs.values())
         queue = queues[key]
+        if report["dispatch"]["claim_gate"]:
+            queue["gated"] = "main clone stale"
         impacts = blocker_impacts(open_issues, ghosts)
         for row in queue["ghost"]:
             row["blocked_by_impacts"] = impacts[int(str(row["id"]).lstrip("#"))]
@@ -379,6 +405,16 @@ def render(report):
         else:
             reason = gate_line.removeprefix("usage gate closed:")
             out.append(f"  usage gate: closed since {timestamp}: {reason}")
+    gate = d.get("claim_gate")
+    if gate:
+        out.append(f"  task claims refused: {gate['root']} {gate['reason']} "
+                   f"since {gate['since']} — {gate['remedy']}")
+    for alert in d.get("clone_alerts", []):
+        if gate and alert.get("name") == f"clone-freshness-{Path(gate['root']).name}":
+            continue
+        out.append(f"  main clone advance skipped: {alert.get('root', '?')} "
+                   f"{alert.get('reason', '?')} since {alert.get('since', '?')} — "
+                   f"{alert.get('remedy', '?')}")
     for name, pool in d["pools"].items():
         out.append(f"  {name}: util {pool.get('utilization')}  used {pool.get('used')}  "
                    f"rate/min {pool.get('interval_points_per_minute')}  {pool.get('status') or ''}")
@@ -388,7 +424,9 @@ def render(report):
         for bucket in ("claimable_here", "pinned_away", "ghost", "in_flight", "blocked",
                        "in_progress"):
             rows = q[bucket]
-            out.append(f"  {bucket} ({len(rows)})")
+            gated = " (gated: main clone stale)" if bucket == "claimable_here" \
+                and q.get("gated") else ""
+            out.append(f"  {bucket} ({len(rows)}){gated}")
             for r in rows:
                 extra = ""
                 if bucket == "ghost":
@@ -444,6 +482,8 @@ def main(argv=None):
                         help="open-PR listing from a file instead of gh (tests)")
     parser.add_argument("--log", help="dispatcher log (default ~/.fleet/logs/dispatcher.log)")
     parser.add_argument("--usage-dir", help="usage samples dir (default ~/.fleet/state/usage)")
+    parser.add_argument("--alerts-dir",
+                        help="alerts dir (default FLEET_ALERTS_DIR or ~/.fleet/alerts)")
     parser.add_argument("--host", help="override the host key (default: this host)")
     parser.add_argument("--allow-stale", action="store_true",
                         help="survey a scout cache older than the staleness bound anyway")
@@ -483,7 +523,8 @@ def main(argv=None):
     if log_path is None and not hermetic:
         log_path = fleet_home / "logs" / "dispatcher.log"
     report = survey(state, issues, prs, args.host or fleet_task_class._current_host(),
-                    args.usage_dir or fleet_home / "state" / "usage", log_path)
+                    args.usage_dir or fleet_home / "state" / "usage", log_path,
+                    args.alerts_dir or os.environ.get("FLEET_ALERTS_DIR") or fleet_home / "alerts")
     print(json.dumps(report, indent=2) if args.json else render(report))
     return 0
 

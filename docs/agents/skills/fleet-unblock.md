@@ -94,7 +94,7 @@ One line per cause, from the queue partition:
 | `in_flight` | an open PR exists | that PR's own state |
 | `blocked` | `**Blocked by:**` names an open issue | the named issue; check whether it is itself a ghost |
 | `in_progress` | a pane holds the claim | nothing unless the owner's heartbeat is stale |
-| `claimable_here` | real work | nothing; if the dispatcher is still idle, read its log |
+| `claimable_here` | real work | nothing; if marked `gated: main clone stale`, no repo can claim until the main clone advances — apply the survey's remedy |
 
 Dispatch health is the second half: a stale cache, a closed usage gate, or
 a decline loop (`idle ticks` high while `claimable_here` is non-empty).

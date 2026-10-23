@@ -27,6 +27,8 @@ a stretch of autonomous running:
     `scout-master-ci-*` alerts) renders with its sha, run age and URL and
     warns once per workflow; only the authoritative poller's host holds
     those files, so a clean follower report does not mean master is green.
+    A `clone-freshness-*` alert is a WARN with its root, reason, count, since,
+    and remedy fields; its displayed age comes from `since`, not file mtime.
   * Who spends the GitHub quota? GitHub CLI command attempts per actor in
     the window (fleet_github's accounting events), split into GraphQL reads,
     GraphQL writes, explicit `gh api graphql`, REST `gh api`, and other.
@@ -67,6 +69,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_alerts  # noqa: E402
 import fleet_github  # noqa: E402
 from fleet_runtime import REPO_SLUGS  # noqa: E402
 
@@ -83,7 +86,6 @@ RE_STARTED = re.compile(r"^started \(pid=(\d+)")
 RE_STANDDOWN = re.compile(r"^(\S+?): .*standing down")
 RE_TRIGGERED = re.compile(r"^triggered: (.*)$")
 RE_REBASE_DONE = re.compile(r"^done: (.*)$")
-RE_KV = re.compile(r"(\w+)=(\S+)")
 
 ROLE_CLASS_RE = re.compile(r"class=(\S+)")
 TARGET_RE = re.compile(r"target=(\S+?)(?:[,\]\s]|$)")
@@ -156,7 +158,7 @@ def read_log(path):
 
 
 def kv(text):
-    return dict(RE_KV.findall(text))
+    return fleet_alerts.parse_fields(text)
 
 
 def _windows_native_alive(pid):
@@ -588,7 +590,7 @@ def collect_worktree_leaks():
 
 
 def collect_alerts(alerts_dir):
-    now = time.time()
+    now = now_utc()
     out = []
     for p in sorted(Path(alerts_dir).glob("*")):
         if not p.is_file():
@@ -597,12 +599,20 @@ def collect_alerts(alerts_dir):
             first = p.read_text(errors="replace").strip().splitlines()
             first = first[0] if first else ""
             # lint: state-mtime-ok display age of an alert file, not scout-cache freshness
-            age = int(now - p.stat().st_mtime)
+            age = int(now.timestamp() - p.stat().st_mtime)
         except OSError:
             continue
+        fields = kv(first)
+        since = parse_ts(fields.get("since", ""))
+        if since is not None:
+            if since.tzinfo is None:
+                since = since.replace(tzinfo=dt.timezone.utc)
+            age = max(0, int((now - since).total_seconds()))
         rec = {"name": p.name, "age_s": age, "line": first[:160]}
+        if p.name.startswith("clone-freshness-"):
+            rec["clone_freshness"] = fields
         if p.name.startswith(MASTER_CI_ALERT_PREFIX):
-            rec["master_ci"] = parse_master_ci_alert(p, now_utc())
+            rec["master_ci"] = parse_master_ci_alert(p, now)
         out.append(rec)
     return out
 
@@ -725,6 +735,15 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktree
     for name in runtimes["gate_alerts"]:
         w.append(f"standing dispatch-gate alert: {name}")
     for a in alerts:
+        clone = a.get("clone_freshness")
+        if clone is not None:
+            fields = " ".join(
+                f"{key}={clone[key]}" for key in ("root", "reason", "count", "since", "remedy")
+                if clone.get(key)
+            )
+            if clone.get("detail"):
+                fields += f" detail={clone['detail']}"
+            w.append(f"main clone advance skipped: {fields}")
         red = a.get("master_ci")
         if red:
             w.append(f"master CI red: {red['workflow']} at {red['sha'][:9]} "
