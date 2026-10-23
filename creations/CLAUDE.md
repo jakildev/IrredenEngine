@@ -41,6 +41,13 @@ Every tracked demo and editor ships a `creation.json` v1 manifest for the
 launcher. The schema is [`docs/design/engine-launcher.md`](../docs/design/engine-launcher.md)
 §D2; validate it with `python3 scripts/lint_creation_manifests.py`.
 
+A creation with render references keeps them in
+`test/references/<preset>/` beside a `manifest.json`. Its `sweep_backends`
+list names the presets whose sets `render-verify --all` gates; it never
+affects a direct `--target` run. Blessing a set for a new preset uses
+`--target … --update-references`, and the same change adds that preset to
+`sweep_backends`.
+
 Minimum for a C++-only creation:
 
 - `CMakeLists.txt`

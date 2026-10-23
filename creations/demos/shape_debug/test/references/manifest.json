@@ -1,6 +1,7 @@
 {
   "demo": "shape_debug",
   "target": "IRShapeDebug",
+  "sweep_backends": ["macos-debug", "windows-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "shots": [
     "zoom1_origin",
