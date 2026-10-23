@@ -16,6 +16,7 @@
 #include <irreden/render/gpu_substage_timing.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/trixel_glitch_math.hpp>
+#include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/utility/path_utils.hpp>
 
 #include <algorithm>
@@ -150,7 +151,8 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
         Buffer *&voxelIndirectBuf,
         Buffer *lightingFrameDataBuf,
         Buffer *sunDepthBuf,
-        Buffer *sunFrameDataBuf
+        Buffer *sunFrameDataBuf,
+        bool cardinalPresentation
     )
         : m_canvas{canvas}
         , m_program{program}
@@ -165,7 +167,8 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
         , m_voxelIndirectBuf{voxelIndirectBuf}
         , m_lightingFrameDataBuf{lightingFrameDataBuf}
         , m_sunDepthBuf{sunDepthBuf}
-        , m_sunFrameDataBuf{sunFrameDataBuf} {}
+        , m_sunFrameDataBuf{sunFrameDataBuf}
+        , m_cardinalPresentation{cardinalPresentation} {}
 
     void createImages() override {
         m_canvas.createGlitchImages();
@@ -195,7 +198,7 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
 
     void copyHistoryColors() override {
         IRRender::device()->copyTexture2D(
-            *m_canvas.getTextureColors(),
+            *effectSourceColors(),
             *m_canvas.glitchHistoryColors_.second
         );
     }
@@ -220,6 +223,10 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
             ->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         m_canvas.glitchScratchColors_.second
             ->bindAsImage(5, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        effectSourceColors()->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        (m_cardinalPresentation ? m_canvas.glitchPresentationOverrides_.second
+                                : m_canvas.glitchScratchColors_.second)
+            ->bindAsImage(7, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
         m_subjectBuf.second->bindBase(
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_TrixelGlitchSubjects
@@ -410,6 +417,11 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
     }
 
   private:
+    const Texture2D *effectSourceColors() const {
+        return m_cardinalPresentation ? m_canvas.glitchSourceLitColors_.second
+                                      : m_canvas.getTextureColors();
+    }
+
     IRComponents::C_TriangleCanvasTextures &m_canvas;
     ShaderProgram &m_program;
     std::pair<ResourceId, Buffer *> &m_subjectBuf;
@@ -424,6 +436,7 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
     Buffer *m_lightingFrameDataBuf;
     Buffer *m_sunDepthBuf;
     Buffer *m_sunFrameDataBuf;
+    bool m_cardinalPresentation;
 };
 
 // Canvas-space glitch of the entities carrying `C_GlitchSubject`. One
@@ -464,6 +477,7 @@ template <> struct System<TRIXEL_GLITCH> {
     std::vector<IRMath::uvec4> words_;
     bool readsHistory_ = false;
     bool enabledThisFrame_ = false;
+    bool cardinalPresentationOverrideReady_ = false;
 
     bool historyValid_ = false;
     std::int64_t lastTick_ = 0;
@@ -497,6 +511,7 @@ template <> struct System<TRIXEL_GLITCH> {
     bool perAxisAllocated_ = false;
 
     void beginTick() {
+        cardinalPresentationOverrideReady_ = false;
         frameUploads_ = 0;
         frameHistoryCopies_ = 0;
         frameDispatches_ = 0;
@@ -555,6 +570,7 @@ template <> struct System<TRIXEL_GLITCH> {
     // next frame that reads it.
     void offFrame() {
         enabledThisFrame_ = false;
+        cardinalPresentationOverrideReady_ = false;
         historyValid_ = false;
         perAxisHistoryValid_ = false;
         IRRender::gpuStageTiming().trixelGlitchMs_ = 0.0f;
@@ -566,9 +582,11 @@ template <> struct System<TRIXEL_GLITCH> {
     void encodeFrame(
         TrixelGlitchEncoder &encoder,
         bool imagesAllocated,
-        const TrixelGlitchPerAxisFrameInput &perAxisInput = {}
+        const TrixelGlitchPerAxisFrameInput &perAxisInput = {},
+        bool cardinalPresentation = false
     ) {
         enabledThisFrame_ = true;
+        words_[2].z = cardinalPresentation ? 1u : 0u;
         const TrixelGlitchPerAxisFramePlan perAxisPlan = planTrixelGlitchPerAxisFrame(
             perAxisInput,
             perAxisDisabled_,
@@ -623,6 +641,7 @@ template <> struct System<TRIXEL_GLITCH> {
         ++dispatchCount_;
         encoder.swapColors();
         ++frameSwaps_;
+        cardinalPresentationOverrideReady_ = cardinalPresentation;
         if (!readsHistory_) {
             historyValid_ = false;
         }
@@ -715,6 +734,12 @@ template <> struct System<TRIXEL_GLITCH> {
             sunFrameDataBuf_ =
                 IRRender::getNamedResourceOrNull<Buffer>("ComputeSunShadowFrameData");
         }
+        bool cardinalPresentation = false;
+        const SystemId lightingId = findSystem(LIGHTING_TO_TRIXEL);
+        if (lightingId != kNullSystemId) {
+            const auto *lighting = getSystemParams<System<LIGHTING_TO_TRIXEL>>(lightingId);
+            cardinalPresentation = lighting->cardinalGlitchSourceReady_;
+        }
         IRComponents::C_PerAxisTrixelCanvases *axes = perAxisAllocated_ ? perAxis.value() : nullptr;
         TrixelGlitchGpuEncoder encoder{
             canvas,
@@ -730,7 +755,8 @@ template <> struct System<TRIXEL_GLITCH> {
             voxelIndirectBuf_,
             lightingFrameDataBuf_,
             sunDepthBuf_,
-            sunFrameDataBuf_
+            sunFrameDataBuf_,
+            cardinalPresentation
         };
         TrixelGlitchPerAxisFrameInput perAxisInput;
         if (axes != nullptr) {
@@ -742,7 +768,7 @@ template <> struct System<TRIXEL_GLITCH> {
             perAxisInput.storeFrame_ = IRPrefab::PerAxisCanvas::storeFrame(axes->size_);
             perAxisInput.depthScale_ = IRRender::getVoxelRenderEffectiveSubdivisions();
         }
-        encodeFrame(encoder, canvas.hasGlitchImages(), perAxisInput);
+        encodeFrame(encoder, canvas.hasGlitchImages(), perAxisInput, cardinalPresentation);
     }
 
     static SystemId create() {

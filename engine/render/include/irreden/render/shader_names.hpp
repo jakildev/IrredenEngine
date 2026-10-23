@@ -104,6 +104,10 @@ const char *const kFileCompShapesToTrixelCaster = "shaders/c_shapes_to_trixel_ca
 const char *const kFileCompShapesToTrixelOwner = "shaders/c_shapes_to_trixel_owner.glsl";
 const char *const kFileCompLightingToTrixelShapes = "shaders/c_lighting_to_trixel_shapes.glsl";
 const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl";
+const char *const kFileCompLightingToTrixelGlitchSource =
+    "shaders/c_lighting_to_trixel_glitch_source.glsl";
+const char *const kFileCompLightingToTrixelShapesGlitchSource =
+    "shaders/c_lighting_to_trixel_shapes_glitch_source.glsl";
 // Overflow-face lighting relights the overflow entries at their
 // world position inside LIGHTING_TO_TRIXEL. Metal mirror in
 // metal/c_light_overflow_faces.metal (mapped to a 64×1×1 threadgroup in

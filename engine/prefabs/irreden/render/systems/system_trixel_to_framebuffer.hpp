@@ -11,6 +11,7 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/shape_receiver_bindings.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
+#include <irreden/render/systems/system_trixel_glitch.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -58,6 +59,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     ShaderProgram *cardinalLightingProgram_ = nullptr;
     bool cardinalLightingEnabled_ = false;
     System<LIGHTING_TO_TRIXEL> *lighting_ = nullptr;
+    System<TRIXEL_GLITCH> *trixelGlitch_ = nullptr;
+    bool cardinalGlitchOverrideEnabled_ = false;
     const C_CanvasAOTexture *surfaceAO_ = nullptr;
     const C_CanvasLightVolume *surfaceLightVolume_ = nullptr;
     bool shapeLightingEnabled_ = false;
@@ -253,7 +256,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
 
         const bool cardinalLighting = cardinalLightingEnabled_ && entity == perAxisCanvasEntity_;
-        frameData.frameData_.scatterDebugMode_ = cardinalLighting ? 1 : 0;
+        frameData.frameData_.scatterDebugMode_ =
+            cardinalLighting ? (cardinalGlitchOverrideEnabled_ ? 2 : 1) : 0;
         if (cardinalLighting) {
             const auto &voxelFrame = lighting_->scratchVoxelFrame_;
             frameData.frameData_.perAxisBase_ = voxelFrame.trixelCanvasOffsetZ1_;
@@ -285,6 +289,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 surfaceAO_->getTexture()->bind(4);
             }
             triangleCanvasTextures.bind(0, 1, 2);
+            if ((probe && shapeLightingEnabled_) || cardinalLighting) {
+                (cardinalGlitchOverrideEnabled_
+                     ? triangleCanvasTextures.glitchPresentationOverrides_.second
+                     : triangleCanvasTextures.getTextureColors())
+                    ->bind(6);
+            }
             IRRender::device()->setPolygonMode(PolygonMode::FILL);
             IRRender::device()->drawElements(
                 DrawMode::TRIANGLES,
@@ -712,6 +722,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         shapeProbeEnabled_ = shapeReceiverAvailable &&
                              IRRender::getDebugOverlay() == DebugOverlayMode::SURFACE_SHADOW;
         lighting_ = nullptr;
+        trixelGlitch_ = nullptr;
+        cardinalGlitchOverrideEnabled_ = false;
         surfaceAO_ = nullptr;
         surfaceLightVolume_ = nullptr;
         shapeLightingEnabled_ = false;
@@ -723,6 +735,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // this frame's albedo. Do not infer readiness from consumer resources.
         scatterLightingEnabled_ = lighting_ != nullptr && lighting_->perAxisSurfaceLightingReady_;
         cardinalLightingEnabled_ = lighting_ != nullptr && lighting_->cardinalSurfaceLightingReady_;
+        const SystemId trixelGlitchId = findSystem(TRIXEL_GLITCH);
+        if (trixelGlitchId != kNullSystemId) {
+            trixelGlitch_ = getSystemParams<System<TRIXEL_GLITCH>>(trixelGlitchId);
+        }
+        cardinalGlitchOverrideEnabled_ = cardinalLightingEnabled_ && trixelGlitch_ != nullptr &&
+                                         trixelGlitch_->cardinalPresentationOverrideReady_;
         if (scatterLightingEnabled_ || cardinalLightingEnabled_) {
             surfaceAO_ = lighting_->mainCanvasAO_;
             surfaceLightVolume_ = lighting_->mainCanvasLightVolume_;

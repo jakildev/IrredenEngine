@@ -1581,6 +1581,39 @@ TEST_F(CanvasBackingResizeTest, CardinalGrowthClearsBackingAndPreservesAncillary
     EXPECT_EQ(resources.freeIdCount(), 128u);
 }
 
+TEST_F(CanvasBackingResizeTest, GlitchPresentationImagesSurviveOrdinaryCreationAndFollowBacking) {
+    using namespace IRRender;
+    using Canvas = IRComponents::C_TriangleCanvasTextures;
+    RenderingResourceManager resources{32};
+    const auto destroyCanvas = [](Canvas *canvas) {
+        canvas->onDestroy();
+        delete canvas;
+    };
+    std::unique_ptr<Canvas, decltype(destroyCanvas)> canvas(
+        new Canvas(IRMath::ivec2(8)),
+        destroyCanvas
+    );
+
+    canvas->createGlitchPresentationImages();
+    const auto source = canvas->glitchSourceLitColors_;
+    const auto overrides = canvas->glitchPresentationOverrides_;
+    canvas->createGlitchImages();
+    EXPECT_EQ(canvas->glitchSourceLitColors_, source);
+    EXPECT_EQ(canvas->glitchPresentationOverrides_, overrides);
+    EXPECT_TRUE(canvas->hasGlitchImages());
+    EXPECT_TRUE(canvas->hasGlitchPresentationImages());
+
+    canvas->resizeBacking(IRMath::ivec2(16, 12));
+    EXPECT_FALSE(canvas->hasGlitchImages());
+    EXPECT_FALSE(canvas->hasGlitchPresentationImages());
+    canvas->createGlitchPresentationImages();
+    EXPECT_EQ(canvas->glitchSourceLitColors_.second->getSize(), IRMath::uvec2(16, 12));
+    EXPECT_EQ(canvas->glitchPresentationOverrides_.second->getSize(), IRMath::uvec2(16, 12));
+
+    canvas.reset();
+    EXPECT_EQ(resources.liveResourceCount(), 0);
+}
+
 TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAndScratch) {
     using namespace IRRender;
     using Axes = IRComponents::C_PerAxisTrixelCanvases;

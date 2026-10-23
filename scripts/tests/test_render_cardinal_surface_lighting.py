@@ -23,7 +23,7 @@ uvec2 id;
 struct {int y;} normalOptions;
 struct {float a;} color;
 int lightingEnabled=1,scatterDebugMode=1,perAxisRoute=0;
-bool sourceMode=false;
+bool sourceMode=false,glitchPresentationOverride=false;
 float isDetachedCanvas=0,residualYaw=0;
 void require(bool okay,const char* label){
  if(!okay){std::fprintf(stderr,"%s\n",label);std::exit(1);}
@@ -53,13 +53,15 @@ Axis* perAxisCanvases_=nullptr;
 int perAxisCanvasEntity_=1;
 struct Producer {
  bool cardinalSurfaceLightingEligible_=false,cardinalSurfaceLightingReady_=false;
+ bool cardinalGlitchPresentationActive_=false,cardinalGlitchSourceReady_=false;
  bool perAxisSurfaceLightingEligible_=false;
  void begin(){RESET GATE}
  void tick(int entity){PUBLISH}
  void prepare(int entity){PREPARE}
 } producer;
 Producer* lighting_=&producer;
-bool cardinalLightingEnabled_=false,shapeProbeEnabled_=false,shapeLightingEnabled_=false;
+bool cardinalLightingEnabled_=false,cardinalGlitchOverrideEnabled_=false;
+bool shapeProbeEnabled_=false,shapeLightingEnabled_=false;
 int selected=0,shapeBindings=0,sunBindings=0;
 struct Program {int id;void use(){selected=id;}} shapeProgram{2},probeProgram{3},cardinalProgram{1};
 Program *shapeLightingProgram_=&shapeProgram,*shapeProbeProgram_=&probeProgram;
@@ -94,11 +96,12 @@ int main(){
   if(bad==13)hasBehavior=false;
   producer.cardinalSurfaceLightingEligible_=producer.cardinalSurfaceLightingReady_=true;
   producer.begin();consume();
-  require(producer.cardinalSurfaceLightingEligible_==(bad<0),"producer eligibility");
+  const bool eligible=bad<0||bad==9;
+  require(producer.cardinalSurfaceLightingEligible_==eligible,"producer eligibility");
   require(!cardinalLightingEnabled_,"begin resets readiness before main tick");
   producer.tick(2);consume();require(!cardinalLightingEnabled_,"secondary tick cannot publish");
   producer.tick(1);consume();
-  require(cardinalLightingEnabled_==(bad<0),"main tick publishes readiness");
+  require(cardinalLightingEnabled_==eligible,"main tick publishes readiness");
  }
  lighting_=nullptr;consume();require(!cardinalLightingEnabled_,"missing producer is not ready");
  lighting_=&producer;
@@ -126,9 +129,10 @@ int main(){
   const bool cardinal=(tag&(1u<<18u))!=0;
   require(skip()==bool(enabled&&deferred&&!axis&&!detached&&!yaw&&!source&&cardinal&&!cut),
           "compute preserves only eligible cardinal albedo");
-  for(int flag:{0,1})for(float alpha:{0.f,1.f}){
+  for(int flag:{0,1,2})for(float alpha:{0.f,1.f})for(bool override:{false,true}){
    scatterDebugMode=flag;color.a=alpha;
-   require(fragment()==bool(alpha&&enabled&&flag&&cardinal&&!cut),
+   glitchPresentationOverride=override;
+   require(fragment()==bool(alpha&&enabled&&flag&&cardinal&&!cut&&!override),
            "fragment lighting gate");
   }
  }
@@ -147,6 +151,11 @@ def source_for(backend):
     consumer = (systems / "system_trixel_to_framebuffer.hpp").read_text()
     gate = re.search(r"bool worldSurfaceLightingEligible = false;.*?"
                      r"perAxisSurfaceLightingEligible_\s*=[^;]+;", producer, re.DOTALL).group()
+    active_scan = extract_block(
+        gate,
+        "if (cardinalSurfaceLightingEligible_ && findSystem(TRIXEL_GLITCH) != kNullSystemId) {",
+    )
+    gate = gate.replace(active_scan, "")
     publish = extract_block(producer, "if (entity == perAxisCanvasEntity_) {")
     reset = re.search(r"cardinalSurfaceLightingEligible_ = false;\s*"
                       r"cardinalSurfaceLightingReady_ = false;", producer).group()
@@ -168,13 +177,13 @@ def source_for(backend):
     helpers += extract_function(common, "decodeEntityIdCardinalVoxel")
     helpers += extract_function(common, "decodeCutFace")
     helpers += extract_function(common, "isCardinalVoxelSurface")
-    skip = re.search(r"if \((?:frameData\.)?normalOptions.y != 0.*?\) return;",
+    skip = re.search(r"if \((?:frameData\.)?normalOptions.y != 0 && !sourceMode.*?\) return;",
                      compute, re.DOTALL).group()
     disabled = re.search(r"if \((?:frameData\.)?lightingEnabled == 0\) \{\s*return;\s*\}",
                          compute).group()
     # The shape branch also has a lighting gate; the cardinal branch owns the provenance read.
     condition = next(match.group() for match in re.finditer(
-        r"if \(color.a >= 0.1[^\{]+\{", fragment)
+        r"if \(!glitchPresentationOverride[^\{]+\{", fragment)
         if "isCardinalVoxelSurface" in match.group())
     predicates = (helpers + "\nbool skip(){" + disabled.replace("return;", "return false;")
                   + skip.replace("return;", "return true;") + "return false;}\n"
@@ -202,14 +211,17 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                 "eligible_not_ready": replace_once(
                     source, "lighting_->cardinalSurfaceLightingReady_",
                     "lighting_->cardinalSurfaceLightingEligible_"),
-                "glitch_pipeline": replace_once(
-                    source, "findSystem(TRIXEL_GLITCH) == kNullSystemId", "true"),
+                "glitch_exclusion": replace_once(
+                    source,
+                    "worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&",
+                    "worldSurfaceLightingEligible && findSystem(TRIXEL_GLITCH) == kNullSystemId && mainVoxelPool_ != nullptr &&",
+                ),
                 "cut_face": source.replace("!decodeCutFace(rawId)", "true"),
             }
             messages = {"lighting_disabled": "fragment lighting gate",
                         "stale_ready": "begin resets readiness before main tick",
                         "eligible_not_ready": "begin resets readiness before main tick",
-                        "glitch_pipeline": "producer eligibility",
+                        "glitch_exclusion": "producer eligibility",
                         "cut_face": "fragment lighting gate"}
             for name, candidate in variants.items():
                 with (self.subTest(backend=backend, variant=name),

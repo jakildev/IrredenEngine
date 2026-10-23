@@ -25,11 +25,41 @@
 // holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
 // [kDispatchArgsBaseUint + 3] for the 1-D bound guard. GLSL twin's bindings 25/26.
 
+#if IR_GLITCH_SOURCE_OUTPUT
+void writeLitTrixel(texture2d<float, access::read_write> canvas,
+    texture2d<float, access::write> sourceLit,
+    texture2d<uint, access::read> ids,
+    constant FrameDataLightingToTrixel& frameData,
+    constant FrameDataVoxelToTrixel& voxelFrameData,
+    device SourceVoxelFaces& faces, bool sourceMode, uint index, uint2 pixel, float4 color) {
+    if (sourceMode) {
+        faces.faces[index].color = color;
+        return;
+    }
+    sourceLit.write(color, pixel);
+    if (frameData.normalOptions.y != 0 && voxelFrameData.perAxisRoute == 0 &&
+        voxelFrameData.isDetachedCanvas == 0.0f && voxelFrameData.residualYaw == 0.0f &&
+        isCardinalVoxelSurface(ids.read(pixel).xy)) {
+        return;
+    }
+    canvas.write(color, pixel);
+}
+#else
 void writeLitTrixel(texture2d<float, access::read_write> canvas,
     device SourceVoxelFaces& faces, bool sourceMode, uint index, uint2 pixel, float4 color) {
     if (sourceMode) faces.faces[index].color = color;
     else canvas.write(color, pixel);
 }
+#endif
+
+#if IR_GLITCH_SOURCE_OUTPUT
+#define IR_WRITE_LIT(colorValue) writeLitTrixel( \
+    trixelColors, glitchSourceLitColors, trixelEntityIds, frameData, voxelFrameData, \
+    sourceFaces, sourceMode, sourceIndex, uint2(pixel), colorValue)
+#else
+#define IR_WRITE_LIT(colorValue) writeLitTrixel( \
+    trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), colorValue)
+#endif
 
 kernel void IR_LIGHTING_KERNEL_NAME(
     device SourceVoxelFaces& sourceFaces [[buffer(8)]],
@@ -65,6 +95,9 @@ kernel void IR_LIGHTING_KERNEL_NAME(
     // the flood winner per cell. Read only on the spot path; bound every tick
     // so Metal's slot table is populated. GLSL twin's binding 7.
     texture3d<float, access::read> lightVolumeId [[texture(7)]],
+#if IR_GLITCH_SOURCE_OUTPUT
+    texture2d<float, access::write> glitchSourceLitColors [[texture(8)]],
+#endif
     // Per-axis empty-cell compaction — GLSL twin's bindings 25/26.
     const device uint* compactedCells [[buffer(25)]],
     const device uint* cellDrawArgs [[buffer(26)]],
@@ -136,15 +169,25 @@ kernel void IR_LIGHTING_KERNEL_NAME(
         }
     }
 
+    // Refresh retained source storage before the empty-distance return.
+#if IR_GLITCH_SOURCE_OUTPUT
+    if (!sourceMode && voxelFrameData.perAxisRoute == 0 &&
+        voxelFrameData.isDetachedCanvas == 0.0f) {
+        glitchSourceLitColors.write(trixelColors.read(uint2(pixel)), uint2(pixel));
+    }
+#endif
+
     const int encoded = sourceMode ? encodeDepthWithFace(0, int(sourceFaces.faces[sourceIndex].centerAndFace.w) >> 1) : trixelDistances.read(uint2(pixel)).x;
     // Per-axis canvas uses INT_MAX as empty sentinel; single-canvas keeps 65535.
     if (encoded >= (voxelFrameData.perAxisRoute != 0 ? 0x7FFFFFFF : 65535)) {
         return;
     }
 
+#if !IR_GLITCH_SOURCE_OUTPUT
     if (frameData.normalOptions.y != 0 && !sourceMode && voxelFrameData.perAxisRoute == 0 &&
         voxelFrameData.isDetachedCanvas == 0.0 && voxelFrameData.residualYaw == 0.0 &&
         isCardinalVoxelSurface(trixelEntityIds.read(uint2(pixel)).xy)) return;
+#endif
 
     const float4 sourceColor = sourceMode ? sourceFaces.faces[sourceIndex].color : trixelColors.read(uint2(pixel));
     // A detached re-voxelize canvas is lit by AO + directional sun + sky
@@ -217,7 +260,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
         const float3 positionColor = worldReceive
             ? (worldReceivePos - voxelFrameData.detachedWorldReceive.xyz) * 0.25f + 0.5f
             : float3(0.0f);
-        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(positionColor, src.a));
+        IR_WRITE_LIT(float4(positionColor, src.a));
         return;
     }
 
@@ -226,7 +269,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
 #endif
     if (frameData.debugOverlayMode == 8) {
         const float alpha = sourceColor.a;
-        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(encodeUnitVectorUnorm8(worldNormal), alpha));
+        IR_WRITE_LIT(float4(encodeUnitVectorUnorm8(worldNormal), alpha));
         return;
     }
 
@@ -261,7 +304,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
         } else {
             debugColor = surfaceShadowDebugColor(shadow);
         }
-        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(debugColor, src.a));
+        IR_WRITE_LIT(float4(debugColor, src.a));
         return;
     }
 
@@ -378,5 +421,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
         baseRgb = surfaceDisplayColor(baseRgb, frameData.exposure, frameData.hdrEnabled != 0);
     }
 
-    writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(baseRgb, src.a));
+    IR_WRITE_LIT(float4(baseRgb, src.a));
 }
+
+#undef IR_WRITE_LIT
