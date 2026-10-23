@@ -66,7 +66,9 @@ is gitignored).
 > hand-rolled `add_custom_target(*Assets ...)` / `add_custom_command(...
 > copy_directory ...)` block.** The helper (`cmake/ir_functions.cmake`) wires
 > the exe-relative `data/`/`shaders/`/`scripts/` layout + Windows DLLs;
-> `irreden_package_target(<target>)` adds the one-command distributable bundle.
+> `irreden_package_target(<target>)` adds the one-command distributable bundle;
+> a target that calls it sets `"package": true` in `creation.json`, which the
+> manifest lint checks against the configured `<target>Package`.
 
 Use `creations/demos/shape_debug/CMakeLists.txt` as the canonical reference.
 See [`docs/agents/BUILD.md`](../docs/agents/BUILD.md) §"Packaging a

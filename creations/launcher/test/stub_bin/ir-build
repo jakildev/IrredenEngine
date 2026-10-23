@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-# The ir-build the details_build GUI session runs in place of the real one:
-# three known lines, then a clean exit.
+# The ir-build the details_build and details_package GUI sessions run in place
+# of the real one: three known lines, then a clean exit. A `<target>Package`
+# request also reports its argument count and writes the archive the real
+# package target would, into the build dir the tool service names.
 for line in 1 2 3; do
     echo "IR_LAUNCHER_STUB line $line $*"
 done
+if [[ "${1:-}" == "--target" && "${2:-}" == *Package ]]; then
+    echo "IR_LAUNCHER_STUB argc $#"
+    printf 'stub archive\n' >"$IRREDEN_BUILD_DIR/${2%Package}-fixture-test.zip"
+fi
 exit 0

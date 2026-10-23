@@ -84,19 +84,7 @@ class CreationManifestLintTest(unittest.TestCase):
             root = Path(temporary) / "root"
             root.mkdir()
             self.fixture(root)
-            bin_dir = Path(temporary) / "bin"
-            bin_dir.mkdir()
-            cmake = bin_dir / "cmake"
-            cmake.write_text("#!/bin/sh\nprintf '%s\\n' '... IROther'\n")
-            cmake.chmod(0o755)
-            environment = os.environ | {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
-            result = subprocess.run(
-                ["python3", str(SCRIPT), "--root", str(root), "--build-dir", "."],
-                text=True,
-                capture_output=True,
-                check=False,
-                env=environment,
-            )
+            result = self.run_lint_with_targets(temporary, root, "IROther")
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unknown build target: IRValid", result.stderr)
 
@@ -121,20 +109,64 @@ class CreationManifestLintTest(unittest.TestCase):
             data = json.loads(manifest.read_text())
             data["targets"][0]["name"] = "EditorValid"
             manifest.write_text(json.dumps(data))
-            bin_dir = Path(temporary) / "bin"
-            bin_dir.mkdir()
-            cmake = bin_dir / "cmake"
-            cmake.write_text("#!/bin/sh\nprintf '%s\\n' '... IRValid' '... EditorValid'\n")
-            cmake.chmod(0o755)
-            environment = os.environ | {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
-            result = subprocess.run(
-                ["python3", str(SCRIPT), "--root", str(root), "--build-dir", "."],
-                text=True,
-                capture_output=True,
-                check=False,
-                env=environment,
-            )
+            result = self.run_lint_with_targets(temporary, root, "IRValid", "EditorValid")
             self.assertEqual(result.returncode, 0, result.stderr)
+
+    def run_lint_with_targets(
+        self, temporary: str, root: Path, *targets: str
+    ) -> subprocess.CompletedProcess[str]:
+        bin_dir = Path(temporary) / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        cmake = bin_dir / "cmake"
+        lines = " ".join(f"'... {target}'" for target in targets)
+        cmake.write_text(f"#!/bin/sh\nprintf '%s\\n' {lines}\n")
+        cmake.chmod(0o755)
+        environment = os.environ | {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        return subprocess.run(
+            ["python3", str(SCRIPT), "--root", str(root), "--build-dir", "."],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=environment,
+        )
+
+    def set_package(self, root: Path, value: object) -> None:
+        for manifest in sorted(root.glob("creations/*/*/creation.json")):
+            data = json.loads(manifest.read_text())
+            data["targets"][0]["package"] = value
+            manifest.write_text(json.dumps(data))
+
+    def test_package_flag_matches_the_configured_package_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "root"
+            root.mkdir()
+            self.fixture(root)
+
+            plain = self.run_lint_with_targets(temporary, root, "IRValid")
+            self.assertEqual(plain.returncode, 0, plain.stderr)
+
+            unflagged = self.run_lint_with_targets(temporary, root, "IRValid", "IRValidPackage")
+            self.assertNotEqual(unflagged.returncode, 0)
+            self.assertIn("build target IRValidPackage needs package: true", unflagged.stderr)
+
+            self.set_package(root, True)
+            flagged = self.run_lint_with_targets(temporary, root, "IRValid", "IRValidPackage")
+            self.assertEqual(flagged.returncode, 0, flagged.stderr)
+
+            stale = self.run_lint_with_targets(temporary, root, "IRValid")
+            self.assertNotEqual(stale.returncode, 0)
+            self.assertIn("IRValid sets package; no build target IRValidPackage", stale.stderr)
+
+    def test_package_flag_must_be_a_boolean(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.fixture(root)
+            self.set_package(root, True)
+            self.assertEqual(self.run_lint(root).returncode, 0)
+            self.set_package(root, "true")
+            result = self.run_lint(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("targets[0].package must be a boolean", result.stderr)
 
     def test_shared_manifest_corpus(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

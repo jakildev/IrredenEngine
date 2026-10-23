@@ -181,6 +181,16 @@ class ManifestParser {
         return true;
     }
 
+    bool readOptionalBool(
+        const JsonValue &object, std::string_view key, const std::string &parent, bool &out
+    ) {
+        if (const JsonValue *value =
+                findTyped(object, key, parent, JsonType::BOOLEAN, "a boolean")) {
+            out = *value->asBool();
+        }
+        return !failed();
+    }
+
     bool readStringArray(
         const JsonValue &object,
         std::string_view key,
@@ -295,7 +305,8 @@ class ManifestParser {
         }
         out.display_ = out.name_;
         if (!readOptionalString(value, "display", path, out.display_) ||
-            !readOptionalString(value, "description", path, out.description_)) {
+            !readOptionalString(value, "description", path, out.description_) ||
+            !readOptionalBool(value, "package", path, out.package_)) {
             return false;
         }
         const JsonValue *presets = findTyped(value, "presets", path, JsonType::ARRAY, "an array");

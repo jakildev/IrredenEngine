@@ -40,3 +40,4 @@ and Linux build maturity.
 | 2026-07-20 | — | objective seeded |
 | 2026-10-12 | #4352 | Windows package bundles the exe's full transitive DLL closure (FFmpeg + codecs + MinGW runtime); a hand-run clean-box launch and `--auto-record` pass with only the system dirs on `PATH`. The automated per-host smoke row stays open. |
 | 2026-10-13 | #4333 / PR #4394 | macOS package bundles and ad-hoc signs the complete non-system dylib closure; an extracted-archive audit proves all load edges are bundle-local. The automated per-host smoke row stays open. |
+| 2026-10-22 | #4674 | IRLauncher shows Package on targets whose `creation.json` sets `package` (`IRShapeDebug`, `IRPersistRoundtrip`, `IRSceneReset`): it builds `<target>Package` and shows the archive path the catalog finds. It does not run a clean-box smoke, so the per-host smoke row stays open. |
