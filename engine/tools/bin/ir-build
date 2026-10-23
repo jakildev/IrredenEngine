@@ -114,6 +114,26 @@ done
 WORKTREE_ROOT="$(ir_worktree_root)"
 BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT" "$BUILD_MODE")}"
 
+# --- Drop member-less static archives ---
+#
+# An interrupted or raced `ar` leaves an archive with a symbol table and no
+# object members. Its mtime is newer than its objects, so make treats it as
+# up to date and every target linking it fails with undefined symbols that
+# look like a source regression. Deleting it makes make regenerate it.
+# `ar t` failing (not an archive at all) leaves the file alone.
+ir_remove_memberless_archives() {
+    [[ -d "$BUILD_DIR" ]] || return 0
+    local archive members
+    while IFS= read -r archive; do
+        members="$(ar t "$archive" 2>/dev/null)" || continue
+        if ! grep -Eq '\.(o|obj)[[:space:]]*$' <<<"$members"; then
+            rm -f "$archive"
+            echo "${IR_BUILD_TOOL_NAME:-ir-build}: removed member-less archive $archive" >&2
+        fi
+    done < <(find "$BUILD_DIR" -name '*.a' -type f)
+}
+ir_remove_memberless_archives
+
 # --- Auto-configure if the build tree doesn't exist yet ---
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     PRESET="$(ir_build_preset "$BUILD_MODE")" || exit $?
@@ -137,26 +157,6 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     fi
     echo "ir-build: configure done."
 fi
-
-# --- Drop member-less static archives ---
-#
-# An interrupted or raced `ar` leaves an archive with a symbol table and no
-# object members. Its mtime is newer than its objects, so make treats it as
-# up to date and every target linking it fails with undefined symbols that
-# look like a source regression. Deleting it makes make regenerate it.
-# `ar t` failing (not an archive at all) leaves the file alone.
-ir_remove_memberless_archives() {
-    [[ -d "$BUILD_DIR" ]] || return 0
-    local archive members
-    while IFS= read -r archive; do
-        members="$(ar t "$archive" 2>/dev/null)" || continue
-        if ! grep -Eq '\.(o|obj)[[:space:]]*$' <<<"$members"; then
-            rm -f "$archive"
-            echo "${IR_BUILD_TOOL_NAME:-ir-build}: removed member-less archive $archive" >&2
-        fi
-    done < <(find "$BUILD_DIR" -name '*.a' -type f)
-}
-ir_remove_memberless_archives
 
 # --- Detect or compute -j N for cmake AND the ir-acquire cpu count ---
 #

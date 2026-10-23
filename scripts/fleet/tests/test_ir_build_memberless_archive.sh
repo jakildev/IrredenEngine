@@ -40,7 +40,9 @@ elif command -v gtimeout >/dev/null 2>&1; then
     TIMEOUT_CMD="gtimeout"
 fi
 
-FAKE="$(mktemp -d)"
+# Physical path: ir-build resolves the worktree with `git rev-parse`, so on
+# macOS a `/var` fixture path would not match the `/private/var` it logs.
+FAKE="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$FAKE" "${IR_LOCK_ROOT%/locks}"' EXIT
 
 STUB_BIN="$FAKE/stub-bin"
@@ -50,13 +52,41 @@ cat > "$STUB_BIN/cmake" <<'STUB_EOF'
 set -euo pipefail
 printf '%s\n' "$*" >> "$STUB_CALL_LOG"
 case "${1:-}" in
-    --preset|--build) exit 0 ;;
+    --preset)
+        # Configure creates the -B dir, as the real cmake does, so a sweep
+        # that ran after configure would find a directory to scan.
+        while (( $# )); do
+            if [[ "$1" == "-B" && $# -ge 2 ]]; then
+                mkdir -p "$2"
+                touch "$2/CMakeCache.txt"
+            fi
+            shift
+        done
+        exit 0
+        ;;
+    --build) exit 0 ;;
     *) echo "stub cmake: unmodeled invocation shape: $*" >&2; exit 99 ;;
 esac
 STUB_EOF
 chmod +x "$STUB_BIN/cmake"
 export STUB_CALL_LOG="$FAKE/cmake-calls.log"
 : > "$STUB_CALL_LOG"
+
+# Recording `find` / `ar` wrappers, put on PATH only for T3: each call is
+# logged before exec'ing the real tool, so T3 observes whether the sweep ran.
+SWEEP_BIN="$FAKE/sweep-bin"
+mkdir -p "$SWEEP_BIN"
+export SWEEP_CALL_LOG="$FAKE/sweep-calls.log"
+: > "$SWEEP_CALL_LOG"
+for tool in find ar; do
+    real="$(command -v "$tool")"
+    cat > "$SWEEP_BIN/$tool" <<WRAP_EOF
+#!/usr/bin/env bash
+printf '%s %s\\n' "$tool" "\$*" >> "\$SWEEP_CALL_LOG"
+exec "$real" "\$@"
+WRAP_EOF
+    chmod +x "$SWEEP_BIN/$tool"
+done
 
 new_engine_fixture() {
     mkdir -p "$1/engine"
@@ -80,12 +110,13 @@ make_archive() {
     fi
 }
 
-# run_tool <tool> <cwd> <logfile> — combined stdout+stderr to <logfile>.
+# run_tool <tool> <cwd> <logfile> [<extra-path>] — combined stdout+stderr to
+# <logfile>; <extra-path> is prepended ahead of the cmake stub.
 run_tool() {
-    local tool="$1" cwd="$2" logfile="$3"
+    local tool="$1" cwd="$2" logfile="$3" extra_path="${4:-}"
     (
         cd "$cwd" || exit 127
-        export PATH="$STUB_BIN:$PATH"
+        export PATH="${extra_path:+$extra_path:}$STUB_BIN:$PATH"
         if [[ -n "$TIMEOUT_CMD" ]]; then
             "$TIMEOUT_CMD" 30 "$tool" --target FixtureTarget
         else
@@ -124,8 +155,13 @@ assert_contains "$(cat "$FAKE/t2.log")" "fleet-build: removed member-less archiv
 
 echo "T3: a build dir that does not exist yet is skipped"
 ENG3="$FAKE/eng3"; new_engine_fixture "$ENG3"
-rc=0; run_tool "$IR_BUILD" "$ENG3" "$FAKE/t3.log" || rc=$?
+rc=0; run_tool "$IR_BUILD" "$ENG3" "$FAKE/t3.log" "$SWEEP_BIN" || rc=$?
 assert_eq "$rc" "0" "T3: first configure + build proceeds"
+assert_contains "$(cat "$STUB_CALL_LOG")" "-B $ENG3/build" "T3: first configure ran"
+assert_eq "$([[ -f "$ENG3/build/CMakeCache.txt" ]] && echo present || echo absent)" "present" \
+    "T3: configure created the build dir"
+assert_absent "$(cat "$SWEEP_CALL_LOG")" "$ENG3/build" "T3: no find over the build dir"
+assert_absent "$(cat "$SWEEP_CALL_LOG")" "ar t" "T3: no ar t invoked"
 assert_absent "$(cat "$FAKE/t3.log")" "member-less" "T3: no sweep output without a build dir"
 
 echo "T4: a clean tree produces no sweep output"
