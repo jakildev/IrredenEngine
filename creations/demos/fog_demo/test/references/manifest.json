@@ -1,6 +1,7 @@
 {
   "demo": "fog_demo",
   "target": "IRFogDemo",
+  "sweep_backends": ["macos-debug", "windows-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "warmup": 10,
   "shots": [

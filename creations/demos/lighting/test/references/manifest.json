@@ -1,6 +1,7 @@
 {
   "demo": "lighting",
   "target": "IRLightingSdfBlocker",
+  "sweep_backends": ["macos-debug", "windows-debug"],
   "warmup": 10,
   "shots": [
     "zoom1_origin",

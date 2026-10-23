@@ -1,6 +1,7 @@
 {
   "demo": "editors/voxel_editor",
   "target": "IRVoxelEditor",
+  "sweep_backends": ["macos-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "demo_args": ["--gui-session", "mode_preview_shots"],
   "shots": ["mode_preview_grid", "mode_preview_revox"],

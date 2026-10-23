@@ -1,6 +1,7 @@
 {
   "demo": "metal_clear_test",
   "target": "IRMetalClearTest",
+  "sweep_backends": ["macos-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "shots": [
     "metal_clear_zoom1",

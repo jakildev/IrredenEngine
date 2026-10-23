@@ -73,6 +73,17 @@ number (#2919 — the `lighting` demo went unverified across two review passes
 that way). The ``--all`` summary lists one row per demo and counts a demo that
 failed to run as ERROR rather than as zero checks.
 
+The optional ``sweep_backends`` manifest key lists the presets whose committed
+references gate the target under ``--all`` (a non-empty subset of
+``verify_common.KNOWN_PRESETS``). On a known preset outside the list, ``--all``
+— ``--update-references`` included — neither builds nor runs the target and
+reports it as OUT-OF-SCOPE: named in the summary, never a failure, never a
+pass. A declared preset whose reference set is missing still reads ERROR, so
+coverage narrows only by declaration, never by a deleted directory. Omitting
+the key keeps the target in scope everywhere, and on an unrecognized preset
+every target is in scope. A direct ``--target`` run ignores the key: that is
+how a host verifies or blesses a set before the manifest declares its preset.
+
 Assumes this file lives at ``<repo>/scripts/render-verify.py``.
 """
 
@@ -561,6 +572,45 @@ def _parse_demo_args(manifest: dict[str, Any]) -> list[str]:
     return raw
 
 
+def _parse_sweep_backends(manifest: dict[str, Any]) -> tuple[str, ...] | None:
+    """Validate the optional ``sweep_backends`` key; ``None`` when absent.
+
+    A malformed value is a manifest error, never an empty scope: a typo that
+    parsed as "no presets" would silently drop the target from every sweep.
+    """
+    if "sweep_backends" not in manifest:
+        return None
+    raw = manifest["sweep_backends"]
+    known = verify_common.KNOWN_PRESETS
+    if not isinstance(raw, list) or not raw \
+            or not all(isinstance(p, str) for p in raw):
+        raise SystemExit(
+            f"manifest 'sweep_backends' must be a non-empty list of preset "
+            f"names ({', '.join(known)})"
+        )
+    unknown = [p for p in raw if p not in known]
+    if unknown:
+        raise SystemExit(
+            f"manifest 'sweep_backends' names unknown preset(s) "
+            f"{', '.join(unknown)}; known presets are {', '.join(known)}"
+        )
+    if len(set(raw)) != len(raw):
+        raise SystemExit("manifest 'sweep_backends' lists a preset twice")
+    return tuple(raw)
+
+
+def _sweep_excludes(manifest: dict[str, Any], backend: str) -> bool:
+    """Whether ``--all`` leaves this target out of the sweep on ``backend``.
+
+    Only a known preset can be excluded. On an unrecognized host every target
+    stays in scope, so its missing reference sets read ERROR rather than the
+    whole sweep exiting 0 with no checks.
+    """
+    scope = _parse_sweep_backends(manifest)
+    return (scope is not None and backend in verify_common.KNOWN_PRESETS
+            and backend not in scope)
+
+
 def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """Validate + normalize the optional ``extra_runs`` manifest block.
 
@@ -774,6 +824,8 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # reference subset (e.g. canvas_stress `--only compare`). Empty for a
     # single-pass manifest, so the default path is untouched.
     extra_runs = _parse_extra_runs(manifest)
+    # Only --all consults the scope, but a malformed one fails every run.
+    _parse_sweep_backends(manifest)
     screenshot_subdir = manifest.get("screenshot_subdir", "save_files/screenshots")
     # CLI --warmup wins; manifest["warmup"] overrides the hardcoded default of 10.
     warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
@@ -1024,13 +1076,16 @@ def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
     The row for a demo that never produced checks says ERROR, not ``0 checks``
     — the whole point of ``--all`` is that a demo dropping out of the sweep is
     visible in the number, which is what a per-target shell loop cannot do
-    (#2919).
+    (#2919). An OUT-OF-SCOPE row is recognized only by its explicit
+    ``out_of_scope`` marker, never inferred from rc 0 with zero checks.
     """
     print()
     print(f"[render-verify] --all summary over {len(results)} demo(s):")
     for r in results:
         closed = r.get("host_closed", 0)
-        if r["rc"] == 0:
+        if r.get("out_of_scope"):
+            verdict = f"OUT-OF-SCOPE ({r['out_of_scope']} not declared)"
+        elif r["rc"] == 0:
             verdict = "PASS"
         elif closed and not r["failed"]:
             verdict = f"HOST-CLOSED ({closed} pass(es), no verdict — re-run)"
@@ -1047,9 +1102,17 @@ def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
     closed = [r["target"] for r in results if r.get("host_closed", 0)]
     errored = [r["target"] for r in results
                if r["rc"] != 0 and r["checked"] == 0 and not r.get("host_closed", 0)]
+    out_of_scope = [r for r in results if r.get("out_of_scope")]
     closed_note = f", {len(closed)} HOST-CLOSED" if closed else ""
+    scope_note = f", {len(out_of_scope)} out of scope" if out_of_scope else ""
     print(f"[render-verify] total: {total} checks across {len(results)} demos, "
-          f"{failed} FAIL, {skipped} skipped{closed_note}")
+          f"{failed} FAIL, {skipped} skipped{closed_note}{scope_note}")
+    if out_of_scope:
+        print(f"[render-verify] {len(out_of_scope)} demo(s) OUT-OF-SCOPE on "
+              f"{out_of_scope[0]['out_of_scope']}: "
+              f"{', '.join(r['target'] for r in out_of_scope)} — their "
+              f"manifests' sweep_backends do not declare this preset, so they "
+              f"gate nothing here.")
     if closed:
         print(f"[render-verify] {len(closed)} demo(s) had a capture pass closed "
               f"twice by Windows hang handling (RESULT=HOST-CLOSED): "
@@ -1129,13 +1192,24 @@ def main(argv: list[str] | None = None) -> int:
     for target, creation in declared.items():
         print()
         print("=" * 76)
+        demo_dir = worktree / "creations" / creation
         # One broken demo must not truncate the sweep — that would silently
         # shrink coverage, the exact failure this flag exists to make visible.
         try:
+            # Decided before _verify_one so an excluded target is never built,
+            # captured, or blessed by a sweep on a host that does not own it.
+            if _sweep_excludes(_load_manifest(demo_dir), backend):
+                print(f"[render-verify] {target}: OUT-OF-SCOPE — its manifest's "
+                      f"sweep_backends does not declare {backend}; not built, "
+                      f"captured, or checked.")
+                results.append({"target": target, "demo": demo_dir.name,
+                                "rc": 0, "checked": 0, "failed": 0,
+                                "skipped": 0, "host_closed": 0,
+                                "out_of_scope": backend})
+                continue
             results.append(_verify_one(
                 args=args, worktree=worktree, build_dir=build_dir,
-                backend=backend, target=target,
-                demo_dir=worktree / "creations" / creation))
+                backend=backend, target=target, demo_dir=demo_dir))
         except SystemExit as e:
             print(f"[render-verify] {target}: {e}", file=sys.stderr)
             results.append({"target": target, "demo": creation, "rc": 1,

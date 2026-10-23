@@ -1,6 +1,7 @@
 {
   "demo": "perf_grid",
   "target": "IRPerfGrid",
+  "sweep_backends": ["macos-debug", "windows-debug", "linux-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "demo_args": ["--mode", "voxel_set", "--no-overlay",
                 "--wave-amplitude", "0", "--subdivision-mode", "none"],

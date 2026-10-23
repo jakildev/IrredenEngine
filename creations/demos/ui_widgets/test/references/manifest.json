@@ -1,6 +1,7 @@
 {
   "demo": "ui_widgets",
   "target": "IRUIWidgetsDemo",
+  "sweep_backends": ["macos-debug"],
   "screenshot_subdir": "save_files/screenshots",
   "shots": [
     "widgets_idle",
