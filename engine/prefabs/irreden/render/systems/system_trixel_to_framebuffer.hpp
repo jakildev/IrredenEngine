@@ -598,7 +598,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.updateFrameData(frameDataBuf_);
         // Each axis owns a compacted-list region and GPU-authored indirect draw count.
         Buffer *cellCompacted = axes.cellCompacted_.second;
-        Buffer *cellIndirect = axes.cellIndirect_.second;
         Buffer *cellIndirectArgs = axes.cellIndirectArgs_.second;
         const int regionStride = axes.cellRegionStride_;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
