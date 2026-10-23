@@ -13,9 +13,11 @@
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
+#include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
+#include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_widget_image.hpp>
@@ -65,7 +67,9 @@ using IRComponents::C_EntityCanvas;
 using IRComponents::C_FogExempt;
 using IRComponents::C_FogField;
 using IRComponents::C_GotoEasing3D;
+using IRComponents::C_GuiPosition;
 using IRComponents::C_HitBox2D;
+using IRComponents::C_HitBox2DGui;
 using IRComponents::C_LocalTransform;
 using IRComponents::C_Name;
 using IRComponents::C_PositionInt3D;
@@ -487,12 +491,106 @@ TEST_F(LuaWorldSnapshotTest, WidgetResetLoadRestoresAuthoredValuesButClearsTrans
         m_entity_manager.getComponent<C_WidgetNumberField>(field);
     EXPECT_FLOAT_EQ(restoredField.value_, 0.1f);
     EXPECT_FLOAT_EQ(restoredField.defaultValue_, 0.1f);
-    const C_WidgetState &idle = m_entity_manager.getComponent<C_WidgetState>(slider);
-    EXPECT_FALSE(idle.hovered_);
-    EXPECT_FALSE(idle.pressed_);
-    EXPECT_FALSE(idle.focused_);
-    EXPECT_FALSE(idle.sliderPressStarted_);
-    EXPECT_EQ(idle.sliderFirstClickRegion_, C_WidgetState::SliderPressRegion::NONE);
+    C_WidgetState &sliderState = m_entity_manager.getComponent<C_WidgetState>(slider);
+    C_WidgetState &fieldState = m_entity_manager.getComponent<C_WidgetState>(field);
+    input->tick(
+        slider,
+        m_entity_manager.getComponent<C_Widget>(slider),
+        sliderState,
+        m_entity_manager.getComponent<C_HitBox2DGui>(slider),
+        m_entity_manager.getComponent<C_GuiPosition>(slider)
+    );
+    input->tick(
+        field,
+        m_entity_manager.getComponent<C_Widget>(field),
+        fieldState,
+        m_entity_manager.getComponent<C_HitBox2DGui>(field),
+        m_entity_manager.getComponent<C_GuiPosition>(field)
+    );
+    EXPECT_EQ(input->capturedWidgetId_, IREntity::kNullEntity);
+    EXPECT_EQ(input->focusedWidgetId_, IREntity::kNullEntity);
+    EXPECT_EQ(IRPrefab::Widget::takeFocusRequest(), IREntity::kNullEntity);
+    EXPECT_FALSE(sliderState.hovered_);
+    EXPECT_FALSE(sliderState.pressed_);
+    EXPECT_FALSE(sliderState.focused_);
+    EXPECT_FALSE(sliderState.sliderPressStarted_);
+    EXPECT_EQ(sliderState.sliderFirstClickRegion_, C_WidgetState::SliderPressRegion::NONE);
+    EXPECT_FALSE(fieldState.focused_);
+}
+
+TEST_F(LuaWorldSnapshotTest, WidgetRetiredColumnsDeriveAuthoredValuesThroughLua) {
+    const EntityId entity = 1002;
+    {
+        IRAsset::MemoryBinaryWriter sliderV1;
+        sliderV1.writeString("Zoom");
+        sliderV1.writeF32(-2.0f);
+        sliderV1.writeF32(8.0f);
+        sliderV1.writeF32(3.25f);
+        const std::string path = tempPath("widget_slider_v1");
+        ASSERT_NO_FATAL_FAILURE(writeSingleColumnSnapshot(
+            path,
+            entity,
+            "IRComponents::C_WidgetSlider",
+            1,
+            sliderV1.buffer()
+        ));
+        ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+        const C_WidgetSlider &slider = m_entity_manager.getComponent<C_WidgetSlider>(entity);
+        EXPECT_FLOAT_EQ(slider.currentValue_, 3.25f);
+        EXPECT_FLOAT_EQ(slider.defaultValue_, 3.25f);
+        EXPECT_FLOAT_EQ(slider.step_, 0.1f);
+        EXPECT_EQ(slider.fieldId_, IREntity::kNullEntity);
+        EXPECT_EQ(slider.textSize_, TextSize::LARGE);
+    }
+
+    m_entity_manager.destroyAllEntities();
+    {
+        IRAsset::MemoryBinaryWriter sliderV2;
+        sliderV2.writeString("Zoom");
+        sliderV2.writeF32(-2.0f);
+        sliderV2.writeF32(8.0f);
+        sliderV2.writeF32(3.25f);
+        sliderV2.writeU8(static_cast<std::uint8_t>(TextSize::SMALL));
+        const std::string path = tempPath("widget_slider_v2");
+        ASSERT_NO_FATAL_FAILURE(writeSingleColumnSnapshot(
+            path,
+            entity,
+            "IRComponents::C_WidgetSlider",
+            2,
+            sliderV2.buffer()
+        ));
+        ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+        const C_WidgetSlider &slider = m_entity_manager.getComponent<C_WidgetSlider>(entity);
+        EXPECT_FLOAT_EQ(slider.currentValue_, 3.25f);
+        EXPECT_FLOAT_EQ(slider.defaultValue_, 3.25f);
+        EXPECT_FLOAT_EQ(slider.step_, 0.1f);
+        EXPECT_EQ(slider.fieldId_, IREntity::kNullEntity);
+        EXPECT_EQ(slider.textSize_, TextSize::SMALL);
+    }
+
+    m_entity_manager.destroyAllEntities();
+    IRAsset::MemoryBinaryWriter numberFieldV1;
+    numberFieldV1.writeF32(3.5f);
+    numberFieldV1.writeF32(-2.0f);
+    numberFieldV1.writeF32(8.0f);
+    numberFieldV1.writeF32(0.5f);
+    numberFieldV1.writeU8(static_cast<std::uint8_t>(TextSize::SMALL));
+    const std::string path = tempPath("widget_number_field_v1");
+    ASSERT_NO_FATAL_FAILURE(writeSingleColumnSnapshot(
+        path,
+        entity,
+        "IRComponents::C_WidgetNumberField",
+        1,
+        numberFieldV1.buffer()
+    ));
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+    const C_WidgetNumberField &field = m_entity_manager.getComponent<C_WidgetNumberField>(entity);
+    EXPECT_FLOAT_EQ(field.value_, 3.5f);
+    EXPECT_FLOAT_EQ(field.defaultValue_, 3.5f);
+    EXPECT_FLOAT_EQ(field.step_, 0.5f);
+    EXPECT_EQ(field.textSize_, TextSize::SMALL);
+    EXPECT_FALSE(field.editing_);
+    EXPECT_TRUE(field.editBuffer_.empty());
 }
 
 // Rows saved before the glyph-set size existed load through the retired
