@@ -126,7 +126,8 @@ bool editorAvailable(std::string_view name) {
 }
 
 struct ToolService::Impl {
-    std::optional<std::filesystem::path> root_;
+    std::optional<std::filesystem::path> base_;
+    std::string activeId_{IRUtility::kBaseWorktreeRoot};
     detail::ChildProcess child_;
     std::deque<std::string> lines_;
     std::string partial_;
@@ -245,7 +246,7 @@ ToolService::~ToolService() {
 }
 
 void ToolService::setRoot(const std::filesystem::path &root) {
-    if (m_impl->root_.has_value()) {
+    if (m_impl->base_.has_value()) {
         throw std::invalid_argument("tool root is already set");
     }
     std::error_code error;
@@ -253,28 +254,68 @@ void ToolService::setRoot(const std::filesystem::path &root) {
     if (error || !std::filesystem::is_directory(canonical, error) || error) {
         throw std::invalid_argument("tool root must be an existing directory");
     }
-    m_impl->root_ = canonical;
+    m_impl->base_ = canonical;
 }
 
 std::optional<std::filesystem::path> ToolService::root() const {
-    return m_impl->root_;
+    return m_impl->base_;
+}
+
+std::expected<void, std::string> ToolService::selectRoot(std::string_view id) {
+    if (!m_impl->base_.has_value()) {
+        return std::unexpected("tool root is not set");
+    }
+    if (!IRUtility::resolveWorktreeRoot(*m_impl->base_, id).has_value()) {
+        return std::unexpected("'" + std::string{id} + "' is not a live worktree root");
+    }
+    if (id != m_impl->activeId_ && live()) {
+        return std::unexpected("a tool is still running");
+    }
+    m_impl->activeId_ = std::string{id};
+    return {};
+}
+
+const std::string &ToolService::activeRootId() const {
+    return m_impl->activeId_;
+}
+
+std::optional<std::filesystem::path> ToolService::activeRoot() const {
+    if (!m_impl->base_.has_value()) {
+        return std::nullopt;
+    }
+    return IRUtility::resolveWorktreeRoot(*m_impl->base_, m_impl->activeId_);
 }
 
 std::expected<ToolHandle, std::string> ToolService::spawn(const ToolSpawnRequest &request) {
-    if (!m_impl->root_.has_value()) {
+    if (!m_impl->base_.has_value()) {
         return std::unexpected("tool root is not set");
     }
     if (request.tool_ != ToolName::IR_BUILD && request.tool_ != ToolName::EDITOR &&
         request.tool_ != ToolName::OPEN_FOLDER) {
         return std::unexpected("unknown tool");
     }
+    if (request.scope_ != ToolScope::ACTIVE_ROOT && request.scope_ != ToolScope::BASE) {
+        return std::unexpected("unknown tool scope");
+    }
+    if (request.scope_ == ToolScope::BASE && request.tool_ == ToolName::IR_BUILD) {
+        return std::unexpected("ir-build runs only in the active root");
+    }
     m_impl->drain();
     if (m_impl->child_.started() && !m_impl->exitCode_.has_value()) {
         return std::unexpected("a tool is already running");
     }
+    // Re-resolved per request: a worktree removed after it was selected
+    // starts nothing.
+    const std::optional<std::filesystem::path> root =
+        request.scope_ == ToolScope::BASE ? m_impl->base_ : activeRoot();
+    if (!root.has_value()) {
+        return std::unexpected(
+            "the active root '" + m_impl->activeId_ + "' is no longer a live worktree"
+        );
+    }
 
     detail::SpawnChildRequest child;
-    child.cwd_ = *m_impl->root_;
+    child.cwd_ = *root;
     child.pipeOutput_ = true;
     auto addScript = [&](const std::filesystem::path &script) {
 #ifdef _WIN32
@@ -300,11 +341,14 @@ std::expected<ToolHandle, std::string> ToolService::spawn(const ToolSpawnRequest
         }
         addScript(*tool);
         child.argv_.insert(child.argv_.end(), {"--target", request.target_});
-        child.environment_.push_back({"IRREDEN_BUILD_DIR", (*m_impl->root_ / "build").string()});
+        child.environment_.push_back({"IRREDEN_BUILD_DIR", (*root / "build").string()});
     } else {
-        const auto resolved = IRUtility::resolveContainedPath(*m_impl->root_, request.path_);
+        const auto resolved = IRUtility::resolveContainedPath(*m_impl->base_, request.path_);
         if (!resolved.has_value()) {
             return std::unexpected("path must resolve inside the tool root");
+        }
+        if (!IRUtility::isWithinDirectory(*root, *resolved)) {
+            return std::unexpected("path must resolve inside the active root");
         }
         std::optional<std::filesystem::path> tool;
         if (request.tool_ == ToolName::EDITOR) {

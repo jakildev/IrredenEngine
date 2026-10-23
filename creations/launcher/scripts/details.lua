@@ -8,6 +8,7 @@
 local L = require("launcher_layout")
 local WidgetList = require("widget_list")
 local catalogView = require("catalog_view")
+local settingsModule = require("settings")
 
 local M = {}
 
@@ -153,19 +154,20 @@ local function showTargets(app, details, creation)
         for presetIndex = 1, #presets do
             names[presetIndex] = presets[presetIndex].name
         end
-        local selected = app.presetIndex(target.name, #names)
+        local presetKey = settingsModule.presetKey(creation, target.name)
+        local selected = app.presetIndex(presetKey, #names)
         local p = L.details.preset
         if #names > 0 then
             local dropdown = add(details,
                 IRGui.makeDropdown(p.x, y, p.w, p.h, names, selected, p.h, SMALL))
             details.presets[#details.presets + 1] = {
-                dropdown = dropdown, target = target.name, selected = selected,
+                dropdown = dropdown, key = presetKey, selected = selected,
             }
         end
         local b, r = L.details.build, L.details.run
         add(details, IRGui.makeButton(b.x, y + b.dy, b.w, b.h, "BUILD", function()
             app.selectTarget(index)
-            app.build(target.name)
+            app.build(creation, target.name)
         end, SMALL))
         add(details, IRGui.makeButton(r.x, y + r.dy, r.w, r.h, "RUN", function()
             app.selectTarget(index)
@@ -175,7 +177,7 @@ local function showTargets(app, details, creation)
             local k = L.details.package
             add(details, IRGui.makeButton(k.x, y + k.dy, k.w, k.h, "PACKAGE", function()
                 app.selectTarget(index)
-                app.package(target.name)
+                app.package(creation, target.name)
             end, SMALL))
             add(details, IRGui.makeLabel(L.details.left, y + L.details.packageDy,
                 packageText(target, L.details.cols), nil, SMALL))
@@ -246,20 +248,37 @@ function M.show(app, details, creation)
         add(details, IRGui.makeLabel(L.details.left, L.details.tagsY,
             clip("TAGS: " .. table.concat(manifest.tags, ", "), cols), nil, SMALL))
     end
-    add(details, IRGui.makeLabel(L.details.left, L.details.dirY, clip(creation.dir, cols), nil,
-        SMALL))
+    local dirText = clip(creation.dir, cols)
+    if #app.rootList() > 1 then
+        -- Stops short of the thumbnail beside it.
+        local width = math.floor((L.details.thumbnail.x - L.details.left) / 6)
+        local rootDir = creation.root == settingsModule.BASE_ROOT and creation.dir
+            or creation.dir:sub(#creation.root + 2)
+        dirText = "ROOT " .. clip(creation.root, math.max(4, width - 5))
+        if width - #dirText > 12 then
+            dirText = dirText .. " " .. clip(rootDir, width - #dirText - 1)
+        end
+    end
+    add(details, IRGui.makeLabel(L.details.left, L.details.dirY, dirText, nil, SMALL))
+    if IRTest then
+        IRTest.report("detailsRoot", creation.root)
+    end
     local ide, folder = L.details.ide, L.details.folder
     add(details, IRGui.makeButton(ide.x, ide.y, ide.w, ide.h, "IDE",
-        function() app.openInEditor(creation.dir) end, SMALL))
+        function() app.openInEditor(creation.root, creation.dir) end, SMALL))
     add(details, IRGui.makeButton(folder.x, folder.y, folder.w, folder.h, "FOLDER",
-        function() app.openFolder(creation.dir) end, SMALL))
+        function() app.openFolder(creation.root, creation.dir) end, SMALL))
 
     if manifest then
         for index = 1, math.min(#manifest.docs, L.details.docs) do
             local doc = manifest.docs[index]
             local y = L.details.docsTop + (index - 1) * L.details.docStep
             add(details, IRGui.makeButton(L.details.left, y, 280, 16,
-                clip("DOC " .. doc, 44), function() app.openInEditor(doc) end, SMALL))
+                clip("DOC " .. doc, 44), function() app.openInEditor(creation.root, doc) end,
+                SMALL))
+        end
+        if IRTest then
+            IRTest.report("detailsDocs", table.concat(manifest.docs, "|"))
         end
         showTargets(app, details, creation)
     end
@@ -272,14 +291,14 @@ function M.pollPresets(app, details)
         local selected = IRGui.dropdownSelected(entry.dropdown)
         if selected ~= entry.selected and selected > 0 then
             entry.selected = selected
-            app.setPresetIndex(entry.target, selected)
+            app.setPresetIndex(entry.key, selected)
         end
     end
 end
 
-function M.selectedPreset(details, targetName)
+function M.selectedPreset(details, presetKey)
     for _, entry in ipairs(details.presets) do
-        if entry.target == targetName then
+        if entry.key == presetKey then
             return entry.selected
         end
     end

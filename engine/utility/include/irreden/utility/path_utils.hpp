@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace IRUtility {
 
@@ -52,6 +53,13 @@ findOnPath(std::string_view name, std::initializer_list<std::string_view> suffix
 /// way Windows will read it.
 std::optional<std::string_view> containedPathRejection(std::string_view path);
 
+/// Whether @p candidate is @p directory or beneath it, compared component by
+/// component, so `<dir>2` is not inside `<dir>`. Lexical: canonicalize both
+/// first.
+bool isWithinDirectory(
+    const std::filesystem::path &directory, const std::filesystem::path &candidate
+);
+
 /// @p path joined to @p canonicalBase with every existing component resolved
 /// (symlinks, junctions), or nullopt when `containedPathRejection` rejects it
 /// or the result is neither @p canonicalBase nor beneath it. Containment is
@@ -60,6 +68,25 @@ std::optional<std::string_view> containedPathRejection(std::string_view path);
 /// caller-supplied path that must stay under a root.
 std::optional<std::filesystem::path>
 resolveContainedPath(const std::filesystem::path &canonicalBase, std::string_view path);
+
+/// The id of the base checkout among @ref discoverWorktreeRoots' ids.
+inline constexpr std::string_view kBaseWorktreeRoot = ".";
+
+/// Whether @p id is spelled as a worktree root id: `.`, or
+/// `.claude/worktrees/<name>` with exactly one non-empty `<name>` component
+/// that is not `.` or `..`. Spelling only; nothing on disk is read.
+bool isWorktreeRootId(std::string_view id);
+
+/// @p canonicalBase for `.`, or `<base>/.claude/worktrees/<name>` when that is a
+/// live worktree: no symlink on the way down, a regular-file `.git` marker (not
+/// a symlink), and a real `creations/` directory. nullopt for anything else,
+/// including an id @ref isWorktreeRootId rejects. Git is never invoked.
+std::optional<std::filesystem::path>
+resolveWorktreeRoot(const std::filesystem::path &canonicalBase, std::string_view id);
+
+/// `.` followed by every immediate `.claude/worktrees/<name>` entry that
+/// @ref resolveWorktreeRoot accepts, sorted by name.
+std::vector<std::string> discoverWorktreeRoots(const std::filesystem::path &canonicalBase);
 
 } // namespace IRUtility
 

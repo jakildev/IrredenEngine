@@ -262,6 +262,14 @@ std::optional<std::filesystem::path> World::toolRoot() const {
     return m_toolService.root();
 }
 
+std::expected<void, std::string> World::selectToolRoot(std::string_view id) {
+    return m_toolService.selectRoot(id);
+}
+
+std::optional<std::filesystem::path> World::activeToolRoot() const {
+    return m_toolService.activeRoot();
+}
+
 std::expected<ToolHandle, std::string> World::spawnTool(const ToolSpawnRequest &request) {
     return m_toolService.spawn(request);
 }

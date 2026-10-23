@@ -319,7 +319,18 @@ HandOffOutcome runHandOff(
     if (toolService.live()) {
         throw std::runtime_error("IREngine.handOff: a tool is still running");
     }
-    return runHandOff(request, environment, platform, toolService.root());
+    if (!toolService.root().has_value()) {
+        return runHandOff(request, environment, platform, std::nullopt);
+    }
+    const std::optional<std::filesystem::path> activeRoot = toolService.activeRoot();
+    if (!activeRoot.has_value()) {
+        HandOffOutcome refused;
+        refused.result_.supported_ = true;
+        refused.result_.error_ =
+            "the active root '" + toolService.activeRootId() + "' is no longer a live worktree";
+        return refused;
+    }
+    return runHandOff(request, environment, platform, activeRoot);
 }
 
 void bindHandOffLua(

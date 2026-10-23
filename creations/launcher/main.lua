@@ -1,9 +1,12 @@
 -- IRLauncher: browse, build and run the creations of the checkout this
--- launcher was built from. The catalog comes from IRCatalog, Build and
--- Package are the `ir-build` tool run through IREngine.spawnTool and polled
--- into the log from a RENDER-phase system, and Run hands the process off to
--- the target through IREngine.handOff from an INPUT-phase system, after a
--- Build when the target is not built yet. Only one child runs at a time.
+-- launcher was built from and of the worktrees configured beside it. The
+-- catalog comes from IRCatalog, Build and Package are the `ir-build` tool run
+-- through IREngine.spawnTool and polled into the log from a RENDER-phase
+-- system, and Run hands the process off to the target through
+-- IREngine.handOff from an INPUT-phase system, after a Build when the target
+-- is not built yet. Only one child runs at a time, and every creation action
+-- first makes that creation's root the active root, so it runs in that
+-- checkout and its build tree.
 
 package.path = "scripts/?.lua;" .. package.path
 
@@ -13,10 +16,13 @@ local details = require("details")
 local logPanel = require("log_panel")
 local settingsModule = require("settings")
 local assetsModule = require("assets")
+local WidgetList = require("widget_list")
 
 local SMALL = IRText.Size.SMALL
 local SETTINGS_STORE = "launcher"
 local LOG_FILE = "save_files/launcher.log"
+local BASE_ROOT = settingsModule.BASE_ROOT
+local CATALOG_ROOT = IRLauncher.catalogRoot()
 
 local app = {
     creations = {},
@@ -25,16 +31,42 @@ local app = {
     selectedTarget = 1,
     tool = nil,
     pendingRun = nil,
+    launches = 0,
+    -- A `--catalog-root` fixture is a read-only catalog source: its rows run
+    -- as the base root and it never joins the root list.
+    fixtureCatalog = CATALOG_ROOT ~= ".",
 }
+local SESSION = tostring(app)
 
+function app.discover()
+    if app.fixtureCatalog then
+        return { BASE_ROOT }
+    end
+    local ok, roots = pcall(IRCatalog.roots)
+    return ok and roots or { BASE_ROOT }
+end
+
+app.discoveredRoots = app.discover()
 app.settings = settingsModule.new(SETTINGS_STORE)
 -- A scripted capture run starts from empty settings, so no earlier run's
--- favourites or folds move the rows it clicks or the screen it captures.
+-- favourites, folds or roots move the rows it clicks or the screen it captures.
 if IRLauncher.scripted() then
     IRSave.clear(SETTINGS_STORE)
     IRSave.save(SETTINGS_STORE)
 end
-settingsModule.load(app.settings)
+settingsModule.load(app.settings, app.discoveredRoots)
+
+-- The configured roots in id order, the base first.
+function app.rootList()
+    if app.fixtureCatalog then
+        return { BASE_ROOT }
+    end
+    return settingsModule.rootList(app.settings)
+end
+
+function app.assetRoot()
+    return app.fixtureCatalog and CATALOG_ROOT or app.settings.activeRoot
+end
 
 app.logView = logPanel.new(app)
 
@@ -84,7 +116,12 @@ function app.refreshDetails()
 end
 
 function app.rescan()
-    local ok, result = pcall(IRCatalog.scan, { root = IRLauncher.catalogRoot(), buildDir = "build" })
+    local ok, result
+    if app.fixtureCatalog then
+        ok, result = pcall(IRCatalog.scan, { root = CATALOG_ROOT, buildDir = "build" })
+    else
+        ok, result = pcall(IRCatalog.scanRoots, { roots = app.rootList() })
+    end
     if not ok then
         app.log("catalog scan failed: " .. tostring(result))
         return
@@ -92,8 +129,22 @@ function app.rescan()
     app.creations, app.byDir = {}, {}
     for index = 1, #result.creations do
         local creation = result.creations[index]
+        if app.fixtureCatalog then
+            creation.root = BASE_ROOT
+        end
         app.creations[#app.creations + 1] = creation
         app.byDir[creation.dir] = creation
+    end
+    settingsModule.migrateLegacyPresets(app.settings, app.creations)
+    if IRTest then
+        local lastRuns = {}
+        for _, creation in ipairs(app.creations) do
+            for _, target in ipairs(creation.targets) do
+                lastRuns[#lastRuns + 1] = creation.root .. ":" .. target.name .. "=" ..
+                    (target.lastRun and target.lastRun.exe or "-")
+            end
+        end
+        IRTest.report("lastRuns", table.concat(lastRuns, "|"))
     end
     if app.selectedDir and not app.byDir[app.selectedDir] then
         app.selectedDir = nil
@@ -102,7 +153,101 @@ function app.rescan()
     app.refreshDetails()
 end
 
+-- Header worktree picker: the configured roots, present only while there are
+-- two or more of them.
+local picker = { widgets = {}, roots = {}, selected = 0 }
+
+function app.refreshPicker()
+    WidgetList.clear(picker.widgets)
+    picker.id = nil
+    picker.roots = app.rootList()
+    if #picker.roots >= 2 then
+        picker.selected = 1
+        for index, root in ipairs(picker.roots) do
+            if root == app.settings.activeRoot then
+                picker.selected = index
+            end
+        end
+        local hp = IRLauncher.updateFailedLog() and L.header.pickerBesideBanner or L.header.picker
+        picker.id = IRGui.makeDropdown(hp.x, hp.y, hp.w, hp.h, picker.roots, picker.selected, hp.h,
+            SMALL)
+        picker.widgets[1] = picker.id
+    end
+    if IRTest then
+        IRTest.report("picker", picker.id and table.concat(picker.roots, "|") or "none")
+    end
+end
+
+function app.reportRoots()
+    settingsModule.report(app.settings)
+    if IRTest then
+        IRTest.report("discoveredRoots", table.concat(app.discoveredRoots, "|"))
+    end
+end
+
+-- Makes @p root the active root before process work in it. IRLauncher.selectRoot
+-- re-checks the id against fresh discovery and refuses while a tool runs, so
+-- a root that vanished, or a busy slot, launches nothing.
+function app.confirmRoot(root, what)
+    local refusal = IRLauncher.selectRoot(root)
+    if refusal then
+        app.log(what .. ": root " .. root .. " is unavailable: " .. refusal)
+        return false
+    end
+    if app.settings.activeRoot ~= root then
+        app.settings.activeRoot = root
+        if not app.fixtureCatalog then
+            assetsModule.setRoot(app.assetBrowser, app.assetRoot())
+        end
+        app.refreshPicker()
+        app.reportRoots()
+    end
+    return true
+end
+
+-- The picker's switch: no restart, no rescan; the selection and an open
+-- settings panel close, since they may belong to the previous root.
+function app.switchRoot(root)
+    if app.confirmRoot(root, "ROOT") then
+        app.selectedDir = nil
+        if app.settings.open then
+            settingsModule.close(app.settings)
+        end
+        catalogView.rebuild(app, app.tree)
+        app.refreshDetails()
+        app.log("ROOT " .. root .. " active")
+        if IRTest then
+            IRTest.report("sessionAtSwitch", SESSION)
+        end
+    else
+        app.refreshPicker()
+    end
+end
+
+function app.toggleRoot(root)
+    if root == BASE_ROOT then
+        return
+    end
+    if app.settings.roots[root] then
+        if app.settings.activeRoot == root and not app.confirmRoot(BASE_ROOT, "DROP " .. root) then
+            return
+        end
+        app.settings.roots[root] = nil
+    else
+        app.settings.roots[root] = true
+    end
+    app.selectedDir = nil
+    app.rescan()
+    app.refreshPicker()
+    settingsModule.show(app, app.settings)
+    app.reportRoots()
+end
+
 function app.select(dir)
+    local creation = app.byDir[dir]
+    if creation and not app.confirmRoot(creation.root, "SELECT " .. dir) then
+        return
+    end
     if app.selectedDir ~= dir then
         app.selectedDir = dir
         app.selectedTarget = 1
@@ -116,16 +261,17 @@ function app.selectTarget(index)
     app.selectedTarget = index
 end
 
-function app.presetIndex(targetName, count)
-    local stored = app.settings.presets[targetName]
+function app.presetIndex(presetKey, count)
+    local stored = app.settings.presets[presetKey]
     if stored and stored >= 1 and stored <= count then
         return stored
     end
     return 1
 end
 
-function app.setPresetIndex(targetName, index)
-    app.settings.presets[targetName] = index
+function app.setPresetIndex(presetKey, index)
+    app.settings.presets[presetKey] = index
+    settingsModule.report(app.settings)
 end
 
 function app.toggleFavourite(dir)
@@ -144,19 +290,29 @@ local function busy(what)
     return false
 end
 
-local function spawn(kind, label, request, onExit)
-    local ok, handle = pcall(IREngine.spawnTool, request)
+local function countLaunch()
+    app.launches = app.launches + 1
+    if IRTest then
+        IRTest.report("launches", tostring(app.launches))
+    end
+end
+
+-- @p spawnTool defaults to IREngine.spawnTool, whose requests run in the
+-- active root.
+local function spawn(kind, label, request, onExit, spawnTool)
+    local ok, handle = pcall(spawnTool or IREngine.spawnTool, request)
     if not ok then
         app.log(label .. " failed to start: " .. tostring(handle))
         return false
     end
+    countLaunch()
     app.tool = { kind = kind, label = label, handle = handle, onExit = onExit }
     app.log(label .. " started")
     return true
 end
 
-function app.build(targetName, onSuccess)
-    if busy("BUILD " .. targetName) then
+function app.build(creation, targetName, onSuccess)
+    if busy("BUILD " .. targetName) or not app.confirmRoot(creation.root, "BUILD " .. targetName) then
         return
     end
     spawn("build", "BUILD " .. targetName, { tool = "ir-build", target = targetName },
@@ -174,22 +330,23 @@ function app.build(targetName, onSuccess)
         end)
 end
 
-local function findTargetState(targetName)
-    for _, creation in ipairs(app.creations) do
-        for _, target in ipairs(creation.targets) do
-            if target.name == targetName then
-                return target
-            end
+-- @p creation's target as the latest scan has it.
+local function findTargetState(creation, targetName)
+    local current = app.byDir[creation.dir]
+    for _, target in ipairs(current and current.targets or {}) do
+        if target.name == targetName then
+            return target
         end
     end
     return nil
 end
 
--- Builds `<target>Package`, the target irreden_package_target adds. The
--- archive path is what the rescan finds on disk, never one predicted here.
-function app.package(targetName)
+-- Builds `<target>Package`, the target irreden_package_target adds, in the
+-- creation's root. The archive path is what the rescan finds in that root's
+-- build tree, never one predicted here.
+function app.package(creation, targetName)
     local label = "PACKAGE " .. targetName
-    if busy(label) then
+    if busy(label) or not app.confirmRoot(creation.root, label) then
         return
     end
     spawn("package", label, { tool = "ir-build", target = targetName .. "Package" },
@@ -202,7 +359,7 @@ function app.package(targetName)
             if code ~= 0 then
                 return
             end
-            local target = findTargetState(targetName)
+            local target = findTargetState(creation, targetName)
             if target and target.packagePath ~= "" then
                 app.log(label .. " archive " .. target.packagePath)
             else
@@ -217,8 +374,9 @@ local function currentPresetArgs(creation, index)
     if #presets == 0 then
         return {}
     end
-    local selected = details.selectedPreset(app.details, target.name)
-        or app.presetIndex(target.name, #presets)
+    local presetKey = settingsModule.presetKey(creation, target.name)
+    local selected = details.selectedPreset(app.details, presetKey)
+        or app.presetIndex(presetKey, #presets)
     return presets[selected].args
 end
 
@@ -228,7 +386,8 @@ function app.run(index)
         return
     end
     local target = creation.targets[index]
-    if busy("RUN " .. target.name) or app.pendingRun then
+    if busy("RUN " .. target.name) or app.pendingRun or
+        not app.confirmRoot(creation.root, "RUN " .. target.name) then
         return
     end
     local argv = { target.name }
@@ -239,18 +398,22 @@ function app.run(index)
     argv[#argv + 1] = "--window-mode"
     argv[#argv + 1] = IRLauncher.childWindowMode()
     local function queue()
-        app.pendingRun = { target = target.name, argv = argv }
+        app.pendingRun = { target = target.name, argv = argv, root = creation.root }
     end
     if target.built then
         queue()
     else
         app.log("RUN " .. target.name .. ": not built yet, building first")
-        app.build(target.name, queue)
+        app.build(creation, target.name, queue)
     end
 end
 
 local function handOff(pending)
+    if not app.confirmRoot(pending.root, "RUN " .. pending.target) then
+        return
+    end
     app.log("RUN " .. table.concat(pending.argv, " "))
+    countLaunch()
     local ok, result = pcall(IREngine.handOff, { argv = pending.argv })
     local text
     if not ok then
@@ -274,8 +437,10 @@ local function handOff(pending)
     app.rescan()
 end
 
-local function openTool(tool, path, label)
-    if busy(label) then
+-- @p root is the creation root @p path belongs to, or nil for a launcher-owned
+-- file, which IRLauncher.spawnBaseTool opens without touching the active root.
+local function openTool(tool, root, path, label)
+    if busy(label) or (root and not app.confirmRoot(root, label)) then
         return
     end
     local request = { tool = tool, path = path }
@@ -291,15 +456,15 @@ local function openTool(tool, path, label)
         if code ~= 0 then
             app.log(string.format("%s exit %d", label, code))
         end
-    end)
+    end, not root and IRLauncher.spawnBaseTool or nil)
 end
 
-function app.openInEditor(path)
-    openTool("editor", path, "OPEN " .. path)
+function app.openInEditor(root, path)
+    openTool("editor", root, path, "OPEN " .. path)
 end
 
-function app.openFolder(path)
-    openTool("open-folder", path, "FOLDER " .. path)
+function app.openFolder(root, path)
+    openTool("open-folder", root, path, "FOLDER " .. path)
 end
 
 function app.openLogInEditor()
@@ -312,13 +477,15 @@ function app.openLogInEditor()
         app.log("OPEN LOG: could not write " .. LOG_FILE)
         return
     end
-    app.openInEditor(runDir .. "/" .. LOG_FILE)
+    openTool("editor", nil, runDir .. "/" .. LOG_FILE, "OPEN LOG")
 end
 
 function app.openSettings()
     if app.settings.open then
         return
     end
+    app.discoveredRoots = app.discover()
+    app.reportRoots()
     details.clear(app.details)
     settingsModule.show(app, app.settings)
 end
@@ -329,14 +496,24 @@ function app.closeSettings()
 end
 
 function app.revertSettings()
-    settingsModule.load(app.settings)
+    app.discoveredRoots = app.discover()
+    settingsModule.load(app.settings, app.discoveredRoots)
+    -- Load already fell back to `.` for a stored root that is gone.
+    local active = app.settings.activeRoot
+    app.settings.activeRoot = nil
+    if not app.confirmRoot(active, "REVERT") then
+        app.settings.activeRoot = active
+    end
+    app.selectedDir = nil
+    app.rescan()
+    app.refreshPicker()
     local layout = app.settings.layout ~= "" and app.settings.layout or app.defaultLayout
     if layout and not IRLayout.deserialize(layout) then
         app.log("settings layout could not be restored")
     end
     app.tree.collapsed = app.settings.collapsed
     settingsModule.show(app, app.settings)
-    settingsModule.report(app.settings)
+    app.reportRoots()
     catalogView.rebuild(app, app.tree)
     app.log("settings reverted to the saved copy")
 end
@@ -360,7 +537,7 @@ if failedLog then
         SMALL)
     local ho = L.header.openLog
     IRGui.makeButton(ho.x, ho.y, ho.w, ho.h, "UPDATE LOG", function()
-        app.openInEditor(failedLog)
+        openTool("editor", nil, failedLog, "OPEN " .. failedLog)
     end, SMALL)
 end
 
@@ -377,7 +554,7 @@ end, nil, nil, "Run", "Run the selected target with its current preset")
 IRCommand.createCommand(KEY, PRESSED, IRInput.Key.B, function()
     local creation = app.selected()
     if creation and creation.targets[app.selectedTarget] then
-        app.build(creation.targets[app.selectedTarget].name)
+        app.build(creation, creation.targets[app.selectedTarget].name)
     end
 end, nil, nil, "Build", "Build the selected target")
 IRCommand.createCommand(KEY, PRESSED, IRInput.Key.ESCAPE, function()
@@ -455,6 +632,13 @@ local function poll()
         end
     end
     catalogView.pollFilter(app, app.tree)
+    if picker.id then
+        local selected = IRGui.dropdownSelected(picker.id)
+        if selected ~= picker.selected and selected > 0 then
+            picker.selected = selected
+            app.switchRoot(picker.roots[selected])
+        end
+    end
     details.pollPresets(app, app.details)
     settingsModule.poll(app.settings)
     assetsModule.poll(app.assetBrowser)
@@ -485,7 +669,14 @@ IRSystem.appendSystem(IRTime.INPUT, IRSystem.registerSystem({
     end,
 }))
 
+if not app.confirmRoot(app.settings.activeRoot, "ROOT") then
+    app.settings.activeRoot = BASE_ROOT
+    app.confirmRoot(BASE_ROOT, "ROOT")
+    assetsModule.setRoot(app.assetBrowser, app.assetRoot())
+end
+assetsModule.report(app.assetBrowser)
 app.rescan()
+app.refreshPicker()
 if IRLauncher.session() == "asset_preview" or IRLauncher.session() == "dockspace_roundtrip" then
     assetsModule.previewIndex(app.assetBrowser, "voxel_set", 1)
 end
@@ -507,5 +698,24 @@ if IRLauncher.session() == "thumbnail_chain" then
     IRTest.report("thumbnailChain", table.concat(labels, "|"))
     IRTest.report("thumbnailProbes", table.concat(probes, "|"))
 end
-app.log(string.format("catalog: %d creations under %s", #app.creations, IRLauncher.catalogRoot()))
-settingsModule.report(app.settings)
+if IRLauncher.session() == "multi_root" then
+    -- The legacy preset migration over this session's catalog: the exact
+    -- base-root target name migrates once, a renamed-away name is dropped.
+    local probe = settingsModule.new("launcher_migration_probe")
+    probe.legacyPresets = { IRLauncherStub = 2, IRLauncherStubRenamed = 3 }
+    settingsModule.migrateLegacyPresets(probe, app.creations)
+    local migrated = {}
+    for key, value in pairs(probe.presets) do
+        migrated[#migrated + 1] = key .. "=" .. value
+    end
+    table.sort(migrated)
+    IRTest.report("legacyMigration", table.concat(migrated, ",") .. "|legacy=" ..
+        tostring(next(probe.legacyPresets) == nil and 0 or 1))
+end
+if IRTest then
+    IRTest.report("sessionStart", SESSION)
+    IRTest.report("launches", "0")
+end
+app.log(string.format("catalog: %d creations under %s", #app.creations,
+    app.fixtureCatalog and CATALOG_ROOT or table.concat(app.rootList(), ", ")))
+app.reportRoots()
