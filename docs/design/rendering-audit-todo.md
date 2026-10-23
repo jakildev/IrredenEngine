@@ -90,8 +90,19 @@ extend this to fourteen passing continuous captures: both sides of all four
 cardinals, negative fractional iso positions and noninteger ideal pixel offsets.
 Two sampled controls still fail 18 missing/638 excess pixels each. The oracle
 models snapped Metal camera placement including float32 phase; it does not fit
-shadows or widen the boundary tolerance. Side receivers, nonvertical sunlight
-and live route transitions remain open.
+shadows or widen the boundary tolerance. Side receivers and live route
+transitions remain open.
+The [oblique-sun controls](../pr-screenshots/codex/receiver-oblique-shadow/README.md)
+extend the authored-corner oracle to a slanted sun in both X directions, with
+independent oriented-box ray/slab checks and fixed Lambert/ambient colors.
+Integer-position continuous receivers agree with the projected silhouette;
+sampled receiving still misses and adds coverage. Fractional detached caster
+placement exposes a separate mismatch: `CanvasPose::write` rounds
+`worldCellOffset_`, consumed by `bakeVoxelFaces`, while presentation retains
+the owner's fractional translation. The oracle deliberately retains the
+authored center. Prioritize reconciling rigid display, depth, casting and
+receiving placement before fog adoption; do not hide the mismatch by snapping
+the expectation or changing revoxelized occupancy conventions globally.
 
 The surface-lighting driver now supports explicit surface/prepass four-arm
 comparisons with exact manifest and draw-route checks. Keep prepass counters in
