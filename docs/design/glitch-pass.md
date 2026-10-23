@@ -245,6 +245,10 @@ where that mask is set, so the glitched source sample is lit exactly once and
 unaffected cardinal surfaces keep their continuous destination-surface
 lighting.
 
+The cardinal history snapshot copies the whole source-lit plane. Therefore a
+hold replay does not include non-cardinal producers scheduled after lighting,
+although their current-frame live samples remain visible outside that replay.
+
 During smooth yaw, each axis canvas has its own history pair. Its snapshot is
 valid only while the store size and nearest cardinal match. A store-origin
 move inside that cardinal reads history at `cell - currentOrigin +
@@ -302,6 +306,9 @@ the effect source (source-lit on the cardinal presentation route, live colour
 otherwise), and 7 the effect-reach mask on the cardinal route. Ordinary routes
 bind the live colour at 6 and the scratch colour at 7 and retain their prior
 colour behavior.
+The cardinal gather always populates sampler slot 6 with the live colour when
+the presentation override is not ready, including when `TRIXEL_GLITCH` is not
+registered, because the shader declares that sampler on every cardinal route.
 The subject buffer borrows storage slot 8 (`kBufferIndex_TrixelGlitchSubjects`,
 the voxel active mask's slot) and the pass rebinds `VoxelActiveMaskBuffer`
 there after its dispatch, as `FOG_TO_TRIXEL`'s per-axis path does. A

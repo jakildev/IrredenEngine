@@ -304,11 +304,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             ao.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             // Texture/image unit layout (must match GLSL + MSL):
-            //   3: paletteLUT (sampler2D)
+            //   3: paletteLUT (sampler2D; source-output GLSL also uses image2D 3)
             //   4: canvasSunShadow (image2D, R/O)
             //   5: lightVolume (sampler3D)
-            // Metal flattens the sampler and image namespaces into a
-            // shared setTexture slot space, so all three slots must be
+            // OpenGL sampler and image units are separate namespaces. Metal
+            // flattens them into a shared setTexture slot space, so all three slots must be
             // unique across both kinds.
             paletteLUT_->bind(3);
             // Metal requires every setTexture slot to be populated (it does not
@@ -680,8 +680,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 }
             }
             if (cardinalGlitchPresentationActive_) {
-                auto &textures =
-                    IREntity::getComponent<C_TriangleCanvasTextures>(perAxisCanvasEntity_);
+                auto &textures = const_cast<C_TriangleCanvasTextures &>(*mainCanvasTextures_);
                 ensureGlitchSourcePrograms();
                 ensureGlitchPresentationImages(textures);
             }
