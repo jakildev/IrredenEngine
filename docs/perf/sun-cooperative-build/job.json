@@ -1,0 +1,302 @@
+{
+  "output": "/private/tmp/sun-cooperative-measure-20261022",
+  "sources": {
+    "base": "/private/tmp/sun-cooperative-measure-20261022/base.metal",
+    "head": "/private/tmp/sun-cooperative-measure-20261022/head.metal"
+  },
+  "plans": {
+    "base": [
+      {
+        "argument": 0,
+        "groups": 128,
+        "threads": 64
+      },
+      {
+        "argument": 4096,
+        "groups": 64,
+        "threads": 64
+      },
+      {
+        "argument": 2048,
+        "groups": 32,
+        "threads": 64
+      },
+      {
+        "argument": 1024,
+        "groups": 16,
+        "threads": 64
+      },
+      {
+        "argument": 512,
+        "groups": 8,
+        "threads": 64
+      },
+      {
+        "argument": 256,
+        "groups": 4,
+        "threads": 64
+      },
+      {
+        "argument": 128,
+        "groups": 2,
+        "threads": 64
+      },
+      {
+        "argument": 64,
+        "groups": 1,
+        "threads": 64
+      },
+      {
+        "argument": 32,
+        "groups": 1,
+        "threads": 64
+      },
+      {
+        "argument": 16,
+        "groups": 1,
+        "threads": 64
+      },
+      {
+        "argument": 8,
+        "groups": 1,
+        "threads": 64
+      },
+      {
+        "argument": 4,
+        "groups": 1,
+        "threads": 64
+      },
+      {
+        "argument": 2,
+        "groups": 1,
+        "threads": 64
+      },
+      {
+        "argument": 1,
+        "groups": 1,
+        "threads": 64
+      }
+    ],
+    "head": [
+      {
+        "argument": 0,
+        "groups": 64,
+        "threads": 128
+      },
+      {
+        "argument": 1,
+        "groups": 1,
+        "threads": 128
+      }
+    ]
+  },
+  "layout": {
+    "kSourceFaceMapDimension": 1024,
+    "kSourceFaceCascadeCount": 2,
+    "kSourceFaceTileEdge": 8,
+    "kSourceFaceTilesPerAxis": 128,
+    "kSourceFaceTileCount": 32768,
+    "kSourceFaceTileCapacity": 64,
+    "kSourceFaceTileQueryCapacity": 256,
+    "kSourceFaceSpillCapacity": 262144,
+    "kSourceFaceSpillNodeWords": 2,
+    "kSourceFaceCapacity": 65536,
+    "kSourceFaceRecordWords": 10,
+    "kSourceFaceFallbackOffset": 2097152,
+    "kSourceFaceHeaderOffset": 4194304,
+    "kSourceFaceTileOffset": 4194305,
+    "kSourceFaceRecordOffset": 6324225,
+    "kSourceFaceSpillCounterOffset": 6979585,
+    "kSourceFaceSpillHeadOffset": 6979586,
+    "kSourceFaceSpillNodeOffset": 7012354,
+    "kSourceFaceHierarchyNeededOffset": 7536642,
+    "kSourceFaceHierarchyReadyOffset": 7536643,
+    "kSourceFaceHierarchyOffset": 7536644,
+    "kSourceFaceHierarchyLeafSize": 8,
+    "kSourceFaceHierarchyMaxLeaves": 8192,
+    "kSourceFaceHierarchyNodeWords": 8,
+    "kSourceFaceHierarchyWorkgroupSize": 128,
+    "kSourceFaceHierarchyBuildPasses": 2,
+    "kSourceFaceBufferWords": 7667716
+  },
+  "frames": [
+    {
+      "name": "empty",
+      "records": 0,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/empty-records.bin",
+      "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "not-needed",
+      "records": 1025,
+      "needed": 0,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/not-needed-records.bin",
+      "input_sha256": "d7c8383c6a02a6db60c2eb7450d8247428ef6bec4e49abf5acb362fbe70df196"
+    },
+    {
+      "name": "pool-overflow",
+      "records": 65537,
+      "needed": 1,
+      "reset": true,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/pool-overflow-records.bin",
+      "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "finite-1",
+      "records": 1,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/finite-1-records.bin",
+      "input_sha256": "c8e267e8bf35a034c5862f1d53d9c969cbf196a8485cc9a64689805a2e37af9a"
+    },
+    {
+      "name": "finite-8",
+      "records": 8,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/finite-8-records.bin",
+      "input_sha256": "3c83c4e0523043cd4a7e36b12f6201e3d4646d00d2ffd2b9c9b8e5075ee8c55e"
+    },
+    {
+      "name": "finite-9",
+      "records": 9,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/finite-9-records.bin",
+      "input_sha256": "62fab4227890fc5315af89b4a2ede16979574096a0053b6edf88afd8e60ea330"
+    },
+    {
+      "name": "finite-1023",
+      "records": 1023,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/finite-1023-records.bin",
+      "input_sha256": "3388d4645ce491c89865509457772a0f04b23e5967b600ae0a96476d537e6146"
+    },
+    {
+      "name": "finite-1024",
+      "records": 1024,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/finite-1024-records.bin",
+      "input_sha256": "b52ab530fc0bb519043e1b1c48252f997258fc771d42cbb77d8815bde25d989e"
+    },
+    {
+      "name": "finite-1025",
+      "records": 1025,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/finite-1025-records.bin",
+      "input_sha256": "d7c8383c6a02a6db60c2eb7450d8247428ef6bec4e49abf5acb362fbe70df196"
+    },
+    {
+      "name": "finite-65536",
+      "records": 65536,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/finite-65536-records.bin",
+      "input_sha256": "54291dd8f0225f7e65a756020c102b46ca0e84888d1c762ab7312bcece62875e"
+    },
+    {
+      "name": "mixed-1025",
+      "records": 1025,
+      "needed": 1,
+      "reset": true,
+      "measure": true,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/mixed-1025-records.bin",
+      "input_sha256": "8b3bac5d82cc840c09f10154cbbf5178bf3bfaedddcb1d998f1695de61116acb"
+    },
+    {
+      "name": "mixed-reversed-1025",
+      "records": 1025,
+      "needed": 1,
+      "reset": true,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/mixed-reversed-1025-records.bin",
+      "input_sha256": "10221cb9b6ee078ce83637623a11ebd889f622d6343b2157660a9c35e346c130"
+    },
+    {
+      "name": "shrink-65536",
+      "records": 65536,
+      "needed": 1,
+      "reset": true,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/shrink-65536-records.bin",
+      "input_sha256": "218be487392a9e67a2505f6a08e03959c58d72648972f134323f7b00fb64c607"
+    },
+    {
+      "name": "shrink-1025",
+      "records": 1025,
+      "needed": 1,
+      "reset": false,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/shrink-1025-records.bin",
+      "input_sha256": "d7c8383c6a02a6db60c2eb7450d8247428ef6bec4e49abf5acb362fbe70df196"
+    },
+    {
+      "name": "shrink-9",
+      "records": 9,
+      "needed": 1,
+      "reset": false,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/shrink-9-records.bin",
+      "input_sha256": "62fab4227890fc5315af89b4a2ede16979574096a0053b6edf88afd8e60ea330"
+    },
+    {
+      "name": "shrink-1",
+      "records": 1,
+      "needed": 1,
+      "reset": false,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/shrink-1-records.bin",
+      "input_sha256": "c8e267e8bf35a034c5862f1d53d9c969cbf196a8485cc9a64689805a2e37af9a"
+    },
+    {
+      "name": "shrink-0",
+      "records": 0,
+      "needed": 1,
+      "reset": false,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/shrink-0-records.bin",
+      "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "shrink-not-needed",
+      "records": 1025,
+      "needed": 0,
+      "reset": false,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/shrink-not-needed-records.bin",
+      "input_sha256": "d7c8383c6a02a6db60c2eb7450d8247428ef6bec4e49abf5acb362fbe70df196"
+    },
+    {
+      "name": "shrink-overflow",
+      "records": 65537,
+      "needed": 1,
+      "reset": false,
+      "measure": false,
+      "input": "/private/tmp/sun-cooperative-measure-20261022/shrink-overflow-records.bin",
+      "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "math_modes": [
+    "fast",
+    "safe"
+  ],
+  "measure": true,
+  "rounds": 8,
+  "builds_per_sample": 32
+}

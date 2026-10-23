@@ -1,0 +1,300 @@
+diff --git a/engine/prefabs/irreden/render/sun_face_query_layout.hpp b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+index d4d2053cd..25013adbf 100644
+--- a/engine/prefabs/irreden/render/sun_face_query_layout.hpp
++++ b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+@@ -44,6 +44,19 @@ constexpr std::uint32_t kSourceFaceBufferWords =
+     kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+ 
+ constexpr int kSourceFaceHierarchyLevels = 14;
++constexpr int kSourceFaceHierarchyBuildPasses = 2;
++constexpr std::uint32_t kSourceFaceHierarchyWorkgroupSize = 128u;
++static_assert(kSourceFaceHierarchyWorkgroupSize > 0u, "Hierarchy workgroups must contain lanes");
++static_assert(kSourceFaceHierarchyBuildPasses == 2, "Hierarchy construction requires subtree and root passes");
++static_assert(
++    (kSourceFaceHierarchyWorkgroupSize & (kSourceFaceHierarchyWorkgroupSize - 1u)) == 0u,
++    "Hierarchy workgroup width must be a power of two"
++);
++static_assert(
++    kSourceFaceHierarchyMaxLeaves <=
++        kSourceFaceHierarchyWorkgroupSize * kSourceFaceHierarchyWorkgroupSize,
++    "Two hierarchy passes must cover the whole leaf allocation"
++);
+ static_assert(kSourceFaceHierarchyLeafSize > 0u, "Hierarchy leaves must hold records");
+ static_assert(
+     kSourceFaceCapacity % kSourceFaceHierarchyLeafSize == 0u,
+diff --git a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+index 41628a96a..3db729e17 100644
+--- a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
++++ b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+@@ -165,7 +165,7 @@ static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match
+ 
+ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+     ShaderProgram *hierarchyProgram_ = nullptr;
+-    std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyLevels> hierarchyFrames_{};
++    std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyBuildPasses> hierarchyFrames_{};
+     bool voxelFaceCoverage_ = true;
+     bool coverageFrameOpen_ = false;
+     bool frameUsesFiniteCoverage_ = false;
+@@ -741,14 +741,19 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+         using namespace IRPrefab::SunShadow;
+         hierarchyProgram_->use();
+         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+-        // Immutable level parameters avoid Metal subData orphaning between dispatches.
+-        for (int pass = 0; pass < kSourceFaceHierarchyLevels; ++pass) {
+-            const int count = kSourceFaceHierarchyMaxLeaves >> pass;
++        // Immutable pass parameters avoid Metal subData orphaning between dispatches.
++        for (int pass = 0; pass < kSourceFaceHierarchyBuildPasses; ++pass) {
++            const auto groups = pass == 0
++                                    ? IRMath::divCeil(
++                                          kSourceFaceHierarchyMaxLeaves,
++                                          kSourceFaceHierarchyWorkgroupSize
++                                      )
++                                    : 1u;
+             hierarchyFrames_[pass]->bindBase(
+                 BufferTarget::UNIFORM,
+                 kBufferIndex_RevoxelizeDetachedParams
+             );
+-            IRRender::device()->dispatchCompute(IRMath::divCeil(count, 64), 1, 1);
++            IRRender::device()->dispatchCompute(groups, 1, 1);
+             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+         }
+         revoxelizeParamsBuf_->bindBase(
+@@ -1065,13 +1070,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+                 "SunHierarchyProgram",
+                 std::vector{ShaderStage{IRRender::kFileCompBuildSunHierarchy, ShaderType::COMPUTE}}
+             ).second;
+-        for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyLevels; ++pass) {
+-            const ivec4 params(
+-                pass == 0 ? 0 : IRPrefab::SunShadow::kSourceFaceHierarchyMaxLeaves >> pass,
+-                0,
+-                0,
+-                0
+-            );
++        for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyBuildPasses; ++pass) {
++            const ivec4 params(pass, 0, 0, 0);
+             p->hierarchyFrames_[pass] = IRRender::createNamedResource<Buffer>(
+                                             "SunHierarchyFrameBuffer" + std::to_string(pass),
+                                             &params,
+diff --git a/engine/render/src/metal/metal_pipeline.cpp b/engine/render/src/metal/metal_pipeline.cpp
+index d124b5f22..74a925c7c 100644
+--- a/engine/render/src/metal/metal_pipeline.cpp
++++ b/engine/render/src/metal/metal_pipeline.cpp
+@@ -58,10 +58,12 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+         functionName == "c_render_stateless_particles_to_trixel" ||
+         functionName == "c_light_overflow_faces" ||
+         functionName == "c_fog_overflow_faces" ||
+-        functionName == "c_bake_voxel_sun_faces" ||
+-        functionName == "c_build_sun_hierarchy") {
++        functionName == "c_bake_voxel_sun_faces") {
+         return MTL::Size(64, 1, 1);
+     }
++    if (functionName == "c_build_sun_hierarchy") {
++        return MTL::Size(128, 1, 1);
++    }
+     // Overflow canonical sort uses 256 threads over a 2048-element fused slab
+     // (8 elements/thread). MUST match the GLSL local_size_x literal and
+     // the kSortThreads constant in both kernels.
+diff --git a/engine/render/src/shaders/c_build_sun_hierarchy.glsl b/engine/render/src/shaders/c_build_sun_hierarchy.glsl
+index 6008daed4..bbf89bc53 100644
+--- a/engine/render/src/shaders/c_build_sun_hierarchy.glsl
++++ b/engine/render/src/shaders/c_build_sun_hierarchy.glsl
+@@ -1,10 +1,12 @@
+ #version 450 core
+-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
++layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
+ #include "ir_sun_face_query_layout.glsl"
+ layout(std430, binding = 28) buffer SunShadowDepthMap { uint sunDepthBuf[]; };
+ layout(std140, binding = 16) uniform SunHierarchyFrame { ivec4 hierarchyDispatch; };
+ #include "ir_sun_geometry_storage.glsl"
+ 
++shared SourceSunBounds hierarchyBounds[2u * kSourceFaceHierarchyWorkgroupSize];
++
+ void writeSourceSunBounds(uint node, SourceSunBounds bounds) {
+     const uint offset = uint(sunDepthBuf.length()) -
+         (kSourceFaceBufferWords - kSourceFaceHierarchyOffset) + node * kSourceFaceHierarchyNodeWords;
+@@ -14,26 +16,60 @@ void writeSourceSunBounds(uint node, SourceSunBounds bounds) {
+     }
+ }
+ 
++SourceSunBounds sourceSunLeafBounds(uint leaf, uint records) {
++    SourceSunBounds bounds = sourceSunEmptyBounds();
++    const uint first = leaf * kSourceFaceHierarchyLeafSize;
++    for (uint i = first; i < min(records, first + kSourceFaceHierarchyLeafSize); ++i)
++        bounds = sourceSunMergeBounds(bounds, sourceSunGeometryBounds(readSourceSunGeometry(i)));
++    return bounds;
++}
++
++void initializeSourceSunHierarchy(uint lane, uint pass, uint rootNode, uint width,
++    uint leaves, uint records) {
++    if (lane >= width) return;
++    const uint node = rootNode * width + lane;
++    SourceSunBounds bounds;
++    if (pass == 0u) {
++        bounds = sourceSunLeafBounds(node - leaves, records);
++        writeSourceSunBounds(node, bounds);
++    } else {
++        bounds = readSourceSunBounds(node);
++    }
++    hierarchyBounds[width + lane] = bounds;
++}
++
++void reduceSourceSunHierarchy(uint lane, uint level, uint rootNode) {
++    if (lane >= level) return;
++    const uint node = level + lane;
++    const SourceSunBounds bounds = sourceSunMergeBounds(
++        hierarchyBounds[node * 2u], hierarchyBounds[node * 2u + 1u]);
++    hierarchyBounds[node] = bounds;
++    writeSourceSunBounds(rootNode * level + lane, bounds);
++}
++
+ void main() {
+-    const uint id = gl_GlobalInvocationID.x;
++    const uint lane = gl_LocalInvocationID.x;
++    const uint group = gl_WorkGroupID.x;
+     const uint records = sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))];
+     if (records == 0u || records > kSourceFaceCapacity ||
+         sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))] == 0u) return;
+     const uint leaves = sourceSunHierarchyLeafCount(records);
+-    const uint level = uint(hierarchyDispatch.x);
+-    if (level == 0u) {
+-        if (id >= leaves) return;
+-        SourceSunBounds bounds = sourceSunEmptyBounds();
+-        const uint first = id * kSourceFaceHierarchyLeafSize;
+-        for (uint i = first; i < min(records, first + kSourceFaceHierarchyLeafSize); ++i)
+-            bounds = sourceSunMergeBounds(bounds, sourceSunGeometryBounds(readSourceSunGeometry(i)));
+-        writeSourceSunBounds(leaves + id, bounds);
+-    } else {
+-        if (level >= leaves || id >= level) return;
+-        const uint node = level + id;
+-        writeSourceSunBounds(node, sourceSunMergeBounds(readSourceSunBounds(node * 2u), readSourceSunBounds(node * 2u + 1u)));
++    const uint pass = uint(hierarchyDispatch.x);
++    const uint subtreeLeaves = min(leaves, kSourceFaceHierarchyWorkgroupSize);
++    const uint subtrees = leaves / subtreeLeaves;
++    // Every kernel return is group-uniform; inactive lanes still reach each barrier.
++    if (pass >= kSourceFaceHierarchyBuildPasses ||
++        (pass == 0u ? group >= subtrees : group != 0u)) return;
++    const uint width = pass == 0u ? subtreeLeaves : subtrees;
++    const uint rootNode = pass == 0u ? subtrees + group : 1u;
++    // At local width W, lane i owns global node rootNode * W + i.
++    initializeSourceSunHierarchy(lane, pass, rootNode, width, leaves, records);
++    barrier();
++    for (uint level = width / 2u; level > 0u; level /= 2u) {
++        reduceSourceSunHierarchy(lane, level, rootNode);
++        barrier();
+     }
+-    // Consumers run only after the dispatch barrier; no intra-dispatch polling.
+-    if ((leaves == 1u && level == 0u) || level == 1u)
++    // Both passes and consumers are separated by dispatch storage barriers.
++    if (pass == 1u && lane == 0u)
+         sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] = leaves;
+ }
+diff --git a/engine/render/src/shaders/ir_sun_face_query_layout.glsl b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+index 869921e59..602c6ec5f 100644
+--- a/engine/render/src/shaders/ir_sun_face_query_layout.glsl
++++ b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+@@ -27,6 +27,8 @@ const uint kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
+ const uint kSourceFaceHierarchyLeafSize = 8u;
+ const uint kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
+ const uint kSourceFaceHierarchyNodeWords = 8u;
++const uint kSourceFaceHierarchyWorkgroupSize = 128u;
++const uint kSourceFaceHierarchyBuildPasses = 2u;
+ const uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+ 
+ // Every header access passes `uint(sunDepthBuf.length())`: NVIDIA's cold link
+diff --git a/engine/render/src/shaders/metal/c_build_sun_hierarchy.metal b/engine/render/src/shaders/metal/c_build_sun_hierarchy.metal
+index 54350536c..0832daa2c 100644
+--- a/engine/render/src/shaders/metal/c_build_sun_hierarchy.metal
++++ b/engine/render/src/shaders/metal/c_build_sun_hierarchy.metal
+@@ -12,26 +12,64 @@ inline void writeSourceSunBounds(device uint* sunDepthBuf, uint node, SourceSunB
+     }
+ }
+ 
++inline SourceSunBounds sourceSunLeafBounds(device const uint* sunDepthBuf, uint leaf, uint records) {
++    SourceSunBounds bounds = sourceSunEmptyBounds();
++    const uint first = leaf * kSourceFaceHierarchyLeafSize;
++    for (uint i = first; i < min(records, first + kSourceFaceHierarchyLeafSize); ++i)
++        bounds = sourceSunMergeBounds(bounds, sourceSunGeometryBounds(readSourceSunGeometry(sunDepthBuf, i)));
++    return bounds;
++}
++
++inline void initializeSourceSunHierarchy(device uint* sunDepthBuf,
++    threadgroup SourceSunBounds* hierarchyBounds, uint lane, uint pass, uint rootNode,
++    uint width, uint leaves, uint records) {
++    if (lane >= width) return;
++    const uint node = rootNode * width + lane;
++    SourceSunBounds bounds;
++    if (pass == 0u) {
++        bounds = sourceSunLeafBounds(sunDepthBuf, node - leaves, records);
++        writeSourceSunBounds(sunDepthBuf, node, bounds);
++    } else {
++        bounds = readSourceSunBounds(sunDepthBuf, node);
++    }
++    hierarchyBounds[width + lane] = bounds;
++}
++
++inline void reduceSourceSunHierarchy(device uint* sunDepthBuf,
++    threadgroup SourceSunBounds* hierarchyBounds, uint lane, uint level, uint rootNode) {
++    if (lane >= level) return;
++    const uint node = level + lane;
++    const SourceSunBounds bounds = sourceSunMergeBounds(
++        hierarchyBounds[node * 2u], hierarchyBounds[node * 2u + 1u]);
++    hierarchyBounds[node] = bounds;
++    writeSourceSunBounds(sunDepthBuf, rootNode * level + lane, bounds);
++}
++
+ kernel void c_build_sun_hierarchy(device uint* sunDepthBuf [[buffer(28)]],
+-    constant SunHierarchyFrame& params [[buffer(16)]], uint id [[thread_position_in_grid]]) {
++    constant SunHierarchyFrame& params [[buffer(16)]],
++    uint lane [[thread_index_in_threadgroup]], uint3 groupId [[threadgroup_position_in_grid]]) {
++    threadgroup SourceSunBounds hierarchyBounds[2u * kSourceFaceHierarchyWorkgroupSize];
++    const uint group = groupId.x;
+     const uint records = sunDepthBuf[kSourceFaceHeaderOffset];
+     if (records == 0u || records > kSourceFaceCapacity ||
+         sunDepthBuf[kSourceFaceHierarchyNeededOffset] == 0u) return;
+     const uint leaves = sourceSunHierarchyLeafCount(records);
+-    const uint level = uint(params.hierarchyDispatch.x);
+-    if (level == 0u) {
+-        if (id >= leaves) return;
+-        SourceSunBounds bounds = sourceSunEmptyBounds();
+-        const uint first = id * kSourceFaceHierarchyLeafSize;
+-        for (uint i = first; i < min(records, first + kSourceFaceHierarchyLeafSize); ++i)
+-            bounds = sourceSunMergeBounds(bounds, sourceSunGeometryBounds(readSourceSunGeometry(sunDepthBuf, i)));
+-        writeSourceSunBounds(sunDepthBuf, leaves + id, bounds);
+-    } else {
+-        if (level >= leaves || id >= level) return;
+-        const uint node = level + id;
+-        writeSourceSunBounds(sunDepthBuf, node, sourceSunMergeBounds(readSourceSunBounds(sunDepthBuf, node * 2u), readSourceSunBounds(sunDepthBuf, node * 2u + 1u)));
++    const uint pass = uint(params.hierarchyDispatch.x);
++    const uint subtreeLeaves = min(leaves, kSourceFaceHierarchyWorkgroupSize);
++    const uint subtrees = leaves / subtreeLeaves;
++    // Every kernel return is group-uniform; inactive lanes still reach each barrier.
++    if (pass >= kSourceFaceHierarchyBuildPasses ||
++        (pass == 0u ? group >= subtrees : group != 0u)) return;
++    const uint width = pass == 0u ? subtreeLeaves : subtrees;
++    const uint rootNode = pass == 0u ? subtrees + group : 1u;
++    // At local width W, lane i owns global node rootNode * W + i.
++    initializeSourceSunHierarchy(sunDepthBuf, hierarchyBounds, lane, pass, rootNode, width, leaves, records);
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++    for (uint level = width / 2u; level > 0u; level /= 2u) {
++        reduceSourceSunHierarchy(sunDepthBuf, hierarchyBounds, lane, level, rootNode);
++        threadgroup_barrier(mem_flags::mem_threadgroup);
+     }
+-    // Consumers run only after the dispatch barrier; no intra-dispatch polling.
+-    if ((leaves == 1u && level == 0u) || level == 1u)
++    // Both passes and consumers are separated by dispatch storage barriers.
++    if (pass == 1u && lane == 0u)
+         sunDepthBuf[kSourceFaceHierarchyReadyOffset] = leaves;
+ }
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+index e7dfb8603..8b90f481a 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+@@ -27,6 +27,8 @@ constant uint kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
+ constant uint kSourceFaceHierarchyLeafSize = 8u;
+ constant uint kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
+ constant uint kSourceFaceHierarchyNodeWords = 8u;
++constant uint kSourceFaceHierarchyWorkgroupSize = 128u;
++constant uint kSourceFaceHierarchyBuildPasses = 2u;
+ constant uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+ 
+ inline uint sourceFaceTileBase(uint tileIndex) {

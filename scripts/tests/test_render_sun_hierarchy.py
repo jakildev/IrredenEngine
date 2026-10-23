@@ -1,29 +1,87 @@
-"""Execute production hierarchy builds and receivers through serial CPU adapters.
+"""Execute production hierarchy phases and receivers through serial CPU adapters.
 
 The independent triangle oracle covers finite geometry. Analytic records use a
 sentinel predicate to isolate conservative node admission and type dispatch;
-GPU barriers, upload bindings and analytic intersections need native controls.
+Each workgroup phase runs all lanes before the next phase. This checks the
+algorithm and publication schedule, not GPU barrier visibility or concurrency;
+GPU synchronization, upload bindings and analytic intersections need native controls.
 """
 
 import re
 import unittest
 
 import test_render_source_face_overflow as receiver
-from shader_contract_helpers import extract_block, extract_function
+from shader_contract_helpers import compact, extract_block, extract_function
 
 CASES = receiver.CASES[:receiver.CASES.index("int main(){")] + r"""
-void buildLevel(uint level){
-    for(uint id=0;id<kSourceFaceHierarchyMaxLeaves;++id)buildInvocation(id,level);
+bool reverseGroups=false;
+void buildPass(uint pass){
+    const uint groups=pass==0?64:1;
+    for(uint i=0;i<groups;++i)buildInvocation(reverseGroups?groups-1-i:i,pass);
 }
 void build(){
     sunDepthBuf.words[kSourceFaceHierarchyNeededOffset]=1;
-    buildLevel(0);
-    for(uint level=kSourceFaceHierarchyMaxLeaves/2;level>0;level/=2)buildLevel(level);
+    buildPass(0);
+    require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0,
+            "subtree dispatch cannot publish cross-workgroup readiness");
+    buildPass(1);
     sunDepthBuf.readCount=0;
 }
 void clear(){
     for(uint id=0;id<kSourceFaceFallbackOffset;++id)clearInvocation(id);
     sunDepthBuf.readCount=0;
+}
+uint expectedLeaves(uint count){uint leaves=1;while(leaves*8<count)leaves*=2;return leaves;}
+struct ReferenceBounds {bool occupied=false;D3 low{},high{};};
+void checkAllNodes(){
+    const uint leaves=expectedLeaves(uint(faces.size()));
+    std::vector<ReferenceBounds> expected(2*leaves);
+    for(uint i=0;i<faces.size();++i){
+        auto& bounds=expected[leaves+i/8];
+        const auto& face=faces[i];
+        for(uint u=0;u<2;++u)for(uint v=0;v<2;++v){
+            const D3 point{double(face.corner.x)+u*double(face.u.x)+v*double(face.v.x),
+                           double(face.corner.y)+u*double(face.u.y)+v*double(face.v.y),
+                           double(face.corner.z)+u*double(face.u.z)+v*double(face.v.z)};
+            if(!bounds.occupied){bounds.occupied=true;bounds.low=bounds.high=point;}
+            else{
+                bounds.low={std::min(bounds.low.x,point.x),std::min(bounds.low.y,point.y),
+                            std::min(bounds.low.z,point.z)};
+                bounds.high={std::max(bounds.high.x,point.x),std::max(bounds.high.y,point.y),
+                             std::max(bounds.high.z,point.z)};
+            }
+        }
+    }
+    for(uint node=leaves-1;node>0;--node){
+        const auto& left=expected[2*node];const auto& right=expected[2*node+1];
+        auto& bounds=expected[node];
+        if(!left.occupied)bounds=right;
+        else if(!right.occupied)bounds=left;
+        else{
+            bounds.occupied=true;
+            bounds.low={std::min(left.low.x,right.low.x),std::min(left.low.y,right.low.y),
+                        std::min(left.low.z,right.low.z)};
+            bounds.high={std::max(left.high.x,right.high.x),std::max(left.high.y,right.high.y),
+                         std::max(left.high.z,right.high.z)};
+        }
+    }
+    for(uint node=1;node<2*leaves;++node){
+        const uint offset=kSourceFaceHierarchyOffset+node*kSourceFaceHierarchyNodeWords;
+        const auto& want=expected[node];
+        const float kind=uintBitsToFloat(sunDepthBuf.words[offset+3]);
+        require(kind==(want.occupied?0.0f:-1.0f),"every node replaces poisoned or stale contents");
+        if(!want.occupied)continue;
+        const double low[]={want.low.x,want.low.y,want.low.z};
+        const double high[]={want.high.x,want.high.y,want.high.z};
+        for(uint axis=0;axis<3;++axis){
+            const double actualLow=uintBitsToFloat(sunDepthBuf.words[offset+axis]);
+            const double actualHigh=uintBitsToFloat(sunDepthBuf.words[offset+4+axis]);
+            require(actualLow<=low[axis] && actualHigh>=high[axis],
+                    "every published node encloses its independent descendant corners");
+            require(low[axis]-actualLow<.125 && actualHigh-high[axis]<.125,
+                    "node bounds exclude unrelated subtree or previous-frame geometry");
+        }
+    }
 }
 int main(){
     const uint empty=0xffffffffu;
@@ -31,11 +89,12 @@ int main(){
     const Face miss{{2,3,2},{.25f,0,0},{0,1,0}};
     const Face hit{{2.8f,3,2},{.2f,0,0},{0,1,0}};
     uint comparisons=0;
-    for(uint cascade:{0u,1u})for(uint count:{257u,513u,65536u}){
+    for(uint cascade:{0u,1u})for(uint count:{257u,513u,1023u,1024u,1025u,65536u}){
         for(uint position:{0u,count/2,count-1}){
             reset(count,count,cascade);
             for(uint i=0;i<count;++i)writeFace(i==position?hit:distant);
             fallback(cascade,empty,depth(-120));
+            reverseGroups=position!=0;
             build();
             require(oracle({2.9f,3.5f},10,64),"independent lower blocker oracle");
             require(sample({2.9f,3.5f},10,cascade,true,{0,0,1},64)==1,
@@ -62,21 +121,34 @@ int main(){
         require(sample({2.9f,3.5f},10,cascade)==1,
                 "hierarchy miss preserves independent raster layer");
     }
-    for(uint count:{1u,8u,9u,16u,17u,256u,257u,65536u}){
+    for(uint count:{1u,8u,9u,16u,17u,256u,257u,1016u,1017u,1023u,1024u,1025u,
+                    2047u,2048u,2049u,65535u,65536u}){
         reset(count,257);fill(count,hit);
         sunDepthBuf.words[kSourceFaceHierarchyNeededOffset]=1;
-        buildLevel(0);
-        uint expected=1;while(expected*8<count)expected*=2;
-        require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==(expected==1?1u:0u),
-                "leaf dispatch cannot publish incomplete parents");
-        for(uint level=kSourceFaceHierarchyMaxLeaves/2;level>1;level/=2)buildLevel(level);
-        require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==(expected==1?1u:0u),
-                "nonroot dispatch cannot publish readiness");
-        buildLevel(1);
+        buildPass(0);
+        const uint expected=expectedLeaves(count);
+        require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0,
+                "subtree dispatch cannot publish cross-workgroup readiness");
+        buildPass(1);
         require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==expected,
                 "root publishes dynamic power-of-two leaf count");
         sunDepthBuf.readCount=0;
         require(sample()==1,"small and padded trees retain exact geometry");
+    }
+    for(uint count:{1023u,1024u,1025u,2049u,65536u}){
+        reset(count,257);
+        for(uint i=0;i<count;++i)
+            writeFace({{2+float(i)/4,3,2},{.125f,0,0},{0,.125f,0}});
+        build();checkAllNodes();
+    }
+    reset(65536,257);fill(65536,hit);build();
+    for(uint count:{65535u,8193u,1025u,1024u,1023u,513u,257u,17u,9u,8u,1u}){
+        clear();
+        sunDepthBuf.words[kSourceFaceHeaderOffset]=count;
+        sunDepthBuf.words[tileBase(0)]=257;
+        faces.clear();fill(count,miss);
+        build();checkAllNodes();
+        require(sample()==0,"shrinking frames cannot traverse stale records or padded leaves");
     }
     reset(257,257);fill(257,hit);build();
     for(uint ready:{0u,3u,32u,128u,8193u,0xffffffffu}){
@@ -101,12 +173,12 @@ int main(){
     sunDepthBuf.words[kSourceFaceHeaderOffset]=257;
     sunDepthBuf.words[tileBase(0)]=257;
     require(sample()==0 && sunDepthBuf.readCount==0,"stale tree cannot shadow next frame");
-    buildLevel(0);buildLevel(1);
+    buildPass(0);buildPass(1);
     require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0,
             "unneeded build cannot publish stale tree");
     for(uint count:{0u,65537u}){
         reset(count,257);sunDepthBuf.words[kSourceFaceHierarchyNeededOffset]=1;
-        buildLevel(0);buildLevel(1);
+        buildPass(0);buildPass(1);
         require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0 &&
                 sunDepthBuf.readCount==0,"empty or overflowed pool skips build");
     }
@@ -158,19 +230,46 @@ int main(){
 def source(suffix, directory, mutation=None):
     code = receiver.host_source(suffix, directory, False, cases=CASES)
     shader = (receiver.SHADERS / directory / f"c_build_sun_hierarchy.{suffix}").read_text()
-    write = extract_function(shader, "writeSourceSunBounds")
+    helpers = extract_function(shader, "writeSourceSunBounds")
+    helpers += extract_block(shader, "SourceSunBounds sourceSunLeafBounds(")
+    helpers += "\n".join(extract_function(shader, name) for name in (
+        "initializeSourceSunHierarchy", "reduceSourceSunHierarchy"))
     marker = "void main()" if suffix == "glsl" else "kernel void c_build_sun_hierarchy("
     kernel = extract_block(shader, marker)
     kernel = kernel[kernel.index("{") + 1:-1]
-    kernel = re.sub(r"    const uint (?:id|level) = [^;]+;\n", "", kernel)
+    kernel = re.sub(r"    const uint (?:lane|group|pass) = [^;]+;\n", "", kernel)
+    kernel = re.sub(r"    threadgroup SourceSunBounds hierarchyBounds\[[^;]+;\n", "", kernel)
+    for helper in ("initializeSourceSunHierarchy", "reduceSourceSunHierarchy"):
+        kernel, replacements = re.subn(
+            rf"({helper}\([^;]+\);)", r"for(uint lane=0;lane<128;++lane)\1", kernel)
+        if replacements != 1:
+            raise ValueError(f"expected one production phase call for {helper}")
+    barrier = ("barrier();" if suffix == "glsl" else
+               "threadgroup_barrier(mem_flags::mem_threadgroup);")
+    if kernel.count(barrier) != 2:
+        raise ValueError("expected initialization and reduction phase barriers")
+    kernel = kernel.replace(barrier, "hierarchyPhaseBoundary();")
     clear = (receiver.SHADERS / directory / f"c_clear_sun_shadow_map.{suffix}").read_text()
     clear = clear[clear.index("    if (linearIdx >= kTotalTexels)"):]
     builder = ("constexpr int memory_order_relaxed=0;\n"
                "void atomic_store_explicit(uint* p,uint value,int){*p=value;}\n")
-    builder += write + "\nvoid buildInvocation(uint id,uint level){\n" + kernel + "}\n"
+    builder += r"""
+SourceSunBounds hierarchyBounds[2u*kSourceFaceHierarchyWorkgroupSize];
+void hierarchyPhaseBoundary(){
+    if(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]!=0){
+        std::cerr<<"readiness published before cooperative phases complete\n";std::exit(1);
+    }
+}
+"""
+    builder += helpers + "\nvoid buildInvocation(uint group,uint pass){\nconst uint lane=0;\n"
+    builder += ("for(auto& bounds:hierarchyBounds)"
+                "bounds=SourceSunBounds(vec4(12345.0f),vec4(-12345.0f));\n")
+    builder += kernel + "}\n"
     builder += ("void clearInvocation(uint linearIdx){\n"
                 "const uint kTotalTexels=kSourceFaceFallbackOffset;\n" + clear)
     builder = (builder.replace("device uint* sunDepthBuf", "BoundBuffer& sunDepthBuf")
+               .replace("device const uint* sunDepthBuf", "BoundBuffer& sunDepthBuf")
+               .replace("threadgroup ", "")
                .replace("thread ", "").replace("float4", "vec4"))
     code = code.replace("struct Face {", builder + "\nstruct Face {")
     stub = extract_function(code, "sourceShapeRaySeparation")
@@ -185,8 +284,129 @@ def source(suffix, directory, mutation=None):
     return code
 
 
+def dispatch_source(mutation=None):
+    root = receiver.SHADERS.parents[3]
+    layout = (root / "engine/prefabs/irreden/render/sun_face_query_layout.hpp").read_text()
+    constants = "\n".join(re.findall(
+        r"constexpr (?:int|std::uint32_t) kSourceFace(?:Capacity|HierarchyLeafSize|"
+        r"HierarchyMaxLeaves|HierarchyBuildPasses|HierarchyWorkgroupSize) =\s*[^;]+;", layout))
+    system_path = root / "engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp"
+    system = system_path.read_text()
+    dispatch = extract_function(system, "buildOverflowHierarchy")
+    pipeline = (root / "engine/render/src/metal/metal_pipeline.cpp").read_text()
+    mapping = extract_block(pipeline, "MTL::Size threadgroupSizeForFunctionName(")
+    code = r"""
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <vector>
+using uint=std::uint32_t;
+void require(bool ok,const char* message){if(!ok){std::cerr<<message<<"\n";std::exit(1);}}
+namespace IRPrefab::SunShadow { CONSTANTS }
+namespace IRMath {uint divCeil(uint n,uint d){return (n+d-1)/d;}}
+enum class BufferTarget {SHADER_STORAGE,UNIFORM};
+enum class BarrierType {SHADER_STORAGE};
+constexpr int kBufferIndex_SunShadowDepthMap=28,kBufferIndex_RevoxelizeDetachedParams=16;
+std::vector<int> events;std::vector<uint> groups;
+struct Buffer{
+    int id;
+    void bindBase(BufferTarget target,int slot){
+        require(slot==(id==-2?28:16),"dispatch binds the expected buffer slot");
+        require(target==(id==-2?BufferTarget::SHADER_STORAGE:BufferTarget::UNIFORM),
+                "dispatch uses the expected buffer target");
+        events.push_back(10+id);
+    }
+};
+struct Program{void use(){events.push_back(1);}};
+struct Device{
+    void dispatchCompute(uint x,uint y,uint z){
+        require(y==1 && z==1,"hierarchy dispatch remains one-dimensional");
+        groups.push_back(x);events.push_back(20);
+    }
+    void memoryBarrier(BarrierType){events.push_back(30);}
+};
+namespace IRRender {Device* device(){static Device value;return &value;}}
+struct Fixture{
+    Program program;Buffer depth{-2},restore{-1},pass0{0},pass1{1};
+    Program* hierarchyProgram_=&program;Buffer* sunShadowDepthMap_=&depth;
+    Buffer* hierarchyFrames_[2]={&pass0,&pass1};Buffer* revoxelizeParamsBuf_=&restore;
+    DISPATCH
+};
+namespace MTL {struct Size{
+    uint width,height,depth;Size(uint x,uint y,uint z):width(x),height(y),depth(z){}
+};}
+MAPPING
+int main(){
+    using namespace IRPrefab::SunShadow;
+    static_assert(kSourceFaceHierarchyBuildPasses==2 && kSourceFaceHierarchyWorkgroupSize==128);
+    Fixture fixture;fixture.buildOverflowHierarchy();
+    require(groups==std::vector<uint>({64,1}),"CPU dispatch emits exactly two bounded passes");
+    require(events==std::vector<int>({1,8,10,20,30,11,20,30,9}),
+            "each pass binds its immutable parameters then publishes before the next consumer");
+    const auto size=threadgroupSizeForFunctionName("c_build_sun_hierarchy");
+    require(size.width==kSourceFaceHierarchyWorkgroupSize && size.height==1 && size.depth==1,
+            "Metal hierarchy workgroup width agrees with the layout");
+}
+""".replace("CONSTANTS", constants).replace("DISPATCH", dispatch).replace("MAPPING", mapping)
+    if mutation:
+        before, after = mutation
+        if code.count(before) != 1:
+            raise ValueError(f"expected one dispatch mutation site for {before!r}")
+        code = code.replace(before, after)
+    return code
+
+
 @unittest.skipUnless(receiver.COMPILER, "hierarchy controls require a C++ compiler")
 class SunHierarchyTest(unittest.TestCase):
+    def test_workgroup_phase_schedule(self):
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            with self.subTest(backend=suffix):
+                shader = (receiver.SHADERS / directory /
+                          f"c_build_sun_hierarchy.{suffix}").read_text()
+                layout = (receiver.SHADERS / directory /
+                          f"ir_sun_face_query_layout.{suffix}").read_text()
+                width = int(re.search(r"kSourceFaceHierarchyWorkgroupSize = (\d+)u;", layout)[1])
+                passes = int(re.search(r"kSourceFaceHierarchyBuildPasses = (\d+)u;", layout)[1])
+                self.assertEqual((width, passes), (128, 2))
+                marker = "void main()" if suffix == "glsl" else "kernel void c_build_sun_hierarchy("
+                kernel = compact(extract_block(shader, marker))
+                barrier = ("barrier();" if suffix == "glsl" else
+                           "threadgroup_barrier(mem_flags::mem_threadgroup);")
+                self.assertEqual(kernel.count(barrier), 2)
+                self.assertRegex(kernel, r"initializeSourceSunHierarchy\([^;]+; " +
+                                 re.escape(barrier))
+                self.assertRegex(kernel, r"reduceSourceSunHierarchy\([^;]+; " + re.escape(barrier))
+                self.assertIn("if (pass == 1u && lane == 0u)", kernel)
+                self.assertNotRegex(kernel, r"if \([^)]*lane[^)]*\) return")
+                if suffix == "glsl":
+                    self.assertIn(f"local_size_x = {width}", shader)
+                else:
+                    self.assertIn("lane [[thread_index_in_threadgroup]]", shader)
+                    self.assertIn("groupId [[threadgroup_position_in_grid]]", shader)
+
+    def test_cpu_dispatch_and_metal_width_with_mutations(self):
+        harness = receiver.SourceFaceOverflowTest()
+        run = harness.compile_and_run(dispatch_source())
+        self.assertEqual(run.returncode, 0, run.stderr)
+        mutations = {
+            "omit_publication": (
+                "IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);", ""),
+            "reuse_pass_zero_parameters": (
+                "hierarchyFrames_[pass]->bindBase", "hierarchyFrames_[0]->bindBase"),
+            "omit_second_pass": ("pass < kSourceFaceHierarchyBuildPasses", "pass < 1"),
+            "wrong_group_count": ("kSourceFaceHierarchyWorkgroupSize\n",
+                                  "2u * kSourceFaceHierarchyWorkgroupSize\n"),
+            "wrong_metal_width": ("if (functionName == \"c_build_sun_hierarchy\") {\n"
+                                  "        return MTL::Size(128, 1, 1);",
+                                  "if (functionName == \"c_build_sun_hierarchy\") {\n"
+                                  "        return MTL::Size(64, 1, 1);"),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                run = harness.compile_and_run(dispatch_source(mutation))
+                self.assertNotEqual(run.returncode, 0, "mutation escaped dispatch controls")
+
     def test_production_build_and_query(self):
         harness = receiver.SourceFaceOverflowTest()
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
@@ -208,7 +428,13 @@ class SunHierarchyTest(unittest.TestCase):
             "demote_analytic_bounds": ("if (bounds.low.w > 0.0) return true;", ""),
             "ignore_depth_window": ("separation < maxShadowThrow", "true"),
             "accept_overflowed_pool": ("sourceFaceCount <= kSourceFaceCapacity", "true"),
-            "publish_before_root": ("(leaves == 1u && level == 0u) || level == 1u", "true"),
+            "publish_subtree_as_complete": ("pass == 1u && lane == 0u", "lane == 0u"),
+            "omit_top_root": ("level > 0u; level /= 2u", "level > 1u; level /= 2u"),
+            "alias_subtrees": ("subtrees + group : 1u", "subtrees : 1u"),
+            "drop_reduction_lanes": ("rootNode * level + lane, bounds",
+                                     "rootNode * level, bounds"),
+            "drop_upper_subtree_roots": ("subtreeLeaves : subtrees;",
+                                         "subtreeLeaves : max(1u, subtrees / 2u);"),
         }
         harness = receiver.SourceFaceOverflowTest()
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):

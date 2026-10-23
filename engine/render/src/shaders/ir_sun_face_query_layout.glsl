@@ -27,6 +27,8 @@ const uint kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
 const uint kSourceFaceHierarchyLeafSize = 8u;
 const uint kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
 const uint kSourceFaceHierarchyNodeWords = 8u;
+const uint kSourceFaceHierarchyWorkgroupSize = 128u;
+const uint kSourceFaceHierarchyBuildPasses = 2u;
 const uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
 
 // Every header access passes `uint(sunDepthBuf.length())`: NVIDIA's cold link

@@ -165,7 +165,7 @@ static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match 
 
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *hierarchyProgram_ = nullptr;
-    std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyLevels> hierarchyFrames_{};
+    std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyBuildPasses> hierarchyFrames_{};
     bool voxelFaceCoverage_ = true;
     bool coverageFrameOpen_ = false;
     bool frameUsesFiniteCoverage_ = false;
@@ -741,14 +741,18 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         using namespace IRPrefab::SunShadow;
         hierarchyProgram_->use();
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
-        // Immutable level parameters avoid Metal subData orphaning between dispatches.
-        for (int pass = 0; pass < kSourceFaceHierarchyLevels; ++pass) {
-            const int count = kSourceFaceHierarchyMaxLeaves >> pass;
+        // Immutable pass parameters avoid Metal subData orphaning between dispatches.
+        for (int pass = 0; pass < kSourceFaceHierarchyBuildPasses; ++pass) {
+            const auto groups = pass == 0 ? IRMath::divCeil(
+                                                kSourceFaceHierarchyMaxLeaves,
+                                                kSourceFaceHierarchyWorkgroupSize
+                                            )
+                                          : 1u;
             hierarchyFrames_[pass]->bindBase(
                 BufferTarget::UNIFORM,
                 kBufferIndex_RevoxelizeDetachedParams
             );
-            IRRender::device()->dispatchCompute(IRMath::divCeil(count, 64), 1, 1);
+            IRRender::device()->dispatchCompute(groups, 1, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         }
         revoxelizeParamsBuf_->bindBase(
@@ -1065,13 +1069,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 "SunHierarchyProgram",
                 std::vector{ShaderStage{IRRender::kFileCompBuildSunHierarchy, ShaderType::COMPUTE}}
             ).second;
-        for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyLevels; ++pass) {
-            const ivec4 params(
-                pass == 0 ? 0 : IRPrefab::SunShadow::kSourceFaceHierarchyMaxLeaves >> pass,
-                0,
-                0,
-                0
-            );
+        for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyBuildPasses; ++pass) {
+            const ivec4 params(pass, 0, 0, 0);
             p->hierarchyFrames_[pass] = IRRender::createNamedResource<Buffer>(
                                             "SunHierarchyFrameBuffer" + std::to_string(pass),
                                             &params,
