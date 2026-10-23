@@ -4,6 +4,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_platform.hpp>
 
 #include <array>
 #include <cstddef>
@@ -37,6 +38,7 @@ namespace IRSystem {
 
 // Must match local_size in c_lighting_to_trixel.glsl / .metal.
 constexpr int kLightingToTrixelGroupSize = 16;
+constexpr int kGlitchSourceImageUnit = IRPlatform::kIsOpenGL ? 7 : 8;
 
 // CPU-side mirror of the GLSL/MSL `FrameDataLightingToTrixel` UBO.
 // `lutEnabled_` activates palette LUT shading, which replaces the plain
@@ -112,6 +114,32 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     bool cardinalGlitchPresentationActive_ = false;
     bool cardinalGlitchSourceReady_ = false;
     std::uint64_t glitchPresentationImageCreationCount_ = 0;
+
+    void ensureGlitchSourcePrograms() {
+        if (glitchSourceProgram_ != nullptr) {
+            return;
+        }
+        glitchSourceProgram_ = IRRender::createNamedResource<ShaderProgram>(
+                                   "LightingToTrixelGlitchSourceProgram",
+                                   std::vector{ShaderStage{
+                                       IRRender::kFileCompLightingToTrixelGlitchSource,
+                                       ShaderType::COMPUTE
+                                   }}
+        ).second;
+        shapeGlitchSourceProgram_ = IRRender::createNamedResource<ShaderProgram>(
+                                        "LightingToTrixelShapesGlitchSourceProgram",
+                                        std::vector{ShaderStage{
+                                            IRRender::kFileCompLightingToTrixelShapesGlitchSource,
+                                            ShaderType::COMPUTE
+                                        }}
+        ).second;
+    }
+
+    void ensureGlitchPresentationImages(C_TriangleCanvasTextures &textures) {
+        if (textures.ensureGlitchPresentationImages()) {
+            ++glitchPresentationImageCreationCount_;
+        }
+    }
     // Opt-in presentation lighting keeps the existing per-axis colors and
     // overflow entries as albedo. Publish readiness only after the main tick
     // skips their in-place relight; an eligible frame may have no main tick.
@@ -331,8 +359,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             canvasTextures.getTextureEntityIds()
                 ->bindAsImage(6, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
             if (glitchSource) {
-                canvasTextures.glitchSourceLitColors_.second
-                    ->bindAsImage(8, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                canvasTextures.glitchSourceLitColors_.second->bindAsImage(
+                    kGlitchSourceImageUnit,
+                    TextureAccess::WRITE_ONLY,
+                    TextureFormat::RGBA8
+                );
             }
             frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel);
             voxelFrameDataBuf_->bindBase(
@@ -651,10 +682,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             if (cardinalGlitchPresentationActive_) {
                 auto &textures =
                     IREntity::getComponent<C_TriangleCanvasTextures>(perAxisCanvasEntity_);
-                if (!textures.hasGlitchPresentationImages()) {
-                    textures.createGlitchPresentationImages();
-                    ++glitchPresentationImageCreationCount_;
-                }
+                ensureGlitchSourcePrograms();
+                ensureGlitchPresentationImages(textures);
             }
         }
         const C_PerAxisSurfaceLighting *surfaceLighting =
@@ -689,19 +718,6 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         IRRender::createNamedResource<ShaderProgram>(
             "LightingToTrixelShapesProgram",
             std::vector{ShaderStage{IRRender::kFileCompLightingToTrixelShapes, ShaderType::COMPUTE}}
-        );
-        IRRender::createNamedResource<ShaderProgram>(
-            "LightingToTrixelGlitchSourceProgram",
-            std::vector{
-                ShaderStage{IRRender::kFileCompLightingToTrixelGlitchSource, ShaderType::COMPUTE}
-            }
-        );
-        IRRender::createNamedResource<ShaderProgram>(
-            "LightingToTrixelShapesGlitchSourceProgram",
-            std::vector{ShaderStage{
-                IRRender::kFileCompLightingToTrixelShapesGlitchSource,
-                ShaderType::COMPUTE
-            }}
         );
         // overflow-face relight kernel, dispatched at the tail of the
         // per-axis lighting (see dispatchOverflowLighting).
@@ -786,10 +802,6 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         p->shapeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("LightingToTrixelShapesProgram");
         p->program_ = IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
-        p->glitchSourceProgram_ =
-            IRRender::getNamedResource<ShaderProgram>("LightingToTrixelGlitchSourceProgram");
-        p->shapeGlitchSourceProgram_ =
-            IRRender::getNamedResource<ShaderProgram>("LightingToTrixelShapesGlitchSourceProgram");
         p->overflowLightingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("LightOverflowFacesProgram");
         // A/B kill switch for the lit-vs-albedo overflow screenshots + GPU delta.

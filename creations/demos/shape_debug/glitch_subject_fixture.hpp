@@ -597,6 +597,12 @@ struct GlitchSubjectFixture {
         return IRMath::uvec4(colour.red_, colour.green_, colour.blue_, colour.alpha_);
     }
 
+    static bool usesSourceLitColour(const Planes &planes, std::size_t index) {
+        const IRMath::uvec2 carrier = planes.ids_[index];
+        return planes.cardinalPresentation_ && IRRender::decodeCarrierCardinalVoxel(carrier) &&
+               (carrier.y & IRRender::kEntityIdCutFaceMaskInHighWord) == 0u;
+    }
+
     static bool readPlanes(Planes &planes) {
         const auto &canvas = mainCanvas();
         if (!canvas.hasGlitchImages()) {
@@ -652,8 +658,10 @@ struct GlitchSubjectFixture {
             return planes_.size_;
         }
         IRMath::uvec4 colour(IRMath::ivec2 q) const {
-            const auto &colours = planes_.cardinalPresentation_ ? planes_.source_ : planes_.input_;
-            return toUvec4(colours[planes_.index(q)]);
+            const std::size_t index = planes_.index(q);
+            const auto &colours =
+                usesSourceLitColour(planes_, index) ? planes_.source_ : planes_.input_;
+            return toUvec4(colours[index]);
         }
         std::uint64_t id(IRMath::ivec2 q) const {
             return IRRender::decodeCarrierEntityId(planes_.ids_[planes_.index(q)]);
@@ -676,6 +684,11 @@ struct GlitchSubjectFixture {
         int mismatchExpectedInput_ = 0;
         int overrideMismatch_ = 0;
         int overrideMarked_ = 0;
+        int sourceCardinalSamples_ = 0;
+        int sourceCardinalDifferent_ = 0;
+        int sourceNonCardinalSamples_ = 0;
+        int sourceNonCardinalMismatch_ = 0;
+        int sourceEmptyMismatch_ = 0;
         int changed_ = 0;
         int changedSubject_ = 0;
         int influenced_ = 0;
@@ -772,6 +785,17 @@ struct GlitchSubjectFixture {
                     const bool expectedMarked = routeVisits && trace.influences_ > 0;
                     result.overrideMismatch_ += marked != expectedMarked ? 1 : 0;
                     result.overrideMarked_ += marked ? 1 : 0;
+                    const IRMath::uvec4 source = toUvec4(planes.source_[i]);
+                    const bool cardinalSource = usesSourceLitColour(planes, i);
+                    result.sourceCardinalSamples_ += cardinalSource ? 1 : 0;
+                    result.sourceCardinalDifferent_ += cardinalSource && source != input ? 1 : 0;
+                    result.sourceNonCardinalSamples_ += cardinalSource ? 0 : 1;
+                    result.sourceNonCardinalMismatch_ += !cardinalSource && source != input ? 1 : 0;
+                    result.sourceEmptyMismatch_ +=
+                        planes.distances_[i] >= IRPrefab::Glitch::kSubjectEmptyDistance &&
+                                source != input
+                            ? 1
+                            : 0;
                 }
                 const bool changed = routeVisits && output != input;
                 result.mismatch_ += routeVisits && expected != output ? 1 : 0;
@@ -847,7 +871,9 @@ struct GlitchSubjectFixture {
 
     bool modePasses(const Analysis &analysis, bool perAxis, int axis = -1) const {
         if (!analysis.valid_ || analysis.mismatch_ != 0 || analysis.overrideMismatch_ != 0 ||
-            (analysis.overrideMarked_ == 0 && !perAxis)) {
+            analysis.sourceNonCardinalMismatch_ != 0 || analysis.sourceEmptyMismatch_ != 0 ||
+            (analysis.overrideMarked_ == 0 && !perAxis) ||
+            (analysis.sourceCardinalDifferent_ == 0 && !perAxis)) {
             return false;
         }
         switch (mode_) {
@@ -992,7 +1018,8 @@ struct GlitchSubjectFixture {
         const Analysis analysis = analyze(planes);
         IR_LOG_INFO(
             "[glitch-subject-probe] canvas size={}x{} cpuMismatch={} overrideMismatch={} "
-            "overrideMarked={} changed={} influenced={} "
+            "overrideMarked={} sourceCardinal={}/{} sourceNonCardinal={}/{} sourceEmptyMismatch={} "
+            "changed={} influenced={} "
             "interfered={} tearPx={} tearDx=[{},{}] tearForeign={} splitPx={} heldPx={} "
             "heldForeign={} foreignHistorySamples={} echoPx={} dissolvedPx={} "
             "idHash={:016x}/{:016x} distanceHash={:016x}/{:016x} pass={}",
@@ -1001,6 +1028,11 @@ struct GlitchSubjectFixture {
             analysis.mismatch_,
             analysis.overrideMismatch_,
             analysis.overrideMarked_,
+            analysis.sourceCardinalDifferent_,
+            analysis.sourceCardinalSamples_,
+            analysis.sourceNonCardinalMismatch_,
+            analysis.sourceNonCardinalSamples_,
+            analysis.sourceEmptyMismatch_,
             analysis.changed_,
             analysis.influenced_,
             analysis.interfered_,

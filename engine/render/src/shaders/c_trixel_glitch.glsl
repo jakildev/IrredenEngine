@@ -72,8 +72,9 @@ uvec4 loadLiveColour(ivec2 q) {
 }
 
 uvec4 loadEffectColour(ivec2 q, GlitchFrame frame) {
-    const vec4 colour = frame.cardinalPresentation ? imageLoad(sourceLitColors, q)
-                                                   : imageLoad(liveColors, q);
+    const bool sourceLit = frame.cardinalPresentation &&
+                           isCardinalVoxelSurface(imageLoad(liveEntityIds, q).xy);
+    const vec4 colour = sourceLit ? imageLoad(sourceLitColors, q) : imageLoad(liveColors, q);
     return uvec4(colour * 255.0 + 0.5);
 }
 

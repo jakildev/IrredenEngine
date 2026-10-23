@@ -55,8 +55,10 @@ static uint4 glitchLoadLiveColour(thread const GlitchFrame &frame, int2 q) {
 }
 
 static uint4 glitchLoadEffectColour(thread const GlitchFrame &frame, int2 q) {
-    const float4 colour = frame.cardinalPresentation ? frame.sourceLitColors.read(uint2(q))
-                                                     : frame.liveColors.read(uint2(q));
+    const bool sourceLit = frame.cardinalPresentation &&
+                           isCardinalVoxelSurface(frame.liveEntityIds.read(uint2(q)).xy);
+    const float4 colour = sourceLit ? frame.sourceLitColors.read(uint2(q))
+                                    : frame.liveColors.read(uint2(q));
     return uint4(colour * 255.0 + 0.5);
 }
 

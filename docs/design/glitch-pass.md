@@ -235,12 +235,15 @@ subject that does not move within its tick shows no hold. Showing a ghost of
 the previous tick would need a second history pair; it is not built.
 
 At an eligible cardinal, lighting also publishes a source-lit colour plane.
-The glitch kernel reads that plane for every influenced texel and for hold
-history, while uninfluenced copy-through texels retain the ordinary live
-albedo. It writes a one-channel effect-reach mask beside its colour output.
-The gather skips destination relighting only where that mask is set, so the
-glitched source sample is lit exactly once and unaffected cardinal surfaces
-keep their continuous destination-surface lighting.
+The glitch kernel reads that plane for influenced cardinal-voxel samples and
+for their hold history. Non-cardinal samples read the live plane, which already
+contains their once-lit colour, so a producer scheduled after lighting remains
+visible. Uninfluenced copy-through texels retain the ordinary live albedo. The
+kernel writes effect reach into the red channel of an RGBA8 mask beside its
+colour output. The gather skips shape and cardinal destination relighting only
+where that mask is set, so the glitched source sample is lit exactly once and
+unaffected cardinal surfaces keep their continuous destination-surface
+lighting.
 
 During smooth yaw, each axis canvas has its own history pair. Its snapshot is
 valid only while the store size and nearest cardinal match. A store-origin
@@ -257,9 +260,9 @@ resize, so they return at the new size, and by `onDestroy`: an RGBA8 scratch
 colour destination, the RGBA8 history colour and the RG32UI history id. An
 active eligible cardinal lazily adds one RGBA8 source-lit plane and one RGBA8
 effect-reach mask. Merely registering the pass, or running with no active
-subject, allocates neither presentation image. Once created, their handles
-survive ordinary glitch image creation and ping-pong swaps until canvas resize
-or destruction.
+subject, allocates neither presentation image and compiles neither source-output
+lighting program. Once created, their handles survive ordinary glitch image
+creation and ping-pong swaps until canvas resize or destruction.
 
 The active per-axis store owns the corresponding images in each of its three
 `AxisTextures`: scratch is created on the first enabled rotating frame, while
@@ -295,8 +298,9 @@ its texels straight through.
 
 **Bindings.** Images 0-2 are the live colour, distance and entity-id planes
 (read), 3-4 the history colour and id (read), 5 the scratch colour (write), 6
-the source-lit colour (read), and 7 the effect-reach mask (write). Ordinary and
-non-cardinal routes bind existing dummy images at 6-7 and retain their prior
+the effect source (source-lit on the cardinal presentation route, live colour
+otherwise), and 7 the effect-reach mask on the cardinal route. Ordinary routes
+bind the live colour at 6 and the scratch colour at 7 and retain their prior
 colour behavior.
 The subject buffer borrows storage slot 8 (`kBufferIndex_TrixelGlitchSubjects`,
 the voxel active mask's slot) and the pass rebinds `VoxelActiveMaskBuffer`

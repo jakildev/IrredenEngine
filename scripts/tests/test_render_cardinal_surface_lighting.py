@@ -218,12 +218,16 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                     "findSystem(TRIXEL_GLITCH) == kNullSystemId && "
                     "mainVoxelPool_ != nullptr &&",
                 ),
+                "destination_relighting": replace_once(
+                    source, "!glitchPresentationOverride &&", "true &&"
+                ),
                 "cut_face": source.replace("!decodeCutFace(rawId)", "true"),
             }
             messages = {"lighting_disabled": "fragment lighting gate",
                         "stale_ready": "begin resets readiness before main tick",
                         "eligible_not_ready": "begin resets readiness before main tick",
                         "glitch_exclusion": "producer eligibility",
+                        "destination_relighting": "fragment lighting gate",
                         "cut_face": "fragment lighting gate"}
             for name, candidate in variants.items():
                 with (self.subTest(backend=backend, variant=name),
@@ -241,6 +245,70 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                         self.assertNotEqual(candidate, source)
                         self.assertEqual(run.returncode, 1, run.stderr)
                         self.assertIn(messages[name], run.stderr)
+
+    def test_glitch_source_route_lifetime_and_bindings(self):
+        systems = ROOT / "engine/prefabs/irreden/render/systems"
+        producer = (systems / "system_lighting_to_trixel.hpp").read_text()
+        create = extract_block(producer, "static SystemId create() {")
+        ensure_programs = extract_function(producer, "ensureGlitchSourcePrograms")
+        self.assertNotIn("LightingToTrixelGlitchSourceProgram", create)
+        self.assertIn("LightingToTrixelGlitchSourceProgram", ensure_programs)
+        self.assertIn("ensureGlitchSourcePrograms();", producer)
+        self.assertIn("ensureGlitchPresentationImages(textures);", producer)
+        self.assertIn("IRPlatform::kIsOpenGL ? 7 : 8", producer)
+        selection = re.search(
+            r"ShaderProgram \*lightingProgram\s*=.*?;",
+            producer,
+            re.DOTALL,
+        ).group()
+        self.assertIn("glitchSource ? shapeGlitchSourceProgram_ : shapeProgram_", selection)
+        self.assertIn("glitchSource ? glitchSourceProgram_ : program_", selection)
+
+        component = (ROOT / "engine/prefabs/irreden/render/components/"
+                     "component_triangle_canvas_textures.hpp").read_text()
+        ensure_images = extract_function(component, "ensureGlitchPresentationImages")
+        self.assertIn("if (hasGlitchPresentationImages())", ensure_images)
+        self.assertIn("return false;", ensure_images)
+
+        for backend in ("glsl", "metal"):
+            directory = shader_directory(backend)
+            glitch = (directory / f"c_trixel_glitch.{backend}").read_text()
+            lighting = (directory / f"c_lighting_to_trixel_body.{backend}").read_text()
+            gather = (directory / f"ir_trixel_to_framebuffer_body.{backend}").read_text()
+            effect = extract_block(
+                glitch,
+                "uvec4 loadEffectColour(" if backend == "glsl"
+                else "static uint4 glitchLoadEffectColour(",
+            )
+            self.assertIn("isCardinalVoxelSurface", effect)
+            mutated_effect = effect.replace("isCardinalVoxelSurface", "alwaysSourceLit", 1)
+            self.assertNotEqual(mutated_effect, effect)
+            self.assertNotIn("isCardinalVoxelSurface", mutated_effect)
+
+            refresh = (
+                "imageStore(glitchSourceLitColors, pixel, imageLoad(trixelColors, pixel));"
+                if backend == "glsl"
+                else "glitchSourceLitColors.write(trixelColors.read(uint2(pixel)), uint2(pixel));"
+            )
+            empty = "if (encoded >="
+            self.assertLess(lighting.index(refresh), lighting.index(empty))
+            mutated_lighting = lighting.replace(refresh, "removedSourceRefresh", 1)
+            self.assertNotIn(refresh, mutated_lighting[:mutated_lighting.index(empty)])
+
+            shape_gate = re.search(
+                r"#if IR_SHAPE_LIGHTING\s*if \(!glitchPresentationOverride",
+                gather,
+            )
+            self.assertIsNotNone(shape_gate)
+
+        glsl = (shader_directory("glsl") / "c_lighting_to_trixel_body.glsl").read_text()
+        metal = (shader_directory("metal") / "c_lighting_to_trixel_body.metal").read_text()
+        self.assertIn("layout(rgba8, binding = 7) writeonly", glsl)
+        self.assertIn("glitchSourceLitColors [[texture(8)]]", metal)
+
+        glitch_system = (systems / "system_trixel_glitch.hpp").read_text()
+        dispatch = extract_block(glitch_system, "void dispatch() override {")
+        self.assertIn("memoryBarrier(BarrierType::ALL);", dispatch)
 
 
 if __name__ == "__main__":

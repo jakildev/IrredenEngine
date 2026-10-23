@@ -214,10 +214,14 @@ struct C_TriangleCanvasTextures {
         glitchHistoryEntityIds_ = detail::makeCanvasEntityIdTexture(size_);
     }
 
-    void createGlitchPresentationImages() {
+    bool ensureGlitchPresentationImages() {
+        if (hasGlitchPresentationImages()) {
+            return false;
+        }
         destroyGlitchPresentationImages();
         glitchSourceLitColors_ = detail::makeCanvasColorTexture(size_);
         glitchPresentationOverrides_ = detail::makeCanvasColorTexture(size_);
+        return true;
     }
 
     // Publishes the glitch output as the live colour plane; the previous live

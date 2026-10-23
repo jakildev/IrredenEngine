@@ -237,7 +237,7 @@ class TrixelGlitchGpuEncoder final : public TrixelGlitchEncoder {
             static_cast<std::uint32_t>(IRMath::divCeil(m_canvas.size_.y, groupSize)),
             1
         );
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
         // The slot is borrowed: hand it back to the active mask that owns it.
         if (m_slotOwner != nullptr) {
             m_slotOwner->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);

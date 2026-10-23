@@ -170,7 +170,8 @@ struct FrameDataTrixelToFramebuffer {
     /// camera scatter ignores both.
     /// Preserve offsets 144 / 160 so framebuffer resolution remains at 176.
     /// Cardinal gather aliases this as camera iso XY, subdivision mode, and density;
-    /// scatterDebugMode_ carries its albedo-ready flag and perAxisBase_ its Z1 origin.
+    /// scatterDebugMode_ is 0 when disabled, 1 for presentation lighting, and 2 when
+    /// the glitch override mask is published; perAxisBase_ carries its Z1 origin.
     vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
     vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};
     /// Per-axis scatter framebuffer extent (.xy) and visibility-pass flags (.z).
