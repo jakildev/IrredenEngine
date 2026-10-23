@@ -624,6 +624,65 @@ TEST_F(KeyboardDispatchTest, CaptureSuppressesModifierChord) {
     EXPECT_EQ(m_chords, 0);
 }
 
+TEST_F(KeyboardDispatchTest, PerButtonCaptureSuppressesOnlyThatButton) {
+    int upFires = 0;
+    int downFires = 0;
+    m_command_manager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonUp,
+        [&]() { ++upFires; }
+    );
+    m_command_manager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonDown,
+        [&]() { ++downFires; }
+    );
+    const std::array captured{IRInput::kKeyButtonUp};
+    m_command_manager.setCapturedButtons(captured);
+
+    m_input.press(IRInput::kKeyButtonUp);
+    m_input.press(IRInput::kKeyButtonDown);
+    tick();
+
+    EXPECT_EQ(upFires, 0);
+    EXPECT_EQ(downFires, 1);
+}
+
+TEST_F(KeyboardDispatchTest, PerButtonCapturePreservesAdmittedRelease) {
+    bindPanPair(IRInput::kKeyButtonUp);
+    m_input.press(IRInput::kKeyButtonUp);
+    tick();
+    ASSERT_EQ(m_starts, 1);
+
+    const std::array captured{IRInput::kKeyButtonUp};
+    m_command_manager.setCapturedButtons(captured);
+    m_input.release(IRInput::kKeyButtonUp);
+    tick();
+
+    EXPECT_EQ(m_ends, 1);
+    EXPECT_EQ(m_velocity, 0);
+}
+
+TEST_F(KeyboardDispatchTest, EmptyPerButtonCaptureRestoresDispatch) {
+    int fires = 0;
+    m_command_manager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonUp,
+        [&]() { ++fires; }
+    );
+    const std::array captured{IRInput::kKeyButtonUp};
+    m_command_manager.setCapturedButtons(captured);
+    m_command_manager.setCapturedButtons(std::span<const IRInput::KeyMouseButtons>{});
+
+    m_input.press(IRInput::kKeyButtonUp);
+    tick();
+
+    EXPECT_EQ(fires, 1);
+}
+
 TEST_F(KeyboardDispatchTest, CaptureLeavesMouseBindingsActive) {
     int clicks = 0;
     m_command_manager.createCommand(

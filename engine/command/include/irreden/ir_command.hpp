@@ -70,6 +70,15 @@ isButtonBound(IRInput::InputTypes inputType, IRInput::ButtonStatuses triggerStat
     return getCommandManager().isButtonBound(inputType, triggerStatus, button);
 }
 
+inline bool isButtonBound(
+    IRInput::InputTypes inputType,
+    IRInput::ButtonStatuses triggerStatus,
+    int button,
+    IRInput::KeyModifierMask heldModifiers
+) {
+    return getCommandManager().isButtonBound(inputType, triggerStatus, button, heldModifiers);
+}
+
 /// Sentinel returned by @ref bindPrefabCommand on a name that has no
 /// `Command<NAME>` specialization. `CommandId` is `uint32_t`, so the
 /// max-value spelling lets callers distinguish a real registration

@@ -51,6 +51,8 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
     IRMath::vec2 mouseGuiTrixel_ = IRMath::vec2(0.0f);
     // Rows the frame's wheel events ask for; positive scrolls toward the end.
     int wheelRows_ = 0;
+    IREntity::EntityId keyboardDropdown_ = IREntity::kNullEntity;
+    int keyboardRow_ = -1;
 
     void beginTick() {
         mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
@@ -78,6 +80,7 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
     }
 
     void tick(
+        IREntity::EntityId entityId,
         IRComponents::C_Widget &widget,
         IRComponents::C_WidgetState &state,
         IRComponents::C_WidgetDropdown &dd,
@@ -96,6 +99,34 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         // painted rows come from the same window.
         if (dd.isOpen_ && state.hovered_) {
             dd.scrollBy(wheelRows_);
+        }
+
+        using Action = IRComponents::C_WidgetState::KeyAction;
+        if (state.keyAction_ == Action::OPEN_OR_CLOSE) {
+            dd.isOpen_ = !dd.isOpen_;
+            if (dd.isOpen_) {
+                keyboardDropdown_ = entityId;
+                keyboardRow_ = dd.selectedIndex_ >= 0 ? dd.selectedIndex_ : 0;
+                dd.scrollIntoView(keyboardRow_);
+            }
+        } else if (
+            dd.isOpen_ &&
+            (state.keyAction_ == Action::MOVE_UP || state.keyAction_ == Action::MOVE_DOWN)
+        ) {
+            if (keyboardDropdown_ != entityId) {
+                keyboardDropdown_ = entityId;
+                keyboardRow_ = dd.selectedIndex_ >= 0 ? dd.selectedIndex_ : 0;
+            }
+            const int delta = state.keyAction_ == Action::MOVE_UP ? -1 : 1;
+            keyboardRow_ =
+                IRMath::clamp(keyboardRow_ + delta, 0, static_cast<int>(dd.items_.size()) - 1);
+            dd.scrollIntoView(keyboardRow_);
+        } else if (
+            dd.isOpen_ && state.keyAction_ == Action::SELECT && keyboardDropdown_ == entityId &&
+            keyboardRow_ >= 0
+        ) {
+            dd.selectedIndex_ = keyboardRow_;
+            dd.isOpen_ = false;
         }
 
         // Sync hitbox extent and z-order to current open state so WIDGET_INPUT's
@@ -119,7 +150,13 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
                 );
             }
         }
-        state.dragValue_ = static_cast<float>(rowFromMouse);
+        state.dragValue_ = static_cast<float>(
+            rowFromMouse >= 0 ? rowFromMouse : (keyboardDropdown_ == entityId ? keyboardRow_ : -1)
+        );
+
+        if (state.keyAction_ != Action::NONE) {
+            return;
+        }
 
         if (!state.fireAction_)
             return;

@@ -3,6 +3,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/entity/entity_manager.hpp>
+#include <irreden/command/command_manager.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_text_style_lua.hpp>
 #include <irreden/render/components/component_widget.hpp>
@@ -39,6 +40,7 @@ class LuaWidgetValues : public testing::Test {
   protected:
     LuaWidgetValues() {
         m_lua.bindLuaDrivenEcs();
+        m_lua.bindLuaCommands();
     }
 
     void TearDown() override {
@@ -74,6 +76,7 @@ class LuaWidgetValues : public testing::Test {
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;
+    IRCommand::CommandManager m_commandManager;
 };
 
 TEST_F(LuaWidgetValues, SliderBuildsReadsAndClamps) {
@@ -527,6 +530,33 @@ TEST_F(LuaWidgetValues, TextStyleTextSizeIsRangeChecked) {
         std::string::npos
     );
     EXPECT_EQ(eval<int>("style.textSize"), static_cast<int>(TextSize::SMALL));
+}
+
+TEST_F(LuaWidgetValues, HotkeySurfaceValidatesAndMirrorsHintVisibility) {
+    run(R"lua(
+        button = IRGui.makeButton(0, 0, 80, 20, "BUTTON")
+        IRGui.setHotkey(button, { key = IRInput.Key.M, mods = IRInput.Modifier.ALT, hint = "M" })
+    )lua");
+    const auto &hotkey = IREntity::getComponent<IRComponents::C_WidgetHotkey>(entity("button"));
+    EXPECT_EQ(hotkey.key_, IRInput::kKeyButtonM);
+    EXPECT_EQ(hotkey.modifiers_, IRInput::kModifierAlt);
+    EXPECT_EQ(hotkey.hint_, "M");
+
+    auto &frame = IREntity::singleton<IRComponents::C_WidgetInputFrame>();
+    frame.hintsVisible_ = true;
+    EXPECT_TRUE(eval<bool>("IRGui.hintsVisible()"));
+    run("IRGui.clearHotkey(button)");
+    EXPECT_FALSE(IREntity::getComponentOptional<IRComponents::C_WidgetHotkey>(entity("button")));
+
+    for (const char *call : {
+             "IRGui.setHotkey(button, { key = 'M' })",
+             "IRGui.setHotkey(button, { key = IRInput.Key.SPACE })",
+             "IRGui.setHotkey(button, { key = IRInput.Key.UP, mods = IRInput.Modifier.CONTROL })",
+             "IRGui.setHotkey(button, { key = IRInput.Key.M, mods = 128 })",
+             "IRGui.setHotkey(button, { key = IRInput.Key.M, surprise = true })",
+         }) {
+        EXPECT_FALSE(error(call).empty()) << call;
+    }
 }
 
 } // namespace

@@ -59,6 +59,27 @@ template <> struct System<WIDGET_APPLY_SLIDER> {
             IRPrefab::Widget::nudgeSliderValue(slider, wheelSteps_ * (wheelShiftHeld_ ? 10 : 1));
         }
 
+        using Action = IRComponents::C_WidgetState::KeyAction;
+        switch (state.keyAction_) {
+        case Action::MOVE_UP:
+            IRPrefab::Widget::nudgeSliderValue(slider, state.keyShiftHeld_ ? 10 : 1);
+            break;
+        case Action::MOVE_DOWN:
+            IRPrefab::Widget::nudgeSliderValue(slider, state.keyShiftHeld_ ? -10 : -1);
+            break;
+        case Action::MINIMUM:
+            IRPrefab::Widget::setSliderValue(slider, slider.minValue_);
+            break;
+        case Action::MAXIMUM:
+            IRPrefab::Widget::setSliderValue(slider, slider.maxValue_);
+            break;
+        case Action::RESET:
+            IRPrefab::Widget::resetSliderValue(slider);
+            break;
+        default:
+            break;
+        }
+
         if (state.sliderDoubleClick_) {
             if (state.sliderFirstClickRegion_ ==
                 IRComponents::C_WidgetState::SliderPressRegion::THUMB) {

@@ -20,6 +20,10 @@ bool checkKeyMouseButton(KeyMouseButtons button, ButtonStatuses checkStatus) {
 }
 
 bool checkKeyMouseModifiers(KeyModifierMask requiredModifiers, KeyModifierMask blockedModifiers) {
+    return modifiersMatch(requiredModifiers, blockedModifiers, heldKeyModifiers());
+}
+
+KeyModifierMask heldKeyModifiers() {
     const bool shiftDown = getInputManager().checkButtonDown(kKeyButtonLeftShift) ||
                            getInputManager().checkButtonDown(kKeyButtonRightShift);
     const bool controlDown = getInputManager().checkButtonDown(kKeyButtonLeftControl) ||
@@ -27,26 +31,11 @@ bool checkKeyMouseModifiers(KeyModifierMask requiredModifiers, KeyModifierMask b
     const bool altDown = getInputManager().checkButtonDown(kKeyButtonLeftAlt) ||
                          getInputManager().checkButtonDown(kKeyButtonRightAlt);
 
-    if ((requiredModifiers & kModifierShift) != 0 && !shiftDown) {
-        return false;
-    }
-    if ((requiredModifiers & kModifierControl) != 0 && !controlDown) {
-        return false;
-    }
-    if ((requiredModifiers & kModifierAlt) != 0 && !altDown) {
-        return false;
-    }
-
-    if ((blockedModifiers & kModifierShift) != 0 && shiftDown) {
-        return false;
-    }
-    if ((blockedModifiers & kModifierControl) != 0 && controlDown) {
-        return false;
-    }
-    if ((blockedModifiers & kModifierAlt) != 0 && altDown) {
-        return false;
-    }
-    return true;
+    KeyModifierMask held = kModifierNone;
+    held |= shiftDown ? kModifierShift : kModifierNone;
+    held |= controlDown ? kModifierControl : kModifierNone;
+    held |= altDown ? kModifierAlt : kModifierNone;
+    return held;
 }
 
 vec2 getMousePosition() {

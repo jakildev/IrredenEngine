@@ -1,75 +1,162 @@
 #ifndef IRREDEN_WIDGET_HOTKEYS_H
 #define IRREDEN_WIDGET_HOTKEYS_H
 
-#include <irreden/input/ir_input_types.hpp>
+#include <irreden/ir_command.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/input/ir_input_types.hpp>
+#include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_hotkey.hpp>
+#include <irreden/input/components/component_hitbox_2d_gui.hpp>
 
+#include <array>
 #include <functional>
 #include <string>
-#include <unordered_map>
 
 namespace IRPrefab::Widget {
 
-struct HotkeyEntry {
-    std::string actionName_;
-    std::function<void()> callback_;
-};
-
-// Packed key: high 16 bits = KeyModifierMask, low 16 bits = KeyMouseButtons enum value.
-using HotkeyKey = uint32_t;
-
-static_assert(
-    static_cast<uint32_t>(IRInput::kNumKeyMouseButtons) <= 0xFFFF,
-    "KeyMouseButtons exceeds 16-bit range; update HotkeyKey packing in widget_hotkeys.hpp"
-);
+using HotkeyKey = std::uint32_t;
+using HotkeyEntry = IRComponents::WidgetHotkeyCallback;
 
 inline HotkeyKey makeHotkeyKey(IRInput::KeyModifierMask mods, IRInput::KeyMouseButtons key) {
     return (static_cast<HotkeyKey>(mods) << 16) | static_cast<HotkeyKey>(key);
 }
 
-// Program-lifetime registry: safe to access from beginTick and from creation init.
-//
-// Lifetime contract: callbacks registered here capture creation-scoped state.
-// If IRGame::World is ever destroyed and recreated (e.g. a future hot-reload),
-// call clearHotkeyRegistry() before destroying the World to prevent stale
-// std::function captures from being invoked against freed memory. In the
-// current single-process editor flow, the registry outlives the process and
-// teardown is not required.
-inline std::unordered_map<HotkeyKey, HotkeyEntry> &getHotkeyRegistry() {
-    static std::unordered_map<HotkeyKey, HotkeyEntry> registry;
-    return registry;
+inline constexpr std::array<IRInput::KeyMouseButtons, 10> kFocusKeys{
+    IRInput::kKeyButtonTab,
+    IRInput::kKeyButtonSpace,
+    IRInput::kKeyButtonEnter,
+    IRInput::kKeyButtonEscape,
+    IRInput::kKeyButtonUp,
+    IRInput::kKeyButtonDown,
+    IRInput::kKeyButtonHome,
+    IRInput::kKeyButtonEnd,
+    IRInput::kKeyButtonDelete,
+    IRInput::kKeyButtonBackspace,
+};
+
+inline bool isFocusKey(IRInput::KeyMouseButtons key) {
+    for (IRInput::KeyMouseButtons candidate : kFocusKeys) {
+        if (candidate == key) {
+            return true;
+        }
+    }
+    return false;
 }
 
-// Remove all registered hotkeys. Call during World teardown if the World
-// may be recreated within the same process (hot-reload, editor reset).
+inline bool isKeyboardHotkey(IRInput::KeyMouseButtons key) {
+    return key > IRInput::kNullButton && key < IRInput::kMouseButtonNull;
+}
+
+inline bool
+commandClaimsPress(IRInput::KeyMouseButtons key, IRInput::KeyModifierMask heldModifiers) {
+    return IRCommand::isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, key, heldModifiers) ||
+           IRCommand::isButtonBound(IRInput::KEY_MOUSE, IRInput::HELD, key, heldModifiers);
+}
+
+inline IRComponents::C_WidgetHotkeyRegistry &registry() {
+    return IREntity::singleton<IRComponents::C_WidgetHotkeyRegistry>();
+}
+
+inline std::unordered_map<HotkeyKey, HotkeyEntry> &getHotkeyRegistry() {
+    return registry().callbacks_;
+}
+
 inline void clearHotkeyRegistry() {
     getHotkeyRegistry().clear();
 }
 
-// Remove a single hotkey registration by combo.
 inline void unregisterHotkey(IRInput::KeyModifierMask modifiers, IRInput::KeyMouseButtons key) {
     getHotkeyRegistry().erase(makeHotkeyKey(modifiers, key));
 }
 
-// Register a hotkey. Fires `callback` when `key` is pressed with `modifiers` held.
-// Logs a warning and replaces any existing registration for the same combo.
+struct HotkeyConflict {
+    IREntity::EntityId widget_ = IREntity::kNullEntity;
+    bool callback_ = false;
+    bool command_ = false;
+};
+
+inline HotkeyConflict findHotkeyConflict(
+    IRInput::KeyMouseButtons key,
+    IRInput::KeyModifierMask modifiers,
+    IREntity::EntityId exclude = IREntity::kNullEntity
+) {
+    HotkeyConflict result{};
+    IREntity::forEachComponent<IRComponents::C_WidgetHotkey>(
+        [&](IREntity::EntityId &id, IRComponents::C_WidgetHotkey &hotkey) {
+            if (id != exclude && hotkey.key_ == key && hotkey.modifiers_ == modifiers &&
+                (result.widget_ == IREntity::kNullEntity || id < result.widget_)) {
+                result.widget_ = id;
+            }
+        }
+    );
+    result.callback_ = getHotkeyRegistry().contains(makeHotkeyKey(modifiers, key));
+    result.command_ = commandClaimsPress(key, modifiers);
+    return result;
+}
+
+inline bool validHotkey(IRInput::KeyMouseButtons key, IRInput::KeyModifierMask modifiers) {
+    return isKeyboardHotkey(key) && !isFocusKey(key) && (modifiers & ~IRInput::kModifierAll) == 0;
+}
+
+inline void removeConflict(const HotkeyConflict &conflict, HotkeyKey packed) {
+    if (conflict.widget_ != IREntity::kNullEntity) {
+        IREntity::removeComponent<IRComponents::C_WidgetHotkey>(conflict.widget_);
+    }
+    if (conflict.callback_) {
+        getHotkeyRegistry().erase(packed);
+    }
+}
+
+inline bool setHotkey(
+    IREntity::EntityId widget,
+    IRInput::KeyMouseButtons key,
+    IRInput::KeyModifierMask modifiers = IRInput::kModifierNone,
+    std::string hint = ""
+) {
+    if (!IREntity::entityExists(widget) || !validHotkey(key, modifiers) ||
+        !IREntity::getComponentOptional<IRComponents::C_WidgetState>(widget) ||
+        !IREntity::getComponentOptional<IRComponents::C_HitBox2DGui>(widget)) {
+        return false;
+    }
+    const HotkeyKey packed = makeHotkeyKey(modifiers, key);
+    const HotkeyConflict conflict = findHotkeyConflict(key, modifiers, widget);
+    if (conflict.widget_ != IREntity::kNullEntity || conflict.callback_ || conflict.command_) {
+        IRE_LOG_WARN(
+            "Widget hotkey collision for key {} modifiers {}",
+            static_cast<int>(key),
+            static_cast<int>(modifiers)
+        );
+    }
+    removeConflict(conflict, packed);
+    IREntity::setComponent(widget, IRComponents::C_WidgetHotkey{key, modifiers, std::move(hint)});
+    return true;
+}
+
+inline void clearHotkey(IREntity::EntityId widget) {
+    if (IREntity::entityExists(widget) &&
+        IREntity::getComponentOptional<IRComponents::C_WidgetHotkey>(widget)) {
+        IREntity::removeComponent<IRComponents::C_WidgetHotkey>(widget);
+    }
+}
+
 inline void registerHotkey(
     const std::string &actionName,
     IRInput::KeyModifierMask modifiers,
     IRInput::KeyMouseButtons key,
     std::function<void()> callback
 ) {
-    const HotkeyKey k = makeHotkeyKey(modifiers, key);
-    auto &registry = getHotkeyRegistry();
-    auto it = registry.find(k);
-    if (it != registry.end()) {
-        IRE_LOG_WARN(
-            "Hotkey conflict: '{}' is already bound to this combo (replacing with '{}')",
-            it->second.actionName_,
-            actionName
-        );
+    if (!validHotkey(key, modifiers)) {
+        IRE_LOG_WARN("Refusing invalid widget callback hotkey");
+        return;
     }
-    registry[k] = HotkeyEntry{actionName, std::move(callback)};
+    const HotkeyKey packed = makeHotkeyKey(modifiers, key);
+    const HotkeyConflict conflict = findHotkeyConflict(key, modifiers);
+    if (conflict.widget_ != IREntity::kNullEntity || conflict.callback_ || conflict.command_) {
+        IRE_LOG_WARN("Widget callback hotkey collision for '{}'", actionName);
+    }
+    removeConflict(conflict, packed);
+    getHotkeyRegistry()[packed] = HotkeyEntry{actionName, std::move(callback)};
 }
 
 } // namespace IRPrefab::Widget
