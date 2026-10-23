@@ -1,6 +1,7 @@
 #include <irreden/render/opengl/opengl_render_impl.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/gpu_submission_fences.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/texture.hpp>
@@ -8,7 +9,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <deque>
 #include <unordered_map>
 #include <vector>
 
@@ -35,32 +35,8 @@ class OpenGLRenderDevice final : public RenderDevice {
         } else {
             IRWindow::getWindow().swapBuffers();
         }
-        throttleSubmissionsInFlight();
-    }
-
-    // The CPU may run at most this many presented frames ahead of the GPU.
-    // Nothing else bounds it once no readback blocks: an unthrottled
-    // offscreen or swapInterval-0 loop queues frames until the driver
-    // stalls for hundreds of milliseconds at once, and every
-    // GpuReadbackRing overruns its slots. Two frames keep the GPU fed while
-    // the CPU encodes the next.
-    static constexpr std::uint64_t kMaxSubmissionsInFlight = 2;
-
-    void throttleSubmissionsInFlight() {
-        while (!m_submissionFences.empty()) {
-            const std::uint64_t pending = m_submissionSerial - 1 - completedSubmissionSerial();
-            if (pending <= kMaxSubmissionsInFlight || m_submissionFences.empty()) {
-                return;
-            }
-            // GL_QUERY_RESULT blocks until the oldest fence is available; the
-            // next completedSubmissionSerial() retires it.
-            GLuint64 ignored = 0;
-            ENG_API->glGetQueryObjectui64v(
-                m_submissionFences.front().query_,
-                GL_QUERY_RESULT,
-                &ignored
-            );
-        }
+        m_submissions
+            .throttle(detail::kMaxPresentedSubmissionsInFlight, isFenceAvailable, waitForFence);
     }
 
     // OFFSCREEN window mode: an engine-owned framebuffer stands in for the
@@ -335,31 +311,15 @@ class OpenGLRenderDevice final : public RenderDevice {
 
     void finish() override {
         ENG_API->glFinish();
-        for (const SubmissionFence &fence : m_submissionFences) {
-            m_freeFenceQueries.push_back(fence.query_);
-        }
-        m_submissionFences.clear();
-        m_completedSubmissionSerial = m_submissionSerial;
-        ++m_submissionSerial;
+        m_submissions.completeAll();
     }
 
     std::uint64_t submissionSerial() const override {
-        return m_submissionSerial;
+        return m_submissions.submissionSerial();
     }
 
     std::uint64_t completedSubmissionSerial() override {
-        while (!m_submissionFences.empty()) {
-            const SubmissionFence &fence = m_submissionFences.front();
-            GLint available = GL_FALSE;
-            ENG_API->glGetQueryObjectiv(fence.query_, GL_QUERY_RESULT_AVAILABLE, &available);
-            if (available != GL_TRUE) {
-                break;
-            }
-            m_completedSubmissionSerial = fence.serial_;
-            m_freeFenceQueries.push_back(fence.query_);
-            m_submissionFences.pop_front();
-        }
-        return m_completedSubmissionSerial;
+        return m_submissions.pollCompleted(isFenceAvailable);
     }
 
     GpuTimestampHandle createTimestampPair() override {
@@ -441,26 +401,28 @@ class OpenGLRenderDevice final : public RenderDevice {
     // reader asks for the completed serial.
     void endSubmission() {
         completedSubmissionSerial();
-        GLuint query = 0;
-        if (m_freeFenceQueries.empty()) {
+        GLuint query = m_submissions.takeRetiredFence().value_or(0);
+        if (query == 0) {
             ENG_API->glGenQueries(1, &query);
-        } else {
-            query = m_freeFenceQueries.back();
-            m_freeFenceQueries.pop_back();
         }
         ENG_API->glQueryCounter(query, GL_TIMESTAMP);
-        m_submissionFences.push_back({query, m_submissionSerial});
-        ++m_submissionSerial;
+        m_submissions.endSubmission(query);
     }
 
-    struct SubmissionFence {
-        GLuint query_ = 0;
-        std::uint64_t serial_ = 0;
-    };
-    std::deque<SubmissionFence> m_submissionFences;
-    std::vector<GLuint> m_freeFenceQueries;
-    std::uint64_t m_submissionSerial = 1;
-    std::uint64_t m_completedSubmissionSerial = 0;
+    static bool isFenceAvailable(GLuint query) {
+        GLint available = GL_FALSE;
+        ENG_API->glGetQueryObjectiv(query, GL_QUERY_RESULT_AVAILABLE, &available);
+        return available == GL_TRUE;
+    }
+
+    // GL_QUERY_RESULT blocks until every command issued before the query has
+    // completed.
+    static void waitForFence(GLuint query) {
+        GLuint64 ignored = 0;
+        ENG_API->glGetQueryObjectui64v(query, GL_QUERY_RESULT, &ignored);
+    }
+
+    detail::GpuSubmissionFences<GLuint> m_submissions;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::unordered_map<GpuTimestampHandle, OpenGLTimestampPair> m_timestamps;
     // 0 = the window's default framebuffer (every mode but OFFSCREEN).
