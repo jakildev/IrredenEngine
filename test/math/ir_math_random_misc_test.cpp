@@ -170,4 +170,29 @@ TEST(LayoutHelixTest, SingleCountReturnsStartPoint) {
     EXPECT_NEAR(p.z, -5.0f, kTolerance);  // h = (0-0.5)*10 = -5
 }
 
+// ─────────────────────────────────────────────
+// seededEma
+// ─────────────────────────────────────────────
+
+TEST(SeededEmaTest, NonPositivePreviousSeedsAtTheSample) {
+    EXPECT_DOUBLE_EQ(IRMath::seededEma(0.0, 16.7, 0.15), 16.7);
+    EXPECT_DOUBLE_EQ(IRMath::seededEma(-3.0, 16.7, 0.15), 16.7);
+}
+
+TEST(SeededEmaTest, PositivePreviousBlendsByAlpha) {
+    EXPECT_DOUBLE_EQ(IRMath::seededEma(10.0, 20.0, 0.25), 12.5);
+    EXPECT_DOUBLE_EQ(IRMath::seededEma(10.0, 20.0, 1.0), 20.0);
+    EXPECT_DOUBLE_EQ(IRMath::seededEma(10.0, 20.0, 0.0), 10.0);
+}
+
+TEST(SeededEmaTest, RepeatedSamplesConvergeOnTheSample) {
+    double value = 60.0;
+    for (int i = 0; i < 200; ++i) {
+        value = IRMath::seededEma(value, 30.0, 0.15);
+    }
+    EXPECT_NEAR(value, 30.0, 1e-9);
+}
+
+static_assert(IRMath::seededEma(0.0, 5.0, 0.5) == 5.0);
+
 } // namespace

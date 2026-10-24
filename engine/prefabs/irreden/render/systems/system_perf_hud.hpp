@@ -153,7 +153,7 @@ template <> struct System<PERF_HUD> {
     }
 
     void endTick() {
-        recordFrame();
+        recordFrame(static_cast<float>(IRTime::deltaTime(IRTime::Events::RENDER) * 1000.0));
         lastGlyphCommandCount_ = 0;
         if (!visible_) {
             fpsEma_ = 0.0;
@@ -210,7 +210,10 @@ template <> struct System<PERF_HUD> {
         );
     }
 
-  private:
+    // The calculations below read only the history ring and the smoothed
+    // values, never the clock or the canvas, so they are public for the unit
+    // tests that pin them (`test/render/perf_hud_test.cpp`).
+
     static IRMath::Color healthColor(float fractionOfTarget) {
         if (fractionOfTarget >= kPerfHudGoodFraction) {
             return kPerfHudGood;
@@ -231,9 +234,8 @@ template <> struct System<PERF_HUD> {
         return kPerfHudBad;
     }
 
-    void recordFrame() {
-        historyMs_[historyHead_] =
-            static_cast<float>(IRTime::deltaTime(IRTime::Events::RENDER) * 1000.0);
+    void recordFrame(float frameMs) {
+        historyMs_[historyHead_] = frameMs;
         historyHead_ = (historyHead_ + 1) % kPerfHudHistoryFrames;
         if (historyCount_ < kPerfHudHistoryFrames) {
             ++historyCount_;
@@ -244,11 +246,6 @@ template <> struct System<PERF_HUD> {
     float sampleMs(int agoFrames) const {
         return historyMs_
             [(historyHead_ - 1 - agoFrames + kPerfHudHistoryFrames) % kPerfHudHistoryFrames];
-    }
-
-    void updateSmoothedValues() {
-        fpsEma_ = IRMath::seededEma(fpsEma_, IRTime::renderFps(), kPerfHudEmaAlpha);
-        frameMsEma_ = IRMath::seededEma(frameMsEma_, sampleMs(0), kPerfHudEmaAlpha);
     }
 
     // Column layout the two format strings produce; `queueText` colours the
@@ -267,7 +264,7 @@ template <> struct System<PERF_HUD> {
         for (int i = 0; i < historyCount_; ++i) {
             const float ms = sampleMs(i);
             maxMs = IRMath::max(maxMs, ms);
-            if (ms > dropMs) {
+            if (ms >= dropMs) {
                 ++drops;
             }
         }
@@ -301,6 +298,42 @@ template <> struct System<PERF_HUD> {
             IRMath::min(drops, 999)
         );
         text_ += line;
+    }
+
+    // One bar per frame, newest at the right edge, height proportional to
+    // frame time with the budget line at one budget, into `graphPixels_`
+    // (row 0 is the top).
+    void buildGraph() {
+        const float budgetMs = IRRender::kFrameTimeBudgetMs;
+        const float fullBarMs = budgetMs * static_cast<float>(kPerfHudGraphBudgets);
+
+        graphPixels_.fill(kPerfHudGraphBackground);
+        const int budgetRow = kPerfHudGraphHeight - 1 - kPerfHudGraphHeight / kPerfHudGraphBudgets;
+        for (int x = 0; x < kPerfHudGraphWidth; ++x) {
+            graphPixels_[budgetRow * kPerfHudGraphWidth + x] = theme_.borderIdle_;
+        }
+        for (int i = 0; i < historyCount_; ++i) {
+            const float ms = sampleMs(i);
+            if (ms <= 0.0f) {
+                continue;
+            }
+            const int x = kPerfHudGraphWidth - 1 - i;
+            const int barHeight = IRMath::clamp(
+                static_cast<int>(IRMath::ceil(ms / fullBarMs * kPerfHudGraphHeight)),
+                1,
+                kPerfHudGraphHeight
+            );
+            const IRMath::Color color = healthColor(budgetMs / ms);
+            for (int y = kPerfHudGraphHeight - barHeight; y < kPerfHudGraphHeight; ++y) {
+                graphPixels_[y * kPerfHudGraphWidth + x] = color;
+            }
+        }
+    }
+
+  private:
+    void updateSmoothedValues() {
+        fpsEma_ = IRMath::seededEma(fpsEma_, IRTime::renderFps(), kPerfHudEmaAlpha);
+        frameMsEma_ = IRMath::seededEma(frameMsEma_, sampleMs(0), kPerfHudEmaAlpha);
     }
 
     IRMath::ivec2 contentOrigin() const {
@@ -339,35 +372,11 @@ template <> struct System<PERF_HUD> {
         );
     }
 
-    // One bar per frame, newest at the right edge, height proportional to
-    // frame time with the budget line at one budget. Built as one pixel block
-    // and uploaded with a single `blitRect`, rather than one `fillRect` per
-    // bar: a bar is a few texels, and the per-call upload would dominate.
+    // The graph is one pixel block uploaded with a single `blitRect`, rather
+    // than one `fillRect` per bar: a bar is a few texels, and the per-call
+    // upload would dominate.
     void paintGraph(IRMath::ivec2 pos) {
-        const float budgetMs = IRRender::kFrameTimeBudgetMs;
-        const float fullBarMs = budgetMs * static_cast<float>(kPerfHudGraphBudgets);
-
-        graphPixels_.fill(kPerfHudGraphBackground);
-        const int budgetRow = kPerfHudGraphHeight - 1 - kPerfHudGraphHeight / kPerfHudGraphBudgets;
-        for (int x = 0; x < kPerfHudGraphWidth; ++x) {
-            graphPixels_[budgetRow * kPerfHudGraphWidth + x] = theme_.borderIdle_;
-        }
-        for (int i = 0; i < historyCount_; ++i) {
-            const float ms = sampleMs(i);
-            if (ms <= 0.0f) {
-                continue;
-            }
-            const int x = kPerfHudGraphWidth - 1 - i;
-            const int barHeight = IRMath::clamp(
-                static_cast<int>(IRMath::ceil(ms / fullBarMs * kPerfHudGraphHeight)),
-                1,
-                kPerfHudGraphHeight
-            );
-            const IRMath::Color color = healthColor(budgetMs / ms);
-            for (int y = kPerfHudGraphHeight - barHeight; y < kPerfHudGraphHeight; ++y) {
-                graphPixels_[y * kPerfHudGraphWidth + x] = color;
-            }
-        }
+        buildGraph();
         IRRender::blitRect(
             *canvas_,
             pos,
