@@ -32,6 +32,10 @@ template <> struct System<SPRING_PLATFORM> {
 
                 if (!spring.originInitialized_) {
                     spring.origin_ = localXform.translation_;
+                    if (spring.startLocked_) {
+                        spring.origin_ -= spring.direction_ * (spring.length_ * spring.lockRatio_);
+                        spring.state_ = SPRING_LOCKED;
+                    }
                     spring.originInitialized_ = true;
                 }
 

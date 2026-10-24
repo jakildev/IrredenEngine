@@ -91,16 +91,21 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                 }
 
                 // ── Grounded snap ──
-                if (launch.grounded_ && launch.lastPlatformEntity_ != IREntity::kNullEntity) {
-                    if (velocity.velocity_.z > 0.0f) {
-                        velocity.velocity_.z = 0.0f;
-                    }
+                // A grounded block rides the platform it touches: one built
+                // grounded on its platform (no landing to name it) adopts it
+                // here, so gravity never carries it through.
+                if (launch.grounded_) {
                     if (contact.touching_ && contact.otherEntity_ != IREntity::kNullEntity) {
                         launch.lastPlatformEntity_ = contact.otherEntity_;
                     }
-                    PlatformSnapshot plat = fetchPlatform(launch.lastPlatformEntity_);
-                    localXform.translation_.z = plat.position_.z - launch.restOffsetZ_;
-                    velocity.velocity_ = plat.velocity_;
+                    if (launch.lastPlatformEntity_ != IREntity::kNullEntity) {
+                        if (velocity.velocity_.z > 0.0f) {
+                            velocity.velocity_.z = 0.0f;
+                        }
+                        PlatformSnapshot plat = fetchPlatform(launch.lastPlatformEntity_);
+                        localXform.translation_.z = plat.position_.z - launch.restOffsetZ_;
+                        velocity.velocity_ = plat.velocity_;
+                    }
                 }
 
                 // ── Launch check ──
