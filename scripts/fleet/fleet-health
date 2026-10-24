@@ -27,6 +27,9 @@ a stretch of autonomous running:
     `scout-master-ci-*` alerts) renders with its sha, run age and URL and
     warns once per workflow; only the authoritative poller's host holds
     those files, so a clean follower report does not mean master is green.
+    A `scout-actions-not-starting-*` alert (GitHub is refusing to start jobs,
+    e.g. a billing or spending-limit refusal) warns with its repo, since and
+    the refusal's annotation; the same host caveat applies.
     A `clone-freshness-*` alert is a WARN with its root, reason, count, since,
     and remedy fields; its displayed age comes from `since`, not file mtime.
   * Who spends the GitHub quota? GitHub CLI command attempts per actor in
@@ -613,6 +616,8 @@ def collect_alerts(alerts_dir):
             rec["clone_freshness"] = fields
         if p.name.startswith(MASTER_CI_ALERT_PREFIX):
             rec["master_ci"] = parse_master_ci_alert(p, now)
+        if p.name.startswith(NOT_STARTING_ALERT_PREFIX):
+            rec["actions_not_starting"] = parse_actions_not_starting(fields)
         out.append(rec)
     return out
 
@@ -639,6 +644,17 @@ def parse_master_ci_alert(path, now):
     return {"workflow": fields["workflow"], "sha": fields["sha"],
             "created_at": fields["created_at"], "url": fields["url"],
             "run_age_s": max(0, int((now - created).total_seconds()))}
+
+
+NOT_STARTING_ALERT_PREFIX = "scout-actions-not-starting-"
+
+
+def parse_actions_not_starting(fields):
+    """The scout's never-started record from the alert's first-line fields, or
+    None when one is missing: the file stays a generic standing alert."""
+    if not all(fields.get(k) for k in ("repo", "since", "annotation")):
+        return None
+    return {k: fields[k] for k in ("repo", "since", "annotation")}
 
 
 def collect_streaks(state_dir):
@@ -748,6 +764,10 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktree
         if red:
             w.append(f"master CI red: {red['workflow']} at {red['sha'][:9]} "
                      f"({fmt_age(red['run_age_s'])} old) {red['url']}")
+        stuck = a.get("actions_not_starting")
+        if stuck:
+            w.append(f"actions not starting on {stuck['repo']} since {stuck['since']}: "
+                     f"\"{stuck['annotation']}\"")
     for lk in worktrees["leaks"]:
         w.append(f"worktree outside the pool layout: [{lk['repo']}] {lk['path']} "
                  "(fleet-worktree-sweep --prune clears the clean ones)")
