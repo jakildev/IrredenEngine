@@ -1359,8 +1359,11 @@ std::vector<std::array<char, 40>> g_panSweepShotLabels;
 // cardinal quadrant (residual yaw 0..π/4, constant visible-face triplet) so a
 // Z-yaw-invariant probe (a vertical cylinder) has a stable silhouette and any
 // per-frame centroid wobble is jitter, not a face-triplet flip. Requires
-// --auto-screenshot.
+// --auto-screenshot. --yaw-sweep-lo / --yaw-sweep-hi narrow the range to scan a
+// half-open raster tie pose.
 bool g_yawSweep = false;
+float g_yawSweepLo = 0.05f;
+float g_yawSweepHi = 0.70f;
 std::vector<IRVideo::AutoScreenshotShot> g_yawSweepShots;
 std::vector<std::array<char, 40>> g_yawSweepShotLabels;
 
@@ -1613,6 +1616,8 @@ void registerCliArgs() {
     );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
+    args.number("--yaw-sweep-lo", "First --yaw-sweep yaw in radians", 0.05f);
+    args.number("--yaw-sweep-hi", "Last --yaw-sweep yaw in radians", 0.70f);
     args.enumValue(
         "--pivot-verify",
         "Rotation-pivot invariance sweep block "
@@ -1782,6 +1787,8 @@ void readCliArgs() {
     }
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
+    g_yawSweepLo = args.getFloat("--yaw-sweep-lo");
+    g_yawSweepHi = args.getFloat("--yaw-sweep-hi");
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
     g_pivotVerifySdf = args.getFlag("--pivot-verify-sdf");
     g_guiTest = args.getFlag("--gui-test");
@@ -1925,6 +1932,21 @@ int main(int argc, char **argv) {
     }
     if (g_glitchSubject.yawDegrees_ != 0.0f && g_glitchSubject.yawDegrees_ != 22.5f) {
         IR_LOG_ERROR("--glitch-subject-yaw labels require exactly 22.5 degrees (or 0)");
+        return 2;
+    }
+    if ((IREngine::args().wasProvided("--yaw-sweep-lo") ||
+         IREngine::args().wasProvided("--yaw-sweep-hi")) &&
+        !g_yawSweep) {
+        IR_LOG_ERROR("--yaw-sweep-lo / --yaw-sweep-hi require --yaw-sweep");
+        return 2;
+    }
+    if (!(g_yawSweepLo >= 0.0f && g_yawSweepLo < g_yawSweepHi &&
+          g_yawSweepHi < IRMath::kQuarterPi)) {
+        IR_LOG_ERROR(
+            "--yaw-sweep range {}->{} rad must satisfy 0 <= lo < hi < pi/4",
+            g_yawSweepLo,
+            g_yawSweepHi
+        );
         return 2;
     }
     if (IREngine::args().wasProvided("--framebuffer-size") &&
@@ -4331,14 +4353,13 @@ void initSystems() {
             );
         } else if (g_yawSweep) {
             // Fine yaw sweep at FIXED camera position (jitter diagnosis,
-            // rotation half). Steps yaw across [0.05, 0.70] rad — inside the first
-            // cardinal quadrant (< π/4 ≈ 0.785), so the per-axis visible-face
-            // triplet is constant and a vertical cylinder probe's silhouette is
-            // Z-yaw-invariant: smooth centroid = pass, oscillation = jitter.
+            // rotation half). Steps yaw across [lo, hi] rad (default [0.05, 0.70]) —
+            // inside the first cardinal quadrant (< π/4 ≈ 0.785), so the per-axis
+            // visible-face triplet is constant and a vertical cylinder probe's
+            // silhouette is Z-yaw-invariant: smooth centroid = pass, oscillation =
+            // jitter.
             const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
             const int n = IRMath::max(2, 24);
-            constexpr float kYawLo = 0.05f;
-            constexpr float kYawHi = 0.70f;
             emitSweepShots(
                 g_yawSweepShots,
                 g_yawSweepShotLabels,
@@ -4351,7 +4372,7 @@ void initSystems() {
                     IRVideo::AutoScreenshotShot shot{};
                     shot.zoom_ = sweepZoom;
                     shot.cameraIso_ = vec2(0.0f, 0.0f);
-                    shot.yawRadians_ = kYawLo + (kYawHi - kYawLo) * t;
+                    shot.yawRadians_ = g_yawSweepLo + (g_yawSweepHi - g_yawSweepLo) * t;
                     return shot;
                 }
             );
@@ -4360,8 +4381,8 @@ void initSystems() {
             IR_LOG_INFO(
                 "Yaw-sweep: {} shots, yaw {}->{} rad at cameraIso (0,0) zoom={}",
                 cfg.numShots_,
-                kYawLo,
-                kYawHi,
+                g_yawSweepLo,
+                g_yawSweepHi,
                 sweepZoom
             );
         } else if (IREngine::args().getEnum("--sdf-voxel-scene") != "off") {

@@ -36,6 +36,12 @@ constexpr KeyModifierMask kModifierShift = 1 << 0;
 constexpr KeyModifierMask kModifierControl = 1 << 1;
 /// Alt is held.
 constexpr KeyModifierMask kModifierAlt = 1 << 2;
+constexpr KeyModifierMask kModifierAll = kModifierShift | kModifierControl | kModifierAlt;
+
+constexpr bool
+modifiersMatch(KeyModifierMask required, KeyModifierMask blocked, KeyModifierMask held) {
+    return (held & required) == required && (held & blocked) == 0;
+}
 
 /// MIDI output event types (note-on / note-off) for MIDI-out commands.
 enum OutputTypes { kMidiOutNotePressed, kMidiOutNoteReleased };

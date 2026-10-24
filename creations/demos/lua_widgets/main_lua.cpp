@@ -89,12 +89,19 @@
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_apply_dropdown.hpp>
 #include <irreden/render/systems/system_widget_render_dropdown.hpp>
+#include <irreden/render/systems/system_widget_apply_checkbox.hpp>
+#include <irreden/render/systems/system_widget_apply_radio.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
 #include <irreden/render/systems/system_widget_render_number_field.hpp>
 #include <irreden/render/systems/system_widget_render_slider.hpp>
+#include <irreden/render/systems/system_widget_render_checkbox.hpp>
+#include <irreden/render/systems/system_widget_render_dropdown.hpp>
+#include <irreden/render/systems/system_widget_render_radio.hpp>
+#include <irreden/render/systems/system_widget_render_hints.hpp>
+#include <irreden/render/widget_hints.hpp>
 
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/viewport.hpp>
@@ -379,6 +386,105 @@ constexpr IRVideo::GuiInputEvent kWheelZoomControlEvents[] = {
     {2, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(800, 710), IRMath::vec2(0.0f, 1.0f)},
 };
 
+constexpr IRVideo::GuiInputEvent kHotkeyHintsHeldEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftAlt},
+};
+
+constexpr IRVideo::GuiInputEvent kHotkeyHintsReleasedEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftAlt},
+};
+
+constexpr IRVideo::GuiInputEvent kHotkeyCheckboxEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftAlt},
+    {2,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonC},
+    {3,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonC},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftAlt},
+};
+
+constexpr IRVideo::GuiInputEvent kHotkeySliderEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftAlt},
+    {2,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonS},
+    {3,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonS},
+    {4,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonLeftAlt},
+    {5,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonUp},
+    {6,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonUp},
+};
+
+constexpr IRVideo::GuiInputEvent kHotkeySliderResetEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonDelete},
+    {1,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonDelete},
+};
+
+constexpr IRVideo::GuiInputEvent kHotkeyPointerEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(100, 444)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(100, 444),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(100, 444),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+};
+
 enum GuiTestShotIndex {
     kHoverShot,
     kOnClickShot,
@@ -393,7 +499,13 @@ enum GuiTestShotIndex {
     kSliderUndoShot,
     kSliderRedoShot,
     kDropdownScrollShot,
-    kWheelZoomControlShot
+    kWheelZoomControlShot,
+    kHotkeyHintsHeldShot,
+    kHotkeyHintsReleasedShot,
+    kHotkeyCheckboxShot,
+    kHotkeySliderShot,
+    kHotkeySliderResetShot,
+    kHotkeyPointerShot
 };
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
@@ -437,6 +549,24 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_wheel_zoom_control"},
      kWheelZoomControlEvents,
      static_cast<int>(sizeof(kWheelZoomControlEvents) / sizeof(kWheelZoomControlEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hotkey_hints"},
+     kHotkeyHintsHeldEvents,
+     static_cast<int>(sizeof(kHotkeyHintsHeldEvents) / sizeof(kHotkeyHintsHeldEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hotkey_hints_released"},
+     kHotkeyHintsReleasedEvents,
+     static_cast<int>(sizeof(kHotkeyHintsReleasedEvents) / sizeof(kHotkeyHintsReleasedEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hotkey_checkbox"},
+     kHotkeyCheckboxEvents,
+     static_cast<int>(sizeof(kHotkeyCheckboxEvents) / sizeof(kHotkeyCheckboxEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hotkey_slider"},
+     kHotkeySliderEvents,
+     static_cast<int>(sizeof(kHotkeySliderEvents) / sizeof(kHotkeySliderEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hotkey_slider_reset"},
+     kHotkeySliderResetEvents,
+     static_cast<int>(sizeof(kHotkeySliderResetEvents) / sizeof(kHotkeySliderResetEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hotkey_pointer"},
+     kHotkeyPointerEvents,
+     static_cast<int>(sizeof(kHotkeyPointerEvents) / sizeof(kHotkeyPointerEvents[0]))},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 
@@ -454,6 +584,18 @@ const std::string &hoverLabelText() {
 
 const std::string &scrollFirstRowText() {
     return IREntity::getComponent<IRComponents::C_WidgetLabel>(g_scrollFirstRow).text_;
+}
+
+IREntity::EntityId hotkeyWidget(IRInput::KeyMouseButtons key) {
+    IREntity::EntityId result = IREntity::kNullEntity;
+    IREntity::forEachComponent<IRComponents::C_WidgetHotkey>(
+        [&result, key](IREntity::EntityId &id, IRComponents::C_WidgetHotkey &hotkey) {
+            if (hotkey.key_ == key) {
+                result = id;
+            }
+        }
+    );
+    return result;
 }
 
 bool pairedSliderPredicate(const void *, std::string &actual) {
@@ -741,6 +883,53 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             cameraZoom() != g_zoomBefore,
             fmt::format("before={} after={}", g_zoomBefore, cameraZoom())
         );
+    } else if (shotIndex == kHotkeyHintsHeldShot || shotIndex == kHotkeyHintsReleasedShot) {
+        const bool held = shotIndex == kHotkeyHintsHeldShot;
+        const std::size_t glyphs = IRPrefab::Widget::lastHintGlyphCommandCount();
+        const bool visible = IRPrefab::Widget::hintsVisible();
+        logGuiAssert(
+            shotIndex,
+            "HOTKEY_HINTS",
+            IREntity::kNullEntity,
+            held ? "hints_visible" : "hints_hidden",
+            glyphs == (held ? 3u : 0u) && visible == held,
+            fmt::format("glyphs={} visible={}", glyphs, visible)
+        );
+    } else if (shotIndex == kHotkeyCheckboxShot) {
+        const IREntity::EntityId checkbox = hotkeyWidget(IRInput::kKeyButtonC);
+        const bool checked = IRPrefab::Widget::checkboxState(checkbox);
+        const bool focused = IRPrefab::Widget::focusedWidget() == checkbox &&
+                             IRPrefab::Widget::focusVisible() &&
+                             IRPrefab::Widget::lastFocusRingWidget() == checkbox;
+        logGuiAssert(
+            shotIndex,
+            "HOTKEY_CHECKBOX",
+            checkbox,
+            "checkbox_focus",
+            checked && focused,
+            fmt::format("checked={} focused={}", checked, focused)
+        );
+    } else if (shotIndex == kHotkeySliderShot || shotIndex == kHotkeySliderResetShot) {
+        const IREntity::EntityId slider = hotkeyWidget(IRInput::kKeyButtonS);
+        const float value = IRPrefab::Widget::sliderValue(slider);
+        const float expected = shotIndex == kHotkeySliderShot ? 6.0f : 5.0f;
+        logGuiAssert(
+            shotIndex,
+            "HOTKEY_SLIDER",
+            slider,
+            shotIndex == kHotkeySliderShot ? "slider_nudged" : "slider_reset",
+            value == expected,
+            fmt::format("value={} expected={}", value, expected)
+        );
+    } else if (shotIndex == kHotkeyPointerShot) {
+        logGuiAssert(
+            shotIndex,
+            "POINTER_FOCUS",
+            hotkeyWidget(IRInput::kKeyButtonB),
+            "focus_ring_hidden",
+            IRPrefab::Widget::lastFocusRingWidget() == IREntity::kNullEntity,
+            fmt::format("ring={}", IRPrefab::Widget::lastFocusRingWidget())
+        );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
             IRPrefab::GuiTest::detail::firedThisShot(g_clickLatch, g_onClickButton);
@@ -941,9 +1130,11 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>(),
             IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_RADIO>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
             IRLuaWidgets::g_dispatchId,
-            IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
             IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
         }
     );
@@ -970,7 +1161,10 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_RADIO>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_HINTS>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>(),

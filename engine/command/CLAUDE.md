@@ -81,8 +81,8 @@ Owns three registries: button commands, MIDI note commands keyed by
 `(device, note)`, and MIDI CC commands keyed by `(device, cc)`. It does not
 poll — the input systems look up matching commands each tick and invoke them.
 
-- `setKeyboardCaptured(true)` suppresses keyboard-valued rows in the regular
-  button dispatcher, including modifier chords. Mouse rows, MIDI, and direct
+- `setKeyboardCaptured(true)` suppresses every keyboard row; `setCapturedButtons`
+  suppresses only named keys. Mouse rows, MIDI, and direct
   `fireUserCommand` / `fire` calls remain live. A bare pair admitted before
   capture may dispatch only its `RELEASED` row while captured, so its state is
   balanced; a pair pressed during capture is never admitted.
@@ -105,8 +105,8 @@ hand-maintained "reserved keys" table that drifts. Exposed on
 map, so it sees unnamed lambdas and RELEASED rows. Contract (full text on the
 declaration in `command/command_manager.hpp`):
 
-- Modifier-blind: a row with `requiredModifiers` / `blockedModifiers` still
-  counts as bound; a modifier-aware refinement is a new overload.
+- The three-argument query is modifier-blind; the held-mask overload reports
+  whether some exact type/trigger/button row accepts that held mask.
 - Data, not policy: `createCommand` still appends unconditionally; collision
   policy is the caller's.
 - MIDI note/CC bindings live in their own per-device maps and report false.

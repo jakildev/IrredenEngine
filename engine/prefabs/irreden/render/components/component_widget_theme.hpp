@@ -2,6 +2,7 @@
 #define COMPONENT_WIDGET_THEME_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/input/ir_input_types.hpp>
 
 namespace IRPrefab::Widget {
 
@@ -26,6 +27,11 @@ struct WidgetTheme {
     IRMath::Color borderPressed_ = IRMath::Color{220, 240, 255, 255};
     IRMath::Color borderFocused_ = IRMath::Color{240, 200, 120, 255};
     IRMath::Color borderDisabled_ = IRMath::Color{64, 68, 80, 255};
+    IRMath::Color focusRing_ = borderFocused_;
+    IRMath::Color hintBackground_ = IRMath::Color{52, 60, 80, 255};
+    IRMath::Color hintFocusedBackground_ = IRMath::Color{90, 100, 124, 255};
+    IRMath::Color hintText_ = IRMath::Color{240, 240, 240, 255};
+    IRInput::KeyModifierMask hintModifier_ = IRInput::kModifierAlt;
 
     // Text
     IRMath::Color textIdle_ = IRMath::Color{220, 224, 232, 255};

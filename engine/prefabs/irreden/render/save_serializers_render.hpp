@@ -23,7 +23,9 @@
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_triangles_only_set.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_hotkey.hpp>
 #include <irreden/render/components/component_widget_image.hpp>
+#include <irreden/render/widget_hotkeys.hpp>
 #include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_serialize_common.hpp>
 #include <irreden/world/save_migration.hpp>
@@ -781,6 +783,40 @@ template <> struct SaveSerialize<IRComponents::C_WidgetState> {
             );
         }
         return Res::success(IRComponents::C_WidgetState{});
+    }
+};
+
+template <> struct SaveSerialize<IRComponents::C_WidgetHotkey> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetHotkey &value) {
+        IR_ASSERT(
+            IRPrefab::Widget::validHotkey(value.key_, value.modifiers_),
+            "C_WidgetHotkey contains an invalid authored combination"
+        );
+        w.writeI32(static_cast<std::int32_t>(value.key_));
+        w.writeU8(value.modifiers_);
+        w.writeString(value.hint_);
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetHotkey> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_WidgetHotkey>;
+        std::int32_t rawKey = 0;
+        IRInput::KeyModifierMask modifiers = IRInput::kModifierNone;
+        std::string hint;
+        IR_SAVE_READ(rawKey, r.readI32());
+        IR_SAVE_READ(modifiers, r.readU8());
+        IR_SAVE_READ(hint, r.readString());
+        if (rawKey <= static_cast<std::int32_t>(IRInput::kNullButton) ||
+            rawKey >= static_cast<std::int32_t>(IRInput::kNumKeyMouseButtons)) {
+            return Res::error(IRAsset::BinaryIOError::UnknownTag, "C_WidgetHotkey key is invalid");
+        }
+        const auto key = static_cast<IRInput::KeyMouseButtons>(rawKey);
+        if (!IRPrefab::Widget::validHotkey(key, modifiers)) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetHotkey uses a mouse, focus, or invalid modifier value"
+            );
+        }
+        return Res::success(IRComponents::C_WidgetHotkey{key, modifiers, std::move(hint)});
     }
 };
 

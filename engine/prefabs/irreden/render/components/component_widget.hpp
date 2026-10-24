@@ -90,6 +90,17 @@ struct C_Widget {
 // keep this at default — the input system iterates `C_Widget +
 // C_HitBox2DGui + C_WidgetState` so the non-hitbox kinds are skipped.
 struct C_WidgetState {
+    enum class KeyAction : std::uint8_t {
+        NONE = 0,
+        ACTIVATE,
+        OPEN_OR_CLOSE,
+        MOVE_UP,
+        MOVE_DOWN,
+        MINIMUM,
+        MAXIMUM,
+        RESET,
+        SELECT,
+    };
     bool hovered_ = false;    // mouse currently inside hitbox
     bool pressed_ = false;    // left button held since press-on-hover
     bool focused_ = false;    // keyboard focus; text inputs are pointer-focus-only
@@ -105,6 +116,8 @@ struct C_WidgetState {
     bool sliderPressStarted_ = false;
     bool sliderReleased_ = false;
     bool sliderDoubleClick_ = false;
+    KeyAction keyAction_ = KeyAction::NONE;
+    bool keyShiftHeld_ = false;
 
     enum class SliderPressRegion : std::uint8_t {
         NONE = 0,

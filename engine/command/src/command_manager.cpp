@@ -139,7 +139,8 @@ void CommandManager::executeUserKeyboardCommands(const KeyMouseInputProbe &input
 
     m_modifierSpecificButtons.clear();
     for (auto &command : m_userCommands) {
-        if (m_keyboardCaptured && isKeyboardButton(command.getButton())) {
+        if ((m_keyboardCaptured && isKeyboardButton(command.getButton())) ||
+            isButtonCaptured(static_cast<IRInput::KeyMouseButtons>(command.getButton()))) {
             continue;
         }
         if (command.getRequiredModifiers() == kModifierNone) {
@@ -164,7 +165,8 @@ void CommandManager::executeUserKeyboardCommands(const KeyMouseInputProbe &input
             continue;
         }
         const int button = groupButton(group.key_);
-        if (m_keyboardCaptured && isKeyboardButton(button)) {
+        if ((m_keyboardCaptured && isKeyboardButton(button)) ||
+            isButtonCaptured(static_cast<IRInput::KeyMouseButtons>(button))) {
             continue;
         }
         if (!input.checkButton_(static_cast<IRInput::KeyMouseButtons>(button), PRESSED)) {
@@ -193,7 +195,8 @@ void CommandManager::executeUserKeyboardCommands(const KeyMouseInputProbe &input
         const bool isPaired =
             groupIndex != kNoBareGroup &&
             m_bareGroups[static_cast<std::size_t>(groupIndex)].edges_ == kGroupEdgeBoth;
-        if (m_keyboardCaptured && isKeyboardButton(command.getButton())) {
+        if ((m_keyboardCaptured && isKeyboardButton(command.getButton())) ||
+            isButtonCaptured(static_cast<IRInput::KeyMouseButtons>(command.getButton()))) {
             const bool isAdmittedRelease =
                 isPaired && command.getTriggerStatus() == RELEASED &&
                 containsValue(
@@ -263,6 +266,23 @@ bool CommandManager::isButtonBound(
     for (const CommandStruct<COMMAND_BUTTON> &command : m_userCommands) {
         if (command.getType() == inputType && command.getTriggerStatus() == triggerStatus &&
             command.getButton() == button) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CommandManager::isButtonBound(
+    InputTypes inputType, ButtonStatuses triggerStatus, int button, KeyModifierMask heldModifiers
+) const {
+    for (const CommandStruct<COMMAND_BUTTON> &command : m_userCommands) {
+        if (command.getType() == inputType && command.getTriggerStatus() == triggerStatus &&
+            command.getButton() == button &&
+            IRInput::modifiersMatch(
+                command.getRequiredModifiers(),
+                command.getBlockedModifiers(),
+                heldModifiers
+            )) {
             return true;
         }
     }

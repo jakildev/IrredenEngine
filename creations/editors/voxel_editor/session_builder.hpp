@@ -102,8 +102,8 @@ inline constexpr int kFramesPerClickStep = 1;
 // so a capture reads clearly. A face aim resolves down to zoom 1.
 inline constexpr float kSessionZoom = 4.0f;
 
-// Keep this above the live focus-candidate count so the capture session proves
-// that keyboard navigation wraps the complete widget cycle.
+// Keep this above the live candidate count so the command-owned Tab walk proves
+// that editor commands do not hand focus to a widget.
 inline constexpr int kTabWalkPresses = 80;
 using ::IRVoxelEditor::kSkeletonPanelPos;
 using ::IRVoxelEditor::kSkeletonPanelSize;
