@@ -253,6 +253,39 @@ class LightVerifyCompletionTest(unittest.TestCase):
         self.assertEqual(str(raised.exception.code), "render-compare errored: synthetic")
         self.assertEqual(self.runner.call_count, 1)
 
+    def test_compare_error_cancels_queued_comparisons(self):
+        release = threading.Event()
+        both_active = threading.Event()
+        started = []
+
+        def compare(image, reference, diff_out, thresholds, classify=False):
+            started.append(reference.stem)
+            if len(started) >= 2:
+                both_active.set()
+            release.wait(timeout=5)
+            return {"pass": True}
+
+        def comparator_error(futures):
+            both_active.wait(timeout=5)
+            raise SystemExit("render-compare errored: synthetic")
+
+        class ReleasingPool(lv.ThreadPoolExecutor):
+            # Holds both workers until shutdown, so the third row stays queued
+            # and only an explicit cancel can keep it from running.
+            def shutdown(self, wait=True, *, cancel_futures=False):
+                if cancel_futures:
+                    super().shutdown(wait=False, cancel_futures=True)
+                release.set()
+                super().shutdown(wait=wait, cancel_futures=cancel_futures)
+
+        with patch("os.cpu_count", return_value=2), \
+                patch.object(lv, "ThreadPoolExecutor", ReleasingPool), \
+                patch.object(lv, "as_completed", side_effect=comparator_error):
+            with self.assertRaises(SystemExit):
+                self.drive(baselines=True, compare_results=compare)
+        self.assertEqual(len(started), 2)
+        self.assertEqual(self.runner.call_count, 1)
+
 
 class LightVerifyChangedGateTest(unittest.TestCase):
     def setUp(self):
