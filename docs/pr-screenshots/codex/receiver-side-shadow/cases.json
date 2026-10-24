@@ -1,0 +1,215 @@
+[
+  {
+    "name": "x-neg-0",
+    "face": "x-neg",
+    "yaw": 0.3,
+    "sun": [
+      -0.8,
+      0,
+      -0.6
+    ],
+    "offset": [
+      -8,
+      0,
+      0
+    ],
+    "surface": 1
+  },
+  {
+    "name": "x-neg-1",
+    "face": "x-neg",
+    "yaw": 5.0123889803846895,
+    "sun": [
+      -0.8,
+      0,
+      -0.6
+    ],
+    "offset": [
+      -8,
+      0,
+      0
+    ],
+    "surface": 1
+  },
+  {
+    "name": "x-neg-sampled",
+    "face": "x-neg",
+    "yaw": 0.3,
+    "sun": [
+      -0.8,
+      0,
+      -0.6
+    ],
+    "offset": [
+      -8,
+      0,
+      0
+    ],
+    "surface": 0
+  },
+  {
+    "name": "x-pos-0",
+    "face": "x-pos",
+    "yaw": 1.8707963267948966,
+    "sun": [
+      0.8,
+      0,
+      -0.6
+    ],
+    "offset": [
+      8,
+      0,
+      0
+    ],
+    "surface": 1
+  },
+  {
+    "name": "x-pos-1",
+    "face": "x-pos",
+    "yaw": 3.441592653589793,
+    "sun": [
+      0.8,
+      0,
+      -0.6
+    ],
+    "offset": [
+      8,
+      0,
+      0
+    ],
+    "surface": 1
+  },
+  {
+    "name": "x-pos-sampled",
+    "face": "x-pos",
+    "yaw": 1.8707963267948966,
+    "sun": [
+      0.8,
+      0,
+      -0.6
+    ],
+    "offset": [
+      8,
+      0,
+      0
+    ],
+    "surface": 0
+  },
+  {
+    "name": "y-neg-0",
+    "face": "y-neg",
+    "yaw": 0.3,
+    "sun": [
+      0,
+      -0.8,
+      -0.6
+    ],
+    "offset": [
+      0,
+      0,
+      0
+    ],
+    "surface": 1
+  },
+  {
+    "name": "y-neg-1",
+    "face": "y-neg",
+    "yaw": 1.8707963267948966,
+    "sun": [
+      0,
+      -0.8,
+      -0.6
+    ],
+    "offset": [
+      0,
+      0,
+      0
+    ],
+    "surface": 1
+  },
+  {
+    "name": "y-neg-sampled",
+    "face": "y-neg",
+    "yaw": 0.3,
+    "sun": [
+      0,
+      -0.8,
+      -0.6
+    ],
+    "offset": [
+      0,
+      0,
+      0
+    ],
+    "surface": 0
+  },
+  {
+    "name": "y-pos-0",
+    "face": "y-pos",
+    "yaw": 3.441592653589793,
+    "sun": [
+      0,
+      0.8,
+      -0.6
+    ],
+    "offset": [
+      0,
+      0,
+      0
+    ],
+    "surface": 1
+  },
+  {
+    "name": "y-pos-1",
+    "face": "y-pos",
+    "yaw": 5.0123889803846895,
+    "sun": [
+      0,
+      0.8,
+      -0.6
+    ],
+    "offset": [
+      0,
+      0,
+      0
+    ],
+    "surface": 1
+  },
+  {
+    "name": "y-pos-sampled",
+    "face": "y-pos",
+    "yaw": 3.441592653589793,
+    "sun": [
+      0,
+      0.8,
+      -0.6
+    ],
+    "offset": [
+      0,
+      0,
+      0
+    ],
+    "surface": 0
+  },
+  {
+    "name": "live-cardinal-crossing",
+    "face": "top",
+    "yaw": 0,
+    "sun": [
+      0.6,
+      0,
+      -0.8
+    ],
+    "offset": [
+      6,
+      0,
+      -8
+    ],
+    "surface": 1,
+    "sweep": [
+      -0.03,
+      0.03,
+      7
+    ]
+  }
+]

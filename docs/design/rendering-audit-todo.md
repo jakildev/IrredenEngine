@@ -105,8 +105,8 @@ now shares the exact owner origin between rigid casting and source-face receivin
 and encodes continuous composite depth after density scaling. All 40 continuous
 native controls pass, including both fractional failures, four quadrants and
 half-cell translation sweeps; the two sampled-route failures are unchanged.
-Revoxelized occupancy retains its cell-aligned convention. Side-receiver and live
-transition coverage, then fog adoption and sampled-route cost gates, remain next;
+Revoxelized occupancy retains its cell-aligned convention. Broader transition
+coverage, then fog adoption and sampled-route cost gates, remain next;
 raw rectangular debug presentation is not a continuous geometry guarantee.
 The same origin correction changes 14 curved-receiver reference frames: all
 52,408 changed pixels are receiver shading, with no coverage or outside-receiver
@@ -114,6 +114,23 @@ changes; a deliberately rounded caster restores the old receiver colors. The
 14 references were refreshed after this attribution (16/16 offline comparisons,
 zero max delta). The five previously recorded mode-switch/detach/impulse reference
 mismatches remain; the full native suite was not rerun after the refresh.
+
+The [signed-side and live-crossing controls](../pr-screenshots/codex/receiver-side-shadow/README.md)
+qualify eight continuous signed X/Y receiver views and seven frames in one live
+cardinal crossing. All 15 pass the independent projected-corner oracle, outside
+the declared receiver-border, shadow-edge and caster-occlusion exclusions. Four
+sampled controls have valid coverage but still fail missing/excess shadow pixels;
+this is additional qualification of the continuous route, not a sampled fix.
+Rigid bounds picking now shares compositing's scaled origin encoding and floors
+to hover iso bins. It remains an anchor approximation, not surface picking.
+
+The next implementation slice is fog-compatible continuous receiving, retaining
+the opt-in until representative cost gates pass. Then qualify entity mode changes,
+other cardinal crossings, curved/concave side receivers and native Windows/OpenGL
+against independent geometry. Attribute the five existing reference mismatches
+before refreshing them. Global face-record pool overflow and Release million-entity
+profiling remain separate work; these small untimed scenes establish neither
+complete visual correctness nor a throughput target.
 
 The surface-lighting driver now supports explicit surface/prepass four-arm
 comparisons with exact manifest and draw-route checks. Keep prepass counters in
