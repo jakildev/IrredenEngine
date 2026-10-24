@@ -168,6 +168,7 @@ add_executable(IrredenEngineTest
   render/widget_hit_region_test.cpp
   render/widget_image_test.cpp
   render/widget_tab_focus_test.cpp
+  render/widget_keyboard_test.cpp
   render/gui_layout_audit_test.cpp
   script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp
@@ -243,6 +244,7 @@ add_executable(IrredenEngineTest
   utility/contained_path_test.cpp
   utility/ir_utility_test.cpp
   update/collision_response_test.cpp
+  update/rhythmic_launch_rest_test.cpp
   video/auto_screenshot_helpers_test.cpp
   video/auto_record_pacing_test.cpp
   video/audio_capture_rate_test.cpp

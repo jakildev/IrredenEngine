@@ -186,6 +186,16 @@ for i = 1, 20 do
 end
 IRTest.setDropdown(IRGui.makeDropdown(510, 450, 120, 20, dropdownItems))
 
+local hotkeyButton = IRGui.makeButton(20, 430, 180, 28, "HOTKEY BUTTON")
+local hotkeyCheckbox = IRGui.makeCheckbox(20, 464, 180, 28, "HOTKEY CHECK", false)
+local hotkeySlider = IRGui.makeSlider(20, 498, 180, 28, "HOTKEY SLIDER", 0, 10, 5, IRText.Size.SMALL, {
+    default = 5,
+    step = 1,
+})
+IRGui.setHotkey(hotkeyButton, { key = IRInput.Key.B, mods = IRInput.Modifier.ALT, hint = "B" })
+IRGui.setHotkey(hotkeyCheckbox, { key = IRInput.Key.C, mods = IRInput.Modifier.ALT, hint = "C" })
+IRGui.setHotkey(hotkeySlider, { key = IRInput.Key.S, mods = IRInput.Modifier.ALT, hint = "S" })
+
 -- Hand-off fixture (--hand-off-fixture button|auto; absent, nothing below runs).
 -- HAND OFF hands this process to a GUI-test take of the same demo and resumes
 -- when it exits. The markers print the render frame and engine tick: equal

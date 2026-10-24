@@ -1,0 +1,155 @@
+diff --git a/engine/prefabs/irreden/render/components/component_canvas_local_rotation.hpp b/engine/prefabs/irreden/render/components/component_canvas_local_rotation.hpp
+index 26553ebda..ab36f0178 100644
+--- a/engine/prefabs/irreden/render/components/component_canvas_local_rotation.hpp
++++ b/engine/prefabs/irreden/render/components/component_canvas_local_rotation.hpp
+@@ -68,8 +68,8 @@ struct C_CanvasLocalRotation {
+                rotation_.w != 0.0f;
+     }
+ 
+-    // Rigid source faces preserve the authored origin; resampled occupancy
+-    // retains its cell-aligned world origin.
++    // Rigid geometry (including raw debug display) preserves the authored origin;
++    // resampled occupancy retains its cell-aligned world origin.
+     IRMath::vec3 worldGeometryOrigin() const noexcept {
+         return reVoxelize_ ? worldCellOffset_ : ownerWorldTranslation_;
+     }
+diff --git a/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp b/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
+index bba6f4026..6afb7da80 100644
+--- a/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
++++ b/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
+@@ -341,7 +341,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+                 IRRender::pickIsoDepthForWorldPosition(
+                     pose->translation_,
+                     visualYaw_,
+-                    effectiveSub_
++                    effectiveSub_,
++                    canvasTextures->renderedSampleLayout_
+                 )
+             );
+         }
+@@ -396,6 +397,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+                 // PLACEMENT above tracks the world.
+                 compositeDistanceOffset = 0;
+             } else {
++                // Without a raster density, source geometry still retains its origin;
++                // its depth quantization is one world iso unit.
+                 compositeDistanceOffset = IRRender::canvasWorldDepthOffset(
+                     pose->translation_,
+                     visualYaw_,
+diff --git a/engine/render/include/irreden/render/ir_render_types.hpp b/engine/render/include/irreden/render/ir_render_types.hpp
+index 072f50141..fc1f02e99 100644
+--- a/engine/render/include/irreden/render/ir_render_types.hpp
++++ b/engine/render/include/irreden/render/ir_render_types.hpp
+@@ -483,11 +483,8 @@ inline float compositeRawDepthFromNormalized(float normalizedDepth) {
+                );
+ }
+ 
+-inline int pickIsoDepthForWorldPosition(vec3 worldPosition, float visualYaw, int effectiveSub) {
+-    return IRMath::pos3DtoDistanceYawed(vec3(IRMath::roundVec3HalfUp(worldPosition)), visualYaw) *
+-           effectiveSub;
+-}
+-
++/// depthUnits is framebuffer depth units per world iso unit.
++/// Only SOURCE_FACES preserves fractional placement before depth quantization.
+ inline int canvasWorldDepthOffset(
+     vec3 worldPosition, float visualYaw, int depthUnits, TrixelSampleLayout layout
+ ) {
+@@ -502,6 +499,19 @@ inline int canvasWorldDepthOffset(
+            depthUnits;
+ }
+ 
++/// Hitbox anchor depth in the same integer iso bins as framebuffer hover readback.
++/// Bounds picking remains an anchor approximation, not a per-fragment surface query.
++inline int pickIsoDepthForWorldPosition(
++    vec3 worldPosition,
++    float visualYaw,
++    int effectiveSub,
++    TrixelSampleLayout layout = TrixelSampleLayout::RECTANGULAR
++) {
++    const int encoded =
++        canvasWorldDepthOffset(worldPosition, visualYaw, effectiveSub * kDepthEncodeShift, layout);
++    return static_cast<int>(IRMath::floorDiv(encoded, kDepthEncodeShift));
++}
++
+ /// Partition @p rawDist (a @ref CompositeDepthSample::rawDist_) into tier / iso /
+ /// face / flip. Pure arithmetic over the constants above — no GPU access.
+ inline DecodedCompositeDepth decodeCompositeDepth(float rawDist) {
+diff --git a/test/render/detached_world_depth_test.cpp b/test/render/detached_world_depth_test.cpp
+index d34464463..fdb00c516 100644
+--- a/test/render/detached_world_depth_test.cpp
++++ b/test/render/detached_world_depth_test.cpp
+@@ -254,6 +254,15 @@ TEST(DetachedWorldDepthTest, RigidOriginQuantizesAtFramebufferPrecisionAcrossYaw
+                         IRRender::TrixelSampleLayout::SOURCE_FACES
+                     );
+                     EXPECT_EQ(actual, expected);
++                    EXPECT_EQ(
++                        IRRender::pickIsoDepthForWorldPosition(
++                            origin,
++                            yaw,
++                            subdivisions,
++                            IRRender::TrixelSampleLayout::SOURCE_FACES
++                        ),
++                        IRRender::decodeCompositeDepth(static_cast<float>(expected)).iso_
++                    );
+                     const int coarse = IRMath::pos3DtoDistanceYawed(origin, yaw) * units;
+                     coarseMismatches += coarse != actual;
+                     for (const auto layout :
+@@ -266,6 +275,18 @@ TEST(DetachedWorldDepthTest, RigidOriginQuantizesAtFramebufferPrecisionAcrossYaw
+                                 yaw
+                             ) * units
+                         );
++                        EXPECT_EQ(
++                            IRRender::pickIsoDepthForWorldPosition(
++                                origin,
++                                yaw,
++                                subdivisions,
++                                layout
++                            ),
++                            IRMath::pos3DtoDistanceYawed(
++                                vec3(IRMath::roundVec3HalfUp(origin)),
++                                yaw
++                            ) * subdivisions
++                        );
+                     }
+                 }
+             }
+@@ -273,3 +294,39 @@ TEST(DetachedWorldDepthTest, RigidOriginQuantizesAtFramebufferPrecisionAcrossYaw
+     }
+     EXPECT_GT(coarseMismatches, 50);
+ }
++
++TEST(DetachedWorldDepthTest, FractionalPickAnchorsSeparateWithinOneOccupancyCell) {
++    const vec3 nearOrigin(0.0f, 0.0f, -0.25f);
++    const vec3 farOrigin(0.0f, 0.0f, 0.25f);
++    EXPECT_EQ(
++        IRRender::pickIsoDepthForWorldPosition(nearOrigin, 0.0f, 4),
++        IRRender::pickIsoDepthForWorldPosition(farOrigin, 0.0f, 4)
++    );
++    EXPECT_EQ(
++        IRRender::pickIsoDepthForWorldPosition(
++            nearOrigin,
++            0.0f,
++            4,
++            IRRender::TrixelSampleLayout::SOURCE_FACES
++        ),
++        -1
++    );
++    EXPECT_EQ(
++        IRRender::pickIsoDepthForWorldPosition(
++            farOrigin,
++            0.0f,
++            4,
++            IRRender::TrixelSampleLayout::SOURCE_FACES
++        ),
++        1
++    );
++    EXPECT_EQ(
++        IRRender::pickIsoDepthForWorldPosition(
++            vec3(0.0f, 0.0f, -0.125f),
++            0.0f,
++            1,
++            IRRender::TrixelSampleLayout::SOURCE_FACES
++        ),
++        -1
++    );
++}

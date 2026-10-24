@@ -273,6 +273,27 @@ TEST_F(WidgetSliderGestureTest, ResetGameplayClearsSystemOwnedWidgetReferences) 
     EXPECT_EQ(IRPrefab::Widget::takeFocusRequest(), IREntity::kNullEntity);
 }
 
+TEST_F(WidgetSliderGestureTest, SingleValueSliderUsesAValidDefaultStep) {
+    const IREntity::EntityId sliderId = IRPrefab::Widget::makeSlider(
+        IRMath::ivec2(0),
+        IRMath::ivec2(100, 30),
+        "VALUE",
+        0.0f,
+        0.0f,
+        0.0f
+    );
+    const auto &slider = IREntity::getComponent<C_WidgetSlider>(sliderId);
+
+    EXPECT_FLOAT_EQ(slider.step_, 1.0f);
+    const auto thumb = IRPrefab::Widget::sliderThumbRect(
+        IREntity::getComponent<C_Widget>(sliderId),
+        slider,
+        IREntity::getComponent<C_GuiPosition>(sliderId),
+        IRPrefab::Widget::defaultTheme()
+    );
+    EXPECT_EQ(thumb.pos_.x, 0);
+}
+
 #ifndef IR_RELEASE
 TEST_F(WidgetSliderGestureTest, CppBuilderRejectsAnInvalidStepBeforeCreation) {
     const std::size_t before = entityManager_.getLiveEntityCount();

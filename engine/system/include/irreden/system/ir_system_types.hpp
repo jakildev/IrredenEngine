@@ -311,6 +311,8 @@ enum SystemName {
     GIZMO_HOVER,
     GIZMO_DRAG,
 
+    WIDGET_RENDER_HINTS,
+
     // Reserved for tests of the registerSystem<> member-on-System<N>
     // helper. Do not use from a creation or prefab system.
     TEST_REGISTER_SYSTEM_A,

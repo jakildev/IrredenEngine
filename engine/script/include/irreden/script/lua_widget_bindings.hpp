@@ -220,6 +220,7 @@ inline std::string containedImagePath(
 inline constexpr std::array<std::string_view, 4> kHitRegionOptionKeys{
     "zOrder", "onHover", "onUnhover", "onClick"
 };
+inline constexpr std::array<std::string_view, 3> kHotkeyOptionKeys{"key", "mods", "hint"};
 
 // @p imageBase confines every `makeImage` / `setImagePath` path; it is
 // canonicalized once here, and a base that cannot be resolved throws.
@@ -611,6 +612,67 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
         requireWidget<IRComponents::C_Widget>(id, "IRGui.focus", "live widget");
         IRPrefab::Widget::focus(static_cast<IREntity::EntityId>(id));
     };
+    gui["setHotkey"] = [](lua_Integer id, const sol::table &options) {
+        constexpr const char *kCaller = "IRGui.setHotkey";
+        requireWidget<IRComponents::C_Widget>(id, kCaller, "live widget");
+        for (const auto &[key, ignored] : options) {
+            const bool known = key.get_type() == sol::type::string && std::find(
+                                                                          kHotkeyOptionKeys.begin(),
+                                                                          kHotkeyOptionKeys.end(),
+                                                                          key.as<std::string_view>()
+                                                                      ) != kHotkeyOptionKeys.end();
+            if (!known) {
+                throw sol::error{"IRGui.setHotkey: unknown option; valid keys are key, mods, hint"};
+            }
+        }
+        const sol::object keyValue = options["key"];
+        if (!keyValue.valid() || keyValue.get_type() != sol::type::number) {
+            throw sol::error{"IRGui.setHotkey: key must be an IRInput.Key value"};
+        }
+        const lua_Integer rawKey = keyValue.as<lua_Integer>();
+        if (rawKey <= static_cast<lua_Integer>(IRInput::kNullButton) ||
+            rawKey >= static_cast<lua_Integer>(IRInput::kNumKeyMouseButtons)) {
+            throw sol::error{"IRGui.setHotkey: key is outside the real keyboard range"};
+        }
+        const auto key = static_cast<IRInput::KeyMouseButtons>(rawKey);
+        IRInput::KeyModifierMask modifiers = IRInput::kModifierNone;
+        const sol::object modsValue = options["mods"];
+        if (modsValue.valid() && modsValue.get_type() != sol::type::lua_nil) {
+            if (modsValue.get_type() != sol::type::number) {
+                throw sol::error{"IRGui.setHotkey: mods must be an IRInput.Modifier mask"};
+            }
+            const lua_Integer rawModifiers = modsValue.as<lua_Integer>();
+            if (rawModifiers < 0 ||
+                (rawModifiers & ~static_cast<lua_Integer>(IRInput::kModifierAll)) != 0) {
+                throw sol::error{"IRGui.setHotkey: mods contains unknown modifier bits"};
+            }
+            modifiers = static_cast<IRInput::KeyModifierMask>(rawModifiers);
+        }
+        std::string hint;
+        const sol::object hintValue = options["hint"];
+        if (hintValue.valid() && hintValue.get_type() != sol::type::lua_nil) {
+            if (hintValue.get_type() != sol::type::string) {
+                throw sol::error{"IRGui.setHotkey: hint must be a string"};
+            }
+            hint = hintValue.as<std::string>();
+        }
+        if (!IRPrefab::Widget::validHotkey(key, modifiers)) {
+            throw sol::error{"IRGui.setHotkey: mouse and focus keys cannot be widget hotkeys"};
+        }
+        if (!IRPrefab::Widget::setHotkey(
+                static_cast<IREntity::EntityId>(id),
+                key,
+                modifiers,
+                std::move(hint)
+            )) {
+            throw sol::error{"IRGui.setHotkey: id must name an interactive widget"};
+        }
+    };
+    gui["clearHotkey"] = [](lua_Integer id) {
+        requireWidget<IRComponents::C_Widget>(id, "IRGui.clearHotkey", "live widget");
+        IRPrefab::Widget::clearHotkey(static_cast<IREntity::EntityId>(id));
+    };
+    gui["hintsVisible"] = []() { return IRPrefab::Widget::hintsVisible(); };
 
     gui["makeNumberField"] = [](int x,
                                 int y,

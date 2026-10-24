@@ -3311,8 +3311,10 @@ bool evaluateEditorInputCheck(const void *context, std::string &actual) {
     }
 
     actual = "walkPresses=" + std::to_string(kTabWalkPresses) +
-             " tabCandidates=" + std::to_string(tabCandidates);
-    return kTabWalkPresses > tabCandidates;
+             " tabCandidates=" + std::to_string(tabCandidates) +
+             " focusedWidget=" + std::to_string(IRPrefab::Widget::focusedWidget());
+    return kTabWalkPresses > tabCandidates &&
+           IRPrefab::Widget::focusedWidget() == IREntity::kNullEntity;
 }
 
 // Reads one PartsListCheck against the PARTS list widget and the entity scene.

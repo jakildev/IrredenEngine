@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_gui_hover_state.hpp>
 #include <irreden/render/components/component_widget_focus_request.hpp>
+#include <irreden/render/components/component_widget_input_frame.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/gui_rect.hpp>
@@ -68,7 +69,8 @@ inline IRPrefab::GuiRect sliderThumbRect(
     const int labelHeight = IRPrefab::WidgetText::sliderLabelHeight(slider);
     const float range = slider.maxValue_ - slider.minValue_;
     const float fraction =
-        IRMath::clamp((slider.currentValue_ - slider.minValue_) / range, 0.0f, 1.0f);
+        range > 0.0f ? IRMath::clamp((slider.currentValue_ - slider.minValue_) / range, 0.0f, 1.0f)
+                     : 0.0f;
     const int thumbWidth = theme.sliderThumbWidth_;
     return {
         IRMath::ivec2(
@@ -209,7 +211,8 @@ inline IREntity::EntityId makeSlider(
     sliderData.currentValue_ = IRMath::clamp(initialValue, minValue, maxValue);
     sliderData.defaultValue_ =
         IRMath::clamp(options.defaultValue_.value_or(sliderData.currentValue_), minValue, maxValue);
-    sliderData.step_ = options.step_.value_or((maxValue - minValue) / 100.0f);
+    const float range = maxValue - minValue;
+    sliderData.step_ = options.step_.value_or(range > 0.0f ? range / 100.0f : 1.0f);
     IR_ASSERT(
         IRMath::isFinite(sliderData.step_) && sliderData.step_ > 0.0f,
         "C_WidgetSlider step must be finite and above zero"
@@ -304,6 +307,25 @@ inline IREntity::EntityId takeFocusRequest() {
         return IREntity::kNullEntity;
     }
     return std::exchange(request->widget_, IREntity::kNullEntity);
+}
+
+inline IREntity::EntityId focusedWidget() {
+    const auto *frame = IREntity::singletonOrNull<IRComponents::C_WidgetInputFrame>();
+    if (frame == nullptr || !IREntity::entityExists(frame->focusedWidget_)) {
+        return IREntity::kNullEntity;
+    }
+    return frame->focusedWidget_;
+}
+
+inline bool focusVisible() {
+    const auto *frame = IREntity::singletonOrNull<IRComponents::C_WidgetInputFrame>();
+    return frame != nullptr && frame->focusVisible_ &&
+           IREntity::entityExists(frame->focusedWidget_);
+}
+
+inline bool hintsVisible() {
+    const auto *frame = IREntity::singletonOrNull<IRComponents::C_WidgetInputFrame>();
+    return frame != nullptr && frame->hintsVisible_;
 }
 
 // Hovered-widget export. Create one C_GuiHoverState singleton per

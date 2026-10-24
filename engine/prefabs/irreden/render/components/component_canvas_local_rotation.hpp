@@ -68,8 +68,8 @@ struct C_CanvasLocalRotation {
                rotation_.w != 0.0f;
     }
 
-    // Rigid source faces preserve the authored origin; resampled occupancy
-    // retains its cell-aligned world origin.
+    // Rigid geometry (including raw debug display) preserves the authored origin;
+    // resampled occupancy retains its cell-aligned world origin.
     IRMath::vec3 worldGeometryOrigin() const noexcept {
         return reVoxelize_ ? worldCellOffset_ : ownerWorldTranslation_;
     }

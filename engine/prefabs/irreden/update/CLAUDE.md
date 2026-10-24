@@ -80,7 +80,17 @@ in the `UPDATE` pipeline unless explicitly noted.
   `C_WorldTransform` displacement since the system's previous tick (stored on
   `C_ContactEvent` by its `endTick`) relative to the other box, so a fast body
   never tunnels through a thin one, under any parent transform; a collider's
-  first tick is not swept.
+  first tick is not swept. A collider built inside another is born touching
+  (`C_ContactEvent{true}`, Lua `C_ContactEvent.new(true)`): its first overlap
+  is a stay, never an enter, so nothing keyed on `entered_` fires at the build.
+- `RHYTHMIC_LAUNCH` — launches a grounded `C_RhythmicLaunch` body by its
+  impulse every period and lands it on the platform its contact names. A
+  grounded body rides the platform it touches, adopting one it was built on
+  (grounded from the start, born touching) without a landing, so gravity
+  never carries a rest-built block through its platform. The platform under
+  such a body is born locked too (`C_SpringPlatform`'s trailing
+  `startLocked`): its built pose is its locked pose, so it neither catches
+  nor springs at the build (`test/update/rhythmic_launch_rest_test.cpp`).
 - `DISPATCH_LUA_OVERLAP` (#1817) — turns `C_OverlapContactBatch` into
   Lua `IRCollision.onOverlapEnter/onOverlapExit` callbacks. Owns the
   pair-level enter/exit state machine (prev/cur pair maps, reused across
