@@ -412,7 +412,7 @@ constexpr Glyph kGlyph_Z = makeGlyph(
 // --- Digits 0-9 ---
 
 constexpr Glyph kGlyph_0 = makeGlyph(
-    "..XX.."
+    ".XXXX."
     ".XXXX."
     "XX..XX"
     "XX..XX"
@@ -422,7 +422,7 @@ constexpr Glyph kGlyph_0 = makeGlyph(
     "XX..XX"
     "XX..XX"
     ".XXXX."
-    "..XX.."
+    ".XXXX."
 );
 
 constexpr Glyph kGlyph_1 = makeGlyph(
