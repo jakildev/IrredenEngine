@@ -985,7 +985,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         const VoxelSunFaceFrame params{
             vec4(
                 rotation.isDetached()
-                    ? rotation.worldCellOffset_ +
+                    ? rotation.worldGeometryOrigin() +
                           IRMath::rotateVectorByQuat(rasterCellOffset, cameraRotation)
                     : vec3(0.0f),
                 perAxisRaster ? 1.0f : 0.0f

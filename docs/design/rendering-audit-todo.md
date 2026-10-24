@@ -100,9 +100,20 @@ sampled receiving still misses and adds coverage. Fractional detached caster
 placement exposes a separate mismatch: `CanvasPose::write` rounds
 `worldCellOffset_`, consumed by `bakeVoxelFaces`, while presentation retains
 the owner's fractional translation. The oracle deliberately retains the
-authored center. Prioritize reconciling rigid display, depth, casting and
-receiving placement before fog adoption; do not hide the mismatch by snapping
-the expectation or changing revoxelized occupancy conventions globally.
+authored center. The [rigid-origin fix](../pr-screenshots/codex/rigid-canvas-world-origin/README.md)
+now shares the exact owner origin between rigid casting and source-face receiving,
+and encodes continuous composite depth after density scaling. All 40 continuous
+native controls pass, including both fractional failures, four quadrants and
+half-cell translation sweeps; the two sampled-route failures are unchanged.
+Revoxelized occupancy retains its cell-aligned convention. Side-receiver and live
+transition coverage, then fog adoption and sampled-route cost gates, remain next;
+raw rectangular debug presentation is not a continuous geometry guarantee.
+The same origin correction changes 14 curved-receiver reference frames: all
+52,408 changed pixels are receiver shading, with no coverage or outside-receiver
+changes; a deliberately rounded caster restores the old receiver colors. The
+14 references were refreshed after this attribution (16/16 offline comparisons,
+zero max delta). The five previously recorded mode-switch/detach/impulse reference
+mismatches remain; the full native suite was not rerun after the refresh.
 
 The surface-lighting driver now supports explicit surface/prepass four-arm
 comparisons with exact manifest and draw-route checks. Keep prepass counters in

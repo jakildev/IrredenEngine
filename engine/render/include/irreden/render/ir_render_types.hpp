@@ -488,6 +488,20 @@ inline int pickIsoDepthForWorldPosition(vec3 worldPosition, float visualYaw, int
            effectiveSub;
 }
 
+inline int canvasWorldDepthOffset(
+    vec3 worldPosition, float visualYaw, int depthUnits, TrixelSampleLayout layout
+) {
+    if (layout == TrixelSampleLayout::SOURCE_FACES) {
+        // Quantize continuous geometry only after converting to framebuffer depth units.
+        return IRMath::pos3DtoDistanceYawed(
+            worldPosition * static_cast<float>(depthUnits),
+            visualYaw
+        );
+    }
+    return IRMath::pos3DtoDistanceYawed(vec3(IRMath::roundVec3HalfUp(worldPosition)), visualYaw) *
+           depthUnits;
+}
+
 /// Partition @p rawDist (a @ref CompositeDepthSample::rawDist_) into tier / iso /
 /// face / flip. Pure arithmetic over the constants above — no GPU access.
 inline DecodedCompositeDepth decodeCompositeDepth(float rawDist) {
