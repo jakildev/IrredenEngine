@@ -28,11 +28,7 @@ FetchContent_Declare(fmt
 )
 FetchContent_MakeAvailable(fmt)
 
-IR_copyDLL(
-    IrredenEngineProfile
-    libfmtd
-    ${fmt_BINARY_DIR}/bin
-)
+IR_copyDLL(IrredenEngineProfile fmt)
 
 # spdlog. Bumped to v1.15.3 as a required pair with fmt 11.2.0 above: spdlog
 # 1.12 expects the fmt-10-era basic_format_string and fails to compile against
@@ -64,11 +60,7 @@ target_include_directories(IrredenEngineProfile PRIVATE
     ${spdlog_SOURCE_DIR}/include
 )
 
-IR_copyDLL(
-    IrredenEngineProfile
-    libspdlogd
-    ${spdlog_BINARY_DIR}
-)
+IR_copyDLL(IrredenEngineProfile spdlog)
 # easy_profiler
 
 if(IR_isDarwin)
@@ -111,11 +103,7 @@ target_include_directories(
     ${easy_profiler_SOURCE_DIR}/easy_profiler_core/include
 )
 
-IR_copyDLL(
-    IrredenEngineProfile
-    libeasy_profilerd
-    ${easy_profiler_BINARY_DIR}/bin
-)
+IR_copyDLL(IrredenEngineProfile easy_profiler)
 
 if(IRREDEN_PROFILE_ENABLE_EASY_PROFILER_GUI)
     if(TARGET profiler_gui)

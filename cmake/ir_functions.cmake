@@ -282,20 +282,22 @@ function(
     target_include_directories(${target} PRIVATE "${_output_dir}")
 endfunction()
 
+# IR_copyDLL — POST_BUILD-copy a shared dependency target's DLL next to
+# <target>'s own output (inert off-Windows). The dependency's file name
+# comes from the target, so a configuration postfix (libfmtd.dll in Debug,
+# libfmt.dll in Release) never has to be spelled here.
 function(
     IR_copyDLL
     target
-    dllName
-    sourceDir
+    dependencyTarget
 )
     if(IR_isWindows)
-        cmake_path(APPEND tempFullSourcePath ${sourceDir} ${dllName}.dll)
         add_custom_command(
             TARGET ${target}
             POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy
-                ${tempFullSourcePath}
-                "$<TARGET_FILE_DIR:${target}>/${dllName}.dll"
+                "$<TARGET_FILE:${dependencyTarget}>"
+                "$<TARGET_FILE_DIR:${target}>/$<TARGET_FILE_NAME:${dependencyTarget}>"
         )
     endif()
 endfunction()

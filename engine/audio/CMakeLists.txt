@@ -53,11 +53,7 @@ target_include_directories(IrredenEngineAudio PRIVATE
     ${rtaudio_SOURCE_DIR}
 )
 
-IR_copyDLL(
-    IrredenEngineAudio
-    librtaudiod
-    ${rtaudio_BINARY_DIR}
-)
+IR_copyDLL(IrredenEngineAudio rtaudio)
 
 # RtMidi
 set(RTMIDI_BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -109,11 +105,7 @@ target_include_directories(
     ${PROJECT_SOURCE_DIR}/engine/assets
 )
 
-IR_copyDLL(
-    IrredenEngineAudio
-    librtmidid
-    ${rtmidi_BINARY_DIR}
-)
+IR_copyDLL(IrredenEngineAudio rtmidi)
 
 # miniaudio — single-header, public-domain file playback (the engine API:
 # device init + audio thread + decoding + mixing + sound groups + listener +
