@@ -2,9 +2,11 @@
 
 import importlib.util
 import io
+import re
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -18,6 +20,8 @@ SPEC.loader.exec_module(lv)
 
 CLEAN = "ir-run: RESULT=CLEAN exe=IRLightingEmissive exit=0\n"
 TIMEOUT = "ir-run: RESULT=ALIVE-TIMEOUT exe=IRLightingEmissive exit=0\n"
+PROGRESS_RE = re.compile(r"^\[light-verify\] --(\S+): (\d+)/(\d+) (\S+) (PASS|FAIL|no reference)$",
+                         re.MULTILINE)
 
 
 def domain_line(label, state="SEEDED_FULL", residual=1.0):
@@ -73,12 +77,15 @@ class LightVerifyCompletionTest(unittest.TestCase):
         with patch.object(lv.verify_common, "detect_worktree_root", return_value=self.root), \
                 patch.object(lv.verify_common, "detect_backend", return_value="test"), \
                 patch.object(lv.verify_common, "find_exe", return_value=self.exe), \
-                patch.object(lv.verify_common, "run_pass", side_effect=run_pass), \
+                patch.object(lv.verify_common, "run_pass", side_effect=run_pass) as runner, \
                 patch.object(lv.verify_common, "compare", **compare_kwargs) as compare, \
                 redirect_stdout(out), redirect_stderr(err):
+            self.runner = runner
             result = lv.main(argv)
         self.compare_calls = compare.call_args_list
-        return result, out.getvalue(), err.getvalue(), compare.call_count
+        # call_count's `+= 1` is not atomic across the comparison worker
+        # threads; call_args_list.append is.
+        return result, out.getvalue(), err.getvalue(), len(compare.call_args_list)
 
     def test_clean_complete_passes_still_compare_every_image(self):
         result, out, _, compared = self.drive(baselines=True)
@@ -167,6 +174,117 @@ class LightVerifyCompletionTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertFalse(self.baselines.exists())
         self.assertIn("baselines not updated", err)
+
+
+    def labels_by_pass(self):
+        return {flag: [state["shot"] for state in lv._parse_domain_state(log)] or ["shot_000"]
+                for flag, log in self.logs.items()}
+
+    def test_each_pass_prints_one_progress_line_per_row(self):
+        result, out, _, _ = self.drive(baselines=True)
+        self.assertEqual(result, 0)
+        progress = PROGRESS_RE.findall(out)
+        for flag, labels in self.labels_by_pass().items():
+            with self.subTest(flag=flag):
+                rows = [row for row in progress if row[0] == flag]
+                self.assertEqual(len(rows), len(labels))
+                self.assertEqual([int(row[1]) for row in rows], list(range(1, len(labels) + 1)))
+                self.assertTrue(all(int(row[2]) == len(labels) for row in rows))
+                self.assertEqual(sorted(row[3] for row in rows), sorted(labels))
+                self.assertIn(f"--{flag}: comparing {len(labels)} shot(s)", out)
+
+    def test_missing_reference_rows_report_without_a_comparison(self):
+        self.drive(baselines=True)
+        (self.baselines / "hover-sweep" / "shot_000.png").unlink()
+        result, out, _, compared = self.drive()
+        self.assertEqual(compared, 5)
+        self.assertIn("--hover-sweep: 1/1 shot_000 no reference", out)
+        self.assertEqual(result, 1)
+
+    def test_comparisons_run_concurrently(self):
+        first_label = self.labels_by_pass()["light-domain-matrix"][0]
+        later_ran = threading.Event()
+        released = []
+
+        def compare(image, reference, diff_out, thresholds, classify=False):
+            if reference.stem == first_label:
+                # Bounded: a serial loop runs this call alone and must fail
+                # the case rather than hang the suite.
+                released.append(later_ran.wait(timeout=5))
+            else:
+                later_ran.set()
+            return {"pass": True}
+
+        with patch("os.cpu_count", return_value=4):
+            result, _, _, compared = self.drive(baselines=True, compare_results=compare)
+        self.assertEqual((result, compared), (0, 6))
+        self.assertEqual(released, [True])
+
+    def test_summary_rows_keep_shot_order_when_results_arrive_reversed(self):
+        def reversed_completion(futures):
+            pending = list(futures)
+            for future in pending:
+                future.exception()
+            return reversed(pending)
+
+        def compare(image, reference, diff_out, thresholds, classify=False):
+            return {"pass": True, "match_pct": 100.0, "max_delta": 0, "psnr_db": "inf"}
+
+        with patch.object(lv, "as_completed", side_effect=reversed_completion):
+            result, out, _, _ = self.drive(baselines=True, compare_results=compare)
+        self.assertEqual(result, 0)
+        labels = self.labels_by_pass()["light-domain-matrix"]
+        progress = [row[3] for row in PROGRESS_RE.findall(out) if row[0] == "light-domain-matrix"]
+        self.assertEqual(progress, list(reversed(labels)))
+        summary = [line.split()[1] for line in out.splitlines()
+                   if line.startswith("light-domain-matrix ")]
+        self.assertEqual(summary, labels)
+
+    def test_compare_error_stops_main(self):
+        error_label = self.labels_by_pass()["light-domain-matrix"][1]
+
+        def compare(image, reference, diff_out, thresholds, classify=False):
+            if reference.stem == error_label:
+                raise SystemExit("render-compare errored: synthetic")
+            return {"pass": True}
+
+        with self.assertRaises(SystemExit) as raised:
+            self.drive(baselines=True, compare_results=compare)
+        self.assertEqual(str(raised.exception.code), "render-compare errored: synthetic")
+        self.assertEqual(self.runner.call_count, 1)
+
+    def test_compare_error_cancels_queued_comparisons(self):
+        release = threading.Event()
+        both_active = threading.Event()
+        started = []
+
+        def compare(image, reference, diff_out, thresholds, classify=False):
+            started.append(reference.stem)
+            if len(started) >= 2:
+                both_active.set()
+            release.wait(timeout=5)
+            return {"pass": True}
+
+        def comparator_error(futures):
+            both_active.wait(timeout=5)
+            raise SystemExit("render-compare errored: synthetic")
+
+        class ReleasingPool(lv.ThreadPoolExecutor):
+            # Holds both workers until shutdown, so the third row stays queued
+            # and only an explicit cancel can keep it from running.
+            def shutdown(self, wait=True, *, cancel_futures=False):
+                if cancel_futures:
+                    super().shutdown(wait=False, cancel_futures=True)
+                release.set()
+                super().shutdown(wait=wait, cancel_futures=cancel_futures)
+
+        with patch("os.cpu_count", return_value=2), \
+                patch.object(lv, "ThreadPoolExecutor", ReleasingPool), \
+                patch.object(lv, "as_completed", side_effect=comparator_error):
+            with self.assertRaises(SystemExit):
+                self.drive(baselines=True, compare_results=compare)
+        self.assertEqual(len(started), 2)
+        self.assertEqual(self.runner.call_count, 1)
 
 
 class LightVerifyChangedGateTest(unittest.TestCase):

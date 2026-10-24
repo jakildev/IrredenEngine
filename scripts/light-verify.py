@@ -64,10 +64,12 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import os
 import re
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +96,12 @@ TRIGGER_FILES = {
 # its own baseline subdirectory, so a threshold or shot-count change to one
 # pass never touches the others' committed references.
 PASSES = ("light-domain-matrix", "light-boundary-sweep", "hover-sweep")
+
+# Upper bound on concurrent render-compare.py subprocesses per pass. One
+# full-resolution pair costs ~5 s of single-core stdlib Python, so a serial
+# 36-shot pass is minutes of silence; more than 4 buys little and doubles the
+# CPU burst on a shared fleet host.
+COMPARE_WORKERS = 4
 
 # Thresholds mirror cull-verify.py's calibration: AO/light-volume
 # shading differs by a handful of bytes in a small fraction of pixels between
@@ -332,6 +340,67 @@ def _if_changed_requires_run(worktree: Path, against: str) -> bool:
     return True
 
 
+def _compare_pass(
+    flag: str, rows: list[tuple[Path, str]], baseline_dir: Path, diff_dir: Path
+) -> list[tuple[str, str, dict[str, Any]]]:
+    """Compare one pass's (image, label) rows; results come back in row order.
+
+    Comparisons run on a bounded thread pool. Each progress line is printed
+    and flushed on the calling thread as its result arrives — under fleet-jobs
+    stdout is a block-buffered file, so an unflushed line would surface only
+    when the next pass starts. A ``SystemExit`` from the comparator cancels
+    the queued comparisons before it propagates.
+    """
+    total = len(rows)
+    results: list[dict[str, Any] | None] = [None] * total
+    done = 0
+    print(f"[light-verify] --{flag}: comparing {total} shot(s) against {baseline_dir}",
+          flush=True)
+
+    def report(index: int, result: dict[str, Any]) -> None:
+        nonlocal done
+        results[index] = result
+        done += 1
+        if result.get("error") == "no reference":
+            verdict = "no reference"
+        else:
+            verdict = "PASS" if result.get("pass") else "FAIL"
+        print(f"[light-verify] --{flag}: {done}/{total} {rows[index][1]} {verdict}",
+              flush=True)
+
+    pending = []
+    for index, (image, label) in enumerate(rows):
+        reference = baseline_dir / f"{label}.png"
+        if reference.exists():
+            pending.append((index, image, reference, label))
+        else:
+            report(index, {"pass": False, "match_pct": 0.0, "max_delta": -1,
+                           "psnr_db": "n/a", "error": "no reference"})
+
+    if pending:
+        workers = min(COMPARE_WORKERS, os.cpu_count() or 1, len(pending))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(
+                    verify_common.compare,
+                    image,
+                    reference,
+                    diff_dir / f"{label}.diff.png",
+                    LIGHT_VERIFY_THRESHOLDS,
+                    classify=True,
+                ): index
+                for index, image, reference, label in pending
+            }
+            try:
+                for future in as_completed(futures):
+                    report(futures[future], future.result())
+            except BaseException:
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
+
+    return [(flag, label, result) for (_, label), result in zip(rows, results)]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--target", default=DEFAULT_TARGET,
@@ -480,21 +549,11 @@ def main(argv: list[str] | None = None) -> int:
 
         diff_dir = diff_root / flag
         diff_dir.mkdir(parents=True, exist_ok=True)
-        for image, label in zip(images, labels):
-            reference = baseline_dir / f"{label}.png"
-            if not reference.exists():
-                all_image_results.append((flag, label, {"pass": False, "match_pct": 0.0,
-                                                          "max_delta": -1, "psnr_db": "n/a",
-                                                          "error": "no reference"}))
-                continue
-            result = verify_common.compare(
-                image,
-                reference,
-                diff_dir / f"{label}.diff.png",
-                LIGHT_VERIFY_THRESHOLDS,
-                classify=True,
-            )
-            all_image_results.append((flag, label, result))
+        # Returns only after every comparison finished: the next pass's
+        # run_pass rmtrees shots_dir, which holds this pass's images.
+        all_image_results.extend(
+            _compare_pass(flag, list(zip(images, labels)), baseline_dir, diff_dir)
+        )
 
     expectations = EXPECTED_LIGHT_STATES.get(args.target, {})
     if expectations:
