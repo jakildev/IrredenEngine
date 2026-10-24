@@ -46,6 +46,7 @@ namespace IRSystem {
 template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     Buffer *frameDataBuf_ = nullptr;
     Buffer *hoveredIdBuf_ = nullptr;
+    Buffer *hoveredIdResetBuf_ = nullptr;
     ShaderProgram *program_ = nullptr;
     ShaderProgram *shapeProbeProgram_ = nullptr;
     Buffer *shapeProbeFrameBuf_ = nullptr;
@@ -665,8 +666,19 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     void beginTick() {
-        HoveredEntityIdLayout resetData;
-        hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
+        {
+            IR_PROFILE_SCOPE("ttf_hover_reset");
+            // A CPU write here would wait for last frame's composite, which
+            // still owns the buffer on the GPU; the copy queues behind it.
+            IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
+            IRRender::device()->copyBufferSubData(
+                hoveredIdResetBuf_,
+                0,
+                hoveredIdBuf_,
+                0,
+                sizeof(HoveredEntityIdLayout)
+            );
+        }
 
         guiCanvasOnScreen_ = IRPrefab::GuiCanvas::compositesOnScreen() ? IRRender::getCanvas("gui")
                                                                        : IREntity::kNullEntity;
@@ -863,6 +875,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_HoveredEntityId
         );
+        IRRender::createNamedResource<Buffer>(
+            "HoveredEntityIdReset",
+            &initData,
+            sizeof(initData),
+            BUFFER_STORAGE_NONE
+        );
 
         // Exclude detached per-entity canvases: those are composited at the
         // owning entity's iso position by ENTITY_CANVAS_TO_FRAMEBUFFER. Without
@@ -876,6 +894,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         auto *sys = getSystemParams<System<TRIXEL_TO_FRAMEBUFFER>>(id);
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
+        sys->hoveredIdResetBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdReset");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
         sys->cardinalLightingProgram_ =
             IRRender::getNamedResource<ShaderProgram>("CanvasCardinalLightingProgram");

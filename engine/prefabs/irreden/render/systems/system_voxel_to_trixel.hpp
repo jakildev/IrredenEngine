@@ -34,6 +34,7 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/fog_line_of_sight.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/gpu_readback_ring.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -399,10 +400,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     IREntity::EntityId voxelEntityIdBufCanvas_ = IREntity::kNullEntity;
     Buffer *chunkVisBuf_ = nullptr;
     Buffer *indirectBuf_ = nullptr;
+    // Copy of indirectBuf_ that no program binds: NVIDIA GL drains the queue
+    // on the CPU before an indirect dispatch whose argument buffer a shader
+    // can write, so the cardinal dispatches read their grids from here.
+    Buffer *indirectArgsBuf_ = nullptr;
     Buffer *compactedBuf_ = nullptr;
-    bool cullReadbackPrimed_ = false;
-    bool previousCullPerAxis_ = false;
-    std::uint32_t previousCullPoolSlots_ = 0;
+    // Cull-statistics ring. Each compact's indirect params are copied into a
+    // slot and read back once the submission that encoded the copy has
+    // completed, so the diagnostic readback never waits for the GPU and never
+    // reads a copy still queued. It grows to the compacts in flight: one per
+    // voxel-pool canvas per frame, times the frames the backend queues.
+    static constexpr int kMaxCullStatsSlots = 256;
+    struct CullStatsProducer {
+        bool perAxis_ = false;
+        std::uint32_t poolSlots_ = 0;
+    };
+    IRRender::detail::GpuReadbackRing<CullStatsProducer, kMaxCullStatsSlots> cullStatsRing_{};
+    std::vector<Buffer *> cullStatsBuffers_;
     // Chunk-occlusion HZB pre-pass, off by default. The query
     // buffer is bound transiently on kBufferIndex_CompactedVoxelIndices (25) for
     // the pre-pass and the compacted-index buffer restored afterward — the Metal
@@ -1392,6 +1406,52 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         cardinalWinnerBytes_ = bytes;
     }
 
+    // Pending slots drain whether or not stage timing is on, so re-enabling
+    // it never records a sample from before the toggle.
+    void readCullStats(const Buffer &slotBuffer, const CullStatsProducer &producer) {
+        if (!gpuStageTiming().enabled_) {
+            return;
+        }
+        IR_PROFILE_SCOPE("vs1_cull_readback");
+        std::uint32_t visible = 0;
+        std::uint32_t feeder = 0;
+        std::uint32_t axisEntries = 0;
+        if (producer.perAxis_) {
+            for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+                VoxelIndirectDispatchParams region{};
+                slotBuffer.getSubData(
+                    static_cast<std::ptrdiff_t>(axis) * kPerAxisSsboAlignBytes,
+                    sizeof(VoxelIndirectDispatchParams),
+                    &region
+                );
+                axisEntries += region.visibleCount;
+                if (axis == 0) {
+                    visible = region.uniqueVisibleCount;
+                }
+            }
+        } else {
+            VoxelIndirectDispatchParams visibleParams{};
+            slotBuffer.getSubData(0, sizeof(VoxelIndirectDispatchParams), &visibleParams);
+            visible = visibleParams.visibleCount;
+            VoxelIndirectDispatchParams feederParams{};
+            slotBuffer.getSubData(
+                static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
+                sizeof(VoxelIndirectDispatchParams),
+                &feederParams
+            );
+            feeder = feederParams.visibleCount;
+        }
+        IR_ASSERT(
+            static_cast<std::uint64_t>(visible) + feeder <= producer.poolSlots_,
+            "Unique compact survivors exceed the producing pool slot count"
+        );
+        gpuStageTiming().visibleVoxelCount_ = visible;
+        gpuStageTiming().totalVoxelCount_ = producer.poolSlots_;
+        gpuStageTiming().axisEntryCount_ = axisEntries;
+        gpuStageTiming().feederVoxelCount_ = feeder;
+        voxelCullAccumulator().record(visible, producer.poolSlots_, feeder, axisEntries);
+    }
+
     void tick(
         IREntity::EntityId entity,
         C_VoxelPool &voxelPool,
@@ -1920,48 +1980,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             );
         }
 
-        // Shared buffers hold the previous compact dispatch, which may belong
-        // to another canvas in this frame. Readback can synchronize with the GPU.
-        // Interpret it with its producer metadata before either buffer is reset.
-        if (gpuStageTiming().enabled_ && cullReadbackPrimed_) {
-            std::uint32_t visible = 0;
-            std::uint32_t feeder = 0;
-            std::uint32_t axisEntries = 0;
-            if (previousCullPerAxis_ && perAxisIndirectBuf_ != nullptr) {
-                for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-                    VoxelIndirectDispatchParams region{};
-                    perAxisIndirectBuf_->getSubData(
-                        static_cast<std::ptrdiff_t>(axis) * kPerAxisSsboAlignBytes,
-                        sizeof(VoxelIndirectDispatchParams),
-                        &region
-                    );
-                    axisEntries += region.visibleCount;
-                    if (axis == 0) {
-                        visible = region.uniqueVisibleCount;
-                    }
-                }
-            } else {
-                VoxelIndirectDispatchParams previous{};
-                indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &previous);
-                visible = previous.visibleCount;
-                VoxelIndirectDispatchParams previousFeeder{};
-                indirectBuf_->getSubData(
-                    static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes),
-                    sizeof(VoxelIndirectDispatchParams),
-                    &previousFeeder
-                );
-                feeder = previousFeeder.visibleCount;
+        // Completed slots only, each with the metadata of the compact that
+        // produced it; a direct read of the live params would wait for the
+        // latest compact on GL and read unexecuted work on Metal.
+        cullStatsRing_.drainCompleted(
+            IRRender::device()->completedSubmissionSerial(),
+            [this](int slot, const CullStatsProducer &producer) {
+                readCullStats(*cullStatsBuffers_[slot], producer);
             }
-            IR_ASSERT(
-                static_cast<std::uint64_t>(visible) + feeder <= previousCullPoolSlots_,
-                "Unique compact survivors exceed the producing pool slot count"
-            );
-            gpuStageTiming().visibleVoxelCount_ = visible;
-            gpuStageTiming().totalVoxelCount_ = previousCullPoolSlots_;
-            gpuStageTiming().axisEntryCount_ = axisEntries;
-            gpuStageTiming().feederVoxelCount_ = feeder;
-            voxelCullAccumulator().record(visible, previousCullPoolSlots_, feeder, axisEntries);
-        }
+        );
 
         const VoxelIndirectDispatchParams zeroed{};
         indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
@@ -1975,7 +2002,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             sizeof(VoxelIndirectDispatchParams),
             &zeroed
         );
-        cullReadbackPrimed_ = false;
 
         // Per-axis store list-walk split. For exactly the main-canvas-
         // rotating compact (whose voxels the per-axis dispatch consumes, and
@@ -2054,14 +2080,43 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const ivec2 compactGrid = voxelDispatchGridForCount(compactGroups);
         {
             IRRender::GpuSubStageScope gpuScope("voxelCompact");
+            IR_PROFILE_SCOPE("vs1_compact");
             IRRender::device()->dispatchCompute(compactGrid.x, compactGrid.y, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
+            IRRender::device()->copyBufferSubData(
+                indirectBuf_,
+                0,
+                indirectArgsBuf_,
+                0,
+                static_cast<std::size_t>(2) * kPerAxisSsboAlignBytes
+            );
             IRRender::device()->memoryBarrier(BarrierType::COMMAND);
         }
 
-        cullReadbackPrimed_ = gpuStageTiming().enabled_;
-        previousCullPerAxis_ = perAxisSplit;
-        previousCullPoolSlots_ = static_cast<std::uint32_t>(effectiveVoxelCount);
+        if (gpuStageTiming().enabled_) {
+            const int slot = cullStatsRing_.write(
+                IRRender::device()->submissionSerial(),
+                {perAxisSplit, static_cast<std::uint32_t>(effectiveVoxelCount)}
+            );
+            if (slot == static_cast<int>(cullStatsBuffers_.size())) {
+                cullStatsBuffers_.push_back(
+                    IRRender::createResource<Buffer>(
+                        nullptr,
+                        static_cast<std::size_t>(3) * kPerAxisSsboAlignBytes,
+                        BUFFER_STORAGE_DYNAMIC
+                    )
+                        .second
+                );
+            }
+            IRRender::device()->copyBufferSubData(
+                perAxisSplit ? perAxisIndirectBuf_ : indirectBuf_,
+                0,
+                cullStatsBuffers_[slot],
+                0,
+                static_cast<std::size_t>(perAxisSplit ? 3 : 2) * kPerAxisSsboAlignBytes
+            );
+        }
 
         if (perAxisSplit) {
             // Reset perAxisRoute_ for any downstream UBO read; the per-axis pass
@@ -2089,7 +2144,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
             {
                 IRRender::GpuSubStageScope gpuScope("voxelStage1");
-                IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                IR_PROFILE_SCOPE("vs1_stage1");
+                IRRender::device()->dispatchComputeIndirect(indirectArgsBuf_, 0);
                 // Second, shadow-feeder dispatch (struct 1) — the
                 // off-screen casters the compact tail-appended, rastered at the
                 // strided feederSubCap² micro-grid instead of the visible effSub².
@@ -2119,7 +2175,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     sizeof(VoxelIndirectDispatchParams)
                 );
                 IRRender::device()->dispatchComputeIndirect(
-                    indirectBuf_,
+                    indirectArgsBuf_,
                     static_cast<std::ptrdiff_t>(kPerAxisSsboAlignBytes)
                 );
                 // Restore struct 0 on binding 26 so stage 2's
@@ -2197,7 +2253,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // scripts/feeder-margin-verify.py for the gate that holds it.
                 {
                     IRRender::GpuSubStageScope gpuScope("voxelCardinalElect");
-                    IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                    IR_PROFILE_SCOPE("vs1_elect");
+                    IRRender::device()->dispatchComputeIndirect(indirectArgsBuf_, 0);
                     // The winner SSBO writes must land before stage 2's guard reads.
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
                 }
@@ -2247,7 +2304,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             {
                 IRRender::GpuSubStageScope gpuScope("voxelStage2");
-                IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                IR_PROFILE_SCOPE("vs1_stage2");
+                IRRender::device()->dispatchComputeIndirect(indirectArgsBuf_, 0);
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
             if (sourceFaceDisplay) {
@@ -2595,6 +2653,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_IndirectDispatchParams
         );
+        IRRender::createNamedResource<Buffer>(
+            "IndirectDispatchArgs",
+            nullptr,
+            static_cast<size_t>(2) * kPerAxisSsboAlignBytes,
+            BUFFER_STORAGE_NONE
+        );
 
         // Per-axis store list-walk split. One list buffer holding three
         // axis-keyed regions + one indirect-params buffer holding three dispatch
@@ -2720,6 +2784,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->voxelEntityIdBuf_ = IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer");
         p->chunkVisBuf_ = IRRender::getNamedResource<Buffer>("ChunkVisibilityBuffer");
         p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
+        p->indirectArgsBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchArgs");
+        p->cullStatsBuffers_.reserve(kMaxCullStatsSlots);
         p->compactedBuf_ = IRRender::getNamedResource<Buffer>("CompactedVoxelIndices");
         p->perAxisCompactedBuf_ =
             IRRender::getNamedResource<Buffer>("PerAxisCompactedVoxelIndices");

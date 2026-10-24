@@ -1,6 +1,7 @@
 #include <irreden/render/opengl/opengl_render_impl.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/gpu_submission_fences.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/texture.hpp>
@@ -26,13 +27,16 @@ class OpenGLRenderDevice final : public RenderDevice {
     void beginFrame() override {}
 
     void present() override {
+        endSubmission();
         if (isOffscreen()) {
             // Nothing to show. A flush keeps the submission cadence of an
             // unthrottled swap (swapInterval 0) without blocking on the GPU.
             ENG_API->glFlush();
-            return;
+        } else {
+            IRWindow::getWindow().swapBuffers();
         }
-        IRWindow::getWindow().swapBuffers();
+        m_submissions
+            .throttle(detail::kMaxPresentedSubmissionsInFlight, isFenceAvailable, waitForFence);
     }
 
     // OFFSCREEN window mode: an engine-owned framebuffer stands in for the
@@ -286,8 +290,36 @@ class OpenGLRenderDevice final : public RenderDevice {
         );
     }
 
+    void copyBufferSubData(
+        const Buffer *source,
+        std::ptrdiff_t sourceOffset,
+        const Buffer *destination,
+        std::ptrdiff_t destinationOffset,
+        std::size_t sizeBytes
+    ) override {
+        if (source == nullptr || destination == nullptr || sizeBytes == 0) {
+            return;
+        }
+        ENG_API->glCopyNamedBufferSubData(
+            source->getHandle(),
+            destination->getHandle(),
+            static_cast<GLintptr>(sourceOffset),
+            static_cast<GLintptr>(destinationOffset),
+            static_cast<GLsizeiptr>(sizeBytes)
+        );
+    }
+
     void finish() override {
         ENG_API->glFinish();
+        m_submissions.completeAll();
+    }
+
+    std::uint64_t submissionSerial() const override {
+        return m_submissions.submissionSerial();
+    }
+
+    std::uint64_t completedSubmissionSerial() override {
+        return m_submissions.pollCompleted(isFenceAvailable);
     }
 
     GpuTimestampHandle createTimestampPair() override {
@@ -363,6 +395,34 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
   private:
+    // A timestamp query becomes available only once every command issued
+    // before it has completed, so it fences a submission without a sync
+    // object. Polling before each new fence keeps the queue bounded when no
+    // reader asks for the completed serial.
+    void endSubmission() {
+        completedSubmissionSerial();
+        GLuint query = m_submissions.takeRetiredFence().value_or(0);
+        if (query == 0) {
+            ENG_API->glGenQueries(1, &query);
+        }
+        ENG_API->glQueryCounter(query, GL_TIMESTAMP);
+        m_submissions.endSubmission(query);
+    }
+
+    static bool isFenceAvailable(GLuint query) {
+        GLint available = GL_FALSE;
+        ENG_API->glGetQueryObjectiv(query, GL_QUERY_RESULT_AVAILABLE, &available);
+        return available == GL_TRUE;
+    }
+
+    // GL_QUERY_RESULT blocks until every command issued before the query has
+    // completed.
+    static void waitForFence(GLuint query) {
+        GLuint64 ignored = 0;
+        ENG_API->glGetQueryObjectui64v(query, GL_QUERY_RESULT, &ignored);
+    }
+
+    detail::GpuSubmissionFences<GLuint> m_submissions;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::unordered_map<GpuTimestampHandle, OpenGLTimestampPair> m_timestamps;
     // 0 = the window's default framebuffer (every mode but OFFSCREEN).

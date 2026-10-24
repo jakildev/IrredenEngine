@@ -100,7 +100,30 @@ class RenderDevice {
     // gotcha in engine/prefabs/CLAUDE.md).
     virtual void
     fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) = 0;
+    // GPU-timeline copy of @p sizeBytes from @p source into @p destination:
+    // glCopyNamedBufferSubData on GL, a blit on Metal. A transfer, not a
+    // shader write, so the destination is never tracked as shader-written:
+    // NVIDIA GL reads indirect arguments from such a buffer without draining
+    // the queue, and unlike subData into a GPU-written buffer the copy never
+    // blocks the CPU. Shader writes feeding the copy need a BUFFER_UPDATE
+    // barrier first.
+    virtual void copyBufferSubData(
+        const Buffer *source,
+        std::ptrdiff_t sourceOffset,
+        const Buffer *destination,
+        std::ptrdiff_t destinationOffset,
+        std::size_t sizeBytes
+    ) = 0;
     virtual void finish() = 0;
+    // GPU completion without a CPU wait. Work encoded now belongs to
+    // submissionSerial(); it has finished on the GPU once
+    // completedSubmissionSerial() reaches that value, so a CPU read of what
+    // it wrote returns the final bytes and never stalls. Metal's getSubData
+    // is a plain read of shared storage with no implicit sync, so a readback
+    // of GPU-written data must gate on this rather than on call order.
+    // Polling never blocks; both serials only increase.
+    virtual std::uint64_t submissionSerial() const = 0;
+    virtual std::uint64_t completedSubmissionSerial() = 0;
 
     // Make @p texture's **level 0** contents reflect its image-atomic state. A
     // no-op on backends whose image atomics write the texture directly (OpenGL's

@@ -190,6 +190,8 @@ inline GLbitfield toGLBarrierType(BarrierType barrierType) {
         return GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
     case BarrierType::COMMAND:
         return GL_COMMAND_BARRIER_BIT;
+    case BarrierType::BUFFER_UPDATE:
+        return GL_BUFFER_UPDATE_BARRIER_BIT;
     }
     return GL_ALL_BARRIER_BITS;
 }

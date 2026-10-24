@@ -81,7 +81,14 @@ enum class ShaderType : std::uint8_t { VERTEX, FRAGMENT, COMPUTE, GEOMETRY };
 
 /// Memory-barrier scope after a compute dispatch. @c ALL is safe but coarse;
 /// prefer a narrower scope when possible to avoid unnecessary GPU pipeline flushes.
-enum class BarrierType : std::uint8_t { ALL, SHADER_STORAGE, SHADER_IMAGE_ACCESS, COMMAND };
+enum class BarrierType : std::uint8_t {
+    ALL,
+    SHADER_STORAGE,
+    SHADER_IMAGE_ACCESS,
+    COMMAND,
+    // Shader writes become visible to a following buffer copy or subData.
+    BUFFER_UPDATE
+};
 
 /// Polygon rasterization mode. @c LINE / @c POINT are useful for wireframe debugging.
 enum class PolygonMode : std::uint8_t { FILL, LINE, POINT };

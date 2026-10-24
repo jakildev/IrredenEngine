@@ -409,6 +409,7 @@ class MetalRenderDevice final : public RenderDevice {
     void present() override {
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer == nullptr) {
+            ++m_submissionSerial;
             m_gpuFrameTiming.endFrame();
             return;
         }
@@ -417,6 +418,7 @@ class MetalRenderDevice final : public RenderDevice {
         }
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        ++m_submissionSerial;
         recordCompletedFrameBuffer(commandBuffer);
         for (auto &pair : m_timestamps) {
             if (pair.completionBuffer_ != nullptr) {
@@ -1033,6 +1035,44 @@ class MetalRenderDevice final : public RenderDevice {
         }
     }
 
+    void copyBufferSubData(
+        const Buffer *source,
+        std::ptrdiff_t sourceOffset,
+        const Buffer *destination,
+        std::ptrdiff_t destinationOffset,
+        std::size_t sizeBytes
+    ) override {
+        if (source == nullptr || destination == nullptr || sizeBytes == 0) {
+            return;
+        }
+        auto *src = static_cast<MTL::Buffer *>(source->getNativeBuffer());
+        auto *dst = static_cast<MTL::Buffer *>(destination->getNativeBuffer());
+        if (src == nullptr || dst == nullptr) {
+            return;
+        }
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer != nullptr) {
+            auto *blit = createBlitEncoder(commandBuffer);
+            blit->copyFromBuffer(
+                src,
+                static_cast<NS::UInteger>(sourceOffset),
+                dst,
+                static_cast<NS::UInteger>(destinationOffset),
+                static_cast<NS::UInteger>(sizeBytes)
+            );
+            blit->endEncoding();
+            markMetalBufferEncoded(src);
+            markMetalBufferEncoded(dst);
+        } else if (src->contents() != nullptr && dst->contents() != nullptr) {
+            // No command buffer yet, so no queued work can touch either side.
+            std::memcpy(
+                static_cast<std::uint8_t *>(dst->contents()) + destinationOffset,
+                static_cast<const std::uint8_t *>(src->contents()) + sourceOffset,
+                sizeBytes
+            );
+        }
+    }
+
     void finish() override {
         // Block until prior GPU work completes, then start a fresh command
         // buffer for subsequent encoders. Mirrors OpenGL glFinish(). The
@@ -1045,9 +1085,20 @@ class MetalRenderDevice final : public RenderDevice {
         }
         commandBuffer->commit();
         commandBuffer->waitUntilCompleted();
+        ++m_submissionSerial;
         recordCompletedFrameBuffer(commandBuffer);
         releaseDeferredMetalBuffers();
         setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
+    }
+
+    std::uint64_t submissionSerial() const override {
+        return m_submissionSerial;
+    }
+
+    // Every commit waits for its command buffer (present() and finish()),
+    // so all work before the one now recording has completed.
+    std::uint64_t completedSubmissionSerial() override {
+        return m_submissionSerial - 1;
     }
 
     GpuTimestampHandle createTimestampPair() override {
@@ -1268,6 +1319,8 @@ class MetalRenderDevice final : public RenderDevice {
     // Persists across draws, encoders, and frames until the matching
     // disable, like GL_BLEND; starts off to match the GL default.
     bool m_blendingEnabled = false;
+    // The command buffer now recording; a commit-and-wait advances it.
+    std::uint64_t m_submissionSerial = 1;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::vector<MetalTimestampPair> m_timestamps;
     MTL::CounterSet *m_timestampCounterSet = nullptr;
