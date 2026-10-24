@@ -29,7 +29,12 @@ functions for reading files and composing paths. Used by `asset/`,
 - `IRUtility::resolveContainedPath(canonicalBase, path)` — the one check
   for a caller-supplied path that must stay under a root (`IRFile`, the
   launcher catalog, tool spawns). `containedPathRejection(path)` is its
-  lexical half, for a parser that has no base to resolve against.
+  lexical half, for a parser that has no base to resolve against;
+  `isWithinDirectory(dir, path)` is its component-wise containment test.
+- `IRUtility::discoverWorktreeRoots(base)` / `resolveWorktreeRoot(base, id)` /
+  `isWorktreeRootId(id)` — the one rule for which checkouts a launcher may
+  act on: `.` and each live immediate `.claude/worktrees/<name>` (a
+  regular-file `.git`, a real `creations/`, no symlinks). Git is never run.
 - `IRUtility::findOnPath(name, suffixes)` — resolve the first regular file
   for a command name using an explicit suffix preference.
 - `IRUtility::envFlagSet(name)` — true iff env var `name` is set and

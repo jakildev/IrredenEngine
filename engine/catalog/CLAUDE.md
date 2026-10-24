@@ -11,3 +11,8 @@ services.
 
 The scan never follows symlinks or descends into `.git`, `.claude`,
 `node_modules`, or a directory whose name starts with `build`.
+
+`roots()` and `scanRoots(ids)` are the worktree-root surface: ids, never
+paths, checked by `IRUtility::resolveWorktreeRoot`. Each root scans against
+its own `<root>/build` and resolves its manifest docs inside itself, while
+every returned path stays tool-root-relative; `Creation::root_` is the id.

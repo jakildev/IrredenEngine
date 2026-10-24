@@ -189,6 +189,12 @@ inline std::optional<std::filesystem::path> toolRoot() {
     return getWorld().toolRoot();
 }
 
+// The launcher's worktree switch: process state follows the selected root,
+// the tool root (the base) never moves. No Lua binding calls it directly.
+inline std::expected<void, std::string> selectToolRoot(std::string_view id) {
+    return getWorld().selectToolRoot(id);
+}
+
 inline std::expected<ToolHandle, std::string> spawnTool(const ToolSpawnRequest &request) {
     return getWorld().spawnTool(request);
 }

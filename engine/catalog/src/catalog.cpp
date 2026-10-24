@@ -239,9 +239,12 @@ IRAsset::ManifestError containedManifestPathError(std::string path) {
     return error;
 }
 
+// Docs resolve inside @p docsBase, the checkout the manifest belongs to; every
+// returned path is relative to @p toolRoot.
 std::optional<IRAsset::ManifestError> resolveManifestPaths(
     IRAsset::CreationManifest &manifest,
     const std::filesystem::path &creationDirectory,
+    const std::filesystem::path &docsBase,
     const std::filesystem::path &toolRoot
 ) {
     if (!manifest.thumbnail_.empty()) {
@@ -254,7 +257,7 @@ std::optional<IRAsset::ManifestError> resolveManifestPaths(
     }
 
     for (std::size_t index = 0; index < manifest.docs_.size(); ++index) {
-        const auto doc = IRUtility::resolveContainedPath(toolRoot, manifest.docs_[index]);
+        const auto doc = IRUtility::resolveContainedPath(docsBase, manifest.docs_[index]);
         if (!doc) {
             return containedManifestPathError("docs[" + std::to_string(index) + "]");
         }
@@ -289,14 +292,63 @@ CatalogService::resolve(std::string_view relative, std::string_view field) const
 
 Catalog CatalogService::scan(std::string_view root, std::string_view buildDir) const {
     const auto resolvedRoot = resolve(root, "root");
-    const auto resolvedBuildDir = resolve(buildDir, "buildDir");
+    Catalog catalog;
+    scanTree(
+        catalog,
+        resolvedRoot,
+        resolve(buildDir, "buildDir"),
+        detail::relativeString(resolvedRoot, m_toolRoot),
+        m_toolRoot
+    );
+    return catalog;
+}
+
+std::vector<std::string> CatalogService::roots() const {
+    return IRUtility::discoverWorktreeRoots(m_toolRoot);
+}
+
+Catalog CatalogService::scanRoots(std::span<const std::string> roots) const {
+    std::vector<std::string> ids(roots.begin(), roots.end());
+    for (const auto &id : ids) {
+        if (!IRUtility::isWorktreeRootId(id)) {
+            throw std::invalid_argument("catalog root '" + id + "' is not a worktree root id");
+        }
+    }
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+
+    Catalog catalog;
+    for (const auto &id : ids) {
+        // A root that vanished, or never was a live worktree, contributes nothing.
+        if (const auto resolvedRoot = IRUtility::resolveWorktreeRoot(m_toolRoot, id)) {
+            // A `build` that resolves outside its root reads as no build tree:
+            // an empty path names no executable and no archive.
+            const auto buildDir = IRUtility::resolveContainedPath(*resolvedRoot, "build");
+            scanTree(
+                catalog,
+                *resolvedRoot,
+                buildDir.value_or(std::filesystem::path{}),
+                id,
+                *resolvedRoot
+            );
+        }
+    }
+    return catalog;
+}
+
+void CatalogService::scanTree(
+    Catalog &catalog,
+    const std::filesystem::path &resolvedRoot,
+    const std::filesystem::path &resolvedBuildDir,
+    const std::string &rootId,
+    const std::filesystem::path &docsBase
+) const {
     const auto executables = findExecutables(resolvedBuildDir);
     const auto archives = findArchives(resolvedBuildDir);
 
-    Catalog catalog;
     for (const auto &directory : creationCandidates(resolvedRoot)) {
         Creation creation;
-        creation.root_ = detail::relativeString(resolvedRoot, m_toolRoot);
+        creation.root_ = rootId;
         creation.dir_ = detail::relativeString(directory, m_toolRoot);
 
         const auto manifestPath = directory / "creation.json";
@@ -319,7 +371,7 @@ Catalog CatalogService::scan(std::string_view root, std::string_view buildDir) c
             continue;
         }
 
-        if (auto pathError = resolveManifestPaths(*manifest, directory, m_toolRoot)) {
+        if (auto pathError = resolveManifestPaths(*manifest, directory, docsBase, m_toolRoot)) {
             creation.error_ = std::move(*pathError);
             catalog.creations_.push_back(std::move(creation));
             continue;
@@ -355,7 +407,6 @@ Catalog CatalogService::scan(std::string_view root, std::string_view buildDir) c
         }
         catalog.creations_.push_back(std::move(creation));
     }
-    return catalog;
 }
 
 } // namespace IRCatalog

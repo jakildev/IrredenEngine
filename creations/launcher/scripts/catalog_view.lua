@@ -1,8 +1,10 @@
 -- Left zone: the catalog tree. Groups come from each manifest's slash-path
 -- `group`; favourites float to a pinned group at the top and invalid or
 -- manifest-less directories to a trailing Unsorted group, so nothing on disk
--- is hidden. The filter matches name, tags and description (the directory
--- for an Unsorted row) and keeps the matched rows' ancestors open.
+-- is hidden. With two or more configured roots each root is a top-level group
+-- holding its own groups and Unsorted; with one, the tree has no root tier.
+-- The filter matches name, tags and description (the directory for an
+-- Unsorted row) and keeps the matched rows' ancestors open.
 
 local L = require("launcher_layout")
 local WidgetList = require("widget_list")
@@ -12,6 +14,7 @@ local M = {}
 local SMALL = IRText.Size.SMALL
 local FAVOURITES = "\1favourites"
 local UNSORTED = "\1unsorted"
+local ROOT_GROUP = "\3"
 
 local function lower(text)
     return string.lower(text or "")
@@ -81,17 +84,19 @@ local function countMatching(node, needle)
     return count
 end
 
--- Appends the visible rows of @p node's subtree at @p depth.
-local function emit(view, rows, node, depth, needle)
+-- Appends the visible rows of @p node's subtree at @p depth; @p root
+-- qualifies each group's fold key.
+local function emit(view, rows, node, depth, needle, root)
     table.sort(node.groupNames)
     for _, name in ipairs(node.groupNames) do
         local child = node.groups[name]
         if countMatching(child, needle) > 0 then
-            local collapsed = needle == "" and view.collapsed[child.path] == true
-            rows[#rows + 1] = { kind = "group", name = name, path = child.path, depth = depth,
+            local key = root .. "\2" .. child.path
+            local collapsed = needle == "" and view.collapsed[key] == true
+            rows[#rows + 1] = { kind = "group", name = name, path = key, depth = depth,
                                 collapsed = collapsed }
             if not collapsed then
-                emit(view, rows, child, depth + 1, needle)
+                emit(view, rows, child, depth + 1, needle, root)
             end
         end
     end
@@ -103,7 +108,7 @@ local function emit(view, rows, node, depth, needle)
     end
 end
 
-local function emitPinned(view, rows, name, path, creations, needle)
+local function emitPinned(view, rows, name, path, creations, needle, depth)
     local visible = {}
     for _, creation in ipairs(creations) do
         if matches(creation, needle) then
@@ -115,34 +120,64 @@ local function emitPinned(view, rows, name, path, creations, needle)
     end
     table.sort(visible, byName)
     local collapsed = needle == "" and view.collapsed[path] == true
-    rows[#rows + 1] = { kind = "group", name = name, path = path, depth = 0, collapsed = collapsed,
-                        pinned = true }
+    rows[#rows + 1] = { kind = "group", name = name, path = path, depth = depth,
+                        collapsed = collapsed, pinned = true }
     if not collapsed then
         for _, creation in ipairs(visible) do
-            rows[#rows + 1] = { kind = "creation", creation = creation, depth = 1,
+            rows[#rows + 1] = { kind = "creation", creation = creation, depth = depth + 1,
                                 pinned = true }
         end
     end
 end
 
-local function buildRows(app, view)
-    local root = newNode("", "")
-    local unsorted, favourites = {}, {}
-    for _, creation in ipairs(app.creations) do
+-- One root's groups, then its Unsorted group, at @p depth.
+local function emitRoot(view, rows, root, creations, needle, depth)
+    local tree = newNode("", "")
+    local unsorted = {}
+    for _, creation in ipairs(creations) do
         if creation.manifest then
-            insert(root, creation)
+            insert(tree, creation)
         else
             unsorted[#unsorted + 1] = creation
         end
+    end
+    emit(view, rows, tree, depth, needle, root)
+    emitPinned(view, rows, "UNSORTED", root .. "\2" .. UNSORTED, unsorted, needle, depth)
+end
+
+local function buildRows(app, view)
+    local favourites, byRoot = {}, {}
+    for _, creation in ipairs(app.creations) do
+        byRoot[creation.root] = byRoot[creation.root] or {}
+        table.insert(byRoot[creation.root], creation)
         if app.settings.favourites[creation.dir] then
             favourites[#favourites + 1] = creation
         end
     end
     local needle = lower(view.needle)
     local rows = {}
-    emitPinned(view, rows, "FAVOURITES", FAVOURITES, favourites, needle)
-    emit(view, rows, root, 0, needle)
-    emitPinned(view, rows, "UNSORTED", UNSORTED, unsorted, needle)
+    emitPinned(view, rows, "FAVOURITES", FAVOURITES, favourites, needle, 0)
+    local roots = app.rootList()
+    if #roots < 2 then
+        emitRoot(view, rows, roots[1], app.creations, needle, 0)
+        return rows
+    end
+    for _, root in ipairs(roots) do
+        local creations = byRoot[root] or {}
+        local count = 0
+        for _, creation in ipairs(creations) do
+            count = count + (matches(creation, needle) and 1 or 0)
+        end
+        if count > 0 then
+            local key = ROOT_GROUP .. root
+            local collapsed = needle == "" and view.collapsed[key] == true
+            rows[#rows + 1] = { kind = "group", name = root, path = key, depth = 0,
+                                collapsed = collapsed }
+            if not collapsed then
+                emitRoot(view, rows, root, creations, needle, 1)
+            end
+        end
+    end
     return rows
 end
 

@@ -346,6 +346,9 @@ and launches with the correct working directory.
   update relaunches the old copy with a banner and `build-launcher/update.log`.
 - One launcher per checkout: a second `ir-launcher` prints the holder's pid and
   exits 1. Design: [`engine-launcher.md`](../design/engine-launcher.md) §D6.
+- Settings → WORKTREES adds this checkout's `.claude/worktrees/*`; the header
+  picker switches between them, and a worktree creation builds and runs in
+  that worktree's own `build/` (§D7-v2).
 
 ## Packaging a distributable bundle
 

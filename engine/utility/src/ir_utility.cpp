@@ -1,6 +1,7 @@
 #include <irreden/ir_utility.hpp>
 #include <irreden/ir_profile.hpp>
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -23,6 +24,8 @@ bool isAsciiLetter(char c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 }
 
+} // namespace
+
 bool isWithinDirectory(
     const std::filesystem::path &directory, const std::filesystem::path &candidate
 ) {
@@ -37,8 +40,6 @@ bool isWithinDirectory(
     }
     return directoryPart == directory.end();
 }
-
-} // namespace
 
 std::string readFileAsString(const std::string &filepath) {
     std::ifstream file;
@@ -192,6 +193,75 @@ resolveContainedPath(const std::filesystem::path &canonicalBase, std::string_vie
         return std::nullopt;
     }
     return resolved;
+}
+
+namespace {
+
+constexpr std::string_view kWorktreesPrefix = ".claude/worktrees/";
+
+bool isRealDirectory(const std::filesystem::path &path) {
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(path, error);
+    return !error && std::filesystem::is_directory(status);
+}
+
+bool isRealFile(const std::filesystem::path &path) {
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(path, error);
+    return !error && std::filesystem::is_regular_file(status);
+}
+
+} // namespace
+
+bool isWorktreeRootId(std::string_view id) {
+    if (id == kBaseWorktreeRoot) {
+        return true;
+    }
+    if (!id.starts_with(kWorktreesPrefix)) {
+        return false;
+    }
+    const std::string_view name = id.substr(kWorktreesPrefix.size());
+    return !name.empty() && name != "." && name != ".." &&
+           name.find_first_of(std::string_view{"/\\:\0", 4}) == std::string_view::npos;
+}
+
+std::optional<std::filesystem::path>
+resolveWorktreeRoot(const std::filesystem::path &canonicalBase, std::string_view id) {
+    if (!isWorktreeRootId(id)) {
+        return std::nullopt;
+    }
+    if (id == kBaseWorktreeRoot) {
+        return isRealDirectory(canonicalBase) ? std::optional{canonicalBase} : std::nullopt;
+    }
+    const std::filesystem::path worktrees = canonicalBase / ".claude" / "worktrees";
+    const std::filesystem::path root = worktrees / std::string{id.substr(kWorktreesPrefix.size())};
+    if (!isRealDirectory(canonicalBase / ".claude") || !isRealDirectory(worktrees) ||
+        !isRealDirectory(root) || !isRealFile(root / ".git") ||
+        !isRealDirectory(root / "creations")) {
+        return std::nullopt;
+    }
+    return resolveContainedPath(canonicalBase, id);
+}
+
+std::vector<std::string> discoverWorktreeRoots(const std::filesystem::path &canonicalBase) {
+    std::vector<std::string> roots;
+    std::error_code error;
+    std::filesystem::directory_iterator iterator(
+        canonicalBase / ".claude" / "worktrees",
+        std::filesystem::directory_options::skip_permission_denied,
+        error
+    );
+    const std::filesystem::directory_iterator end;
+    while (!error && iterator != end) {
+        std::string id = std::string{kWorktreesPrefix} + iterator->path().filename().string();
+        if (resolveWorktreeRoot(canonicalBase, id)) {
+            roots.push_back(std::move(id));
+        }
+        iterator.increment(error);
+    }
+    std::sort(roots.begin(), roots.end());
+    roots.insert(roots.begin(), std::string{kBaseWorktreeRoot});
+    return roots;
 }
 
 } // namespace IRUtility
