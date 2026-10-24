@@ -39,6 +39,10 @@
 #     run, the latest completed run winning over an older failure, a queued
 #     or cancelled run not counting, an API failure printing an unreadable
 #     hold, and the gate derivation over every `on:` spelling
+#   - jobs GitHub never started: one uncounted repo line above the merge
+#     queue and no failed / later-failure / missing-run holds, read from every
+#     PR's runs (an unapproved PR's refused run included) whatever the order,
+#     with a control whose failed job ran a step
 
 set -uo pipefail
 
@@ -913,6 +917,79 @@ assert_contains "$out" \
 assert_contains "$out" \
     "hold: .github/workflows/instruction-size.yml has no completed run on head 888888888 — Update branch to trigger it" \
     "a missing run is still held when no job was refused"
+
+# The only refused run belongs to an unapproved PR, and master's gates all
+# ran: the approved PR's missing gate must still read the repo condition.
+# The control gives the unapproved PR's job a step, so the hold returns.
+
+python3 - "$TMP" << 'PYEOF'
+import json
+import sys
+
+tmp = sys.argv[1]
+BILLING = "The job was not started because recent account payments have failed"
+unfiltered = "on:\n  push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:\n"
+gates = ["comment-refs.yml", "no-plan-files.yml"]
+APPROVED, UNAPPROVED = "a" * 40, "b" * 40
+
+
+def build(steps):
+    return {
+        "workflows": {name: unfiltered for name in gates},
+        "runs": {
+            APPROVED: [{"id": 201, "path": ".github/workflows/comment-refs.yml",
+                        "status": "completed", "conclusion": "success",
+                        "created_at": "2026-10-24T07:00:00Z"}],
+            UNAPPROVED: [{"id": 211, "path": ".github/workflows/no-plan-files.yml",
+                          "status": "completed", "conclusion": "failure",
+                          "created_at": "2026-10-24T07:05:00Z"}],
+        },
+        "master": {name: {"conclusion": "success", "id": 950 + i,
+                          "created_at": "2026-10-24T06:30:00Z"}
+                   for i, name in enumerate(gates)},
+        "jobs": {"211": [{"id": 2111, "conclusion": "failure", "steps": steps}]},
+        "annotations": {"2111": [{"annotation_level": "failure", "title": "",
+                                  "message": BILLING}]},
+    }
+
+
+for name, steps in (("unapproved", []),
+                    ("unapproved-control", [{"name": "build", "conclusion": "failure"}])):
+    with open(f"{tmp}/api-{name}.json", "w", encoding="utf-8") as f:
+        json.dump(build(steps), f)
+
+prs = [{"number": 716, "title": "engine: approved, missing a gate", "headRefOid": APPROVED,
+        "labels": [{"name": "fleet:approved"}]},
+       {"number": 717, "title": "engine: unapproved, refused run", "headRefOid": UNAPPROVED,
+        "labels": []}]
+for pr in prs:
+    pr.update({"url": "u", "mergeStateStatus": "BLOCKED"})
+with open(f"{tmp}/engine-prs-unapproved.json", "w", encoding="utf-8") as f:
+    json.dump(prs, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-unapproved" "$TMP/api-unapproved.json"
+python3 "$TMP/write_api.py" "$TMP/api-unapproved-control" "$TMP/api-unapproved-control.json"
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-unapproved.json" GH_STUB_API="$TMP/api-unapproved" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "unapproved never-started run exits 0"
+assert_contains "$out" \
+    "actions not starting on engine since 2026-10-24T07:05:00Z: \"The job was not started because recent account payments have failed\"" \
+    "an unapproved PR's never-started run prints the repo line"
+assert_absent "$out" "Update branch to trigger it" \
+    "an approved PR's missing gate reads the repo condition an unapproved PR showed"
+assert_absent "$out" "#717" "an unapproved PR still has no merge-queue row"
+assert_contains "$out" "#716" "the approved PR keeps its merge-queue row"
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-unapproved.json" GH_STUB_API="$TMP/api-unapproved-control" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "unapproved control run exits 0"
+assert_absent "$out" "actions not starting" "an unapproved PR's failed job that ran steps prints no repo line"
+assert_contains "$out" \
+    "hold: .github/workflows/no-plan-files.yml has no completed run on head aaaaaaaaa — Update branch to trigger it" \
+    "the approved PR's missing gate is held when no job was refused"
 
 # --- --repo equals-form + dual-spelling validation --------------------------
 

@@ -41,7 +41,8 @@
 # A job GitHub refused to start (a billing or spending-limit refusal: `failure`,
 # no steps, a failure-level annotation) is no reading of the PR's code. A run
 # whose every job is one is not a `failed on head` hold, master's is not a later
-# failure, and once any such run is seen in a repo its missing-run holds go too
+# failure, and once any such run is seen in a repo (on master or on any open
+# PR's head, approved or not) its missing-run holds go too
 # (Update branch cannot start CI that cannot start). The repo prints one
 # `actions not starting on <repo> since <ts>: "<annotation>"` line above the
 # merge queue instead, uncounted; a run that cannot be read fully stays an
@@ -340,7 +341,7 @@ def pr_gate(text):
 
 class GateReader:
     """One repo's gate set and each workflow's latest master conclusion, read
-    once and shared by every approved PR in that repo."""
+    once and shared by every PR in that repo."""
 
     def __init__(self, slug):
         self.slug = slug
@@ -447,14 +448,8 @@ class GateReader:
         return {suite for suite, identity in head
                 if identity == UNITEMIZED or (suite, identity) not in master}
 
-    def holds(self, sha):
-        """`(holds, notes, awaiting, head_not_started)` for head `sha`. A run is
-        read by head sha, never by branch: a branch with any green run reads
-        green even when its latest push triggered none. A cancelled run is no
-        reading. `awaiting` is the no-completed-run holds, kept apart because
-        they are moot once the repo shows its jobs never start;
-        `head_not_started` says a failed head run was one of those."""
-        self.load()
+    def latest_runs(self, sha):
+        """Each workflow path's latest completed, uncancelled run on head `sha`."""
         runs = gh_api_list(f"repos/{self.slug}/actions/runs?head_sha={sha}", key="workflow_runs")
         latest = {}
         for run in runs:
@@ -464,6 +459,29 @@ class GateReader:
             if path not in latest or (run["created_at"], run["id"]) > (
                     latest[path]["created_at"], latest[path]["id"]):
                 latest[path] = run
+        return latest
+
+    def observe(self, sha):
+        """Classify head `sha`'s runs and every gate's master run as started or
+        not, computing no holds: a PR outside the merge queue still shows
+        whether the repo's jobs start."""
+        self.load()
+        for path in self.gates:
+            master = self.master_run(path)
+            if master is not None:
+                self.never_started(master)
+        for run in self.latest_runs(sha).values():
+            self.never_started(run)
+
+    def holds(self, sha):
+        """`(holds, notes, awaiting, head_not_started)` for head `sha`. A run is
+        read by head sha, never by branch: a branch with any green run reads
+        green even when its latest push triggered none. A cancelled run is no
+        reading. `awaiting` is the no-completed-run holds, kept apart because
+        they are moot once the repo shows its jobs never start;
+        `head_not_started` says a failed head run was one of those."""
+        self.load()
+        latest = self.latest_runs(sha)
         short = sha[:9]
         awaiting = [f"{path} has no completed run on head {short} — Update branch to trigger it"
                     for path in self.gates if path not in latest]
@@ -510,6 +528,18 @@ def gate_holds(reader, pr):
         return reader.holds(sha)
     except (Unreadable, KeyError, TypeError, ValueError) as e:
         return [f"gate coverage unreadable ({e})"], [], [], False
+
+
+def observe_runs(reader, pr):
+    """Feed `pr`'s runs to the repo-level reading. An unreadable answer is
+    dropped: an unapproved PR has no merge-queue row to carry the hold."""
+    sha = pr.get("headRefOid")
+    if not sha:
+        return
+    try:
+        reader.observe(sha)
+    except (Unreadable, KeyError, TypeError, ValueError):
+        pass
 
 
 def merge_box_holds(pr, holds, notes, refused):
@@ -578,6 +608,8 @@ for repo, prs, issues, reader in repos:
             wip_mismatch = bool(WIP_TITLE_RE.search(pr["title"])) and "fleet:wip" not in labels
             approved.append((pr, "fleet:has-nits" in labels, gate, notes, awaiting,
                              head_not_started, smoke_debt, wip_mismatch))
+        else:
+            observe_runs(reader, pr)
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
         owner_labels = [label for label in labels if label.startswith("fleet:claim-")]
         owner_verdicts = sorted(OWNER_VERDICT_LABELS & set(labels))
