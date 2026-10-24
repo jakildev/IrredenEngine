@@ -52,14 +52,15 @@ enum CommandNames {
     TOGGLE_CULLING_FREEZE,
     TOGGLE_CULLING_MINIMAP,
     TOGGLE_HELP_OVERLAY,
-    TOGGLE_SETTINGS_MENU
+    TOGGLE_SETTINGS_MENU,
+    TOGGLE_PERF_HUD
 };
 
 /// Number of `CommandNames` values. Keeps the hand-listed `kCommandInfo`
 /// table in `ir_command.hpp` honest — a new enum value without a matching
 /// row is a compile error there, not a silent "UNKNOWN" at render time.
 /// Update alongside the last enumerator when extending the enum.
-inline constexpr int kCommandNameCount = static_cast<int>(TOGGLE_SETTINGS_MENU) + 1;
+inline constexpr int kCommandNameCount = static_cast<int>(TOGGLE_PERF_HUD) + 1;
 
 /// One declarative row of a default-binding manifest: "this command, on this
 /// trigger". Pure data — a manifest never names a `Command<NAME>` body, so a

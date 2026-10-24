@@ -1,7 +1,6 @@
--- T-193 PR 2: Lua equivalent of the pre-T-193 C++ initCommands() block.
--- Same 18 bindings the C++ version had, in the same order. Documents the
--- canonical IRCommand / IRInput surface for any creation porting off the
--- C++ initCommands() pattern.
+-- The creation's key bindings, declared from Lua: the canonical
+-- IRCommand / IRInput surface for any creation that keeps its commands
+-- out of C++.
 
 local CN = IRCommand.CommandName
 local IT = IRInput.InputType
@@ -24,6 +23,7 @@ IRCommand.bindPrefab(CN.SCREENSHOT,             IT.KEY_MOUSE, BS.PRESSED,  K.F8)
 IRCommand.bindPrefab(CN.SCREENSHOT_CANVAS,      IT.KEY_MOUSE, BS.PRESSED,  K.F7)
 IRCommand.bindPrefab(CN.RECORD_TOGGLE,          IT.KEY_MOUSE, BS.PRESSED,  K.F9)
 IRCommand.bindPrefab(CN.TOGGLE_HELP_OVERLAY,    IT.KEY_MOUSE, BS.PRESSED,  K.GRAVE)
+IRCommand.bindPrefab(CN.TOGGLE_PERF_HUD,        IT.KEY_MOUSE, BS.PRESSED,  K.F3)
 IRCommand.bindPrefab(CN.GUI_ZOOM_IN,            IT.KEY_MOUSE, BS.PRESSED,  K.EQUAL, CTRL)
 IRCommand.bindPrefab(CN.GUI_ZOOM_OUT,           IT.KEY_MOUSE, BS.PRESSED,  K.MINUS, CTRL)
 IRCommand.bindPrefab(CN.TOGGLE_CULLING_FREEZE,  IT.KEY_MOUSE, BS.PRESSED,  K.F10)

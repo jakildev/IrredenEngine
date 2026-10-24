@@ -100,6 +100,7 @@
 #include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/components/component_per_axis_surface_lighting.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/components/component_perf_hud.hpp>
 #include <irreden/render/components/component_render_cache.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
 #include <irreden/render/components/component_splitter.hpp>
@@ -448,6 +449,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_HelpOverlayState)
 // C_SettingsMenuState: OPT-OUT — same reasoning as the help overlay above. A
 // menu left open is a momentary view, not authored state.
 IR_SAVE_OPT_OUT(IRComponents::C_SettingsMenuState)
+// C_PerfHudState: OPT-OUT — same reasoning as C_HelpOverlayState: the HUD's
+// visibility and corner are a momentary view, not authored state.
+IR_SAVE_OPT_OUT(IRComponents::C_PerfHudState)
 // C_PerAxisSurfaceLighting: OPT-OUT — a presentation switch the environment
 // flag or the creation sets every run, not world state; a snapshot taken with
 // it on must not turn it on in a session that left it off.
@@ -680,6 +684,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetFocusRequest,
     IRComponents::C_HelpOverlayState,
     IRComponents::C_SettingsMenuState,
+    IRComponents::C_PerfHudState,
     IRComponents::C_PerAxisSurfaceLighting,
     IRComponents::C_GlitchState,
     IRComponents::C_GlitchSubject,

@@ -1,5 +1,5 @@
-// The two prefab headless-introspection probes — `HelpOverlay::systemOrNull()`
-// and `SettingsMenu::systemOrNull()` — resolve their system through
+// The prefab headless-introspection probes — `HelpOverlay::systemOrNull()`,
+// `PerfHud::systemOrNull()` and `SettingsMenu::systemOrNull()` — resolve their system through
 // `IRSystem::findSystem` and must read a clean negative when the creation never
 // registered it. `findSystem`'s miss answer is `IRSystem::kNullSystemId`, not
 // `IREntity::kNullEntity`, because 0 is a legitimate id (the first system
@@ -33,6 +33,7 @@
 #include <irreden/render/glitch.hpp>
 #include <irreden/render/glitch_subject.hpp>
 #include <irreden/render/help_overlay.hpp>
+#include <irreden/render/perf_hud.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/settings_menu.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
@@ -112,6 +113,16 @@ TEST_F(PrefabSystemProbeTest, HelpOverlayProbeReadsAbsentWhenTheSystemIsNotRegis
     EXPECT_EQ(IRPrefab::HelpOverlay::lastGlyphCommandCount(), 0);
 }
 
+TEST_F(PrefabSystemProbeTest, PerfHudProbeReadsAbsentWhenTheSystemIsNotRegistered) {
+    ASSERT_EQ(IRSystem::findSystem(IRSystem::PERF_HUD), IRSystem::kNullSystemId)
+        << "fixture precondition: nothing registered PERF_HUD";
+
+    EXPECT_EQ(IRPrefab::PerfHud::systemOrNull(), nullptr);
+    EXPECT_EQ(IRPrefab::PerfHud::builtText(), std::string{});
+    EXPECT_EQ(IRPrefab::PerfHud::lastGlyphCommandCount(), 0);
+    EXPECT_EQ(IRPrefab::PerfHud::panelRect().size_, IRMath::ivec2(0));
+}
+
 TEST_F(PrefabSystemProbeTest, SettingsMenuProbeReadsAbsentWhenTheSystemIsNotRegistered) {
     ASSERT_EQ(IRSystem::findSystem(IRSystem::SETTINGS_MENU), IRSystem::kNullSystemId)
         << "fixture precondition: nothing registered SETTINGS_MENU";
@@ -133,6 +144,17 @@ TEST_F(PrefabSystemProbeTest, HelpOverlayProbeResolvesTheSystemRegisteredAsIdZer
     const auto *system = IRPrefab::HelpOverlay::systemOrNull();
     EXPECT_NE(system, nullptr) << "a live system registered as id 0 must not read as absent";
     EXPECT_EQ(system, IRSystem::getSystemParams<IRSystem::System<IRSystem::HELP_OVERLAY>>(id));
+}
+
+TEST_F(PrefabSystemProbeTest, PerfHudProbeResolvesTheSystemRegisteredAsIdZero) {
+    const IRSystem::SystemId id = IRSystem::createSystem<IRSystem::PERF_HUD>();
+    ASSERT_EQ(id, IRSystem::SystemId{0})
+        << "arm precondition: the first system in a fresh manager must take id "
+           "0 — the id `IREntity::kNullEntity` aliases";
+
+    const auto *system = IRPrefab::PerfHud::systemOrNull();
+    EXPECT_NE(system, nullptr) << "a live system registered as id 0 must not read as absent";
+    EXPECT_EQ(system, IRSystem::getSystemParams<IRSystem::System<IRSystem::PERF_HUD>>(id));
 }
 
 TEST_F(PrefabSystemProbeTest, SettingsMenuProbeResolvesTheSystemRegisteredAsIdZero) {

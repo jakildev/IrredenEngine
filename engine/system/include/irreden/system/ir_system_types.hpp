@@ -244,6 +244,11 @@ enum SystemName {
     VOXEL_PICKING,
     DEBUG_CULLING_MINIMAP,
     PERF_STATS_OVERLAY,
+    // Player-facing frame-rate HUD: FPS, window-minimum FPS, frame time,
+    // dropped frames and a frame-time graph, colour-coded against the fixed
+    // frame budget, drawn while the C_PerfHudState singleton is visible.
+    // Same placement contract as HELP_OVERLAY.
+    PERF_HUD,
     // Registry-driven command help overlay. Renders the registered
     // PRESSED bindings + their descriptions onto the GUI canvas when the
     // C_HelpOverlayState singleton is visible. Register AFTER TEXT_TO_TRIXEL

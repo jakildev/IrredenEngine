@@ -315,6 +315,15 @@ template <typename T, typename U> constexpr T mix(const T &value1, const T &valu
     return glm::mix(value1, value2, t);
 }
 
+/// One exponential-moving-average step: @p alpha weights @p now against the
+/// running @p prev. A non-positive @p prev seeds the average at @p now, so a
+/// displayed value reaches steady state on its first sample instead of rising
+/// from zero; only for quantities that are positive once measured (frame
+/// times, rates, counts).
+constexpr double seededEma(double prev, double now, double alpha) {
+    return prev <= 0.0 ? now : alpha * now + (1.0 - alpha) * prev;
+}
+
 /// Dot product of @p value1 and @p value2. GLM wrapper.
 template <typename T> constexpr auto dot(const T &value1, const T &value2) {
     return glm::dot(value1, value2);

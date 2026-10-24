@@ -86,6 +86,11 @@ and lists the runnable target plus an `Interactive` preset.
 #include <irreden/render/commands/command_zoom_in.hpp>
 #include <irreden/render/commands/command_zoom_out.hpp>
 
+// OVERLAYS (F3 frame-rate HUD, F1 command list)
+#include <irreden/render/help_overlay.hpp>
+#include <irreden/render/perf_hud.hpp>
+#include <irreden/render/systems/system_text_to_trixel.hpp>
+
 void initSystems();
 void initCommands();
 
@@ -109,12 +114,15 @@ void initSystems() {
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
-    IRSystem::registerPipeline(
-        IRTime::Events::RENDER,
-        {IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
-    );
+    std::list<IRSystem::SystemId> renderPipeline{
+        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>()};
+    // Both overlays need TEXT_TO_TRIXEL ahead of them and the composite after.
+    renderPipeline.splice(renderPipeline.end(), IRPrefab::PerfHud::systems());
+    renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
+    IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
 
 void initCommands() {
@@ -130,6 +138,8 @@ void initCommands() {
         InputTypes::KEY_MOUSE, ButtonStatuses::PRESSED,
         KeyMouseButtons::kKeyButtonMinus
     );
+    IRPrefab::PerfHud::registerToggleCommand();     // F3
+    IRPrefab::HelpOverlay::registerToggleCommand(); // F1
 }
 ```
 
