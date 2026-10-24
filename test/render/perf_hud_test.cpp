@@ -138,12 +138,18 @@ TEST_F(PerfHudTest, AFrameThatLeftTheWindowNoLongerSetsMinOrDrop) {
     EXPECT_EQ(m_hud->text_, "FPS  60  MIN 100\nMS 16.7  DROP  0");
 }
 
-// The engine counts a frame dropped at two frame periods behind, inclusive.
-TEST_F(PerfHudTest, AFrameExactlyTwoBudgetsLongIsADrop) {
+// `EventProfiler<RENDER>::endEvent` counts a frame dropped only when it runs strictly
+// past two frame periods, so a frame exactly on the threshold is not a drop.
+TEST_F(PerfHudTest, AFrameExactlyTwoBudgetsLongIsNotADropButOneJustPastIs) {
     fill(10.0f);
     m_hud->recordFrame(kDropMs);
     m_hud->recordFrame(kDropMs * 0.999f);
     setSmoothed(60.0, 16.7);
+    m_hud->buildText();
+
+    EXPECT_EQ(line(1), "MS 16.7  DROP  0");
+
+    m_hud->recordFrame(kDropMs * 1.001f);
     m_hud->buildText();
 
     EXPECT_EQ(line(1), "MS 16.7  DROP  1");

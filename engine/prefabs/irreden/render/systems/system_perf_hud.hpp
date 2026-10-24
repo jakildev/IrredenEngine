@@ -80,8 +80,8 @@ inline constexpr IRMath::Color kPerfHudGraphBackground{14, 16, 22, 255};
 //   FPS  60  MIN  58      FPS: smoothed frames per second
 //   MS 16.7  DROP  0      MIN: lowest FPS in the graph window
 //   ▂▁▂▁▃▂▁▁▁▂▁▁▁▂▁▁▂     MS: smoothed frame time; DROP: frames in the
-//                         window at or past the engine's dropped-frame
-//                         threshold (two budgets behind)
+//                         window past the engine's dropped-frame
+//                         threshold (strictly over two budgets)
 //
 // Every value and every bar is coloured by how it stands against the fixed
 // frame budget, so a player reads the state of the frame at a glance without
@@ -264,7 +264,7 @@ template <> struct System<PERF_HUD> {
         for (int i = 0; i < historyCount_; ++i) {
             const float ms = sampleMs(i);
             maxMs = IRMath::max(maxMs, ms);
-            if (ms >= dropMs) {
+            if (ms > dropMs) {
                 ++drops;
             }
         }
