@@ -40,8 +40,9 @@ def _job_path(job_id):
     return f"repos/{REPO}/actions/jobs/{job_id}"
 
 
-def _annotations_path(job_id):
-    return f"repos/{REPO}/check-runs/{job_id}/annotations?per_page=100"
+def _annotations_path(job_id, page=1):
+    path = f"repos/{REPO}/check-runs/{job_id}/annotations?per_page=100"
+    return path if page == 1 else f"{path}&page={page}"
 
 
 class _FakeGh:
@@ -150,6 +151,23 @@ class TestPrRecord(_ReadingCase):
         self.assertNotIn("not_started", prs[0])
         prs, _ = self.fetch([_pr(1, [_check(555)])], self.refused(555))
         self.assertEqual(prs[0]["not_started"], BILLING_TEXT)
+
+    def test_a_failure_annotation_on_a_later_annotation_page_is_read(self):
+        api = {_job_path(555): {"id": 555, "conclusion": "failure", "steps": []},
+               _annotations_path(555): [NOTICE] * 100,
+               _annotations_path(555, 2): [REFUSAL]}
+        prs, _ = self.fetch([_pr(1, [_check(555)])], api)
+        self.assertEqual(prs[0]["not_started"], BILLING_TEXT)
+
+    def test_an_annotation_list_still_full_at_the_page_cap_fails_closed(self):
+        api = {_job_path(555): {"id": 555, "conclusion": "failure", "steps": []},
+               **{_annotations_path(555, page): [NOTICE] * 99 + [REFUSAL]
+                  for page in (1, 2, 3)}}
+        prs, gh = self.fetch([_pr(1, [_check(555)])], api)
+        self.assertEqual(prs[0]["checks"], "red")
+        self.assertNotIn("not_started", prs[0])
+        self.assertNotIn(_annotations_path(555, 4), gh.paths)
+        self.assertEqual(_mod._not_started_memo, {})
 
     def test_a_reading_is_memoized_per_failed_job_set(self):
         self.fetch([_pr(1, [_check(555)])], self.refused(555))

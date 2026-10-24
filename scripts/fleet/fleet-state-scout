@@ -769,6 +769,22 @@ def _gh_api_json(path):
         return None
 
 
+def _gh_api_list(path, per_page=100, max_pages=3):
+    """Every item of the REST list at `path`, or None when a page was
+    unreadable or the list was still full at `max_pages` (its tail was never
+    read)."""
+    items = []
+    for page in range(1, max_pages + 1):
+        query = f"?per_page={per_page}" + (f"&page={page}" if page > 1 else "")
+        found = _gh_api_json(path + query)
+        if not isinstance(found, list):
+            return None
+        items.extend(found)
+        if len(found) < per_page:
+            return items
+    return None
+
+
 def _not_started_reading(repo, nodes):
     """The never-started annotation text for a red head's failed checks, or
     None: some failed check ran, a job or annotation was unreadable, or no
@@ -788,8 +804,8 @@ def _not_started_reading(repo, nodes):
         jobs.append(job)
 
     def read_annotations(job_id):
-        found = _gh_api_json(f"repos/{repo}/check-runs/{job_id}/annotations?per_page=100")
-        if not isinstance(found, list):
+        found = _gh_api_list(f"repos/{repo}/check-runs/{job_id}/annotations")
+        if found is None:
             unread.append(job_id)
             return None
         return found
