@@ -201,6 +201,47 @@ TEST_F(CommandRegistryTest, IsButtonBoundIgnoresModifierMasks) {
     EXPECT_TRUE(m_commandManager.isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, kTestButtonA));
 }
 
+TEST_F(CommandRegistryTest, HeldMaskOverloadIsTriggerExactAndAcceptsMatchingModifiers) {
+    m_commandManager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::HELD,
+        kTestButtonA,
+        noopBody,
+        IRInput::kModifierControl,
+        IRInput::kModifierShift
+    );
+    m_commandManager.createCommand(IRInput::KEY_MOUSE, IRInput::RELEASED, kTestButtonB, noopBody);
+
+    EXPECT_TRUE(m_commandManager.isButtonBound(
+        IRInput::KEY_MOUSE,
+        IRInput::HELD,
+        kTestButtonA,
+        IRInput::kModifierControl | IRInput::kModifierAlt
+    ));
+    EXPECT_FALSE(m_commandManager.isButtonBound(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        kTestButtonA,
+        IRInput::kModifierControl
+    ));
+    EXPECT_FALSE(m_commandManager.isButtonBound(
+        IRInput::KEY_MOUSE,
+        IRInput::HELD,
+        kTestButtonA,
+        IRInput::kModifierControl | IRInput::kModifierShift
+    ));
+    EXPECT_FALSE(m_commandManager.isButtonBound(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        kTestButtonB,
+        IRInput::kModifierNone
+    ));
+    EXPECT_FALSE(
+        m_commandManager
+            .isButtonBound(IRInput::KEY_MOUSE, IRInput::HELD, kTestButtonB, IRInput::kModifierNone)
+    );
+}
+
 // The `ir_command.hpp` free function is its own public surface — the module
 // entry point a C++ creation calls, resolving the manager through the
 // `g_commandManager` global rather than holding the instance. The fixture's

@@ -7,6 +7,7 @@
 #include <irreden/ir_window.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
 #include <irreden/render/systems/system_widget_apply_dropdown.hpp>
+#include <irreden/render/systems/system_widget_apply_radio.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
@@ -45,6 +46,8 @@ class WidgetKeyboardPipelineTest : public testing::Test {
                 input,
                 IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
                 IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
+                IRSystem::createSystem<IRSystem::WIDGET_APPLY_RADIO>(),
+                IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
             }
         );
     }
@@ -113,6 +116,79 @@ TEST_F(WidgetKeyboardPipelineTest, TabTraversesWidgetsInReadingOrderAndWraps) {
     EXPECT_EQ(IRPrefab::Widget::focusedWidget(), checkbox);
 }
 
+TEST_F(WidgetKeyboardPipelineTest, ShiftTabReversesAndTabYieldsToACommand) {
+    const auto first =
+        IRPrefab::Widget::makeCheckbox(IRMath::ivec2(0, 10), IRMath::ivec2(30, 12), "A", false);
+    const auto last =
+        IRPrefab::Widget::makeButton(IRMath::ivec2(0, 30), IRMath::ivec2(30, 12), "B");
+
+    press(IRInput::kKeyButtonTab);
+    ASSERT_EQ(IRPrefab::Widget::focusedWidget(), first);
+    release(IRInput::kKeyButtonTab);
+    press(IRInput::kKeyButtonLeftShift);
+    press(IRInput::kKeyButtonTab);
+    EXPECT_EQ(IRPrefab::Widget::focusedWidget(), last);
+    release(IRInput::kKeyButtonTab);
+    release(IRInput::kKeyButtonLeftShift);
+
+    int commandFires = 0;
+    commandManager_->createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonTab,
+        [&] { ++commandFires; }
+    );
+    press(IRInput::kKeyButtonTab);
+    EXPECT_EQ(commandFires, 1);
+    EXPECT_EQ(IRPrefab::Widget::focusedWidget(), last);
+}
+
+TEST_F(WidgetKeyboardPipelineTest, ToggleRadioButtonAndDropdownKeysApplyThroughPipeline) {
+    const auto checkbox =
+        IRPrefab::Widget::makeCheckbox(IRMath::ivec2(0), IRMath::ivec2(40, 14), "CHECK", false);
+    const auto radio =
+        IRPrefab::Widget::makeRadio(IRMath::ivec2(0, 20), IRMath::ivec2(40, 14), "RADIO", 1, 1);
+    const auto button =
+        IRPrefab::Widget::makeButton(IRMath::ivec2(0, 40), IRMath::ivec2(40, 14), "BUTTON");
+    const auto dropdown = IRPrefab::Widget::makeDropdown(
+        IRMath::ivec2(0, 60),
+        IRMath::ivec2(60, 14),
+        {"A", "B", "C"},
+        0
+    );
+
+    IRPrefab::Widget::focus(checkbox);
+    frame();
+    press(IRInput::kKeyButtonSpace);
+    EXPECT_TRUE(IRPrefab::Widget::checkboxState(checkbox));
+    release(IRInput::kKeyButtonSpace);
+
+    IRPrefab::Widget::focus(radio);
+    frame();
+    press(IRInput::kKeyButtonSpace);
+    EXPECT_TRUE(IRPrefab::Widget::radioSelected(radio));
+    release(IRInput::kKeyButtonSpace);
+
+    IRPrefab::Widget::focus(button);
+    frame();
+    press(IRInput::kKeyButtonEnter);
+    EXPECT_TRUE(IRPrefab::Widget::wasClicked(button));
+    release(IRInput::kKeyButtonEnter);
+
+    IRPrefab::Widget::focus(dropdown);
+    frame();
+    press(IRInput::kKeyButtonSpace);
+    EXPECT_TRUE(IRPrefab::Widget::isDropdownOpen(dropdown));
+    release(IRInput::kKeyButtonSpace);
+    press(IRInput::kKeyButtonDown);
+    release(IRInput::kKeyButtonDown);
+    press(IRInput::kKeyButtonDown);
+    release(IRInput::kKeyButtonDown);
+    press(IRInput::kKeyButtonEnter);
+    EXPECT_EQ(IRPrefab::Widget::dropdownSelectedIndex(dropdown), 2);
+    EXPECT_FALSE(IRPrefab::Widget::isDropdownOpen(dropdown));
+}
+
 TEST_F(WidgetKeyboardPipelineTest, HotkeysAndFocusedSliderKeysApplyThroughThePipeline) {
     const auto checkbox =
         IRPrefab::Widget::makeCheckbox(IRMath::ivec2(0), IRMath::ivec2(40, 14), "CHECK", false);
@@ -162,6 +238,119 @@ TEST_F(WidgetKeyboardPipelineTest, DirectlyWrittenAltTabHotkeyNeverActivates) {
     EXPECT_FALSE(IREntity::getComponent<IRComponents::C_WidgetState>(button).fireAction_);
 }
 
+TEST_F(WidgetKeyboardPipelineTest, PointerFocusDoesNotCaptureKeysOrSuppressCommands) {
+    const auto slider = IRPrefab::Widget::makeSlider(
+        IRMath::ivec2(0),
+        IRMath::ivec2(60, 14),
+        "SLIDER",
+        0.0f,
+        10.0f,
+        5.0f,
+        IRRender::TextSize::LARGE,
+        IRPrefab::Widget::SliderOptions{5.0f, 1.0f, IREntity::kNullEntity}
+    );
+    IREntity::getComponent<IRComponents::C_HitBox2DGui>(slider).hovered_ = true;
+    press(IRInput::kMouseButtonLeft);
+    EXPECT_EQ(IRPrefab::Widget::focusedWidget(), slider);
+    EXPECT_FALSE(IRPrefab::Widget::focusVisible());
+    release(IRInput::kMouseButtonLeft);
+    IRPrefab::Widget::setSliderValue(slider, 5.0f);
+
+    int commandFires = 0;
+    commandManager_->createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonUp,
+        [&] { ++commandFires; }
+    );
+    press(IRInput::kKeyButtonUp);
+    EXPECT_FLOAT_EQ(IRPrefab::Widget::sliderValue(slider), 5.0f);
+    EXPECT_FALSE(commandManager_->isButtonCaptured(IRInput::kKeyButtonUp));
+    EXPECT_EQ(commandFires, 1);
+}
+
+TEST_F(WidgetKeyboardPipelineTest, EditorHotkeyLandsNextFrameAndLeavesPressCommandLive) {
+    const auto slider = IRPrefab::Widget::makeSlider(
+        IRMath::ivec2(0),
+        IRMath::ivec2(60, 14),
+        "SLIDER",
+        0.0f,
+        10.0f,
+        5.0f
+    );
+    const auto editor =
+        IRPrefab::Widget::makeTextInput(IRMath::ivec2(0, 20), IRMath::ivec2(60, 14), "");
+    ASSERT_TRUE(
+        IRPrefab::Widget::setHotkey(editor, IRInput::kKeyButtonT, IRInput::kModifierAlt, "T")
+    );
+    int commandFires = 0;
+    commandManager_->createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonT,
+        [&] { ++commandFires; },
+        IRInput::kModifierNone,
+        IRInput::kModifierShift
+    );
+    IRPrefab::Widget::focus(slider);
+    frame();
+
+    press(IRInput::kKeyButtonLeftAlt);
+    press(IRInput::kKeyButtonT);
+    EXPECT_EQ(commandFires, 1);
+    EXPECT_EQ(IRPrefab::Widget::focusedWidget(), slider);
+    EXPECT_FALSE(commandManager_->isKeyboardCaptured());
+    frame();
+    EXPECT_EQ(IRPrefab::Widget::focusedWidget(), editor);
+    EXPECT_TRUE(IRPrefab::Widget::focusVisible());
+    EXPECT_TRUE(commandManager_->isKeyboardCaptured());
+    EXPECT_TRUE(IRPrefab::Widget::textInputValue(editor).empty());
+}
+
+TEST_F(WidgetKeyboardPipelineTest, HotkeysMatchExactlyIgnoreDisabledAndPublishHints) {
+    const auto button =
+        IRPrefab::Widget::makeButton(IRMath::ivec2(0), IRMath::ivec2(40, 14), "BUTTON");
+    const auto disabled =
+        IRPrefab::Widget::makeCheckbox(IRMath::ivec2(0, 20), IRMath::ivec2(40, 14), "OFF", false);
+    IREntity::getComponent<IRComponents::C_Widget>(disabled).disabled_ = true;
+    ASSERT_TRUE(IRPrefab::Widget::setHotkey(button, IRInput::kKeyButtonM));
+    ASSERT_TRUE(IRPrefab::Widget::setHotkey(disabled, IRInput::kKeyButtonN, IRInput::kModifierAlt));
+
+    press(IRInput::kKeyButtonLeftControl);
+    press(IRInput::kKeyButtonM);
+    EXPECT_FALSE(IRPrefab::Widget::wasClicked(button));
+    release(IRInput::kKeyButtonM);
+    release(IRInput::kKeyButtonLeftControl);
+    press(IRInput::kKeyButtonM);
+    EXPECT_TRUE(IRPrefab::Widget::wasClicked(button));
+    release(IRInput::kKeyButtonM);
+
+    press(IRInput::kKeyButtonLeftAlt);
+    EXPECT_TRUE(IRPrefab::Widget::hintsVisible());
+    press(IRInput::kKeyButtonN);
+    EXPECT_FALSE(IRPrefab::Widget::checkboxState(disabled));
+    EXPECT_NE(IRPrefab::Widget::focusedWidget(), disabled);
+    release(IRInput::kKeyButtonN);
+    release(IRInput::kKeyButtonLeftAlt);
+    EXPECT_FALSE(IRPrefab::Widget::hintsVisible());
+
+    IRPrefab::Widget::defaultTheme().hintModifier_ = IRInput::kModifierNone;
+    press(IRInput::kKeyButtonLeftAlt);
+    EXPECT_FALSE(IRPrefab::Widget::hintsVisible());
+}
+
+TEST_F(WidgetKeyboardPipelineTest, DestroyingFocusedWidgetClearsPublishedFocus) {
+    const auto button =
+        IRPrefab::Widget::makeButton(IRMath::ivec2(0), IRMath::ivec2(40, 14), "BUTTON");
+    IRPrefab::Widget::focus(button);
+    frame();
+    ASSERT_EQ(IRPrefab::Widget::focusedWidget(), button);
+    IREntity::destroyEntity(button);
+    entityManager_.destroyMarkedEntities();
+    EXPECT_EQ(IRPrefab::Widget::focusedWidget(), IREntity::kNullEntity);
+    EXPECT_FALSE(IRPrefab::Widget::focusVisible());
+}
+
 TEST_F(WidgetKeyboardTest, HotkeyValidationRejectsSentinelsMouseAndFocusKeys) {
     const auto button =
         IRPrefab::Widget::makeButton(IRMath::ivec2(0), IRMath::ivec2(40, 20), "BUTTON");
@@ -179,6 +368,58 @@ TEST_F(WidgetKeyboardTest, HotkeyValidationRejectsSentinelsMouseAndFocusKeys) {
     EXPECT_EQ(hotkey.key_, IRInput::kKeyButtonB);
     EXPECT_EQ(hotkey.modifiers_, IRInput::kModifierAlt);
     EXPECT_EQ(hotkey.hint_, "B");
+
+    const auto incomplete = IREntity::createEntity(
+        IRComponents::C_WidgetState{},
+        IRComponents::C_HitBox2DGui{IRMath::ivec2(10)}
+    );
+    EXPECT_FALSE(IRPrefab::Widget::setHotkey(incomplete, IRInput::kKeyButtonM));
+}
+
+TEST_F(WidgetKeyboardTest, EveryCapturedKeyIsReservedAndFocusKeysRejectEveryModifierMask) {
+    const auto slider = IRPrefab::Widget::makeSlider(
+        IRMath::ivec2(0),
+        IRMath::ivec2(40, 14),
+        "S",
+        0.0f,
+        1.0f,
+        0.5f
+    );
+    const auto checkbox =
+        IRPrefab::Widget::makeCheckbox(IRMath::ivec2(0), IRMath::ivec2(40, 14), "C", false);
+    const auto button = IRPrefab::Widget::makeButton(IRMath::ivec2(0), IRMath::ivec2(40, 14), "B");
+    const auto dropdown =
+        IRPrefab::Widget::makeDropdown(IRMath::ivec2(0), IRMath::ivec2(40, 14), {"A"});
+    for (const auto key : IRPrefab::Widget::kFocusKeys) {
+        for (unsigned raw = 0; raw <= static_cast<unsigned>(IRInput::kModifierAll); ++raw) {
+            const auto mods = static_cast<IRInput::KeyModifierMask>(raw);
+            EXPECT_FALSE(IRPrefab::Widget::setHotkey(slider, key, mods));
+            EXPECT_FALSE(IRPrefab::Widget::setHotkey(checkbox, key, mods));
+            EXPECT_FALSE(IRPrefab::Widget::setHotkey(button, key, mods));
+            EXPECT_FALSE(IRPrefab::Widget::setHotkey(dropdown, key, mods));
+        }
+    }
+    const auto check = [](const auto &keys) {
+        for (const auto key : keys) {
+            EXPECT_TRUE(IRPrefab::Widget::isFocusKey(key));
+        }
+    };
+    check(IRSystem::System<IRSystem::WIDGET_INPUT>::kSliderCaptured);
+    check(IRSystem::System<IRSystem::WIDGET_INPUT>::kToggleCaptured);
+    check(IRSystem::System<IRSystem::WIDGET_INPUT>::kPressCaptured);
+    check(IRSystem::System<IRSystem::WIDGET_INPUT>::kClosedDropdownCaptured);
+    check(IRSystem::System<IRSystem::WIDGET_INPUT>::kOpenDropdownCaptured);
+}
+
+TEST_F(WidgetKeyboardTest, CallbackRegistryDiesWithTheWorld) {
+    int fires = 0;
+    IRPrefab::Widget::registerHotkey("ACTION", IRInput::kModifierAlt, IRInput::kKeyButtonM, [&] {
+        ++fires;
+    });
+    ASSERT_EQ(IRPrefab::Widget::getHotkeyRegistry().size(), 1u);
+    entityManager_.destroyAllEntities();
+    EXPECT_TRUE(IRPrefab::Widget::getHotkeyRegistry().empty());
+    EXPECT_EQ(fires, 0);
 }
 
 TEST_F(WidgetKeyboardTest, NewestRegistrationDisplacesWidgetAndReportsCommand) {

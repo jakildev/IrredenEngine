@@ -105,6 +105,8 @@ template <> struct System<WIDGET_INPUT> {
 
     std::vector<IREntity::EntityId> focusableWidgets_;
     std::vector<std::function<void()>> hotkeyCallbacks_;
+    IRComponents::C_WidgetInputFrame *frame_ = nullptr;
+    const IRPrefab::Widget::WidgetTheme *theme_ = nullptr;
 
     static void clearSliderPress(IRComponents::C_WidgetState &state) {
         state.sliderPressPosition_ = IRMath::vec2(0.0f);
@@ -129,16 +131,16 @@ template <> struct System<WIDGET_INPUT> {
     }
 
     void publishFrame() const {
-        auto &frame = IREntity::singleton<IRComponents::C_WidgetInputFrame>();
-        frame.focusedWidget_ = focusedWidgetId_;
-        frame.focusVisible_ = focusVisible_;
-        frame.mouseGuiTrixel_ = mouseGuiTrixel_;
-        const auto &theme = IRPrefab::Widget::defaultTheme();
-        frame.hintsVisible_ = theme.hintModifier_ != IRInput::kModifierNone &&
-                              (heldModifiers_ & theme.hintModifier_) == theme.hintModifier_;
+        frame_->focusedWidget_ = focusedWidgetId_;
+        frame_->focusVisible_ = focusVisible_;
+        frame_->mouseGuiTrixel_ = mouseGuiTrixel_;
+        frame_->hintsVisible_ = theme_->hintModifier_ != IRInput::kModifierNone &&
+                                (heldModifiers_ & theme_->hintModifier_) == theme_->hintModifier_;
     }
 
     void beginTick() {
+        frame_ = &IREntity::singleton<IRComponents::C_WidgetInputFrame>();
+        theme_ = &IRPrefab::Widget::defaultTheme();
         const IREntity::EntityId requested = IRPrefab::Widget::takeFocusRequest();
         if (requested != IREntity::kNullEntity && IREntity::entityExists(requested)) {
             focusedWidgetId_ = requested;
@@ -267,10 +269,13 @@ template <> struct System<WIDGET_INPUT> {
                     if (hotkeyWidgetId_ != IREntity::kNullEntity && id > hotkeyWidgetId_) {
                         return;
                     }
+                    if (!IRPrefab::Widget::isKeyboardHotkey(hotkey.key_) ||
+                        IRPrefab::Widget::isFocusKey(hotkey.key_) ||
+                        hotkey.modifiers_ != heldModifiers_ || !pressed(hotkey.key_)) {
+                        return;
+                    }
                     const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(id);
-                    if (!widget.disabled_ && IRPrefab::Widget::isKeyboardHotkey(hotkey.key_) &&
-                        !IRPrefab::Widget::isFocusKey(hotkey.key_) &&
-                        hotkey.modifiers_ == heldModifiers_ && pressed(hotkey.key_)) {
+                    if (!widget.disabled_) {
                         hotkeyWidgetId_ = id;
                     }
                 }

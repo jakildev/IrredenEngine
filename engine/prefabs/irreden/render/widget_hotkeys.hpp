@@ -121,6 +121,7 @@ inline bool setHotkey(
     std::string hint = ""
 ) {
     if (!IREntity::entityExists(widget) || !validHotkey(key, modifiers) ||
+        !IREntity::getComponentOptional<IRComponents::C_Widget>(widget) ||
         !IREntity::getComponentOptional<IRComponents::C_WidgetState>(widget) ||
         !IREntity::getComponentOptional<IRComponents::C_HitBox2DGui>(widget)) {
         return false;

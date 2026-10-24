@@ -535,12 +535,18 @@ TEST_F(LuaWidgetValues, TextStyleTextSizeIsRangeChecked) {
 TEST_F(LuaWidgetValues, HotkeySurfaceValidatesAndMirrorsHintVisibility) {
     run(R"lua(
         button = IRGui.makeButton(0, 0, 80, 20, "BUTTON")
+        plain = IRGui.makeButton(0, 30, 80, 20, "PLAIN")
+        label = IRGui.makeLabel(0, 60, "LABEL")
         IRGui.setHotkey(button, { key = IRInput.Key.M, mods = IRInput.Modifier.ALT, hint = "M" })
+        IRGui.setHotkey(plain, { key = IRInput.Key.N })
     )lua");
     const auto &hotkey = IREntity::getComponent<IRComponents::C_WidgetHotkey>(entity("button"));
     EXPECT_EQ(hotkey.key_, IRInput::kKeyButtonM);
     EXPECT_EQ(hotkey.modifiers_, IRInput::kModifierAlt);
     EXPECT_EQ(hotkey.hint_, "M");
+    const auto &plain = IREntity::getComponent<IRComponents::C_WidgetHotkey>(entity("plain"));
+    EXPECT_EQ(plain.modifiers_, IRInput::kModifierNone);
+    EXPECT_TRUE(plain.hint_.empty());
 
     auto &frame = IREntity::singleton<IRComponents::C_WidgetInputFrame>();
     frame.hintsVisible_ = true;
@@ -554,6 +560,11 @@ TEST_F(LuaWidgetValues, HotkeySurfaceValidatesAndMirrorsHintVisibility) {
              "IRGui.setHotkey(button, { key = IRInput.Key.UP, mods = IRInput.Modifier.CONTROL })",
              "IRGui.setHotkey(button, { key = IRInput.Key.M, mods = 128 })",
              "IRGui.setHotkey(button, { key = IRInput.Key.M, surprise = true })",
+             "IRGui.setHotkey(button, { key = IRInput.Key.MOUSE_LEFT })",
+             "IRGui.setHotkey(button, { key = 0 })",
+             "IRGui.setHotkey(button, { key = 999999 })",
+             "IRGui.setHotkey(label, { key = IRInput.Key.L })",
+             "IRGui.setHotkey(999999, { key = IRInput.Key.L })",
          }) {
         EXPECT_FALSE(error(call).empty()) << call;
     }

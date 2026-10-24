@@ -115,6 +115,7 @@ TEST_F(LuaPipelineRegisterTest, WidgetRenderSystemNamesBound) {
         IR_WIDGET_ROW(WIDGET_RENDER_IMAGE),
         IR_WIDGET_ROW(WIDGET_RENDER_SPLITTER),
         IR_WIDGET_ROW(WIDGET_RENDER_DOCK_PREVIEW),
+        IR_WIDGET_ROW(WIDGET_RENDER_HINTS),
     };
 #undef IR_WIDGET_ROW
     sol::table names = m_lua.lua()["IRSystem"]["SystemName"];

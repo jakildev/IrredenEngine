@@ -47,14 +47,12 @@ constexpr int kPanSpeed = 20;
 //
 // `checkButton` reproduces `InputManager::checkButton` exactly — PRESSED and
 // RELEASED both match PRESSED_AND_RELEASED, HELD means "down" — and
-// `checkModifiers` reproduces `IRInput::checkKeyMouseModifiers`, deriving
-// Shift/Ctrl/Alt from the same button states the real one reads. Stubbing the
+// `checkModifiers` derives Shift/Ctrl/Alt from the same button states the real
+// one reads, then delegates policy to `IRInput::modifiersMatch`. Stubbing the
 // boundary is the whole point; the selection logic under test stays untouched.
 //
-// Both bodies are mirrors, and nothing compiles them against their originals:
-// changing `InputManager::checkButton`, its three `checkButton*` helpers, or
-// `IRInput::checkKeyMouseModifiers` means changing this class in the same pass,
-// or the fixture keeps asserting against semantics the engine no longer has.
+// `checkButton` remains a hand mirror. Changing `InputManager::checkButton` or
+// its three helpers means changing this class in the same pass.
 class FakeInput {
   public:
     FakeInput() {
@@ -102,32 +100,18 @@ class FakeInput {
     }
 
     bool checkModifiers(KeyModifierMask requiredModifiers, KeyModifierMask blockedModifiers) const {
-        const bool shiftDown =
-            isDown(IRInput::kKeyButtonLeftShift) || isDown(IRInput::kKeyButtonRightShift);
-        const bool controlDown =
-            isDown(IRInput::kKeyButtonLeftControl) || isDown(IRInput::kKeyButtonRightControl);
-        const bool altDown =
-            isDown(IRInput::kKeyButtonLeftAlt) || isDown(IRInput::kKeyButtonRightAlt);
+        return IRInput::modifiersMatch(requiredModifiers, blockedModifiers, heldModifiers());
+    }
 
-        if ((requiredModifiers & IRInput::kModifierShift) != 0 && !shiftDown) {
-            return false;
-        }
-        if ((requiredModifiers & IRInput::kModifierControl) != 0 && !controlDown) {
-            return false;
-        }
-        if ((requiredModifiers & IRInput::kModifierAlt) != 0 && !altDown) {
-            return false;
-        }
-        if ((blockedModifiers & IRInput::kModifierShift) != 0 && shiftDown) {
-            return false;
-        }
-        if ((blockedModifiers & IRInput::kModifierControl) != 0 && controlDown) {
-            return false;
-        }
-        if ((blockedModifiers & IRInput::kModifierAlt) != 0 && altDown) {
-            return false;
-        }
-        return true;
+    KeyModifierMask heldModifiers() const {
+        KeyModifierMask held = IRInput::kModifierNone;
+        if (isDown(IRInput::kKeyButtonLeftShift) || isDown(IRInput::kKeyButtonRightShift))
+            held |= IRInput::kModifierShift;
+        if (isDown(IRInput::kKeyButtonLeftControl) || isDown(IRInput::kKeyButtonRightControl))
+            held |= IRInput::kModifierControl;
+        if (isDown(IRInput::kKeyButtonLeftAlt) || isDown(IRInput::kKeyButtonRightAlt))
+            held |= IRInput::kModifierAlt;
+        return held;
     }
 
   private:
@@ -681,6 +665,58 @@ TEST_F(KeyboardDispatchTest, EmptyPerButtonCaptureRestoresDispatch) {
     tick();
 
     EXPECT_EQ(fires, 1);
+}
+
+TEST_F(KeyboardDispatchTest, MixedTriggerClaimAgreesWithPressFrameDispatch) {
+    int pressed = 0;
+    int held = 0;
+    m_command_manager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonTab,
+        [&] { ++pressed; }
+    );
+    m_command_manager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::HELD,
+        IRInput::kKeyButtonTab,
+        [&] { ++held; },
+        IRInput::kModifierAlt
+    );
+    const KeyModifierMask alt = IRInput::kModifierAlt;
+    EXPECT_TRUE(m_command_manager
+                    .isButtonBound(IRInput::KEY_MOUSE, IRInput::HELD, IRInput::kKeyButtonTab, alt));
+    EXPECT_TRUE(
+        m_command_manager
+            .isButtonBound(IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonTab, alt) ||
+        m_command_manager
+            .isButtonBound(IRInput::KEY_MOUSE, IRInput::HELD, IRInput::kKeyButtonTab, alt)
+    );
+
+    m_input.press(IRInput::kKeyButtonLeftAlt);
+    tick();
+    m_input.press(IRInput::kKeyButtonTab);
+    tick();
+
+    EXPECT_EQ(pressed, 0);
+    EXPECT_EQ(held, 1);
+}
+
+TEST_F(KeyboardDispatchTest, SyntheticModifierProbeUsesTheSharedTruthTable) {
+    m_input.press(IRInput::kKeyButtonLeftControl);
+    m_input.press(IRInput::kKeyButtonRightAlt);
+    for (unsigned required = 0; required <= static_cast<unsigned>(IRInput::kModifierAll);
+         ++required) {
+        for (unsigned blocked = 0; blocked <= static_cast<unsigned>(IRInput::kModifierAll);
+             ++blocked) {
+            const auto requiredMask = static_cast<KeyModifierMask>(required);
+            const auto blockedMask = static_cast<KeyModifierMask>(blocked);
+            EXPECT_EQ(
+                probeCheckModifiers(requiredMask, blockedMask),
+                IRInput::modifiersMatch(requiredMask, blockedMask, m_input.heldModifiers())
+            );
+        }
+    }
 }
 
 TEST_F(KeyboardDispatchTest, CaptureLeavesMouseBindingsActive) {

@@ -7,9 +7,9 @@
 
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/render/components/component_widget_input_frame.hpp>
 #include <irreden/input/components/component_mouse_scroll.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
-#include <irreden/render/layout.hpp>
 
 namespace IRSystem {
 
@@ -80,7 +80,7 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
     }
 
     void beginTick() {
-        mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
+        mouseGuiTrixel_ = IREntity::singleton<IRComponents::C_WidgetInputFrame>().mouseGuiTrixel_;
         wheelRows_ = 0;
         IREntity::forEachComponent<IRComponents::C_MouseScroll>(
             [this](IREntity::EntityId &, IRComponents::C_MouseScroll &scroll) {
