@@ -5,19 +5,46 @@
 #include <irreden/script/lua_script.hpp>
 
 namespace IRScript {
-template <>
-inline constexpr bool kHasLuaBinding<IRComponents::C_SpringPlatform> = true;
+template <> inline constexpr bool kHasLuaBinding<IRComponents::C_SpringPlatform> = true;
 
-template <>
-inline void bindLuaType<IRComponents::C_SpringPlatform>(LuaScript &luaScript) {
+template <> inline void bindLuaType<IRComponents::C_SpringPlatform>(LuaScript &luaScript) {
     luaScript.registerType<
         IRComponents::C_SpringPlatform,
         IRComponents::C_SpringPlatform(
-            float, float, float, float, float, float, int, int, float, float,
-            IRMath::vec3, IRMath::ColorHSV, IRMath::ColorHSV, float, float),
+            float,
+            float,
+            float,
+            float,
+            float,
+            float,
+            int,
+            int,
+            float,
+            float,
+            IRMath::vec3,
+            IRMath::ColorHSV,
+            IRMath::ColorHSV,
+            float,
+            float
+        ),
         IRComponents::C_SpringPlatform(
-            float, float, float, float, float, float, int, int, float, float,
-            IRMath::vec3, IRMath::ColorHSV, IRMath::ColorHSV, float, float, bool),
+            float,
+            float,
+            float,
+            float,
+            float,
+            float,
+            int,
+            int,
+            float,
+            float,
+            IRMath::vec3,
+            IRMath::ColorHSV,
+            IRMath::ColorHSV,
+            float,
+            float,
+            bool
+        ),
         IRComponents::C_SpringPlatform()>(
         "C_SpringPlatform",
         "stiffness",

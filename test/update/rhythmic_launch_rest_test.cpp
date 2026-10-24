@@ -41,12 +41,12 @@ using IRComponents::C_ContactEvent;
 using IRComponents::C_LocalTransform;
 using IRComponents::C_RhythmicLaunch;
 using IRComponents::C_SpringPlatform;
-using IRComponents::SPRING_IDLE;
-using IRComponents::SPRING_LOCKED;
-using IRMath::ColorHSV;
 using IRComponents::C_Velocity3D;
 using IRComponents::C_WorldTransform;
+using IRComponents::SPRING_IDLE;
+using IRComponents::SPRING_LOCKED;
 using IREntity::EntityId;
+using IRMath::ColorHSV;
 using IRMath::vec3;
 
 constexpr std::uint32_t kBlock = IRComponents::COLLISION_LAYER_NOTE_BLOCK;
@@ -119,9 +119,22 @@ class RhythmicLaunchRestTest : public testing::Test {
             C_CollisionLayer{kPlatform, kBlock, true},
             event,
             C_SpringPlatform{
-                200.0f, 10.0f, 8.0f, 0.7f, 0.2f, 1.0f, 3, 2, 0.5f, 0.15f,
-                vec3(0.0f, 0.0f, 1.0f), ColorHSV{0.0f, 0.0f, -0.3f, 0.0f},
-                ColorHSV{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, startLocked
+                200.0f,
+                10.0f,
+                8.0f,
+                0.7f,
+                0.2f,
+                1.0f,
+                3,
+                2,
+                0.5f,
+                0.15f,
+                vec3(0.0f, 0.0f, 1.0f),
+                ColorHSV{0.0f, 0.0f, -0.3f, 0.0f},
+                ColorHSV{0.0f, 0.0f, 0.0f, 0.0f},
+                0.0f,
+                0.0f,
+                startLocked
             }
         );
     }
