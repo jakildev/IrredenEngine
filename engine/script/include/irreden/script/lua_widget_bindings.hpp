@@ -573,8 +573,12 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
     };
     // Opens or closes the item strip as a click on the header would.
     gui["setDropdownOpen"] = [](lua_Integer id, bool open) {
-        requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.setDropdownOpen", "dropdown")
-            ->isOpen_ = open;
+        auto *dropdown =
+            requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.setDropdownOpen", "dropdown");
+        dropdown->isOpen_ = open;
+        if (open) {
+            dropdown->scrollIntoView(dropdown->selectedIndex_);
+        }
     };
 
     gui["makeTextInput"] = [](int x,

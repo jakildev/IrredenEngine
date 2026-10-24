@@ -38,6 +38,14 @@
 //     LUA_SCROLL_OFF_PANEL PASS (the first visible row did not move).
 //   * shot 8 scrolls the wheel with the pointer over the list →
 //     LUA_SCROLL_ON_PANEL PASS (the first visible row advanced by one).
+//   * shots 9-11 drag the undoable slider, then press Ctrl+Z and Ctrl+Y →
+//     LUA_UNDO_SLIDER PASS (the drag, its undo and its redo).
+//   * shot 12 opens the 20-item dropdown, scrolls the wheel three times over its
+//     panel → DROPDOWN_WINDOW PASS (the item window moved exactly three rows),
+//     DROPDOWN_HOVERED PASS (the hovered widget is the dropdown, not only its
+//     header) and DROPDOWN_ZOOM_HELD PASS (the camera zoom did not change).
+//   * shot 13 scrolls the wheel over empty canvas → WHEEL_ZOOMS_CAMERA PASS
+//     (positive control: the zoom does change when no widget is hovered).
 //
 // Hand-off fixture (opt-in; absent, the demo is unchanged):
 // `--hand-off-fixture button` adds a HAND OFF button whose onClick calls
@@ -75,9 +83,12 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
+#include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_apply_number_field.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
+#include <irreden/render/systems/system_widget_apply_dropdown.hpp>
+#include <irreden/render/systems/system_widget_render_dropdown.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
@@ -153,6 +164,11 @@ IREntity::EntityId g_undoSlider = IREntity::kNullEntity;
 float g_undoSliderStart = 0.0f;
 float g_undoSliderFinal = 0.0f;
 
+// The 20-item dropdown main.lua built, published via IRTest.setDropdown, and
+// the world camera zoom when the shot being evaluated began.
+IREntity::EntityId g_dropdown = IREntity::kNullEntity;
+float g_zoomBefore = 0.0f;
+
 void recordRowEvent(char event, lua_Integer id) {
     g_rowEvents.push_back(event);
     g_rowEventIdsMatch = g_rowEventIdsMatch && static_cast<IREntity::EntityId>(id) == g_rowRegion;
@@ -174,12 +190,12 @@ constexpr IRVideo::GuiInputEvent kOnClickEvents[] = {
      IRVideo::GuiInputEvent::Type::PRESS,
      IRMath::ivec2(400, 190),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
     {2,
      IRVideo::GuiInputEvent::Type::RELEASE,
      IRMath::ivec2(400, 190),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
 };
 
 constexpr IRVideo::GuiInputEvent kPollEvents[] = {
@@ -188,12 +204,12 @@ constexpr IRVideo::GuiInputEvent kPollEvents[] = {
      IRVideo::GuiInputEvent::Type::PRESS,
      IRMath::ivec2(880, 190),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
     {2,
      IRVideo::GuiInputEvent::Type::RELEASE,
      IRMath::ivec2(880, 190),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
 };
 
 // Must match the text main.lua's onEntityHovered handler writes for the
@@ -206,12 +222,12 @@ constexpr IRVideo::GuiInputEvent kRetargetEvents[] = {
      IRVideo::GuiInputEvent::Type::PRESS,
      IRMath::ivec2(760, 550),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
     {2,
      IRVideo::GuiInputEvent::Type::RELEASE,
      IRMath::ivec2(760, 550),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
 };
 
 // The row region spans GUI x 260-590, y 410-440: screen x 520-1180, y 410-440.
@@ -221,12 +237,12 @@ constexpr IRVideo::GuiInputEvent kRowEvents[] = {
      IRVideo::GuiInputEvent::Type::PRESS,
      IRMath::ivec2(1000, 425),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
     {2,
      IRVideo::GuiInputEvent::Type::RELEASE,
      IRMath::ivec2(1000, 425),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
     {3, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1000, 475)},
 };
 
@@ -249,22 +265,22 @@ constexpr IRVideo::GuiInputEvent kPairedSliderEvents[] = {
      IRVideo::GuiInputEvent::Type::PRESS,
      IRMath::ivec2(940, 320),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
     {2,
      IRVideo::GuiInputEvent::Type::RELEASE,
      IRMath::ivec2(940, 320),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
     {3,
      IRVideo::GuiInputEvent::Type::PRESS,
      IRMath::ivec2(940, 320),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
     {4,
      IRVideo::GuiInputEvent::Type::RELEASE,
      IRMath::ivec2(940, 320),
      IRMath::vec2(0.0f),
-     IRInput::KeyMouseButtons::kMouseButtonLeft},
+     IRInput::kMouseButtonLeft},
 };
 
 // Must match the text main.lua writes for rows 1 and 2.
@@ -334,6 +350,35 @@ constexpr IRVideo::GuiInputEvent kSliderRedoEvents[] = {
      IRInput::kKeyButtonLeftControl},
 };
 
+// The dropdown header spans GUI x 510-630, y 450-470; its 8-row panel spans
+// y 470-630 (screen x 1020-1260). The click opens it, the move puts the cursor
+// over a panel row, and three wheel steps toward the end follow on their own
+// frames: the panel's item window must move exactly three rows.
+constexpr int kDropdownScrollSteps = 3;
+constexpr IRVideo::GuiInputEvent kDropdownScrollEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1140, 460)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(1140, 460),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(1140, 460),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {4, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1140, 550)},
+    {6, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1140, 550), IRMath::vec2(0.0f, -1.0f)},
+    {7, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1140, 550), IRMath::vec2(0.0f, -1.0f)},
+    {8, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1140, 550), IRMath::vec2(0.0f, -1.0f)},
+};
+
+// Empty canvas: no widget sits at GUI (400, 710).
+constexpr IRVideo::GuiInputEvent kWheelZoomControlEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(800, 710)},
+    {2, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(800, 710), IRMath::vec2(0.0f, 1.0f)},
+};
+
 enum GuiTestShotIndex {
     kHoverShot,
     kOnClickShot,
@@ -346,7 +391,9 @@ enum GuiTestShotIndex {
     kScrollOnPanelShot,
     kSliderDragShot,
     kSliderUndoShot,
-    kSliderRedoShot
+    kSliderRedoShot,
+    kDropdownScrollShot,
+    kWheelZoomControlShot
 };
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
@@ -384,6 +431,12 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_slider_redo"},
      kSliderRedoEvents,
      static_cast<int>(sizeof(kSliderRedoEvents) / sizeof(kSliderRedoEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_dropdown_scroll"},
+     kDropdownScrollEvents,
+     static_cast<int>(sizeof(kDropdownScrollEvents) / sizeof(kDropdownScrollEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_wheel_zoom_control"},
+     kWheelZoomControlEvents,
+     static_cast<int>(sizeof(kWheelZoomControlEvents) / sizeof(kWheelZoomControlEvents[0]))},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 
@@ -429,6 +482,10 @@ bool pairedSliderPredicate(const void *, std::string &actual) {
 
 IRPrefab::GuiTest::Assertion g_pairedAssertion =
     IRPrefab::GuiTest::predicate(&pairedSliderPredicate, nullptr, "paired_track_focus");
+
+float cameraZoom() {
+    return IREntity::getComponent<IRComponents::C_ZoomLevel>(IREntity::getEntity("camera")).zoom_.x;
+}
 
 void logGuiAssert(
     int shotIndex,
@@ -535,6 +592,9 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             g_pairedFieldBefore = IRPrefab::Widget::numberFieldValue(g_pairedField);
             g_pairedFieldStartedUnfocused =
                 !IREntity::getComponent<IRComponents::C_WidgetState>(g_pairedField).focused_;
+        }
+        if (shotIndex == kDropdownScrollShot || shotIndex == kWheelZoomControlShot) {
+            g_zoomBefore = cameraZoom();
         }
         if (shotIndex == kHoverShot) {
             g_hoverLabelBefore = hoverLabelText();
@@ -644,6 +704,42 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
                 : (shotIndex == kSliderUndoShot ? "slider_undone" : "slider_redone"),
             pass,
             fmt::format("value={} expected={}", value, expected)
+        );
+    } else if (shotIndex == kDropdownScrollShot) {
+        const auto &dropdown = IREntity::getComponent<IRComponents::C_WidgetDropdown>(g_dropdown);
+        logGuiAssert(
+            shotIndex,
+            "DROPDOWN_WINDOW",
+            g_dropdown,
+            "dropdown_top_index",
+            dropdown.isOpen_ && dropdown.topIndex() == kDropdownScrollSteps,
+            fmt::format("open={} topIndex={}", dropdown.isOpen_, dropdown.topIndex())
+        );
+        const IREntity::EntityId hovered = IRPrefab::Widget::hoveredWidget();
+        logGuiAssert(
+            shotIndex,
+            "DROPDOWN_HOVERED",
+            g_dropdown,
+            "dropdown_hovered",
+            hovered == g_dropdown && g_dropdown != IREntity::kNullEntity,
+            std::to_string(hovered)
+        );
+        logGuiAssert(
+            shotIndex,
+            "DROPDOWN_ZOOM_HELD",
+            g_dropdown,
+            "dropdown_zoom_held",
+            cameraZoom() == g_zoomBefore,
+            fmt::format("before={} after={}", g_zoomBefore, cameraZoom())
+        );
+    } else if (shotIndex == kWheelZoomControlShot) {
+        logGuiAssert(
+            shotIndex,
+            "WHEEL_ZOOMS_CAMERA",
+            IREntity::kNullEntity,
+            "wheel_zoom_control",
+            cameraZoom() != g_zoomBefore,
+            fmt::format("before={} after={}", g_zoomBefore, cameraZoom())
         );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
@@ -758,6 +854,9 @@ void registerLuaBindings() {
         lua["IRTest"]["undoSliderChanged"] = [](float value) {
             IRLuaWidgets::g_undoSliderFinal = value;
         };
+        lua["IRTest"]["setDropdown"] = [](lua_Integer dropdown) {
+            IRLuaWidgets::g_dropdown = static_cast<IREntity::EntityId>(dropdown);
+        };
         lua["IRTest"]["rowHovered"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('H', id); };
         lua["IRTest"]["rowClicked"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('C', id); };
         lua["IRTest"]["rowUnhovered"] = [](lua_Integer id) {
@@ -827,6 +926,9 @@ void registerLuaBindings() {
 }
 
 void initSystems() {
+    // The wheel yields to a hovered widget only through this singleton.
+    IRPrefab::Widget::makeGuiHoverState();
+
     // INPUT — hover test → Lua hover handlers → widget state machine → Lua
     // click dispatch. The dispatch id is the prefab instance registered in the
     // binding callback, placed immediately after WIDGET_INPUT (so fireAction_
@@ -841,6 +943,8 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
             IRLuaWidgets::g_dispatchId,
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
+            IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
         }
     );
 
@@ -867,6 +971,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),

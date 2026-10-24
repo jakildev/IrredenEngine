@@ -178,6 +178,14 @@ IRSystem.appendSystem(IRTime.UPDATE, IRSystem.registerSystem({
     end,
 }))
 
+-- A 20-item dropdown: longer than the 8-row window an open dropdown shows, so
+-- the wheel scrolls its items while the camera zoom stays put.
+local dropdownItems = {}
+for i = 1, 20 do
+    dropdownItems[i] = string.format("OPTION %02d", i)
+end
+IRTest.setDropdown(IRGui.makeDropdown(510, 450, 120, 20, dropdownItems))
+
 -- Hand-off fixture (--hand-off-fixture button|auto; absent, nothing below runs).
 -- HAND OFF hands this process to a GUI-test take of the same demo and resumes
 -- when it exits. The markers print the render frame and engine tick: equal

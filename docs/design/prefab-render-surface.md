@@ -301,7 +301,10 @@ and the assert compiles out under `IR_RELEASE`.
 The expanded strip's geometry (`rowHeight` / `expandedHeight` /
 `itemCenterOffsetY` / `itemAtOffsetY` on `C_WidgetDropdown`) has one owner
 because a re-derived formula drifts silently — the only symptom is a scripted
-click landing on the wrong row.
+click landing on the wrong row. An open strip paints at most
+`kDropdownMaxVisibleRows` rows (a window starting at `topIndex()`), so the
+hitbox, hover row and painted rows all derive from the same window; item
+indices stay absolute and the window is transient view state, not serialized.
 
 Distance bands in `trixel_rect.hpp` govern only the framebuffer composite,
 not the per-canvas write order; within one widget tick the system draws
