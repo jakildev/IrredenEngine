@@ -12,6 +12,10 @@
 //   if IRGui.wasClicked(button) then ... end
 //   local slider = IRGui.makeSlider(x, y, w, h, label, min, max, value, size?, options?)
 //   local number = IRGui.makeNumberField(x, y, w, h, value, min, max, step?, size?)
+//   local list   = IRGui.makeList(x, y, w, h, items, selected?, size?)
+//   local row    = IRGui.listSelected(list)          -- 1-based, 0 = none
+//   IRGui.setListSelected(list, row)                 -- 0 clears; reveals a changed row
+//   IRGui.setListItems(list, items)                  -- keeps a still-valid selection
 //   local value  = IRGui.numberFieldValue(number)
 //   IRGui.setNumberFieldValue(number, value)
 //   IRGui.focus(textInput)                            -- keyboard focus, next INPUT frame
@@ -43,8 +47,8 @@
 // argument.
 //
 // `size` is an `IRText.Size` value (absent or nil = LARGE) choosing the
-// widget's glyph set; makeSlider / makeCheckbox / makeDropdown take it last
-// too. A bad size raises before the widget exists.
+// widget's glyph set; makeSlider / makeCheckbox / makeDropdown / makeList take
+// it last too. A bad size raises before the widget exists.
 //
 // The optional arguments ahead of `size` that bind as Lua references
 // (`color`, `onClick`) are plain `sol::object`s: a nil `sol::optional` of a
@@ -578,8 +582,49 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
             requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.setDropdownOpen", "dropdown");
         dropdown->isOpen_ = open;
         if (open) {
-            dropdown->scrollIntoView(dropdown->selectedIndex_);
+            dropdown->scrollIntoView(
+                dropdown->selectedIndex_,
+                IRPrefab::Widget::dropdownStripLayout(static_cast<IREntity::EntityId>(id))
+            );
         }
+    };
+
+    // Row height stays the C++ default; the wheel scrolls a hovered list.
+    gui["makeList"] = [](int x,
+                         int y,
+                         int w,
+                         int h,
+                         const sol::table &items,
+                         sol::optional<int> selected,
+                         sol::object size) -> lua_Integer {
+        // Parsed before the entity exists, so a malformed call creates nothing.
+        std::vector<std::string> parsedItems = stringList(items, "IRGui.makeList");
+        const IRRender::TextSize textSize = textSizeFromLua(size, "IRGui.makeList");
+        const IREntity::EntityId widget = IRPrefab::Widget::makeList(
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            std::move(parsedItems),
+            -1,
+            IRComponents::C_WidgetList{}.itemHeight_,
+            textSize
+        );
+        IRPrefab::Widget::setListSelectedIndex(widget, selected.value_or(0) - 1);
+        return static_cast<lua_Integer>(widget);
+    };
+    gui["listSelected"] = [](lua_Integer id) -> int {
+        requireWidget<IRComponents::C_WidgetList>(id, "IRGui.listSelected", "list");
+        return IRPrefab::Widget::listSelectedIndex(static_cast<IREntity::EntityId>(id)) + 1;
+    };
+    gui["setListSelected"] = [](lua_Integer id, int index) {
+        requireWidget<IRComponents::C_WidgetList>(id, "IRGui.setListSelected", "list");
+        IRPrefab::Widget::setListSelectedIndex(static_cast<IREntity::EntityId>(id), index - 1);
+    };
+    gui["setListItems"] = [](lua_Integer id, const sol::table &items) {
+        requireWidget<IRComponents::C_WidgetList>(id, "IRGui.setListItems", "list");
+        IRPrefab::Widget::setListItems(
+            static_cast<IREntity::EntityId>(id),
+            stringList(items, "IRGui.setListItems")
+        );
     };
 
     gui["makeTextInput"] = [](int x,

@@ -17,7 +17,8 @@
 namespace IRSystem {
 
 // Renders the dropdown collapsed header (one row, like a button), plus
-// the expanded item panel below it when isOpen_. The header always
+// the expanded item panel where `C_WidgetDropdown::stripLayout` places it
+// against the GUI canvas when isOpen_. The header always
 // occupies widget.size_. The expanded panels are painted in endTick, after
 // every header's text has been dispatched: a panel's fill must land over the
 // headers of the dropdowns below it, and glyphs are drawn by a dispatch that
@@ -123,10 +124,12 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         const IRComponents::C_WidgetDropdown &dd = *panel.dd_;
         const IRComponents::C_WidgetState &state = *panel.state_;
         const int itemH = dd.rowHeight();
-        const int firstItem = dd.topIndex();
-        const int endItem = firstItem + dd.visibleRowCount();
+        const IRComponents::C_WidgetDropdown::StripLayout layout =
+            dd.stripLayout(panel.pos_.y, widget.size_.y, canvas_->size_.y);
+        const int firstItem = dd.topIndex(layout);
+        const int endItem = firstItem + layout.rows_;
         const IRPrefab::GuiRect strip =
-            IRPrefab::WidgetText::dropdownStripRect(widget, dd, panel.pos_);
+            IRPrefab::WidgetText::dropdownStripRect(widget, dd, panel.pos_, layout);
         const IRMath::ivec2 panelPos = strip.pos_;
         const IRMath::ivec2 panelSize = strip.size_;
         IRRender::fillRect(
@@ -143,10 +146,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         const int hoverRow = static_cast<int>(state.dragValue_);
 
         for (int i = firstItem; i < endItem; ++i) {
-            const IRMath::ivec2 rowPos(
-                panelPos.x,
-                panel.pos_.y + dd.itemTopOffsetY(widget.size_.y, i)
-            );
+            const IRMath::ivec2 rowPos(panelPos.x, panel.pos_.y + dd.itemTopOffsetY(layout, i));
             const IRMath::ivec2 rowSize(panelSize.x, itemH);
             if (i == dd.selectedIndex_) {
                 IRRender::fillRect(
@@ -169,7 +169,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             }
             IRPrefab::WidgetText::queue(
                 textCmds_,
-                IRPrefab::WidgetText::dropdownStripRow(widget, dd, panel.pos_, theme_, i),
+                IRPrefab::WidgetText::dropdownStripRow(dd, panel.pos_, layout, theme_, i),
                 canvas_->size_,
                 IRPrefab::Widget::detail::stateText(theme_, widget)
             );

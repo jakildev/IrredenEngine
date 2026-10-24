@@ -102,6 +102,8 @@ template <> struct System<WIDGET_INPUT> {
     bool focusVisibleAtStart_ = false;
 
     IRMath::vec2 (*mousePosition_)() = IRPrefab::Layout::mousePositionInGuiTrixels;
+    IRMath::ivec2 (*guiCanvasSize_)() = IRPrefab::Layout::guiCanvasSize;
+    IRMath::ivec2 canvasSize_ = IRMath::ivec2(0);
 
     std::vector<IREntity::EntityId> focusableWidgets_;
     std::vector<std::function<void()>> hotkeyCallbacks_;
@@ -134,6 +136,7 @@ template <> struct System<WIDGET_INPUT> {
         frame_->focusedWidget_ = focusedWidgetId_;
         frame_->focusVisible_ = focusVisible_;
         frame_->mouseGuiTrixel_ = mouseGuiTrixel_;
+        frame_->guiCanvasSize_ = canvasSize_;
         frame_->hintsVisible_ = theme_->hintModifier_ != IRInput::kModifierNone &&
                                 (heldModifiers_ & theme_->hintModifier_) == theme_->hintModifier_;
     }
@@ -149,6 +152,7 @@ template <> struct System<WIDGET_INPUT> {
         keyboardWidgetFocusedAtStart_ = hasFocusedKeyboardWidget();
         focusVisibleAtStart_ = focusVisible_;
         mouseGuiTrixel_ = mousePosition_();
+        canvasSize_ = guiCanvasSize_();
         heldModifiers_ = IRInput::heldKeyModifiers();
         hotkeyWidgetId_ = IREntity::kNullEntity;
         hotkeyActivates_ = false;

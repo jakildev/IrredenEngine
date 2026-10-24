@@ -8,13 +8,16 @@ using IRMath::ivec2;
 namespace IRComponents {
 
 // Screen-space hitbox in GUI-canvas trixel coordinates. The AABB extends
-// `[pos, pos + size_)` from a sibling `C_GuiPosition` (same coordinate
-// frame as `C_TextSegment` text rendering — top-left origin, +X right,
-// +Y down). Kept separate from `C_HitBox2D` so the world-space (camera-
+// `[pos + offset_, pos + offset_ + size_)` from a sibling `C_GuiPosition`
+// (same coordinate frame as `C_TextSegment` text rendering — top-left origin,
+// +X right, +Y down). `offset_` lets an owner grow its hit region up or left
+// of its position without moving it — an open dropdown whose strip sits above
+// its header. Kept separate from `C_HitBox2D` so the world-space (camera-
 // transformed half-extents) and gui-space (camera-independent integer
 // trixels) coordinate systems stay un-mixed.
 struct C_HitBox2DGui {
     ivec2 size_;
+    ivec2 offset_{0, 0};
     bool hovered_ = false;
 
     C_HitBox2DGui()

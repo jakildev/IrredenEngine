@@ -11,6 +11,9 @@ struct C_WidgetInputFrame {
     bool focusVisible_ = false;
     bool hintsVisible_ = false;
     IRMath::vec2 mouseGuiTrixel_ = IRMath::vec2(0.0f);
+    // The GUI canvas this frame's widget geometry is laid out against; zero
+    // when there is none.
+    IRMath::ivec2 guiCanvasSize_ = IRMath::ivec2(0);
 };
 
 } // namespace IRComponents

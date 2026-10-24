@@ -34,12 +34,14 @@ namespace IRSystem {
 // them needs an open-order rank, not a flat bias.
 
 // Per-kind follower for dropdowns. Owns five pieces of behavior:
-//   1. While open, grows the hitbox to cover the expanded item panel and
-//      biases zOrder_ so WIDGET_INPUT's hover routing reaches this widget
-//      rather than whatever the panel covers.
+//   1. While open, grows the hitbox over the header and the strip where
+//      `C_WidgetDropdown::stripLayout` places it against the GUI canvas
+//      (offset upward for a strip above the header), and biases zOrder_ so
+//      WIDGET_INPUT's hover routing reaches this widget rather than whatever
+//      the strip covers.
 //   2. Scrolls the open item window one row per mouse-wheel event while the
-//      dropdown is the topmost hovered widget, and reveals the selected item
-//      when the panel opens.
+//      dropdown is the topmost hovered widget, reveals the selected item when
+//      the strip opens, and keeps the keyboard row inside the window.
 //   3. Caches the cursor's absolute item index in state.dragValue_ for the
 //      render system to highlight.
 //   4. Handles click semantics — first click opens the dropdown; a
@@ -49,6 +51,8 @@ namespace IRSystem {
 //      check on the global mouse-button state).
 template <> struct System<WIDGET_APPLY_DROPDOWN> {
     IRMath::vec2 mouseGuiTrixel_ = IRMath::vec2(0.0f);
+    // The GUI canvas height every strip of the frame is placed against.
+    int guiCanvasHeight_ = 0;
     // Rows the frame's wheel events ask for; positive scrolls toward the end.
     int wheelRows_ = 0;
     IREntity::EntityId keyboardDropdown_ = IREntity::kNullEntity;
@@ -80,7 +84,9 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
     }
 
     void beginTick() {
-        mouseGuiTrixel_ = IREntity::singleton<IRComponents::C_WidgetInputFrame>().mouseGuiTrixel_;
+        const auto &frame = IREntity::singleton<IRComponents::C_WidgetInputFrame>();
+        mouseGuiTrixel_ = frame.mouseGuiTrixel_;
+        guiCanvasHeight_ = frame.guiCanvasSize_.y;
         wheelRows_ = 0;
         IREntity::forEachComponent<IRComponents::C_MouseScroll>(
             [this](IREntity::EntityId &, IRComponents::C_MouseScroll &scroll) {
@@ -91,6 +97,12 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
                 }
             }
         );
+    }
+
+    static void
+    collapseHitbox(IRComponents::C_HitBox2DGui &hitbox, const IRComponents::C_Widget &widget) {
+        hitbox.offset_ = IRMath::ivec2(0);
+        hitbox.size_ = widget.size_;
     }
 
     // Bias zOrder_ up while expanded and back down when collapsed. Derived from
@@ -115,16 +127,21 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         if (widget.disabled_) {
             dd.isOpen_ = false;
             clearKeyboardCursor(entityId);
-            hitbox.size_ = widget.size_;
+            collapseHitbox(hitbox, widget);
             syncFloatingZOrder(widget, false);
             state.dragValue_ = -1.0f;
             return;
         }
 
+        // One placement for the whole tick: the wheel, the keyboard row, the
+        // hitbox and the hover row all read this window.
+        const IRComponents::C_WidgetDropdown::StripLayout layout =
+            dd.stripLayout(guiPos.pos_.y, widget.size_.y, guiCanvasHeight_);
+
         // Scroll before the hover row is resolved so the highlight and the
         // painted rows come from the same window.
         if (dd.isOpen_ && state.hovered_) {
-            dd.scrollBy(wheelRows_);
+            dd.scrollBy(wheelRows_, layout);
         }
 
         using Action = IRComponents::C_WidgetState::KeyAction;
@@ -133,7 +150,7 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
             if (dd.isOpen_) {
                 keyboardDropdown_ = entityId;
                 keyboardRow_ = keyboardStartRow(dd);
-                dd.scrollIntoView(keyboardRow_);
+                dd.scrollIntoView(keyboardRow_, layout);
             } else {
                 clearKeyboardCursor(entityId);
             }
@@ -146,7 +163,7 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
                 const int delta = state.keyAction_ == Action::MOVE_UP ? -1 : 1;
                 keyboardRow_ =
                     IRMath::clamp(keyboardRow_ + delta, 0, static_cast<int>(dd.items_.size()) - 1);
-                dd.scrollIntoView(keyboardRow_);
+                dd.scrollIntoView(keyboardRow_, layout);
             }
         } else if (dd.isOpen_ && state.keyAction_ == Action::SELECT) {
             ensureKeyboardCursor(entityId, dd);
@@ -160,10 +177,12 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         // Sync hitbox extent and z-order to current open state so WIDGET_INPUT's
         // hover routing can find us anywhere inside the expanded panel, ahead of
         // the widgets that panel covers.
-        hitbox.size_ = IRMath::ivec2(
-            widget.size_.x,
-            dd.isOpen_ ? dd.expandedHeight(widget.size_.y) : widget.size_.y
-        );
+        if (dd.isOpen_) {
+            hitbox.offset_ = IRMath::ivec2(0, dd.expandedOffsetY(layout));
+            hitbox.size_ = IRMath::ivec2(widget.size_.x, dd.expandedHeight(widget.size_.y, layout));
+        } else {
+            collapseHitbox(hitbox, widget);
+        }
         syncFloatingZOrder(widget, dd.isOpen_);
 
         // Compute the row the cursor is currently over, if any. -1 = not
@@ -172,10 +191,8 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         if (dd.isOpen_) {
             const float withinX = mouseGuiTrixel_.x - static_cast<float>(guiPos.pos_.x);
             if (withinX >= 0.0f && withinX < static_cast<float>(widget.size_.x)) {
-                rowFromMouse = dd.itemAtOffsetY(
-                    widget.size_.y,
-                    mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y)
-                );
+                rowFromMouse =
+                    dd.itemAtOffsetY(layout, mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y));
             }
         }
         state.dragValue_ = static_cast<float>(
@@ -192,7 +209,7 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         if (!dd.isOpen_) {
             dd.isOpen_ = true;
             clearKeyboardCursor(entityId);
-            dd.scrollIntoView(dd.selectedIndex_);
+            dd.scrollIntoView(dd.selectedIndex_, layout);
             return;
         }
 
@@ -203,7 +220,7 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         }
         dd.isOpen_ = false;
         clearKeyboardCursor(entityId);
-        hitbox.size_ = widget.size_;
+        collapseHitbox(hitbox, widget);
         syncFloatingZOrder(widget, false);
         // TODO: outside-click-to-close — close if mouse released outside the
         // expanded hitbox; needs a direct mouse-released check rather than

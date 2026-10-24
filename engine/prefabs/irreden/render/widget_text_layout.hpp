@@ -244,7 +244,7 @@ inline TextRun listRow(
         list.items_[static_cast<std::size_t>(index)],
         IRMath::ivec2(pos.x + theme.padding_ * 2, pos.y + row * itemH),
         itemH,
-        IRRender::TextSize::LARGE
+        list.textSize_
     );
 }
 
@@ -287,22 +287,23 @@ inline GuiRect dropdownHeaderTextRegion(
     return {pos, IRMath::ivec2(IRMath::max(0, widget.size_.x - reserve), widget.size_.y)};
 }
 
-// The open item strip below the header: the visible window only.
+// The open item strip where @p layout places it: the visible window only.
 inline GuiRect dropdownStripRect(
     const IRComponents::C_Widget &widget,
     const IRComponents::C_WidgetDropdown &dd,
-    IRMath::ivec2 pos
+    IRMath::ivec2 pos,
+    const IRComponents::C_WidgetDropdown::StripLayout &layout
 ) {
     return {
-        IRMath::ivec2(pos.x, pos.y + widget.size_.y),
-        IRMath::ivec2(widget.size_.x, dd.stripHeight())
+        IRMath::ivec2(pos.x, pos.y + layout.offsetY_),
+        IRMath::ivec2(widget.size_.x, dd.stripHeight(layout))
     };
 }
 
 inline TextRun dropdownStripRow(
-    const IRComponents::C_Widget &widget,
     const IRComponents::C_WidgetDropdown &dd,
     IRMath::ivec2 pos,
+    const IRComponents::C_WidgetDropdown::StripLayout &layout,
     const IRPrefab::Widget::WidgetTheme &theme,
     int index
 ) {
@@ -310,7 +311,7 @@ inline TextRun dropdownStripRow(
         dd.items_[static_cast<std::size_t>(index)],
         IRMath::ivec2(
             pos.x + IRPrefab::Widget::detail::dropdownHorizontalInset(theme.padding_),
-            pos.y + dd.itemTopOffsetY(widget.size_.y, index)
+            pos.y + dd.itemTopOffsetY(layout, index)
         ),
         dd.rowHeight(),
         dd.textSize_

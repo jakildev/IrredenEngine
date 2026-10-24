@@ -46,6 +46,16 @@
 //     header) and DROPDOWN_ZOOM_HELD PASS (the camera zoom did not change).
 //   * shot 13 scrolls the wheel over empty canvas → WHEEL_ZOOMS_CAMERA PASS
 //     (positive control: the zoom does change when no widget is hovered).
+//   * shots 14-19 drive the widget hotkeys and their held-Alt hint badges.
+//   * shot 20 opens the 40-item dropdown near the canvas bottom with Alt+P and
+//     presses Down ten times → DROPDOWN_LONG_PLACED PASS (the strip opens
+//     upward, whole, inside the canvas) and DROPDOWN_LONG_KEYBOARD PASS (the
+//     keyboard row reached item 11 and the window scrolled to keep it shown).
+//   * shot 21 scrolls the wheel once over that upward strip →
+//     DROPDOWN_LONG_WHEEL PASS (the window moved exactly one row).
+//   * shot 22 scrolls the wheel once over the 60-row `IRGui.makeList` list →
+//     LUA_LIST_WHEEL PASS (the window moved exactly one row and
+//     `IRGui.listSelected` still names row 40).
 //
 // Hand-off fixture (opt-in; absent, the demo is unchanged):
 // `--hand-off-fixture button` adds a HAND OFF button whose onClick calls
@@ -88,7 +98,9 @@
 #include <irreden/render/systems/system_widget_apply_number_field.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_apply_dropdown.hpp>
+#include <irreden/render/systems/system_widget_apply_list.hpp>
 #include <irreden/render/systems/system_widget_render_dropdown.hpp>
+#include <irreden/render/systems/system_widget_render_list.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
 #include <irreden/render/systems/system_widget_apply_radio.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
@@ -109,6 +121,8 @@
 
 #include <irreden/ir_profile.hpp>
 
+#include <array>
+#include <cstddef>
 #include <list>
 #include <string>
 #include <fmt/format.h>
@@ -175,6 +189,15 @@ float g_undoSliderFinal = 0.0f;
 // the world camera zoom when the shot being evaluated began.
 IREntity::EntityId g_dropdown = IREntity::kNullEntity;
 float g_zoomBefore = 0.0f;
+
+// The 40-item dropdown and 60-row list main.lua built, the list row it
+// selected (1-based), and each one's first visible item when its wheel shot
+// began.
+IREntity::EntityId g_longDropdown = IREntity::kNullEntity;
+IREntity::EntityId g_longList = IREntity::kNullEntity;
+int g_longListSelected = 0;
+int g_longDropdownTopBefore = -1;
+int g_longListTopBefore = -1;
 
 void recordRowEvent(char event, lua_Integer id) {
     g_rowEvents.push_back(event);
@@ -380,6 +403,54 @@ constexpr IRVideo::GuiInputEvent kDropdownScrollEvents[] = {
     {8, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1140, 550), IRMath::vec2(0.0f, -1.0f)},
 };
 
+// Alt+P opens the 40-item dropdown (header GUI x 20-200, y 690-710) and
+// focuses it; ten Down presses on their own frames move the keyboard row from
+// item 1 to item 11. The pointer waits on empty canvas, off every row.
+constexpr int kLongDropdownDownPresses = 10;
+constexpr std::array<IRVideo::GuiInputEvent, 5 + 2 * kLongDropdownDownPresses>
+longDropdownKeyboardEvents() {
+    using Type = IRVideo::GuiInputEvent::Type;
+    std::array<IRVideo::GuiInputEvent, 5 + 2 * kLongDropdownDownPresses> events{{
+        {0, Type::MOVE, IRMath::ivec2(800, 710)},
+        {1, Type::PRESS, IRMath::ivec2(0), IRMath::vec2(0.0f), IRInput::kKeyButtonLeftAlt},
+        {2, Type::PRESS, IRMath::ivec2(0), IRMath::vec2(0.0f), IRInput::kKeyButtonP},
+        {3, Type::RELEASE, IRMath::ivec2(0), IRMath::vec2(0.0f), IRInput::kKeyButtonP},
+        {4, Type::RELEASE, IRMath::ivec2(0), IRMath::vec2(0.0f), IRInput::kKeyButtonLeftAlt},
+    }};
+    for (int press = 0; press < kLongDropdownDownPresses; ++press) {
+        const auto slot = static_cast<std::size_t>(5 + 2 * press);
+        events[slot] = {
+            6 + 2 * press,
+            Type::PRESS,
+            IRMath::ivec2(0),
+            IRMath::vec2(0.0f),
+            IRInput::kKeyButtonDown
+        };
+        events[slot + 1] = {
+            7 + 2 * press,
+            Type::RELEASE,
+            IRMath::ivec2(0),
+            IRMath::vec2(0.0f),
+            IRInput::kKeyButtonDown
+        };
+    }
+    return events;
+}
+constexpr auto kLongDropdownKeyboardEvents = longDropdownKeyboardEvents();
+
+// The upward strip spans GUI y 530-690 over x 20-200; GUI (110, 600) is on one
+// of its rows. One wheel step toward the end.
+constexpr IRVideo::GuiInputEvent kLongDropdownWheelEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(220, 600)},
+    {2, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(220, 600), IRMath::vec2(0.0f, -1.0f)},
+};
+
+// The list spans GUI x 510-630, y 642-714.
+constexpr IRVideo::GuiInputEvent kLongListWheelEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1140, 678)},
+    {2, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1140, 678), IRMath::vec2(0.0f, -1.0f)},
+};
+
 // Empty canvas: no widget sits at GUI (400, 710).
 constexpr IRVideo::GuiInputEvent kWheelZoomControlEvents[] = {
     {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(800, 710)},
@@ -505,7 +576,10 @@ enum GuiTestShotIndex {
     kHotkeyCheckboxShot,
     kHotkeySliderShot,
     kHotkeySliderResetShot,
-    kHotkeyPointerShot
+    kHotkeyPointerShot,
+    kLongDropdownKeyboardShot,
+    kLongDropdownWheelShot,
+    kLongListWheelShot
 };
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
@@ -567,6 +641,15 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hotkey_pointer"},
      kHotkeyPointerEvents,
      static_cast<int>(sizeof(kHotkeyPointerEvents) / sizeof(kHotkeyPointerEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_dropdown_long_keyboard"},
+     kLongDropdownKeyboardEvents.data(),
+     static_cast<int>(kLongDropdownKeyboardEvents.size())},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_dropdown_long_wheel"},
+     kLongDropdownWheelEvents,
+     static_cast<int>(sizeof(kLongDropdownWheelEvents) / sizeof(kLongDropdownWheelEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_list_wheel"},
+     kLongListWheelEvents,
+     static_cast<int>(sizeof(kLongListWheelEvents) / sizeof(kLongListWheelEvents[0]))},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 
@@ -660,6 +743,65 @@ IREntity::EntityId portraitDrawnEntity() {
     return textures.readEntityIdAt(textures.size_ / IRMath::ivec2(2));
 }
 
+int dropdownTopIndex() {
+    return IREntity::getComponent<IRComponents::C_WidgetDropdown>(g_dropdown)
+        .topIndex(IRPrefab::Widget::dropdownStripLayout(g_dropdown));
+}
+
+int longDropdownTopIndex() {
+    if (g_longDropdown == IREntity::kNullEntity) {
+        return -1;
+    }
+    return IREntity::getComponent<IRComponents::C_WidgetDropdown>(g_longDropdown)
+        .topIndex(IRPrefab::Widget::dropdownStripLayout(g_longDropdown));
+}
+
+int longListVisibleRows() {
+    const auto &list = IREntity::getComponent<IRComponents::C_WidgetList>(g_longList);
+    return list.visibleRows(IREntity::getComponent<IRComponents::C_Widget>(g_longList).size_.y);
+}
+
+int longListTopIndex() {
+    if (g_longList == IREntity::kNullEntity) {
+        return -1;
+    }
+    return IREntity::getComponent<IRComponents::C_WidgetList>(g_longList)
+        .topIndex(IREntity::getComponent<IRComponents::C_Widget>(g_longList).size_.y);
+}
+
+// The open strip sits whole above the header and inside the GUI canvas.
+void assertLongDropdownPlaced(int shotIndex) {
+    const auto &dropdown = IREntity::getComponent<IRComponents::C_WidgetDropdown>(g_longDropdown);
+    const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(g_longDropdown);
+    const IRMath::ivec2 pos =
+        IREntity::getComponent<IRComponents::C_GuiPosition>(g_longDropdown).pos_;
+    const IRComponents::C_WidgetDropdown::StripLayout layout =
+        IRPrefab::Widget::dropdownStripLayout(g_longDropdown);
+    const IRPrefab::GuiRect strip =
+        IRPrefab::WidgetText::dropdownStripRect(widget, dropdown, pos, layout);
+    const int canvasHeight = IRPrefab::Widget::guiCanvasSize().y;
+    logGuiAssert(
+        shotIndex,
+        "DROPDOWN_LONG_PLACED",
+        g_longDropdown,
+        "strip_inside_canvas",
+        dropdown.isOpen_ && layout.rows_ == IRComponents::kDropdownMaxVisibleRows &&
+            strip.pos_.y + strip.size_.y == pos.y && strip.pos_.y >= 0 &&
+            strip.pos_.y + strip.size_.y <= canvasHeight,
+        fmt::format(
+            "open={} rows={} strip=({},{} {}x{}) header.y={} canvas.h={}",
+            dropdown.isOpen_,
+            layout.rows_,
+            strip.pos_.x,
+            strip.pos_.y,
+            strip.size_.x,
+            strip.size_.y,
+            pos.y,
+            canvasHeight
+        )
+    );
+}
+
 void assertPortraitSubject(int shotIndex, IREntity::EntityId expected) {
     const IREntity::EntityId subject = IRPrefab::Viewport::drawnSubject(g_portrait);
     logGuiAssert(
@@ -737,6 +879,12 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         }
         if (shotIndex == kDropdownScrollShot || shotIndex == kWheelZoomControlShot) {
             g_zoomBefore = cameraZoom();
+        }
+        if (shotIndex == kLongDropdownWheelShot) {
+            g_longDropdownTopBefore = longDropdownTopIndex();
+        }
+        if (shotIndex == kLongListWheelShot) {
+            g_longListTopBefore = longListTopIndex();
         }
         if (shotIndex == kHoverShot) {
             g_hoverLabelBefore = hoverLabelText();
@@ -854,8 +1002,8 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             "DROPDOWN_WINDOW",
             g_dropdown,
             "dropdown_top_index",
-            dropdown.isOpen_ && dropdown.topIndex() == kDropdownScrollSteps,
-            fmt::format("open={} topIndex={}", dropdown.isOpen_, dropdown.topIndex())
+            dropdown.isOpen_ && dropdownTopIndex() == kDropdownScrollSteps,
+            fmt::format("open={} topIndex={}", dropdown.isOpen_, dropdownTopIndex())
         );
         const IREntity::EntityId hovered = IRPrefab::Widget::hoveredWidget();
         logGuiAssert(
@@ -929,6 +1077,59 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             "focus_ring_hidden",
             IRPrefab::Widget::lastFocusRingWidget() == IREntity::kNullEntity,
             fmt::format("ring={}", IRPrefab::Widget::lastFocusRingWidget())
+        );
+    } else if (shotIndex == kLongDropdownKeyboardShot) {
+        assertLongDropdownPlaced(shotIndex);
+        const auto &dropdown =
+            IREntity::getComponent<IRComponents::C_WidgetDropdown>(g_longDropdown);
+        const int highlighted = static_cast<int>(
+            IREntity::getComponent<IRComponents::C_WidgetState>(g_longDropdown).dragValue_
+        );
+        const int top = longDropdownTopIndex();
+        logGuiAssert(
+            shotIndex,
+            "DROPDOWN_LONG_KEYBOARD",
+            g_longDropdown,
+            "keyboard_row_in_window",
+            dropdown.isOpen_ && highlighted == kLongDropdownDownPresses &&
+                top == kLongDropdownDownPresses - IRComponents::kDropdownMaxVisibleRows + 1,
+            fmt::format("open={} highlighted={} topIndex={}", dropdown.isOpen_, highlighted, top)
+        );
+    } else if (shotIndex == kLongDropdownWheelShot) {
+        assertLongDropdownPlaced(shotIndex);
+        const int top = longDropdownTopIndex();
+        logGuiAssert(
+            shotIndex,
+            "DROPDOWN_LONG_WHEEL",
+            g_longDropdown,
+            "upward_window_scrolled",
+            IRPrefab::Widget::hoveredWidget() == g_longDropdown && g_longDropdownTopBefore >= 0 &&
+                top == g_longDropdownTopBefore + 1,
+            fmt::format(
+                "hovered={} before={} after={}",
+                IRPrefab::Widget::hoveredWidget(),
+                g_longDropdownTopBefore,
+                top
+            )
+        );
+    } else if (shotIndex == kLongListWheelShot) {
+        const int top = longListTopIndex();
+        const int selected = IRPrefab::Widget::listSelectedIndex(g_longList) + 1;
+        const int revealedTop = g_longListSelected - longListVisibleRows();
+        logGuiAssert(
+            shotIndex,
+            "LUA_LIST_WHEEL",
+            g_longList,
+            "list_window_scrolled",
+            g_longListTopBefore == revealedTop && top == revealedTop + 1 &&
+                selected == g_longListSelected,
+            fmt::format(
+                "before={} after={} expectedBefore={} selected={}",
+                g_longListTopBefore,
+                top,
+                revealedTop,
+                selected
+            )
         );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
@@ -1046,6 +1247,13 @@ void registerLuaBindings() {
         lua["IRTest"]["setDropdown"] = [](lua_Integer dropdown) {
             IRLuaWidgets::g_dropdown = static_cast<IREntity::EntityId>(dropdown);
         };
+        lua["IRTest"]["setLongDropdown"] = [](lua_Integer dropdown) {
+            IRLuaWidgets::g_longDropdown = static_cast<IREntity::EntityId>(dropdown);
+        };
+        lua["IRTest"]["setLongList"] = [](lua_Integer list, int selected) {
+            IRLuaWidgets::g_longList = static_cast<IREntity::EntityId>(list);
+            IRLuaWidgets::g_longListSelected = selected;
+        };
         lua["IRTest"]["rowHovered"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('H', id); };
         lua["IRTest"]["rowClicked"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('C', id); };
         lua["IRTest"]["rowUnhovered"] = [](lua_Integer id) {
@@ -1129,6 +1337,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
             IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>(),
             IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_LIST>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
@@ -1164,6 +1373,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_RADIO>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_HINTS>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
