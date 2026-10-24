@@ -8,9 +8,11 @@ namespace IRScript {
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_ContactEvent> = true;
 
 template <> inline void bindLuaType<IRComponents::C_ContactEvent>(LuaScript &luaScript) {
-    luaScript.registerType<IRComponents::C_ContactEvent, IRComponents::C_ContactEvent()>(
-        "C_ContactEvent"
-    );
+    // `C_ContactEvent.new()` and `C_ContactEvent.new(bornTouching)`.
+    luaScript.registerType<
+        IRComponents::C_ContactEvent,
+        IRComponents::C_ContactEvent(),
+        IRComponents::C_ContactEvent(bool)>("C_ContactEvent");
 }
 } // namespace IRScript
 

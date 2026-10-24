@@ -49,6 +49,9 @@ struct C_SpringPlatform {
     ColorHSV releaseColorShift_;
     float colorMinValue_;
     float colorMinSaturation_;
+    // Built carrying a resting body: the built pose is the locked pose, the
+    // origin sits a lock point above it, and the state starts LOCKED.
+    bool startLocked_;
 
     C_SpringPlatform(
         float stiffness,
@@ -65,7 +68,8 @@ struct C_SpringPlatform {
         ColorHSV lockColorShift,
         ColorHSV releaseColorShift = ColorHSV{0.0f, 0.0f, 0.0f, 0.0f},
         float colorMinValue = 0.0f,
-        float colorMinSaturation = 0.0f
+        float colorMinSaturation = 0.0f,
+        bool startLocked = false
     )
         : origin_{vec3(0.0f)}
         , originInitialized_{false}
@@ -91,7 +95,8 @@ struct C_SpringPlatform {
         , lockColorShift_{lockColorShift}
         , releaseColorShift_{releaseColorShift}
         , colorMinValue_{IRMath::clamp(colorMinValue, 0.0f, 1.0f)}
-        , colorMinSaturation_{IRMath::clamp(colorMinSaturation, 0.0f, 1.0f)} {}
+        , colorMinSaturation_{IRMath::clamp(colorMinSaturation, 0.0f, 1.0f)}
+        , startLocked_{startLocked} {}
 
     C_SpringPlatform()
         : C_SpringPlatform(

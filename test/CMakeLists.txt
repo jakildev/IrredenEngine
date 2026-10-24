@@ -243,6 +243,7 @@ add_executable(IrredenEngineTest
   utility/contained_path_test.cpp
   utility/ir_utility_test.cpp
   update/collision_response_test.cpp
+  update/rhythmic_launch_rest_test.cpp
   video/auto_screenshot_helpers_test.cpp
   video/auto_record_pacing_test.cpp
   video/audio_capture_rate_test.cpp

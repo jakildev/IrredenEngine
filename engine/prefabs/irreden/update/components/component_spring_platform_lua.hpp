@@ -15,6 +15,9 @@ inline void bindLuaType<IRComponents::C_SpringPlatform>(LuaScript &luaScript) {
         IRComponents::C_SpringPlatform(
             float, float, float, float, float, float, int, int, float, float,
             IRMath::vec3, IRMath::ColorHSV, IRMath::ColorHSV, float, float),
+        IRComponents::C_SpringPlatform(
+            float, float, float, float, float, float, int, int, float, float,
+            IRMath::vec3, IRMath::ColorHSV, IRMath::ColorHSV, float, float, bool),
         IRComponents::C_SpringPlatform()>(
         "C_SpringPlatform",
         "stiffness",

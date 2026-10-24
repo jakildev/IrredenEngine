@@ -10,6 +10,7 @@
 #include <irreden/update/components/component_collider_iso3d_aabb.hpp>
 #include <irreden/update/components/component_collision_layer.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
+#include <irreden/update/components/component_contact_event_lua.hpp>
 #include <irreden/update/systems/system_collision_event_clear.hpp>
 #include <irreden/update/systems/system_collision_note_platform.hpp>
 #include <irreden/update/systems/system_dispatch_lua_overlap.hpp>
@@ -213,6 +214,27 @@ TEST_F(LuaCollisionBindingsTest, UnmatchedLayerPairDoesNotFire) {
 
 // Registering a handler before the dispatch system exists raises a clear
 // Lua-visible error rather than silently dropping it.
+// The C_ContactEvent type's two constructors: a default event, and one born
+// touching (touching_ and wasTouching_ set, so its first overlap is a stay).
+TEST_F(LuaCollisionBindingsTest, ContactEventConstructorsReachLua) {
+    IRScript::bindLuaType<C_ContactEvent>(m_lua);
+    sol::state &lua = m_lua.lua();
+    auto plain = lua.safe_script("return C_ContactEvent.new()");
+    ASSERT_TRUE(plain.valid());
+    const C_ContactEvent idle = plain.get<C_ContactEvent>();
+    EXPECT_FALSE(idle.touching_);
+    EXPECT_FALSE(idle.wasTouching_);
+    auto born = lua.safe_script("return C_ContactEvent.new(true)");
+    ASSERT_TRUE(born.valid());
+    const C_ContactEvent touching = born.get<C_ContactEvent>();
+    EXPECT_TRUE(touching.touching_);
+    EXPECT_TRUE(touching.wasTouching_);
+    EXPECT_FALSE(touching.entered_);
+    auto apart = lua.safe_script("return C_ContactEvent.new(false)");
+    ASSERT_TRUE(apart.valid());
+    EXPECT_FALSE(apart.get<C_ContactEvent>().touching_);
+}
+
 TEST(LuaCollisionBindingsUnregisteredTest, OnOverlapEnterRaisesWithoutDispatchSystem) {
     IRScript::LuaScript lua;
     IREntity::EntityManager entityManager;
