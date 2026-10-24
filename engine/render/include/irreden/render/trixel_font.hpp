@@ -60,7 +60,7 @@ constexpr Glyph kGlyph_A = makeGlyph(
 );
 
 constexpr Glyph kGlyph_B = makeGlyph(
-    "XXXXX."
+    "XXXX.."
     "XXXXX."
     "XX..XX"
     "XX..XX"
@@ -69,8 +69,8 @@ constexpr Glyph kGlyph_B = makeGlyph(
     "XX..XX"
     "XX..XX"
     "XX..XX"
-    "XXXXX."
-    "XXXXX."
+    "XXXXXX"
+    "XXXXXX"
 );
 
 constexpr Glyph kGlyph_C = makeGlyph(
@@ -256,7 +256,7 @@ constexpr Glyph kGlyph_O = makeGlyph(
 );
 
 constexpr Glyph kGlyph_P = makeGlyph(
-    "XXXXX."
+    "XXXX.."
     "XXXXX."
     "XX..XX"
     "XX..XX"
@@ -284,7 +284,7 @@ constexpr Glyph kGlyph_Q = makeGlyph(
 );
 
 constexpr Glyph kGlyph_R = makeGlyph(
-    "XXXXX."
+    "XXXX.."
     "XXXXX."
     "XX..XX"
     "XX..XX"
@@ -302,7 +302,7 @@ constexpr Glyph kGlyph_S = makeGlyph(
     ".XXXX."
     "XX..XX"
     "XX...."
-    "XXXXX."
+    "XXXX.."
     ".XXXX."
     "....XX"
     "....XX"
@@ -412,8 +412,8 @@ constexpr Glyph kGlyph_Z = makeGlyph(
 // --- Digits 0-9 ---
 
 constexpr Glyph kGlyph_0 = makeGlyph(
+    "..XX.."
     ".XXXX."
-    ".XXXX."
     "XX..XX"
     "XX..XX"
     "XX..XX"
@@ -422,7 +422,7 @@ constexpr Glyph kGlyph_0 = makeGlyph(
     "XX..XX"
     "XX..XX"
     ".XXXX."
-    ".XXXX."
+    "..XX.."
 );
 
 constexpr Glyph kGlyph_1 = makeGlyph(
@@ -475,7 +475,7 @@ constexpr Glyph kGlyph_4 = makeGlyph(
     ".XX.XX"
     ".XX.XX"
     "XXXXXX"
-    "XXXXXX"
+    ".XXXXX"
     "....XX"
     "....XX"
     "....XX"
@@ -486,8 +486,8 @@ constexpr Glyph kGlyph_5 = makeGlyph(
     "XXXXXX"
     "XX...."
     "XX...."
-    "XXXXX."
-    "XXXXX."
+    "XXXX.."
+    ".XXXX."
     "....XX"
     "....XX"
     "XX..XX"
@@ -500,7 +500,7 @@ constexpr Glyph kGlyph_6 = makeGlyph(
     ".XXXX."
     "XX..XX"
     "XX...."
-    "XXXXX."
+    "XXXX.."
     "XXXXX."
     "XX..XX"
     "XX..XX"
@@ -544,7 +544,7 @@ constexpr Glyph kGlyph_9 = makeGlyph(
     "XX..XX"
     "XX..XX"
     ".XXXXX"
-    ".XXXXX"
+    "..XXXX"
     "....XX"
     "XX..XX"
     ".XXXX."
