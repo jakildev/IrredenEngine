@@ -1,9 +1,9 @@
 #ifndef COMPONENT_WIDGET_HOTKEY_H
 #define COMPONENT_WIDGET_HOTKEY_H
 
-#include <irreden/ir_entity.hpp>
 #include <irreden/input/ir_input_types.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <unordered_map>

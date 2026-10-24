@@ -289,7 +289,6 @@ enum SystemName {
     WIDGET_RENDER_SLIDER,
     WIDGET_RENDER_CHECKBOX,
     WIDGET_RENDER_LIST,
-    WIDGET_RENDER_HINTS,
     WIDGET_RENDER_DROPDOWN,
     WIDGET_RENDER_RADIO,
     WIDGET_RENDER_TEXT_INPUT,
@@ -311,6 +310,8 @@ enum SystemName {
     // (press → axis-projected translate / shift-snap rotate / scale).
     GIZMO_HOVER,
     GIZMO_DRAG,
+
+    WIDGET_RENDER_HINTS,
 
     // Reserved for tests of the registerSystem<> member-on-System<N>
     // helper. Do not use from a creation or prefab system.

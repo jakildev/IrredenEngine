@@ -10,6 +10,7 @@
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -17,6 +18,11 @@ namespace IRPrefab::Widget {
 
 using HotkeyKey = std::uint32_t;
 using HotkeyEntry = IRComponents::WidgetHotkeyCallback;
+
+static_assert(
+    static_cast<HotkeyKey>(IRInput::kNumKeyMouseButtons) <= 0xFFFFu,
+    "KeyMouseButtons exceeds 16-bit range; update HotkeyKey packing"
+);
 
 inline HotkeyKey makeHotkeyKey(IRInput::KeyModifierMask mods, IRInput::KeyMouseButtons key) {
     return (static_cast<HotkeyKey>(mods) << 16) | static_cast<HotkeyKey>(key);

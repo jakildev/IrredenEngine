@@ -6,6 +6,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
+#include <irreden/render/systems/system_widget_apply_dropdown.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
@@ -224,6 +225,76 @@ TEST_F(WidgetKeyboardTest, SliderKeyActionsUseSharedValueOperations) {
     state.keyAction_ = IRComponents::C_WidgetState::KeyAction::RESET;
     apply.tick(widget, state, slider, position);
     EXPECT_FLOAT_EQ(slider.currentValue_, 50.0f);
+}
+
+TEST_F(WidgetKeyboardTest, DropdownKeyboardCursorTracksLiveItemsAndPointerReopen) {
+    IRSystem::System<IRSystem::WIDGET_APPLY_DROPDOWN> apply;
+    IRComponents::C_Widget widget{IRComponents::WidgetKind::DROPDOWN, IRMath::ivec2(100, 20)};
+    IRComponents::C_WidgetState state;
+    IRComponents::C_WidgetDropdown dropdown;
+    dropdown.items_ = {"A", "B", "C", "D", "E"};
+    dropdown.selectedIndex_ = 1;
+    IRComponents::C_HitBox2DGui hitbox{widget.size_};
+    const IRComponents::C_GuiPosition position{IRMath::ivec2(0)};
+    const auto tick = [&] {
+        apply.tick(1, widget, state, dropdown, hitbox, position);
+        state.keyAction_ = IRComponents::C_WidgetState::KeyAction::NONE;
+        state.fireAction_ = false;
+    };
+
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::OPEN_OR_CLOSE;
+    tick();
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::MOVE_DOWN;
+    tick();
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::SELECT;
+    tick();
+    EXPECT_EQ(dropdown.selectedIndex_, 2);
+    EXPECT_FALSE(dropdown.isOpen_);
+
+    state.fireAction_ = true;
+    tick();
+    EXPECT_TRUE(dropdown.isOpen_);
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::MOVE_DOWN;
+    tick();
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::SELECT;
+    tick();
+    EXPECT_EQ(dropdown.selectedIndex_, 3);
+    EXPECT_FALSE(dropdown.isOpen_);
+
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::OPEN_OR_CLOSE;
+    tick();
+    dropdown.items_ = {"A", "B", "C"};
+    dropdown.selectedIndex_ = 1;
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::SELECT;
+    tick();
+    EXPECT_EQ(dropdown.selectedIndex_, 1);
+    EXPECT_FALSE(dropdown.isOpen_);
+
+    dropdown.items_ = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+    dropdown.selectedIndex_ = 7;
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::OPEN_OR_CLOSE;
+    tick();
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::MOVE_DOWN;
+    tick();
+    EXPECT_EQ(apply.keyboardRow_, 8);
+    EXPECT_EQ(dropdown.topIndex(), 1);
+}
+
+TEST_F(WidgetKeyboardTest, EmptyDropdownKeyboardSelectionRemainsEmpty) {
+    IRSystem::System<IRSystem::WIDGET_APPLY_DROPDOWN> apply;
+    IRComponents::C_Widget widget{IRComponents::WidgetKind::DROPDOWN, IRMath::ivec2(100, 20)};
+    IRComponents::C_WidgetState state;
+    IRComponents::C_WidgetDropdown dropdown;
+    IRComponents::C_HitBox2DGui hitbox{widget.size_};
+    const IRComponents::C_GuiPosition position{IRMath::ivec2(0)};
+
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::OPEN_OR_CLOSE;
+    apply.tick(1, widget, state, dropdown, hitbox, position);
+    state.keyAction_ = IRComponents::C_WidgetState::KeyAction::SELECT;
+    apply.tick(1, widget, state, dropdown, hitbox, position);
+
+    EXPECT_EQ(dropdown.selectedIndex_, -1);
+    EXPECT_TRUE(dropdown.isOpen_);
 }
 
 TEST_F(WidgetKeyboardTest, PerButtonCaptureIsIndependentOfKeyboardCapture) {

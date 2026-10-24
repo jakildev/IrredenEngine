@@ -20,7 +20,9 @@
 #include <irreden/render/widgets.hpp>
 
 #include <algorithm>
+#include <array>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace IRSystem {
@@ -64,6 +66,24 @@ namespace IRSystem {
 // Pipeline order requirement: HITBOX_MOUSE_TEST_GUI → WIDGET_INPUT →
 // WIDGET_APPLY_SLIDER → WIDGET_APPLY_CHECKBOX, all in the INPUT pipeline.
 template <> struct System<WIDGET_INPUT> {
+    static constexpr std::array kSliderCaptured{
+        IRInput::kKeyButtonUp,
+        IRInput::kKeyButtonDown,
+        IRInput::kKeyButtonHome,
+        IRInput::kKeyButtonEnd,
+        IRInput::kKeyButtonDelete,
+        IRInput::kKeyButtonBackspace,
+    };
+    static constexpr std::array kToggleCaptured{IRInput::kKeyButtonSpace};
+    static constexpr std::array kPressCaptured{IRInput::kKeyButtonEnter};
+    static constexpr std::array kClosedDropdownCaptured{IRInput::kKeyButtonSpace};
+    static constexpr std::array kOpenDropdownCaptured{
+        IRInput::kKeyButtonSpace,
+        IRInput::kKeyButtonUp,
+        IRInput::kKeyButtonDown,
+        IRInput::kKeyButtonEnter,
+    };
+
     IRMath::vec2 mouseGuiTrixel_ = IRMath::vec2(0.0f);
     bool mouseLeftDown_ = false;
     bool mouseLeftPressedThisFrame_ = false;
@@ -437,41 +457,32 @@ template <> struct System<WIDGET_INPUT> {
     void endTick() {
         auto &commands = IRCommand::getCommandManager();
         commands.setKeyboardCaptured(keyboardWidgetFocusedAtStart_ || hasFocusedKeyboardWidget());
-        std::vector<IRInput::KeyMouseButtons> captured;
+        std::span<const IRInput::KeyMouseButtons> captured;
         if ((focusVisibleAtStart_ || focusVisible_) && focusedWidgetId_ != IREntity::kNullEntity &&
             IREntity::entityExists(focusedWidgetId_)) {
             const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(focusedWidgetId_);
             switch (widget.kind_) {
             case IRComponents::WidgetKind::SLIDER:
-                captured = {
-                    IRInput::kKeyButtonUp,
-                    IRInput::kKeyButtonDown,
-                    IRInput::kKeyButtonHome,
-                    IRInput::kKeyButtonEnd,
-                    IRInput::kKeyButtonDelete,
-                    IRInput::kKeyButtonBackspace
-                };
+                captured = kSliderCaptured;
                 break;
             case IRComponents::WidgetKind::CHECKBOX:
             case IRComponents::WidgetKind::RADIO:
-                captured = {IRInput::kKeyButtonSpace};
+                captured = kToggleCaptured;
                 break;
             case IRComponents::WidgetKind::BUTTON:
             case IRComponents::WidgetKind::COLOR_SWATCH:
             case IRComponents::WidgetKind::HIT_REGION:
-                captured = {IRInput::kKeyButtonEnter};
+                captured = kPressCaptured;
                 break;
             case IRComponents::WidgetKind::DROPDOWN: {
-                captured = {IRInput::kKeyButtonSpace};
                 const auto dropdown =
                     IREntity::getComponentOptional<IRComponents::C_WidgetDropdown>(
                         focusedWidgetId_
                     );
                 if (dropdown && (*dropdown)->isOpen_) {
-                    captured.insert(
-                        captured.end(),
-                        {IRInput::kKeyButtonUp, IRInput::kKeyButtonDown, IRInput::kKeyButtonEnter}
-                    );
+                    captured = kOpenDropdownCaptured;
+                } else {
+                    captured = kClosedDropdownCaptured;
                 }
                 break;
             }
