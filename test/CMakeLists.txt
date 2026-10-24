@@ -168,6 +168,7 @@ add_executable(IrredenEngineTest
   render/widget_hit_region_test.cpp
   render/widget_image_test.cpp
   render/widget_tab_focus_test.cpp
+  render/widget_keyboard_test.cpp
   render/gui_layout_audit_test.cpp
   script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp

@@ -20,6 +20,7 @@
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_hotkey.hpp>
 #include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
@@ -83,6 +84,7 @@ using IRComponents::C_Widget;
 using IRComponents::C_WidgetButton;
 using IRComponents::C_WidgetCheckbox;
 using IRComponents::C_WidgetDropdown;
+using IRComponents::C_WidgetHotkey;
 using IRComponents::C_WidgetImage;
 using IRComponents::C_WidgetLabel;
 using IRComponents::C_WidgetNumberField;
@@ -516,6 +518,25 @@ TEST_F(LuaWorldSnapshotTest, WidgetResetLoadRestoresAuthoredValuesButClearsTrans
     EXPECT_FALSE(sliderState.sliderPressStarted_);
     EXPECT_EQ(sliderState.sliderFirstClickRegion_, C_WidgetState::SliderPressRegion::NONE);
     EXPECT_FALSE(fieldState.focused_);
+}
+
+TEST_F(LuaWorldSnapshotTest, RoundTripsWidgetHotkeyThroughLuaPersistence) {
+    const EntityId button =
+        IRPrefab::Widget::makeButton(IRMath::ivec2(10, 20), IRMath::ivec2(80, 18), "SAVE");
+    IREntity::setComponent(
+        button,
+        C_WidgetHotkey{IRInput::kKeyButtonM, IRInput::kModifierAlt, "M"}
+    );
+
+    const std::string path = tempPath("widget_hotkey");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+    m_entity_manager.destroyAllEntities();
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    const auto &hotkey = m_entity_manager.getComponent<C_WidgetHotkey>(button);
+    EXPECT_EQ(hotkey.key_, IRInput::kKeyButtonM);
+    EXPECT_EQ(hotkey.modifiers_, IRInput::kModifierAlt);
+    EXPECT_EQ(hotkey.hint_, "M");
 }
 
 TEST_F(LuaWorldSnapshotTest, WidgetRetiredColumnsDeriveAuthoredValuesThroughLua) {

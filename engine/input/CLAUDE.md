@@ -9,7 +9,8 @@ RENDER) so each stage sees the state relevant to its tick.
 ### Keyboard / mouse
 
 - `checkKeyMouseButton(button, status)` — is this button in this state?
-- `checkKeyMouseModifiers(requiredMods, blockedMods)` — Shift/Ctrl/Alt mask check.
+- `checkKeyMouseModifiers(requiredMods, blockedMods)` — Shift/Ctrl/Alt mask check;
+  `heldKeyModifiers()` returns the mask and `modifiersMatch` is its pure predicate.
 - `getMousePosition()` — cursor position in logical window points (top-left
   origin, the GLFW convention) for the current pipeline event's snapshot.
 - `getMousePositionScreen()` — the same, with y in the backend's screen

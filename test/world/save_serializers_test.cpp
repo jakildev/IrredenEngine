@@ -57,6 +57,7 @@ static_assert(IRWorld::SaveTrait<C_HitBox2D>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_ShapeDescriptor>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_TextStyle>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_Widget>::kHandWrittenLayout);
+static_assert(IRWorld::SaveTrait<C_WidgetHotkey>::kHandWrittenLayout);
 static_assert(!UsesRawImageSerializer<C_EntityCanvas>);
 static_assert(!UsesRawImageSerializer<C_HitBox2D>);
 static_assert(!UsesRawImageSerializer<C_ShapeDescriptor>);
@@ -1301,6 +1302,27 @@ TEST(SaveSerializers, WidgetStateRoundTripsAndMigratesIdle) {
     EXPECT_FALSE(migrated.value_.focused_);
     EXPECT_EQ(migrated.value_.sliderFirstClickRegion_, C_WidgetState::SliderPressRegion::NONE);
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetState>(), 2u);
+}
+
+TEST(SaveSerializers, WidgetHotkeyRoundTripsAndRejectsInvalidValues) {
+    const C_WidgetHotkey restored =
+        roundTrip(C_WidgetHotkey{IRInput::kKeyButtonM, IRInput::kModifierAlt, "M"});
+    EXPECT_EQ(restored.key_, IRInput::kKeyButtonM);
+    EXPECT_EQ(restored.modifiers_, IRInput::kModifierAlt);
+    EXPECT_EQ(restored.hint_, "M");
+
+    const auto invalid = [](std::int32_t key, IRInput::KeyModifierMask modifiers) {
+        IRAsset::MemoryBinaryWriter writer;
+        writer.writeI32(key);
+        writer.writeU8(modifiers);
+        writer.writeString("X");
+        return deserialize<C_WidgetHotkey>(writer.buffer());
+    };
+    EXPECT_FALSE(invalid(IRInput::kNullButton, IRInput::kModifierNone).ok());
+    EXPECT_FALSE(invalid(IRInput::kNumKeyMouseButtons + 4, IRInput::kModifierNone).ok());
+    EXPECT_FALSE(invalid(IRInput::kMouseButtonLeft, IRInput::kModifierNone).ok());
+    EXPECT_FALSE(invalid(IRInput::kKeyButtonTab, IRInput::kModifierAlt).ok());
+    EXPECT_FALSE(invalid(IRInput::kKeyButtonM, 0x80).ok());
 }
 
 TEST(SaveSerializers, WidgetCheckboxRoundTrips) {

@@ -22,6 +22,8 @@ bool checkKeyMouseButton(KeyMouseButtons button, ButtonStatuses buttonStatus);
 bool checkKeyMouseModifiers(
     KeyModifierMask requiredModifiers, KeyModifierMask blockedModifiers = kModifierNone
 );
+/// Returns the Shift/Ctrl/Alt bits held in the current event snapshot.
+KeyModifierMask heldKeyModifiers();
 
 /// Cursor position for the current pipeline event's snapshot, in logical window
 /// points with a top-left origin (the GLFW cursor convention). On a HiDPI

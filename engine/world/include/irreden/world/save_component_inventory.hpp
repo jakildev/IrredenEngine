@@ -122,7 +122,9 @@
 #include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_widget_focus_request.hpp>
+#include <irreden/render/components/component_widget_hotkey.hpp>
 #include <irreden/render/components/component_widget_image.hpp>
+#include <irreden/render/components/component_widget_input_frame.hpp>
 #include <irreden/render/components/component_widget_theme.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
@@ -428,6 +430,9 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetScroll, 1)
 IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_WidgetSlider, 3)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetTextInput, 1)
 IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_WidgetState, 2)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_WidgetHotkey, 1)
+IR_SAVE_OPT_OUT(IRComponents::C_WidgetHotkeyRegistry)
+IR_SAVE_OPT_OUT(IRComponents::C_WidgetInputFrame)
 
 // C_WidgetTheme: OPT-OUT — pure defaults every run; no creation mutates it
 // at runtime today, so a world snapshot would add nothing. Revisit if a
@@ -668,6 +673,9 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetSlider,
     IRComponents::C_WidgetTextInput,
     IRComponents::C_WidgetState,
+    IRComponents::C_WidgetHotkey,
+    IRComponents::C_WidgetHotkeyRegistry,
+    IRComponents::C_WidgetInputFrame,
     IRComponents::C_WidgetTheme,
     IRComponents::C_WidgetFocusRequest,
     IRComponents::C_HelpOverlayState,

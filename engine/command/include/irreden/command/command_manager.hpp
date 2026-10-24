@@ -9,9 +9,11 @@
 #include <irreden/common/components/component_tags_all.hpp>
 
 #include <cstdint>
+#include <algorithm>
 #include <unordered_map>
 #include <memory>
 #include <list>
+#include <span>
 #include <functional>
 #include <string>
 #include <utility>
@@ -134,6 +136,12 @@ class CommandManager {
     /// Cost: O(bindings) linear scan — an init/registration-time guard query,
     /// not a per-tick call.
     bool isButtonBound(InputTypes inputType, ButtonStatuses triggerStatus, int button) const;
+    bool isButtonBound(
+        InputTypes inputType,
+        ButtonStatuses triggerStatus,
+        int button,
+        KeyModifierMask heldModifiers
+    ) const;
 
     const std::vector<CommandRegistration> &getCommandRegistrations() const {
         return m_commandRegistrations;
@@ -194,6 +202,15 @@ class CommandManager {
 
     bool isKeyboardCaptured() const {
         return m_keyboardCaptured;
+    }
+
+    void setCapturedButtons(std::span<const KeyMouseButtons> buttons) {
+        m_capturedButtons.assign(buttons.begin(), buttons.end());
+    }
+
+    bool isButtonCaptured(KeyMouseButtons button) const {
+        return std::find(m_capturedButtons.begin(), m_capturedButtons.end(), button) !=
+               m_capturedButtons.end();
     }
 
     /// The dispatch algorithm itself, reading input through @p input instead of
@@ -282,6 +299,7 @@ class CommandManager {
     std::vector<std::uint32_t> m_admittedPairedGroups;
 
     bool m_keyboardCaptured = false;
+    std::vector<KeyMouseButtons> m_capturedButtons;
 
     /// Rebuilds `m_bareGroups` / `m_rowBareGroup` from the binding list.
     void rebuildBareGroups();
