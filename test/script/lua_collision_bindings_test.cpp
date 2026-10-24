@@ -11,6 +11,8 @@
 #include <irreden/update/components/component_collision_layer.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_contact_event_lua.hpp>
+#include <irreden/update/components/component_spring_platform.hpp>
+#include <irreden/update/components/component_spring_platform_lua.hpp>
 #include <irreden/update/systems/system_collision_event_clear.hpp>
 #include <irreden/update/systems/system_collision_note_platform.hpp>
 #include <irreden/update/systems/system_dispatch_lua_overlap.hpp>
@@ -25,6 +27,7 @@ namespace {
 using IRComponents::C_ColliderIso3DAABB;
 using IRComponents::C_CollisionLayer;
 using IRComponents::C_ContactEvent;
+using IRComponents::C_SpringPlatform;
 using IRComponents::C_WorldTransform;
 using IREntity::EntityId;
 using IRMath::vec3;
@@ -212,8 +215,6 @@ TEST_F(LuaCollisionBindingsTest, UnmatchedLayerPairDoesNotFire) {
     EXPECT_EQ(m_lua.lua()["fired"].get<int>(), 0);
 }
 
-// Registering a handler before the dispatch system exists raises a clear
-// Lua-visible error rather than silently dropping it.
 // The C_ContactEvent type's two constructors: a default event, and one born
 // touching (touching_ and wasTouching_ set, so its first overlap is a stay).
 TEST_F(LuaCollisionBindingsTest, ContactEventConstructorsReachLua) {
@@ -234,6 +235,55 @@ TEST_F(LuaCollisionBindingsTest, ContactEventConstructorsReachLua) {
     ASSERT_TRUE(apart.valid());
     EXPECT_FALSE(apart.get<C_ContactEvent>().touching_);
 }
+
+// The C_SpringPlatform type's fifteen-argument constructor builds a platform
+// that catches (startLocked_ false); the sixteen-argument one with a trailing
+// true is born locked under a resting body.
+TEST_F(LuaCollisionBindingsTest, SpringPlatformStartLockedConstructorReachesLua) {
+    m_lua.registerType<IRMath::vec3, IRMath::vec3(float, float, float)>("vec3");
+    m_lua.registerType<IRMath::ColorHSV, IRMath::ColorHSV(float, float, float, float)>("ColorHSV");
+    IRScript::bindLuaType<C_SpringPlatform>(m_lua);
+    sol::state &lua = m_lua.lua();
+    lua.script(R"lua(
+        function makePlatform(...)
+            return C_SpringPlatform.new(
+                150.0, 12.0, 6.0, 0.6, 0.25, 0.9, 4, 3, 0.4, 0.2,
+                vec3.new(0.0, 0.0, 1.0),
+                ColorHSV.new(0.0, 0.0, -0.2, 0.0),
+                ColorHSV.new(0.1, 0.0, 0.0, 0.0),
+                0.3, 0.4, ...
+            )
+        end
+    )lua");
+
+    auto catching = lua.safe_script("return makePlatform()");
+    ASSERT_TRUE(catching.valid());
+    const C_SpringPlatform plain = catching.get<C_SpringPlatform>();
+    EXPECT_FALSE(plain.startLocked_);
+    EXPECT_EQ(plain.state_, IRComponents::SPRING_IDLE);
+    EXPECT_FLOAT_EQ(plain.stiffness_, 150.0f);
+    EXPECT_FLOAT_EQ(plain.colorMinSaturation_, 0.4f);
+
+    auto born = lua.safe_script("return makePlatform(true)");
+    ASSERT_TRUE(born.valid());
+    const C_SpringPlatform locked = born.get<C_SpringPlatform>();
+    EXPECT_TRUE(locked.startLocked_);
+    EXPECT_FLOAT_EQ(locked.stiffness_, 150.0f);
+    EXPECT_FLOAT_EQ(locked.lockRatio_, 0.6f);
+    EXPECT_EQ(locked.maxCatchOscillations_, 3);
+    EXPECT_FLOAT_EQ(locked.direction_.z, 1.0f);
+    EXPECT_FLOAT_EQ(locked.lockColorShift_.value_, -0.2f);
+    EXPECT_FLOAT_EQ(locked.releaseColorShift_.hue_, 0.1f);
+    EXPECT_FLOAT_EQ(locked.colorMinValue_, 0.3f);
+    EXPECT_FLOAT_EQ(locked.colorMinSaturation_, 0.4f);
+
+    auto unlocked = lua.safe_script("return makePlatform(false)");
+    ASSERT_TRUE(unlocked.valid());
+    EXPECT_FALSE(unlocked.get<C_SpringPlatform>().startLocked_);
+}
+
+// Registering a handler before the dispatch system exists raises a clear
+// Lua-visible error rather than silently dropping it.
 
 TEST(LuaCollisionBindingsUnregisteredTest, OnOverlapEnterRaisesWithoutDispatchSystem) {
     IRScript::LuaScript lua;
