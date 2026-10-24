@@ -929,7 +929,7 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             "focus_ring_hidden",
             IRPrefab::Widget::lastFocusRingWidget() == IREntity::kNullEntity,
             fmt::format("ring={}", IRPrefab::Widget::lastFocusRingWidget())
-         );
+        );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
             IRPrefab::GuiTest::detail::firedThisShot(g_clickLatch, g_onClickButton);
@@ -1133,9 +1133,9 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_RADIO>(),
-             IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
-             IRLuaWidgets::g_dispatchId,
-             IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
+            IRLuaWidgets::g_dispatchId,
+            IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
         }
     );
 
@@ -1162,10 +1162,10 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
-             IRSystem::createSystem<IRSystem::WIDGET_RENDER_RADIO>(),
-             IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
-             IRSystem::createSystem<IRSystem::WIDGET_RENDER_HINTS>(),
-             IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_RADIO>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_HINTS>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
