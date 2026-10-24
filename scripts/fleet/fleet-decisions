@@ -38,6 +38,15 @@
 # state rides along from `gh pr list`: BEHIND is an Update-branch hold, and
 # UNSTABLE with no failed run above accounts for it is held as unread.
 #
+# A job GitHub refused to start (a billing or spending-limit refusal: `failure`,
+# no steps, a failure-level annotation) is no reading of the PR's code. A run
+# whose every job is one is not a `failed on head` hold, master's is not a later
+# failure, and once any such run is seen in a repo its missing-run holds go too
+# (Update branch cannot start CI that cannot start). The repo prints one
+# `actions not starting on <repo> since <ts>: "<annotation>"` line above the
+# merge queue instead, uncounted; a run that cannot be read fully stays an
+# ordinary failure.
+#
 # Read-only on GitHub: changes no labels. The one state it writes is its own
 # seen marker for graduated triage stamps (~/.fleet/triage/.decisions-seen),
 # so each fleet:agent-approved stamp in ~/.fleet/triage/log.jsonl renders in
@@ -177,6 +186,7 @@ import sys
 
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 import fleet_github  # noqa: E402
+import fleet_not_started  # noqa: E402
 
 SHORT = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
 
@@ -338,6 +348,8 @@ class GateReader:
         self.gates = None
         self.master = {}
         self.suites = {}
+        self.started = {}
+        self.not_started = {}
 
     def load(self):
         if self.gates is not None:
@@ -371,7 +383,41 @@ class GateReader:
 
     def master_conclusion(self, path):
         run = self.master_run(path)
+        if run and self.never_started(run):
+            return "not started"
         return run["conclusion"] if run else "none"
+
+    def never_started(self, run):
+        """True when GitHub refused to start every job of `run` (fleet_not_started),
+        recording the run in `not_started`. A run whose jobs or annotations
+        cannot be read is an ordinary failure, never a suppressed one."""
+        if run["conclusion"] != "failure":
+            return False
+        run_id = run["id"]
+        if run_id not in self.started:
+            try:
+                jobs = gh_api_list(f"repos/{self.slug}/actions/runs/{run_id}/jobs", key="jobs")
+                text = fleet_not_started.run_not_started_text(jobs, self.job_annotations)
+            except Unreadable:
+                text = None
+            self.started[run_id] = text
+            if text is not None:
+                self.not_started[run_id] = (run.get("created_at") or "", text)
+        return self.started[run_id] is not None
+
+    def job_annotations(self, job_id):
+        try:
+            return gh_api_list(f"repos/{self.slug}/check-runs/{job_id}/annotations")
+        except Unreadable:
+            return None
+
+    def not_starting_since(self):
+        """`(first created_at, annotation)` of the earliest never-started run
+        observed so far, or None."""
+        if not self.not_started:
+            return None
+        run_id = min(self.not_started, key=lambda r: (self.not_started[r][0], r))
+        return self.not_started[run_id]
 
     def failed_suites(self, run_id):
         """The `(suite, identity)` pairs a run's jobs annotated as failed, or
@@ -402,9 +448,12 @@ class GateReader:
                 if identity == UNITEMIZED or (suite, identity) not in master}
 
     def holds(self, sha):
-        """`(holds, notes)` for head `sha`. A run is read by head sha, never
-        by branch: a branch with any green run reads green even when its
-        latest push triggered none. A cancelled run is no reading."""
+        """`(holds, notes, awaiting, head_not_started)` for head `sha`. A run is
+        read by head sha, never by branch: a branch with any green run reads
+        green even when its latest push triggered none. A cancelled run is no
+        reading. `awaiting` is the no-completed-run holds, kept apart because
+        they are moot once the repo shows its jobs never start;
+        `head_not_started` says a failed head run was one of those."""
         self.load()
         runs = gh_api_list(f"repos/{self.slug}/actions/runs?head_sha={sha}", key="workflow_runs")
         latest = {}
@@ -416,13 +465,24 @@ class GateReader:
                     latest[path]["created_at"], latest[path]["id"]):
                 latest[path] = run
         short = sha[:9]
-        holds = [f"{path} has no completed run on head {short} — Update branch to trigger it"
-                 for path in self.gates if path not in latest]
+        awaiting = [f"{path} has no completed run on head {short} — Update branch to trigger it"
+                    for path in self.gates if path not in latest]
+        for path in self.gates:
+            if path not in latest:
+                master = self.master_run(path)
+                if master is not None:
+                    self.never_started(master)
+        holds = []
         notes = []
+        head_not_started = False
         for path, run in sorted(latest.items()):
             master = self.master_run(path)
-            master_failed = master is not None and master.get("conclusion") in FAILED
+            master_failed = (master is not None and master.get("conclusion") in FAILED
+                             and not self.never_started(master))
             if run["conclusion"] in FAILED:
+                if self.never_started(run):
+                    head_not_started = True
+                    continue
                 line = f"{path} failed on head {short} (master: {self.master_conclusion(path)})"
                 own = self.own_failures(run, master) if master_failed else None
                 if own is not None and not own:
@@ -437,27 +497,29 @@ class GateReader:
                 holds.append(f"{path} passed on head {short} at {run.get('created_at')}, but "
                              f"master's later run ({master.get('created_at')}) failed — "
                              "Update branch to re-run before merging")
-        return holds, notes
+        return holds, notes, awaiting, head_not_started
 
 
 def gate_holds(reader, pr):
-    """`(holds, notes)` for `pr`; an unreadable answer is a hold of its own."""
+    """`(holds, notes, awaiting, head_not_started)` for `pr`; an unreadable
+    answer is a hold of its own."""
     sha = pr.get("headRefOid")
     if not sha:
-        return ["gate coverage unreadable (no head sha)"], []
+        return ["gate coverage unreadable (no head sha)"], [], [], False
     try:
         return reader.holds(sha)
     except (Unreadable, KeyError, TypeError, ValueError) as e:
-        return [f"gate coverage unreadable ({e})"], []
+        return [f"gate coverage unreadable ({e})"], [], [], False
 
 
-def merge_box_holds(pr, holds, notes):
+def merge_box_holds(pr, holds, notes, refused):
     """Holds from GitHub's own merge-box state that the run reading above did
     not already account for."""
     state = pr.get("mergeStateStatus")
     if state == "BEHIND":
         return ["behind master — Update branch (the branch rule requires it)"]
-    accounted = notes or any(" failed on head " in h or "unreadable" in h for h in holds)
+    accounted = (notes or refused
+                 or any(" failed on head " in h or "unreadable" in h for h in holds))
     if state == "UNSTABLE" and not accounted:
         return ["GitHub reports a check on the head that has not passed (mergeStateStatus "
                 "UNSTABLE: failed or still running) that no completed run above accounts for"]
@@ -494,16 +556,18 @@ def names(item):
 
 merge_queue = []   # (repo, item, has_nits, holds, notes, wip_title_mismatch)
 decisions = []     # (repo, kind, item, tags)
+not_starting = []  # (repo, first created_at, annotation)
 coding_improvements = 0
 untriaged = []
 status = []        # (repo, open_prs, queued, needs_plan)
 
 for repo, prs, issues, reader in repos:
     queued = needs_plan = 0
+    approved = []  # (pr, has_nits, gate, notes, awaiting, head_not_started, smoke_debt, wip)
     for pr in prs:
         labels = names(pr)
         if "fleet:approved" in labels:
-            gate, notes = gate_holds(reader, pr)
+            gate, notes, awaiting, head_not_started = gate_holds(reader, pr)
             # A smoke label is smoke debt that rides onto the merged PR, not
             # a merge hold (FLEET-CROSS-HOST-SMOKE.md § "Ledger, not a gate").
             smoke_debt = [
@@ -511,11 +575,9 @@ for repo, prs, issues, reader in repos:
                 for label in labels
                 if label.startswith("fleet:needs-") and label.endswith("-smoke")
             ]
-            holds = list(gate)
-            holds += merge_box_holds(pr, holds, notes)
-            notes = list(notes) + smoke_debt
             wip_mismatch = bool(WIP_TITLE_RE.search(pr["title"])) and "fleet:wip" not in labels
-            merge_queue.append((repo, pr, "fleet:has-nits" in labels, holds, notes, wip_mismatch))
+            approved.append((pr, "fleet:has-nits" in labels, gate, notes, awaiting,
+                             head_not_started, smoke_debt, wip_mismatch))
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
         owner_labels = [label for label in labels if label.startswith("fleet:claim-")]
         owner_verdicts = sorted(OWNER_VERDICT_LABELS & set(labels))
@@ -526,6 +588,18 @@ for repo, prs, issues, reader in repos:
             )
         if tags:
             decisions.append((repo, "PR", pr, tags))
+    # Every PR's runs are read before any is filtered: whether the repo's jobs
+    # start at all is a property of the repo, not of the PR read first.
+    first_not_started = reader.not_starting_since()
+    if first_not_started:
+        not_starting.append((repo, *first_not_started))
+    for pr, has_nits, gate, notes, awaiting, head_not_started, smoke_debt, wip_mismatch in approved:
+        holds = (gate if first_not_started else awaiting + gate)
+        # A run that never started, or one the repo cannot start, is what
+        # GitHub's UNSTABLE is reporting.
+        refused = head_not_started or bool(first_not_started and awaiting)
+        holds += merge_box_holds(pr, holds, notes, refused)
+        merge_queue.append((repo, pr, has_nits, holds, list(notes) + smoke_debt, wip_mismatch))
     for issue in issues:
         labels = names(issue)
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]
@@ -643,6 +717,11 @@ for raw in am_bytes[am_start:am_end].split(b"\n"):
 total = len(merge_queue) + len(decisions) + len(closeouts)
 scope = "+".join(repo for repo, _, _, _ in repos)
 print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
+
+if not_starting:
+    print()
+    for repo, since, annotation in not_starting:
+        print(f'actions not starting on {repo} since {since}: "{annotation}"')
 
 if merge_queue:
     print(f"\n## Merge queue ({len(merge_queue)})")

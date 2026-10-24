@@ -152,7 +152,7 @@ for name, value in spec.get("master", {}).items():
         {"total_count": 1, "workflow_runs": [run]})
 for run_id, job_ids in spec.get("jobs", {}).items():
     put_list(f"repos/{slug}/actions/runs/{run_id}/jobs?per_page=100",
-             [{"id": j} for j in job_ids], "jobs")
+             [j if isinstance(j, dict) else {"id": j} for j in job_ids], "jobs")
 for job_id, annotations in spec.get("annotations", {}).items():
     put_list(f"repos/{slug}/check-runs/{job_id}/annotations?per_page=100", annotations)
 PYEOF
@@ -811,6 +811,108 @@ assert_absent "$out" "hold: .github/workflows/fleet-tests.yml failed on head 222
 assert_contains "$out" \
     "hold: gate coverage unreadable (gh api repos/jakildev/IrredenEngine/actions/runs/72/jobs: more than 300 items)" \
     "a list still full at the page cap is unreadable, never read as complete"
+
+# --- jobs GitHub never started ------------------------------------------------
+#
+# Every Actions job on the repo completes `failure` with no steps and one
+# failure-level annotation (an account billing refusal), beside a notice-level
+# one. Head 713 carries no run at all and is read first, so the repo-level
+# condition must come from the PRs read after it. The control repeats the
+# shape with a real step: an ordinary failed job renders exactly as before.
+
+python3 - "$TMP" << 'PYEOF'
+import json
+import sys
+
+tmp = sys.argv[1]
+BILLING = ("The job was not started because recent account payments have failed or your "
+           "spending limit needs to be increased. Please check the 'Billing & plans' "
+           "section in your settings")
+annotations = [{"annotation_level": "notice", "title": "", "message": "ubuntu-latest migration"},
+               {"annotation_level": "failure", "title": "", "message": BILLING}]
+unfiltered = "on:\n  push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:\n"
+gates = ["comment-refs.yml", "instruction-size.yml", "no-plan-files.yml"]
+EMPTY, ONE, TWO = "7" * 40, "8" * 40, "9" * 40
+
+
+def run(i, name, created):
+    return {"id": i, "path": f".github/workflows/{name}", "status": "completed",
+            "conclusion": "failure", "created_at": created}
+
+
+def build(steps):
+    job = {"conclusion": "failure", "steps": steps}
+    return {
+        "workflows": {name: unfiltered for name in gates},
+        "runs": {
+            EMPTY: [],
+            ONE: [run(101, "comment-refs.yml", "2026-10-24T06:00:00Z"),
+                  run(102, "no-plan-files.yml", "2026-10-24T06:00:00Z")],
+            TWO: [run(111, "comment-refs.yml", "2026-10-24T06:05:00Z"),
+                  run(112, "instruction-size.yml", "2026-10-24T06:05:00Z"),
+                  run(113, "no-plan-files.yml", "2026-10-24T06:05:00Z")],
+        },
+        "master": {"comment-refs.yml": {"conclusion": "failure", "id": 900,
+                                        "created_at": "2026-10-24T05:01:00Z"}},
+        "jobs": {"101": [{**job, "id": 1011}], "102": [{**job, "id": 1021}],
+                 "111": [{**job, "id": 1111}], "112": [{**job, "id": 1121}],
+                 "113": [{**job, "id": 1131}], "900": [{**job, "id": 9001}]},
+        "annotations": {str(i): annotations
+                        for i in (1011, 1021, 1111, 1121, 1131, 9001)},
+    }
+
+
+for name, steps in (("never", []), ("control", [{"name": "build", "conclusion": "failure"}])):
+    with open(f"{tmp}/api-{name}.json", "w", encoding="utf-8") as f:
+        json.dump(build(steps), f)
+
+prs = [{"number": 713, "title": "engine: no run on the head", "headRefOid": EMPTY},
+       {"number": 714, "title": "engine: two never-started runs", "headRefOid": ONE},
+       {"number": 715, "title": "engine: three never-started runs", "headRefOid": TWO}]
+for pr in prs:
+    pr.update({"url": "u", "labels": [{"name": "fleet:approved"}],
+               "mergeStateStatus": "UNSTABLE"})
+with open(f"{tmp}/engine-prs-never.json", "w", encoding="utf-8") as f:
+    json.dump(prs, f)
+PYEOF
+python3 "$TMP/write_api.py" "$TMP/api-never" "$TMP/api-never.json"
+python3 "$TMP/write_api.py" "$TMP/api-never-control" "$TMP/api-control.json"
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-never.json" GH_STUB_API="$TMP/api-never" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "never-started run exits 0"
+repo_line='actions not starting on engine since 2026-10-24T05:01:00Z: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the "Billing & plans" section in your settings"'
+assert_contains "$out" "$repo_line" "one repo-level line names the earliest run's time and the annotation"
+repo_lines=$(grep -c "^actions not starting on " "$TMP/out.txt")
+assert_eq "$repo_lines" "1" "the repo line prints once however many PRs and runs show it"
+line_at=$(grep -n "^actions not starting on " "$TMP/out.txt" | cut -d: -f1)
+queue_at=$(grep -n "^## Merge queue" "$TMP/out.txt" | cut -d: -f1)
+[[ -n "$line_at" && -n "$queue_at" && "$line_at" -lt "$queue_at" ]] \
+    && ok "the repo line sits above the merge queue" \
+    || bad "the repo line sits above the merge queue (line $line_at, queue $queue_at)"
+assert_absent "$out" "failed on head" "a never-started run is no per-PR failure hold"
+assert_absent "$out" "Update branch to trigger it" \
+    "a missing run is not told to re-trigger CI that cannot start"
+assert_absent "$out" "master's later run" "a never-started master run is no later-failure hold"
+assert_absent "$out" "mergeStateStatus UNSTABLE" \
+    "a never-started head run accounts for UNSTABLE; no replacement hold appears"
+never_total=$(sed -n 's/^fleet-decisions: \([0-9]*\) decision.*/\1/p' "$TMP/out.txt")
+
+status=$(GH_STUB_ENGINE_PRS="$TMP/engine-prs-never.json" GH_STUB_API="$TMP/api-never-control" \
+    run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "control run exits 0"
+control_total=$(sed -n 's/^fleet-decisions: \([0-9]*\) decision.*/\1/p' "$TMP/out.txt")
+assert_eq "$never_total" "$control_total" \
+    "the repo line is not a counted decision: the total matches the control's"
+assert_absent "$out" "actions not starting" "a failed job that ran steps prints no repo line"
+assert_contains "$out" \
+    "hold: .github/workflows/comment-refs.yml failed on head 888888888 (master: failure)" \
+    "a failed job that ran steps is still a per-PR failure hold"
+assert_contains "$out" \
+    "hold: .github/workflows/instruction-size.yml has no completed run on head 888888888 — Update branch to trigger it" \
+    "a missing run is still held when no job was refused"
 
 # --- --repo equals-form + dual-spelling validation --------------------------
 
