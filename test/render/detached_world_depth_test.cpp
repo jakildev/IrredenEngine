@@ -254,6 +254,15 @@ TEST(DetachedWorldDepthTest, RigidOriginQuantizesAtFramebufferPrecisionAcrossYaw
                         IRRender::TrixelSampleLayout::SOURCE_FACES
                     );
                     EXPECT_EQ(actual, expected);
+                    EXPECT_EQ(
+                        IRRender::pickIsoDepthForWorldPosition(
+                            origin,
+                            yaw,
+                            subdivisions,
+                            IRRender::TrixelSampleLayout::SOURCE_FACES
+                        ),
+                        IRRender::decodeCompositeDepth(static_cast<float>(expected)).iso_
+                    );
                     const int coarse = IRMath::pos3DtoDistanceYawed(origin, yaw) * units;
                     coarseMismatches += coarse != actual;
                     for (const auto layout :
@@ -266,10 +275,58 @@ TEST(DetachedWorldDepthTest, RigidOriginQuantizesAtFramebufferPrecisionAcrossYaw
                                 yaw
                             ) * units
                         );
+                        EXPECT_EQ(
+                            IRRender::pickIsoDepthForWorldPosition(
+                                origin,
+                                yaw,
+                                subdivisions,
+                                layout
+                            ),
+                            IRMath::pos3DtoDistanceYawed(
+                                vec3(IRMath::roundVec3HalfUp(origin)),
+                                yaw
+                            ) * subdivisions
+                        );
                     }
                 }
             }
         }
     }
     EXPECT_GT(coarseMismatches, 50);
+}
+
+TEST(DetachedWorldDepthTest, FractionalPickAnchorsSeparateWithinOneOccupancyCell) {
+    const vec3 nearOrigin(0.0f, 0.0f, -0.25f);
+    const vec3 farOrigin(0.0f, 0.0f, 0.25f);
+    EXPECT_EQ(
+        IRRender::pickIsoDepthForWorldPosition(nearOrigin, 0.0f, 4),
+        IRRender::pickIsoDepthForWorldPosition(farOrigin, 0.0f, 4)
+    );
+    EXPECT_EQ(
+        IRRender::pickIsoDepthForWorldPosition(
+            nearOrigin,
+            0.0f,
+            4,
+            IRRender::TrixelSampleLayout::SOURCE_FACES
+        ),
+        -1
+    );
+    EXPECT_EQ(
+        IRRender::pickIsoDepthForWorldPosition(
+            farOrigin,
+            0.0f,
+            4,
+            IRRender::TrixelSampleLayout::SOURCE_FACES
+        ),
+        1
+    );
+    EXPECT_EQ(
+        IRRender::pickIsoDepthForWorldPosition(
+            vec3(0.0f, 0.0f, -0.125f),
+            0.0f,
+            1,
+            IRRender::TrixelSampleLayout::SOURCE_FACES
+        ),
+        -1
+    );
 }

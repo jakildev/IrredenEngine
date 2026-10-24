@@ -341,7 +341,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 IRRender::pickIsoDepthForWorldPosition(
                     pose->translation_,
                     visualYaw_,
-                    effectiveSub_
+                    effectiveSub_,
+                    canvasTextures->renderedSampleLayout_
                 )
             );
         }
@@ -396,6 +397,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 // PLACEMENT above tracks the world.
                 compositeDistanceOffset = 0;
             } else {
+                // Without a raster density, source geometry still retains its origin;
+                // its depth quantization is one world iso unit.
                 compositeDistanceOffset = IRRender::canvasWorldDepthOffset(
                     pose->translation_,
                     visualYaw_,
