@@ -388,17 +388,17 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
                     self.assertEqual(result["counts"]["missing"], 18)
                     self.assertEqual(result["counts"]["excess"], 638)
 
-    def test_retained_native_oblique_pass_and_failure_controls(self):
+    def assert_native_evidence(self, directory, count, expected_pass):
         root = Path(__file__).resolve().parents[2]
-        evidence = root / "docs/pr-screenshots/codex/receiver-oblique-shadow"
+        evidence = root / "docs/pr-screenshots/codex" / directory
         rows = json.loads((evidence / "captures.json").read_text())["cases"]
-        self.assertEqual(len(rows), 16)
+        self.assertEqual(len(rows), count)
         for row in rows:
             with self.subTest(case=row["case"]):
                 with Image.open(evidence / row["image"]) as image:
                     result = oracle.check_image(image, row["yaw"], sun=row["sun_direction"],
                                                 caster_offset=row["source_offset"])
-                passed = not row["case"].endswith(("-sampled", "-fractional"))
+                passed = expected_pass(row["case"])
                 self.assertEqual(result["passed"], passed)
                 self.assertEqual(result["counts"], row["counts"])
                 self.assertTrue(result["coverage_valid"])
@@ -406,6 +406,17 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
                 if not passed:
                     self.assertGreater(result["counts"]["missing"], 100)
                     self.assertGreater(result["counts"]["excess"], 100)
+
+    def test_retained_native_oblique_pass_and_failure_controls(self):
+        self.assert_native_evidence(
+            "receiver-oblique-shadow", 16,
+            lambda case: not case.endswith(("-sampled", "-fractional")),
+        )
+
+    def test_retained_native_rigid_origin_fix_and_translation_sweep(self):
+        self.assert_native_evidence(
+            "rigid-canvas-world-origin", 42, lambda case: not case.endswith("-sampled"),
+        )
 
 
 if __name__ == "__main__":

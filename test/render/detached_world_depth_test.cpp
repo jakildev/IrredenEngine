@@ -234,3 +234,42 @@ TEST(DetachedDisplayTest, DefaultRequestsVoxelReconstructionWithoutClaimingProdu
     EXPECT_EQ(canvas.renderedSampleLayout_, IRRender::TrixelSampleLayout::RECTANGULAR);
     EXPECT_EQ(canvas.renderedSubdivisions_, 0);
 }
+
+TEST(DetachedWorldDepthTest, RigidOriginQuantizesAtFramebufferPrecisionAcrossYaw) {
+    int coarseMismatches = 0;
+    for (const vec3 origin :
+         {vec3(7.2f, 0, -21.6f), vec3(-7.2f, 0, -21.6f), vec3(-0.5f, 0.5f, -0.125f)}) {
+        for (int quadrant = 0; quadrant < 4; ++quadrant) {
+            for (float residual : {0.0f, 0.6f}) {
+                const float yaw = quadrant * IRMath::kHalfPi + residual;
+                const vec3 view =
+                    IRMath::rotateVectorByQuat(origin, IRMath::quatAxisAngle(vec3(0, 0, 1), -yaw));
+                for (int subdivisions : {1, 2, 4, 8}) {
+                    const int units = subdivisions * IRRender::kDepthEncodeShift;
+                    const int expected = IRMath::roundHalfUp(IRMath::dot(view, vec3(1)) * units);
+                    const int actual = IRRender::canvasWorldDepthOffset(
+                        origin,
+                        yaw,
+                        units,
+                        IRRender::TrixelSampleLayout::SOURCE_FACES
+                    );
+                    EXPECT_EQ(actual, expected);
+                    const int coarse = IRMath::pos3DtoDistanceYawed(origin, yaw) * units;
+                    coarseMismatches += coarse != actual;
+                    for (const auto layout :
+                         {IRRender::TrixelSampleLayout::LOCAL_TRIANGLES,
+                          IRRender::TrixelSampleLayout::RECTANGULAR}) {
+                        EXPECT_EQ(
+                            IRRender::canvasWorldDepthOffset(origin, yaw, units, layout),
+                            IRMath::pos3DtoDistanceYawed(
+                                vec3(IRMath::roundVec3HalfUp(origin)),
+                                yaw
+                            ) * units
+                        );
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_GT(coarseMismatches, 50);
+}

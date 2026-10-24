@@ -44,27 +44,14 @@ struct C_CanvasLocalRotation {
     // per-face-deform path. Inert on the main world canvas (sentinel rotation).
     bool reVoxelize_ = false;
 
-    // World-placement mirror; true by default,
-    // propagated as `!C_EntityCanvas::screenLocked_` by
-    // PROPAGATE_CANVAS_ROTATION each tick (same parent→canvas channel as
-    // rotation_/reVoxelize_, NOT a dirty flag). When true, the screen-space
-    // lighting passes recover each detached voxel's WORLD position (model pos
-    // + worldCellOffset_) and sample the SHARED world sun-shadow map + 128³
-    // light volume there, so a world-placed re-voxelize solid receives world
-    // shadow + light-volume bleed like an attached GRID solid. The canvas
-    // (child) entity is what the lighting passes iterate; the screenLocked_
-    // opt-out + the world translation live on the parent's C_EntityCanvas /
-    // C_WorldTransform, so the resolved placement must be propagated onto the
-    // canvas to reach those passes without a per-voxel foreign getComponent.
-    // Inert (false) on the main world canvas (sentinel rotation, never written).
+    // World lighting opt-in mirrored from the owner onto its iterated canvas.
+    // Geometry recovery uses worldGeometryOrigin(); screen-locked overlays opt out.
+    // The main world canvas keeps false with the sentinel rotation.
     bool worldPlaced_ = false; // = !screenLocked_, propagated by PROPAGATE_CANVAS_ROTATION
     // Owner visibility gates casting independently of the canvas's world placement.
     bool castsWorldShadow_ = false;
-    // The owner entity's world cell origin = roundVec3HalfUp(C_WorldTransform::
-    // translation_) — the SAME rounding P4b-1's composite depth offset uses
-    // (pos3DtoDistance(roundVec3HalfUp(translation))), so the recovered world
-    // position stays consistent with the world depth the canvas composites at.
-    // Only meaningful when worldPlaced_ is true.
+    // Cell-aligned origin for resampled occupancy. Rigid geometry consumers
+    // use worldGeometryOrigin() to retain the authored translation instead.
     IRMath::vec3 worldCellOffset_{0.0f};
     // The owner's unrounded world translation: the origin a hosted part's pose
     // is measured from. Unrounded because the composite places the canvas at
@@ -79,6 +66,12 @@ struct C_CanvasLocalRotation {
     bool isDetached() const noexcept {
         return rotation_.x != 0.0f || rotation_.y != 0.0f || rotation_.z != 0.0f ||
                rotation_.w != 0.0f;
+    }
+
+    // Rigid source faces preserve the authored origin; resampled occupancy
+    // retains its cell-aligned world origin.
+    IRMath::vec3 worldGeometryOrigin() const noexcept {
+        return reVoxelize_ ? worldCellOffset_ : ownerWorldTranslation_;
     }
 };
 

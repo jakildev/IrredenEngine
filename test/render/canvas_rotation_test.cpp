@@ -181,6 +181,27 @@ TEST_F(CanvasRotation, ForwardScatterModeClearsTheReVoxelizeRoute) {
     EXPECT_FALSE(poseOf(detached).reVoxelize_);
 }
 
+TEST_F(CanvasRotation, RigidGeometryTracksFractionalParentPlacementAcrossModeChanges) {
+    const vec3 translation(7.2f, -2.5f, -21.6f);
+    const auto parent = IREntity::createEntity(C_LocalTransform{translation});
+    const Detached child = makeDetached(C_LocalTransform{vec3(0.0f)}, RotationMode::DETACHED);
+    IREntity::setParent(child.entity_, parent);
+    setCameraRotation(IRMath::quatAxisAngle(vec3(0, 0, 1), 0.6f));
+    tick();
+    EXPECT_EQ(poseOf(child).worldGeometryOrigin(), translation);
+    EXPECT_NE(poseOf(child).worldGeometryOrigin(), poseOf(child).worldCellOffset_);
+
+    IREntity::getComponent<C_RotationMode>(child.entity_).mode_ = RotationMode::DETACHED_REVOXELIZE;
+    tick();
+    EXPECT_EQ(poseOf(child).worldGeometryOrigin(), vec3(7.0f, -2.0f, -22.0f));
+
+    const vec3 moved(-7.2f, 2.5f, -21.4f);
+    IREntity::getComponent<C_LocalTransform>(parent).translation_ = moved;
+    IREntity::getComponent<C_RotationMode>(child.entity_).mode_ = RotationMode::DETACHED;
+    tick();
+    EXPECT_EQ(poseOf(child).worldGeometryOrigin(), moved);
+}
+
 TEST(CanvasPose, OffsetIsMeasuredFromTheOwnerInTheCanvasFrame) {
     const vec4 cameraInverse =
         IRMath::quatInverse(IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), IRMath::kHalfPi));

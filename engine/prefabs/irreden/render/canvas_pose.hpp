@@ -43,11 +43,8 @@ inline void write(
 ) {
     canvas.rotation_ = canvasRotation(cameraRotationInverse, ownerWorld.rotation_);
     canvas.reVoxelize_ = mode == IRComponents::RotationMode::DETACHED_REVOXELIZE;
-    // The screen-space lighting passes iterate the canvas, not the owner, so
-    // the placement they need travels here: whether the canvas is world-placed,
-    // whether it casts, and the world cell it sits on. The cell rounding matches
-    // the composite depth offset (pos3DtoDistance(roundVec3HalfUp(translation)))
-    // so depth and receive stay on one convention.
+    // Lighting iterates the canvas, not its owner. Preserve both the authored
+    // origin for rigid geometry and the cell-aligned origin for resampled occupancy.
     canvas.worldPlaced_ = !entityCanvas.screenLocked_;
     canvas.castsWorldShadow_ =
         !entityCanvas.screenLocked_ && entityCanvas.visible_ && !entityCanvas.fogHidden_;
