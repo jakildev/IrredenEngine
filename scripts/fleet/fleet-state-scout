@@ -769,20 +769,6 @@ def _gh_api_json(path):
         return None
 
 
-def _rest_red_nodes(repo, sha):
-    """Rollup-shaped nodes for a head whose rollup the list could not carry,
-    each check run tagged with its job id; None when either surface was
-    unreadable."""
-    runs = _gh_api_json(f"repos/{repo}/commits/{sha}/check-runs?per_page={HEAD_CHECKS_PER_PAGE}")
-    statuses = _gh_api_json(f"repos/{repo}/commits/{sha}/status")
-    if not isinstance(runs, dict) or not isinstance(statuses, dict):
-        return None
-    return ([{**_rest_check_as_rollup_node("check-runs", item), "jobId": item.get("id")}
-             for item in runs.get("check_runs") or ()]
-            + [_rest_check_as_rollup_node("status", item)
-               for item in statuses.get("statuses") or ()])
-
-
 def _not_started_reading(repo, nodes):
     """The never-started annotation text for a red head's failed checks, or
     None: some failed check ran, a job or annotation was unreadable, or no
@@ -854,13 +840,17 @@ def _rollup_denied(repo, now=None):
 
 
 def _rest_checks_reading(repo, sha, keep):
-    """`checks` for a head whose rollup the list could not carry: the REST
-    reading, or "unread" when the head has no sha or a page was unreadable
-    (which withholds merge-ready, never grants it)."""
+    """(`checks`, nodes) for a head whose rollup the list could not carry: the
+    REST reading and the rollup-shaped nodes it reduced (which carry the job
+    ids the never-started reading needs), or ("unread", None) when the head
+    has no sha or the read was incomplete (which withholds merge-ready, never
+    grants it)."""
     if not sha:
-        return "unread"
-    reading = _poll_head_checks(repo, sha, keep if keep is not None else set())[1]
-    return reading if reading is not None else "unread"
+        return "unread", None
+    nodes = _read_head_checks(repo, sha, keep if keep is not None else set())[1]
+    if nodes is None:
+        return "unread", None
+    return _reduce_checks(nodes), nodes
 
 
 VERDICT_EVENTS_MAX_PAGES = 10
@@ -934,15 +924,12 @@ def _fetch_prs_graphql(repo, keep=None):
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
-        rollup = None
         if denied:
-            pr["checks"] = _rest_checks_reading(repo, pr.get("headRefOid"), keep)
+            pr["checks"], rollup = _rest_checks_reading(repo, pr.get("headRefOid"), keep)
         else:
             rollup = pr.pop("statusCheckRollup", None)
             pr["checks"] = _reduce_checks(rollup)
         if pr["checks"] == "red":
-            if denied and pr.get("headRefOid"):
-                rollup = _rest_red_nodes(repo, pr["headRefOid"])
             not_started = _not_started_reading(repo, rollup)
             if not_started:
                 pr["not_started"] = not_started
@@ -1089,16 +1076,16 @@ def _rest_check_as_rollup_node(surface, item):
                 "state": str(item.get("state") or "").upper()}
     return {"__typename": "CheckRun",
             "status": str(item.get("status") or "").upper(),
-            "conclusion": str(item.get("conclusion") or "").upper()}
+            "conclusion": str(item.get("conclusion") or "").upper(),
+            "jobId": item.get("id")}
 
 
-def _poll_head_checks(repo, sha, keep):
+def _read_head_checks(repo, sha, keep):
     """Conditional-GETs both check surfaces of `sha`, adding each page's ETag
-    entry to `keep`. Returns (moved, reading): `reading` is the head's
-    `checks` as _reduce_checks reads the two REST lists, None when a page was
-    unparseable or a list was still full at the page cap — both of which also
-    read as moved, as does a poll error. An unchanged page is a 304 for zero
-    quota."""
+    entry to `keep`. Returns (moved, nodes): `nodes` is every check run and
+    commit status in rollup node shape, None when a page was unparseable or a
+    list was still full at the page cap — both of which also read as moved, as
+    does a poll error. An unchanged page is a 304 for zero quota."""
     moved = False
     nodes = []
     complete = True
@@ -1123,7 +1110,15 @@ def _poll_head_checks(repo, sha, keep):
             complete = False
     if not complete:
         return True, None
-    return moved, _reduce_checks(nodes)
+    return moved, nodes
+
+
+def _poll_head_checks(repo, sha, keep):
+    """(moved, reading) per _read_head_checks: `reading` is the head's
+    `checks` as _reduce_checks reads the two REST lists, None when the read
+    was incomplete."""
+    moved, nodes = _read_head_checks(repo, sha, keep)
+    return moved, None if nodes is None else _reduce_checks(nodes)
 
 
 def _check_state_moved(repo, prs, keep):

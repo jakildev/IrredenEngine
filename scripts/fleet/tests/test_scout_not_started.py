@@ -64,6 +64,26 @@ class _FakeGh:
         return [p for p in self.paths if "/actions/jobs/" in p]
 
 
+class _FakeHeadChecks:
+    """`conditional_get` stand-in serving a head's two REST check surfaces a
+    page at a time; a surface given as None models an unparseable page."""
+
+    def __init__(self, runs, statuses=()):
+        self.lists = {"check-runs": ("check_runs", runs), "status": ("statuses", statuses)}
+
+    def __call__(self, repo, path, params=None, cache_dir=None):
+        key, items = self.lists[path.rsplit("/", 1)[1]]
+        if items is None:
+            return True, None
+        per = _mod.HEAD_CHECKS_PER_PAGE
+        page = int(params["page"])
+        return True, json.dumps({key: list(items)[(page - 1) * per:page * per]})
+
+
+def _run(job_id, conclusion="failure"):
+    return {"id": job_id, "status": "completed", "conclusion": conclusion}
+
+
 class _ReadingCase(unittest.TestCase):
 
     def setUp(self):
@@ -75,6 +95,12 @@ class _ReadingCase(unittest.TestCase):
         gh = _FakeGh(prs, api)
         with patch.object(_mod, "run_capture", gh), patch.object(_mod, "log"):
             return _mod._fetch_prs_graphql(REPO), gh
+
+    def fetch_denied(self, head_checks, api):
+        _mod._rollup_denied_until[REPO] = 4102444800
+        self.addCleanup(_mod._rollup_denied_until.pop, REPO, None)
+        with patch.object(_mod, "conditional_get", head_checks):
+            return self.fetch([_pr(1, None)], api)
 
     @staticmethod
     def refused(job_id):
@@ -150,24 +176,35 @@ class TestPrRecord(_ReadingCase):
         self.assertEqual(gh.paths, [])
 
     def test_rollup_denied_head_reads_job_ids_from_the_rest_check_runs(self):
-        _mod._rollup_denied_until[REPO] = 4102444800
-        self.addCleanup(_mod._rollup_denied_until.pop, REPO, None)
-        api = {**self.refused(555),
-               f"repos/{REPO}/commits/{SHA}/check-runs?per_page=100": {
-                   "check_runs": [{"id": 555, "status": "completed", "conclusion": "failure"}]},
-               f"repos/{REPO}/commits/{SHA}/status": {"statuses": []}}
-        with patch.object(_mod, "_rest_checks_reading", return_value="red"):
-            prs, _ = self.fetch([_pr(1, None)], api)
+        prs, _ = self.fetch_denied(_FakeHeadChecks([_run(555)]), self.refused(555))
+        self.assertEqual(prs[0]["checks"], "red")
         self.assertEqual(prs[0]["not_started"], BILLING_TEXT)
 
     def test_rollup_denied_head_with_an_unreadable_status_surface_fails_closed(self):
-        _mod._rollup_denied_until[REPO] = 4102444800
-        self.addCleanup(_mod._rollup_denied_until.pop, REPO, None)
-        api = {f"repos/{REPO}/commits/{SHA}/check-runs?per_page=100": {"check_runs": []},
-               f"repos/{REPO}/commits/{SHA}/status": None}
-        with patch.object(_mod, "_rest_checks_reading", return_value="red"):
-            prs, _ = self.fetch([_pr(1, None)], api)
+        prs, gh = self.fetch_denied(_FakeHeadChecks([_run(555)], None), self.refused(555))
+        self.assertEqual(prs[0]["checks"], "unread")
         self.assertNotIn("not_started", prs[0])
+        self.assertEqual(gh.jobs_read(), [])
+
+    def test_rollup_denied_head_reads_a_failed_job_on_a_later_check_run_page(self):
+        per = _mod.HEAD_CHECKS_PER_PAGE
+        api = {}
+        for job_id in range(1, per + 1):
+            api.update(self.refused(job_id))
+        api[_job_path(1000)] = {"id": 1000, "conclusion": "failure", "steps": [{"name": "t"}]}
+        runs = [_run(job_id) for job_id in range(1, per + 1)] + [_run(1000)]
+        prs, gh = self.fetch_denied(_FakeHeadChecks(runs), api)
+        self.assertEqual(prs[0]["checks"], "red")
+        self.assertNotIn("not_started", prs[0])
+        self.assertIn(_job_path(1000), gh.jobs_read())
+
+    def test_rollup_denied_head_still_full_at_the_page_cap_fails_closed(self):
+        runs = [_run(job_id) for job_id in
+                range(1, _mod.HEAD_CHECKS_PER_PAGE * _mod.HEAD_CHECKS_MAX_PAGES + 1)]
+        prs, gh = self.fetch_denied(_FakeHeadChecks(runs), {})
+        self.assertEqual(prs[0]["checks"], "unread")
+        self.assertNotIn("not_started", prs[0])
+        self.assertEqual(gh.jobs_read(), [])
 
 
 class TestSchemaGate(_ReadingCase):
