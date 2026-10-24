@@ -265,6 +265,14 @@ TEST_F(LuaCommandTest, ToggleHelpOverlayCommandNameIsBound) {
     EXPECT_EQ(result.get<lua_Integer>(), static_cast<lua_Integer>(IRCommand::TOGGLE_HELP_OVERLAY));
 }
 
+TEST_F(LuaCommandTest, TogglePerfHudCommandNameIsBound) {
+    auto &lua = m_lua.lua();
+    auto result =
+        lua.safe_script("return IRCommand.CommandName.TOGGLE_PERF_HUD", sol::script_pass_on_error);
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<lua_Integer>(), static_cast<lua_Integer>(IRCommand::TOGGLE_PERF_HUD));
+}
+
 // ---- Modifier mask composition via LuaJIT bit.bor -------------------------
 
 TEST_F(LuaCommandTest, BindPrefabAcceptsBitOrModifierMask) {

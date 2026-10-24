@@ -101,6 +101,7 @@
 
 // Registry-driven command help overlay
 #include <irreden/render/help_overlay.hpp>
+#include <irreden/render/perf_hud.hpp>
 
 // Frame-based animation state
 #include "animation.hpp"
@@ -5203,6 +5204,7 @@ void initSystems() {
     // binding, including the ad-hoc lambdas above now that they pass
     // name/description. Must land after TEXT_TO_TRIXEL (already registered
     // above) and before the composite.
+    renderPipeline.splice(renderPipeline.end(), IRPrefab::PerfHud::systems());
     renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
     renderPipeline.insert(
         renderPipeline.end(),
@@ -5251,6 +5253,8 @@ void initCommands() {
     // F1 opens the registry-driven command help overlay. Every
     // named PRESSED binding registered below appears automatically.
     IRPrefab::HelpOverlay::registerToggleCommand();
+    // F3 shows the frame-rate HUD.
+    IRPrefab::PerfHud::registerToggleCommand();
 
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,

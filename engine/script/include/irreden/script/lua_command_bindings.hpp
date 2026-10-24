@@ -85,6 +85,7 @@ inline void bindCommandNameEnum(LuaScript &script) {
     IR_BIND_CMD(TOGGLE_CULLING_MINIMAP);
     IR_BIND_CMD(TOGGLE_HELP_OVERLAY);
     IR_BIND_CMD(TOGGLE_SETTINGS_MENU);
+    IR_BIND_CMD(TOGGLE_PERF_HUD);
 #undef IR_BIND_CMD
     lua["IRCommand"]["CommandName"] = t;
 

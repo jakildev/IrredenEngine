@@ -34,6 +34,7 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/common/settings_registry.hpp>
+#include <irreden/render/prefab_system_probe.hpp>
 #include <irreden/render/commands/command_toggle_settings_menu.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -140,11 +141,7 @@ inline IRCommand::CommandId registerToggleCommand(int button = kDefaultToggleBut
 // wrong sentinel fails in both directions.
 
 inline const IRSystem::System<IRSystem::SETTINGS_MENU> *systemOrNull() {
-    const IRSystem::SystemId id = IRSystem::findSystem(IRSystem::SETTINGS_MENU);
-    if (id == IRSystem::kNullSystemId) {
-        return nullptr;
-    }
-    return IRSystem::getSystemParams<IRSystem::System<IRSystem::SETTINGS_MENU>>(id);
+    return IRPrefab::detail::systemOrNull<IRSystem::SETTINGS_MENU>();
 }
 
 /// Number of setting rows currently spawned; 0 whenever the menu is closed.

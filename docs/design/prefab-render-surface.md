@@ -239,6 +239,29 @@ shot fills its MOVE target at run time via `IRRender::guiTrixelToScreenPx`.
 A QUIT click ends the run before the harness's post-settle capture frame, so
 a creation asserting it evaluates at the moment the close is observed.
 
+## Perf HUD
+
+The perf-stats overlay is the developer's view of the frame — per-stage GPU
+timings, cull counters, always on while registered, and the thing that switches
+the timing histograms on. A player needs a different surface: a toggle, a
+handful of numbers coloured so their meaning is legible without knowing the
+budget, and no measurement cost beyond what the engine already pays. The perf
+HUD (`IRPrefab::PerfHud::`) is that surface: FPS, the lowest FPS in its
+window, frame time, frames dropped in the window, and a one-column-per-frame
+graph with the budget line drawn across it. Every value and bar is graded
+against `IRRender::kFrameTimeBudgetMs` into three colours.
+
+It adopts exactly like the help overlay — `systems()` after `TEXT_TO_TRIXEL`,
+`registerToggleCommand()` (F3) — and keeps the same hidden-cost discipline,
+with one deliberate exception: the frame-time ring records every frame, hidden
+or not, so the graph already shows the stutter that made the player reach for
+the key. The state singleton (`C_PerfHudState`) carries the anchor corner as
+well as visibility; it defaults to the bottom-right because the help overlay
+draws from the top-left and the perf-stats overlay from the top-right, so a
+creation registering all three never stacks two in one corner. Its headless
+probes (`builtText()`, `lastGlyphCommandCount()`, `panelRect()`) follow the
+help overlay's shape and sentinel.
+
 ## Cursor-latched rotation pivot
 
 `resolveFocusWorld` returns the world point under the cursor at its true

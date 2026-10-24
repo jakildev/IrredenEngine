@@ -20,6 +20,7 @@
 #include <irreden/render/systems/system_widget_render_text_input.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/help_overlay.hpp>
+#include <irreden/render/perf_hud.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/input/commands/command_close_window.hpp>
 #include <irreden/render/commands/command_gui_zoom.hpp>
@@ -578,6 +579,7 @@ void initSystems(int warmupFrames) {
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
         FontMaker::createRenderSystem(g_app),
+        IRSystem::System<IRSystem::PERF_HUD>::create(),
         IRSystem::System<IRSystem::HELP_OVERLAY>::create(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
@@ -604,6 +606,7 @@ void initCommands() {
     );
     IRCommand::registerCaptureCommands();
     IRPrefab::HelpOverlay::registerToggleCommand(KeyMouseButtons::kKeyButtonGraveAccent);
+    IRPrefab::PerfHud::registerToggleCommand();
     IRCommand::createCommand<IRCommand::GUI_ZOOM_IN>(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,

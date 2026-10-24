@@ -89,6 +89,7 @@
 #include <irreden/render/cursor_pivot.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/help_overlay.hpp>
+#include <irreden/render/perf_hud.hpp>
 #include <irreden/render/settings_menu.hpp>
 #include <irreden/render/widgets.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
@@ -2105,9 +2106,9 @@ int main(int argc, char **argv) {
 }
 
 // ---------------------------------------------------------------------------
-// Help-overlay + settings-menu GUI test (--gui-test)
+// Help-overlay + perf-HUD + settings-menu GUI test (--gui-test)
 // ---------------------------------------------------------------------------
-// Positive-fire coverage for both discoverability surfaces: byte-identity with
+// Positive-fire coverage for the toggled GUI surfaces: byte-identity with
 // them hidden (render-verify) only proves the OFF path is a no-op, so this
 // drives the ON paths end to end.
 //
@@ -2139,6 +2140,14 @@ constexpr IRVideo::GuiInputEvent kHelpOpenEvents[] = {
 constexpr IRVideo::GuiInputEvent kHelpCloseEvents[] = {
     {0, IRVideo::GuiInputEvent::Type::PRESS, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF1},
     {1, IRVideo::GuiInputEvent::Type::RELEASE, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF1},
+};
+
+// F3 toggles the perf HUD (IRPrefab::PerfHud::kDefaultToggleButton); the same
+// press-then-release pair, with the same one-frame INPUT latency, opens it on
+// one shot and closes it on the next.
+constexpr IRVideo::GuiInputEvent kPerfHudToggleEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::PRESS, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF3},
+    {1, IRVideo::GuiInputEvent::Type::RELEASE, IRMath::ivec2(0), vec2(0.0f), IRInput::kKeyButtonF3},
 };
 
 // Escape toggles the settings menu in this demo — the camera suite is
@@ -2546,6 +2555,8 @@ constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
      4},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_open"}, kHelpOpenEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_closed"}, kHelpCloseEvents, 2},
+    {{4.0f, vec2(0.0f), 0.0f, "perf_hud_open"}, kPerfHudToggleEvents, 2},
+    {{4.0f, vec2(0.0f), 0.0f, "perf_hud_closed"}, kPerfHudToggleEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "settings_menu_open"}, kMenuOpenEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "settings_menu_hover_idle"}, g_hoverPixel.awayEvents_, 1},
     {{4.0f, vec2(0.0f), 0.0f, "settings_menu_hover_row"}, g_hoverPixel.hoverEvents_, 1},
@@ -2580,22 +2591,41 @@ static_assert(
     "kDragPanShotIndex must name the drag-pan shot — its aim hook keys on it"
 );
 
-bool helpOverlayVisiblePredicate(const void *context, std::string &actual) {
-    const bool expected = *static_cast<const bool *>(context);
-    const bool visible = IRPrefab::HelpOverlay::isVisible();
+// The toggled GUI surfaces (help overlay, perf HUD) expose the same three
+// observables through their prefab namespaces, so one predicate per observable
+// takes the surface's accessor in its context rather than repeating the body
+// per surface.
+struct VisibleProbe {
+    bool (*isVisible)();
+    bool expected;
+};
+
+bool visibleProbePredicate(const void *context, std::string &actual) {
+    const auto &probe = *static_cast<const VisibleProbe *>(context);
+    const bool visible = probe.isVisible();
     actual = visible ? "visible" : "hidden";
-    return visible == expected;
+    return visible == probe.expected;
 }
 
-// Glyph commands are batched and uploaded inside the overlay's endTick, so the
+// Glyph commands are batched and uploaded inside the surface's endTick, so the
 // count is the only after-the-fact evidence it drew rather than merely flipped
 // its flag. Expect > 0 while open, exactly 0 while closed.
-bool helpOverlayGlyphsPredicate(const void *context, std::string &actual) {
-    const bool expectGlyphs = *static_cast<const bool *>(context);
-    const int count = IRPrefab::HelpOverlay::lastGlyphCommandCount();
+struct GlyphCountProbe {
+    int (*count)();
+    bool expectGlyphs;
+};
+
+bool glyphCountProbePredicate(const void *context, std::string &actual) {
+    const auto &probe = *static_cast<const GlyphCountProbe *>(context);
+    const int count = probe.count();
     actual = std::to_string(count);
-    return expectGlyphs ? count > 0 : count == 0;
+    return probe.expectGlyphs ? count > 0 : count == 0;
 }
+
+constexpr VisibleProbe kHelpVisibleProbe{&IRPrefab::HelpOverlay::isVisible, true};
+constexpr VisibleProbe kHelpHiddenProbe{&IRPrefab::HelpOverlay::isVisible, false};
+constexpr GlyphCountProbe kHelpGlyphsProbe{&IRPrefab::HelpOverlay::lastGlyphCommandCount, true};
+constexpr GlyphCountProbe kHelpNoGlyphsProbe{&IRPrefab::HelpOverlay::lastGlyphCommandCount, false};
 
 // The overlay wraps a row to the GUI canvas, so on a narrow canvas an entry
 // spans lines, its words separated by a newline and a hanging indent.
@@ -2714,10 +2744,14 @@ vec2 guiTrixelToScreenTargetPx(vec2 guiTrixel, IRMath::ivec2 screenTargetSize) {
     return (vec2(screenTargetSize) - quadSize) * 0.5f + guiTrixel / guiSize * quadSize;
 }
 
-// The panel the overlay painted lies wholly on the GUI canvas — the layout
+// The panel the surface painted lies wholly on the GUI canvas — the layout
 // half of "nothing is cut off".
-bool helpOverlayPanelInsideCanvasPredicate(const void *, std::string &actual) {
-    const IRPrefab::HelpOverlay::GuiRect panel = IRPrefab::HelpOverlay::panelRect();
+struct PanelProbe {
+    IRPrefab::GuiRect (*rect)();
+};
+
+bool panelInsideCanvasPredicate(const void *context, std::string &actual) {
+    const IRPrefab::GuiRect panel = static_cast<const PanelProbe *>(context)->rect();
     const IRMath::ivec2 canvas =
         IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("gui")).size_;
     actual = "panel=" + std::to_string(panel.pos_.x) + "," + std::to_string(panel.pos_.y) + "+" +
@@ -2726,6 +2760,8 @@ bool helpOverlayPanelInsideCanvasPredicate(const void *, std::string &actual) {
     return panel.size_.x > 0 && panel.size_.y > 0 && panel.pos_.x >= 0 && panel.pos_.y >= 0 &&
            panel.pos_.x + panel.size_.x <= canvas.x && panel.pos_.y + panel.size_.y <= canvas.y;
 }
+
+constexpr PanelProbe kHelpPanelProbe{&IRPrefab::HelpOverlay::panelRect};
 
 // The screen half: the first command row's glyph box maps inside the screen
 // target, and text-colored pixels are actually there. An overlay composited at
@@ -2817,13 +2853,13 @@ constexpr bool kExpectHidden = false;
 constexpr char kCameraSuiteEntry[] = "CAMERA UP - PAN THE CAMERA UP WHILE HELD";
 
 const IRPrefab::GuiTest::Assertion kHelpOpenAssertions[] = {
-    IRPrefab::GuiTest::predicate(&helpOverlayVisiblePredicate, &kExpectVisible, "overlay_visible"),
-    IRPrefab::GuiTest::predicate(&helpOverlayGlyphsPredicate, &kExpectVisible, "glyphs_batched"),
+    IRPrefab::GuiTest::predicate(&visibleProbePredicate, &kHelpVisibleProbe, "overlay_visible"),
+    IRPrefab::GuiTest::predicate(&glyphCountProbePredicate, &kHelpGlyphsProbe, "glyphs_batched"),
     IRPrefab::GuiTest::predicate(
         &helpOverlayCameraEntryPredicate, kCameraSuiteEntry, "camera_entry_described"
     ),
     IRPrefab::GuiTest::predicate(
-        &helpOverlayPanelInsideCanvasPredicate, nullptr, "overlay_bounds_inside_canvas"
+        &panelInsideCanvasPredicate, &kHelpPanelProbe, "overlay_bounds_inside_canvas"
     ),
     IRPrefab::GuiTest::predicate(
         &helpOverlayFirstRowOnFramePredicate, nullptr, "first_command_row_on_frame"
@@ -2831,8 +2867,46 @@ const IRPrefab::GuiTest::Assertion kHelpOpenAssertions[] = {
 };
 
 const IRPrefab::GuiTest::Assertion kHelpClosedAssertions[] = {
-    IRPrefab::GuiTest::predicate(&helpOverlayVisiblePredicate, &kExpectHidden, "overlay_hidden"),
-    IRPrefab::GuiTest::predicate(&helpOverlayGlyphsPredicate, &kExpectHidden, "no_glyphs_batched"),
+    IRPrefab::GuiTest::predicate(&visibleProbePredicate, &kHelpHiddenProbe, "overlay_hidden"),
+    IRPrefab::GuiTest::predicate(
+        &glyphCountProbePredicate, &kHelpNoGlyphsProbe, "no_glyphs_batched"
+    ),
+};
+
+// --- Perf-HUD predicates -------------------------------------------------
+
+constexpr VisibleProbe kPerfHudVisibleProbe{&IRPrefab::PerfHud::isVisible, true};
+constexpr VisibleProbe kPerfHudHiddenProbe{&IRPrefab::PerfHud::isVisible, false};
+constexpr GlyphCountProbe kPerfHudGlyphsProbe{&IRPrefab::PerfHud::lastGlyphCommandCount, true};
+constexpr GlyphCountProbe kPerfHudNoGlyphsProbe{&IRPrefab::PerfHud::lastGlyphCommandCount, false};
+constexpr PanelProbe kPerfHudPanelProbe{&IRPrefab::PerfHud::panelRect};
+
+// Both lines were formatted: FPS leads the first, MS and DROP sit on the
+// second. The numbers themselves depend on the host, so only the labels are
+// pinned.
+bool perfHudLinesPredicate(const void *, std::string &actual) {
+    const std::string text = IRPrefab::PerfHud::builtText();
+    actual = collapseWhitespace(text);
+    return text.rfind("FPS", 0) == 0 && text.find("\nMS") != std::string::npos &&
+           text.find("DROP") != std::string::npos;
+}
+
+const IRPrefab::GuiTest::Assertion kPerfHudOpenAssertions[] = {
+    IRPrefab::GuiTest::predicate(&visibleProbePredicate, &kPerfHudVisibleProbe, "perf_hud_visible"),
+    IRPrefab::GuiTest::predicate(
+        &glyphCountProbePredicate, &kPerfHudGlyphsProbe, "perf_hud_glyphs_batched"
+    ),
+    IRPrefab::GuiTest::predicate(&perfHudLinesPredicate, nullptr, "perf_hud_lines_formatted"),
+    IRPrefab::GuiTest::predicate(
+        &panelInsideCanvasPredicate, &kPerfHudPanelProbe, "perf_hud_bounds_inside_canvas"
+    ),
+};
+
+const IRPrefab::GuiTest::Assertion kPerfHudClosedAssertions[] = {
+    IRPrefab::GuiTest::predicate(&visibleProbePredicate, &kPerfHudHiddenProbe, "perf_hud_hidden"),
+    IRPrefab::GuiTest::predicate(
+        &glyphCountProbePredicate, &kPerfHudNoGlyphsProbe, "perf_hud_no_glyphs_batched"
+    ),
 };
 
 // --- Settings-menu predicates --------------------------------------
@@ -3123,6 +3197,8 @@ const ShotAssertions kShotAssertions[] = {
     shotAssertions(g_dragPan.assertions_),
     shotAssertions(kHelpOpenAssertions, true),
     shotAssertions(kHelpClosedAssertions),
+    shotAssertions(kPerfHudOpenAssertions),
+    shotAssertions(kPerfHudClosedAssertions),
     shotAssertions(kMenuOpenAssertions),
     shotAssertions(kMenuHoverIdleAssertions, true),
     shotAssertions(kMenuHoverRowAssertions, true),
@@ -3152,7 +3228,7 @@ static_assert(
 // silently stop aiming the early menu clicks and leave them at the screen
 // corner. Identified by the events the shot carries — the label is not
 // constexpr-comparable, and kMenuOpenEvents IS what "opens the menu" means here.
-constexpr int kMenuOpenShotIndex = kDragPanShotIndex + 3;
+constexpr int kMenuOpenShotIndex = kDragPanShotIndex + 5;
 constexpr bool isFirstMenuOpeningShot(int index) {
     for (int i = 0; i < index; ++i) {
         if (kHelpOverlayGuiShots[i].inputs_ == kMenuOpenEvents) {
@@ -3820,6 +3896,9 @@ void initSystems() {
     // default and an empty gui canvas composites to nothing, so `--auto-screenshot`
     // captures stay byte-identical.
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>());
+    // Player-facing frame-rate HUD, F3, bottom-right; ahead of the help
+    // overlay so an open command list paints over everything else.
+    renderPipeline.splice(renderPipeline.end(), IRPrefab::PerfHud::systems());
     renderPipeline.splice(renderPipeline.end(), IRPrefab::HelpOverlay::systems());
     // Settings-menu widgets draw on the same GUI canvas, after the
     // overlay so an open menu paints over it. Both are default-off and own no
@@ -4499,6 +4578,8 @@ void initCommands() {
     // F1 lists every command registered above — including the camera bundle
     // and the two culling toggles — with its description.
     IRPrefab::HelpOverlay::registerToggleCommand();
+    // F3 shows the frame-rate HUD.
+    IRPrefab::PerfHud::registerToggleCommand();
     // Escape opens the settings menu built from registerDemoSettings().
     IRPrefab::SettingsMenu::registerToggleCommand();
     // Rotation-pivot mode cycle: swap which Ctrl+middle-drag chord

@@ -88,6 +88,10 @@ TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
         lua.script("return IRSystem.SystemName.CANVAS_RESIDENCY").get<int>(),
         static_cast<int>(IRSystem::CANVAS_RESIDENCY)
     );
+    EXPECT_EQ(
+        lua.script("return IRSystem.SystemName.PERF_HUD").get<int>(),
+        static_cast<int>(IRSystem::PERF_HUD)
+    );
 }
 
 TEST_F(LuaPipelineRegisterTest, WidgetRenderSystemNamesBound) {

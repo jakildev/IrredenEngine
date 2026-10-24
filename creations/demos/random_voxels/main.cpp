@@ -64,6 +64,7 @@
 
 // COMMANDS
 #include <irreden/render/help_overlay.hpp>
+#include <irreden/render/perf_hud.hpp>
 #include <irreden/voxel/commands/command_randomize_voxels.hpp>
 
 #include <list>
@@ -213,6 +214,7 @@ void initSystems() {
             // batches into, and both must precede TRIXEL_TO_FRAMEBUFFER for
             // the HUD to land on screen.
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::System<IRSystem::PERF_HUD>::create(),
             IRSystem::System<IRSystem::HELP_OVERLAY>::create(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
@@ -257,6 +259,7 @@ void initCommands() {
     // here because the overlay is this demo's whole HUD and G is what the
     // file-doc above advertises; registerToggleCommand takes the key.
     IRPrefab::HelpOverlay::registerToggleCommand(IRInput::kKeyButtonG);
+    IRPrefab::PerfHud::registerToggleCommand();
 
     IRPrefab::Camera::registerStandardKeyboardCommands();
 }

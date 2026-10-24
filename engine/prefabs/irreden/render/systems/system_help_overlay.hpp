@@ -22,7 +22,8 @@
 namespace IRSystem {
 
 // Outer padding from the canvas top-left corner. The perf-stats overlay owns
-// the top-right; these two are the GUI canvas's two reserved corners.
+// the top-right and the perf HUD defaults to the bottom-right, so the three
+// engine overlays never share a corner.
 inline constexpr IRMath::ivec2 kHelpOverlayPadding{12, 12};
 
 // Inner padding between the text block and the background panel edge.
@@ -225,11 +226,7 @@ template <> struct System<HELP_OVERLAY> {
     // sync through one multiply rather than a second measuring pass.
     void paintBackground() {
         const int textW = layout_.maxLineChars_ * IRRender::kGlyphStepX * kHelpOverlayFontSize;
-        // Standard N-line block height: N-1 inter-line steps plus one glyph
-        // row. `kGlyphStepY` includes the line gap, so using it for the last
-        // row too would pad the panel by that gap.
-        const int textH = (layout_.lineCount_ - 1) * IRRender::kGlyphStepY * kHelpOverlayFontSize +
-                          IRRender::kGlyphHeight * kHelpOverlayFontSize;
+        const int textH = IRRender::textBlockHeight(layout_.lineCount_, kHelpOverlayFontSize);
 
         panelPos_ = IRMath::ivec2{
             kHelpOverlayPadding.x - kHelpOverlayBgPadding.x,

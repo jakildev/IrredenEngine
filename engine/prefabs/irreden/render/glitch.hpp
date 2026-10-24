@@ -20,6 +20,7 @@
 
 #include <irreden/render/components/component_glitch_state.hpp>
 #include <irreden/render/glitch_math.hpp>
+#include <irreden/render/prefab_system_probe.hpp>
 #include <irreden/render/systems/system_framebuffer_glitch.hpp>
 
 #include <string>
@@ -93,11 +94,7 @@ inline Clock clock() {
 // The registered glitch pass named @p Name, or null when the creation did not
 // register it.
 template <IRSystem::SystemName Name> IRSystem::System<Name> *glitchSystemOrNull() {
-    const IRSystem::SystemId id = IRSystem::findSystem(Name);
-    if (id == IRSystem::kNullSystemId) {
-        return nullptr;
-    }
-    return IRSystem::getSystemParams<IRSystem::System<Name>>(id);
+    return IRPrefab::detail::systemOrNull<Name>();
 }
 
 inline IRSystem::System<IRSystem::FRAMEBUFFER_GLITCH> *systemOrNull() {

@@ -29,6 +29,7 @@
 #include <irreden/render/commands/command_toggle_help_overlay.hpp>
 #include <irreden/render/gui_rect.hpp>
 #include <irreden/render/help_overlay_state.hpp>
+#include <irreden/render/prefab_system_probe.hpp>
 #include <irreden/render/systems/system_help_overlay.hpp>
 
 #include <cstddef>
@@ -92,24 +93,12 @@ inline IRCommand::CommandId registerToggleCommand(int button = kDefaultToggleBut
 // The observables a GUI test needs to prove the overlay actually fired, rather
 // than merely believing itself visible: the text it built, how many glyph
 // commands it batched on the last frame, and where on the GUI canvas the panel
-// and its lines landed. All resolve the running system through the
-// `SystemName` registry and degrade to empty / 0 when it isn't registered, so
-// a creation without the overlay reads a clean negative instead of
-// dereferencing null. The miss sentinel is `IRSystem::kNullSystemId`
-// — NOT `IREntity::kNullEntity`, because 0 is a
-// live id (the first system a process registers gets it). Comparing against the
-// wrong one breaks the probe both ways: a genuine miss walks past the guard into
-// an out-of-range `getSystemParams`, and a system registered as id 0 reads as
-// absent (`prefab_system_probe_test.cpp` pins both directions).
-//
-// Not a per-frame surface — one hash lookup per call. Intended for
+// and its lines landed. All resolve the running system through
+// `detail::systemOrNull` (`prefab_system_probe.hpp`, which owns the sentinel
+// contract) and degrade to empty / 0 when it isn't registered. Intended for
 // `IRPrefab::GuiTest::predicate` bodies and diagnostics.
 inline const IRSystem::System<IRSystem::HELP_OVERLAY> *systemOrNull() {
-    const IRSystem::SystemId id = IRSystem::findSystem(IRSystem::HELP_OVERLAY);
-    if (id == IRSystem::kNullSystemId) {
-        return nullptr;
-    }
-    return IRSystem::getSystemParams<IRSystem::System<IRSystem::HELP_OVERLAY>>(id);
+    return IRPrefab::detail::systemOrNull<IRSystem::HELP_OVERLAY>();
 }
 
 // The overlay text as last built from the command registry. Empty when the

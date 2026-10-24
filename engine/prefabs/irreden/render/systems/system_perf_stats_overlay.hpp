@@ -164,28 +164,31 @@ template <> struct System<PERF_STATS_OVERLAY> {
     }
 
   private:
-    static double ema(double prev, double now) {
-        // Seed on first sample so the displayed value reaches steady-state in
-        // one frame instead of slow-rising from 0.
-        return prev <= 0.0 ? now : (kPerfStatsEmaAlpha * now + (1.0 - kPerfStatsEmaAlpha) * prev);
-    }
-
     void updateSmoothedValues() {
-        fpsEma_ = ema(fpsEma_, IRTime::renderFps());
-        frameMsEma_ = ema(frameMsEma_, IRTime::renderFrameTimeMs());
-        updateFpsEma_ = ema(updateFpsEma_, IRTime::updateFps());
+        fpsEma_ = IRMath::seededEma(fpsEma_, IRTime::renderFps(), kPerfStatsEmaAlpha);
+        frameMsEma_ =
+            IRMath::seededEma(frameMsEma_, IRTime::renderFrameTimeMs(), kPerfStatsEmaAlpha);
+        updateFpsEma_ = IRMath::seededEma(updateFpsEma_, IRTime::updateFps(), kPerfStatsEmaAlpha);
 
         const auto &cpu = IRProfile::cpuFrameHistogram();
-        cpuInputMsEma_ = ema(cpuInputMsEma_, cpu.lastFrameMs("input"));
-        cpuUpdateMsEma_ = ema(cpuUpdateMsEma_, cpu.lastFrameMs("update"));
-        cpuRenderMsEma_ = ema(cpuRenderMsEma_, cpu.lastFrameMs("render"));
+        cpuInputMsEma_ =
+            IRMath::seededEma(cpuInputMsEma_, cpu.lastFrameMs("input"), kPerfStatsEmaAlpha);
+        cpuUpdateMsEma_ =
+            IRMath::seededEma(cpuUpdateMsEma_, cpu.lastFrameMs("update"), kPerfStatsEmaAlpha);
+        cpuRenderMsEma_ =
+            IRMath::seededEma(cpuRenderMsEma_, cpu.lastFrameMs("render"), kPerfStatsEmaAlpha);
 
         const auto &gpu = IRRender::gpuStageTiming();
         const auto &registry = IRRender::gpuStageRegistry();
         for (std::size_t i = 0; i < registry.size(); ++i) {
             const auto &info = registry[i];
-            gpuStageMsEma_[i] = ema(gpuStageMsEma_[i], gpu.*info.field_);
-            cpuStageMsEma_[i] = ema(cpuStageMsEma_[i], cpu.lastFrameMs(info.name_));
+            gpuStageMsEma_[i] =
+                IRMath::seededEma(gpuStageMsEma_[i], gpu.*info.field_, kPerfStatsEmaAlpha);
+            cpuStageMsEma_[i] = IRMath::seededEma(
+                cpuStageMsEma_[i],
+                cpu.lastFrameMs(info.name_),
+                kPerfStatsEmaAlpha
+            );
         }
     }
 
