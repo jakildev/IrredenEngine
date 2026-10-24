@@ -240,33 +240,78 @@ The measured numbers for the pinned probe live in **one** place — this section
 — so there is no second copy to drift.
 
 **`--max-excursion-x` bars** (macOS/Metal, `outputScaleFactor` **2**,
-2026-08-08, 24-frame sweeps, one session, arm identity asserted per run from the
-engine log). **These bars are 2x-calibrated**: on a 1x host (Windows/Linux) they
-gate ~2x looser in game px, so a green run there is weaker evidence than the same
-run on macOS. Re-deriving them per host-scale is #3009's job, not something to do
-inline — see the unit note above before quoting any number here.
+2026-10-22, base `f3074f176`, 24-frame sweeps, one session). Arm identity is
+asserted per run from the engine log: `Spin-shape single fixture: Cylinder
+(voxel-pool)` or `(SDF)` names the fixture, `Yaw-sweep: 24 shots, yaw 0.05->0.7
+rad` (or the tie range) names the sweep, and the kill-switch arm is the one whose
+command line carries `IR_PERAXIS_OVERFLOW_DISABLE=1` (nothing logs it). **These
+bars are 2x-calibrated**: on a 1x host (Windows/Linux) they gate ~2x looser in
+game px, so a green run there is weaker evidence than the same run on macOS.
+Re-deriving them per host-scale is #3009's job, not something to do inline — see
+the unit note above before quoting any number here.
 
-| zoom | healthy voxel | SDF control | `IR_PERAXIS_OVERFLOW_DISABLE=1` | **bar** | separation |
-|---|---|---|---|---|---|
-| 2 | 0.62px | — | 6.23px | **2.0px** | 10x |
-| 4 | 0.18px | 0.00px | 10.87px | **0.5px** | 60x |
-| 8 | 0.06px | 0.00px | 21.79px | **0.5px** | 363x |
+| zoom | healthy voxel (canonical sweep) | healthy voxel (tie pose) | SDF control | `IR_PERAXIS_OVERFLOW_DISABLE=1` | **bar** | separation |
+|---|---|---|---|---|---|---|
+| 2 | 0.00px | 0.58px | 0.00px | 5.77px | **1.5px** | 10x |
+| 4 | 0.00px | 0.59px | 0.00px | 10.82px | **1.5px** | 18x |
+| 8 | 0.58px | 0.58px | 0.00px | 21.83px | **1.5px** | 38x |
 
-Bar rule: the smallest half-integer >= 2.5x the max healthy x excursion at that
-zoom (voxel and SDF both count as healthy), required to also be <= 0.5x the
-defect excursion — so a published bar always has >=2.5x headroom below and >=2x
-above. A zoom with no value satisfying both is omitted rather than published
-thin. The defect arm fires at every zoom, and *attributably*: re-running it with
-`--max-residual 99` still exits 1, so the failure is the excursion criterion by
-construction. y excursions for the same populations (recorded, not gated):
-healthy 0.21 / 0.11 / 0.06px, defect 2.64 / 5.27 / 10.08px at zoom 2/4/8.
+Separation is the defect excursion over the healthy maximum. Bar rule: the
+smallest half-integer >= 2.5x the max healthy x excursion at that zoom (voxel
+canonical, voxel tie pose and SDF all count as healthy), required to also be <=
+0.5x the defect excursion — so a published bar always has >=2.5x headroom below
+and >=2x above. A zoom with no value satisfying both is omitted rather than
+published thin. The defect arm fires at every zoom, and *attributably*: re-running
+it with `--max-residual 99` still exits 1, so the failure is the excursion
+criterion by construction. y excursions for the same populations (recorded, not
+gated): healthy canonical 0.00 / 0.00 / 0.10px, healthy tie pose 0.09 / 0.08 /
+0.19px, defect 2.62 / 5.37 / 10.09px at zoom 2/4/8.
+
+**Why the tie pose counts as healthy (#4384).** Since #3980 the finite voxel
+faces are hardware-rasterized ("hardware raster coverage ... decide which pixel
+centers the finite faces own",
+[`per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md)
+§ "Current contract — finite-face scatter and cardinal-loser overflow"), so the
+pinned sweep reads exactly 0.00px except where a silhouette edge lands on a
+pixel-centre column. The cylinder's outermost
+vertical edge (voxel corner (1.5, 3.5)) sits `w(yaw) = 2·zoom·(5·cos(yaw) +
+2·sin(yaw))` game px either side of the frame centre, which is a pixel boundary.
+When `w` is within 1/512 px of `k + 0.5` both extreme edges snap (Metal's vertex
+grid is 1/256 px) onto pixel centres, and the half-open fill rule draws the left
+column and not the right: that one frame is one game px column short on the
+right and reads ~0.58px of x excursion at every zoom. A narrow scan through a
+tie reads three regimes in yaw order — both extreme columns absent, left only,
+both present:
+
+```bash
+IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep --pivot-origin \
+    --zoom 8 --yaw-sweep-lo 0.0494 --yaw-sweep-hi 0.0506 --auto-screenshot 6  # frames 11-13
+IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep --pivot-origin \
+    --zoom 4 --yaw-sweep-lo 0.1083 --yaw-sweep-hi 0.1091 --auto-screenshot 6  # frames 8-17
+IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep --pivot-origin \
+    --zoom 2 --yaw-sweep-lo 0.0678 --yaw-sweep-hi 0.0690 --auto-screenshot 6  # frames 6-17
+```
+
+The canonical zoom 8 sweep's shot 0 (yaw 0.05, `w` = 81.49935) is such a tie,
+which is the whole of its 0.58px. Any sub-pixel placement change re-rolls which
+canonical shot ties (window width (1/256) / (dw/dyaw), about 1 in 256 per shot
+per zoom), so the bar absorbs one tie at every zoom instead of tracking where
+the current tie happens to fall. Smaller ties exist (an interior edge, 128 px
+of mirror asymmetry at zoom 8 against 896 for an extreme column, frames 19-20 of
+the zoom 8 scan above); the 2.5x headroom absorbs those on top of an extreme
+column. A tie frame is the one frame whose foreground mask differs from its own
+180° rotation (896 / 448 / 224 px at zoom 8 / 4 / 2).
 
 **At a zoom not in the table, re-derive — never interpolate, and never carry a
-neighbouring row across.** z1 is omitted by the clause above: healthy reads
-**0.93px** against **3.53px** for the defect arm (3.8x), so the candidate bar
-(2.5px) sits above its own ceiling (1.765px) and no value satisfies the rule.
-Borrowing the adjacent 0.5px there **false-fires** on a green z1 population.
-Upward is the harmless direction: z16 healthy reads **0.04px**, 12x under 0.5px.
+neighbouring row across.** z1 is omitted by the clause above: the canonical
+sweep reads **0.05px** (y 0.09px) and a tie pose (`--yaw-sweep-lo 0.1545
+--yaw-sweep-hi 0.1575`) reads **0.59px** (y 0.06px), against **2.94px** (y
+1.20px) for the defect arm, so the candidate bar (1.5px) sits above its own
+ceiling (1.47px) and no value satisfies the rule. Borrowing the adjacent 1.5px
+there would leave less than 2x between the bar and the 2.94px defect. Upward is
+the harmless direction: z16 canonical reads **0.00px** (y 0.00px) and a tie pose
+(`--yaw-sweep-lo 0.0588 --yaw-sweep-hi 0.0594`) reads 0.58px (y 0.10px), 2.6x
+under 1.5px, against 44.06px (y 20.79px) for the defect arm.
 
 **The bar belongs to the pinned probe only — the unpinned sweep carries no
 excursion bar** (see the `--pivot-origin` note above).
@@ -286,15 +331,18 @@ canonical gate uses — Windows/OpenGL, `outputScaleFactor` **1**, 2026-09-06,
 | `IR_PERAXIS_OVERFLOW_DISABLE=1` (recorded, **not** a bar source) | 0.29 / 0.26 / 0.49px | 3.11 / 5.44 / 10.90px | 0.17 / 0.39 / 0.74px |
 | **bar** (`--max-residual`, tool default) | 1.50 / 1.50 / 1.50px | *(excursion bars: table above)* | — |
 
+This table predates #3980 (hardware finite-face coverage) and was not re-measured
+when the macOS bars above were re-derived on 2026-10-22; it needs a GL host.
+
 **Bar decision: `--max-residual` stays at the 1.50 fb-px tool default, and no
 per-zoom residual bars are published.** The healthy maximum (0.20px, voxel z2)
 sits 7x under it, but the bar rule's other half ("<= 0.5x the defect excursion")
 has nothing to evaluate: the only live defect arm, the
 `IR_PERAXIS_OVERFLOW_DISABLE=1` kill switch, reads **0.49px** — under the bar,
-and it is the *excursion* criterion that catches it (10.90px against a 0.5px bar
-at z8). The pre-#2427 face-pop that originally grounded 1.50 is fixed on master.
-No criterion here has a firing defect arm supplying a ceiling, so nothing thinner
-than the default is published rather than inventing one.
+and it is the *excursion* criterion that catches it (10.90px against the 1.5px
+z8 excursion bar above). The pre-#2427 face-pop that originally grounded 1.50 is
+fixed on master. No criterion here has a firing defect arm supplying a ceiling,
+so nothing thinner than the default is published rather than inventing one.
 
 The *unpinned* sweep is NOT a gate: its residual is dominated by the default
 `CAMERA_CENTER` pivot orbit (#2907, above). Every number above states its host and
