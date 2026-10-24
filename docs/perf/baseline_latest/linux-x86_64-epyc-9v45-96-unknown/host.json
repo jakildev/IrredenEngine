@@ -1,7 +1,7 @@
 {
   "cpu": {
     "cores": 2,
-    "mhz": 4170,
+    "mhz": 2596,
     "model": "AMD EPYC 9V45 96-Core Processor",
     "threads": 4
   },
@@ -10,7 +10,7 @@
   },
   "os": {
     "distro": "Ubuntu 24.04.5 LTS",
-    "kernel": "Linux 7.0.0-1017-azure"
+    "kernel": "Linux 6.17.0-1022-azure"
   },
   "ram": {
     "gb": 15
