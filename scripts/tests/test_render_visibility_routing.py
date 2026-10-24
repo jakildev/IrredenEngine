@@ -83,8 +83,9 @@ struct C_PerAxisTrixelCanvases{
  struct AxisTextures{std::pair<int,Texture*> colors_,distances_,ao_;};
  std::array<Texture,9> textures{{{100},{101},{102},{200},{201},{202},{300},{301},{302}}};
  std::array<AxisTextures,3> axes_;
- Buffer cells{25},indirect{126},overflow{125};
- std::pair<int,Buffer*> cellCompacted_{0,&cells},cellIndirect_{0,&indirect},winnerIds_{0,&overflow};
+ Buffer cells{25},indirect{126},indirectArgs{127},overflow{125},overflowArgs{128};
+ std::pair<int,Buffer*> cellCompacted_{0,&cells},cellIndirect_{0,&indirect},
+  cellIndirectArgs_{0,&indirectArgs},winnerIds_{0,&overflow},overflowDrawArgs_{0,&overflowArgs};
  int cellRegionStride_=16,entriesBaseUints_=64,overflowCap_=8,ctrlBaseUints_=12;
  C_PerAxisTrixelCanvases(){for(int i=0;i<3;++i)
   axes_[i]={{0,&textures[i]},{0,&textures[i+3]},{0,&textures[i+6]}};
@@ -108,12 +109,13 @@ struct Device{
   check(residentMode==0||residentMode==1,"resident overflow selector");
   if(residentMode==0){
    const int axis=int(offset/kPerAxisCellIndirectStrideBytes);
-   check(axis>=0&&axis<3&&offset==axis*32&&args->id==126,"regular indirect arguments");
+   check(axis>=0&&axis<3&&offset==axis*32&&args->id==127,
+         "regular arguments from the copied cell args");
    check(storage[25]&&storage[25]->id==25&&offsets[25]==axis*16*4,"regular cell region");
    check(textures[0]==100+axis&&textures[1]==200+axis,"regular textures");
    if(used==1||visibility)check(textures[4]==300+axis,"axis AO texture");
   }else{
-   check(args->id==125&&offset==12*4,"overflow indirect arguments");
+   check(args->id==128&&offset==0,"overflow arguments from the copied draw args");
    check(storage[25]&&storage[25]->id==125&&offsets[25]==64*4,"overflow region");
   }
   if(prepass||replay){
@@ -316,6 +318,12 @@ class VisibilityRoutingTest(unittest.TestCase):
             "lost-query-correction": (r"counts\[12\] \+ 1u", "counts[12]"),
             "wrong-query-validity-offset": (r"counts\[13\] ==", "counts[12] =="),
             "inverted-query-validity": (r"counts\[13\] ==", "counts[13] !="),
+            "cell-draw-from-live-indirect": (r"axes\.cellIndirectArgs_\.second",
+                                             "axes.cellIndirect_.second"),
+            "overflow-draw-from-live-ctrl": (
+                r"axes\.overflowDrawArgs_\.second,\s*0\s*\)",
+                "overflowScratch, static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_)"
+                " * sizeof(std::uint32_t))"),
         }
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)

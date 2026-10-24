@@ -54,8 +54,7 @@ Changes without a visual effect need no captures.
   `.glsl` identifiers (NVIDIA GL fails, Metal doesn't); rename the `.metal` twin.
 - Derive large SSBO word indices at runtime; constant ones cost NVIDIA minutes per cold link.
 - NVIDIA GL defers a self-fed indirect dispatch; what releases it: `detail::forEachOverflowSortStep`.
-- NVIDIA GL stalls the CPU on an indirect dispatch whose argument buffer the bound program can write; keep GPU-authored args in their own buffer (`sortFaceRecords`).
-- NVIDIA GL also blocks the CPU on a `subData` into a buffer a queued shader wrote, on an indirect dispatch from a buffer a shader wrote this frame, and on a readback of the newest GPU counters. Each goes through `device()->copyBufferSubData`: reset from a constant buffer, dispatch from an args copy no program binds (`indirectArgsBuf_`), read a ring slot only once `completedSubmissionSerial()` passes its copy (`GpuReadbackRing`; Metal `getSubData` never waits).
+- NVIDIA GL blocks the CPU until the GPU drains on a `subData` into a buffer a queued shader wrote, on an indirect dispatch or draw from a buffer a shader wrote this frame, and on a readback of the newest GPU counters. Each goes through a GPU-timeline copy: `IRRender::resetBufferFromSeed` from a constant buffer (`HoveredEntityIdReset`, `overflowCtrlSeed_`, `cellIndirectReset_`), `IRRender::publishIndirectArgs` into an args copy no program binds (`indirectArgsBuf_`, `perAxisIndirectArgsBuf_`, `cellIndirectArgs_`, `overflowSortArgsCopyBuf_`, `overflowDrawArgs_`), and for readbacks a `detail::GpuReadbackRing` slot handed over only once `completedSubmissionSerial()` reaches the serial that encoded its copy (`cullStatsRing_`, `overflowCtrlRing_`); never gate a readback on "N writes ago", since on Metal a frame's writes share one uncommitted command buffer and `getSubData` reads shared storage without waiting.
 
 ### Metal compute kernel threadgroup registry
 

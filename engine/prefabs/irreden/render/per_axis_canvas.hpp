@@ -359,7 +359,7 @@ class LightingRouteScope {
 // bindings, binds the axis's region of the component-owned compacted-cell +
 // dispatch-args buffers onto slots 25/26 (borrowing them — the caller restores
 // via restoreVoxelCompactionSlots / LightingRouteScope), then issues the
-// indirect dispatch from the axis's args region. One definition of the loop
+// indirect dispatch from the axis's region of the args copy. One definition of the loop
 // the per-axis AO / sun-shadow / lighting / screen-depth-resolve dispatches
 // each hand-rolled.
 template <typename BindAxis>
@@ -383,7 +383,7 @@ inline void dispatchPerAxisCells(IRComponents::C_PerAxisTrixelCanvases &axes, Bi
             IRRender::kPerAxisCellIndirectStrideBytes
         );
         IRRender::device()->dispatchComputeIndirect(
-            cellIndirect,
+            axes.cellIndirectArgs_.second,
             static_cast<std::ptrdiff_t>(axis) * IRRender::kPerAxisCellIndirectStrideBytes +
                 IRRender::kPerAxisCellDispatchArgsOffsetBytes
         );

@@ -60,6 +60,9 @@ namespace IRSystem {
 namespace detail {
 
 constexpr std::uint32_t kOverflowSortHeadroom = 2;
+constexpr std::size_t kOverflowSortArgsBytes =
+    static_cast<std::size_t>(C_PerAxisTrixelCanvases::kOverflowSortCommandCount) *
+    C_PerAxisTrixelCanvases::kOverflowSortCommandUints * sizeof(std::uint32_t);
 
 inline std::uint32_t overflowSortDispatchSpan(std::uint32_t laggedCount, std::uint32_t capacity) {
     constexpr std::uint32_t kBlock = 1u << C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
@@ -404,6 +407,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // on the CPU before an indirect dispatch whose argument buffer a shader
     // can write, so the cardinal dispatches read their grids from here.
     Buffer *indirectArgsBuf_ = nullptr;
+    // The per-axis twin: three axis regions of PerAxisIndirectDispatchParams.
+    Buffer *perAxisIndirectArgsBuf_ = nullptr;
+    // Copy of overflowSortArgsBuf_ the merge-ladder dispatches read.
+    Buffer *overflowSortArgsCopyBuf_ = nullptr;
     Buffer *compactedBuf_ = nullptr;
     // Cull-statistics ring. Each compact's indirect params are copied into a
     // slot and read back once the submission that encoded the copy has
@@ -730,50 +737,61 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Restores the UBO to the main-canvas
     // frame data on exit so downstream stages (AO, lighting, fog) are
     // unaffected.
-    // overflow-lane ctrl-block bookkeeping. The block doubles as the
-    // overflow scatter's indirect draw args: {indexCount, instanceCount,
-    // firstIndex, baseVertex, baseInstance, droppedCount, pad, pad}. Mode 3
-    // atomically appends instanceCount / droppedCount; everything else is
-    // CPU-seeded here each rotating frame.
+    // overflow-lane ctrl-block bookkeeping. The block is {indexCount,
+    // instanceCount, firstIndex, baseVertex, baseInstance, droppedCount, pad,
+    // pad}; mode 3 atomically appends instanceCount / droppedCount, and the
+    // component's constant seed restores everything else each rotating frame
+    // through a GPU-side copy, behind the previous frame's atomics.
     void resetOverflowCtrl(const C_PerAxisTrixelCanvases &axes) {
-        const std::array<std::uint32_t, 8> ctrl{
-            static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength),
-            0u,
-            0u,
-            0u,
-            0u,
-            0u,
-            0u,
-            0u
-        };
-        axes.winnerIds_.second->subData(
-            static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
-            sizeof(ctrl),
-            ctrl.data()
+        IRRender::resetBufferFromSeed(
+            axes.overflowCtrlSeed_.second,
+            axes.winnerIds_.second,
+            axes.ctrlOffsetBytes(),
+            kOverflowCtrlBytes
         );
     }
+    static constexpr std::size_t kOverflowCtrlBytes =
+        C_PerAxisTrixelCanvases::kOverflowCtrlUints * sizeof(std::uint32_t);
 
-    // Cap overflow must never be silent: read the last rotating
-    // frame's ctrl block, written by a dispatch that already completed, so the
-    // CPU read needs no fence (the same pattern as the cull-diagnostic
-    // readback in tick(); Metal's present() waits each frame to completion, so
-    // the read can never observe an in-flight append, and GL's getSubData
-    // implicit-syncs any pending write) — and one-shot-warn when entries were
-    // dropped. The count also bounds next frame's encoded sort stages (the cap
-    // when the block is still the allocation seed); current GPU counts still
-    // author the indirect grids for every encoded stage.
+    // Cap overflow must never be silent: read every settled ctrl-block copy
+    // whose submission has completed (a read of the live block would drain
+    // the queue on GL), record each in the run witness, and one-shot-warn
+    // when the newest dropped entries. The newest count also bounds this
+    // frame's encoded sort stages, the cap until the first sample lands;
+    // current GPU counts still author the indirect grids for every encoded
+    // stage.
     void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
-        std::array<std::uint32_t, 8> ctrl{};
-        axes.winnerIds_.second->getSubData(
-            static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
-            sizeof(ctrl),
-            ctrl.data()
+        IR_PROFILE_SCOPE("vs1_pa_ctrl_readback");
+        using CtrlBlock = std::array<std::uint32_t, C_PerAxisTrixelCanvases::kOverflowCtrlUints>;
+        CtrlBlock ctrl{};
+        std::uint64_t newestFrame = 0;
+        axes.overflowCtrlRing_.drainCompleted(
+            IRRender::device()->completedSubmissionSerial(),
+            [&](int slot, const C_PerAxisTrixelCanvases::OverflowCtrlProducer &producer) {
+                CtrlBlock sample{};
+                axes.overflowCtrlBuffers_[static_cast<std::size_t>(slot)]
+                    .second->getSubData(0, sizeof(sample), sample.data());
+                renderRunWitness().recordOverflow(
+                    sample[1],
+                    sample[5],
+                    static_cast<std::uint32_t>(axes.overflowCap_)
+                );
+                if (producer.frame_ >= newestFrame) {
+                    newestFrame = producer.frame_;
+                    ctrl = sample;
+                }
+            }
         );
+        if (newestFrame == 0) {
+            if (!axes.overflowCtrlSampled_) {
+                axes.laggedOverflowCount_ = static_cast<std::uint32_t>(axes.overflowCap_);
+            }
+            return;
+        }
+        axes.overflowCtrlSampled_ = true;
         axes.laggedOverflowCount_ =
             detail::overflowSortLaggedBound(ctrl, static_cast<std::uint32_t>(axes.overflowCap_));
         const std::uint32_t dropped = ctrl[5];
-        renderRunWitness()
-            .recordOverflow(ctrl[1], dropped, static_cast<std::uint32_t>(axes.overflowCap_));
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
                 "Per-axis overflow list dropped {} entries last "
@@ -804,10 +822,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // The caller owns capacity and the settled count at layout.y + 1.
     // Mode 3 writes the step grids into overflowSortArgsBuf_, bound on
     // kBufferIndex_IndirectDispatchParams for that dispatch only; 26 then
-    // returns to indirectBuf_, its binding outside the per-axis window. NVIDIA GL
-    // stalls the CPU until the GPU drains when an indirect dispatch reads
-    // arguments from a buffer the dispatching program has bound for writing,
-    // so the grids never live in the record scratch.
+    // returns to indirectBuf_, its binding outside the per-axis window. The
+    // merge ladder dispatches from a copy no program binds: NVIDIA GL stalls
+    // the CPU until the GPU drains when an indirect dispatch reads arguments
+    // from a buffer a shader wrote.
     std::uint32_t sortFaceRecords(Buffer *scratch, ivec4 layout, std::uint32_t dispatchSpan) {
         const ivec4 previousLayout = frameData_.overflowScratchLayout_;
         frameData_.overflowScratchLayout_ = layout;
@@ -844,10 +862,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_IndirectDispatchParams
                 );
-                IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+                IRRender::publishIndirectArgs(
+                    overflowSortArgsBuf_,
+                    0,
+                    overflowSortArgsCopyBuf_,
+                    0,
+                    detail::kOverflowSortArgsBytes
+                );
+
             } else {
                 IRRender::device()->dispatchComputeIndirect(
-                    overflowSortArgsBuf_,
+                    overflowSortArgsCopyBuf_,
                     static_cast<std::ptrdiff_t>(
                         commandIndex * C_PerAxisTrixelCanvases::kOverflowSortCommandUints *
                         sizeof(std::uint32_t)
@@ -1002,6 +1027,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // timers, not the GPU bindings).
         {
             GpuSubStageScope storeScope("voxelPerAxisStore");
+            IR_PROFILE_SCOPE("vs1_pa_store");
             stage1Program_->use();
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 auto &tex = axes.axes_[axis];
@@ -1028,7 +1054,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
                 distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 IRRender::device()->dispatchComputeIndirect(
-                    perAxisIndirectBuf_,
+                    perAxisIndirectArgsBuf_,
                     indirectOffsetBytes
                 );
             }
@@ -1042,6 +1068,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         {
             GpuSubStageScope overflowScope("voxelPerAxisOverflow");
+            IR_PROFILE_SCOPE("vs1_pa_overflow");
             // Overflow append (mode 3): exposed faces that lost their cardinal
             // store cell append scatter entries for finite-quad rasterization.
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
@@ -1055,7 +1082,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     TextureFormat::R32I
                 );
                 IRRender::device()->dispatchComputeIndirect(
-                    perAxisIndirectBuf_,
+                    perAxisIndirectArgsBuf_,
                     indirectOffsetBytes
                 );
             }
@@ -1085,15 +1112,42 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
                 lastOverflowSortDispatchesLogged_ = sortDispatches;
             }
-            // Entry + instanceCount writes feed the overflow indirect draw in
-            // TRIXEL_TO_FRAMEBUFFER — barrier both the storage reads and the
-            // indirect-command source (same pairing as compactPerAxisCells).
+            // The settled ctrl block feeds the overflow indirect draw in
+            // TRIXEL_TO_FRAMEBUFFER through its args copy, and the CPU readback
+            // two frames from now through the ring.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-            IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+            IRRender::publishIndirectArgs(
+                axes.winnerIds_.second,
+                axes.ctrlOffsetBytes(),
+                axes.overflowDrawArgs_.second,
+                0,
+                kOverflowCtrlBytes
+            );
+            const int ctrlSlot = axes.overflowCtrlRing_.write(
+                IRRender::device()->submissionSerial(),
+                {++axes.overflowCtrlFrames_}
+            );
+            if (ctrlSlot == static_cast<int>(axes.overflowCtrlBuffers_.size())) {
+                axes.overflowCtrlBuffers_.push_back(
+                    IRRender::createResource<Buffer>(
+                        nullptr,
+                        kOverflowCtrlBytes,
+                        BUFFER_STORAGE_DYNAMIC
+                    )
+                );
+            }
+            IRRender::device()->copyBufferSubData(
+                axes.winnerIds_.second,
+                axes.ctrlOffsetBytes(),
+                axes.overflowCtrlBuffers_[static_cast<std::size_t>(ctrlSlot)].second,
+                0,
+                kOverflowCtrlBytes
+            );
         }
 
         {
             GpuSubStageScope finalizeScope("voxelPerAxisFinalize");
+            IR_PROFILE_SCOPE("vs1_pa_finalize");
             // Winner election (mode 1) + stage 2, per axis. The
             // winner scratch (region 0) is serially reused across axes: refill to
             // the no-winner sentinel, elect this axis's winners, then let stage 2's
@@ -1117,7 +1171,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
                 distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 IRRender::device()->dispatchComputeIndirect(
-                    perAxisIndirectBuf_,
+                    perAxisIndirectArgsBuf_,
                     indirectOffsetBytes
                 );
                 // The winner SSBO writes must land before stage 2's guard reads.
@@ -1140,7 +1194,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 fogTex->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
                 IRRender::device()->dispatchComputeIndirect(
-                    perAxisIndirectBuf_,
+                    perAxisIndirectArgsBuf_,
                     indirectOffsetBytes
                 );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
@@ -1179,6 +1233,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Sub-scope — after the early-return so the row only samples
         // when the dispatches actually run.
         GpuSubStageScope compactScope("perAxisCellCompact");
+        IR_PROFILE_SCOPE("vs1_pa_cells");
         const ivec2 axisSize = axes.size_;
         const int regionStride = axes.cellRegionStride_;
 
@@ -1186,16 +1241,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // the compute-indirect dispatch dims), then set the fixed draw-command
         // indexCount. The compaction atomic-appends instanceCount; the finalize
         // pass writes the dispatch dims from the final count.
-        std::array<std::uint32_t, kPerAxisCellIndirectStrideBytes / sizeof(std::uint32_t)>
-            resetRegion{};
-        resetRegion[0] = static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength);
-        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-            cellIndirect->subData(
-                static_cast<std::ptrdiff_t>(axis) * kPerAxisCellIndirectStrideBytes,
-                sizeof(resetRegion),
-                resetRegion.data()
-            );
-        }
+        const std::size_t cellIndirectBytes =
+            static_cast<std::size_t>(C_PerAxisTrixelCanvases::kAxisCount) *
+            kPerAxisCellIndirectStrideBytes;
+        IRRender::resetBufferFromSeed(
+            axes.cellIndirectReset_.second,
+            cellIndirect,
+            0,
+            cellIndirectBytes
+        );
 
         cellCompactProgram_->use();
         const int groupsX = IRMath::divCeil(axisSize.x, kPerAxisCellCompactGroupSize);
@@ -1231,18 +1285,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         axes.winnerIds_.second->bindRange(
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisResolveScratch,
-            static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
+            axes.ctrlOffsetBytes(),
             static_cast<std::size_t>(axes.entriesBaseUints_ - axes.ctrlBaseUints_) *
+
                 sizeof(std::uint32_t)
         );
         IRRender::device()->dispatchCompute(C_PerAxisTrixelCanvases::kAxisCount, 1, 1);
 
-        // The compacted list + the per-axis compute-indirect params feed subsequent
-        // COMPUTE dispatches (SHADER_STORAGE) and the scatter's indirect DRAW reads
-        // its draw args as a command source (COMMAND) — barrier both before any
-        // consumer runs.
+        // The compacted list feeds the following COMPUTE dispatches
+        // (SHADER_STORAGE); every indirect dispatch and draw over the cells reads
+        // its arguments from the copy published here (BUFFER_UPDATE, then COMMAND).
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-        IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+        IRRender::publishIndirectArgs(
+            cellIndirect,
+            0,
+            axes.cellIndirectArgs_.second,
+            0,
+            cellIndirectBytes
+        );
 
         axes.winnerIds_.second->bindBase(
             BufferTarget::SHADER_STORAGE,
@@ -2083,15 +2143,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IR_PROFILE_SCOPE("vs1_compact");
             IRRender::device()->dispatchCompute(compactGrid.x, compactGrid.y, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-            IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
-            IRRender::device()->copyBufferSubData(
-                indirectBuf_,
+            IRRender::publishIndirectArgs(
+                perAxisSplit ? perAxisIndirectBuf_ : indirectBuf_,
                 0,
-                indirectArgsBuf_,
+                perAxisSplit ? perAxisIndirectArgsBuf_ : indirectArgsBuf_,
                 0,
-                static_cast<std::size_t>(2) * kPerAxisSsboAlignBytes
+                static_cast<std::size_t>(perAxisSplit ? 3 : 2) * kPerAxisSsboAlignBytes
             );
-            IRRender::device()->memoryBarrier(BarrierType::COMMAND);
         }
 
         if (gpuStageTiming().enabled_) {
@@ -2583,9 +2641,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<Buffer>(
             "OverflowSortArgs",
             nullptr,
-            static_cast<std::size_t>(C_PerAxisTrixelCanvases::kOverflowSortCommandCount) *
-                C_PerAxisTrixelCanvases::kOverflowSortCommandUints * sizeof(std::uint32_t),
+            detail::kOverflowSortArgsBytes,
             BUFFER_STORAGE_DYNAMIC
+        );
+        IRRender::createNamedResource<Buffer>(
+            "OverflowSortArgsCopy",
+            nullptr,
+            detail::kOverflowSortArgsBytes,
+            BUFFER_STORAGE_NONE
         );
         const int maxSingleVoxels = IRRender::VoxelPoolConfig::getTotalSize();
         IRRender::createNamedResource<Buffer>(
@@ -2657,6 +2720,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "IndirectDispatchArgs",
             nullptr,
             static_cast<size_t>(2) * kPerAxisSsboAlignBytes,
+            BUFFER_STORAGE_NONE
+        );
+        IRRender::createNamedResource<Buffer>(
+            "PerAxisIndirectDispatchArgs",
+            nullptr,
+            static_cast<size_t>(3) * kPerAxisSsboAlignBytes,
             BUFFER_STORAGE_NONE
         );
 
@@ -2773,6 +2842,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->stage2WinnerProgram_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2Winner");
         p->winnerPlaceholderBuf_ = IRRender::getNamedResource<Buffer>("PerAxisWinnerPlaceholder");
         p->overflowSortArgsBuf_ = IRRender::getNamedResource<Buffer>("OverflowSortArgs");
+        p->overflowSortArgsCopyBuf_ = IRRender::getNamedResource<Buffer>("OverflowSortArgsCopy");
         p->revoxelizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("RevoxelizeDetachedProgram");
         p->revoxelizeParamsBuf_ =
@@ -2786,6 +2856,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
         p->indirectArgsBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchArgs");
         p->cullStatsBuffers_.reserve(kMaxCullStatsSlots);
+        p->perAxisIndirectArgsBuf_ =
+            IRRender::getNamedResource<Buffer>("PerAxisIndirectDispatchArgs");
         p->compactedBuf_ = IRRender::getNamedResource<Buffer>("CompactedVoxelIndices");
         p->perAxisCompactedBuf_ =
             IRRender::getNamedResource<Buffer>("PerAxisCompactedVoxelIndices");
