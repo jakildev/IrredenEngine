@@ -2,6 +2,7 @@
 #define IR_SAVE_SERIALIZERS_INPUT_H
 
 #include <irreden/input/components/component_hitbox_2d.hpp>
+#include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/world/save_migration.hpp>
 #include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_serialize_common.hpp>
@@ -61,6 +62,51 @@ template <> struct SaveMigration<IRComponents::C_HitBox2D> {
                  IRComponents::C_HitBox2D value{legacy.halfExtent_};
                  value.hovered_ = legacy.hovered_;
                  return IRAsset::Result<IRComponents::C_HitBox2D>::success(std::move(value));
+             }},
+        };
+    }
+};
+
+/// GUI hit extent and origin survive a world snapshot; hover is rebuilt by
+/// HITBOX_MOUSE_TEST_GUI.
+template <> struct SaveSerialize<IRComponents::C_HitBox2DGui> {
+    static void write(IRAsset::BinaryWriter &writer, const IRComponents::C_HitBox2DGui &value) {
+        IRMath::BinaryIO::writeIVec2(writer, value.size_);
+        IRMath::BinaryIO::writeIVec2(writer, value.offset_);
+    }
+
+    static IRAsset::Result<IRComponents::C_HitBox2DGui> read(IRAsset::BinaryReader &reader) {
+        using Res = IRAsset::Result<IRComponents::C_HitBox2DGui>;
+        IRComponents::C_HitBox2DGui value{};
+        IR_SAVE_READ(value.size_, IRMath::BinaryIO::readIVec2(reader));
+        IR_SAVE_READ(value.offset_, IRMath::BinaryIO::readIVec2(reader));
+        return Res::success(std::move(value));
+    }
+};
+
+template <> struct SaveMigration<IRComponents::C_HitBox2DGui> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_HitBox2DGui>>>
+    migrators() {
+        return {
+            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_HitBox2DGui> {
+                 struct LegacyHitBox2DGui {
+                     IRMath::ivec2 size_;
+                     bool hovered_;
+                 };
+                 static_assert(std::is_trivially_copyable_v<LegacyHitBox2DGui>);
+                 static_assert(sizeof(LegacyHitBox2DGui) == 12);
+
+                 LegacyHitBox2DGui legacy{};
+                 IRAsset::BinaryStatus status = reader.readBytes(&legacy, sizeof(legacy));
+                 if (!status.ok()) {
+                     return IRAsset::Result<IRComponents::C_HitBox2DGui>::error(
+                         status.code_,
+                         std::move(status.message_)
+                     );
+                 }
+                 return IRAsset::Result<IRComponents::C_HitBox2DGui>::success(
+                     IRComponents::C_HitBox2DGui{legacy.size_}
+                 );
              }},
         };
     }

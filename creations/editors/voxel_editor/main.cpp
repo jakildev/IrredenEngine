@@ -6453,11 +6453,10 @@ void initEntities() {
         -1,
         IRVoxelEditor::kPartsListItemHeight
     );
-    // Item order is partModeRow's.
     IRVoxelEditor::g_partModeDropdown = IRPrefab::Widget::makeDropdown(
         IRVoxelEditor::kPartModeDropdownPos,
         IRVoxelEditor::kPartModeDropdownSize,
-        {"GRID", "DETACHED", "DETACHED REVOX"},
+        IRVoxelEditor::partModeItems(),
         0,
         IRVoxelEditor::kPartModeDropdownItemHeight
     );

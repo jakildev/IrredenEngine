@@ -477,12 +477,116 @@ TEST_F(GuiLayoutAudit, DropdownHeaderAndOpenStripRows) {
     );
 
     IRPrefab::Widget::setCoversBelow(id, false);
+    const C_WidgetDropdown::StripLayout layout = dd.stripLayout(10, 18, kCanvas.y);
     expectRuns(
         id,
         {queued(IRPrefab::WidgetText::dropdownHeader(widget, dd, ivec2(10, 10), theme())),
-         queued(IRPrefab::WidgetText::dropdownStripRow(widget, dd, ivec2(10, 10), theme(), 0)),
-         queued(IRPrefab::WidgetText::dropdownStripRow(widget, dd, ivec2(10, 10), theme(), 1))}
+         queued(IRPrefab::WidgetText::dropdownStripRow(dd, ivec2(10, 10), layout, theme(), 0)),
+         queued(IRPrefab::WidgetText::dropdownStripRow(dd, ivec2(10, 10), layout, theme(), 1))}
     );
+}
+
+// An open 20-item dropdown low on the canvas has room below for one row only,
+// so its eight-row window opens upward, whole. The audit reads the same
+// placement: the interactive strip sits above the header inside the canvas,
+// and only the painted rows are audited.
+TEST_F(GuiLayoutAudit, UpwardDropdownStripIsAuditedAboveTheHeader) {
+    std::vector<std::string> items;
+    for (int i = 0; i < 20; ++i) {
+        items.push_back("ITEM " + std::to_string(i));
+    }
+    const ivec2 pos{10, 250};
+    const IREntity::EntityId id =
+        IRPrefab::Widget::makeDropdown(pos, ivec2(100, 18), std::move(items), 0, 18);
+    IRPrefab::Widget::setCoversBelow(id, false);
+    IREntity::getComponent<C_WidgetDropdown>(id).isOpen_ = true;
+    IREntity::getComponent<C_WidgetDropdown>(id).scrollOffset_ = 3;
+    const auto &dd = data<C_WidgetDropdown>(id);
+    const C_Widget &widget = data<C_Widget>(id);
+    const C_WidgetDropdown::StripLayout layout = dd.stripLayout(pos.y, 18, kCanvas.y);
+    ASSERT_EQ(layout.rows_, 8);
+    ASSERT_LT(layout.offsetY_, 0);
+
+    namespace Audit = IRPrefab::GuiAudit::detail;
+    const Audit::Layout audited = Audit::Collector{kCanvas}.collect();
+    int strips = 0;
+    for (const Audit::Element &element : audited.elements_) {
+        if (element.owner_ != id) {
+            continue;
+        }
+        if (element.surface_ == Audit::Surface::STRIP) {
+            ++strips;
+            EXPECT_TRUE(element.interactive_);
+            EXPECT_EQ(element.rect_.pos_, ivec2(10, 250 - 8 * 18));
+            EXPECT_EQ(element.rect_.size_, ivec2(100, 8 * 18));
+            EXPECT_EQ(element.rect_.pos_.y + element.rect_.size_.y, pos.y)
+                << "the strip ends where the header begins";
+            EXPECT_GE(element.rect_.pos_.y, 0);
+        } else if (element.surface_ != Audit::Surface::TEXT) {
+            EXPECT_EQ(element.rect_.pos_, pos) << "the BODY and HIT rects are the header";
+            EXPECT_EQ(element.rect_.size_, widget.size_);
+        }
+    }
+    EXPECT_EQ(strips, 1);
+
+    std::vector<IRPrefab::GuiRect> expected{
+        queued(IRPrefab::WidgetText::dropdownHeader(widget, dd, pos, theme()))
+    };
+    for (int i = 3; i < 3 + 8; ++i) {
+        expected.push_back(
+            queued(IRPrefab::WidgetText::dropdownStripRow(dd, pos, layout, theme(), i))
+        );
+    }
+    expectRuns(id, expected);
+
+    const std::vector<Finding> findings = report(kCanvas);
+    EXPECT_TRUE(findings.empty()) << describe(findings);
+}
+
+// Neither side has room for the eight requested rows: the strip takes the
+// roomier side, clipped to the whole rows that fit, and the audit reports
+// exactly that rect and those rows, all inside the canvas.
+TEST_F(GuiLayoutAudit, ClippedDropdownStripReportsOnlyItsActualRows) {
+    std::vector<std::string> items;
+    for (int i = 0; i < 40; ++i) {
+        items.push_back("ITEM " + std::to_string(i));
+    }
+    const ivec2 pos{10, 150};
+    // 30-trixel rows: four fit below (132 trixels), five above (150).
+    const IREntity::EntityId id =
+        IRPrefab::Widget::makeDropdown(pos, ivec2(100, 18), std::move(items), 0, 30);
+    IRPrefab::Widget::setCoversBelow(id, false);
+    IREntity::getComponent<C_WidgetDropdown>(id).isOpen_ = true;
+    const auto &dd = data<C_WidgetDropdown>(id);
+    const C_Widget &widget = data<C_Widget>(id);
+    const C_WidgetDropdown::StripLayout layout = dd.stripLayout(pos.y, 18, kCanvas.y);
+    ASSERT_EQ(layout.rows_, 5);
+    ASSERT_EQ(layout.offsetY_, -150);
+
+    namespace Audit = IRPrefab::GuiAudit::detail;
+    const Audit::Layout audited = Audit::Collector{kCanvas}.collect();
+    int strips = 0;
+    for (const Audit::Element &element : audited.elements_) {
+        if (element.owner_ == id && element.surface_ == Audit::Surface::STRIP) {
+            ++strips;
+            EXPECT_EQ(element.rect_.pos_, ivec2(10, 0));
+            EXPECT_EQ(element.rect_.size_, ivec2(100, 150));
+        }
+    }
+    EXPECT_EQ(strips, 1);
+
+    std::vector<IRPrefab::GuiRect> expected{
+        queued(IRPrefab::WidgetText::dropdownHeader(widget, dd, pos, theme()))
+    };
+    for (int i = 0; i < 5; ++i) {
+        expected.push_back(
+            queued(IRPrefab::WidgetText::dropdownStripRow(dd, pos, layout, theme(), i))
+        );
+    }
+    expectRuns(id, expected);
+
+    const std::vector<Finding> findings = report(kCanvas);
+    EXPECT_TRUE(findings.empty()) << describe(findings);
 }
 
 TEST_F(GuiLayoutAudit, LabelAndFreeText) {

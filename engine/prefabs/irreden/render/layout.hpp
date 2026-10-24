@@ -421,6 +421,19 @@ inline void endPanelDrag(IRMath::ivec2 mousePos) {
 
 // Returns current mouse position in GUI trixel space. Call once per frame
 // in beginTick() and cache on System<N>.
+// The "gui" canvas size in trixels, or zero with no render manager or no such
+// canvas (headless).
+inline IRMath::ivec2 guiCanvasSize() {
+    if (IRRender::g_renderManager == nullptr) {
+        return IRMath::ivec2(0);
+    }
+    const IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
+    if (guiCanvas == IREntity::kNullEntity) {
+        return IRMath::ivec2(0);
+    }
+    return IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas).size_;
+}
+
 inline IRMath::vec2 mousePositionInGuiTrixels() {
     const IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
     const auto &canvasTextures =

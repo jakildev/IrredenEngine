@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -54,12 +55,14 @@ concept UsesRawImageSerializer =
 
 static_assert(IRWorld::SaveTrait<C_EntityCanvas>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_HitBox2D>::kHandWrittenLayout);
+static_assert(IRWorld::SaveTrait<C_HitBox2DGui>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_ShapeDescriptor>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_TextStyle>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_Widget>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_WidgetHotkey>::kHandWrittenLayout);
 static_assert(!UsesRawImageSerializer<C_EntityCanvas>);
 static_assert(!UsesRawImageSerializer<C_HitBox2D>);
+static_assert(!UsesRawImageSerializer<C_HitBox2DGui>);
 static_assert(!UsesRawImageSerializer<C_ShapeDescriptor>);
 static_assert(!UsesRawImageSerializer<C_TextStyle>);
 static_assert(!UsesRawImageSerializer<C_Widget>);
@@ -139,10 +142,14 @@ IRAsset::Result<C> migrate(std::uint32_t fromVersion, const std::vector<std::uin
 
 // The current record of a text-bearing component ends in its text-size byte;
 // overwriting it with @p raw must make the reader refuse the record.
-template <typename C> void expectOutOfRangeTextSizeIsRejected(const C &value, std::uint8_t raw) {
+// @p trailingBytes counts the bytes the layout writes after the text size.
+template <typename C>
+void expectOutOfRangeTextSizeIsRejected(
+    const C &value, std::uint8_t raw, std::size_t trailingBytes = 0
+) {
     std::vector<std::uint8_t> bytes = serialize(value);
-    ASSERT_FALSE(bytes.empty());
-    bytes.back() = raw;
+    ASSERT_GT(bytes.size(), trailingBytes);
+    bytes[bytes.size() - 1 - trailingBytes] = raw;
     const IRAsset::Result<C> restored = deserialize<C>(bytes);
     ASSERT_FALSE(restored.ok()) << "text size " << int{raw} << " read back as valid";
     EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
@@ -738,6 +745,32 @@ TEST(SaveSerializers, HitBox2DRoundTripsAuthoredStateOnly) {
     EXPECT_EQ(restored.isoDepth_, 0);
     expectConsumesAllBytes(hitbox);
     expectReserializesIdentically(hitbox);
+}
+
+TEST(SaveSerializers, HitBox2DGuiRoundTripsExtentAndOffsetNotHover) {
+    C_HitBox2DGui hitbox{IRMath::ivec2(100, 120)};
+    hitbox.offset_ = IRMath::ivec2(0, -100);
+    hitbox.hovered_ = true;
+    const C_HitBox2DGui restored = roundTrip(hitbox);
+    EXPECT_EQ(restored.size_, IRMath::ivec2(100, 120));
+    EXPECT_EQ(restored.offset_, IRMath::ivec2(0, -100));
+    EXPECT_FALSE(restored.hovered_);
+    expectConsumesAllBytes(hitbox);
+    expectReserializesIdentically(hitbox);
+    EXPECT_EQ(IRWorld::saveVersion<C_HitBox2DGui>(), 2u);
+}
+
+// Version 1 was the raw struct image {ivec2 size_, bool hovered_, padding}.
+TEST(SaveSerializers, HitBox2DGuiV1MigrationKeepsTheExtentAndDropsHover) {
+    std::vector<std::uint8_t> v1(12, 0);
+    const std::int32_t size[2] = {64, 16};
+    std::memcpy(v1.data(), size, sizeof(size));
+    v1[8] = 1; // hovered_
+    const IRAsset::Result<C_HitBox2DGui> hitbox = migrate<C_HitBox2DGui>(1u, v1);
+    ASSERT_TRUE(hitbox.ok()) << hitbox.status_.message_;
+    EXPECT_EQ(hitbox.value_.size_, IRMath::ivec2(64, 16));
+    EXPECT_EQ(hitbox.value_.offset_, IRMath::ivec2(0, 0));
+    EXPECT_FALSE(hitbox.value_.hovered_);
 }
 
 // --- render/ ---------------------------------------------------------------
@@ -1396,7 +1429,10 @@ TEST(SaveSerializers, WidgetListRoundTrips) {
     list.selectedIndex_ = 2;
     list.scrollOffset_ = 1;
     list.itemHeight_ = 24;
+    list.textSize_ = IRRender::TextSize::SMALL;
     const C_WidgetList restored = roundTrip(list);
+    EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
+    expectOutOfRangeTextSizeIsRejected(list, 2);
     ASSERT_EQ(restored.items_.size(), 3u);
     EXPECT_EQ(restored.items_[0], "alpha");
     EXPECT_EQ(restored.items_[1], "");
@@ -1420,7 +1456,11 @@ TEST(SaveSerializers, WidgetDropdownRoundTrips) {
     dropdown.isOpen_ = true;
     dropdown.itemHeight_ = 20;
     dropdown.textSize_ = IRRender::TextSize::SMALL;
+    dropdown.visibleRows_ = 12;
+    dropdown.scrollOffset_ = 5;
     const C_WidgetDropdown restored = roundTrip(dropdown);
+    EXPECT_EQ(restored.visibleRows_, 12);
+    EXPECT_EQ(restored.scrollOffset_, 0) << "the window position is transient";
     ASSERT_EQ(restored.items_.size(), 2u);
     EXPECT_EQ(restored.items_[1], "two");
     EXPECT_EQ(restored.selectedIndex_, 1);
@@ -1428,7 +1468,45 @@ TEST(SaveSerializers, WidgetDropdownRoundTrips) {
     EXPECT_EQ(restored.itemHeight_, 20);
     EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
     expectConsumesAllBytes(dropdown);
-    expectOutOfRangeTextSizeIsRejected(dropdown, 2);
+    expectOutOfRangeTextSizeIsRejected(dropdown, 2, sizeof(std::int32_t));
+}
+
+// Version 2 is the version-1 record plus the text size; it predates the
+// visible-row cap, which reads back as 0 (`kDropdownMaxVisibleRows`).
+TEST(SaveSerializers, WidgetDropdownV2MigrationReadsTheDefaultVisibleRows) {
+    IRAsset::MemoryBinaryWriter v2;
+    IRWorld::detail::writeStringVector(v2, {"one", "two", "three"});
+    v2.writeI32(2);
+    v2.writeU8(0);
+    v2.writeI32(16);
+    v2.writeU8(static_cast<std::uint8_t>(IRRender::TextSize::SMALL));
+    const IRAsset::Result<C_WidgetDropdown> dropdown = migrate<C_WidgetDropdown>(2u, v2.buffer());
+    ASSERT_TRUE(dropdown.ok()) << dropdown.status_.message_;
+    ASSERT_EQ(dropdown.value_.items_.size(), 3u);
+    EXPECT_EQ(dropdown.value_.items_[2], "three");
+    EXPECT_EQ(dropdown.value_.selectedIndex_, 2);
+    EXPECT_FALSE(dropdown.value_.isOpen_);
+    EXPECT_EQ(dropdown.value_.itemHeight_, 16);
+    EXPECT_EQ(dropdown.value_.textSize_, IRRender::TextSize::SMALL);
+    EXPECT_EQ(dropdown.value_.visibleRows_, 0);
+}
+
+// Version 1 had no text size: it reads back as LARGE.
+TEST(SaveSerializers, WidgetListV1MigrationPreservesEveryFieldAndReadsLarge) {
+    IRAsset::MemoryBinaryWriter v1;
+    IRWorld::detail::writeStringVector(v1, {"alpha", "beta"});
+    v1.writeI32(1);
+    v1.writeI32(1);
+    v1.writeI32(13);
+    const IRAsset::Result<C_WidgetList> list = migrate<C_WidgetList>(1u, v1.buffer());
+    ASSERT_TRUE(list.ok()) << list.status_.message_;
+    ASSERT_EQ(list.value_.items_.size(), 2u);
+    EXPECT_EQ(list.value_.items_[1], "beta");
+    EXPECT_EQ(list.value_.selectedIndex_, 1);
+    EXPECT_EQ(list.value_.scrollOffset_, 1);
+    EXPECT_EQ(list.value_.itemHeight_, 13);
+    EXPECT_EQ(list.value_.textSize_, IRRender::TextSize::LARGE);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetList>(), 2u);
 }
 
 // Each version 1 record below is spelled out field by field in the layout
@@ -1510,12 +1588,13 @@ TEST(SaveSerializers, TextBearingWidgetV1MigrationsPreserveEveryFieldAndReadLarg
         EXPECT_TRUE(dropdown.value_.isOpen_);
         EXPECT_EQ(dropdown.value_.itemHeight_, 20);
         EXPECT_EQ(dropdown.value_.textSize_, IRRender::TextSize::LARGE);
+        EXPECT_EQ(dropdown.value_.visibleRows_, 0);
     }
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetLabel>(), 2u);
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetButton>(), 2u);
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetSlider>(), 3u);
     EXPECT_EQ(IRWorld::saveVersion<C_WidgetCheckbox>(), 2u);
-    EXPECT_EQ(IRWorld::saveVersion<C_WidgetDropdown>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetDropdown>(), 3u);
 }
 
 TEST(SaveSerializers, WidgetRadioRoundTrips) {

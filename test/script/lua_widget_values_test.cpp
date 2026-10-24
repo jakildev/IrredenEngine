@@ -23,6 +23,7 @@ using IRComponents::C_WidgetButton;
 using IRComponents::C_WidgetCheckbox;
 using IRComponents::C_WidgetDropdown;
 using IRComponents::C_WidgetLabel;
+using IRComponents::C_WidgetList;
 using IRComponents::C_WidgetNumberField;
 using IRComponents::C_WidgetSlider;
 using IRComponents::C_WidgetTextInput;
@@ -190,19 +191,128 @@ TEST_F(LuaWidgetValues, SetDropdownOpenOpensAndClosesTheStrip) {
 }
 
 TEST_F(LuaWidgetValues, SetDropdownOpenRevealsTheSelectedItem) {
+    IREntity::singleton<IRComponents::C_WidgetInputFrame>().guiCanvasSize_ =
+        IRMath::ivec2(640, 720);
     run(R"lua(
         local items = {}
         for i = 1, 20 do items[i] = "ITEM " .. i end
         dd = IRGui.makeDropdown(0, 0, 100, 14, items, 16)
     )lua");
     const IREntity::EntityId id = entity("dd");
-    EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(id).topIndex(), 0);
+    const C_WidgetDropdown::StripLayout layout = IRPrefab::Widget::dropdownStripLayout(id);
+    ASSERT_EQ(layout.rows_, IRComponents::kDropdownMaxVisibleRows);
+    EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(id).topIndex(layout), 0);
     run("IRGui.setDropdownOpen(dd, true)");
     const C_WidgetDropdown &dropdown = IREntity::getComponent<C_WidgetDropdown>(id);
-    EXPECT_GT(dropdown.topIndex(), 0);
-    EXPECT_LE(dropdown.topIndex(), 15);
-    EXPECT_GE(dropdown.topIndex() + dropdown.visibleRowCount(), 16)
-        << "selected item 16 (index 15) is inside the window";
+    EXPECT_EQ(dropdown.topIndex(layout), 15 - layout.rows_ + 1)
+        << "selected item 16 (index 15) lands on the window's last row";
+}
+
+// The reveal reads the placed window: near the canvas bottom the strip opens
+// upward, clipped to the rows that fit, and the selection lands inside it.
+TEST_F(LuaWidgetValues, SetDropdownOpenRevealsIntoTheClippedWindow) {
+    IREntity::singleton<IRComponents::C_WidgetInputFrame>().guiCanvasSize_ =
+        IRMath::ivec2(640, 100);
+    run(R"lua(
+        local items = {}
+        for i = 1, 40 do items[i] = "ITEM " .. i end
+        dd = IRGui.makeDropdown(0, 55, 100, 20, items, 30, 10)
+        IRGui.setDropdownOpen(dd, true)
+    )lua");
+    const IREntity::EntityId id = entity("dd");
+    const C_WidgetDropdown::StripLayout layout = IRPrefab::Widget::dropdownStripLayout(id);
+    ASSERT_EQ(layout.rows_, 5);
+    EXPECT_LT(layout.offsetY_, 0);
+    EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(id).topIndex(layout), 29 - 5 + 1);
+}
+
+TEST_F(LuaWidgetValues, ListDefaultsToNoSelectionAndReadsOneBased) {
+    run(R"lua(list = IRGui.makeList(0, 0, 100, 54, { "A", "B", "C", "D" }))lua");
+    const IREntity::EntityId id = entity("list");
+    const C_WidgetList &list = IREntity::getComponent<C_WidgetList>(id);
+    EXPECT_EQ(list.selectedIndex_, -1);
+    EXPECT_EQ(list.itemHeight_, C_WidgetList{}.itemHeight_) << "row height keeps the C++ default";
+    EXPECT_EQ(list.textSize_, TextSize::LARGE);
+    EXPECT_EQ(IREntity::getComponent<C_Widget>(id).kind_, WidgetKind::LIST);
+    EXPECT_EQ(eval<int>("IRGui.listSelected(list)"), 0);
+
+    run("IRGui.setListSelected(list, 3)");
+    EXPECT_EQ(list.selectedIndex_, 2);
+    EXPECT_EQ(eval<int>("IRGui.listSelected(list)"), 3);
+    run("IRGui.setListSelected(list, 0)");
+    EXPECT_EQ(eval<int>("IRGui.listSelected(list)"), 0) << "0 clears the selection";
+    run("IRGui.setListSelected(list, 99)");
+    EXPECT_EQ(eval<int>("IRGui.listSelected(list)"), 4) << "past the items clamps to the last";
+}
+
+TEST_F(LuaWidgetValues, ListSelectionRevealsOnlyWhenItChanges) {
+    // 54 trixels of 18-trixel rows: a three-row window over 60 rows.
+    run(R"lua(
+        local items = {}
+        for i = 1, 60 do items[i] = "ROW " .. i end
+        list = IRGui.makeList(0, 0, 100, 54, items, 40, IRText.Size.SMALL)
+    )lua");
+    const IREntity::EntityId id = entity("list");
+    C_WidgetList &list = IREntity::getComponent<C_WidgetList>(id);
+    EXPECT_EQ(list.textSize_, TextSize::SMALL);
+    EXPECT_EQ(eval<int>("IRGui.listSelected(list)"), 40);
+    EXPECT_EQ(list.topIndex(54), 39 - 3 + 1) << "the initial selection is revealed";
+
+    list.scrollBy(5, 54); // the wheel moves the window off the selection
+    run("IRGui.setListSelected(list, 40)");
+    EXPECT_EQ(list.topIndex(54), 42) << "an unchanged selection leaves the wheel's window";
+    run("IRGui.setListSelected(list, 2)");
+    EXPECT_EQ(list.topIndex(54), 1) << "a changed selection is revealed";
+}
+
+TEST_F(LuaWidgetValues, SetListItemsKeepsAValidSelectionAndClearsAnInvalidOne) {
+    run(R"lua(
+        local items = {}
+        for i = 1, 20 do items[i] = "ROW " .. i end
+        list = IRGui.makeList(0, 0, 100, 54, items, 15)
+    )lua");
+    const IREntity::EntityId id = entity("list");
+    C_WidgetList &list = IREntity::getComponent<C_WidgetList>(id);
+    list.scrollOffset_ = 4;
+
+    run(R"lua(
+        local items = {}
+        for i = 1, 30 do items[i] = "NEW " .. i end
+        IRGui.setListItems(list, items)
+    )lua");
+    EXPECT_EQ(list.items_.size(), 30u);
+    EXPECT_EQ(list.items_[0], "NEW 1");
+    EXPECT_EQ(eval<int>("IRGui.listSelected(list)"), 15) << "row 15 still exists";
+    EXPECT_EQ(list.topIndex(54), 4) << "the window is not pulled back to the selection";
+
+    list.scrollOffset_ = 25;
+    run(R"lua(IRGui.setListItems(list, { "A", "B", "C", "D", "E", "F", "G", "H", "I", "J" }))lua");
+    EXPECT_EQ(eval<int>("IRGui.listSelected(list)"), 0) << "row 15 is gone";
+    EXPECT_EQ(list.scrollOffset_, 7) << "the window is clamped to the shorter list";
+
+    run("IRGui.setListItems(list, {})");
+    EXPECT_TRUE(list.items_.empty());
+    EXPECT_EQ(list.scrollOffset_, 0);
+}
+
+TEST_F(LuaWidgetValues, ListBindingsRejectWrongWidgetsAndArguments) {
+    run(R"lua(
+        button = IRGui.makeButton(0, 0, 80, 20, "BUTTON")
+        list = IRGui.makeList(0, 30, 100, 54, { "A" })
+    )lua");
+    for (const char *call : {
+             "IRGui.listSelected(button)",
+             "IRGui.setListSelected(button, 1)",
+             "IRGui.setListItems(button, { 'A' })",
+             "IRGui.listSelected(999999)",
+             "IRGui.setListItems(list, { 'A', 2 })",
+         }) {
+        EXPECT_NE(error(call).find("IRGui."), std::string::npos) << call;
+    }
+    const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
+    EXPECT_FALSE(error("IRGui.makeList(0, 0, 10, 10, { 'A', {} })").empty());
+    EXPECT_FALSE(error("IRGui.makeList(0, 0, 10, 10, { 'A' }, 1, 99)").empty());
+    EXPECT_EQ(m_entityManager.getLiveEntityCount(), before) << "a malformed call creates no widget";
 }
 
 TEST_F(LuaWidgetValues, DropdownZeroMeansNothingSelected) {

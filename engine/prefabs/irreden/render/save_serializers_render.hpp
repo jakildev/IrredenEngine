@@ -1092,9 +1092,14 @@ template <> struct SaveSerialize<IRComponents::C_WidgetList> {
         w.writeI32(value.selectedIndex_);
         w.writeI32(value.scrollOffset_);
         w.writeI32(value.itemHeight_);
+        detail::writeTextSize(w, value.textSize_, "C_WidgetList text size");
     }
 
     static IRAsset::Result<IRComponents::C_WidgetList> read(IRAsset::BinaryReader &r) {
+        return detail::readWithTextSize<IRComponents::C_WidgetList>(r, "C_WidgetList text size");
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetList> readV1(IRAsset::BinaryReader &r) {
         using Res = IRAsset::Result<IRComponents::C_WidgetList>;
         IRComponents::C_WidgetList value{};
         IR_SAVE_READ_STATUS(detail::readStringVector(r, value.items_));
@@ -1112,9 +1117,21 @@ template <> struct SaveSerialize<IRComponents::C_WidgetDropdown> {
         w.writeU8(value.isOpen_ ? 1 : 0);
         w.writeI32(value.itemHeight_);
         detail::writeTextSize(w, value.textSize_, "C_WidgetDropdown text size");
+        w.writeI32(value.visibleRows_);
     }
 
     static IRAsset::Result<IRComponents::C_WidgetDropdown> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_WidgetDropdown>;
+        Res value = readV2(r);
+        if (!value.ok()) {
+            return value;
+        }
+        IR_SAVE_READ(value.value_.visibleRows_, r.readI32());
+        return value;
+    }
+
+    // Frozen at the version-2 layout: the migration reads old rows through it.
+    static IRAsset::Result<IRComponents::C_WidgetDropdown> readV2(IRAsset::BinaryReader &r) {
         return detail::readWithTextSize<IRComponents::C_WidgetDropdown>(
             r,
             "C_WidgetDropdown text size"
@@ -1150,9 +1167,18 @@ template <> struct SaveMigration<IRComponents::C_WidgetSlider> {
 template <>
 struct SaveMigration<IRComponents::C_WidgetCheckbox>
     : detail::TextSizedWidgetMigration<IRComponents::C_WidgetCheckbox> {};
+template <> struct SaveMigration<IRComponents::C_WidgetDropdown> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_WidgetDropdown>>>
+    migrators() {
+        return {
+            {1u, SaveSerialize<IRComponents::C_WidgetDropdown>::readV1},
+            {2u, SaveSerialize<IRComponents::C_WidgetDropdown>::readV2},
+        };
+    }
+};
 template <>
-struct SaveMigration<IRComponents::C_WidgetDropdown>
-    : detail::TextSizedWidgetMigration<IRComponents::C_WidgetDropdown> {};
+struct SaveMigration<IRComponents::C_WidgetList>
+    : detail::TextSizedWidgetMigration<IRComponents::C_WidgetList> {};
 
 template <> struct SaveSerialize<IRComponents::C_WidgetRadio> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetRadio &value) {

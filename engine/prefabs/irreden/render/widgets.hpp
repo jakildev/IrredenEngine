@@ -15,6 +15,7 @@
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/gui_rect.hpp>
+#include <irreden/render/layout.hpp>
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
 #include <irreden/render/widget_text_layout.hpp>
@@ -388,12 +389,14 @@ inline IREntity::EntityId makeList(
     IRMath::ivec2 size,
     std::vector<std::string> items,
     int initialSelected = -1,
-    int itemHeight = 18
+    int itemHeight = 18,
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
 ) {
     IRComponents::C_WidgetList listData;
     listData.items_ = std::move(items);
     listData.selectedIndex_ = initialSelected;
     listData.itemHeight_ = itemHeight;
+    listData.textSize_ = textSize;
     return IREntity::createEntity(
         IRComponents::C_Widget{IRComponents::WidgetKind::LIST, size},
         IRComponents::C_GuiPosition{pos},
@@ -534,6 +537,38 @@ inline void setListSelectedIndex(IREntity::EntityId widget, int index) {
     }
     list.selectedIndex_ = selected;
     list.scrollIntoView(selected, IREntity::getComponent<IRComponents::C_Widget>(widget).size_.y);
+}
+
+// Replaces the list's items. A selection still inside the new items stays
+// selected, any other clears; the scroll offset is only clamped, so a wheel
+// position over a still-selected row is kept.
+inline void setListItems(IREntity::EntityId widget, std::vector<std::string> items) {
+    auto &list = IREntity::getComponent<IRComponents::C_WidgetList>(widget);
+    list.items_ = std::move(items);
+    if (list.selectedIndex_ >= static_cast<int>(list.items_.size())) {
+        list.selectedIndex_ = -1;
+    }
+    list.scrollOffset_ =
+        list.topIndex(IREntity::getComponent<IRComponents::C_Widget>(widget).size_.y);
+}
+
+// The GUI canvas size widget geometry is laid out against outside a tick: the
+// size WIDGET_INPUT last published, or the live canvas before its first frame.
+inline IRMath::ivec2 guiCanvasSize() {
+    const auto *frame = IREntity::singletonOrNull<IRComponents::C_WidgetInputFrame>();
+    if (frame != nullptr && frame->guiCanvasSize_ != IRMath::ivec2(0)) {
+        return frame->guiCanvasSize_;
+    }
+    return IRPrefab::Layout::guiCanvasSize();
+}
+
+// Where @p widget's open strip sits against `guiCanvasSize()` — the placement
+// WIDGET_APPLY_DROPDOWN routes and WIDGET_RENDER_DROPDOWN paints.
+inline IRComponents::C_WidgetDropdown::StripLayout dropdownStripLayout(IREntity::EntityId widget) {
+    const auto &dropdown = IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget);
+    const int headerY = IREntity::getComponent<IRComponents::C_GuiPosition>(widget).pos_.y;
+    const int headerHeight = IREntity::getComponent<IRComponents::C_Widget>(widget).size_.y;
+    return dropdown.stripLayout(headerY, headerHeight, guiCanvasSize().y);
 }
 
 inline int dropdownSelectedIndex(IREntity::EntityId widget) {
