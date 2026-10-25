@@ -343,7 +343,9 @@ IR_SAVE_OPT_IN(IRComponents::C_CollisionResponse, 1)
 // Version 1 was the raw {halfExtent_, hovered_} image. Version 2 writes only
 // authored configuration; save_serializers_input.hpp owns the direct migration.
 IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_HitBox2D, 2)
-IR_SAVE_OPT_IN(IRComponents::C_HitBox2DGui, 1)
+// Version 1 was the raw {size_, hovered_} image. Version 2 writes the extent
+// and origin offset; save_serializers_input.hpp owns the direct migration.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_HitBox2DGui, 2)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxCircle, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxRect, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ActiveHitbox, 1)
@@ -420,10 +422,12 @@ IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_Widget, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetButton, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetCheckbox, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetColorSwatch, 1)
-IR_SAVE_OPT_IN(IRComponents::C_WidgetDropdown, 2)
+// Version 3 appends the authored visible-row cap; versions 1 and 2 read back
+// through the render serializer's migrations with the cap at 0 (the default).
+IR_SAVE_OPT_IN(IRComponents::C_WidgetDropdown, 3)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetImage, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetLabel, 2)
-IR_SAVE_OPT_IN(IRComponents::C_WidgetList, 1)
+IR_SAVE_OPT_IN(IRComponents::C_WidgetList, 2)
 IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_WidgetNumberField, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetPanel, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetRadio, 1)

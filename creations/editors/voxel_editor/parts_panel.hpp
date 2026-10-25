@@ -4,6 +4,10 @@
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/widgets.hpp>
+
+#include <string>
+#include <vector>
 
 // GUI-canvas geometry of the PARTS panel, list, mode dropdown, and remove
 // button. Shared by the editor, which builds the widgets from it, and scripted
@@ -24,6 +28,11 @@ constexpr IRMath::ivec2 kPartModeDropdownSize{112, 18};
 constexpr int kPartModeDropdownItemHeight = 16;
 constexpr IRMath::ivec2 kPartRemoveButtonPos{kPartsPanelPos.x + 4, kPartsPanelPos.y + 88};
 constexpr IRMath::ivec2 kPartRemoveButtonSize{112, 18};
+
+// The mode dropdown's items, in partModeRow's order.
+inline std::vector<std::string> partModeItems() {
+    return {"GRID", "DETACHED", "DETACHED REVOX"};
+}
 
 // The mode dropdown's rows, in the order its items are listed.
 constexpr int partModeRow(IRComponents::RotationMode mode) {
@@ -58,15 +67,22 @@ constexpr IRMath::vec2 partModeDropdownHeaderCenterGuiTrixel() {
     );
 }
 
-// Centre of @p mode's row in the expanded dropdown.
+// Centre of @p mode's row in the expanded dropdown, placed against the GUI
+// canvas as the live widget is.
 inline IRMath::vec2 partModeDropdownRowCenterGuiTrixel(IRComponents::RotationMode mode) {
     IRComponents::C_WidgetDropdown dropdown;
+    dropdown.items_ = partModeItems();
     dropdown.itemHeight_ = kPartModeDropdownItemHeight;
+    const IRComponents::C_WidgetDropdown::StripLayout layout = dropdown.stripLayout(
+        kPartModeDropdownPos.y,
+        kPartModeDropdownSize.y,
+        IRPrefab::Widget::guiCanvasSize().y
+    );
     return IRMath::vec2(
         static_cast<float>(kPartModeDropdownPos.x) +
             static_cast<float>(kPartModeDropdownSize.x) / 2.0f,
         static_cast<float>(kPartModeDropdownPos.y) +
-            dropdown.itemCenterOffsetY(kPartModeDropdownSize.y, partModeRow(mode))
+            dropdown.itemCenterOffsetY(layout, partModeRow(mode))
     );
 }
 

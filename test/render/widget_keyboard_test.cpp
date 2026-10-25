@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 
 namespace {
 
@@ -470,6 +471,7 @@ TEST_F(WidgetKeyboardTest, SliderKeyActionsUseSharedValueOperations) {
 
 TEST_F(WidgetKeyboardTest, DropdownKeyboardCursorTracksLiveItemsAndPointerReopen) {
     IRSystem::System<IRSystem::WIDGET_APPLY_DROPDOWN> apply;
+    apply.guiCanvasHeight_ = 720;
     IRComponents::C_Widget widget{IRComponents::WidgetKind::DROPDOWN, IRMath::ivec2(100, 20)};
     IRComponents::C_WidgetState state;
     IRComponents::C_WidgetDropdown dropdown;
@@ -518,11 +520,73 @@ TEST_F(WidgetKeyboardTest, DropdownKeyboardCursorTracksLiveItemsAndPointerReopen
     state.keyAction_ = IRComponents::C_WidgetState::KeyAction::MOVE_DOWN;
     tick();
     EXPECT_EQ(apply.keyboardRow_, 8);
-    EXPECT_EQ(dropdown.topIndex(), 1);
+    EXPECT_EQ(
+        dropdown.topIndex(dropdown.stripLayout(0, widget.size_.y, apply.guiCanvasHeight_)),
+        1
+    );
+}
+
+// A 40-item dropdown whose header sits low on a short canvas: neither side has
+// room for the eight requested rows, so the strip opens upward clipped to five.
+// The keyboard row walks past that window, the window follows it, Enter picks
+// the highlighted absolute row, and the pointer resolves the rows painted.
+TEST_F(WidgetKeyboardTest, DropdownKeyboardRowScrollsAClippedUpwardWindow) {
+    using Action = IRComponents::C_WidgetState::KeyAction;
+    IRSystem::System<IRSystem::WIDGET_APPLY_DROPDOWN> apply;
+    apply.guiCanvasHeight_ = 100;
+    apply.mouseGuiTrixel_ = offscreenMouse();
+    IRComponents::C_Widget widget{IRComponents::WidgetKind::DROPDOWN, IRMath::ivec2(100, 20)};
+    IRComponents::C_WidgetState state;
+    IRComponents::C_WidgetDropdown dropdown;
+    dropdown.itemHeight_ = 10;
+    for (int i = 0; i < 40; ++i) {
+        dropdown.items_.push_back("ITEM " + std::to_string(i));
+    }
+    dropdown.selectedIndex_ = 0;
+    IRComponents::C_HitBox2DGui hitbox{widget.size_};
+    const IRComponents::C_GuiPosition position{IRMath::ivec2(0, 55)};
+    const auto tick = [&](Action action) {
+        state.keyAction_ = action;
+        apply.tick(1, widget, state, dropdown, hitbox, position);
+        state.keyAction_ = Action::NONE;
+        state.fireAction_ = false;
+    };
+    const IRComponents::C_WidgetDropdown::StripLayout layout =
+        dropdown.stripLayout(position.pos_.y, widget.size_.y, apply.guiCanvasHeight_);
+    ASSERT_EQ(layout.rows_, 5);
+    ASSERT_EQ(layout.offsetY_, -50);
+
+    tick(Action::OPEN_OR_CLOSE);
+    ASSERT_TRUE(dropdown.isOpen_);
+    EXPECT_EQ(hitbox.offset_, IRMath::ivec2(0, -50)) << "the hitbox grows up over the strip";
+    EXPECT_EQ(hitbox.size_, IRMath::ivec2(100, 70));
+
+    for (int press = 0; press < 9; ++press) {
+        tick(Action::MOVE_DOWN);
+    }
+    EXPECT_EQ(apply.keyboardRow_, 9);
+    EXPECT_EQ(static_cast<int>(state.dragValue_), 9) << "the highlight is the absolute row";
+    EXPECT_EQ(dropdown.topIndex(layout), 5) << "row 9 sits on the window's last row";
+
+    // The pointer over the strip's first and last painted rows names items 5 and 9.
+    apply.mouseGuiTrixel_ = IRMath::vec2(50.0f, 55.0f + dropdown.itemCenterOffsetY(layout, 5));
+    tick(Action::NONE);
+    EXPECT_EQ(static_cast<int>(state.dragValue_), 5);
+    apply.mouseGuiTrixel_ = IRMath::vec2(50.0f, 55.0f + dropdown.itemCenterOffsetY(layout, 9));
+    tick(Action::NONE);
+    EXPECT_EQ(static_cast<int>(state.dragValue_), 9);
+    apply.mouseGuiTrixel_ = offscreenMouse();
+
+    tick(Action::SELECT);
+    EXPECT_EQ(dropdown.selectedIndex_, 9);
+    EXPECT_FALSE(dropdown.isOpen_);
+    EXPECT_EQ(hitbox.offset_, IRMath::ivec2(0)) << "closing restores the header hitbox";
+    EXPECT_EQ(hitbox.size_, widget.size_);
 }
 
 TEST_F(WidgetKeyboardTest, EmptyDropdownKeyboardSelectionRemainsEmpty) {
     IRSystem::System<IRSystem::WIDGET_APPLY_DROPDOWN> apply;
+    apply.guiCanvasHeight_ = 720;
     IRComponents::C_Widget widget{IRComponents::WidgetKind::DROPDOWN, IRMath::ivec2(100, 20)};
     IRComponents::C_WidgetState state;
     IRComponents::C_WidgetDropdown dropdown;

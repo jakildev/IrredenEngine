@@ -253,9 +253,9 @@ inline IRMath::ivec2 quitButtonScreenPx() {
 ///
 /// An ENUM row takes two clicks — one on the header to expand, one on the item
 /// — and the item strip only exists between them (`WIDGET_APPLY_DROPDOWN` grows
-/// the hitbox to `C_WidgetDropdown::expandedHeight` while open). Row geometry
-/// comes from the component's own helpers, the same ones the apply and render
-/// systems use, so an aimed click cannot drift from where the row is drawn.
+/// the hitbox over the placed strip while open). Row geometry comes from the
+/// component's own placement, the same one the apply and render systems use,
+/// so an aimed click cannot drift from where the row is drawn.
 inline IRMath::ivec2 enumItemScreenPx(int index, int itemIndex) {
     const auto *system = systemOrNull();
     if (system == nullptr || index < 0 || index >= static_cast<int>(system->rows_.size()) ||
@@ -274,10 +274,12 @@ inline IRMath::ivec2 enumItemScreenPx(int index, int itemIndex) {
     }
     const IRMath::ivec2 pos = IREntity::getComponent<IRComponents::C_GuiPosition>(widget).pos_;
     const IRMath::ivec2 size = IREntity::getComponent<IRComponents::C_Widget>(widget).size_;
+    const IRComponents::C_WidgetDropdown::StripLayout layout =
+        IRPrefab::Widget::dropdownStripLayout(widget);
     return IRRender::guiTrixelToScreenPx(
         IRMath::vec2(
             static_cast<float>(pos.x) + static_cast<float>(size.x) * 0.5f,
-            static_cast<float>(pos.y) + dropdown.itemCenterOffsetY(size.y, itemIndex)
+            static_cast<float>(pos.y) + dropdown.itemCenterOffsetY(layout, itemIndex)
         )
     );
 }

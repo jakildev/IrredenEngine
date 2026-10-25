@@ -13,7 +13,8 @@
 // - A widget's rect is `pos_` + `C_Widget::size_`; a LABEL's is its text extent.
 // - A widget with `C_HitBox2DGui` is interactive, over `pos_` + the hitbox's
 //   `size_`. A DROPDOWN's interactive rect is its header (`C_Widget::size_`)
-//   plus, while open, the strip the `C_WidgetDropdown` helpers place.
+//   plus, while open, the strip `C_WidgetDropdown::stripLayout` places against
+//   the audited canvas — above the header when only that side has room.
 // - A text run's extent is the union of the glyph cells it draws (spaces
 //   add nothing), at the explicit canvas size's parity alignment.
 // - Rects are half-open: edges that only touch do not intersect.
@@ -56,6 +57,7 @@
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/gui_rect.hpp>
 #include <irreden/render/gui_text_batch.hpp>
+#include <irreden/render/layout.hpp>
 #include <irreden/render/widget_text_layout.hpp>
 #include <irreden/render/widget_theme.hpp>
 
@@ -299,11 +301,13 @@ class Collector {
             );
             const int n = static_cast<int>(dd->items_.size());
             if (dd->isOpen_ && n > 0 && !widget.coversBelow_) {
-                const GuiRect strip = Text::dropdownStripRect(widget, *dd, pos);
+                const IRComponents::C_WidgetDropdown::StripLayout layout =
+                    dd->stripLayout(pos.y, widget.size_.y, m_canvasSize.y);
+                const GuiRect strip = Text::dropdownStripRect(widget, *dd, pos, layout);
                 m_layout.elements_.push_back({id, strip, Surface::STRIP, interactive, false});
-                const int firstItem = dd->topIndex();
-                for (int i = firstItem; i < firstItem + dd->visibleRowCount(); ++i) {
-                    addRun(id, Text::dropdownStripRow(widget, *dd, pos, m_theme, i), strip);
+                const int firstItem = dd->topIndex(layout);
+                for (int i = firstItem; i < firstItem + layout.rows_; ++i) {
+                    addRun(id, Text::dropdownStripRow(*dd, pos, layout, m_theme, i), strip);
                 }
             }
         }
@@ -477,14 +481,11 @@ inline std::vector<Finding> report(IRMath::ivec2 canvasSize) {
 
 // The same against the live "gui" canvas; empty when there is none.
 inline std::vector<Finding> report() {
-    if (IRRender::g_renderManager == nullptr) {
+    const IRMath::ivec2 canvasSize = IRPrefab::Layout::guiCanvasSize();
+    if (canvasSize == IRMath::ivec2(0)) {
         return {};
     }
-    const IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
-    if (guiCanvas == IREntity::kNullEntity) {
-        return {};
-    }
-    return report(IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas).size_);
+    return report(canvasSize);
 }
 
 // Logs the live report for one capture frame, the lines gui-verify parses:

@@ -186,6 +186,27 @@ for i = 1, 20 do
 end
 IRTest.setDropdown(IRGui.makeDropdown(510, 450, 120, 20, dropdownItems))
 
+-- A 40-item dropdown near the canvas bottom: its 8-row window has no room
+-- below the header, so the strip opens upward and stays on the canvas. Alt+P
+-- opens it from the keyboard (no hint badge, so the hint count stays three).
+local longDropdownItems = {}
+for i = 1, 40 do
+    longDropdownItems[i] = string.format("PARAM %02d", i)
+end
+local longDropdown = IRGui.makeDropdown(20, 690, 180, 20, longDropdownItems, 1, 20, IRText.Size.SMALL)
+IRGui.setHotkey(longDropdown, { key = IRInput.Key.P, mods = IRInput.Modifier.ALT })
+IRTest.setLongDropdown(longDropdown)
+
+-- A 60-row scrolling list bound from Lua: selecting row 40 reveals it, and the
+-- wheel scrolls the window without moving the selection.
+local LONG_LIST_SELECTED = 40
+local longListItems = {}
+for i = 1, 60 do
+    longListItems[i] = string.format("ROW %02d", i)
+end
+local longList = IRGui.makeList(510, 642, 120, 72, longListItems, LONG_LIST_SELECTED, IRText.Size.SMALL)
+IRTest.setLongList(longList, LONG_LIST_SELECTED)
+
 local hotkeyButton = IRGui.makeButton(20, 430, 180, 28, "HOTKEY BUTTON")
 local hotkeyCheckbox = IRGui.makeCheckbox(20, 464, 180, 28, "HOTKEY CHECK", false)
 local hotkeySlider = IRGui.makeSlider(20, 498, 180, 28, "HOTKEY SLIDER", 0, 10, 5, IRText.Size.SMALL, {
