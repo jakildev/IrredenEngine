@@ -417,7 +417,7 @@ constexpr Glyph kGlyph_0 = makeGlyph(
     "XX..XX"
     "XX..XX"
     "XX..XX"
-    "XX..XX"
+    "XXXXXX"
     "XX..XX"
     "XX..XX"
     "XX..XX"
