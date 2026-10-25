@@ -15,6 +15,7 @@
 #include <cerrno>
 #include <csignal>
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string_view>
 #include <thread>
@@ -147,6 +148,22 @@ class ToolSpawnTest : public testing::Test {
     }
 
 #endif
+
+    // A live worktree root under m_root: a regular-file `.git` marker and a
+    // real `creations/` directory, which is all discovery reads.
+    std::filesystem::path makeWorktree(const std::string &name) {
+        const std::filesystem::path root = m_root / ".claude" / "worktrees" / name;
+        std::filesystem::create_directories(root / "creations" / "inside");
+        std::ofstream(root / ".git") << "gitdir: /elsewhere/.git/worktrees/" << name << "\n";
+        return root;
+    }
+
+    template <typename Handle> static std::vector<std::string> runToExit(Handle &spawned) {
+        for (int attempt = 0; attempt < 100 && !spawned->exitCode().has_value(); ++attempt) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return spawned->poll();
+    }
 
     std::filesystem::path m_root;
     std::unique_ptr<IRTest::ScopedEnv> m_wrapper;
@@ -599,6 +616,211 @@ TEST_F(ToolSpawnTest, Refusals) {
     EXPECT_FALSE(withoutRoot.spawn({IREngine::ToolName::IR_BUILD, "Lines", ""}).has_value());
     EXPECT_THROW(m_service->setRoot(m_root), std::invalid_argument);
     std::filesystem::remove_all(outside);
+}
+
+TEST_F(ToolSpawnTest, SelectedWorktreeIsTheBuildCwdAndBuildDirectory) {
+    const std::filesystem::path second = makeWorktree("second");
+    EXPECT_EQ(m_service->activeRootId(), ".");
+    ASSERT_TRUE(m_service->selectRoot(".claude/worktrees/second").has_value());
+    EXPECT_EQ(m_service->activeRootId(), ".claude/worktrees/second");
+    EXPECT_EQ(m_service->root(), std::filesystem::weakly_canonical(m_root));
+
+    auto spawned = m_service->spawn({IREngine::ToolName::IR_BUILD, "Env", ""});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    const std::vector<std::string> lines = runToExit(spawned);
+    ASSERT_EQ(lines.size(), 2);
+    EXPECT_EQ(
+        std::filesystem::weakly_canonical(lines[0]),
+        std::filesystem::weakly_canonical(second)
+    );
+    EXPECT_EQ(
+        std::filesystem::weakly_canonical(lines[1]),
+        std::filesystem::weakly_canonical(second / "build")
+    );
+
+    // The fixed wrapper is the one beside IR_RUN_WRAPPER, never a script
+    // under the selected worktree.
+    IRTest::writeExecutableFile(
+        second / "bin" / "ir-build",
+        "#!/usr/bin/env bash\necho worktree-script\n"
+    );
+    auto args = m_service->spawn({IREngine::ToolName::IR_BUILD, "Args", ""});
+    ASSERT_TRUE(args.has_value()) << args.error();
+    EXPECT_EQ(runToExit(args), (std::vector<std::string>{"--target", "Args"}));
+
+    ASSERT_TRUE(m_service->selectRoot(".").has_value());
+    auto base = m_service->spawn({IREngine::ToolName::IR_BUILD, "Env", ""});
+    ASSERT_TRUE(base.has_value()) << base.error();
+    const std::vector<std::string> baseLines = runToExit(base);
+    ASSERT_EQ(baseLines.size(), 2);
+    EXPECT_EQ(
+        std::filesystem::weakly_canonical(baseLines[0]),
+        std::filesystem::weakly_canonical(m_root)
+    );
+}
+
+TEST_F(ToolSpawnTest, SelectedWorktreeHandsOffFromItsOwnBuildDirectory) {
+    const std::filesystem::path second = std::filesystem::weakly_canonical(makeWorktree("second"));
+    ASSERT_TRUE(m_service->selectRoot(".claude/worktrees/second").has_value());
+    IREngine::HandOffEnvironment environment;
+    environment.wrapperPath_ = (m_root / "bin" / "ir-run").string();
+
+    class RecordingPlatform : public IREngine::HandOffPlatform {
+      public:
+        void drainGpu() override {}
+        IREngine::ChildExit runToExit(const std::vector<std::string> &argv) override {
+            argv_ = argv;
+            return {true, 0, ""};
+        }
+        std::vector<std::string> argv_;
+    } platform;
+
+    const IREngine::HandOffOutcome outcome = IREngine::runHandOff(
+        IREngine::HandOffRequest{{"IRDemo"}},
+        environment,
+        platform,
+        *m_service
+    );
+    EXPECT_TRUE(outcome.result_.ok_) << outcome.result_.error_;
+    EXPECT_EQ(
+        platform.argv_,
+        (std::vector<std::string>{
+            environment.wrapperPath_,
+            "--build-dir",
+            (second / "build").string(),
+            "--result-file",
+            (second / "build" / "ir-run-results" / "IRDemo.last.json").string(),
+            "--",
+            "IRDemo"
+        })
+    );
+}
+
+TEST_F(ToolSpawnTest, ActiveRootConfinesPathsAndTheBaseScopeServesLauncherFiles) {
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX stub executable test";
+#else
+    const std::filesystem::path second = makeWorktree("second");
+    std::filesystem::create_directories(m_root / "save_files");
+    ASSERT_TRUE(m_service->selectRoot(".claude/worktrees/second").has_value());
+
+    const auto outside = m_service->spawn({IREngine::ToolName::EDITOR, "", "creations/inside"});
+    ASSERT_FALSE(outside.has_value());
+    EXPECT_EQ(outside.error(), "path must resolve inside the active root");
+
+    auto inside = m_service->spawn(
+        {IREngine::ToolName::EDITOR, "", ".claude/worktrees/second/creations/inside"}
+    );
+    ASSERT_TRUE(inside.has_value()) << inside.error();
+    const std::vector<std::string> insideLines = runToExit(inside);
+    ASSERT_EQ(insideLines.size(), 2);
+    EXPECT_EQ(
+        std::filesystem::weakly_canonical(insideLines[0]),
+        std::filesystem::weakly_canonical(second / "creations" / "inside")
+    );
+
+    IREngine::ToolSpawnRequest log{IREngine::ToolName::EDITOR, "", "save_files"};
+    log.scope_ = IREngine::ToolScope::BASE;
+    auto opened = m_service->spawn(log);
+    ASSERT_TRUE(opened.has_value()) << opened.error();
+    const std::vector<std::string> logLines = runToExit(opened);
+    ASSERT_EQ(logLines.size(), 2);
+    EXPECT_EQ(
+        std::filesystem::weakly_canonical(logLines[0]),
+        std::filesystem::weakly_canonical(m_root / "save_files")
+    );
+    EXPECT_EQ(m_service->activeRootId(), ".claude/worktrees/second");
+
+    IREngine::ToolSpawnRequest baseBuild{IREngine::ToolName::IR_BUILD, "Lines", ""};
+    baseBuild.scope_ = IREngine::ToolScope::BASE;
+    const auto refused = m_service->spawn(baseBuild);
+    ASSERT_FALSE(refused.has_value());
+    EXPECT_EQ(refused.error(), "ir-build runs only in the active root");
+    IREngine::ToolSpawnRequest unknownScope{IREngine::ToolName::EDITOR, "", "save_files"};
+    unknownScope.scope_ = static_cast<IREngine::ToolScope>(99);
+    const auto scopeRefused = m_service->spawn(unknownScope);
+    ASSERT_FALSE(scopeRefused.has_value());
+    EXPECT_EQ(scopeRefused.error(), "unknown tool scope");
+    IREngine::ToolSpawnRequest escape{IREngine::ToolName::EDITOR, "", "../x"};
+    escape.scope_ = IREngine::ToolScope::BASE;
+    EXPECT_FALSE(m_service->spawn(escape).has_value());
+    EXPECT_FALSE(std::filesystem::exists(second / "launched"));
+#endif
+}
+
+TEST_F(ToolSpawnTest, RootSelectionRefusals) {
+    const std::filesystem::path second = makeWorktree("second");
+    // A nested checkout that is not an immediate `.claude/worktrees` entry.
+    std::filesystem::create_directories(m_root / "creations" / "game" / "creations");
+    std::ofstream(m_root / "creations" / "game" / ".git") << "gitdir: /elsewhere\n";
+    std::filesystem::create_directories(second / ".claude" / "worktrees" / "nested" / "creations");
+    std::ofstream(second / ".claude" / "worktrees" / "nested" / ".git") << "gitdir: /elsewhere\n";
+    // Not a worktree: no marker.
+    std::filesystem::create_directories(m_root / ".claude" / "worktrees" / "plain" / "creations");
+    std::error_code linkError;
+    std::filesystem::create_directory_symlink(
+        second,
+        m_root / ".claude" / "worktrees" / "link",
+        linkError
+    );
+
+    for (const char *id :
+         {"/etc",
+          "..",
+          "../x",
+          ".claude/worktrees/../..",
+          ".claude/worktrees/",
+          ".claude/worktrees/second/",
+          "creations/game",
+          ".claude/worktrees/second/.claude/worktrees/nested",
+          ".claude/worktrees/plain",
+          ".claude/worktrees/missing"}) {
+        EXPECT_FALSE(m_service->selectRoot(id).has_value()) << id;
+    }
+    if (!linkError) {
+        EXPECT_FALSE(m_service->selectRoot(".claude/worktrees/link").has_value());
+    }
+    EXPECT_EQ(m_service->activeRootId(), ".");
+
+    auto live = m_service->spawn({IREngine::ToolName::IR_BUILD, "Sleep", ""});
+    ASSERT_TRUE(live.has_value()) << live.error();
+    const auto whileLive = m_service->selectRoot(".claude/worktrees/second");
+    ASSERT_FALSE(whileLive.has_value());
+    EXPECT_EQ(whileLive.error(), "a tool is still running");
+    EXPECT_EQ(m_service->activeRootId(), ".");
+    EXPECT_TRUE(m_service->selectRoot(".").has_value()) << "re-selecting the active root";
+    live->kill();
+
+    // A worktree removed after it was selected starts nothing.
+    ASSERT_TRUE(m_service->selectRoot(".claude/worktrees/second").has_value());
+    std::filesystem::remove_all(second);
+    EXPECT_FALSE(m_service->activeRoot().has_value());
+    const auto vanished = m_service->spawn({IREngine::ToolName::IR_BUILD, "Lines", ""});
+    ASSERT_FALSE(vanished.has_value());
+    EXPECT_EQ(
+        vanished.error(),
+        "the active root '.claude/worktrees/second' is no longer a live worktree"
+    );
+    EXPECT_FALSE(
+        m_service->spawn({IREngine::ToolName::OPEN_FOLDER, "", "creations/inside"}).has_value()
+    );
+    IREngine::HandOffEnvironment environment;
+    environment.wrapperPath_ = (m_root / "bin" / "ir-run").string();
+    IRTest::CountingHandOffPlatform platform;
+    const IREngine::HandOffOutcome outcome = IREngine::runHandOff(
+        IREngine::HandOffRequest{{"IRDemo"}},
+        environment,
+        platform,
+        *m_service
+    );
+    EXPECT_FALSE(outcome.result_.ok_);
+    EXPECT_FALSE(outcome.suspended_);
+    EXPECT_EQ(platform.drains_, 0);
+    EXPECT_EQ(platform.launches_, 0);
+    EXPECT_FALSE(std::filesystem::exists(m_root / "launched"));
+
+    IREngine::ToolService withoutRoot;
+    EXPECT_FALSE(withoutRoot.selectRoot(".").has_value());
 }
 
 } // namespace

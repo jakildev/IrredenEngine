@@ -1,13 +1,18 @@
 // IRLauncher — browses, builds and runs the creations of the checkout it was
-// built from. `main.lua` builds the whole UI from the engine's IRGui,
-// IRCatalog, IREngine.spawnTool / handOff and IRSave surfaces; this file only
-// composes the pipelines, fixes the tool root, binds the launcher-local
-// `IRLauncher` table and, under `--gui-session <name>`, the `IRTest` report
-// table plus the scripted shot table that session asserts against.
+// built from and of the worktrees configured beside it. `main.lua` builds the
+// whole UI from the engine's IRGui, IRCatalog, IREngine.spawnTool / handOff
+// and IRSave surfaces; this file only composes the pipelines, fixes the tool
+// root, binds the launcher-local `IRLauncher` table and, under
+// `--gui-session <name>`, the `IRTest` report table plus the scripted shot
+// table that session asserts against.
 //
-// The tool root is IR_LAUNCHER_ROOT, set once before any script runs. Nothing
-// on the command line moves it: `--catalog-root` changes only the default
-// root of the catalog scan, a root-relative read the catalog checks itself.
+// The tool root (the base) is IR_LAUNCHER_ROOT, set once before any script
+// runs. Nothing on the command line moves it: `--catalog-root` changes only
+// the source of a read-only catalog scan, whose rows still run in the base.
+// Process work runs in the active root, which only `IRLauncher.selectRoot`
+// changes, and only to a root fresh discovery reports under the base. The one
+// exception is the multi_root session, whose base is a tree it generates
+// under the run directory, chosen by the compiled session enum alone.
 //
 // `--supervised` is passed only by `ir-launcher`, which reads
 // kUpdateRequestedExit from this process as "update me and relaunch".
@@ -33,9 +38,17 @@
 //     fixture without losing its asset association.
 //   * dockspace_roundtrip — splitter resize, persistence, revert and panel
 //     docking reflow every zone while a live voxel preview remains attached.
+//   * multi_root (no --catalog-root) — over a generated base and worktree
+//     `.claude/worktrees/second`: discovery skips the invalid candidates, the
+//     settings panel adds the worktree, the root groups and the picker
+//     appear, a picker switch changes the active root and its asset index in
+//     the same process, Build / Run / Package run in each creation's own
+//     checkout, root-qualified presets and roots survive a save and revert,
+//     and once the worktree is deleted its stale selection launches nothing.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_platform.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
@@ -75,9 +88,11 @@
 #include <irreden/script/lua_widget_bindings.hpp>
 #include <irreden/utility/path_utils.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <list>
 #include <optional>
 #include <span>
@@ -106,6 +121,7 @@ enum class Session {
     ASSET_PREVIEW,
     THUMBNAIL_CHAIN,
     DOCKSPACE_ROUNDTRIP,
+    MULTI_ROOT,
 };
 
 IRSystem::SystemId g_dispatchId = IRSystem::kNullSystemId;
@@ -140,6 +156,9 @@ Session parseSession(const std::string &name) {
     }
     if (name == "dockspace_roundtrip") {
         return Session::DOCKSPACE_ROUNDTRIP;
+    }
+    if (name == "multi_root") {
+        return Session::MULTI_ROOT;
     }
     return Session::NONE;
 }
@@ -197,6 +216,55 @@ void removeStubArchives() {
         }
         iterator.increment(error);
     }
+}
+
+// The multi_root session's base: the committed inputs under
+// test/multi_root copied to a fresh tree in the run directory, its worktree
+// given the regular-file `.git` marker git itself writes (git drops a nested
+// `.git` from a commit), invalid candidates beside it, and a built stub
+// target in each build tree. Created before any script runs, so the first
+// scan sees it; the tool root is set to it, never to a Lua value.
+std::filesystem::path g_multiRootBase;
+#define IR_LAUNCHER_SECOND ".claude/worktrees/second"
+constexpr const char *kSecondRoot = IR_LAUNCHER_SECOND;
+
+void writeStubExecutable(const std::filesystem::path &buildDir) {
+    std::filesystem::create_directories(buildDir);
+    const std::filesystem::path executable =
+        buildDir / (IRPlatform::kIsWindows ? "IRLauncherStub.exe" : "IRLauncherStub");
+    std::ofstream(executable) << "stub\n";
+    std::filesystem::permissions(
+        executable,
+        std::filesystem::perms::owner_exec,
+        std::filesystem::perm_options::add
+    );
+}
+
+std::filesystem::path createMultiRootTree() {
+    const std::filesystem::path inputs = stubDir("multi_root");
+    const std::filesystem::path base = std::filesystem::current_path() / "multi_root_session";
+    std::filesystem::remove_all(base);
+    const std::filesystem::path second = base / kSecondRoot;
+    std::filesystem::create_directories(second.parent_path());
+    const auto recursive = std::filesystem::copy_options::recursive;
+    std::filesystem::copy(inputs / "base", base, recursive);
+    std::filesystem::copy(inputs / "second", second, recursive);
+    std::ofstream(second / ".git")
+        << "gitdir: " << (base / ".git" / "worktrees" / "second").string() << "\n";
+    // A worktree-shaped directory without the marker never becomes a root.
+    std::filesystem::copy(inputs / "second", second.parent_path() / "nomarker", recursive);
+    std::error_code linkError;
+    std::filesystem::create_directory_symlink(second, second.parent_path() / "link", linkError);
+    writeStubExecutable(base / "build");
+    writeStubExecutable(second / "build");
+    return std::filesystem::weakly_canonical(base);
+}
+
+// The multi_root session's tool seam: IR_RUN_WRAPPER names the committed stub
+// ir-run, so `handOff` runs it and the fixed `ir-build` resolves to the stub
+// beside it, the same two binaries for every root.
+void useStubRunTools() {
+    setEnvVar("IR_RUN_WRAPPER", stubDir("stub_bin").append("ir-run").string().c_str());
 }
 
 // The settings_roundtrip session's seam: PATH becomes a fixed directory under
@@ -402,6 +470,67 @@ constexpr Event kDockSwapEvents[] = {
     move(4, kDetailsDockTarget),
     release(5, kDetailsDockTarget, IRInput::kMouseButtonLeft),
 };
+// multi_root: with both roots configured the tree rows are `.`, its `multi`
+// group, Base One, the worktree, its `multi` group, Second One.
+constexpr IRMath::ivec2 kAddFirstWorktree{472, 204};
+constexpr IRMath::ivec2 kPickerHeader{480, 14};
+constexpr IRMath::ivec2 kPickerItem2{480, 42};
+constexpr IRMath::ivec2 kPresetHeader{860, 189};
+constexpr IRMath::ivec2 kPresetItem2{860, 217};
+constexpr IRMath::ivec2 kPresetItem3{860, 231};
+constexpr int kBaseOneRow = 2;
+constexpr int kSecondGroupRow = 4;
+constexpr int kSecondOneRow = 5;
+constexpr Event kMultiAddEvents[] = {
+    IR_LAUNCHER_CLICK(0, kSettings),
+    IR_LAUNCHER_CLICK(8, kAddFirstWorktree),
+    IR_LAUNCHER_CLICK(16, kSettingsClose),
+    move(24, kAwayFromWidgets),
+};
+constexpr Event kMultiSwitchEvents[] = {
+    IR_LAUNCHER_CLICK(0, kPickerHeader),
+    IR_LAUNCHER_CLICK(8, kPickerItem2),
+    move(16, kAwayFromWidgets),
+};
+// Each action waits out the previous one: one child at a time.
+constexpr Event kMultiActionEvents[] = {
+    IR_LAUNCHER_CLICK(0, treeRow(kBaseOneRow)),
+    IR_LAUNCHER_CLICK(6, kBuildFirstTarget),
+    IR_LAUNCHER_CLICK(60, kRunFirstTarget),
+    IR_LAUNCHER_CLICK(120, treeRow(kSecondOneRow)),
+    IR_LAUNCHER_CLICK(126, kBuildFirstTarget),
+    IR_LAUNCHER_CLICK(180, kRunFirstTarget),
+    IR_LAUNCHER_CLICK(240, kPackageFirstTarget),
+    move(300, kAwayFromWidgets),
+};
+constexpr Event kMultiSettingsEvents[] = {
+    IR_LAUNCHER_CLICK(0, treeRow(kBaseOneRow)),
+    IR_LAUNCHER_CLICK(6, kPresetHeader),
+    IR_LAUNCHER_CLICK(12, kPresetItem2),
+    IR_LAUNCHER_CLICK(20, treeRow(kSecondOneRow)),
+    IR_LAUNCHER_CLICK(26, kPresetHeader),
+    IR_LAUNCHER_CLICK(32, kPresetItem3),
+    IR_LAUNCHER_CLICK(40, kSettings),
+    IR_LAUNCHER_CLICK(46, kSettingsSave),
+    IR_LAUNCHER_CLICK(52, kSettingsRevert),
+    IR_LAUNCHER_CLICK(60, treeRow(kSecondGroupRow)),
+    IR_LAUNCHER_CLICK(66, kSettingsSave),
+    IR_LAUNCHER_CLICK(72, kSettingsRevert),
+    move(80, kAwayFromWidgets),
+};
+constexpr Event kMultiReselectEvents[] = {
+    IR_LAUNCHER_CLICK(0, kSettingsClose),
+    IR_LAUNCHER_CLICK(6, treeRow(kSecondGroupRow)),
+    IR_LAUNCHER_CLICK(12, treeRow(kSecondOneRow)),
+    move(18, kAwayFromWidgets),
+};
+// The worktree is deleted before this shot's first event (onGuiAssertFrame).
+constexpr Event kMultiVanishedEvents[] = {
+    IR_LAUNCHER_CLICK(4, kBuildFirstTarget),
+    IR_LAUNCHER_CLICK(10, kSettings),
+    IR_LAUNCHER_CLICK(16, kSettingsRevert),
+    move(24, kAwayFromWidgets),
+};
 
 #undef IR_LAUNCHER_CLICK
 #undef IR_LAUNCHER_KEY
@@ -452,6 +581,17 @@ constexpr IRVideo::GuiTestShot kDockspaceShots[] = {
     shot("dockspace_swapped", kDockSwapEvents),
 };
 
+constexpr IRVideo::GuiTestShot kMultiRootShots[] = {
+    shot("multi_root_discovered"),
+    shot("multi_root_added", kMultiAddEvents),
+    shot("multi_root_switched", kMultiSwitchEvents),
+    shot("multi_root_actions", kMultiActionEvents),
+    shot("multi_root_settings", kMultiSettingsEvents),
+    shot("multi_root_reselected", kMultiReselectEvents),
+    shot("multi_root_vanished", kMultiVanishedEvents),
+};
+constexpr int kMultiRootVanishedShot = 6;
+
 std::span<const IRVideo::GuiTestShot> sessionShots(Session session) {
     switch (session) {
     case Session::CATALOG_TREE:
@@ -470,6 +610,8 @@ std::span<const IRVideo::GuiTestShot> sessionShots(Session session) {
         return kThumbnailShots;
     case Session::DOCKSPACE_ROUNDTRIP:
         return kDockspaceShots;
+    case Session::MULTI_ROOT:
+        return kMultiRootShots;
     case Session::NONE:
         break;
     }
@@ -484,10 +626,15 @@ struct ReportCheck {
     bool contains_ = false;
 };
 
-bool reportMatches(const void *context, std::string &actual) {
-    const auto &check = *static_cast<const ReportCheck *>(context);
-    const auto found = g_reports.find(check.key_);
-    actual = found == g_reports.end() ? std::string{"<none>"} : found->second;
+bool matchReport(
+    const char *key, const std::string &expected, bool contains, bool slashes, std::string &actual
+) {
+    const auto found = g_reports.find(key);
+    std::string value = found == g_reports.end() ? std::string{} : found->second;
+    if (slashes) {
+        std::replace(value.begin(), value.end(), '\\', '/');
+    }
+    actual = found == g_reports.end() ? std::string{"<none>"} : value;
     for (char &c : actual) {
         if (c == '\n' || c == '\r') {
             c = ' ';
@@ -496,12 +643,59 @@ bool reportMatches(const void *context, std::string &actual) {
     if (found == g_reports.end()) {
         return false;
     }
-    if (!check.contains_) {
-        return found->second == check.expected_;
+    if (!contains) {
+        return value == expected;
     }
-    const bool present = found->second.find(check.expected_) != std::string::npos;
-    actual = present ? check.expected_ : std::string{"missing '"} + check.expected_ + "'";
+    const bool present = value.find(expected) != std::string::npos;
+    actual = present ? expected : std::string{"missing '"} + expected + "'";
     return present;
+}
+
+bool reportMatches(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const ReportCheck *>(context);
+    return matchReport(check.key_, check.expected_, check.contains_, false, actual);
+}
+
+// A ReportCheck whose expected text names the multi_root session's generated
+// base as `{base}`; both sides compare with `/` separators.
+bool rootedReportMatches(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const ReportCheck *>(context);
+    std::string expected = check.expected_;
+    const std::string base = g_multiRootBase.generic_string();
+    for (std::size_t at = expected.find("{base}"); at != std::string::npos;
+         at = expected.find("{base}", at + base.size())) {
+        expected.replace(at, 6, base);
+    }
+    return matchReport(check.key_, expected, check.contains_, true, actual);
+}
+
+// Two reports that must hold the same value.
+struct ReportPair {
+    const char *left_;
+    const char *right_;
+};
+
+bool reportsEqual(const void *context, std::string &actual) {
+    const auto &pair = *static_cast<const ReportPair *>(context);
+    const auto left = g_reports.find(pair.left_);
+    const auto right = g_reports.find(pair.right_);
+    if (left == g_reports.end() || right == g_reports.end()) {
+        actual = "<none>";
+        return false;
+    }
+    actual = left->second == right->second ? "equal" : left->second + " != " + right->second;
+    return left->second == right->second;
+}
+
+// No package archive in the base build tree: PACKAGE ran in the worktree.
+bool baseHasNoArchive(const void *, std::string &actual) {
+    std::error_code error;
+    const bool present = std::filesystem::exists(
+        g_multiRootBase / "build" / "IRLauncherStub-fixture-test.zip",
+        error
+    );
+    actual = present ? "present" : "absent";
+    return !present;
 }
 
 #define IR_LAUNCHER_FAVOURITE "creations/launcher/test/fixture_root/creations/alpha"
@@ -576,6 +770,59 @@ const ReportCheck kDockContained{"layoutContained", "true"};
 const ReportCheck kDockPreviewRect{"layoutPreviewRect", "242,230,280,176"};
 
 #undef IR_LAUNCHER_FAVOURITE
+
+#define IR_LAUNCHER_BOTH_TREE "G:.|G:multi|C:Base One|G:" IR_LAUNCHER_SECOND "|G:multi"
+
+const ReportCheck kMultiDiscovered{"discoveredRoots", ".|" IR_LAUNCHER_SECOND};
+const ReportCheck kMultiBaseOnly{"configuredRoots", "."};
+const ReportCheck kMultiBothRoots{"configuredRoots", ".|" IR_LAUNCHER_SECOND};
+const ReportCheck kMultiNoPicker{"picker", "none"};
+const ReportCheck kMultiPicker{"picker", ".|" IR_LAUNCHER_SECOND};
+const ReportCheck kMultiBaseTree{"tree", "G:multi|C:Base One"};
+const ReportCheck kMultiBothTree{"tree", IR_LAUNCHER_BOTH_TREE "|C:Second One"};
+const ReportCheck kMultiFoldedTree{"tree", IR_LAUNCHER_BOTH_TREE};
+const ReportCheck kMultiMigration{"legacyMigration", "creations/one|IRLauncherStub=2|legacy=0"};
+const ReportCheck kMultiBaseActive{"activeRoot", "."};
+const ReportCheck kMultiSecondActive{"activeRoot", IR_LAUNCHER_SECOND};
+const ReportCheck kMultiSecondAssets{
+    "assetIndex",
+    IR_LAUNCHER_SECOND "/creations/one/save_files/screenshots/second_sentinel.png",
+    true
+};
+const ReportPair kMultiSameSession{"sessionStart", "sessionAtSwitch"};
+const ReportCheck kMultiSwitchLogged{"log", "ROOT " IR_LAUNCHER_SECOND " active", true};
+const ReportCheck kMultiNoLaunches{"launches", "0"};
+const ReportCheck kMultiBaseBuild{"log", "IR_LAUNCHER_STUB cwd {base} build {base}/build", true};
+const ReportCheck kMultiSecondBuild{
+    "log",
+    "IR_LAUNCHER_STUB cwd {base}/" IR_LAUNCHER_SECOND " build {base}/" IR_LAUNCHER_SECOND "/build",
+    true
+};
+const ReportCheck kMultiPackageBuilt{
+    "log", "IR_LAUNCHER_STUB line 1 --target IRLauncherStubPackage", true
+};
+const ReportCheck kMultiLastRuns{
+    "lastRuns",
+    ".:IRLauncherStub={base}/build/IRLauncherStub|" IR_LAUNCHER_SECOND
+    ":IRLauncherStub={base}/" IR_LAUNCHER_SECOND "/build/IRLauncherStub"
+};
+const ReportCheck kMultiSecondArchive{
+    "packagePaths", "IRLauncherStub=" IR_LAUNCHER_SECOND "/build/IRLauncherStub-fixture-test.zip"
+};
+const ReportCheck kMultiSecondDetails{"detailsRoot", IR_LAUNCHER_SECOND};
+const ReportCheck kMultiSecondDocs{"detailsDocs", IR_LAUNCHER_SECOND "/docs/root.md"};
+const ReportCheck kMultiFiveLaunches{"launches", "5"};
+const ReportCheck kMultiPresets{
+    "presets", IR_LAUNCHER_SECOND "/creations/one|IRLauncherStub=3,creations/one|IRLauncherStub=2"
+};
+const ReportCheck kMultiCollapsed{"collapsed", IR_LAUNCHER_SECOND ">multi"};
+const ReportCheck kMultiStaleRefused{
+    "log", "BUILD IRLauncherStub: root " IR_LAUNCHER_SECOND " is unavailable", true
+};
+const ReportCheck kMultiBaseDiscovered{"discoveredRoots", "."};
+
+#undef IR_LAUNCHER_BOTH_TREE
+#undef IR_LAUNCHER_SECOND
 
 using IRPrefab::GuiTest::Assertion;
 using IRPrefab::GuiTest::predicate;
@@ -652,6 +899,46 @@ const ShotAssertions kDockspaceAssertions[] = {
      predicate(&reportMatches, &kAssetSubjectMatches, "viewport_subject_survived")},
 };
 
+const ShotAssertions kMultiRootAssertions[] = {
+    {predicate(&reportMatches, &kMultiDiscovered, "invalid_candidates_skipped"),
+     predicate(&reportMatches, &kMultiBaseOnly, "base_only_configured"),
+     predicate(&reportMatches, &kMultiNoPicker, "no_picker_with_one_root"),
+     predicate(&reportMatches, &kMultiBaseTree, "single_root_tree_has_no_root_tier"),
+     predicate(&reportMatches, &kMultiMigration, "legacy_preset_migrates_exact_base_name"),
+     predicate(&reportMatches, &kMultiBaseActive, "base_active")},
+    {predicate(&reportMatches, &kMultiBothRoots, "worktree_added"),
+     predicate(&reportMatches, &kMultiPicker, "picker_lists_roots"),
+     predicate(&reportMatches, &kMultiBothTree, "root_groups_list_both"),
+     predicate(&reportMatches, &kMultiBaseActive, "add_keeps_active_root")},
+    {predicate(&reportMatches, &kMultiSecondActive, "picker_switched_root"),
+     predicate(&reportMatches, &kMultiSecondAssets, "switched_asset_index"),
+     predicate(&reportsEqual, &kMultiSameSession, "no_restart"),
+     predicate(&reportMatches, &kMultiSwitchLogged, "switch_logged"),
+     predicate(&reportMatches, &kMultiNoLaunches, "switch_launches_nothing")},
+    {predicate(&rootedReportMatches, &kMultiBaseBuild, "base_build_in_base"),
+     predicate(&rootedReportMatches, &kMultiSecondBuild, "second_build_in_second"),
+     predicate(&reportMatches, &kMultiPackageBuilt, "package_built"),
+     predicate(&rootedReportMatches, &kMultiLastRuns, "runs_use_own_build_dir"),
+     predicate(&reportMatches, &kMultiSecondArchive, "archive_in_second_tree"),
+     predicate(&baseHasNoArchive, nullptr, "no_archive_in_base_tree"),
+     predicate(&reportMatches, &kMultiSecondDetails, "details_show_root"),
+     predicate(&reportMatches, &kMultiSecondDocs, "docs_from_second_root"),
+     predicate(&reportMatches, &kMultiFiveLaunches, "five_launches")},
+    {predicate(&reportMatches, &kMultiPresets, "presets_keyed_by_creation"),
+     predicate(&reportMatches, &kMultiBothRoots, "roots_reloaded"),
+     predicate(&reportMatches, &kMultiSecondActive, "active_root_reloaded"),
+     predicate(&reportMatches, &kMultiCollapsed, "collapse_keyed_by_root"),
+     predicate(&reportMatches, &kMultiFoldedTree, "fold_reloaded")},
+    {predicate(&reportMatches, &kMultiSecondDetails, "second_reselected")},
+    {predicate(&reportMatches, &kMultiStaleRefused, "stale_selection_refused"),
+     predicate(&reportMatches, &kMultiFiveLaunches, "vanished_root_launches_nothing"),
+     predicate(&reportMatches, &kMultiBaseDiscovered, "vanished_root_undiscovered"),
+     predicate(&reportMatches, &kMultiBaseOnly, "vanished_root_dropped"),
+     predicate(&reportMatches, &kMultiBaseActive, "base_active_after_reload"),
+     predicate(&reportMatches, &kMultiNoPicker, "picker_gone"),
+     predicate(&reportMatches, &kMultiBaseTree, "single_root_tree_again")},
+};
+
 std::span<const ShotAssertions> sessionAssertions(Session session) {
     switch (session) {
     case Session::CATALOG_TREE:
@@ -670,6 +957,8 @@ std::span<const ShotAssertions> sessionAssertions(Session session) {
         return kThumbnailAssertions;
     case Session::DOCKSPACE_ROUNDTRIP:
         return kDockspaceAssertions;
+    case Session::MULTI_ROOT:
+        return kMultiRootAssertions;
     case Session::NONE:
         break;
     }
@@ -684,10 +973,15 @@ static_assert(std::size(kSettingsAssertions) == std::size(kSettingsShots));
 static_assert(std::size(kAssetPreviewAssertions) == std::size(kAssetPreviewShots));
 static_assert(std::size(kThumbnailAssertions) == std::size(kThumbnailShots));
 static_assert(std::size(kDockspaceAssertions) == std::size(kDockspaceShots));
+static_assert(std::size(kMultiRootAssertions) == std::size(kMultiRootShots));
 
 IRPrefab::GuiTest::LatchState g_assertLatch;
 
 void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
+    if (g_session == Session::MULTI_ROOT && shotIndex == kMultiRootVanishedShot) {
+        std::error_code error;
+        std::filesystem::remove_all(g_multiRootBase / kSecondRoot, error);
+    }
     const std::span<const ShotAssertions> assertions = sessionAssertions(g_session);
     if (shotIndex < 0 || shotIndex >= static_cast<int>(assertions.size())) {
         return;
@@ -733,7 +1027,8 @@ int main(int argc, char **argv) {
          "settings_roundtrip",
          "asset_preview",
          "thumbnail_chain",
-         "dockspace_roundtrip"},
+         "dockspace_roundtrip",
+         "multi_root"},
         "none"
     );
     registerLuaBindings();
@@ -746,6 +1041,8 @@ int main(int argc, char **argv) {
         IRLauncher::removeStubArchives();
     } else if (IRLauncher::g_session == IRLauncher::Session::SETTINGS_ROUNDTRIP) {
         IRLauncher::useStubEditors();
+    } else if (IRLauncher::g_session == IRLauncher::Session::MULTI_ROOT) {
+        IRLauncher::useStubRunTools();
     }
     initSystems();
     IREngine::runScript("main.lua");
@@ -755,7 +1052,14 @@ int main(int argc, char **argv) {
 
 void registerLuaBindings() {
     IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
-        IREngine::setToolRoot(IR_LAUNCHER_ROOT);
+        const auto &args = IREngine::args();
+        IRLauncher::g_session = IRLauncher::parseSession(args.getEnum("--gui-session"));
+        if (IRLauncher::g_session == IRLauncher::Session::MULTI_ROOT) {
+            IRLauncher::g_multiRootBase = IRLauncher::createMultiRootTree();
+            IREngine::setToolRoot(IRLauncher::g_multiRootBase);
+        } else {
+            IREngine::setToolRoot(IR_LAUNCHER_ROOT);
+        }
         const std::filesystem::path root = *IREngine::toolRoot();
 
         script.bindLuaDrivenEcs();
@@ -777,9 +1081,6 @@ void registerLuaBindings() {
         script.bindLuaSave(std::filesystem::current_path() / "save_files");
         IRLauncher::g_dispatchId = script.registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>();
 
-        const auto &args = IREngine::args();
-        IRLauncher::g_session = IRLauncher::parseSession(args.getEnum("--gui-session"));
-
         sol::state &lua = script.lua();
         sol::table launcher = lua.create_named_table("IRLauncher");
         launcher["scripted"] = []() { return IREngine::args().autoScreenshotWarmupFrames() > 0; };
@@ -798,6 +1099,52 @@ void registerLuaBindings() {
         launcher["formatTime"] = &IRLauncher::formatTime;
         launcher["preset"] = []() { return std::string{IR_LAUNCHER_PRESET}; };
         launcher["session"] = []() { return IREngine::args().getEnum("--gui-session"); };
+        // Makes a root fresh discovery reports the active root, or returns why
+        // not; the stored or clicked id is never trusted on its own.
+        launcher["selectRoot"] = [root](const std::string &id) -> sol::optional<std::string> {
+            const auto roots = IRUtility::discoverWorktreeRoots(root);
+            if (std::ranges::find(roots, id) == roots.end()) {
+                return "'" + id + "' is not a discovered worktree root";
+            }
+            const auto selected = IREngine::selectToolRoot(id);
+            return selected ? sol::nullopt : sol::optional<std::string>{selected.error()};
+        };
+        // `editor` / `open-folder` for the launcher's own files under the base
+        // (its log, the update log); never a build, and the active root is
+        // neither read nor moved.
+        launcher["spawnBaseTool"] = [](const sol::table &table) {
+            IREngine::ToolSpawnRequest request;
+            request.scope_ = IREngine::ToolScope::BASE;
+            bool hasTool = false;
+            for (const auto &[key, value] : table) {
+                if (key.get_type() != sol::type::string || value.get_type() != sol::type::string) {
+                    throw sol::error{"IRLauncher.spawnBaseTool: keys and values must be strings"};
+                }
+                const std::string name = key.as<std::string>();
+                const std::string text = value.as<std::string>();
+                if (name == "tool" && (text == "editor" || text == "open-folder")) {
+                    request.tool_ = text == "editor" ? IREngine::ToolName::EDITOR
+                                                     : IREngine::ToolName::OPEN_FOLDER;
+                    hasTool = true;
+                } else if (name == "path") {
+                    request.path_ = text;
+                } else if (name == "editor") {
+                    request.editor_ = text;
+                } else {
+                    throw sol::error{
+                        "IRLauncher.spawnBaseTool: unknown key or tool '" + text + "'"
+                    };
+                }
+            }
+            if (!hasTool) {
+                throw sol::error{"IRLauncher.spawnBaseTool: tool must be editor or open-folder"};
+            }
+            auto handle = IREngine::spawnTool(request);
+            if (!handle.has_value()) {
+                throw sol::error{"IRLauncher.spawnBaseTool: " + handle.error()};
+            }
+            return std::move(*handle);
+        };
         launcher["assetPath"] = [root](const std::string &path) {
             const auto resolved = IRUtility::resolveContainedPath(root, path);
             if (!resolved) {

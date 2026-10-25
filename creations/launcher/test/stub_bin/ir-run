@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# The ir-run the multi_root GUI session hands off to in place of the real one:
+# it runs nothing and writes a CLEAN verdict to --result-file whose exe and
+# argv record the --build-dir and --result-file the hand-off passed, so the
+# catalog's last-run row shows which checkout's tree the run used.
+build_dir=""
+result_file=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --build-dir) build_dir=$2; shift 2 ;;
+    --result-file) result_file=$2; shift 2 ;;
+    --) shift; break ;;
+    *) shift ;;
+    esac
+done
+target=${1:-}
+json() {
+    local text=${1//\\/\\\\}
+    printf '%s' "${text//\"/\\\"}"
+}
+if [[ -n "$result_file" ]]; then
+    printf '{"verdict":"CLEAN","exe":"%s","exit":0,"signal":null,"argv":["%s","%s"],"at":"2026-01-01T00:00:00Z"}\n' \
+        "$(json "$build_dir/$target")" "$(json "$build_dir")" "$(json "$result_file")" >"$result_file"
+fi
+exit 0

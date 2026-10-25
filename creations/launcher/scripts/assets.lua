@@ -217,7 +217,8 @@ end
 function M.new(app)
     local browser = {
         app = app,
-        index = IRCatalog.assets({ root = IRLauncher.catalogRoot() }),
+        root = app.assetRoot(),
+        index = IRCatalog.assets({ root = app.assetRoot() }),
         kind = 1,
         scroll = 0,
         widgets = {},
@@ -352,7 +353,27 @@ end
 
 function M.openSelected(browser)
     if browser.selected then
-        browser.app.openInEditor(dirname(browser.selected.path))
+        browser.app.openInEditor(browser.root, dirname(browser.selected.path))
+    end
+end
+
+-- Re-indexes for @p root (the active root) and drops the preview, which may
+-- hold an asset of the previous root.
+function M.setRoot(browser, root)
+    browser.root = root
+    browser.index = IRCatalog.assets({ root = root })
+    browser.scroll = 0
+    M.rebuild(browser)
+    M.report(browser)
+end
+
+function M.report(browser)
+    if IRTest then
+        local paths = {}
+        for _, entry in ipairs(browser.index.entries) do
+            paths[#paths + 1] = entry.path
+        end
+        IRTest.report("assetIndex", table.concat(paths, "|"))
     end
 end
 

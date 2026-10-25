@@ -10,6 +10,9 @@ L.header.settings = { x = 568, y = 5, w = 66, h = 18 }
 L.header.update = { x = 490, y = 5, w = 72, h = 18 }
 L.header.banner = { x = 150, y = 10 }
 L.header.openLog = { x = 400, y = 5, w = 84, h = 18 }
+-- The worktree picker, shown only while two or more roots are configured.
+L.header.picker = { x = 140, y = 7, w = 200, h = 14 }
+L.header.pickerBesideBanner = { x = 290, y = 7, w = 104, h = 14 }
 
 L.tree = { x = 0, y = 30, w = 200, h = 450 }
 L.tree.filter = { x = 6, y = 48, w = 188, h = 16 }
@@ -54,6 +57,9 @@ L.settings.favourites = { x = 210, y = 140 }
 L.settings.save = { x = 210, y = 160, w = 48, h = 16 }
 L.settings.revert = { x = 262, y = 160, w = 60, h = 16 }
 L.settings.close = { x = 326, y = 160, w = 54, h = 16 }
+L.settings.roots = { title = { x = 210, y = 182 }, x = 210, top = 196, step = 18, rows = 14,
+                     buttonW = 44, buttonH = 16, labelDx = 50,
+                     more = { x = 446, y = 178, w = 50, h = 16 } }
 
 L.assets = { x = 504, y = 30, w = 136, h = 450 }
 L.assets.left = 510
@@ -126,6 +132,10 @@ function L.update(tree, details, assets, log)
     setRect(L.settings.save, details.x + 8, details.y + 130, 48, 16)
     setRect(L.settings.revert, details.x + 60, details.y + 130, 60, 16)
     setRect(L.settings.close, details.x + 124, details.y + 130, 54, 16)
+    L.settings.roots.title.x, L.settings.roots.title.y = details.x + 8, details.y + 152
+    L.settings.roots.x, L.settings.roots.top = details.x + 8, details.y + 166
+    L.settings.roots.rows = math.max(1, math.floor((details.h - 174) / L.settings.roots.step))
+    setRect(L.settings.roots.more, details.x + details.w - 56, details.y + 148, 50, 16)
 
     setRect(L.assets, assets.x, assets.y, assets.w, assets.h)
     L.assets.left = assets.x + 6

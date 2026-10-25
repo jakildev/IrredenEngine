@@ -84,6 +84,8 @@ HandOffOutcome runHandOff(
     const std::optional<std::filesystem::path> &toolRoot = std::nullopt
 );
 
+/// Runs from @p toolService's active root, re-resolved now; a worktree that is
+/// gone refuses before the drain and launches nothing.
 HandOffOutcome runHandOff(
     const HandOffRequest &request,
     const HandOffEnvironment &environment,

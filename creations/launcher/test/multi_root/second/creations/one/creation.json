@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "Second One",
+  "description": "The second worktree's copy of the shared fixture creation.",
+  "group": "multi",
+  "kind": "demo",
+  "docs": ["docs/root.md"],
+  "targets": [
+    {
+      "name": "IRLauncherStub",
+      "display": "Stub target",
+      "package": true,
+      "presets": [
+        { "name": "First", "args": [] },
+        { "name": "Second", "args": ["--second"] },
+        { "name": "Third", "args": ["--third"] }
+      ]
+    }
+  ]
+}

@@ -2,10 +2,13 @@
 
 #include <gtest/gtest.h>
 
+#include "../common/multi_root_fixture.hpp"
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -326,6 +329,79 @@ TEST(CatalogScanTest, RefusesSymlinkEscape) {
     const IRCatalog::CatalogService service(root);
     EXPECT_THROW(service.scan("escape", "build"), std::invalid_argument);
     std::filesystem::remove_all(base, error);
+}
+
+TEST(CatalogScanTest, DiscoversOnlyLiveImmediateWorktrees) {
+    const IRTest::MultiRootFixture fixture("ir_catalog_roots_test");
+    const IRCatalog::CatalogService service(fixture.base());
+    EXPECT_EQ(service.roots(), (std::vector<std::string>{".", ".claude/worktrees/second"}));
+}
+
+TEST(CatalogScanTest, ScanRootsReadsEachRootFromItsOwnTree) {
+    const IRTest::MultiRootFixture fixture("ir_catalog_scan_roots_test");
+    const IRCatalog::CatalogService service(fixture.base());
+    const std::vector<std::string> roots{".claude/worktrees/second", ".", "."};
+    const auto catalog = service.scanRoots(roots);
+
+    ASSERT_EQ(catalog.creations_.size(), 2u);
+    const auto &base = catalog.creations_[0];
+    const auto &second = catalog.creations_[1];
+    EXPECT_EQ(base.root_, ".");
+    EXPECT_EQ(base.dir_, "creations/same");
+    EXPECT_EQ(second.root_, ".claude/worktrees/second");
+    EXPECT_EQ(second.dir_, ".claude/worktrees/second/creations/same");
+    ASSERT_TRUE(base.manifest_.has_value());
+    ASSERT_TRUE(second.manifest_.has_value());
+    EXPECT_EQ(base.manifest_->name_, "Base same");
+    EXPECT_EQ(second.manifest_->name_, "Second same");
+
+    // Both manifests name `docs/root.md`; each resolves inside its own root.
+    ASSERT_EQ(base.manifest_->docs_.size(), 1u);
+    ASSERT_EQ(second.manifest_->docs_.size(), 1u);
+    EXPECT_EQ(base.manifest_->docs_[0], "docs/root.md");
+    EXPECT_EQ(second.manifest_->docs_[0], ".claude/worktrees/second/docs/root.md");
+    std::ifstream secondDoc(service.toolRoot() / second.manifest_->docs_[0]);
+    std::string secondText;
+    secondDoc >> secondText;
+    EXPECT_EQ(secondText, "second");
+
+    // The same target name resolves only from each root's own build tree.
+    ASSERT_EQ(base.targets_.size(), 1u);
+    ASSERT_EQ(second.targets_.size(), 1u);
+    EXPECT_EQ(base.targets_[0].exePath_, "build/IRSameTarget.exe");
+    EXPECT_EQ(second.targets_[0].exePath_, ".claude/worktrees/second/build/IRSameTarget.exe");
+    ASSERT_TRUE(base.targets_[0].lastRun_.has_value());
+    ASSERT_TRUE(second.targets_[0].lastRun_.has_value());
+    EXPECT_EQ(base.targets_[0].lastRun_->verdict_, "CLEAN");
+    EXPECT_EQ(second.targets_[0].lastRun_->verdict_, "CRASH");
+    EXPECT_EQ(base.targets_[0].packagePath_, "build/IRSameTarget-os-arch.zip");
+    EXPECT_EQ(
+        second.targets_[0].packagePath_,
+        ".claude/worktrees/second/build/IRSameTarget-os-arch.zip"
+    );
+}
+
+TEST(CatalogScanTest, ScanRootsRefusesNonRootIdsAndSkipsDeadWorktrees) {
+    const IRTest::MultiRootFixture fixture("ir_catalog_scan_roots_refusal_test");
+    const IRCatalog::CatalogService service(fixture.base());
+    for (const char *id :
+         {"creations/same",
+          "..",
+          "/etc",
+          ".claude/worktrees/../..",
+          ".claude/worktrees/second/.claude/worktrees/nested"}) {
+        const std::vector<std::string> roots{id};
+        EXPECT_THROW(service.scanRoots(roots), std::invalid_argument) << id;
+    }
+    for (const char *id :
+         {".claude/worktrees/link",
+          ".claude/worktrees/nomarker",
+          ".claude/worktrees/linkmarker",
+          ".claude/worktrees/bare",
+          ".claude/worktrees/missing"}) {
+        const std::vector<std::string> roots{id};
+        EXPECT_TRUE(service.scanRoots(roots).creations_.empty()) << id;
+    }
 }
 
 } // namespace

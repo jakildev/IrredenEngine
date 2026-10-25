@@ -11,6 +11,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace IRScript::detail {
 
@@ -179,6 +180,26 @@ option(sol::optional<sol::table> options, const char *name, const char *fallback
     return value.as<std::string>();
 }
 
+inline std::vector<std::string> rootList(sol::optional<sol::table> options) {
+    if (!options) {
+        throw std::invalid_argument("IRCatalog.scanRoots expects { roots = { ... } }");
+    }
+    sol::object value = (*options)["roots"];
+    if (!value.valid() || value.get_type() != sol::type::table) {
+        throw std::invalid_argument("IRCatalog roots must be a table of strings");
+    }
+    const sol::table table = value.as<sol::table>();
+    std::vector<std::string> roots;
+    for (std::size_t index = 1; index <= table.size(); ++index) {
+        sol::object entry = table[index];
+        if (entry.get_type() != sol::type::string) {
+            throw std::invalid_argument("IRCatalog roots must be a table of strings");
+        }
+        roots.push_back(entry.as<std::string>());
+    }
+    return roots;
+}
+
 inline void bindCatalog(LuaScript &script, const std::filesystem::path &toolRoot) {
     auto service = std::make_shared<IRCatalog::CatalogService>(toolRoot);
     sol::state &lua = script.lua();
@@ -197,6 +218,16 @@ inline void bindCatalog(LuaScript &script, const std::filesystem::path &toolRoot
             return catalogToLua(
                 sol::state_view{script.lua().lua_state()},
                 service->scan(root, buildDir)
+            );
+        });
+    table["roots"] = statefulLuaFunction([&script, service]() -> sol::table {
+        return stringsToLua(sol::state_view{script.lua().lua_state()}, service->roots());
+    });
+    table["scanRoots"] =
+        statefulLuaFunction([&script, service](sol::optional<sol::table> options) -> sol::table {
+            return catalogToLua(
+                sol::state_view{script.lua().lua_state()},
+                service->scanRoots(rootList(options))
             );
         });
     table["assets"] =

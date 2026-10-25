@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../common/multi_root_fixture.hpp"
+
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -157,6 +159,36 @@ TEST(LuaCatalogTest, MirrorsPackageFlagAndArchivePath) {
     EXPECT_TRUE(result.valid()) << sol::error(result).what();
 
     std::filesystem::remove_all(base, error);
+}
+
+TEST(LuaCatalogTest, MirrorsRootsAndScanRoots) {
+    const IRTest::MultiRootFixture fixture("ir_lua_catalog_roots_test");
+    IRScript::LuaScript script;
+    script.bindLuaCatalog(fixture.base());
+    const auto result = script.lua().safe_script(R"lua(
+        local roots = IRCatalog.roots()
+        assert(#roots == 2 and roots[1] == "." and roots[2] == ".claude/worktrees/second")
+        local catalog = IRCatalog.scanRoots{ roots = roots }
+        assert(#catalog.creations == 2)
+        local base, second = catalog.creations[1], catalog.creations[2]
+        assert(base.root == "." and base.dir == "creations/same")
+        assert(second.root == ".claude/worktrees/second")
+        assert(second.dir == ".claude/worktrees/second/creations/same")
+        assert(second.manifest.docs[1] == ".claude/worktrees/second/docs/root.md")
+        assert(base.targets[1].name == second.targets[1].name)
+        assert(base.targets[1].lastRun.verdict == "CLEAN")
+        assert(second.targets[1].lastRun.verdict == "CRASH")
+        assert(second.targets[1].exePath == ".claude/worktrees/second/build/IRSameTarget.exe")
+    )lua");
+    EXPECT_TRUE(result.valid()) << sol::error(result).what();
+
+    expectLuaError(script, "IRCatalog.scanRoots{}", "roots must be a table of strings");
+    expectLuaError(script, "IRCatalog.scanRoots{ roots = { 1 } }", "roots must be a table");
+    expectLuaError(
+        script,
+        "IRCatalog.scanRoots{ roots = { 'creations/same' } }",
+        "is not a worktree root id"
+    );
 }
 
 TEST(LuaCatalogTest, RefusesEscapingPathsBeforeScanning) {

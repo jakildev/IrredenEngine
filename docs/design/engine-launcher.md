@@ -216,9 +216,13 @@ its check. Every failure happens before a child is started.
 
 | Tool | Shape | Lua fields | Child |
 |---|---|---|---|
-| `ir-build` | work | `target` | `ir-build --target <target>`, cwd `<root>`, `IRREDEN_BUILD_DIR=<root>/build` |
-| `editor` | hand-off | `path`, `editor` (optional, a name from the fixed list) | `<editor> <resolved path>`, cwd `<root>` (D8) |
-| `open-folder` | hand-off | `path` | `open` / `explorer` / `xdg-open` `<resolved path>`, cwd `<root>` |
+| `ir-build` | work | `target` | `ir-build --target <target>`, cwd `<active>`, `IRREDEN_BUILD_DIR=<active>/build` |
+| `editor` | hand-off | `path`, `editor` (optional, a name from the fixed list) | `<editor> <resolved path>`, cwd `<active>` (D8) |
+| `open-folder` | hand-off | `path` | `open` / `explorer` / `xdg-open` `<resolved path>`, cwd `<active>` |
+
+`<root>` below is the base, and `<active>` is the active root, the base
+until the launcher selects a worktree (D7-v2). A `path` is base-relative and
+must also resolve inside `<active>`.
 
 - **The root is trusted state, never a Lua value.** `<root>` is the checkout
   the launcher was built from (D7). CMake defines `IR_LAUNCHER_ROOT` on the
@@ -226,7 +230,9 @@ its check. Every failure happens before a child is started.
   `main_lua.cpp` calls `IREngine::setToolRoot(IR_LAUNCHER_ROOT)`. That C++
   call canonicalizes the path, requires an existing directory, and may run
   only once: a second call raises. Lua can read the root
-  (`IREngine.toolRoot()`) but has no call that changes it. `spawnTool` raises
+  (`IREngine.toolRoot()`) but has no call that changes it; the active root
+  moves only to a discovered worktree, through the launcher-local selector
+  (D7-v2). `spawnTool` raises
   in any process that never set a root, so no other creation gets the
   service. The service class takes the root as a constructor argument, so
   tests can point it at a fixture tree.
@@ -277,9 +283,10 @@ its check. Every failure happens before a child is started.
   of the rule and the existing `IRFile` tests prove no behaviour change.
 - **No caller-chosen cwd.** `ir-build` resolves its tree from
   `git rev-parse --show-toplevel` of its cwd. A cwd that is merely contained
-  could still name a nested checkout under the root: a `.claude/worktrees/`
-  pool or the private `creations/game` clone. Building one runs that
-  checkout's CMake. So the cwd is always `<root>`.
+  could still name a nested checkout under the root, such as the private
+  `creations/game` clone. Building one runs that checkout's CMake. So the cwd
+  is always `<active>`: the base, or a worktree that discovery reported and
+  the launcher selected (D7-v2), never a Lua-chosen directory.
 - **No caller-chosen build dir.** A configured build dir carries its own
   source dir in `CMakeCache.txt`, so `cmake --build` on another checkout's
   tree builds that checkout. The service therefore sets `IRREDEN_BUILD_DIR`
@@ -289,10 +296,9 @@ its check. Every failure happens before a child is started.
   override a launcher Build would compile the demo into the launcher's own
   tree. For
   every other tool the service removes `IRREDEN_BUILD_DIR` from the child's
-  environment. Lua sets no environment variable. Run uses the same fixed
-  tree (D5): containment alone cannot tell `<root>/build` from a nested
-  checkout's `.claude/worktrees/pool-1/build`, so neither service takes a
-  build dir from Lua.
+  environment. Lua sets no environment variable. Run uses the same tree
+  (D5): containment alone cannot tell `<active>/build` from a nested
+  checkout's build tree, so neither service takes a build dir from Lua.
 
 **Ownership and shutdown.** The service owns exactly what it must be able
 to stop. A tool table entry has one of two shapes:
@@ -390,9 +396,10 @@ Three extensions to the hand-off contract:
   string. A Lua caller could pass `{ "--build-dir", "/elsewhere", "x" }`
   and choose the tree itself, defeating the fixed tree below. The check
   also keeps the result file name below to a single safe path component.
-- **In a process with a tool root, the hand-off runs from `<root>/build`.**
-  `runHandOff` passes `ir-run --build-dir <root>/build`, built from the tool
-  root (D4), never from a Lua value. Without it the child inherits the
+- **In a process with a tool root, the hand-off runs from `<active>/build`.**
+  `runHandOff` passes `ir-run --build-dir <active>/build`, built from the
+  active root (D4, D7-v2), never from a Lua value. A selected worktree that
+  is gone refuses before the drain and launches nothing. Without it the child inherits the
   launcher's own `IRREDEN_BUILD_DIR` (`build-launcher/installed/<id>/`, D6)
   and looks for the demo in the wrong tree. Lua has no `buildDir` key, and
   `handOff` raises on any key other than `argv` and `resume`, so a passed
@@ -405,7 +412,7 @@ Three extensions to the hand-off contract:
   `--build-dir`, and the child inherits the parent's `IRREDEN_BUILD_DIR`.
 - `ir-run --result-file <path>` writes the `RESULT=` verdict it prints as
   JSON (`verdict`, `exe`, `exit`, `signal`, `argv`, `at`). With a tool root,
-  `handOff` passes `<root>/build/ir-run-results/<exe>.last.json` and surfaces
+  `handOff` passes `<active>/build/ir-run-results/<exe>.last.json` and surfaces
   the parsed verdict as `HandOffResult::verdict_` (Lua `r.verdict`); without
   one it passes no result file and `r.verdict` is absent. The catalog
   (D3) reads the same file for "last run" on every target, so a run from the
@@ -576,29 +583,112 @@ Rejected:
   would need a second, detached launch path with its own handle and reaping
   rules on each OS.
 
-### D7 — One root in v1: the checkout the launcher was built from
+### D7 — Roots: the base checkout, then its worktrees
 
-The root is the checkout `IRLauncher` was compiled from (`IR_LAUNCHER_ROOT`,
-D4). There is no `--root` flag, because a command-line root would let any
-`handOff` parent aim a launcher at another tree and build it. The scan covers
-the root's `creations/**`, gitignored private creations included.
-`--catalog-root <path>` changes only the default `root` of `IRCatalog.scan`,
-a read-only walk. It is root-relative and goes through the same check, so the
-fixture tree that GUI sessions and render-verify show lives inside the
-checkout. The tool root never follows it. Unit tests point the C++ services
-at a fixture tree through their constructors. A root
-list in the settings store (D8) is v2, with a worktree picker; each entry
-would go through the same containment rules. The data model already carries
-`root` on every creation, so nothing in the UI assumes a single root.
+**The v1 invariant, kept.** The *base* is the checkout `IRLauncher` was
+compiled from (`IR_LAUNCHER_ROOT`, D4). It is set once and never moves. There
+is no `--root` flag, because a command-line root would let any `handOff`
+parent aim a launcher at another tree and build it. `--catalog-root <path>`
+names only the source of a read-only catalog scan. It is base-relative and
+goes through the same check, so the fixture tree that the v1 GUI sessions and
+render-verify show lives inside the checkout. Its rows run in the base: the
+launcher gives every one of them the root `.`, and the path never joins the
+root list or the picker, so `--catalog-root` grants no execution authority.
+Unit tests point the C++ services at a fixture tree through their
+constructors.
 
-Rejected: a configurable root list on day one — setup before value;
-auto-scanning `~/src` — noisy with ten fleet worktrees.
+#### D7-v2 — Worktree roots and the picker
+
+- **The root universe.** A root is named by an id, never a path. The ids are
+  `.` (the base) and `.claude/worktrees/<name>`, where `<name>` is exactly
+  one component that is not empty, `.` or `..`. A worktree id is live when
+  `<base>/.claude/worktrees/<name>` is a real directory (no symlink on the way
+  down), its `.git` is a regular file, not a symlink (the marker
+  `git worktree add` writes), and its `creations/` is a real directory.
+  Discovery reads only that; it never runs Git, and a missing, malformed,
+  symlinked or broken entry is skipped. Nested checkouts are not roots:
+  `creations/game`, a worktree under a worktree, `~/src`. The check has one
+  home, `IRUtility::resolveWorktreeRoot` / `discoverWorktreeRoots`
+  (`engine/utility`), which the catalog, the tool service and the launcher
+  binding all call.
+- **Configured roots live in settings (D8) as data, never authority.**
+  `launcher.irkv` holds a sorted `roots` list and `active_root`. Load keeps
+  only the stored ids that fresh discovery reports, always adds `.`, and
+  falls back to `.` when the stored active root is gone. The base cannot be
+  removed. The settings panel lists each discovered worktree with ADD or
+  DROP; there is no free-form path field.
+- **One base, one active root.** `ToolService` holds the immutable base
+  (`setRoot`, one-shot, D4) and an active root, initially `.`.
+  `selectRoot(id)` resolves the id under the base and refuses an id that is
+  not a live worktree, or another root while a tool run is live (re-selecting
+  the active root only re-checks it). Every request re-resolves the active
+  root, so a worktree deleted after it was selected starts nothing. Lua
+  reaches selection only through the launcher-local
+  `IRLauncher.selectRoot(id)`, which first checks the id against fresh
+  discovery; there is no general `IREngine` Lua setter.
+- **Process state follows the active root; paths stay base-relative.**
+  `ir-build` runs the fixed wrapper resolved beside `IR_RUN_WRAPPER` or on
+  `PATH`, never a script from the selected checkout, with cwd `<active>` and
+  `IRREDEN_BUILD_DIR=<active>/build`. `ir-build` builds the tree its cwd and
+  that variable name, so this is per-root routing. `handOff` passes
+  `--build-dir <active>/build` and its result file below it (D5). Every
+  catalog, image and tool path stays relative to the base: creation
+  directories, thumbnails, docs, executables, verdicts and archives. An
+  `editor` / `open-folder` path must also resolve inside the active root.
+  The launcher's own files (its log, the update log) open through
+  `IRLauncher.spawnBaseTool`, a base-scoped `editor` / `open-folder` that
+  cannot build, cannot hand off, and leaves the active root alone.
+- **The catalog aggregates configured roots.** `IRCatalog.roots()` is
+  discovery, and `IRCatalog.scanRoots{ roots }` scans each listed root once,
+  in id order, against its own `<root>/build`. It raises for an id not
+  spelled as a root id and skips one that is no longer live. `creation.root`
+  is the root id. Manifest docs resolve inside the scanned root, then are
+  expressed base-relative, so two worktrees naming `docs/x.md` open their
+  own copies. `scan` and `assets` are unchanged.
+- **Selection and actions re-confirm the root.** Selecting a creation selects
+  its root. Build, Run, Package, Open in IDE, Open folder and docs actions
+  each select the creation's root immediately before they dispatch, and Run
+  does it again just before the hand-off. A refused or vanished root logs the
+  reason and launches nothing, so no action inherits a stale picker choice.
+- **The picker switches without a restart.** A picker change selects the
+  root, clears the creation selection and closes the settings panel, and
+  re-indexes the asset panel for that root. It does not rescan the catalog.
+- **One configured root looks like v1.** With one configured root the tree
+  has no root tier and the header has no picker. Scripted runs start from
+  empty settings, so every v1 session and the render-verify reference stay
+  single-root on every host. With two or more, each root is a top-level
+  group holding its own groups and Unsorted, and the header picker lists the
+  roots.
+- **Identities are root-qualified.** Favourites stay keyed by the
+  base-relative `creation.dir`, which is already unique across roots.
+  Presets are keyed `<creation.dir>|<target>`, and tree folds by
+  `<root>`-qualified group paths. A preset stored under a bare target name
+  applies once to the base-root creation with a target of exactly that name;
+  a name no base-root target carries is dropped, never guessed from a display
+  name. The next save writes only qualified keys.
+- **The validator-only exception.** The `multi_root` GUI session needs a
+  deterministic two-worktree tree, and git drops a nested `.git` from a
+  commit. So, chosen only by the compiled `--gui-session` enum and never by a
+  Lua value, the launcher copies `creations/launcher/test/multi_root/` to a
+  fresh tree under its run directory, writes the worktree's `.git` marker
+  and the invalid candidates, and makes that tree the base for the catalog,
+  the image binding and the tool service. It also points `IR_RUN_WRAPPER` at
+  the committed stub `ir-run`, with the stub `ir-build` beside it. Every
+  other run uses `IR_LAUNCHER_ROOT`.
+
+Rejected: a free-form root path or `--root` (D4's reason); trusting a stored
+root as a path; arbitrary nested checkouts such as `creations/game`;
+auto-scanning `~/src`; catalog paths relative to the active root (they would
+break thumbnails, favourites and cross-root identity); rebinding the catalog
+or the widgets on every switch; a root passed with each Lua tool request.
 
 ### D8 — Settings in `.irkv`; the IDE is a per-host setting
 
 Launcher settings live in the launcher's own run dir through `IRSave`
-(`save_files/launcher.irkv`): editor command, favourites, collapsed groups,
-last preset per target, panel layout (the dockspace serializer). The `editor`
+(`save_files/launcher.irkv`): editor command, favourites, root-qualified
+collapsed groups, last preset per creation target (`<creation.dir>|<target>`),
+panel layout (the dockspace serializer), and the configured `roots` and
+`active_root` (D7-v2, revalidated against discovery on every load). The `editor`
 tool (D4) runs one entry of a fixed C++ list (`cursor`, `code`) resolved on
 `PATH`. The settings panel stores the entry's name, and a stored value
 outside the list falls back to the first entry found. A stored string is
@@ -665,19 +755,25 @@ scope; the asset's own tool is.
 
 No fleet integration (jobs, PRs, claims); no export button, and the Package
 button (see UI) builds the archive only: the clean-box smoke stays with the
-cross-host-shippability objective; no target renaming; no multi-root; no embedding a running demo in
-the launcher window.
+cross-host-shippability objective; no target renaming; no root outside the
+base and its immediate `.claude/worktrees/*` (D7-v2); no embedding a running
+demo in the launcher window.
 
 ## UI
 
 A four-zone dockspace (`ui_dockspace` layout API, serialized to settings):
 
+- **Header.** Title, the worktree picker (only with two or more configured
+  roots, D7-v2), Settings, and the supervised-only Update.
 - **Left — catalog tree.** Groups from `group` paths, collapsible, with a
   filter text input over name, tags and description. Favourites float to a
   pinned group. Invalid manifests and manifest-less directories show in a
-  trailing "Unsorted" group so nothing on disk is invisible.
+  trailing "Unsorted" group so nothing on disk is invisible. With two or
+  more configured roots each root is a top-level group over its own groups
+  and Unsorted.
 - **Center — details.** Thumbnail, name, description, docs links (open in
-  editor), tags, and one row per target: display name, built state and mtime,
+  editor), tags, the creation's root when two or more are configured, and
+  one row per target: display name, built state and mtime,
   last verdict with time, preset dropdown, Build, Run, Open in IDE, Open
   folder. A target with `package` also gets Package, which builds
   `<name>Package` through the same `ir-build` tool slot as Build, and a
@@ -699,13 +795,13 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
 
 | Table | Call | Owner |
 |---|---|---|
-| `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` (relative to the bound tool root); installed only by `bindLuaCatalog(toolRoot)` | `engine/catalog` |
-| `IREngine` | `spawnTool{ tool, target \| path [, editor] }` → handle (`poll`, `exit`, `kill`; `editor` is the optional editor name a `tool = "editor"` request launches); `toolEditors()` → `{ name, found }` entries; `toolRoot()`; `handOff{ argv }` → `r.verdict` (runs from `<root>/build` when a tool root is set, D5) | `engine/world` |
+| `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` (relative to the bound tool root); `roots()` (discovery, D7-v2), `scanRoots{ roots }` (each root against its own build tree); installed only by `bindLuaCatalog(toolRoot)` | `engine/catalog` |
+| `IREngine` | `spawnTool{ tool, target \| path [, editor] }` → handle (`poll`, `exit`, `kill`; `editor` is the optional editor name a `tool = "editor"` request launches; runs in the active root); `toolEditors()` → `{ name, found }` entries; `toolRoot()` (the base); `handOff{ argv }` → `r.verdict` (runs from `<active>/build` when a tool root is set, D5) | `engine/world` |
 | `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` (`path` relative to the image base bound by `bindWidgets`, D9); `isPressed(id)` | `engine/prefabs/irreden/render` |
 | `IRRender` | `viewportSubjectOversize(id)` | `engine/script` |
 | `IRGui` | `focus(id)` queues keyboard focus for a live value widget at the next widget-input frame | `engine/prefabs/irreden/render` |
 | `IRLayout` | `SizeMode`, `makeRow`, `makeColumn`, `makeLeaf`, `buildSplitters`, `setRoot`, `leafRect`, `revision`, `serialize`, `deserialize` | `engine/prefabs/irreden/render` |
-| `IRLauncher` | `requestUpdate()` (launcher-local, `--supervised` only, D6) | `creations/launcher` |
+| `IRLauncher` | `requestUpdate()` (launcher-local, `--supervised` only, D6); `selectRoot(id)` → nil or the refusal, `spawnBaseTool{ tool, path [, editor] }` (D7-v2) | `creations/launcher` |
 
 ## Validators
 
@@ -876,6 +972,26 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   verdict), `asset_preview` (selecting a `.vxs` shows a viewport whose
   entity-id readback names the loaded entity), `image_widget` (a known PNG
   resamples to the expected texel colours at four probe points).
+- D7-v2, direct: `IrredenEngineTest --gtest_filter='CatalogScanTest.*:LuaCatalogTest.*'`
+  over a temporary base with one live worktree and a symlinked worktree, a
+  marker-less one, a symlinked marker, one without `creations/`, and one
+  nested inside the live worktree. Discovery reports `.` and the live
+  worktree only; `scanRoots` reads the same target name and the same docs
+  path from each root's own tree and rejects non-root ids.
+  `--gtest_filter='ToolSpawnTest.*:HandOffTest.*:LuaEngineHandOffTest.*'`:
+  a selected worktree is the fixed `ir-build` wrapper's cwd and
+  `IRREDEN_BUILD_DIR`, and the hand-off's `--build-dir` and result file; a
+  switch while a tool is live, escaping or non-root ids, a nested checkout
+  and a deleted worktree start zero children and drain nothing; a base-scoped
+  `editor` still opens a base file after a switch.
+- D7-v2, end to end: `python3 scripts/gui-verify.py IRLauncher --
+  --gui-session multi_root` (no `--catalog-root`) over the generated tree.
+  Discovery skips the invalid candidates, ADD shows the root tier and the
+  picker, a picker switch changes the active root and its asset index in the
+  same process, Build, Run and Package record each root's own cwd,
+  `IRREDEN_BUILD_DIR`, `--build-dir` and archive, presets, roots and folds
+  survive a save and revert, and once the worktree is deleted its stale
+  selection launches nothing and reload falls back to `.`.
 - `python3 scripts/render-verify.py --target IRLauncher` — the main screen
   over the fixture catalog, and `--target IRUIWidgetsDemo` for the image
   widget's reference.
@@ -899,5 +1015,5 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   the shown names.
 - The `<target>Package` button has landed (UI, details). The clean-box smoke
   row belongs to `docs/design/objectives/cross-host-shippability.md`.
-- Multi-root and a worktree picker are the first v2 slice; a fleet status
-  panel is deliberately not planned.
+- Worktree roots and the picker (D7-v2) are the first v2 slice; a fleet
+  status panel is deliberately not planned.

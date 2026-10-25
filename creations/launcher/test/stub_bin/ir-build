@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# The ir-build the details_build and details_package GUI sessions run in place
-# of the real one: three known lines, then a clean exit. A `<target>Package`
-# request also reports its argument count and writes the archive the real
-# package target would, into the build dir the tool service names.
+# The ir-build the details_build, details_package and multi_root GUI sessions
+# run in place of the real one: three known lines, the checkout it runs in,
+# then a clean exit. A `<target>Package` request also reports its argument
+# count and writes the archive the real package target would, into the build
+# dir the tool service names.
+# Paths print in forward-slash form on every host (cygpath -m under MSYS2).
+mixed() {
+    if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
 for line in 1 2 3; do
     echo "IR_LAUNCHER_STUB line $line $*"
 done
+echo "IR_LAUNCHER_STUB cwd $(mixed "$(pwd -P)") build $(mixed "${IRREDEN_BUILD_DIR-unset}")"
 if [[ "${1:-}" == "--target" && "${2:-}" == *Package ]]; then
     echo "IR_LAUNCHER_STUB argc $#"
     printf 'stub archive\n' >"$IRREDEN_BUILD_DIR/${2%Package}-fixture-test.zip"
