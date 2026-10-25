@@ -242,6 +242,15 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
             }
         }
 
+        int pointerRow = -1;
+        if (dd.isOpen_) {
+            const float withinX = mouseGuiTrixel_.x - static_cast<float>(guiPos.pos_.x);
+            if (withinX >= 0.0f && withinX < static_cast<float>(widget.size_.x)) {
+                pointerRow =
+                    dd.itemAtOffsetY(layout, mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y));
+            }
+        }
+
         if (state.keyAction_ == Action::OPEN_OR_CLOSE) {
             dd.isOpen_ = !dd.isOpen_;
             if (dd.isOpen_) {
@@ -255,6 +264,10 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
             dd.isOpen_ &&
             (state.keyAction_ == Action::MOVE_UP || state.keyAction_ == Action::MOVE_DOWN)
         ) {
+            if (!keyboardOwnsHighlight_ && pointerRow >= 0) {
+                keyboardDropdown_ = entityId;
+                keyboardRow_ = pointerRow;
+            }
             ensureKeyboardCursor(entityId, dd);
             if (keyboardRow_ >= 0) {
                 const int ordinal = dd.shownOrdinalOf(keyboardRow_);
@@ -268,12 +281,6 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
             }
         } else if (dd.isOpen_ && state.keyAction_ == Action::SELECT) {
             ensureKeyboardCursor(entityId, dd);
-            int pointerRow = -1;
-            const float withinX = mouseGuiTrixel_.x - static_cast<float>(guiPos.pos_.x);
-            if (withinX >= 0.0f && withinX < static_cast<float>(widget.size_.x)) {
-                pointerRow =
-                    dd.itemAtOffsetY(layout, mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y));
-            }
             const int selected =
                 !keyboardOwnsHighlight_ && pointerRow >= 0 ? pointerRow : keyboardRow_;
             if (selected >= 0) {
@@ -293,23 +300,13 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         }
         syncFloatingZOrder(widget, dd.isOpen_);
 
-        // Compute the row the cursor is currently over, if any. -1 = not
-        // over a row (cursor on header, outside widget, or list empty).
-        int rowFromMouse = -1;
-        if (dd.isOpen_) {
-            const float withinX = mouseGuiTrixel_.x - static_cast<float>(guiPos.pos_.x);
-            if (withinX >= 0.0f && withinX < static_cast<float>(widget.size_.x)) {
-                rowFromMouse =
-                    dd.itemAtOffsetY(layout, mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y));
-            }
-        }
         if (keyboardOwnsHighlight_ && (mouseGuiTrixel_.x != keyboardMousePosition_.x ||
                                        mouseGuiTrixel_.y != keyboardMousePosition_.y)) {
             keyboardOwnsHighlight_ = false;
         }
         state.dragValue_ = static_cast<float>(
-            !keyboardOwnsHighlight_ && rowFromMouse >= 0
-                ? rowFromMouse
+            !keyboardOwnsHighlight_ && pointerRow >= 0
+                ? pointerRow
                 : (keyboardDropdown_ == entityId ? keyboardRow_ : -1)
         );
 
@@ -329,8 +326,8 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
 
         // Open + clicked: if a row was hovered at release, select it.
         // `itemAtOffsetY` already bounded the index, so >= 0 is the whole test.
-        if (rowFromMouse >= 0) {
-            dd.selectedIndex_ = rowFromMouse;
+        if (pointerRow >= 0) {
+            dd.selectedIndex_ = pointerRow;
         }
         closeDropdown(entityId, dd, *this);
         collapseHitbox(hitbox, widget);

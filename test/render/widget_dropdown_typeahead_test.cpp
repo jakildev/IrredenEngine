@@ -22,8 +22,10 @@
 
 namespace {
 
-IRMath::vec2 typeaheadOffscreenMouse() {
-    return IRMath::vec2(-1000.0f);
+IRMath::vec2 g_typeaheadMousePosition = IRMath::vec2(-1000.0f);
+
+IRMath::vec2 typeaheadMousePosition() {
+    return g_typeaheadMousePosition;
 }
 
 IRMath::ivec2 typeaheadCanvas() {
@@ -38,6 +40,7 @@ class WidgetDropdownTypeahead : public testing::Test {
     }
 
     void SetUp() override {
+        g_typeaheadMousePosition = IRMath::vec2(-1000.0f);
         IRWindow::g_irglfwWindow = reinterpret_cast<IRWindow::IRGLFWWindow *>(windowSentinel_);
         inputManager_.emplace();
         IRInput::beginSyntheticInput();
@@ -46,7 +49,7 @@ class WidgetDropdownTypeahead : public testing::Test {
         auto *params =
             systemManager_.getSystemParams<IRSystem::System<IRSystem::WIDGET_INPUT>>(input);
         ASSERT_NE(params, nullptr);
-        params->mousePosition_ = &typeaheadOffscreenMouse;
+        params->mousePosition_ = &typeaheadMousePosition;
         params->guiCanvasSize_ = &typeaheadCanvas;
         systemManager_.registerPipeline(
             IRTime::Events::INPUT,
@@ -192,20 +195,64 @@ TEST_F(WidgetDropdownTypeahead, ArrowAndEnterPickShownRows) {
     EXPECT_EQ(static_cast<int>(state.dragValue_), 1) << "Up clamps at the first match";
     tap(IRInput::kKeyButtonDown);
     EXPECT_EQ(static_cast<int>(state.dragValue_), 3);
+    tap(IRInput::kKeyButtonDown);
+    EXPECT_EQ(static_cast<int>(state.dragValue_), 4);
+    tap(IRInput::kKeyButtonDown);
+    EXPECT_EQ(static_cast<int>(state.dragValue_), 27);
+    tap(IRInput::kKeyButtonDown);
+    EXPECT_EQ(static_cast<int>(state.dragValue_), 27) << "Down clamps at the last match";
+    tap(IRInput::kKeyButtonUp);
+    EXPECT_EQ(static_cast<int>(state.dragValue_), 4) << "Up returns from the last match";
     tap(IRInput::kKeyButtonEnter);
 
     const auto &dropdown = IREntity::getComponent<IRComponents::C_WidgetDropdown>(dropdownId_);
-    EXPECT_EQ(dropdown.selectedIndex_, 3);
+    EXPECT_EQ(dropdown.selectedIndex_, 4);
     EXPECT_FALSE(dropdown.isOpen_);
     EXPECT_TRUE(dropdown.typeahead_.empty());
     auto selected = lua_.lua().safe_script("return IRGui.dropdownSelected(dd)");
     ASSERT_TRUE(selected.valid());
-    EXPECT_EQ(selected.get<int>(), 4);
+    EXPECT_EQ(selected.get<int>(), 5);
 
     tap(IRInput::kKeyButtonL);
     tap(IRInput::kKeyButtonO);
     tap(IRInput::kKeyButtonEnter);
     EXPECT_EQ(dropdown.selectedIndex_, 1) << "Enter defaults to the first match";
+    EXPECT_FALSE(dropdown.isOpen_);
+}
+
+TEST_F(WidgetDropdownTypeahead, RestingPointerYieldsToArrowsAndClickStillPicks) {
+    IRPrefab::Widget::focus(dropdownId_);
+    frame();
+    tap(IRInput::kKeyButtonL);
+    tap(IRInput::kKeyButtonO);
+
+    auto &dropdown = IREntity::getComponent<IRComponents::C_WidgetDropdown>(dropdownId_);
+    auto &state = IREntity::getComponent<IRComponents::C_WidgetState>(dropdownId_);
+    auto &hitbox = IREntity::getComponent<IRComponents::C_HitBox2DGui>(dropdownId_);
+    const auto layout = dropdown.stripLayout(690, 20, 720);
+    g_typeaheadMousePosition = IRMath::vec2(21.0f, 690.0f + dropdown.itemCenterOffsetY(layout, 3));
+    hitbox.hovered_ = true;
+    frame();
+    ASSERT_EQ(static_cast<int>(state.dragValue_), 3);
+
+    tap(IRInput::kKeyButtonDown);
+    EXPECT_EQ(static_cast<int>(state.dragValue_), 4);
+    tap(IRInput::kKeyButtonEnter);
+    EXPECT_EQ(dropdown.selectedIndex_, 4);
+    EXPECT_FALSE(dropdown.isOpen_);
+
+    g_typeaheadMousePosition = IRMath::vec2(-1000.0f);
+    hitbox.hovered_ = false;
+    tap(IRInput::kKeyButtonL);
+    tap(IRInput::kKeyButtonO);
+    const auto reopenedLayout = dropdown.stripLayout(690, 20, 720);
+    g_typeaheadMousePosition =
+        IRMath::vec2(21.0f, 690.0f + dropdown.itemCenterOffsetY(reopenedLayout, 27));
+    hitbox.hovered_ = true;
+    frame();
+    ASSERT_EQ(static_cast<int>(state.dragValue_), 27);
+    tap(IRInput::kMouseButtonLeft);
+    EXPECT_EQ(dropdown.selectedIndex_, 27);
     EXPECT_FALSE(dropdown.isOpen_);
 }
 
@@ -301,9 +348,54 @@ TEST_F(WidgetDropdownTypeahead, BareAndModifiedCommandsHaveOneConsumer) {
     EXPECT_EQ(escapeCommand, 1);
 }
 
+TEST_F(WidgetDropdownTypeahead, PointerFocusAndHotkeysKeepOneConsumer) {
+    int bareM = 0;
+    commandManager_->createCommand(IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonM, [&] {
+        ++bareM;
+    });
+    ASSERT_TRUE(
+        IRPrefab::Widget::setHotkey(
+            dropdownId_,
+            IRInput::kKeyButtonP,
+            IRInput::kModifierAlt,
+            "PARAMETER"
+        )
+    );
+    const auto other =
+        IRPrefab::Widget::makeButton(IRMath::ivec2(240, 690), IRMath::ivec2(80, 20), "OTHER");
+    ASSERT_TRUE(IRPrefab::Widget::setHotkey(other, IRInput::kKeyButtonM));
+
+    auto &dropdown = IREntity::getComponent<IRComponents::C_WidgetDropdown>(dropdownId_);
+    auto &hitbox = IREntity::getComponent<IRComponents::C_HitBox2DGui>(dropdownId_);
+    g_typeaheadMousePosition = IRMath::vec2(21.0f, 695.0f);
+    hitbox.hovered_ = true;
+    press(IRInput::kMouseButtonLeft);
+    ASSERT_EQ(IRPrefab::Widget::focusedWidget(), dropdownId_);
+    ASSERT_FALSE(IRPrefab::Widget::focusVisible());
+    ASSERT_FALSE(dropdown.isOpen_);
+    tap(IRInput::kKeyButtonM);
+    EXPECT_EQ(bareM, 1);
+    EXPECT_TRUE(dropdown.typeahead_.empty());
+    EXPECT_FALSE(dropdown.isOpen_);
+    release(IRInput::kMouseButtonLeft);
+    tap(IRInput::kKeyButtonEscape);
+
+    press(IRInput::kKeyButtonLeftAlt);
+    tap(IRInput::kKeyButtonP);
+    release(IRInput::kKeyButtonLeftAlt);
+    ASSERT_TRUE(dropdown.isOpen_);
+    EXPECT_TRUE(dropdown.typeahead_.empty());
+
+    tap(IRInput::kKeyButtonM);
+    EXPECT_EQ(bareM, 1);
+    EXPECT_EQ(dropdown.typeahead_, "m");
+    EXPECT_FALSE(IRPrefab::Widget::wasClicked(other));
+}
+
 TEST_F(WidgetDropdownTypeahead, ModifierTransitionsStillGiveEachPressOneConsumer) {
     int bareM = 0;
     int controlZ = 0;
+    int altZ = 0;
     commandManager_->createCommand(IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButtonM, [&] {
         ++bareM;
     });
@@ -313,6 +405,13 @@ TEST_F(WidgetDropdownTypeahead, ModifierTransitionsStillGiveEachPressOneConsumer
         IRInput::kKeyButtonZ,
         [&] { ++controlZ; },
         IRInput::kModifierControl
+    );
+    commandManager_->createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonZ,
+        [&] { ++altZ; },
+        IRInput::kModifierAlt
     );
 
     IRPrefab::Widget::focus(dropdownId_);
@@ -329,10 +428,54 @@ TEST_F(WidgetDropdownTypeahead, ModifierTransitionsStillGiveEachPressOneConsumer
 
     IRInput::injectButton(IRInput::kKeyButtonZ, IRInput::RELEASED);
     IRInput::injectButton(IRInput::kKeyButtonLeftControl, IRInput::RELEASED);
+    frame();
+    press(IRInput::kKeyButtonLeftControl);
+    tap(IRInput::kKeyButtonZ);
+    EXPECT_EQ(controlZ, 2);
+    EXPECT_EQ(dropdown.typeahead_, "l");
+
+    tap(IRInput::kKeyButtonM);
+    EXPECT_EQ(bareM, 1);
+    EXPECT_EQ(dropdown.typeahead_, "l");
+    release(IRInput::kKeyButtonLeftControl);
+    tap(IRInput::kKeyButtonM);
+    EXPECT_EQ(bareM, 1);
+    EXPECT_EQ(dropdown.typeahead_, "lm");
+
+    press(IRInput::kKeyButtonLeftControl);
+    tap(IRInput::kKeyButtonM);
+    EXPECT_EQ(bareM, 2);
+    EXPECT_EQ(dropdown.typeahead_, "lm");
+    release(IRInput::kKeyButtonLeftControl);
+    frame();
+    tap(IRInput::kKeyButtonM);
+    EXPECT_EQ(bareM, 2);
+    EXPECT_EQ(dropdown.typeahead_, "lmm");
+
+    IRInput::injectButton(IRInput::kKeyButtonLeftAlt, IRInput::PRESSED);
+    IRInput::injectButton(IRInput::kKeyButtonZ, IRInput::PRESSED);
+    frame();
+    EXPECT_EQ(altZ, 1);
+    EXPECT_EQ(dropdown.typeahead_, "lmm");
+
+    IRInput::injectButton(IRInput::kKeyButtonZ, IRInput::RELEASED);
+    IRInput::injectButton(IRInput::kKeyButtonLeftAlt, IRInput::RELEASED);
+    frame();
+    press(IRInput::kKeyButtonLeftAlt);
+    tap(IRInput::kKeyButtonZ);
+    EXPECT_EQ(altZ, 2);
+    EXPECT_EQ(dropdown.typeahead_, "lmm");
+    release(IRInput::kKeyButtonLeftAlt);
+
+    press(IRInput::kKeyButtonLeftControl);
+    tap(IRInput::kKeyButtonM);
+    EXPECT_EQ(bareM, 3);
+    EXPECT_EQ(dropdown.typeahead_, "lmm");
+    IRInput::injectButton(IRInput::kKeyButtonLeftControl, IRInput::RELEASED);
     IRInput::injectButton(IRInput::kKeyButtonM, IRInput::PRESSED);
     frame();
-    EXPECT_EQ(bareM, 0);
-    EXPECT_EQ(dropdown.typeahead_, "lm");
+    EXPECT_EQ(bareM, 3);
+    EXPECT_EQ(dropdown.typeahead_, "lmmm");
     EXPECT_TRUE(commandManager_->isButtonCaptured(IRInput::kKeyButtonM));
     release(IRInput::kKeyButtonM);
 }
