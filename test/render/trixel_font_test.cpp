@@ -255,4 +255,16 @@ TEST(TrixelFont, MeasurementsFollowTheSize) {
     EXPECT_EQ(IRRender::measureText("AB\nCD"), IRMath::ivec2(14, 25));
 }
 
+// A text block's height is the inter-line steps plus one glyph: the same
+// height `measureText` reports for that many lines, with no trailing gap.
+TEST(TrixelFont, TextBlockHeightMatchesTheMeasuredLinesAndScalesWithFontSize) {
+    EXPECT_EQ(IRRender::textBlockHeight(1), IRRender::kGlyphHeight);
+    EXPECT_EQ(IRRender::textBlockHeight(2), IRRender::measureText("AB\nCD").y);
+    EXPECT_EQ(
+        IRRender::textBlockHeight(3, 1, TextSize::SMALL),
+        IRRender::measureText("A\nB\nC", 0, TextSize::SMALL).y
+    );
+    EXPECT_EQ(IRRender::textBlockHeight(2, 3), 3 * IRRender::textBlockHeight(2));
+}
+
 } // namespace

@@ -112,6 +112,13 @@ inline void renderText(
     }
 }
 
+// Height in trixels of a block of `lineCount` lines at `fontSize`: the
+// inter-line steps plus one glyph row, so the last row carries no line gap.
+inline int textBlockHeight(int lineCount, int fontSize = 1, TextSize size = TextSize::LARGE) {
+    const GlyphMetrics metrics = glyphMetrics(size);
+    return ((lineCount - 1) * metrics.stepY_ + metrics.height_) * fontSize;
+}
+
 // Measures the size in trixels that a text string would occupy.
 // wrapWidth: max trixels per line (0 = no wrapping).
 inline ivec2

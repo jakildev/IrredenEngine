@@ -320,7 +320,8 @@ TEST(CommandCatalogTest, CameraSuiteCommandsCarryDescriptions) {
           IRCommand::MOVE_CAMERA_DOWN_START,
           IRCommand::MOVE_CAMERA_LEFT_START,
           IRCommand::MOVE_CAMERA_RIGHT_START,
-          IRCommand::TOGGLE_HELP_OVERLAY}) {
+          IRCommand::TOGGLE_HELP_OVERLAY,
+          IRCommand::TOGGLE_PERF_HUD}) {
         EXPECT_FALSE(IRCommand::commandDescription(name).empty())
             << IRCommand::commandNameToString(name) << " must carry a help description";
     }

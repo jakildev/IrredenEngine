@@ -53,14 +53,14 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 | `SHAPES_TO_TRIXEL` | RENDER, after `VOXEL_TO_TRIXEL_STAGE_1` when an entity canvas mixes voxels and shapes; the shape rasters in the owner's model frame at the canvas's rendered density, on its half-cell lattice ([contract](../../../../docs/design/mixed-private-canvas-lifecycle.md)) |
 | `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` → `CAMERA_SCROLL_ZOOM` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT`; the zoom drops the wheel while `C_GuiHoverState` names a hovered widget |
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_HINTS` follows ordinary renderers and `WIDGET_RENDER_DROPDOWN` stays last |
-| `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
+| `PerfHud::systems()`, `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite (HUD first, so an open help list paints over it) / INPUT after `INPUT_KEY_MOUSE` |
 | `ENTITY_CANVAS_TO_FRAMEBUFFER` · `FRAMEBUFFER_TO_SCREEN` · `SPRITE_TO_SCREEN` · `GUI_CANVAS_TO_SCREEN` | after `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` alone publishes the frame's [continuous-zoom sample](../../../../docs/design/continuous-camera-zoom.md) (`IRPrefab::Camera::zoomFrame`); sprites after the main canvas's `FRAMEBUFFER_TO_SCREEN`; the GUI composite last, so the GUI sits above sprites ([display contract](../../../../docs/design/gui-trixel-display.md)) |
 | `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` · `FRAMEBUFFER_GLITCH` · `TRIXEL_GLITCH` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` · after every main-framebuffer producer, immediately before `FRAMEBUFFER_TO_SCREEN` · after every main-canvas colour producer, immediately before `TRIXEL_TO_FRAMEBUFFER` ([contract](../../../../docs/design/glitch-pass.md)) |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
 tick; never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick`
 and dispatches glyphs in `kMaxGlyphCommands` chunks (`gui_text_batch.hpp`). Widget renderers
-overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right).
+overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right) and the perf HUD (bottom-right by default).
 
 ## Component contracts
 
@@ -134,19 +134,19 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 
 ## Help overlay and settings menu
 
-- Adopt: splice the systems where the ordering table says, then
-  `registerToggleCommand()` (F1 / Escape); nothing auto-prepends or probes for
-  its dependency. Content is `CommandManager`'s registry; the overlay names no
-  key. Never default-visible in a reference-gated creation.
-- Escape opens the menu, so an adopting demo drops `IRCommand::CLOSE_WINDOW`
-  via `registerStandardKeyboardCommands({.omit_ = {...}})` and gets a QUIT
-  button. Register settings (`IRPrefab::Settings::register{Bool,Enum,Float}`)
-  during init; the menu snapshots them at open.
-- Headless readers: `HelpOverlay::builtText()` / `lastGlyphCommandCount()`, and
+- Adopt: splice the systems where the ordering table says, then `registerToggleCommand()` (F1 / Escape);
+  nothing auto-prepends or probes for its dependency. Content is `CommandManager`'s registry; the overlay
+  names no key. Never default-visible in a reference-gated creation.
+- The perf HUD (`IRPrefab::PerfHud::`, F3) adopts the same way: the player-facing FPS / frame-time / dropped-frame
+  readout coloured against `kFrameTimeBudgetMs`, bottom-right by default (`setCorner`). Registering it enables no
+  timing collection, unlike `PERF_STATS_OVERLAY` ([design](../../../../docs/design/prefab-render-surface.md#perf-hud)).
+- Escape opens the menu, so an adopting demo drops `IRCommand::CLOSE_WINDOW` via
+  `registerStandardKeyboardCommands({.omit_ = {...}})` and gets a QUIT button. Register settings
+  (`IRPrefab::Settings::register{Bool,Enum,Float}`) during init; the menu snapshots them at open.
+- Headless readers: `HelpOverlay::` / `PerfHud::` `builtText()` / `lastGlyphCommandCount()` / `panelRect()`, and
   `SettingsMenu::liveRowCount()` / `*Rect()` / `enumRowsStacked()` / `*ScreenPx(...)`; a QUIT assertion
-  evaluates when the close is observed, not on the capture frame.
-  `systemOrNull()` reports absent as `IRSystem::kNullSystemId`, never
-  `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
+  evaluates when the close is observed, not on the capture frame. `systemOrNull()` reports absent as
+  `IRSystem::kNullSystemId`, never `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
   `test/render/prefab_system_probe_test.cpp`).
 
 ## Widget framework

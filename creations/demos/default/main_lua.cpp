@@ -32,6 +32,7 @@
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/help_overlay.hpp>
+#include <irreden/render/perf_hud.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/camera_controls.hpp>
@@ -87,6 +88,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
          IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
          IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+         IRSystem::System<IRSystem::PERF_HUD>::create(),
          IRSystem::System<IRSystem::HELP_OVERLAY>::create(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
          IRSystem::createSystem<IRSystem::DEBUG_CULLING_MINIMAP>(),

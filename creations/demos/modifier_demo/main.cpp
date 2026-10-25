@@ -32,6 +32,7 @@
 // Commands
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/render/help_overlay.hpp>
+#include <irreden/render/perf_hud.hpp>
 #include <irreden/render/commands/command_gui_zoom.hpp>
 
 // Modifier framework
@@ -508,6 +509,7 @@ void initSystems() {
             clearMainCanvasId,
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::System<IRSystem::PERF_HUD>::create(),
             IRSystem::System<IRSystem::HELP_OVERLAY>::create(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
@@ -530,6 +532,7 @@ void initCommands() {
     // registry-driven help overlay. The bespoke H help panel below is
     // a separate, demo-specific explainer and is unaffected.
     IRPrefab::HelpOverlay::registerToggleCommand(KeyMouseButtons::kKeyButtonGraveAccent);
+    IRPrefab::PerfHud::registerToggleCommand();
     IRCommand::createCommand<IRCommand::GUI_ZOOM_IN>(
         InputTypes::KEY_MOUSE,
         ButtonStatuses::PRESSED,
