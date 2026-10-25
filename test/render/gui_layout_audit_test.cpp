@@ -486,6 +486,33 @@ TEST_F(GuiLayoutAudit, DropdownHeaderAndOpenStripRows) {
     );
 }
 
+TEST_F(GuiLayoutAudit, DropdownSearchAuditsHeaderAndShownRowsOnly) {
+    const ivec2 pos{10, 250};
+    const IREntity::EntityId id = IRPrefab::Widget::makeDropdown(
+        pos,
+        ivec2(100, 18),
+        {"GAIN", "COLOR", "CUTOFF", "FLOW", "LOW PASS", "OTHER"},
+        0,
+        18
+    );
+    IRPrefab::Widget::setCoversBelow(id, false);
+    auto &dd = IREntity::getComponent<C_WidgetDropdown>(id);
+    dd.isOpen_ = true;
+    dd.typeahead_ = "lo";
+    const C_Widget &widget = data<C_Widget>(id);
+    const C_WidgetDropdown::StripLayout layout = dd.stripLayout(pos.y, widget.size_.y, kCanvas.y);
+    ASSERT_EQ(layout.rows_, 3);
+    ASSERT_LT(layout.offsetY_, 0);
+
+    expectRuns(
+        id,
+        {queued(IRPrefab::WidgetText::dropdownHeader(widget, dd, pos, theme())),
+         queued(IRPrefab::WidgetText::dropdownStripRow(dd, pos, layout, theme(), 1)),
+         queued(IRPrefab::WidgetText::dropdownStripRow(dd, pos, layout, theme(), 3)),
+         queued(IRPrefab::WidgetText::dropdownStripRow(dd, pos, layout, theme(), 4))}
+    );
+}
+
 // An open 20-item dropdown low on the canvas has room below for one row only,
 // so its eight-row window opens upward, whole. The audit reads the same
 // placement: the interactive strip sits above the header inside the canvas,

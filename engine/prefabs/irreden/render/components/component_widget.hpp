@@ -101,6 +101,8 @@ struct C_WidgetState {
         MAXIMUM,
         RESET,
         SELECT,
+        ERASE,
+        CANCEL,
     };
     bool hovered_ = false;    // mouse currently inside hitbox
     bool pressed_ = false;    // left button held since press-on-hover
@@ -296,6 +298,12 @@ struct C_WidgetList {
 // dropdown's effective hit region grows to cover header and strip (kept in
 // sync by WIDGET_APPLY_DROPDOWN).
 struct C_WidgetDropdown {
+    static constexpr std::size_t kMaxTypeaheadCharacters = 64;
+
+    C_WidgetDropdown() {
+        typeahead_.reserve(kMaxTypeaheadCharacters);
+    }
+
     std::vector<std::string> items_;
     int selectedIndex_ = -1;
     bool isOpen_ = false;
@@ -306,7 +314,10 @@ struct C_WidgetDropdown {
     // canvas can grant fewer (`stripLayout`).
     int visibleRows_ = 0;
 
-    // Index of the first row in the strip window; read it through topIndex().
+    // Transient query for the open strip. Persistence deliberately omits it.
+    std::string typeahead_;
+
+    // Shown-row ordinal at the top of the strip; read it through topIndex().
     int scrollOffset_ = 0;
 
     /// Where an open strip sits for one header placement: `offsetY_` is the
@@ -316,6 +327,67 @@ struct C_WidgetDropdown {
         int offsetY_ = 0;
         int rows_ = 0;
     };
+
+    struct MatchSpan {
+        int begin_ = 0;
+        int length_ = 0;
+    };
+
+    std::string_view activeTypeahead() const {
+        return isOpen_ ? std::string_view(typeahead_) : std::string_view{};
+    }
+
+    static char foldAscii(char character) {
+        return character >= 'A' && character <= 'Z' ? static_cast<char>(character + ('a' - 'A'))
+                                                    : character;
+    }
+
+    MatchSpan matchSpan(std::string_view item) const {
+        const std::string_view query = activeTypeahead();
+        if (query.empty() || query.size() > item.size()) {
+            return {};
+        }
+        for (std::size_t begin = 0; begin + query.size() <= item.size(); ++begin) {
+            bool matches = true;
+            for (std::size_t offset = 0; offset < query.size(); ++offset) {
+                if (foldAscii(item[begin + offset]) != foldAscii(query[offset])) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return {static_cast<int>(begin), static_cast<int>(query.size())};
+            }
+        }
+        return {};
+    }
+
+    bool itemShown(int index) const {
+        if (index < 0 || index >= static_cast<int>(items_.size())) {
+            return false;
+        }
+        return activeTypeahead().empty() ||
+               matchSpan(items_[static_cast<std::size_t>(index)]).length_ > 0;
+    }
+
+    int shownItemCount() const {
+        int count = 0;
+        for (int index = 0; index < static_cast<int>(items_.size()); ++index) {
+            count += itemShown(index) ? 1 : 0;
+        }
+        return count;
+    }
+
+    int shownOrdinalOf(int itemIndex) const {
+        if (!itemShown(itemIndex)) {
+            return -1;
+        }
+        int ordinal = 0;
+        for (int index = 0; index < itemIndex; ++index) {
+            ordinal += itemShown(index) ? 1 : 0;
+        }
+        return ordinal;
+    }
 
     // --- Expanded-strip geometry ------------------------------------------
     //
@@ -356,24 +428,20 @@ struct C_WidgetDropdown {
         const int roomAbove = IRMath::clamp(headerY, 0, canvas);
         const int rowsBelow = roomBelow / rowH;
         const int rowsAbove = roomAbove / rowH;
-        if (requested <= rowsBelow) {
-            return {headerHeight, requested};
-        }
-        if (requested <= rowsAbove) {
-            return {-requested * rowH, requested};
-        }
-        if (rowsBelow >= rowsAbove) {
-            return {headerHeight, rowsBelow};
-        }
-        return {-rowsAbove * rowH, rowsAbove};
+        const bool below =
+            requested <= rowsBelow || (requested > rowsAbove && rowsBelow >= rowsAbove);
+        const int availableRows = below ? rowsBelow : rowsAbove;
+        const int placedRows = IRMath::min(requested, availableRows);
+        const int rows = IRMath::min(placedRows, shownItemCount());
+        return {below ? headerHeight : -rows * rowH, rows};
     }
 
     /// Largest top index that still fills @p layout's window with items.
     int maxScrollOffset(const StripLayout &layout) const {
-        return IRMath::max(0, static_cast<int>(items_.size()) - layout.rows_);
+        return IRMath::max(0, shownItemCount() - layout.rows_);
     }
 
-    /// Index of the first visible item: `scrollOffset_` clamped to the content.
+    /// First visible shown-row ordinal: `scrollOffset_` clamped to the content.
     int topIndex(const StripLayout &layout) const {
         return IRMath::clamp(scrollOffset_, 0, maxScrollOffset(layout));
     }
@@ -387,14 +455,15 @@ struct C_WidgetDropdown {
     /// Brings item @p index into the window with the least movement. An index
     /// outside `items_`, or a window with no rows, is ignored.
     void scrollIntoView(int index, const StripLayout &layout) {
-        if (index < 0 || index >= static_cast<int>(items_.size()) || layout.rows_ == 0) {
+        const int ordinal = shownOrdinalOf(index);
+        if (ordinal < 0 || layout.rows_ == 0) {
             return;
         }
         const int top = topIndex(layout);
-        if (index < top) {
-            scrollOffset_ = index;
-        } else if (index >= top + layout.rows_) {
-            scrollOffset_ = index - layout.rows_ + 1;
+        if (ordinal < top) {
+            scrollOffset_ = ordinal;
+        } else if (ordinal >= top + layout.rows_) {
+            scrollOffset_ = ordinal - layout.rows_ + 1;
         } else {
             scrollOffset_ = top;
         }
@@ -420,7 +489,8 @@ struct C_WidgetDropdown {
     /// An item above the window lands above the strip and one below it lands
     /// past the strip's bottom edge.
     int itemTopOffsetY(const StripLayout &layout, int itemIndex) const {
-        return layout.offsetY_ + (itemIndex - topIndex(layout)) * rowHeight();
+        const int ordinal = shownOrdinalOf(itemIndex);
+        return layout.offsetY_ + (ordinal - topIndex(layout)) * rowHeight();
     }
 
     /// Offset from the widget's top edge to the center of item @p itemIndex.
@@ -437,7 +507,26 @@ struct C_WidgetDropdown {
             return -1;
         }
         const int row = static_cast<int>(withinStrip / static_cast<float>(rowHeight()));
-        return row < layout.rows_ ? topIndex(layout) + row : -1;
+        return row < layout.rows_ ? shownItemAt(layout, row) : -1;
+    }
+
+    /// Absolute item index for a row in the visible window, or -1.
+    int shownItemAt(const StripLayout &layout, int row) const {
+        if (row < 0 || row >= layout.rows_) {
+            return -1;
+        }
+        const int wantedOrdinal = topIndex(layout) + row;
+        int ordinal = 0;
+        for (int index = 0; index < static_cast<int>(items_.size()); ++index) {
+            if (!itemShown(index)) {
+                continue;
+            }
+            if (ordinal == wantedOrdinal) {
+                return index;
+            }
+            ++ordinal;
+        }
+        return -1;
     }
 };
 

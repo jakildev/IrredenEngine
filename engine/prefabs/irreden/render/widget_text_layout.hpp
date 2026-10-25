@@ -250,6 +250,9 @@ inline TextRun listRow(
 
 // The selected item, or a dash with nothing selected.
 inline std::string_view dropdownHeaderLabel(const IRComponents::C_WidgetDropdown &dd) {
+    if (!dd.activeTypeahead().empty()) {
+        return dd.activeTypeahead();
+    }
     const int n = static_cast<int>(dd.items_.size());
     if (dd.selectedIndex_ >= 0 && dd.selectedIndex_ < n) {
         return dd.items_[static_cast<std::size_t>(dd.selectedIndex_)];
@@ -316,6 +319,27 @@ inline TextRun dropdownStripRow(
         dd.rowHeight(),
         dd.textSize_
     );
+}
+
+inline void queueDropdownStripRow(
+    std::vector<IRRender::GlyphDrawCommand> &commands,
+    const IRComponents::C_WidgetDropdown &dd,
+    IRMath::ivec2 pos,
+    const IRComponents::C_WidgetDropdown::StripLayout &layout,
+    const IRPrefab::Widget::WidgetTheme &theme,
+    int index,
+    IRMath::ivec2 canvasSize,
+    IRMath::Color textColor
+) {
+    const std::size_t firstCommand = commands.size();
+    queue(commands, dropdownStripRow(dd, pos, layout, theme, index), canvasSize, textColor);
+    const IRComponents::C_WidgetDropdown::MatchSpan span =
+        dd.matchSpan(dd.items_[static_cast<std::size_t>(index)]);
+    const std::size_t begin = firstCommand + static_cast<std::size_t>(span.begin_);
+    const std::size_t end = begin + static_cast<std::size_t>(span.length_);
+    for (std::size_t command = begin; command < end; ++command) {
+        commands[command].colorPacked = theme.matchText_.toPackedRGBA();
+    }
 }
 
 inline TextRun label(const IRComponents::C_WidgetLabel &labelData, IRMath::ivec2 pos) {

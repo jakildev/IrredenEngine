@@ -17,6 +17,7 @@
 #include <irreden/render/layout.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
 #include <irreden/render/widget_theme.hpp>
+#include <irreden/render/widget_typed_keys.hpp>
 #include <irreden/render/widgets.hpp>
 
 #include <algorithm>
@@ -82,6 +83,8 @@ template <> struct System<WIDGET_INPUT> {
         IRInput::kKeyButtonUp,
         IRInput::kKeyButtonDown,
         IRInput::kKeyButtonEnter,
+        IRInput::kKeyButtonEscape,
+        IRInput::kKeyButtonBackspace,
     };
 
     IRMath::vec2 mouseGuiTrixel_ = IRMath::vec2(0.0f);
@@ -100,6 +103,9 @@ template <> struct System<WIDGET_INPUT> {
     bool keyboardWidgetFocusedAtStart_ = false;
     bool focusVisible_ = false;
     bool focusVisibleAtStart_ = false;
+    bool focusedDropdownOpen_ = false;
+    bool dropdownTakesKeys_ = false;
+    bool dropdownSearchEmpty_ = true;
 
     IRMath::vec2 (*mousePosition_)() = IRPrefab::Layout::mousePositionInGuiTrixels;
     IRMath::ivec2 (*guiCanvasSize_)() = IRPrefab::Layout::guiCanvasSize;
@@ -107,8 +113,17 @@ template <> struct System<WIDGET_INPUT> {
 
     std::vector<IREntity::EntityId> focusableWidgets_;
     std::vector<std::function<void()>> hotkeyCallbacks_;
+    std::vector<IRInput::KeyMouseButtons> claimedTypedButtons_;
+    std::vector<IRInput::KeyMouseButtons> capturedButtons_;
     IRComponents::C_WidgetInputFrame *frame_ = nullptr;
     const IRPrefab::Widget::WidgetTheme *theme_ = nullptr;
+
+    System() {
+        claimedTypedButtons_.reserve(IRPrefab::Widget::kTypedKeys.size());
+        capturedButtons_.reserve(
+            kOpenDropdownCaptured.size() + IRPrefab::Widget::kTypedKeys.size()
+        );
+    }
 
     static void clearSliderPress(IRComponents::C_WidgetState &state) {
         state.sliderPressPosition_ = IRMath::vec2(0.0f);
@@ -154,8 +169,24 @@ template <> struct System<WIDGET_INPUT> {
         mouseGuiTrixel_ = mousePosition_();
         canvasSize_ = guiCanvasSize_();
         heldModifiers_ = IRInput::heldKeyModifiers();
+        frame_->typedText_.reserve(IRPrefab::Widget::kTypedKeys.size());
+        frame_->typedText_.clear();
         hotkeyWidgetId_ = IREntity::kNullEntity;
         hotkeyActivates_ = false;
+        claimedTypedButtons_.clear();
+
+        focusedDropdownOpen_ = false;
+        dropdownTakesKeys_ = false;
+        dropdownSearchEmpty_ = true;
+        if (focusedWidgetId_ != IREntity::kNullEntity && IREntity::entityExists(focusedWidgetId_)) {
+            const auto dropdown =
+                IREntity::getComponentOptional<IRComponents::C_WidgetDropdown>(focusedWidgetId_);
+            if (dropdown) {
+                focusedDropdownOpen_ = (*dropdown)->isOpen_;
+                dropdownTakesKeys_ = focusedDropdownOpen_ || focusVisible_;
+                dropdownSearchEmpty_ = (*dropdown)->typeahead_.empty();
+            }
+        }
 
         mouseLeftPressedThisFrame_ = IRInput::checkKeyMouseButton(
             IRInput::KeyMouseButtons::kMouseButtonLeft,
@@ -278,9 +309,22 @@ template <> struct System<WIDGET_INPUT> {
                         hotkey.modifiers_ != heldModifiers_ || !pressed(hotkey.key_)) {
                         return;
                     }
+                    const bool dropdownOwnsKey =
+                        dropdownTakesKeys_ && focusedDropdownOpen_ &&
+                        (heldModifiers_ & (IRInput::kModifierControl | IRInput::kModifierAlt)) ==
+                            0 &&
+                        std::find(
+                            IRPrefab::Widget::kTypedKeys.begin(),
+                            IRPrefab::Widget::kTypedKeys.end(),
+                            hotkey.key_
+                        ) != IRPrefab::Widget::kTypedKeys.end();
+                    if (dropdownOwnsKey) {
+                        return;
+                    }
                     const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(id);
                     if (!widget.disabled_) {
                         hotkeyWidgetId_ = id;
+                        claimedTypedButtons_.push_back(hotkey.key_);
                     }
                 }
             );
@@ -312,11 +356,42 @@ template <> struct System<WIDGET_INPUT> {
                 static_cast<IRInput::KeyMouseButtons>(key & 0xFFFFu);
             if (!hasFocusedKeyboardWidget() && !IRPrefab::Widget::isFocusKey(button) &&
                 pressed(button) && mods == heldModifiers_) {
+                const bool dropdownOwnsKey =
+                    dropdownTakesKeys_ && focusedDropdownOpen_ &&
+                    (heldModifiers_ & (IRInput::kModifierControl | IRInput::kModifierAlt)) == 0 &&
+                    std::find(
+                        IRPrefab::Widget::kTypedKeys.begin(),
+                        IRPrefab::Widget::kTypedKeys.end(),
+                        button
+                    ) != IRPrefab::Widget::kTypedKeys.end();
+                if (dropdownOwnsKey) {
+                    continue;
+                }
                 hotkeyCallbacks_.push_back(entry.callback_);
+                claimedTypedButtons_.push_back(button);
             }
         }
         for (auto &callback : hotkeyCallbacks_) {
             callback();
+        }
+        const bool typedModifiers =
+            (heldModifiers_ & (IRInput::kModifierControl | IRInput::kModifierAlt)) == 0;
+        if (dropdownTakesKeys_ && typedModifiers) {
+            for (const IRInput::KeyMouseButtons key : IRPrefab::Widget::kTypedKeys) {
+                if (!pressed(key)) {
+                    continue;
+                }
+                if (!focusedDropdownOpen_ &&
+                    (IRPrefab::Widget::commandClaimsPress(key, heldModifiers_) ||
+                     std::find(claimedTypedButtons_.begin(), claimedTypedButtons_.end(), key) !=
+                         claimedTypedButtons_.end())) {
+                    continue;
+                }
+                if (key == IRInput::kKeyButtonSpace && dropdownSearchEmpty_) {
+                    continue;
+                }
+                frame_->typedText_.push_back(IRPrefab::Widget::typedCharacter(key, shiftHeld_));
+            }
         }
         publishFrame();
     }
@@ -415,7 +490,7 @@ template <> struct System<WIDGET_INPUT> {
                 break;
             }
         }
-        if (state.focused_ && focusVisible_) {
+        if (state.focused_ && (focusVisible_ || focusedDropdownOpen_)) {
             using Action = IRComponents::C_WidgetState::KeyAction;
             if (widget.kind_ == IRComponents::WidgetKind::SLIDER) {
                 if (pressed(IRInput::kKeyButtonUp))
@@ -444,7 +519,7 @@ template <> struct System<WIDGET_INPUT> {
             ) {
                 state.fireAction_ = true;
             } else if (widget.kind_ == IRComponents::WidgetKind::DROPDOWN) {
-                if (pressed(IRInput::kKeyButtonSpace))
+                if (pressed(IRInput::kKeyButtonSpace) && frame_->typedText_.empty())
                     state.keyAction_ = Action::OPEN_OR_CLOSE;
                 else if (pressed(IRInput::kKeyButtonUp))
                     state.keyAction_ = Action::MOVE_UP;
@@ -452,6 +527,10 @@ template <> struct System<WIDGET_INPUT> {
                     state.keyAction_ = Action::MOVE_DOWN;
                 else if (pressed(IRInput::kKeyButtonEnter))
                     state.keyAction_ = Action::SELECT;
+                else if (pressed(IRInput::kKeyButtonBackspace))
+                    state.keyAction_ = Action::ERASE;
+                else if (pressed(IRInput::kKeyButtonEscape))
+                    state.keyAction_ = Action::CANCEL;
             }
         }
     }
@@ -467,8 +546,8 @@ template <> struct System<WIDGET_INPUT> {
         auto &commands = IRCommand::getCommandManager();
         commands.setKeyboardCaptured(keyboardWidgetFocusedAtStart_ || hasFocusedKeyboardWidget());
         std::span<const IRInput::KeyMouseButtons> captured;
-        if ((focusVisibleAtStart_ || focusVisible_) && focusedWidgetId_ != IREntity::kNullEntity &&
-            IREntity::entityExists(focusedWidgetId_)) {
+        if ((focusVisibleAtStart_ || focusVisible_ || focusedDropdownOpen_) &&
+            focusedWidgetId_ != IREntity::kNullEntity && IREntity::entityExists(focusedWidgetId_)) {
             const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(focusedWidgetId_);
             switch (widget.kind_) {
             case IRComponents::WidgetKind::SLIDER:
@@ -489,7 +568,19 @@ template <> struct System<WIDGET_INPUT> {
                         focusedWidgetId_
                     );
                 if (dropdown && (*dropdown)->isOpen_) {
-                    captured = kOpenDropdownCaptured;
+                    capturedButtons_.assign(
+                        kOpenDropdownCaptured.begin(),
+                        kOpenDropdownCaptured.end()
+                    );
+                    if ((heldModifiers_ & (IRInput::kModifierControl | IRInput::kModifierAlt)) ==
+                        0) {
+                        capturedButtons_.insert(
+                            capturedButtons_.end(),
+                            IRPrefab::Widget::kTypedKeys.begin(),
+                            IRPrefab::Widget::kTypedKeys.end()
+                        );
+                    }
+                    captured = capturedButtons_;
                 } else {
                     captured = kClosedDropdownCaptured;
                 }

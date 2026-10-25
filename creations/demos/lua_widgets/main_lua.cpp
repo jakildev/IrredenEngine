@@ -56,6 +56,8 @@
 //   * shot 22 scrolls the wheel once over the 60-row `IRGui.makeList` list →
 //     LUA_LIST_WHEEL PASS (the window moved exactly one row and
 //     `IRGui.listSelected` still names row 40).
+//   * shots 23-24 type LO into the long dropdown and pick its first match →
+//     DROPDOWN_TYPEAHEAD_NARROWED / DROPDOWN_TYPEAHEAD_PICKED PASS.
 //
 // Hand-off fixture (opt-in; absent, the demo is unchanged):
 // `--hand-off-fixture button` adds a HAND OFF button whose onClick calls
@@ -451,6 +453,24 @@ constexpr IRVideo::GuiInputEvent kLongListWheelEvents[] = {
     {2, IRVideo::GuiInputEvent::Type::SCROLL, IRMath::ivec2(1140, 678), IRMath::vec2(0.0f, -1.0f)},
 };
 
+constexpr IRVideo::GuiInputEvent kDropdownTypeaheadEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonEscape},
+    {1, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonEscape},
+    {2, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonLeftAlt},
+    {3, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonP},
+    {4, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonP},
+    {5, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonLeftAlt},
+    {6, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonL},
+    {7, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonL},
+    {8, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonO},
+    {9, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonO},
+};
+
+constexpr IRVideo::GuiInputEvent kDropdownTypeaheadPickEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonEnter},
+    {1, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonEnter},
+};
+
 // Empty canvas: no widget sits at GUI (400, 710).
 constexpr IRVideo::GuiInputEvent kWheelZoomControlEvents[] = {
     {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(800, 710)},
@@ -579,7 +599,9 @@ enum GuiTestShotIndex {
     kHotkeyPointerShot,
     kLongDropdownKeyboardShot,
     kLongDropdownWheelShot,
-    kLongListWheelShot
+    kLongListWheelShot,
+    kDropdownTypeaheadShot,
+    kDropdownTypeaheadPickShot
 };
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
@@ -650,6 +672,14 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_list_wheel"},
      kLongListWheelEvents,
      static_cast<int>(sizeof(kLongListWheelEvents) / sizeof(kLongListWheelEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_dropdown_typeahead"},
+     kDropdownTypeaheadEvents,
+     static_cast<int>(sizeof(kDropdownTypeaheadEvents) / sizeof(kDropdownTypeaheadEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_dropdown_typeahead_pick"},
+     kDropdownTypeaheadPickEvents,
+     static_cast<int>(
+         sizeof(kDropdownTypeaheadPickEvents) / sizeof(kDropdownTypeaheadPickEvents[0])
+     )},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 
@@ -1129,6 +1159,46 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
                 top,
                 revealedTop,
                 selected
+            )
+        );
+    } else if (shotIndex == kDropdownTypeaheadShot) {
+        const auto &dropdown =
+            IREntity::getComponent<IRComponents::C_WidgetDropdown>(g_longDropdown);
+        const auto &position =
+            IREntity::getComponent<IRComponents::C_GuiPosition>(g_longDropdown).pos_;
+        const auto layout = IRPrefab::Widget::dropdownStripLayout(g_longDropdown);
+        logGuiAssert(
+            shotIndex,
+            "DROPDOWN_TYPEAHEAD_NARROWED",
+            g_longDropdown,
+            "typeahead_rows",
+            dropdown.isOpen_ && dropdown.typeahead_ == "lo" && dropdown.shownItemCount() == 4 &&
+                layout.rows_ == 4 &&
+                position.y + layout.offsetY_ + dropdown.stripHeight(layout) == position.y &&
+                IRPrefab::WidgetText::dropdownHeaderLabel(dropdown) == "lo",
+            fmt::format(
+                "open={} query={} shown={} rows={} offset={}",
+                dropdown.isOpen_,
+                dropdown.typeahead_,
+                dropdown.shownItemCount(),
+                layout.rows_,
+                layout.offsetY_
+            )
+        );
+    } else if (shotIndex == kDropdownTypeaheadPickShot) {
+        const auto &dropdown =
+            IREntity::getComponent<IRComponents::C_WidgetDropdown>(g_longDropdown);
+        logGuiAssert(
+            shotIndex,
+            "DROPDOWN_TYPEAHEAD_PICKED",
+            g_longDropdown,
+            "typeahead_pick",
+            !dropdown.isOpen_ && dropdown.typeahead_.empty() && dropdown.selectedIndex_ == 1,
+            fmt::format(
+                "open={} query={} selected={}",
+                dropdown.isOpen_,
+                dropdown.typeahead_,
+                dropdown.selectedIndex_
             )
         );
     } else if (shotIndex == kOnClickShot) {

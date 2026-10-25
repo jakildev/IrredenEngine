@@ -13,6 +13,8 @@
 #include <irreden/render/widget_hotkeys.hpp>
 #include <irreden/render/widgets.hpp>
 
+#include "widget_input_test_utils.hpp"
+
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -60,11 +62,7 @@ class WidgetKeyboardPipelineTest : public testing::Test {
     }
 
     void frame() {
-        inputManager_->tick();
-        inputManager_->advanceInputState(IRTime::Events::INPUT);
-        systemManager_.executePipeline(IRTime::Events::INPUT);
-        inputManager_->advanceInputState(IRTime::Events::UPDATE);
-        commandManager_->executeUserKeyboardCommandsAll();
+        WidgetInputTestUtils::runFrame(*inputManager_, systemManager_, *commandManager_);
     }
 
     void press(IRInput::KeyMouseButtons key) {

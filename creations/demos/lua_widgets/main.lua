@@ -189,10 +189,13 @@ IRTest.setDropdown(IRGui.makeDropdown(510, 450, 120, 20, dropdownItems))
 -- A 40-item dropdown near the canvas bottom: its 8-row window has no room
 -- below the header, so the strip opens upward and stays on the canvas. Alt+P
 -- opens it from the keyboard (no hint badge, so the hint count stays three).
-local longDropdownItems = {}
-for i = 1, 40 do
-    longDropdownItems[i] = string.format("PARAM %02d", i)
-end
+local longDropdownItems = {
+    "GAIN", "COLOR", "CUTOFF", "FLOW", "LOW PASS", "RESONANCE", "ATTACK", "DECAY",
+    "SUSTAIN", "RELEASE", "DRIVE", "MIX", "PAN", "WIDTH", "RATE", "DEPTH", "PHASE",
+    "FEEDBACK", "TONE", "LEVEL", "PITCH", "FINE", "COARSE", "GLIDE", "SYNC", "MODE",
+    "SHAPE", "SLOPE", "RANGE", "OFFSET", "SPEED", "AMOUNT", "THRESHOLD", "RATIO",
+    "KNEE", "MAKEUP", "INPUT", "OUTPUT", "BYPASS", "LINK"
+}
 local longDropdown = IRGui.makeDropdown(20, 690, 180, 20, longDropdownItems, 1, 20, IRText.Size.SMALL)
 IRGui.setHotkey(longDropdown, { key = IRInput.Key.P, mods = IRInput.Modifier.ALT })
 IRTest.setLongDropdown(longDropdown)

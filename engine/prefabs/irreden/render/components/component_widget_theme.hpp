@@ -36,6 +36,7 @@ struct WidgetTheme {
     // Text
     IRMath::Color textIdle_ = IRMath::Color{220, 224, 232, 255};
     IRMath::Color textDisabled_ = IRMath::Color{120, 124, 132, 255};
+    IRMath::Color matchText_ = borderFocused_;
 
     // Slider track / thumb
     IRMath::Color sliderTrack_ = IRMath::Color{72, 80, 96, 255};
