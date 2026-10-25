@@ -162,6 +162,12 @@ Preserve the fog fallback until albedo/fog application and the shared lighting/
 fog-observer buffer binding are made compatible; do not remove that exclusion
 as a default-switch shortcut. Any default promotion must retain a real explicit
 environment opt-out, runtime switch and producer/consumer readiness checks.
+The [resource-free fog composition extraction](../pr-screenshots/codex/fog-surface-composition/README.md)
+preserves all 13 native full frames and seven crops exactly, with numerical
+GLSL/MSL coverage of rim, cap, treatment band, alpha and observer forwarding.
+It does not enable continuous fog receiving or alter resource bindings. Its
+LOS control exposes pre-existing black holes around the wall: isolate reveal
+coverage, cut-face admission and LOS before adopting the gated route.
 The next bounded fog integration can keep continuous receiving opt-in and admit
 only canvases whose current fog LOS source mask is zero. Preserve albedo through
 lighting and fog, retain FIELD/BODY/EXEMPT and cut-face provenance, then apply

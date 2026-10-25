@@ -105,6 +105,9 @@ const std::string kGlslFogCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_common.glsl";
 const std::string kMetalFogCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_common.metal";
+const std::string kGlslFogApplyPath = std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_apply.glsl";
+const std::string kMetalFogApplyPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_apply.metal";
 const std::string kGlslFogColorPath = std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_color.glsl";
 const std::string kMetalFogColorPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_color.metal";
@@ -472,8 +475,10 @@ TEST(FogCrossSectionShaderParity, UnexploredColourAnchorIsIdenticalAcrossBackend
 // The reveal loop (from the grid read to the return) and the colour apply
 // (from the state lerp to the alpha-preserving return) normalize equal.
 TEST(FogCrossSectionShaderParity, CommonFogShadingIsIdenticalAcrossBackends) {
-    const std::string glsl = readShaderSource(kGlslFogCommonPath);
-    const std::string metal = readShaderSource(kMetalFogCommonPath);
+    const std::string glsl =
+        readShaderSource(kGlslFogApplyPath) + readShaderSource(kGlslFogCommonPath);
+    const std::string metal =
+        readShaderSource(kMetalFogApplyPath) + readShaderSource(kMetalFogCommonPath);
     const std::string glslReveal = extractSpan(
         glsl,
         "FogReveal fogRevealSample(",
@@ -1028,8 +1033,10 @@ TEST(FogCrossSectionShaderParity, RevealSurfaceHelpersAreIdenticalAcrossBackends
     ) << "the fade must reach zero exactly at ceiling + fade: "
       << glslCeiling;
 
-    const std::string glsl = readShaderSource(kGlslFogCommonPath);
-    const std::string metal = readShaderSource(kMetalFogCommonPath);
+    const std::string glsl =
+        readShaderSource(kGlslFogApplyPath) + readShaderSource(kGlslFogCommonPath);
+    const std::string metal =
+        readShaderSource(kMetalFogApplyPath) + readShaderSource(kMetalFogCommonPath);
     for (const char *helper : {"fogRevealSurfaceBandWeight", "fogCutCapBlend"}) {
         SCOPED_TRACE(helper);
         const std::string glslBody = extractFunctionBody(glsl, helper);
@@ -1080,7 +1087,9 @@ TEST(FogCrossSectionShaderParity, RevealSurfaceHelpersAreIdenticalAcrossBackends
 TEST(FogCrossSectionShaderParity, CeilingScalesEachSourceBeforeTheMaximumOnBothBackends) {
     for (const std::string &path : {kGlslFogCommonPath, kMetalFogCommonPath}) {
         SCOPED_TRACE(path);
-        const std::string kernel = readShaderSource(path);
+        const std::string kernel =
+            readShaderSource(path == kGlslFogCommonPath ? kGlslFogApplyPath : kMetalFogApplyPath) +
+            readShaderSource(path);
         const std::string loop = normalizeKernelMath(
             extractSpan(kernel, "fogRevealSample(", "float state = gridState;", "return FogReveal")
         );
