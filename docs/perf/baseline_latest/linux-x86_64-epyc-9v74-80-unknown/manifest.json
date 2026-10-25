@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "e8a36d033",
+  "git_sha": "b3fe5d2dd",
   "git_dirty": false,
-  "run_name": "e8a36d033-ci",
-  "started_at": "2026-10-24T06:58:46Z",
+  "run_name": "b3fe5d2dd-ci",
+  "started_at": "2026-10-25T01:14:41Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,13 +17,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 89.902,
+        "before": 89.964,
         "before_samples": [
-          89.742,
-          89.902,
-          89.947
+          89.777,
+          90.165,
+          89.964
         ],
-        "after": 90.059
+        "after": 89.946
       }
     },
     {
@@ -36,25 +36,25 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 90.03,
+        "before": 89.963,
         "before_samples": [
-          90.03,
-          90.009,
-          90.06
+          89.963,
+          89.84,
+          89.965
         ],
-        "after": 90.206
+        "after": 90.025
       }
     }
   ],
-  "finished_at": "2026-10-24T07:00:47Z",
+  "finished_at": "2026-10-25T01:16:38Z",
   "calibration": {
-    "ref_ms": 90.857,
+    "ref_ms": 90.28,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-9v74-80-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3768,
+        "mhz": 3694,
         "model": "AMD EPYC 9V74 80-Core Processor",
         "threads": 4
       },
