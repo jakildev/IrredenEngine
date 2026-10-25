@@ -1,0 +1,293 @@
+{
+  "reference_ref": "b09400aa2f436f73c382bc2bf944543ca2862dc7",
+  "rows": [
+    {
+      "case": "upright-authored",
+      "angle": 0,
+      "changed": 5040,
+      "both_blue": 3658748,
+      "changed_blue": 5040,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-authored",
+      "angle": 45,
+      "changed": 6204,
+      "both_blue": 3664116,
+      "changed_blue": 6204,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-authored",
+      "angle": 90,
+      "changed": 3752,
+      "both_blue": 3661396,
+      "changed_blue": 3752,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-authored",
+      "angle": 135,
+      "changed": 2360,
+      "both_blue": 3677608,
+      "changed_blue": 2360,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-authored",
+      "angle": 180,
+      "changed": 2400,
+      "both_blue": 3686400,
+      "changed_blue": 2400,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-authored",
+      "angle": 225,
+      "changed": 2352,
+      "both_blue": 3685088,
+      "changed_blue": 2352,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-authored",
+      "angle": 270,
+      "changed": 3480,
+      "both_blue": 3663004,
+      "changed_blue": 3480,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-authored",
+      "angle": 315,
+      "changed": 5440,
+      "both_blue": 3663752,
+      "changed_blue": 5440,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-rounded",
+      "angle": 0,
+      "changed": 11044,
+      "both_blue": 3654936,
+      "changed_blue": 0,
+      "blue_coverage_changes": 7620,
+      "changed_outside_blue": 3424
+    },
+    {
+      "case": "upright-rounded",
+      "angle": 45,
+      "changed": 10072,
+      "both_blue": 3660096,
+      "changed_blue": 0,
+      "blue_coverage_changes": 8060,
+      "changed_outside_blue": 2012
+    },
+    {
+      "case": "upright-rounded",
+      "angle": 90,
+      "changed": 9044,
+      "both_blue": 3658328,
+      "changed_blue": 0,
+      "blue_coverage_changes": 6132,
+      "changed_outside_blue": 2912
+    },
+    {
+      "case": "upright-rounded",
+      "angle": 135,
+      "changed": 1428,
+      "both_blue": 3677480,
+      "changed_blue": 0,
+      "blue_coverage_changes": 1080,
+      "changed_outside_blue": 348
+    },
+    {
+      "case": "upright-rounded",
+      "angle": 180,
+      "changed": 0,
+      "both_blue": 3686400,
+      "changed_blue": 0,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-rounded",
+      "angle": 225,
+      "changed": 956,
+      "both_blue": 3684352,
+      "changed_blue": 0,
+      "blue_coverage_changes": 956,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "upright-rounded",
+      "angle": 270,
+      "changed": 10816,
+      "both_blue": 3658748,
+      "changed_blue": 0,
+      "blue_coverage_changes": 7524,
+      "changed_outside_blue": 3292
+    },
+    {
+      "case": "upright-rounded",
+      "angle": 315,
+      "changed": 8276,
+      "both_blue": 3660956,
+      "changed_blue": 0,
+      "blue_coverage_changes": 5604,
+      "changed_outside_blue": 2672
+    },
+    {
+      "case": "pitched-authored",
+      "angle": 0,
+      "changed": 4852,
+      "both_blue": 3658748,
+      "changed_blue": 4852,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-authored",
+      "angle": 45,
+      "changed": 6424,
+      "both_blue": 3664116,
+      "changed_blue": 6424,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-authored",
+      "angle": 90,
+      "changed": 3408,
+      "both_blue": 3661396,
+      "changed_blue": 3408,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-authored",
+      "angle": 135,
+      "changed": 680,
+      "both_blue": 3677608,
+      "changed_blue": 680,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-authored",
+      "angle": 180,
+      "changed": 0,
+      "both_blue": 3686400,
+      "changed_blue": 0,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-authored",
+      "angle": 225,
+      "changed": 0,
+      "both_blue": 3685088,
+      "changed_blue": 0,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-authored",
+      "angle": 270,
+      "changed": 1496,
+      "both_blue": 3663004,
+      "changed_blue": 1496,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-authored",
+      "angle": 315,
+      "changed": 4520,
+      "both_blue": 3663752,
+      "changed_blue": 4520,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-rounded",
+      "angle": 0,
+      "changed": 11044,
+      "both_blue": 3654936,
+      "changed_blue": 0,
+      "blue_coverage_changes": 7620,
+      "changed_outside_blue": 3424
+    },
+    {
+      "case": "pitched-rounded",
+      "angle": 45,
+      "changed": 10072,
+      "both_blue": 3660096,
+      "changed_blue": 0,
+      "blue_coverage_changes": 8060,
+      "changed_outside_blue": 2012
+    },
+    {
+      "case": "pitched-rounded",
+      "angle": 90,
+      "changed": 9044,
+      "both_blue": 3658328,
+      "changed_blue": 0,
+      "blue_coverage_changes": 6132,
+      "changed_outside_blue": 2912
+    },
+    {
+      "case": "pitched-rounded",
+      "angle": 135,
+      "changed": 1428,
+      "both_blue": 3677480,
+      "changed_blue": 0,
+      "blue_coverage_changes": 1080,
+      "changed_outside_blue": 348
+    },
+    {
+      "case": "pitched-rounded",
+      "angle": 180,
+      "changed": 0,
+      "both_blue": 3686400,
+      "changed_blue": 0,
+      "blue_coverage_changes": 0,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-rounded",
+      "angle": 225,
+      "changed": 956,
+      "both_blue": 3684352,
+      "changed_blue": 0,
+      "blue_coverage_changes": 956,
+      "changed_outside_blue": 0
+    },
+    {
+      "case": "pitched-rounded",
+      "angle": 270,
+      "changed": 10816,
+      "both_blue": 3658748,
+      "changed_blue": 0,
+      "blue_coverage_changes": 7524,
+      "changed_outside_blue": 3292
+    },
+    {
+      "case": "pitched-rounded",
+      "angle": 315,
+      "changed": 8276,
+      "both_blue": 3660956,
+      "changed_blue": 0,
+      "blue_coverage_changes": 5604,
+      "changed_outside_blue": 2672
+    }
+  ]
+}

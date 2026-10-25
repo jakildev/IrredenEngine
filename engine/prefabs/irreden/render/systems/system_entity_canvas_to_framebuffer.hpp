@@ -306,10 +306,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // world iso depth (x+y+z), so the canvas's pool-centered trixel
         // distances land in the shared world depth band and depth-sort against
         // GRID solids, the floor, and each other on the GRID convention.
-        // Re-voxelize solids additionally receive and cast world sun-shadow +
-        // light-volume at that world position;
-        // the forward-scatter DETACHED deform has no faithful world-pos
-        // recovery, so it depth-sorts only (see buildVoxelFrameData).
+        // Source faces and revoxelized canvases also cast and receive world
+        // lighting through their respective geometry origins.
         // `C_EntityCanvas::screenLocked_` is the explicit opt-OUT for genuine
         // overlay cases (HUD props, billboards, floating showcases): the model
         // Z is a constant 0 and `distanceOffset_` stays 0, so the canvas
@@ -366,31 +364,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // (byte-identical).
         fd.cameraTrixelOffset_ = -entityIso * vec2(cubeSubDensity);
         fd.textureOffset_ = vec2(0.0f);
-        // Composite depth. By default, add the entity's WORLD iso depth so
-        // `model rawDist +
-        // distanceOffset` reproduces the shared world trixelDistances value:
-        // the detached canvas rasters its pool in the pool-centered MODEL
-        // frame, so its rawDist is model-relative; pos3DtoDistance is linear,
-        // so for an integer world translation the sum equals
-        // pos3DtoDistance(world cell) exactly — the GRID-equivalence the
-        // composite depth-sorts on (see detached_world_depth_test).
-        // roundVec3HalfUp is the per-axis cell rounding GRID re-voxelize uses
-        // (IRPrefab::GridRotation::worldCellForGridVoxel), so CPU and the
-        // world voxel rasterizer classify the entity cell identically. With
-        // screenLocked_ this stays 0 (the overlay opt-out above).
-        // World-placed depth must land in the SHARED framebuffer depth units —
-        // the main world canvas + SDF floor encode depth as
-        // worldDepth × effSub × 4 (encodeDepthWithFace's ×4 face-bit shift in
-        // ir_iso_common). This canvas rastered its pool in MODEL space at its
-        // own renderedSubdivisions_ (≤ effSub when the cap fired), so
-        // its texture rawDist is modelDepth × cubeSub × 4. To depth-sort against
-        // world geometry the composite (a) rescales rawDist by effSub / cubeSub
-        // (depthScale, carried in the otherwise-unused
-        // effectiveSubdivisionsForHover_.y and applied in f_trixel_to_framebuffer)
-        // and (b) adds the entity's world iso depth at the same effSub × 4 scale.
-        // screenLocked overlays keep depthScale 1 + offset 0; a canvas that did
-        // not raster a voxel pool this frame (renderedSubdivisions_ == 0, e.g.
-        // pure SDF/text overlay) keeps the raw offset.
+        // Model depth and the owner origin must share framebuffer depth units.
+        // Source faces retain fractional placement; sampled canvases retain
+        // cell-aligned depth. Screen-locked overlays keep offset zero.
         const int cubeSub = canvasTextures->renderedSubdivisions_;
         // Foreground depth uses a two-tier partition. A world-placed canvas with
         // depthPriority_ set renders
@@ -420,22 +396,12 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 // PLACEMENT above tracks the world.
                 compositeDistanceOffset = 0;
             } else {
-                // Continuous-yaw world depth: place the solid by the SAME
-                // yawedIsoDistance the SDF floor + per-axis voxel scatter sort on
-                // (IRMath::pos3DtoDistanceYawed, the CPU twin), so a world-placed
-                // detached solid co-sorts against the floor at EVERY yaw — not
-                // just cardinals. The cardinal-only pos3DtoDistance offset stayed
-                // fixed while the continuous floor drifted under rotation, so the
-                // solid clipped behind the floor between cardinals. Round the
-                // translation to its world cell
-                // first (the GRID re-voxelize cell classification this co-sorts
-                // with); at a cardinal pose pos3DtoDistanceYawed(cell, 0) ==
-                // pos3DtoDistance(cell) exactly, so the cardinal fast path stays
-                // byte-identical.
-                const int worldDepth =
-                    pos3DtoDistanceYawed(vec3(roundVec3HalfUp(pose->translation_)), visualYaw_);
-                compositeDistanceOffset =
-                    (cubeSub >= 1) ? worldDepth * effectiveSub_ * kDepthEncodeShift : worldDepth;
+                compositeDistanceOffset = IRRender::canvasWorldDepthOffset(
+                    pose->translation_,
+                    visualYaw_,
+                    cubeSub >= 1 ? effectiveSub_ * kDepthEncodeShift : 1,
+                    canvasTextures->renderedSampleLayout_
+                );
                 if (cubeSub >= 1) {
                     const vec3 phase = canvasTextures->renderedCellOffset_;
                     compositeDistanceOffset += IRMath::pos3DtoDistanceYawed(

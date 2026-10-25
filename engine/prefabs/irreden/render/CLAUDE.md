@@ -185,10 +185,10 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - `IRPrefab::EntityCanvas::createWithVoxelPool` is the detached-canvas chokepoint:
   unless `screenLocked` it attaches `C_CanvasAOTexture` + `C_TrixelCanvasRenderBehavior`,
   without which the canvas composites raw albedo.
-- Composite depth is `pos3DtoDistance(roundVec3HalfUp(translation)) × effSub × 8`
-  with `rawDist` rescaled by `effSub / renderedSubdivisions_`; on-screen size
-  and gather density depend on camera zoom × world extent only
-  ([`docs/design/detached-canvas-density-compensation.md`](../../../../docs/design/detached-canvas-density-compensation.md)).
+- Composite depth rounds the owner cell for sampled canvases; rigid `SOURCE_FACES` retains authored translation until framebuffer-unit quantization (`effSub × 8`).
+  Casting and receiving share that distinction through `C_CanvasLocalRotation::worldGeometryOrigin()` ([coordinate contract](../../../../docs/pr-screenshots/codex/rigid-canvas-world-origin/README.md#coordinate-contract)).
+  `rawDist` scales by `effSub / renderedSubdivisions_`; size and gather density depend only on camera zoom × world extent
+  ([density contract](../../../../docs/design/detached-canvas-density-compensation.md)).
 - The sun-shadow bake reads main-canvas-layout depth only (never a foreign
   model-frame texture); a voxel canvas casts the cells it rasterizes.
 

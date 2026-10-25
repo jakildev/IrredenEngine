@@ -83,10 +83,8 @@ inline void buildVoxelFrameData(
     // axis. frameData_ is a reused member, so this must be reset every frame so
     // a prior detached canvas's axis can't leak into a world frame.
     frameData.voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    // World-receive opt-in. Default OFF (.w == 0) — only the
-    // re-voxelize branch below sets it when the owner opts in. Reset every frame
-    // (reused member) so a prior world-placed detached canvas can't leak its
-    // offset into a world / non-opt-in frame and corrupt its lighting.
+    // Reused frame data must not leak a detached canvas origin or receive flag
+    // into world geometry or screen-locked overlays.
     frameData.detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
     frameData.detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     frameData.perAxisStoreFrame_ = ivec4(0);
@@ -189,8 +187,10 @@ inline void buildVoxelFrameData(
         frameData.faceDeform_[1] = vec4(fdY[0], fdY[1]);
         frameData.faceDeform_[2] = vec4(fdZ[0], fdZ[1]);
         if (canvas.renderedSampleLayout_ == TrixelSampleLayout::SOURCE_FACES) {
-            frameData.detachedWorldReceive_ =
-                vec4(canvasRotation.worldCellOffset_, canvasRotation.worldPlaced_ ? 1.0f : 0.0f);
+            frameData.detachedWorldReceive_ = vec4(
+                canvasRotation.worldGeometryOrigin(),
+                canvasRotation.worldPlaced_ ? 1.0f : 0.0f
+            );
         }
         return;
     }
