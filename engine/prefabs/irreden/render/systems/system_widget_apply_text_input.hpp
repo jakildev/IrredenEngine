@@ -6,6 +6,7 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/widget_typed_keys.hpp>
 
 #include <string>
 #include <vector>
@@ -43,66 +44,12 @@ template <> struct System<WIDGET_APPLY_TEXT_INPUT> {
 
         const bool shift = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
 
-        // Letters
-        for (int i = 0; i < 26; ++i) {
-            const auto key =
-                static_cast<IRInput::KeyMouseButtons>(IRInput::kKeyButtonA + i);
+        for (const IRInput::KeyMouseButtons key : IRPrefab::Widget::kTypedKeys) {
             if (IRInput::checkKeyMouseButton(key, IRInput::ButtonStatuses::PRESSED)) {
-                pending_.push_back({static_cast<char>((shift ? 'A' : 'a') + i),
-                                    PendingKey::Control::NONE});
+                pending_.push_back(
+                    {IRPrefab::Widget::typedCharacter(key, shift), PendingKey::Control::NONE}
+                );
             }
-        }
-        // Digits — no shifted-symbol map in MVP; ignore shift.
-        for (int i = 0; i < 10; ++i) {
-            const auto key =
-                static_cast<IRInput::KeyMouseButtons>(IRInput::kKeyButton0 + i);
-            if (IRInput::checkKeyMouseButton(key, IRInput::ButtonStatuses::PRESSED)) {
-                pending_.push_back({static_cast<char>('0' + i), PendingKey::Control::NONE});
-            }
-        }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonSpace,
-                                         IRInput::ButtonStatuses::PRESSED)) {
-            pending_.push_back({' ', PendingKey::Control::NONE});
-        }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonPeriod,
-                                         IRInput::ButtonStatuses::PRESSED)) {
-            pending_.push_back({'.', PendingKey::Control::NONE});
-        }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonComma,
-                                         IRInput::ButtonStatuses::PRESSED)) {
-            pending_.push_back({',', PendingKey::Control::NONE});
-        }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonMinus,
-                                         IRInput::ButtonStatuses::PRESSED)) {
-            pending_.push_back({'-', PendingKey::Control::NONE});
-        }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonSlash,
-                                         IRInput::ButtonStatuses::PRESSED)) {
-            pending_.push_back({'/', PendingKey::Control::NONE});
-        }
-        if (IRInput::checkKeyMouseButton(
-                IRInput::kKeyButtonEqual,
-                IRInput::ButtonStatuses::PRESSED
-            )) {
-            pending_.push_back({'=', PendingKey::Control::NONE});
-        }
-        if (IRInput::checkKeyMouseButton(
-                IRInput::kKeyButtonLeftBracket,
-                IRInput::ButtonStatuses::PRESSED
-            )) {
-            pending_.push_back({shift ? '{' : '[', PendingKey::Control::NONE});
-        }
-        if (IRInput::checkKeyMouseButton(
-                IRInput::kKeyButtonRightBracket,
-                IRInput::ButtonStatuses::PRESSED
-            )) {
-            pending_.push_back({shift ? '}' : ']', PendingKey::Control::NONE});
-        }
-        if (IRInput::checkKeyMouseButton(
-                IRInput::kKeyButtonApostrophe,
-                IRInput::ButtonStatuses::PRESSED
-            )) {
-            pending_.push_back({shift ? '"' : '\'', PendingKey::Control::NONE});
         }
         if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonBackspace,
                                          IRInput::ButtonStatuses::PRESSED)) {

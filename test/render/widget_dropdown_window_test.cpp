@@ -169,4 +169,36 @@ TEST(WidgetDropdownWindow, NoCanvasOrNoItemsGivesAnEmptyStrip) {
     EXPECT_EQ(empty.stripLayout(0, kHeader, kTallCanvas).rows_, 0);
 }
 
+TEST(WidgetDropdownWindow, SearchKeepsPlacementAndMapsShownOrdinals) {
+    C_WidgetDropdown dropdown;
+    dropdown.itemHeight_ = 10;
+    dropdown.items_ = {"GAIN", "COLOR", "CUTOFF", "FLOW", "LOW PASS", "OTHER"};
+    dropdown.isOpen_ = true;
+    dropdown.typeahead_ = "lo";
+
+    constexpr int kHeaderY = 365;
+    const StripLayout layout = dropdown.stripLayout(kHeaderY, kHeader, kTallCanvas);
+    ASSERT_EQ(layout.rows_, 3);
+    EXPECT_EQ(layout.offsetY_, -30) << "the unfiltered request still chooses the upward side";
+    EXPECT_EQ(kHeaderY + layout.offsetY_ + dropdown.stripHeight(layout), kHeaderY);
+    EXPECT_EQ(dropdown.shownItemAt(layout, 0), 1);
+    EXPECT_EQ(dropdown.shownItemAt(layout, 1), 3);
+    EXPECT_EQ(dropdown.shownItemAt(layout, 2), 4);
+
+    dropdown.visibleRows_ = 2;
+    const StripLayout window = dropdown.stripLayout(kHeaderY, kHeader, kTallCanvas);
+    dropdown.scrollBy(1, window);
+    EXPECT_EQ(dropdown.topIndex(window), 1) << "topIndex is a shown-row ordinal";
+    EXPECT_EQ(dropdown.shownItemAt(window, 0), 3);
+    EXPECT_EQ(dropdown.itemAtOffsetY(window, static_cast<float>(window.offsetY_) + 1.0f), 3);
+    EXPECT_LT(dropdown.itemTopOffsetY(window, 2), window.offsetY_)
+        << "a hidden item owns no strip row";
+
+    dropdown.typeahead_ = "no match";
+    const StripLayout empty = dropdown.stripLayout(kHeaderY, kHeader, kTallCanvas);
+    EXPECT_EQ(empty.rows_, 0);
+    EXPECT_EQ(empty.offsetY_, 0) << "an empty upward strip still abuts the header";
+    EXPECT_EQ(dropdown.itemAtOffsetY(empty, -1.0f), -1);
+}
+
 } // namespace

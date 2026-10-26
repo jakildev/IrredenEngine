@@ -1458,9 +1458,11 @@ TEST(SaveSerializers, WidgetDropdownRoundTrips) {
     dropdown.textSize_ = IRRender::TextSize::SMALL;
     dropdown.visibleRows_ = 12;
     dropdown.scrollOffset_ = 5;
+    dropdown.typeahead_ = "tw";
     const C_WidgetDropdown restored = roundTrip(dropdown);
     EXPECT_EQ(restored.visibleRows_, 12);
     EXPECT_EQ(restored.scrollOffset_, 0) << "the window position is transient";
+    EXPECT_TRUE(restored.typeahead_.empty()) << "the search is transient";
     ASSERT_EQ(restored.items_.size(), 2u);
     EXPECT_EQ(restored.items_[1], "two");
     EXPECT_EQ(restored.selectedIndex_, 1);

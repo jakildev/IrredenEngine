@@ -581,6 +581,9 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
         auto *dropdown =
             requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.setDropdownOpen", "dropdown");
         dropdown->isOpen_ = open;
+        if (!open) {
+            dropdown->typeahead_.clear();
+        }
         if (open) {
             dropdown->scrollIntoView(
                 dropdown->selectedIndex_,

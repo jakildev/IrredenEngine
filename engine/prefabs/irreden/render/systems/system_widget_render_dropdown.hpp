@@ -84,7 +84,8 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             textCmds_,
             IRPrefab::WidgetText::dropdownHeader(widget, dd, guiPos.pos_, theme_),
             canvas_->size_,
-            IRPrefab::Widget::detail::stateText(theme_, widget)
+            !dd.activeTypeahead().empty() ? theme_.matchText_
+                                          : IRPrefab::Widget::detail::stateText(theme_, widget)
         );
 
         // Dropdown chevron at the right edge: a "v" of lattice diamonds, two
@@ -112,7 +113,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             );
         }
 
-        if (dd.isOpen_ && n > 0) {
+        if (dd.isOpen_ && n > 0 && dd.shownItemCount() > 0) {
             openPanels_.push_back(OpenPanel{&widget, &dd, &state, guiPos.pos_});
         }
     }
@@ -126,8 +127,6 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         const int itemH = dd.rowHeight();
         const IRComponents::C_WidgetDropdown::StripLayout layout =
             dd.stripLayout(panel.pos_.y, widget.size_.y, canvas_->size_.y);
-        const int firstItem = dd.topIndex(layout);
-        const int endItem = firstItem + layout.rows_;
         const IRPrefab::GuiRect strip =
             IRPrefab::WidgetText::dropdownStripRect(widget, dd, panel.pos_, layout);
         const IRMath::ivec2 panelPos = strip.pos_;
@@ -145,7 +144,11 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         // WIDGET_APPLY_DROPDOWN to the cursor-row index, or -1 if outside).
         const int hoverRow = static_cast<int>(state.dragValue_);
 
-        for (int i = firstItem; i < endItem; ++i) {
+        for (int row = 0; row < layout.rows_; ++row) {
+            const int i = dd.shownItemAt(layout, row);
+            if (i < 0) {
+                continue;
+            }
             const IRMath::ivec2 rowPos(panelPos.x, panel.pos_.y + dd.itemTopOffsetY(layout, i));
             const IRMath::ivec2 rowSize(panelSize.x, itemH);
             if (i == dd.selectedIndex_) {
@@ -167,9 +170,13 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                     scratch_
                 );
             }
-            IRPrefab::WidgetText::queue(
+            IRPrefab::WidgetText::queueDropdownStripRow(
                 textCmds_,
-                IRPrefab::WidgetText::dropdownStripRow(dd, panel.pos_, layout, theme_, i),
+                dd,
+                panel.pos_,
+                layout,
+                theme_,
+                i,
                 canvas_->size_,
                 IRPrefab::Widget::detail::stateText(theme_, widget)
             );

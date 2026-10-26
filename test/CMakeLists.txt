@@ -165,6 +165,7 @@ add_executable(IrredenEngineTest
   render/widget_list_scroll_test.cpp
   render/widget_slider_gesture_test.cpp
   render/widget_dropdown_window_test.cpp
+  render/widget_dropdown_typeahead_test.cpp
   render/widget_theme_singleton_test.cpp
   render/widget_hit_region_test.cpp
   render/widget_image_test.cpp

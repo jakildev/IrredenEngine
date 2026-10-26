@@ -4,6 +4,8 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 
+#include <string>
+
 namespace IRComponents {
 
 struct C_WidgetInputFrame {
@@ -14,6 +16,7 @@ struct C_WidgetInputFrame {
     // The GUI canvas this frame's widget geometry is laid out against; zero
     // when there is none.
     IRMath::ivec2 guiCanvasSize_ = IRMath::ivec2(0);
+    std::string typedText_;
 };
 
 } // namespace IRComponents
