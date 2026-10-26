@@ -10,7 +10,7 @@ each head's `checks` comes from the REST head-check poll, the failing form is
 not retried inside the window and is retried after it, and an unrelated
 failure still returns None.
 
-Hermetic: run_capture and _poll_head_checks are patched on the module.
+Hermetic: run_capture and _read_head_checks are patched on the module.
 Import the script via importlib because it has no .py extension.
 """
 import importlib.machinery
@@ -54,15 +54,15 @@ class RollupDenied(unittest.TestCase):
             return _LIST
         return fake
 
-    def _poll(self, reading):
+    def _poll(self, nodes):
         def fake(repo, sha, keep):
             keep.add(Path(f"/etag/{sha}"))
-            return (False, reading)
+            return (False, nodes)
         return fake
 
     def _fetch(self, keep=None):
         with patch.object(_mod, "run_capture", side_effect=self._gh()), \
-                patch.object(_mod, "_poll_head_checks", side_effect=self._poll("green")), \
+                patch.object(_mod, "_read_head_checks", side_effect=self._poll([])), \
                 patch.object(_mod.time, "time", lambda: self.now), \
                 patch.object(_mod, "log", lambda *_a, **_k: None):
             return _mod._fetch_prs_graphql(_REPO, keep)
@@ -104,7 +104,7 @@ class RollupDenied(unittest.TestCase):
 
     def test_unreadable_rest_page_reads_unread(self):
         with patch.object(_mod, "run_capture", side_effect=self._gh()), \
-                patch.object(_mod, "_poll_head_checks", side_effect=self._poll(None)), \
+                patch.object(_mod, "_read_head_checks", side_effect=self._poll(None)), \
                 patch.object(_mod.time, "time", lambda: self.now), \
                 patch.object(_mod, "log", lambda *_a, **_k: None):
             prs = _mod._fetch_prs_graphql(_REPO, set())

@@ -47,8 +47,10 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 # python. Insert this script's own dir so the import resolves whether the
 # scout is run directly or loaded by-path in the unit tests.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fleet_alerts
 import fleet_gh_fallback
 import fleet_github
+import fleet_not_started
 import fleet_poll_topology
 import fleet_review_replay
 from fleet_blocked_by import (
@@ -689,7 +691,11 @@ def derive_closes_refs(body, repo):
 # 7 -> 8: fleet_review_at and verdict_event_at added. The verdict-replay
 # predicate reads both; a schema-7 record lacks them and would hide every
 # stranded review until the next ETag flip.
-PR_RECORD_SCHEMA = 8
+#
+# 8 -> 9: not_started added (key omitted when absent). The never-started
+# alert lane reads it; a schema-8 record lacks it and would keep the alert
+# quiet on a red PR until the next ETag flip.
+PR_RECORD_SCHEMA = 9
 
 # statusCheckRollup reduced to the one reading the merger signal needs.
 # mergeStateStatus cannot make this cut: GitHub reports UNSTABLE for a check
@@ -717,6 +723,100 @@ def _reduce_checks(rollup):
         if not green:
             reading = "unread"
     return reading
+
+
+# A red head whose every failed check is a job GitHub refused to start (billing
+# or spending limit: `failure`, no steps, a failure-level annotation) carries
+# that annotation as `not_started`. The key is omitted otherwise, and a read
+# that fails leaves the PR as today's ordinary red. A completed job is
+# immutable, so a reading is memoized per (repo, failed job ids).
+_JOB_URL_RE = re.compile(r"/job/(\d+)$")
+_not_started_memo = {}
+NOT_STARTED_MEMO_MAX = 512
+
+
+def _red_job_ids(nodes):
+    """Sorted Actions job ids of the failed checks among rollup-shaped `nodes`
+    (`jobId`, else the id ending `detailsUrl`), or None when no check failed
+    or one is not a job-backed check run: a failed commit status, or a
+    node whose job cannot be named, is a failure this reading does not cover."""
+    ids = set()
+    for node in nodes or ():
+        if node.get("__typename") == "StatusContext":
+            if node.get("state") in _STATUS_CONTEXT_RED:
+                return None
+            continue
+        if node.get("status") != "COMPLETED" or node.get("conclusion") not in _CHECK_RUN_RED:
+            continue
+        job_id = node.get("jobId")
+        if job_id is None:
+            match = _JOB_URL_RE.search(node.get("detailsUrl") or "")
+            job_id = match.group(1) if match else None
+        if job_id is None:
+            return None
+        ids.add(int(job_id))
+    return sorted(ids) or None
+
+
+def _gh_api_json(path):
+    out = run_capture(["gh", "api", path])
+    if out is None:
+        return None
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh api {path}: bad JSON: {e}")
+        return None
+
+
+def _gh_api_list(path, per_page=100, max_pages=3):
+    """Every item of the REST list at `path`, or None when a page was
+    unreadable or the list was still full at `max_pages` (its tail was never
+    read)."""
+    items = []
+    for page in range(1, max_pages + 1):
+        query = f"?per_page={per_page}" + (f"&page={page}" if page > 1 else "")
+        found = _gh_api_json(path + query)
+        if not isinstance(found, list):
+            return None
+        items.extend(found)
+        if len(found) < per_page:
+            return items
+    return None
+
+
+def _not_started_reading(repo, nodes):
+    """The never-started annotation text for a red head's failed checks, or
+    None: some failed check ran, a job or annotation was unreadable, or no
+    check is job-backed."""
+    ids = _red_job_ids(nodes)
+    if ids is None:
+        return None
+    key = (repo, tuple(ids))
+    if key in _not_started_memo:
+        return _not_started_memo[key]
+    unread = []
+    jobs = []
+    for job_id in ids:
+        job = _gh_api_json(f"repos/{repo}/actions/jobs/{job_id}")
+        if not isinstance(job, dict):
+            return None
+        jobs.append(job)
+
+    def read_annotations(job_id):
+        found = _gh_api_list(f"repos/{repo}/check-runs/{job_id}/annotations")
+        if found is None:
+            unread.append(job_id)
+            return None
+        return found
+
+    text = fleet_not_started.run_not_started_text(jobs, read_annotations)
+    if unread:
+        return None
+    if len(_not_started_memo) >= NOT_STARTED_MEMO_MAX:
+        _not_started_memo.clear()
+    _not_started_memo[key] = text
+    return text
 
 
 # `statusCheckRollup` reaches into each check suite's workflow run, which a
@@ -756,13 +856,17 @@ def _rollup_denied(repo, now=None):
 
 
 def _rest_checks_reading(repo, sha, keep):
-    """`checks` for a head whose rollup the list could not carry: the REST
-    reading, or "unread" when the head has no sha or a page was unreadable
-    (which withholds merge-ready, never grants it)."""
+    """(`checks`, nodes) for a head whose rollup the list could not carry: the
+    REST reading and the rollup-shaped nodes it reduced (which carry the job
+    ids the never-started reading needs), or ("unread", None) when the head
+    has no sha or the read was incomplete (which withholds merge-ready, never
+    grants it)."""
     if not sha:
-        return "unread"
-    reading = _poll_head_checks(repo, sha, keep if keep is not None else set())[1]
-    return reading if reading is not None else "unread"
+        return "unread", None
+    nodes = _read_head_checks(repo, sha, keep if keep is not None else set())[1]
+    if nodes is None:
+        return "unread", None
+    return _reduce_checks(nodes), nodes
 
 
 VERDICT_EVENTS_MAX_PAGES = 10
@@ -837,9 +941,14 @@ def _fetch_prs_graphql(repo, keep=None):
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
         if denied:
-            pr["checks"] = _rest_checks_reading(repo, pr.get("headRefOid"), keep)
+            pr["checks"], rollup = _rest_checks_reading(repo, pr.get("headRefOid"), keep)
         else:
-            pr["checks"] = _reduce_checks(pr.pop("statusCheckRollup", None))
+            rollup = pr.pop("statusCheckRollup", None)
+            pr["checks"] = _reduce_checks(rollup)
+        if pr["checks"] == "red":
+            not_started = _not_started_reading(repo, rollup)
+            if not_started:
+                pr["not_started"] = not_started
         # Retain a body only on the LATEST review per PR. Exactly two
         # consumers read this array: the sonnet reviewer tests reviews[].author
         # (has any fleet review landed yet), and the opus reviewer tests the
@@ -983,16 +1092,16 @@ def _rest_check_as_rollup_node(surface, item):
                 "state": str(item.get("state") or "").upper()}
     return {"__typename": "CheckRun",
             "status": str(item.get("status") or "").upper(),
-            "conclusion": str(item.get("conclusion") or "").upper()}
+            "conclusion": str(item.get("conclusion") or "").upper(),
+            "jobId": item.get("id")}
 
 
-def _poll_head_checks(repo, sha, keep):
+def _read_head_checks(repo, sha, keep):
     """Conditional-GETs both check surfaces of `sha`, adding each page's ETag
-    entry to `keep`. Returns (moved, reading): `reading` is the head's
-    `checks` as _reduce_checks reads the two REST lists, None when a page was
-    unparseable or a list was still full at the page cap — both of which also
-    read as moved, as does a poll error. An unchanged page is a 304 for zero
-    quota."""
+    entry to `keep`. Returns (moved, nodes): `nodes` is every check run and
+    commit status in rollup node shape, None when a page was unparseable or a
+    list was still full at the page cap — both of which also read as moved, as
+    does a poll error. An unchanged page is a 304 for zero quota."""
     moved = False
     nodes = []
     complete = True
@@ -1017,7 +1126,15 @@ def _poll_head_checks(repo, sha, keep):
             complete = False
     if not complete:
         return True, None
-    return moved, _reduce_checks(nodes)
+    return moved, nodes
+
+
+def _poll_head_checks(repo, sha, keep):
+    """(moved, reading) per _read_head_checks: `reading` is the head's
+    `checks` as _reduce_checks reads the two REST lists, None when the read
+    was incomplete."""
+    moved, nodes = _read_head_checks(repo, sha, keep)
+    return moved, None if nodes is None else _reduce_checks(nodes)
 
 
 def _check_state_moved(repo, prs, keep):
@@ -4990,7 +5107,8 @@ def _spawn_alert_path(lane: str) -> Path:
     return _alerts_dir() / f"state-scout-spawn-{lane}"
 
 
-def _spawn_failed(lane: str, reason: str, detail: str) -> None:
+def _spawn_failed(lane: str, reason: str, detail: str,
+                  alert: tuple[Path, str] | None = None) -> None:
     """Record a failed lane spawn, escalating-then-quieting on repetition.
 
     Keyed on `<reason>|<lane>` so a CHANGED failure mode restarts the count — a
@@ -4998,44 +5116,52 @@ def _spawn_failed(lane: str, reason: str, detail: str) -> None:
     _freshness_warn, which scripts/fleet/CLAUDE.md names as the reference shape
     for an in-loop guard (fleet-rebase's is the one-shot form). Best-effort
     throughout: a read-only $HOME must never break the spawn path this guards.
+
+    `alert` is a standing condition that is not a spawn failure: the file to
+    rewrite on every tick past N and its whole body. `_spawn_ok(lane, path)`
+    clears it.
     """
     key = f"{reason}|{lane}"
     prev_key, count = _spawn_fail_streak.get(lane, ("", 0))
     count = count + 1 if prev_key == key else 1
     _spawn_fail_streak[lane] = (key, count)
 
+    path = alert[0] if alert else _spawn_alert_path(lane)
     if count < SPAWN_FAIL_ESCALATE_N:
         log(detail)
         return
     if count == SPAWN_FAIL_ESCALATE_N:
         log(detail)
-        log(f"{lane}: ESCALATION — spawn has failed {count} consecutive ticks "
-            f"(reason={reason}). No work is lost: the seen-hash is deliberately "
-            f"unwritten, so the lane keeps retrying. Wrote "
-            f"{_spawn_alert_path(lane)}. Suppressing further identical warns "
-            f"until a spawn succeeds.")
+        if alert:
+            log(f"{lane}: ESCALATION — {count} consecutive ticks (reason={reason}). "
+                f"Wrote {path}. Suppressing further identical warns until it clears.")
+        else:
+            log(f"{lane}: ESCALATION — spawn has failed {count} consecutive ticks "
+                f"(reason={reason}). No work is lost: the seen-hash is deliberately "
+                f"unwritten, so the lane keeps retrying. Wrote "
+                f"{path}. Suppressing further identical warns "
+                f"until a spawn succeeds.")
     # Rewritten every tick past N, not stamped once at it: stderr is quiet from
     # here on, so this file is the only standing signal. A write-once alert
     # would freeze count= at the escalation instant and let a human triaging the
     # alerts inbox delete a still-live condition permanently.
+    body = alert[1] if alert else (
+        f"state-scout self-spawned lane failure\n"
+        f"lane={lane}\n"
+        f"reason={reason}\n"
+        f"consecutive_ticks={count}\n"
+        f"detail={detail}\n"
+        f"effect=seen-hash left unwritten; lane retries every tick (no work lost)\n"
+        f"issue=#2972\n"
+    )
     try:
-        path = _spawn_alert_path(lane)
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_atomic(
-            path,
-            f"state-scout self-spawned lane failure\n"
-            f"lane={lane}\n"
-            f"reason={reason}\n"
-            f"consecutive_ticks={count}\n"
-            f"detail={detail}\n"
-            f"effect=seen-hash left unwritten; lane retries every tick (no work lost)\n"
-            f"issue=#2972\n",
-        )
+        write_atomic(path, body)
     except OSError:
         pass
 
 
-def _spawn_ok(lane: str) -> None:
+def _spawn_ok(lane: str, alert_path: Path | None = None) -> None:
     """A spawn succeeded: clear the streak and any standing alert."""
     prev = _spawn_fail_streak.pop(lane, None)
     if prev is not None and prev[1] >= SPAWN_FAIL_ESCALATE_N:
@@ -5044,7 +5170,7 @@ def _spawn_ok(lane: str) -> None:
     # streak but leaves the on-disk alert, so keying the unlink on the streak
     # would strand the file past the recovery it is meant to outlive.
     try:
-        _spawn_alert_path(lane).unlink()
+        (alert_path or _spawn_alert_path(lane)).unlink()
     except OSError:
         pass
 
@@ -5239,6 +5365,55 @@ def run_master_ci_lane() -> None:
     _master_ci_prune_orphans(workflows)
     _spawn_ok("master-ci")
     write_atomic(_master_ci_marker_path(), f"{int(time.time())}\n")
+
+
+NOT_STARTING_ALERT_PREFIX = "scout-actions-not-starting-"
+
+
+def _not_starting_alert_path(repo_key: str) -> Path:
+    return _alerts_dir() / f"{NOT_STARTING_ALERT_PREFIX}{repo_key}"
+
+
+def _not_starting_since(repo_key: str) -> str:
+    """When the standing condition began: the live alert's `since`, else now."""
+    try:
+        since = fleet_alerts.parse_fields(
+            _not_starting_alert_path(repo_key).read_text().splitlines()[0]).get("since")
+    except (OSError, IndexError):
+        since = None
+    return since or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def run_actions_not_starting_lane(state) -> None:
+    """Alert, per repo, while an open PR's red checks are jobs GitHub refused
+    to start (`not_started` on its record), until a pass shows none.
+
+    Authoritative poller only (the caller gates it): the condition is
+    GitHub-derived and global, and a follower's copy would be a stale mirror. A
+    repo with no open PRs has no reading, and a repo whose PR list is degraded
+    carries last-known-good records: neither counts as a confirming tick, writes
+    the alert, or clears it.
+    """
+    degraded = set(state.get("degraded") or ())
+    for repo_key, repo_state in (state.get("repos") or {}).items():
+        prs = repo_state.get("prs")
+        if not prs or f"{repo_key}.prs" in degraded:
+            continue
+        lane = f"actions-not-starting-{repo_key}"
+        path = _not_starting_alert_path(repo_key)
+        refused = sorted((pr.get("number", 0), pr["not_started"])
+                         for pr in prs if pr.get("not_started"))
+        if not refused:
+            _spawn_ok(lane, path)
+            continue
+        annotation = refused[0][1]
+        since = _not_starting_since(repo_key)
+        body = (f"actions not starting repo={repo_key} since={since} "
+                f"annotation='{annotation}'\n")
+        _spawn_failed(lane, "not-started",
+                      f"{lane}: GitHub is not starting jobs on {repo_key} "
+                      f"({len(refused)} PR(s) show it): {annotation}",
+                      alert=(path, body))
 
 
 def emit_state(state) -> int:
@@ -5869,6 +6044,10 @@ def tick_once():
             run_master_ci_lane()
         except Exception as e:
             log(f"master-ci lane failed: {e}")
+        try:
+            run_actions_not_starting_lane(state)
+        except Exception as e:
+            log(f"actions-not-starting lane failed: {e}")
 
     triggers_fired = []
     for role, projector in PROJECTORS.items():

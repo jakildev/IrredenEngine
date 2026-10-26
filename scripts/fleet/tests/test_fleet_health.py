@@ -417,6 +417,45 @@ class MasterCiAlerts(Env):
         self.assertFalse(any(w.startswith("master CI red:") for w in rep["warnings"]))
 
 
+NOT_STARTING_ANNOTATION = ("The job was not started because recent account payments have "
+                           "failed or your spending limit needs to be increased.")
+
+
+class ActionsNotStartingAlerts(Env):
+    """The scout's never-started alert warns with the repo, since and annotation."""
+
+    def _write(self, repo, text):
+        (self.root / "alerts" / f"scout-actions-not-starting-{repo}").write_text(text)
+
+    def test_alert_warns_with_repo_since_and_the_quoted_annotation(self):
+        self._write("game", "actions not starting repo=game since=2026-10-24T05:01:00Z "
+                            f"annotation='{NOT_STARTING_ANNOTATION}'\n")
+        rc, rep = self.run_report_at("2026-10-24T07:00:00Z")
+        warned = [w for w in rep["warnings"] if w.startswith("actions not starting on")]
+        self.assertEqual(warned, [
+            "actions not starting on game since 2026-10-24T05:01:00Z: "
+            f'"{NOT_STARTING_ANNOTATION}"'])
+        row = next(a for a in rep["alerts"]
+                   if a["name"] == "scout-actions-not-starting-game")
+        self.assertEqual(row["actions_not_starting"]["repo"], "game")
+        self.assertEqual(row["age_s"], 2 * 3600 - 60)
+        self.assertEqual(rc, 1)
+
+    def test_alert_missing_its_repo_stays_a_generic_row_without_a_warning(self):
+        self._write("broken", "actions not starting since=2026-10-24T05:01:00Z "
+                              f"annotation='{NOT_STARTING_ANNOTATION}'\n")
+        _, rep = self.run_report_at("2026-10-24T07:00:00Z")
+        row = next(a for a in rep["alerts"]
+                   if a["name"] == "scout-actions-not-starting-broken")
+        self.assertIsNone(row["actions_not_starting"])
+        self.assertFalse(any(w.startswith("actions not starting") for w in rep["warnings"]))
+
+    def test_other_alerts_carry_no_never_started_record(self):
+        _, rep = self.run_report()
+        row = next(a for a in rep["alerts"] if a["name"] == "witness-roster.stuck")
+        self.assertNotIn("actions_not_starting", row)
+
+
 AUTOMERGE_LEDGER = "\n".join([
     json.dumps({"ts": "2026-09-08T20:00:00Z", "event": "merge", "repo": "jakildev/IrredenEngine",
                 "pr": 2900, "class": "rebless"}),
