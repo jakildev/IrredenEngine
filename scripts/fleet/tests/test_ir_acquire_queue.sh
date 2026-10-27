@@ -24,7 +24,11 @@ fi
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ir-acquire-queue.XXXXXX")
 PIDS=()
+# A child forked for `cmd &` and signalled before it execs runs this inherited
+# trap; only the suite's own shell may kill the cases and remove TMP_ROOT. The
+# child leaves through a bare `exit`, which keeps its signal status.
 cleanup() {
+    [[ "$BASHPID" == "$$" ]] || exit
     local p
     for p in ${PIDS[@]+"${PIDS[@]}"}; do kill -KILL "$p" 2>/dev/null || true; done
     for p in ${PIDS[@]+"${PIDS[@]}"}; do wait "$p" 2>/dev/null || true; done
@@ -63,6 +67,16 @@ wait_bounded() {
     wait "$pid" || WAIT_RC=$?
     kill "$dog" 2>/dev/null
     wait "$dog" 2>/dev/null
+}
+
+# with_default_signal <SIG> <cmd...> & — execs <cmd> with <SIG> at its default
+# disposition, so `$!` is <cmd> itself; background calls only. A suite started
+# with a signal ignored (fleet-jobs ignores HUP) passes that to every child,
+# and bash cannot trap a signal ignored on entry.
+with_default_signal() {
+    exec python3 -c 'import os, signal, sys
+signal.signal(getattr(signal, "SIG" + sys.argv[1]), signal.SIG_DFL)
+os.execvp(sys.argv[2], sys.argv[2:])' "$@"
 }
 
 slot_owners() {
@@ -125,7 +139,8 @@ signal_case() {
     wait_for 5 test -f "$IR_LOCK_ROOT/cpu/slot-2/owner"
     slots="$(slot_owners | sort -u)"
     assert_eq "$slots" "$holder" "the holder owns both slots"
-    IR_CPU_BUDGET=2 "$ACQUIRE" --timeout 30 cpu 1 -- touch "$CASE/M" 2>/dev/null & queued=$!
+    IR_CPU_BUDGET=2 with_default_signal "$sig" "$ACQUIRE" --timeout 30 cpu 1 -- touch "$CASE/M" \
+        2>/dev/null & queued=$!
     PIDS+=("$queued")
     sleep 0.5
     kill -"$sig" "$queued"
