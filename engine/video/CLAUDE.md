@@ -2,14 +2,10 @@
 
 Captures the main framebuffer as presented (or a specific canvas) to disk as
 PNG screenshots or mp4 video via FFmpeg. All screen-capture code in the
-engine funnels through `VideoManager`.
-
-A recording and a canvas screenshot read the main framebuffer's *presented*
-image: the glitch pass's output on a tick it drew one
-(`IRPrefab::Glitch::presentedMainColorOrNull`), else the composite. The
-clip therefore carries the screen post effects. `video_capture_post_effects
-= false` records the raw composite instead, and every recording start then
-logs a WARN saying the clip will not match the screen
+engine funnels through `VideoManager`. A recording or canvas screenshot reads
+the glitch pass's output on a tick it drew one, else the composite, so a clip
+carries the screen post effects; `video_capture_post_effects = false` records
+the composite and WARNs at every recording start
 ([design](../../docs/design/glitch-pass.md#recording)).
 
 ## Entry point
@@ -177,8 +173,7 @@ deterministic one-tick-per-render fixed step. `AutoRecordConfig::realTime_`,
 `--auto-record-realtime`, or an armed audio input selects the wall-clock
 accumulator; an armed screenshot or GUI test overrides that for determinism.
 Each start logs the pacing reason. A failed recorder exits clean with no clip.
-`ir-run`
-treats the arg as a self-terminating GPU verb (`RESULT=CLEAN`).
+`ir-run` treats the arg as a self-terminating GPU verb (`RESULT=CLEAN`).
 
 Clip size: `video_capture_output_width` / `_height` (config keys, default 0
 = follow the render output resolution) set the encoded frame size (odd
