@@ -22,6 +22,21 @@ SHADOW_COLOR = (24, 36, 72)
 EDGE_TOLERANCE = 1.0
 RECEIVER_INSET = 3.0
 DEFAULT_SUN = (0.0, 0.0, -1.0)
+RECEIVER_BOUNDS = ((-9, 9), (-3, 3), (-16, -8))
+RECEIVER_FACES = {
+    "top": (2, -16, -1),
+    "x-neg": (0, -9, -1),
+    "x-pos": (0, 9, 1),
+    "y-neg": (1, -3, -1),
+    "y-pos": (1, 3, 1),
+}
+
+
+def receiver_face(face):
+    try:
+        return RECEIVER_FACES[face]
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"receiver face must be one of {', '.join(RECEIVER_FACES)}") from error
 
 
 def finite_coordinates(values, count, label):
@@ -48,9 +63,13 @@ def sun_direction(values):
     return normalized
 
 
-def receiver_lit_color(sun):
-    # Fixed fixture: ambient 0.30, intensity 1, upper-face normal (0,0,-1), no HDR/AO.
-    factor = 0.30 + 0.70 * -sun[2]
+def receiver_lit_color(sun, face="top"):
+    axis, _, sign = receiver_face(face)
+    lambert = sign * sun[axis]
+    if lambert <= 0:
+        raise ValueError("selected receiver face must be sunlit")
+    # Fixed fixture: ambient 0.30, intensity 1, no HDR/AO.
+    factor = 0.30 + 0.70 * lambert
     color = tuple(math.floor(channel * factor + 0.5) for channel in LIT_COLOR)
     if color == SHADOW_COLOR:
         raise ValueError("fixture sunlight must distinguish lit and shadowed RGB8 colors")
@@ -104,12 +123,19 @@ def camera_screen_offset(camera_iso):
     return tuple(offset)
 
 
-def fixture_polygons(yaw, camera_iso=(0.0, 0.0), sun=DEFAULT_SUN, caster_offset=(0.0, 0.0, 0.0)):
+def fixture_polygons(yaw, camera_iso=(0.0, 0.0), sun=DEFAULT_SUN,
+                     caster_offset=(0.0, 0.0, 0.0), face="top"):
     if not math.isfinite(yaw):
         raise ValueError("camera yaw must be finite radians")
     camera_x, camera_y = camera_screen_offset(camera_iso)
     sun = sun_direction(sun)
     offset = source_offset(caster_offset)
+    axis, plane, sign = receiver_face(face)
+    if sign * sun[axis] <= 0:
+        raise ValueError("selected receiver face must be sunlit")
+    normal = tuple(sign if component == axis else 0 for component in range(3))
+    if sum(view(normal, yaw)) >= 0:
+        raise ValueError("selected receiver face must be camera-visible")
 
     def project(point):
         u, v = iso(view(point, yaw))
@@ -124,21 +150,41 @@ def fixture_polygons(yaw, camera_iso=(0.0, 0.0), sun=DEFAULT_SUN, caster_offset=
                for point in corners]
     if not all(math.isfinite(value) for point in corners for value in point):
         raise ValueError("caster coordinates must be finite")
-    if max(point[2] for point in corners) >= -16:
-        raise ValueError("fixture requires the whole caster above the receiver plane")
+    if min(sign * (point[axis] - plane) for point in corners) <= 0:
+        raise ValueError("fixture requires the whole caster upstream of the receiver plane")
     shadow = []
-    for x, y, z in corners:
-        distance = (-16 - z) / sun[2]
-        point = project((x + distance * sun[0], y + distance * sun[1], -16))
+    for corner in corners:
+        distance = (plane - corner[axis]) / sun[axis]
+        intersection = [value + distance * direction
+                        for value, direction in zip(corner, sun, strict=True)]
+        intersection[axis] = plane
+        point = project(intersection)
         if not all(math.isfinite(value) for value in point):
             raise ValueError("projected shadow must have finite coordinates")
         shadow.append(point)
     return {
-        "receiver": convex_hull([project((x, y, -16))
-                                 for x, y in itertools.product((-9, 9), (-3, 3))]),
+        "receiver": convex_hull([project(point) for point in itertools.product(
+            *((plane,) if component == axis else bounds
+              for component, bounds in enumerate(RECEIVER_BOUNDS)))]),
         "shadow": convex_hull(shadow),
         "occluder": convex_hull([project(point) for point in corners]),
     }
+
+
+def coverage_requirements(polygons, face):
+    if face == "top":
+        return dict(eligible=20000, inside=2500, outside=18000)
+
+    def area(polygon):
+        return abs(sum(a[0] * b[1] - a[1] * b[0]
+                       for a, b in zip(polygon, polygon[1:] + polygon[:1]))) / 2
+
+    # Side-face foreshortening changes projected area. Require a broad receiver
+    # sample, a substantial shadow interior and independently lit surroundings.
+    receiver_area = area(polygons["receiver"])
+    return dict(eligible=max(3000, math.ceil(.60 * receiver_area)),
+                inside=max(500, math.ceil(.10 * area(polygons["shadow"]))),
+                outside=max(2000, math.ceil(.20 * receiver_area)))
 
 
 def receiver_samples(polygons):
@@ -158,14 +204,15 @@ def receiver_samples(polygons):
             yield x, y, polygon_margin(point, polygons["shadow"])
 
 
-def check_image(image, yaw, camera_iso=(0.0, 0.0), sun=DEFAULT_SUN, caster_offset=(0.0, 0.0, 0.0)):
+def check_image(image, yaw, camera_iso=(0.0, 0.0), sun=DEFAULT_SUN,
+                caster_offset=(0.0, 0.0, 0.0), face="top"):
     if image.size != IMAGE_SIZE:
         raise ValueError(f"fixture requires {IMAGE_SIZE}, got {image.size}")
     camera_iso = camera_position(camera_iso)
     sun = sun_direction(sun)
-    lit_color = receiver_lit_color(sun)
+    lit_color = receiver_lit_color(sun, face)
     caster_offset = source_offset(caster_offset)
-    polygons = fixture_polygons(yaw, camera_iso, sun, caster_offset)
+    polygons = fixture_polygons(yaw, camera_iso, sun, caster_offset, face)
     pixels = image.convert("RGBA").load()
     counts = dict(eligible=0, valid=0, unknown=0, inside=0, outside=0,
                   boundary=0, missing=0, excess=0)
@@ -184,12 +231,13 @@ def check_image(image, yaw, camera_iso=(0.0, 0.0), sun=DEFAULT_SUN, caster_offse
             counts["excess"] += color == SHADOW_COLOR
         else:
             counts["boundary"] += 1
-    coverage = (counts["eligible"] >= 20000 and counts["inside"] >= 2500
-                and counts["outside"] >= 18000)
+    requirements = coverage_requirements(polygons, face)
+    coverage = all(counts[key] >= minimum for key, minimum in requirements.items())
     passed = coverage and not any(counts[key] for key in ("unknown", "missing", "excess"))
     return dict(passed=passed, coverage_valid=coverage, yaw=yaw, camera_iso=list(camera_iso),
                 sun_direction=list(sun), lit_color=list(lit_color),
-                source_offset=list(caster_offset),
+                source_offset=list(caster_offset), face=face,
+                coverage_requirements=requirements,
                 camera_shift_pixels=list(camera_screen_offset(camera_iso)),
                 tolerance_pixels=EDGE_TOLERANCE, counts=counts, polygons=polygons)
 
@@ -198,6 +246,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path)
     parser.add_argument("--yaw", required=True, type=float)
+    parser.add_argument("--face", choices=RECEIVER_FACES, default="top",
+                        help="Authored receiver plane to grade")
     parser.add_argument("--camera-iso", nargs=2, type=float, default=(0.0, 0.0),
                         metavar=("X", "Y"), help="CanvasStress origin-pivot iso camera offset")
     parser.add_argument("--sun-direction", nargs=3, type=float, default=DEFAULT_SUN,
@@ -209,7 +259,7 @@ def main():
         camera_iso = camera_position(args.camera_iso)
         with Image.open(args.image) as image:
             result = check_image(
-                image, args.yaw, camera_iso, args.sun_direction, args.source_offset
+                image, args.yaw, camera_iso, args.sun_direction, args.source_offset, args.face
             )
     except ValueError as error:
         parser.error(str(error))

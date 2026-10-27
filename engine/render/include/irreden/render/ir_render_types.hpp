@@ -483,11 +483,8 @@ inline float compositeRawDepthFromNormalized(float normalizedDepth) {
                );
 }
 
-inline int pickIsoDepthForWorldPosition(vec3 worldPosition, float visualYaw, int effectiveSub) {
-    return IRMath::pos3DtoDistanceYawed(vec3(IRMath::roundVec3HalfUp(worldPosition)), visualYaw) *
-           effectiveSub;
-}
-
+/// depthUnits is framebuffer depth units per world iso unit.
+/// Only SOURCE_FACES preserves fractional placement before depth quantization.
 inline int canvasWorldDepthOffset(
     vec3 worldPosition, float visualYaw, int depthUnits, TrixelSampleLayout layout
 ) {
@@ -500,6 +497,19 @@ inline int canvasWorldDepthOffset(
     }
     return IRMath::pos3DtoDistanceYawed(vec3(IRMath::roundVec3HalfUp(worldPosition)), visualYaw) *
            depthUnits;
+}
+
+/// Hitbox anchor depth in the same integer iso bins as framebuffer hover readback.
+/// Bounds picking remains an anchor approximation, not a per-fragment surface query.
+inline int pickIsoDepthForWorldPosition(
+    vec3 worldPosition,
+    float visualYaw,
+    int effectiveSub,
+    TrixelSampleLayout layout = TrixelSampleLayout::RECTANGULAR
+) {
+    const int encoded =
+        canvasWorldDepthOffset(worldPosition, visualYaw, effectiveSub * kDepthEncodeShift, layout);
+    return static_cast<int>(IRMath::floorDiv(encoded, kDepthEncodeShift));
 }
 
 /// Partition @p rawDist (a @ref CompositeDepthSample::rawDist_) into tier / iso /

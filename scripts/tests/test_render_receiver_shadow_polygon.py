@@ -12,6 +12,13 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import render_receiver_shadow_polygon as oracle
 
+SIDE_CASES = (
+    ("x-neg", (-.8, 0, -.6), (-8, 0, 0), (0, 3)),
+    ("x-pos", (.8, 0, -.6), (8, 0, 0), (1, 2)),
+    ("y-neg", (0, -.8, -.6), (0, 0, 0), (0, 1)),
+    ("y-pos", (0, .8, -.6), (0, 0, 0), (2, 3)),
+)
+
 
 def box_blocks_ray(receiver, sun, caster_offset=(0, 0, 0)):
     """Independent slabs for a 3-cube twelve units sunward of (0,0,-12)."""
@@ -40,14 +47,173 @@ def box_blocks_ray(receiver, sun, caster_offset=(0, 0, 0)):
 
 class ReceiverShadowPolygonTests(unittest.TestCase):
     def image(self, yaw=0, transform=None, sun=(0, 0, -1), lit_color=oracle.LIT_COLOR,
-              caster_offset=(0, 0, 0)):
-        polygons = oracle.fixture_polygons(yaw, sun=sun, caster_offset=caster_offset)
+              caster_offset=(0, 0, 0), face="top"):
+        polygons = oracle.fixture_polygons(yaw, sun=sun, caster_offset=caster_offset, face=face)
         image = Image.new("RGB", oracle.IMAGE_SIZE, lit_color)
         shadow = polygons["shadow"]
         if transform:
             shadow = [transform(x, y) for x, y in shadow]
         ImageDraw.Draw(image).polygon(shadow, fill=oracle.SHADOW_COLOR)
         return image
+
+    def test_signed_side_polygons_match_independent_world_rays(self):
+        for face, sun, base_offset, quadrants in SIDE_CASES:
+            axis = 0 if face.startswith("x") else 1
+            plane = (-1 if face.endswith("neg") else 1) * (9 if axis == 0 else 3)
+            span = 3 if axis == 0 else 9
+            for residual in ((0, 0, 0), (.137, -.213, .251)):
+                offset = tuple(a + b for a, b in zip(base_offset, residual, strict=True))
+                for quadrant in quadrants:
+                    yaw = .3 + quadrant * math.pi / 2
+                    with self.subTest(face=face, offset=offset, yaw=yaw):
+                        polygons = oracle.fixture_polygons(
+                            yaw, sun=sun, caster_offset=offset, face=face)
+                        hits = misses = 0
+                        for horizontal in range(-span * 4, span * 4):
+                            for vertical in range(-64, -32):
+                                point = [0, 0, vertical / 4 + .029]
+                                point[axis] = plane
+                                point[1 - axis] = horizontal / 4 + .017
+                                x, y, z = point
+                                view_x = math.cos(yaw) * x + math.sin(yaw) * y
+                                view_y = -math.sin(yaw) * x + math.cos(yaw) * y
+                                screen = (1280 + 16 * (view_y - view_x),
+                                          720 + 8 * (-view_x - view_y + 2 * z))
+                                margin = oracle.polygon_margin(screen, polygons["shadow"])
+                                if abs(margin) < 1e-7:
+                                    continue
+                                blocked = box_blocks_ray(point, sun, offset)
+                                self.assertEqual(margin > 0, blocked,
+                                                 (face, yaw, offset, point, margin))
+                                hits += blocked
+                                misses += not blocked
+                        self.assertGreater(hits, 50)
+                        self.assertGreater(misses, 300)
+
+    def test_signed_side_rasters_palette_and_geometric_coverage(self):
+        for face, sun, offset, quadrants in SIDE_CASES:
+            for quadrant in quadrants:
+                yaw = .3 + quadrant * math.pi / 2
+                with self.subTest(face=face, yaw=yaw):
+                    image = self.image(yaw, sun=sun, caster_offset=offset,
+                                       lit_color=(69, 103, 206), face=face)
+                    result = oracle.check_image(image, yaw, sun=sun,
+                                                caster_offset=offset, face=face)
+                    self.assertTrue(result["passed"], result)
+                    self.assertEqual(result["face"], face)
+                    self.assertEqual(result["lit_color"], [69, 103, 206])
+                    self.assertGreaterEqual(result["counts"]["inside"], 500)
+                    self.assertGreaterEqual(result["counts"]["outside"], 2000)
+                    self.assertEqual(result["counts"]["unknown"], 0)
+        top = oracle.check_image(self.image(), 0)
+        self.assertEqual(top["coverage_requirements"],
+                         dict(eligible=20000, inside=2500, outside=18000))
+        for quadrant, eligible, outside in ((0, 4865, 2000), (3, 9223, 3075)):
+            yaw = .3 + quadrant * math.pi / 2
+            # X-side projected area: 6*8 world units times the 16*16 screen
+            # determinant, scaled by abs(cos(yaw)-sin(yaw)).
+            area = 48 * 256 * abs(math.cos(yaw) - math.sin(yaw))
+            polygons = oracle.fixture_polygons(yaw, sun=(-.8, 0, -.6),
+                                                caster_offset=(-8, 0, 0), face="x-neg")
+            requirements = oracle.coverage_requirements(polygons, "x-neg")
+            self.assertEqual(requirements["eligible"], eligible)
+            self.assertEqual(eligible, math.ceil(.6 * area))
+            self.assertEqual(requirements["outside"], outside)
+
+    def test_side_shift_parity_palette_and_missing_shadow_controls(self):
+        for face, sun, offset, quadrants in SIDE_CASES:
+            yaw = .3 + quadrants[0] * math.pi / 2
+            for dx, dy in ((8, 0), (0, 4), (-8, -4)):
+                with self.subTest(face=face, shift=(dx, dy)):
+                    image = self.image(yaw, sun=sun, caster_offset=offset, face=face,
+                                       lit_color=(69, 103, 206),
+                                       transform=lambda x, y: (x + dx, y + dy))
+                    result = oracle.check_image(image, yaw, sun=sun,
+                                                caster_offset=offset, face=face)
+                    self.assertTrue(result["coverage_valid"])
+                    self.assertFalse(result["passed"])
+                    self.assertEqual(result["counts"]["unknown"], 0)
+                    self.assertGreater(result["counts"]["missing"], 0)
+                    self.assertGreater(result["counts"]["excess"], 0)
+            for color, failure in (((69, 103, 206), "missing"),
+                                   (oracle.SHADOW_COLOR, "excess"),
+                                   (oracle.LIT_COLOR, "unknown")):
+                with self.subTest(face=face, color=color):
+                    result = oracle.check_image(Image.new("RGB", oracle.IMAGE_SIZE, color),
+                                                yaw, sun=sun, caster_offset=offset, face=face)
+                    self.assertTrue(result["coverage_valid"])
+                    self.assertFalse(result["passed"])
+                    self.assertGreater(result["counts"][failure], 500)
+
+    def test_side_camera_phase_and_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "side.png"
+            yaw = .3 + math.pi
+            self.image(yaw, sun=(.8, 0, -.6), caster_offset=(8, 0, 0), face="x-pos",
+                       lit_color=(69, 103, 206),
+                       transform=lambda x, y: (x - 6, y + 3)).save(path)
+            stdout = io.StringIO()
+            with patch("sys.argv", ["oracle", str(path), "--yaw", str(yaw),
+                                     "--face", "x-pos", "--sun-direction", "4", "0", "-3",
+                                     "--source-offset", "8", "0", "0",
+                                     "--camera-iso", "-.375", ".375"]), \
+                    patch("sys.stdout", stdout):
+                self.assertEqual(oracle.main(), 0)
+            result = json.loads(stdout.getvalue())
+            self.assertTrue(result["passed"])
+            self.assertEqual(result["face"], "x-pos")
+            self.assertEqual(result["camera_shift_pixels"], [-6, 3])
+            self.assertEqual(result["lit_color"], [69, 103, 206])
+
+    def test_sides_reject_back_faces_unlit_faces_and_insufficient_clearance(self):
+        for face, expected in (("top", (2, -16, -1)), ("x-neg", (0, -9, -1)),
+                               ("x-pos", (0, 9, 1)), ("y-neg", (1, -3, -1)),
+                               ("y-pos", (1, 3, 1))):
+            self.assertEqual(oracle.receiver_face(face), expected)
+        for face in (None, "bottom", "x", 0):
+            with self.subTest(face=face), self.assertRaisesRegex(ValueError, "receiver face"):
+                oracle.receiver_face(face)
+            with self.subTest(face=face), self.assertRaisesRegex(ValueError, "receiver face"):
+                oracle.fixture_polygons(0, face=face)
+        for face, sun, offset, quadrants in SIDE_CASES:
+            yaw = .3 + quadrants[0] * math.pi / 2
+            with self.subTest(face=face):
+                with self.assertRaisesRegex(ValueError, "camera-visible"):
+                    oracle.fixture_polygons(yaw + math.pi, sun=sun, caster_offset=offset, face=face)
+                with self.assertRaisesRegex(ValueError, "sunlit"):
+                    oracle.fixture_polygons(yaw, caster_offset=offset, face=face)
+                opposite_sun = (-sun[0], -sun[1], sun[2])
+                with self.assertRaisesRegex(ValueError, "sunlit"):
+                    oracle.receiver_lit_color(opposite_sun, face)
+                axis = 0 if face.startswith("x") else 1
+                sign = -1 if face.endswith("neg") else 1
+                plane = sign * (9 if axis == 0 else 3)
+                component = math.sin(.47 / 2) / math.sqrt(3)
+                scalar = math.cos(.47 / 2)
+                support = 1.5 * (abs(1 - 4 * component * component)
+                                  + abs(2 * component * component + 2 * scalar * component)
+                                  + abs(2 * component * component - 2 * scalar * component))
+                touching = [0, 0, 0]
+                touching[axis] = plane + sign * support - 12 * sun[axis]
+                for clearance in (-1e-8, 1e-8):
+                    position = touching.copy()
+                    position[axis] += sign * clearance
+                    if clearance < 0:
+                        with self.assertRaisesRegex(ValueError, "whole caster"):
+                            oracle.fixture_polygons(yaw, sun=sun, caster_offset=position, face=face)
+                    else:
+                        oracle.fixture_polygons(yaw, sun=sun, caster_offset=position, face=face)
+
+    def test_side_coverage_fails_for_grazing_offscreen_or_unshadowed_receiver(self):
+        cases = ((math.pi / 4 - .001, (0, 0), (-8, 0, 0)),
+                 (.3, (200, 0), (-8, 0, 0)),
+                 (.3, (0, 0), (-8, 0, 100)))
+        for yaw, camera, offset in cases:
+            with self.subTest(yaw=yaw, camera=camera, offset=offset):
+                result = oracle.check_image(Image.new("RGB", oracle.IMAGE_SIZE, (69, 103, 206)),
+                                            yaw, camera, (-.8, 0, -.6), offset, "x-neg")
+                self.assertFalse(result["coverage_valid"])
+                self.assertFalse(result["passed"])
 
     def test_sun_shadow_polygons_match_independent_box_rays_in_all_quadrants(self):
         cases = (((0, 0, -1), (0, 0, 0)),
@@ -417,6 +583,27 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
         self.assert_native_evidence(
             "rigid-canvas-world-origin", 42, lambda case: not case.endswith("-sampled"),
         )
+
+    def test_retained_signed_sides_and_live_cardinal_crossing(self):
+        evidence = (Path(__file__).resolve().parents[2]
+                    / "docs/pr-screenshots/codex/receiver-side-shadow")
+        rows = json.loads((evidence / "captures.json").read_text())
+        self.assertEqual(len(rows), 19)
+        self.assertEqual(sum(row["case"] == "live-cardinal-crossing" for row in rows), 7)
+        for row in rows:
+            with self.subTest(image=row["image"]):
+                with Image.open(evidence / row["image"]) as image:
+                    result = oracle.check_image(
+                        image, row["yaw"], sun=row["sun_direction"],
+                        caster_offset=row["source_offset"], face=row["face"],
+                    )
+                self.assertTrue(result["coverage_valid"])
+                self.assertEqual(result["counts"], row["counts"])
+                self.assertEqual(result["counts"]["unknown"], 0)
+                self.assertEqual(result["passed"], not row["case"].endswith("-sampled"))
+                if row["case"].endswith("-sampled"):
+                    self.assertGreater(result["counts"]["missing"], 50)
+                    self.assertGreater(result["counts"]["excess"], 50)
 
 
 if __name__ == "__main__":
