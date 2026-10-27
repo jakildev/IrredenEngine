@@ -110,9 +110,15 @@ nor an `**Acceptance criteria**` block.
    issue and re-check it is still open at rebase); the reviewer and smoke
    lane pick it up. *Fails* → not done: fix it, or escalate per
    `role-worker.md` step 8 if the criterion's premise is false. *Satisfied
-   by a different mechanism* → record what proves it and the delta from
-   the plan; a criterion whose literal wording the diff violates is
-   *Fails*, not "met in substance".
+   by a different mechanism or under different wording* → record what
+   proves it and the delta from the plan, here and under the PR body's
+   `## Plan departures` (PLANNING-PROTOCOL.md § "Drift at pickup"). The
+   grader grades the substance a criterion names — what its validator
+   must distinguish — so a re-worded status line or a renamed helper is
+   met when the evidence still distinguishes the outcomes, and *Fails*
+   when it no longer can. A literal the plan marks as a contract (a
+   child's argv, a probe's PASS line, a flag another party reads) is
+   graded as written.
 
 **Render-verify and light-verify rows.** A render-verify or light-verify
 criterion is met when every row the PR moves passes, and every other failing

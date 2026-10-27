@@ -20,7 +20,11 @@ not review code quality.
    plan's `### Scope`.
 2. The PR body (`gh pr view <N> --json body,title`), specifically its
    `## Acceptance evidence` table (criterion | check run | observed) —
-   contract in `docs/agents/AUTHOR-PIPELINE.md` § "Acceptance evidence".
+   contract in `docs/agents/AUTHOR-PIPELINE.md` § "Acceptance evidence" —
+   and its `## Plan departures` section when present: each line is a
+   plan-vs-tree difference the author absorbed (a renamed symbol, an
+   equivalent mechanism, re-worded text), per
+   `docs/agents/PLANNING-PROTOCOL.md` § "Drift at pickup".
 3. The diff (`gh pr diff <N>`, or the text the parent handed you).
 
 No criteria in either source → return the single line
@@ -84,5 +88,12 @@ One table per closed issue. Drop the bullet list when everything is met.
   from plausibility and say so in the basis.
 - Cite the basis for every grade: file:line for tree facts, "row N of the
   evidence table" for audited claims.
-- Grade the plan as written. A criterion that itself looks wrong is graded
-  unmet with a note that the criterion needs human attention.
+- Grade the substance a criterion names — what its validator must
+  distinguish — not its literal wording. A `## Plan departures` line that
+  re-words a status line, renames a helper, or swaps an equivalent
+  mechanism leaves the criterion met when the evidence still distinguishes
+  the outcomes; a departure after which the validator cannot tell the
+  outcomes apart is unmet. A literal the plan marks as a contract (a
+  child's argv, a probe's PASS line, a flag another party reads) is graded
+  as written. A criterion that itself looks wrong is graded unmet with a
+  note that the criterion needs human attention.
