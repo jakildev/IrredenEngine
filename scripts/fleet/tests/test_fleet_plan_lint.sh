@@ -289,6 +289,17 @@ none'''
 FORK_IN_DECISIONS = INTENT_PLAN.replace(
     "public name stays FooBar; bar.cpp rewrite is out of scope (rejected: too broad)",
     "check whether the predicate should apply to foo.cpp as well or only to bar.cpp")
+# Lightweight-plan signals (warn-only). LONG_PLAN pads a sound plan past the
+# ~150-line budget; PARK_IN_GOTCHAS scripts a park over surface movement in a
+# design section; PARK_IN_PHASE0 puts the same words in a phase-0 bail path,
+# which is exempt by section scoping.
+LONG_PLAN = GOOD + "\n\n### Context\n" + "\n".join(f"- context line {i}" for i in range(160))
+PARK_IN_GOTCHAS = GOOD.replace(
+    "### Gotchas\nnone",
+    "### Gotchas\n- The pickup recheck: if an open PR touches foo.cpp, release the claim and add `fleet:needs-human`.")
+PARK_IN_PHASE0 = GOOD.replace(
+    "### Gotchas\nnone",
+    "### Gotchas\nnone\n\n### Phase 0\nBail: comment the reading, release the claim, and add `fleet:needs-human`.")
 F = {
   "100": {"title": "sound task", "comments": [{"body": GOOD}]},
   "101": {"title": "defer task", "comments": [{"body": DEFER}]},
@@ -324,6 +335,9 @@ F = {
   "130": {"title": "fork in long fence task", "comments": [{"body": FORK_IN_LONG_FENCE}]},
   "131": {"title": "intent-plan shape task", "comments": [{"body": INTENT_PLAN}]},
   "132": {"title": "fork in decisions task", "comments": [{"body": FORK_IN_DECISIONS}]},
+  "133": {"title": "long plan task", "comments": [{"body": LONG_PLAN}]},
+  "134": {"title": "park in gotchas task", "comments": [{"body": PARK_IN_GOTCHAS}]},
+  "135": {"title": "park in phase 0 task", "comments": [{"body": PARK_IN_PHASE0}]},
 }
 print(json.dumps(F.get(num, {"title": "missing", "comments": []})))
 PYEOF
@@ -478,6 +492,21 @@ case "$intent_out" in *"core section absent"*) bad "intent-plan shape flagged a 
 "$LINT" 132 >/dev/null 2>&1; assert_exit $? 1 "imperative-mood fork in Decisions -> hard fail"
 fork_dec_out=$("$LINT" 132 2>&1 || true)
 case "$fork_dec_out" in *"imperative-mood fork"*) ok "imperative-mood fork fires in a Decisions section";; *) bad "fork in Decisions not caught: [$fork_dec_out]";; esac
+# Lightweight-plan signals (PLANNING-PROTOCOL.md § "Plans are lightweight"):
+# a plan past the line budget, and pickup choreography (a scripted park over
+# surface movement) in a design section. Both warn; neither changes the exit.
+"$LINT" 133 >/dev/null 2>&1; assert_exit $? 0 "plan past the line budget -> exit 0 (warn only)"
+long_out=$("$LINT" 133 2>&1 || true)
+case "$long_out" in *"lines (budget"*) ok "line-budget warn fires";; *) bad "line-budget warn missing: [$long_out]";; esac
+short_out=$("$LINT" 100 2>&1 || true)
+case "$short_out" in *"lines (budget"*) bad "line-budget warn fired on a one-page plan: [$short_out]";; *) ok "line-budget warn absent on a one-page plan";; esac
+"$LINT" 134 >/dev/null 2>&1; assert_exit $? 0 "pickup choreography in Gotchas -> exit 0 (warn only)"
+park_out=$("$LINT" 134 2>&1 || true)
+case "$park_out" in *"pickup choreography in 'Gotchas'"*) ok "pickup-choreography warn fires in Gotchas";; *) bad "pickup-choreography warn missing: [$park_out]";; esac
+# Control: the same words in a phase-0 bail path (its own heading) must not fire.
+"$LINT" 135 >/dev/null 2>&1; assert_exit $? 0 "phase-0 bail path -> exit 0"
+phase0_out=$("$LINT" 135 2>&1 || true)
+case "$phase0_out" in *"pickup choreography"*) bad "pickup-choreography warn fired on a phase-0 bail path: [$phase0_out]";; *) ok "phase-0 bail path does not fire the pickup-choreography warn";; esac
 set -e
 
 echo "================================"

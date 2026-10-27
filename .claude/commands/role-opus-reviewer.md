@@ -92,7 +92,11 @@ locked decisions right (no live fork handed to the implementer), sibling / in-fl
 reconciliation right, required cross-system audit complete, no unmeasured mechanism
 assumed, acceptance tests positive-fire. Re-run cheap load-bearing measurements (a grep
 census, a symbol count) rather than reading them for plausibility; a plan is not
-unsound for lacking a step-by-step Approach.
+unsound for lacking a step-by-step Approach. Drift is not a bounce: a moved symbol, a
+PR that merged or opened on the same surface, or a dependency whose shape is still
+unlanded is a `## Plan corrections` note or nothing (the worker absorbs it at pickup);
+a plan that scripts a pickup park or locks a guessed dependency shape gets a
+correction striking it (PLANNING-PROTOCOL.md § "Plans are lightweight").
 
 - **Sound** → `gh issue edit <N> --repo <repo> --remove-label "fleet:plan-review"`.
 - **Sound with corrections** (no locked decision changes) → comment whose first line is

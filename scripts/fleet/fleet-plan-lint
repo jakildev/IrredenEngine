@@ -44,6 +44,11 @@
 #   - no `**Model:**` tag
 #   - mechanism-lever language (cost attribution / path dominance / a stage
 #     firing) with no measurement citation or phase-0 probe
+#   - plan past the ~150-line budget (PLANNING-PROTOCOL.md § "Plans are
+#     lightweight")
+#   - pickup choreography in a Decisions/Approach/Gotchas section ("pickup
+#     recheck", "release the claim", "needs-human"): a scripted park over
+#     surface movement, which the worker absorbs at pickup instead
 #
 # Source of truth: scripts/fleet/fleet-plan-lint in the engine repo.
 set -euo pipefail
@@ -306,6 +311,31 @@ MECH_CITE = ("measur", "timer", "auto-profile", "disarm", "probe", "profil",
              "domain-state")
 if any(k in low for k in MECH_LEVER) and not any(k in low for k in MECH_CITE):
     warn.append("mechanism-lever language without a measurement citation or phase-0 probe")
+
+# Lightweight-plan signals (PLANNING-PROTOCOL.md § "Plans are lightweight"),
+# warn-only: the Opus pass weighs them, never an auto-bounce.
+#   - A plan past the line budget is almost always locking detail that is
+#     the implementer's — the recurring shape is a five-page plan that goes
+#     stale on the next surface move and re-plans instead of adapting.
+#   - Pickup choreography in a design section — a scripted park over surface
+#     movement — is the opposite of the drift-at-pickup rule. Read from the
+#     RAW section text so a backticked `fleet:needs-human` still counts. A
+#     phase-0 bail path lives under its own heading and is exempt by scoping.
+PLAN_LINE_BUDGET = 150
+n_lines = len(plan.splitlines())
+if n_lines > PLAN_LINE_BUDGET:
+    warn.append(f"plan is {n_lines} lines (budget ~{PLAN_LINE_BUDGET}): is everything "
+                "here load-bearing? (PLANNING-PROTOCOL.md § Plans are lightweight)")
+PARK_PHRASES = ("pickup recheck", "release the claim", "needs-human")
+for heading, body in sections(plan):
+    if not is_design_section(heading):
+        continue
+    body_low = body.lower()
+    park = [p for p in PARK_PHRASES if p in body_low]
+    if park:
+        warn.append(f"pickup choreography in '{heading}': {', '.join(park)} — the worker "
+                    "absorbs surface movement at pickup (PLANNING-PROTOCOL.md § Plans are lightweight)")
+        break
 
 for w in warn:
     print(f"warn #{issue}: {w}")

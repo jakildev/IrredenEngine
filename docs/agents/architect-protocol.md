@@ -161,7 +161,10 @@ unlabeled (human triages → `fleet:needs-plan` → a `## Plan` comment per
 when more than one residual touches the same surface (flat siblings go
 claimable together and collide on the same files). The `## Plan` comment
 must name a confirmed repro against the actual code path, lock the
-load-bearing decisions, and reconcile siblings and in-flight PRs; otherwise
+load-bearing decisions, and reconcile siblings and in-flight PRs by
+ownership, never by sequencing on PR heads
+([`PLANNING-PROTOCOL.md § Plans are lightweight`](PLANNING-PROTOCOL.md#plans-are-lightweight));
+otherwise
 the carve-off is a `fleet:needs-plan` issue or an explicit investigation
 spike, never a `human:approved` build task. `fleet-queue-ingest` enforces
 this: an approved issue with no `## Plan` comment bounces to
@@ -307,8 +310,9 @@ Working a blocked PR:
    \`## Plan\` comment (and any \`## Plan corrections\`) before resuming."
    ```
    This comment is the direction — you neither push to the worker's branch
-   nor rewrite the issue's `## Plan`; a departure from the plan's approach
-   sketch is the worker's `## Plan departures` note in the PR body.
+   nor rewrite the issue's `## Plan`; drift the worker absorbs is its
+   `## Plan departures` note in the PR body
+   ([`PLANNING-PROTOCOL.md § Drift at pickup`](PLANNING-PROTOCOL.md#drift-at-pickup-adapt-record-escalate-only-on-a-contract-break)).
 5. **Swap the design labels via the named transition:**
    ```
    fleet-transition design-unblock <N>

@@ -228,6 +228,14 @@ Bash calls until the next fresh launch), add `--repo jakildev/irreden` to `gh` c
 5. **Read the plan.** `fleet-issue view <N>` (`--repo game` for game): the newest
    `## Plan` comment, amended by later `## Plan corrections` comments and the human's
    scope notes. Nothing on disk is a plan; bare `gh issue view` omits comments.
+   The plan is a contract on Scope, Decisions and Acceptance criteria, read against
+   the tree as it is now: a renamed symbol, a merged or open neighbour on the same
+   files, a dependency that landed under other names, a literal you word differently
+   are yours to absorb — rebase, and record each under `## Plan departures` in the PR
+   body. Never park, release the claim, or add `fleet:needs-human` over surface
+   movement, even when the plan's Gotchas say to. Escalate (step 8c) only when Scope
+   or a criterion cannot be met, or a locked decision is refuted or needs a product
+   call (PLANNING-PROTOCOL.md § "Drift at pickup").
 
 6. **Work it.** Read every `CLAUDE.md` on the path to the files you touch.
 
@@ -253,8 +261,9 @@ Bash calls until the next fresh launch), add `--repo jakildev/irreden` to `gh` c
    `human:approved`), release the claim, and do not re-claim it.
    (c) *Design escalation* (`fleet:design-blocked`; full cycle in FLEET.md's
    design-escalation flow): `commit-and-push` the WIP; post `## NEEDS-DESIGN` on the PR
-   (what contradicts the plan, the questions one per bullet, options if you have a
-   view); `fleet-pr-clear-feedback-labels <N> --labels "fleet:design-unblocked"`
+   (the contract break — which Scope line, criterion or locked decision cannot be
+   honoured and why; drift you can absorb is a `## Plan departures` line, not a design
+   question — the questions one per bullet, options if you have a view); `fleet-pr-clear-feedback-labels <N> --labels "fleet:design-unblocked"`
    then `gh pr edit <N> --add-label "fleet:design-blocked"` (keep `fleet:wip`);
    `fleet-claim release <N>` (`--repo game` for game); `start-next-task`; pick a
    different task (the architect's reply re-arms it as `fleet:design-unblocked`, step 1).

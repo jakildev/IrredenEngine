@@ -16,6 +16,9 @@ Canonical `--body-file` content for `commit-and-push` step 8.
 |---|---|---|
 | <criterion from the plan> | `<command>` | <output line proving it fired> |
 
+## Plan departures
+- <optional — one line per plan-vs-tree difference you absorbed: what the plan said, what the tree has, what you did>
+
 ## Notes for reviewer
 <optional — include only when the reviewer needs specific guidance>
 
@@ -24,6 +27,12 @@ Closes #<issue-N>
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
+- `## Plan departures`: one line per difference between the issue's
+  `## Plan` and the tree you built against — a renamed symbol, a merged
+  neighbour, a dependency that landed under other names, a literal you
+  worded differently (PLANNING-PROTOCOL.md § "Drift at pickup"). The
+  acceptance grader reads it and grades substance. Omit when there were
+  none.
 - `## Notes for reviewer`: omit when there is nothing non-obvious.
 - `Closes #<issue-N>`: omit when the task's `Issue:` field is `(none)`.
   Write `Refs #N` instead when your own `## Acceptance evidence` grades a
