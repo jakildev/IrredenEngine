@@ -97,14 +97,13 @@ Lua (`scripts/audio_demo.lua`).
 
 ## MIDI model
 
-- **`MidiChannel`** is the map key. Query `IRAudio::checkCCMessage(channel,
-  cc)` / `getMidiNotesOnThisFrame(channel)` for the **merged** all-ports
-  view, or the port-scoped `checkCCMessage(portIndex, channel, cc)` /
-  `getMidiNotesOnThisFrame(portIndex, channel)` to disambiguate same-channel
-  traffic across ports. `openPortMidiIn`/`openPortMidiOut` return the RtMidi
-  port index — the stable handle used as the source-port id, the
-  `sendMidiMessage(portIndex, …)` target, and the per-port query key.
-  `midiInOpenPorts()` / `midiOutOpenPorts()` enumerate the open handles.
+- **`MidiChannel`** is the map key. Merged queries omit the port; port-scoped
+  queries disambiguate same-channel traffic. Open calls return session-local
+  logical handles used by targeted sends and queries; open-port lists return
+  only live handles. Handles are never recycled during an `AudioManager`
+  lifetime. Hand-off restore matches direction, exact name, and same-name
+  occurrence; equal-name physical devices have no stronger identity. The
+  first output remains the default, and a missing default never retargets.
 - `MidiIn::tick()` drains every open port's RtMidi callback queue directly
   into the merged and per-port buffer views before the INPUT pipeline runs;
   no prefab system is required and no inbound entities are minted. **Merged

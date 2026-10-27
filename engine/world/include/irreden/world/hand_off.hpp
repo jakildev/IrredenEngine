@@ -3,9 +3,9 @@
 
 // Hand the running process off to a child run and resume when it exits
 // (`IREngine.handOff`, engine/script/CLAUDE.md). The sequence is fixed:
-// validate, drain the GPU, release the ir-run gpu lease if this run holds
-// one, launch the child through the ir-run wrapper, block in the OS wait,
-// reacquire the lease, resume. Drain precedes release on every path, so the
+// validate, drain the GPU, optionally release MIDI, lend the ir-run gpu
+// lease, launch and wait for the child, reacquire the lease, restore MIDI,
+// resume. Drain precedes release on every path, so the
 // child never links shaders against a parent with GPU work in flight.
 
 #include <functional>
@@ -27,6 +27,7 @@ struct HandOffRequest {
     /// separate arguments, never joined into a shell command. The OS takes
     /// each NUL-terminated, so `runHandOff` refuses one holding a NUL byte.
     std::vector<std::string> argv_;
+    bool releaseMidi_ = false;
 };
 
 struct HandOffResult {
@@ -37,6 +38,14 @@ struct HandOffResult {
     std::optional<int> exitCode_;
     std::string error_;
     std::optional<std::string> verdict_;
+    std::vector<std::string> midiLost_;
+};
+
+class HandOffMidiBracket {
+  public:
+    virtual ~HandOffMidiBracket() = default;
+    virtual void release() = 0;
+    virtual std::vector<std::string> restore() = 0;
 };
 
 /// What ir-run and ir-acquire exported to this process.
@@ -81,7 +90,8 @@ HandOffOutcome runHandOff(
     const HandOffRequest &request,
     const HandOffEnvironment &environment,
     HandOffPlatform &platform,
-    const std::optional<std::filesystem::path> &toolRoot = std::nullopt
+    const std::optional<std::filesystem::path> &toolRoot = std::nullopt,
+    HandOffMidiBracket *midiBracket = nullptr
 );
 
 /// Runs from @p toolService's active root, re-resolved now; a worktree that is
@@ -90,14 +100,16 @@ HandOffOutcome runHandOff(
     const HandOffRequest &request,
     const HandOffEnvironment &environment,
     HandOffPlatform &platform,
-    ToolService &toolService
+    ToolService &toolService,
+    HandOffMidiBracket *midiBracket = nullptr
 );
 
 using HandOffInvoker = std::function<HandOffResult(const HandOffRequest &)>;
 
-/// Installs `IREngine.handOff{ argv = {...}, resume = true }`. Malformed
-/// input, `resume = false`, and a call off the main thread raise before
-/// @p invoker runs.
+/// Installs
+/// `IREngine.handOff{ argv = {...}, resume = true, releaseMidi = false }`.
+/// Malformed input, `resume = false`, and a call off the main thread raise
+/// before @p invoker runs.
 void bindHandOffLua(
     IRScript::LuaScript &script, HandOffInvoker invoker, std::function<bool()> isMainThread
 );

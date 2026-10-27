@@ -17,6 +17,7 @@ namespace {
 
 using IREngine::ChildExit;
 using IREngine::HandOffEnvironment;
+using IREngine::HandOffMidiBracket;
 using IREngine::HandOffOutcome;
 using IREngine::HandOffPlatform;
 using IREngine::HandOffRequest;
@@ -90,6 +91,7 @@ class StubPlatform : public HandOffPlatform {
     const int *renders_ = nullptr;
     std::vector<Step> steps_;
     std::function<void(const std::vector<std::string> &)> childHook_;
+    std::vector<std::string> *events_ = nullptr;
 
   private:
     static std::string classify(const std::vector<std::string> &argv) {
@@ -105,10 +107,38 @@ class StubPlatform : public HandOffPlatform {
     }
 
     void record(const std::string &kind, const std::vector<std::string> &argv) {
+        if (events_ != nullptr) {
+            events_->push_back(kind);
+        }
         steps_.push_back(
             {kind, argv, updates_ != nullptr ? *updates_ : 0, renders_ != nullptr ? *renders_ : 0}
         );
     }
+};
+
+class StubMidiBracket : public HandOffMidiBracket {
+  public:
+    void release() override {
+        if (events_ != nullptr) {
+            events_->push_back("midi-release");
+        }
+        closed_ = true;
+        ++releaseCount_;
+    }
+    std::vector<std::string> restore() override {
+        if (events_ != nullptr) {
+            events_->push_back("midi-restore");
+        }
+        closed_ = false;
+        ++restoreCount_;
+        return lost_;
+    }
+
+    int releaseCount_ = 0;
+    int restoreCount_ = 0;
+    bool closed_ = false;
+    std::vector<std::string> lost_;
+    std::vector<std::string> *events_ = nullptr;
 };
 
 HandOffEnvironment wrapperOnly() {
@@ -321,6 +351,89 @@ TEST(HandOffControllerTest, NonzeroChildExitIsReportedAfterResuming) {
     ASSERT_TRUE(outcome.result_.exitCode_.has_value());
     EXPECT_EQ(*outcome.result_.exitCode_, 3);
     EXPECT_NE(outcome.result_.error_.find("exited with 3"), std::string::npos);
+}
+
+TEST(MidiHandOffControllerTest, OptInBracketRestoresOnceOnEveryPostCloseOutcome) {
+    for (const ChildExit child :
+         {ChildExit{true, 0, ""}, ChildExit{false, -1, "spawn"}, ChildExit{true, 3, ""}}) {
+        StubPlatform platform;
+        platform.child_ = child;
+        StubMidiBracket midi;
+        std::vector<std::string> events;
+        platform.events_ = &events;
+        midi.events_ = &events;
+        platform.childHook_ = [&midi](const std::vector<std::string> &) {
+            EXPECT_TRUE(midi.closed_);
+        };
+        midi.lost_ = {"missing"};
+        HandOffRequest request = takeRequest();
+        request.releaseMidi_ = true;
+
+        const HandOffOutcome outcome =
+            runHandOff(request, withLease(), platform, std::nullopt, &midi);
+
+        EXPECT_EQ(midi.releaseCount_, 1);
+        EXPECT_EQ(midi.restoreCount_, 1);
+        EXPECT_EQ(outcome.result_.midiLost_, (std::vector<std::string>{"missing"}));
+        EXPECT_EQ(
+            events,
+            (std::vector<std::string>{
+                "drain",
+                "midi-release",
+                "release",
+                "child",
+                "reacquire",
+                "midi-restore"
+            })
+        );
+    }
+}
+
+TEST(MidiHandOffControllerTest, OptOutAndPreflightRefusalDoNotTouchMidi) {
+    StubPlatform platform;
+    StubMidiBracket midi;
+    runHandOff(takeRequest(), wrapperOnly(), platform, std::nullopt, &midi);
+    HandOffRequest invalid{{"not/a/target"}, true};
+    runHandOff(invalid, wrapperOnly(), platform, std::nullopt, &midi);
+    EXPECT_EQ(midi.releaseCount_, 0);
+    EXPECT_EQ(midi.restoreCount_, 0);
+}
+
+TEST(MidiHandOffControllerTest, RestoresOnceWhenLeaseReleaseOrReacquireFails) {
+    for (const bool failRelease : {true, false}) {
+        StubPlatform platform;
+        std::vector<std::string> events;
+        platform.events_ = &events;
+        if (failRelease) {
+            platform.release_ = ChildExit{true, 1, ""};
+        } else {
+            platform.reacquire_ = ChildExit{true, 1, ""};
+        }
+        StubMidiBracket midi;
+        midi.events_ = &events;
+        HandOffRequest request = takeRequest();
+        request.releaseMidi_ = true;
+
+        const HandOffOutcome outcome =
+            runHandOff(request, withLease(), platform, std::nullopt, &midi);
+
+        EXPECT_EQ(midi.releaseCount_, 1);
+        EXPECT_EQ(midi.restoreCount_, 1);
+        EXPECT_EQ(outcome.leaseLost_, !failRelease);
+        EXPECT_EQ(
+            events,
+            failRelease
+                ? (std::vector<std::string>{"drain", "midi-release", "release", "midi-restore"})
+                : (std::vector<std::string>{
+                      "drain",
+                      "midi-release",
+                      "release",
+                      "child",
+                      "reacquire",
+                      "midi-restore"
+                  })
+        );
+    }
 }
 
 TEST(HandOffControllerTest, FailedReleaseLaunchesNothing) {

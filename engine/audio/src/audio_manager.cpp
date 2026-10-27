@@ -55,6 +55,19 @@ AudioManager::AudioManager(
     IRE_LOG_INFO("Created AudioManager");
 }
 
+AudioManager::AudioManager(
+    detail::MidiInBackendFactory midiInBackendFactory,
+    detail::MidiOutBackendFactory midiOutBackendFactory
+)
+    : m_audio{}
+    , m_midiIn{std::move(midiInBackendFactory)}
+    , m_midiOut{std::move(midiOutBackendFactory)}
+    , m_midiClock{midiClockWrite(*this), midiClockObserveTransport(*this)}
+    , m_audioPlayback{} {
+    g_audioManager = this;
+    IRE_LOG_INFO("Created AudioManager");
+}
+
 AudioManager::~AudioManager() {
     m_midiClock.stop();
     m_midiOut.sendAllNotesOff();
@@ -62,6 +75,20 @@ AudioManager::~AudioManager() {
         g_audioManager = nullptr;
     }
     IRE_LOG_DEBUG("Destroyed AudioManager");
+}
+
+void AudioManager::releaseMidiPorts() {
+    m_midiClock.stop();
+    m_midiOut.sendAllNotesOff();
+    m_midiIn.releasePorts();
+    m_midiOut.releasePorts();
+}
+
+std::vector<std::string> AudioManager::restoreMidiPorts() {
+    std::vector<std::string> lost = m_midiIn.restorePorts();
+    std::vector<std::string> outputLost = m_midiOut.restorePorts();
+    lost.insert(lost.end(), outputLost.begin(), outputLost.end());
+    return lost;
 }
 
 } // namespace IRAudio

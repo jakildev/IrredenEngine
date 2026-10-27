@@ -15,7 +15,9 @@ creation composes MIDI behavior by adding components to entities.
   loop flag, message buffer.
 - `C_MidiNote` — note number, velocity, channel, hold duration.
   **`onDestroy()` sends `NOTE_OFF`** — a free cleanup when an entity dies.
-- `C_MidiDevice` — wraps an RtMidi port index (-1 = uninitialized). Pair
+- `C_MidiDevice` — wraps a session-local MIDI logical handle (-1 = uninitialized).
+  The serialized integer remains version 1, but validity across a process
+  restart is not promised. Pair
   with `C_MidiIn` / `C_MidiOut` tags.
 - `C_MidiChannel` — 0–15 wrapper. `normalizeMidiChannel()` converts to
   MIDI wire format.

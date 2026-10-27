@@ -20,6 +20,7 @@ class LuaEngineHandOffTest : public testing::Test {
             m_lua,
             [this](const HandOffRequest &request) {
                 m_requests.push_back(request.argv_);
+                m_releaseMidi.push_back(request.releaseMidi_);
                 return m_next;
             },
             [this]() { return m_onMainThread; }
@@ -40,6 +41,7 @@ class LuaEngineHandOffTest : public testing::Test {
 
     IRScript::LuaScript m_lua;
     std::vector<std::vector<std::string>> m_requests;
+    std::vector<bool> m_releaseMidi;
     HandOffResult m_next{true, true, 0, ""};
     bool m_onMainThread = true;
 };
@@ -51,6 +53,7 @@ TEST_F(LuaEngineHandOffTest, PassesArgvAndReturnsTheResultTable) {
         assert(r.supported == true, "supported")
         assert(r.exitCode == 0, "exitCode")
         assert(r.error == nil, "error")
+        assert(type(r.midiLost) == "table" and #r.midiLost == 0, "midiLost")
     )lua");
     ASSERT_TRUE(result.valid()) << sol::error(result).what();
     ASSERT_EQ(m_requests.size(), 1u);
@@ -58,6 +61,18 @@ TEST_F(LuaEngineHandOffTest, PassesArgvAndReturnsTheResultTable) {
         m_requests.front(),
         (std::vector<std::string>{"IRLuaWidgetsDemo", "--auto-screenshot", "3"})
     );
+}
+
+TEST_F(LuaEngineHandOffTest, PassesReleaseMidiAndReturnsLostNames) {
+    m_next.midiLost_ = {"OP-1 1", "OP-1 2"};
+    const sol::protected_function_result result = run(R"lua(
+        local r = IREngine.handOff{ argv = { "IRDemo" }, releaseMidi = true }
+        assert(#r.midiLost == 2)
+        assert(r.midiLost[1] == "OP-1 1" and r.midiLost[2] == "OP-1 2")
+    )lua");
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
+    ASSERT_EQ(m_releaseMidi.size(), 1u);
+    EXPECT_TRUE(m_releaseMidi.front());
 }
 
 TEST_F(LuaEngineHandOffTest, ExplicitResumeTrueMatchesTheDefault) {
@@ -117,6 +132,10 @@ TEST_F(LuaEngineHandOffTest, MalformedInputRaisesBeforeTheHandOff) {
     );
     expectRaises("IREngine.handOff{ argv = { string.char(0) } }", "argv[1] contains a NUL byte");
     expectRaises("IREngine.handOff{ argv = { 'IRDemo' }, resume = 1 }", "boolean");
+    expectRaises(
+        "IREngine.handOff{ argv = { 'IRDemo' }, releaseMidi = 1 }",
+        "releaseMidi must be a boolean"
+    );
     expectRaises("IREngine.handOff{ argv = { 'IRDemo' }, cwd = '.' }", "unknown key");
     expectRaises(
         "IREngine.handOff{ argv = { 'IRDemo' }, buildDir = '.claude/worktrees/pool-1/build' }",
