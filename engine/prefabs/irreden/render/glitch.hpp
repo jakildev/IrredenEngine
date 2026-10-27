@@ -102,13 +102,25 @@ inline IRSystem::System<IRSystem::FRAMEBUFFER_GLITCH> *systemOrNull() {
 }
 
 // True only on the RENDER tick in which `FRAMEBUFFER_GLITCH` has already
-// cleared the default target and drawn the glitched main framebuffer onto it.
-// `FRAMEBUFFER_TO_SCREEN` then skips its whole blit; on every other tick
-// (absent system, off state, stale publication) it runs unchanged.
-inline bool screenCompositedForCurrentRenderTick() {
+// drawn the glitched main framebuffer into its output image. On every other
+// tick (absent system, off state, stale publication) the composite itself is
+// what the screen shows.
+inline bool outputPublishedForCurrentRenderTick() {
     const auto *system = systemOrNull();
     return system != nullptr &&
            system->isPublishedForRenderTick(IRSystem::getEventTickCount(IRTime::Events::RENDER));
+}
+
+// The image presented for the main framebuffer on this RENDER tick when it is
+// not the composite: the glitch output when the pass drew one this tick, else
+// null. `FRAMEBUFFER_TO_SCREEN` places it on screen and the recorder reads
+// it, so what a clip carries is what the screen showed. Call it after the
+// pass ran this tick; before, it reports the previous tick's answer.
+inline const IRRender::Texture2D *presentedMainColorOrNull() {
+    if (!outputPublishedForCurrentRenderTick()) {
+        return nullptr;
+    }
+    return systemOrNull()->outputColorOrNull();
 }
 
 } // namespace IRPrefab::Glitch

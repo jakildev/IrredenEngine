@@ -12,6 +12,13 @@
 #include <thread>
 #include <vector>
 
+namespace IRRender {
+class Texture2D;
+}
+namespace IRComponents {
+struct C_TrixelCanvasFramebuffer;
+}
+
 namespace IRAudio {
 class IAudioCaptureSource;
 } // namespace IRAudio
@@ -47,15 +54,16 @@ class VideoManager {
     /// `resolveCaptureOutputResolution` for the even/floor-of-2 rounding
     /// applied at recording start.
     void configureCaptureOutputResolution(int width, int height);
+    /// Whether a recording reads the presented image (screen post effects,
+    /// the glitch pass, included) or the raw composite. Default true; false
+    /// is announced at every recording start, since the clip then differs
+    /// from the screen.
+    void configureCapturePostEffects(bool enabled);
     void configureScreenshotOutputDir(const std::string &outputDirPath);
 
     void toggleRecording();
     void requestScreenshot();
-    void requestScreenshotWithCrops(
-        const char *shotLabel,
-        const RoiCrop *crops,
-        int numCrops
-    );
+    void requestScreenshotWithCrops(const char *shotLabel, const RoiCrop *crops, int numCrops);
     void requestCanvasScreenshot();
     void notifyFixedUpdate();
     void render();
@@ -78,10 +86,13 @@ class VideoManager {
     [[nodiscard]] const std::string &getLastError() const;
 
   private:
+    const IRRender::Texture2D &
+    presentedMainColor(const IRComponents::C_TrixelCanvasFramebuffer &framebuffer) const;
     std::atomic<bool> m_captureEnabled = false;
     bool m_toggleRequested = false;
     int m_targetFps = 60;
     int m_videoBitrate = 10'000'000;
+    bool m_capturePostEffects = true;
     int m_outputWidthOverride = 0;
     int m_outputHeightOverride = 0;
     bool m_captureAudioInput = false;
@@ -133,10 +144,7 @@ class VideoManager {
     std::uint64_t reserveNextScreenshotIndex();
     std::string screenshotFilePathForIndex(std::uint64_t index) const;
     void writePendingRoiCrops(
-        const std::uint8_t *frameData,
-        int frameWidth,
-        int frameHeight,
-        std::uint64_t shotIndex
+        const std::uint8_t *frameData, int frameWidth, int frameHeight, std::uint64_t shotIndex
     );
     bool captureFrame();
     void initReadbackPbos();

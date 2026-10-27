@@ -136,6 +136,13 @@ class WorldConfig {
             "video_capture_output_height",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(0)
         );
+        // A recording reads the presented image, screen post effects (the
+        // glitch pass) included; false records the raw composite and says so
+        // at every recording start.
+        m_config.addEntry(
+            "video_capture_post_effects",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true)
+        );
         m_config.addEntry(
             "video_capture_audio_input_enabled",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)

@@ -405,7 +405,7 @@ struct GlitchFixture {
             "[glitch-probe] at={} enabled={} tick={} holdTick={} trixelStep={}x{} "
             "outputScale={}x{} viewport={}x{} "
             "frameDraws={} frameHistoryCopies={} totalDraws={} totalHistoryCopies={} "
-            "ordinaryBlits={} gpuMs={:.4f} depthMode={}",
+            "ordinaryBlits={} glitchOutputBlits={} gpuMs={:.4f} depthMode={}",
             when,
             IRPrefab::Glitch::isEnabled(current),
             clock.tick_,
@@ -421,6 +421,7 @@ struct GlitchFixture {
             glitch->drawCount_,
             glitch->historyCopyCount_,
             screen->ordinaryBlitCount_,
+            screen->glitchOutputBlitCount_,
             IRRender::gpuStageTiming().framebufferGlitchMs_,
             IRPrefab::Glitch::depthMode(current.seed_, words) == IRPrefab::Glitch::DepthMode::TEAR
                 ? "tear"

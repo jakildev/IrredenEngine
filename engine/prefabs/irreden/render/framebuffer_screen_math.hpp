@@ -4,21 +4,27 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
-// Placement of a framebuffer's colour on the default screen target. Every pass
-// that draws a framebuffer as the screen base (`FRAMEBUFFER_TO_SCREEN`, and
-// `FRAMEBUFFER_GLITCH` in its stead) computes its MVP here, so the two cannot
-// place the same framebuffer differently.
+// Placement of a framebuffer's colour on the default screen target, and of a
+// framebuffer over its own twin. `FRAMEBUFFER_TO_SCREEN` alone places on
+// screen; `FRAMEBUFFER_GLITCH` draws into an image the blit then places, so no
+// two passes can place the same framebuffer differently.
 namespace IRSystem::detail {
 
-inline IRMath::mat4 framebufferScreenProjection() {
+// Orthographic projection over a target of @p size, in its own pixels with
+// the origin at its lower-left corner.
+inline IRMath::mat4 targetProjection(IRMath::ivec2 size) {
     return IRMath::ortho(
         0.0f,
-        static_cast<float>(IRRender::getViewport().x),
+        static_cast<float>(size.x),
         0.0f,
-        static_cast<float>(IRRender::getViewport().y),
+        static_cast<float>(size.y),
         -1.0f,
         100.0f
     );
+}
+
+inline IRMath::mat4 framebufferScreenProjection() {
+    return targetProjection(IRRender::getViewport());
 }
 
 // @p carriesCameraResidual is true only for the main framebuffer: it alone
@@ -51,6 +57,20 @@ inline IRMath::mat4 framebufferScreenModel(
             1.0f
         )
     );
+}
+
+// Placement of a framebuffer-sized quad over a target of the same size, texel
+// for texel: a pass that rewrites a framebuffer's colour into a twin image
+// (`FRAMEBUFFER_GLITCH`) draws with this, and the ordinary blit then places
+// the twin on screen as it would the framebuffer itself. The quad sits at the
+// screen MVP's depth so a target's depth test passes it as the blit's does.
+inline IRMath::mat4 framebufferSelfMvp(IRMath::ivec2 resolutionPlusBuffer) {
+    const IRMath::vec2 size = IRMath::vec2(resolutionPlusBuffer);
+    const IRMath::mat4 model = IRMath::scale(
+        IRMath::translate(IRMath::mat4(1.0f), IRMath::vec3(size * 0.5f, 0.0f)),
+        IRMath::vec3(size, 1.0f)
+    );
+    return targetProjection(resolutionPlusBuffer) * model;
 }
 
 inline IRMath::mat4 framebufferScreenMvp(

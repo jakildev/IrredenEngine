@@ -3,6 +3,7 @@
 
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
@@ -22,18 +23,24 @@ using namespace IRMath;
 
 namespace IRSystem {
 
-// The GPU work of one ordinary blit tick, and everything it reads from the
+// The GPU work of one blit tick, and everything it reads from the
 // RenderManager. `beginFrame` issues one `beginScreen`, then `encodeBlit` one
-// `drawFramebuffer` per framebuffer; a RENDER tick the glitch pass already
-// composited issues neither. `ScreenBlitGpuEncoder` encodes them; the
-// headless probes record them.
+// draw per framebuffer: `drawGlitchOutput` for the main framebuffer on a
+// RENDER tick the glitch pass published, else `drawFramebuffer`.
+// `ScreenBlitGpuEncoder` encodes them; the headless probes record them.
 class ScreenBlitEncoder {
   public:
     // Binds and clears the default target, then binds the blit's program,
     // frame data and quad.
     virtual void beginScreen() = 0;
+    // Places @p framebuffer on screen from its own colour.
     virtual void drawFramebuffer(
         const C_TrixelCanvasFramebuffer &framebuffer, vec3 cameraPosition, bool isMainFramebuffer
+    ) = 0;
+    // Places the main @p framebuffer on screen from @p output, the glitch
+    // pass's same-size twin of it drawn this tick.
+    virtual void drawGlitchOutput(
+        const C_TrixelCanvasFramebuffer &framebuffer, const Texture2D *output, vec3 cameraPosition
     ) = 0;
 
   protected:
@@ -70,7 +77,25 @@ class ScreenBlitGpuEncoder final : public ScreenBlitEncoder {
     void drawFramebuffer(
         const C_TrixelCanvasFramebuffer &framebuffer, vec3 cameraPosition, bool isMainFramebuffer
     ) override {
-        framebuffer.bindTextures(0, 1);
+        draw(framebuffer, framebuffer.getTextureColor(), cameraPosition, isMainFramebuffer);
+    }
+
+    void drawGlitchOutput(
+        const C_TrixelCanvasFramebuffer &framebuffer, const Texture2D *output, vec3 cameraPosition
+    ) override {
+        IR_ASSERT(output != nullptr, "a published glitch pass owns its output image");
+        draw(framebuffer, *output, cameraPosition, true);
+    }
+
+  private:
+    void draw(
+        const C_TrixelCanvasFramebuffer &framebuffer,
+        const Texture2D &color,
+        vec3 cameraPosition,
+        bool isMainFramebuffer
+    ) {
+        color.bind(0);
+        framebuffer.getTextureDepth().bind(1);
         FrameDataFramebuffer frameData{};
         frameData.mvpMatrix = detail::framebufferScreenMvp(
             framebuffer.getResolutionPlusBuffer(),
@@ -83,7 +108,6 @@ class ScreenBlitGpuEncoder final : public ScreenBlitEncoder {
         IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
     }
 
-  private:
     Buffer &m_frameDataBuf;
     ShaderProgram &m_program;
     VAO &m_quadVao;
@@ -97,19 +121,19 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
     // Screen-pixel half of the camera's sub-pixel decomposition for this
     // frame; the main framebuffer's blit is the only one that carries it.
     vec2 cameraScreenResidual_{0.0f};
-    // True for a RENDER tick on which `FRAMEBUFFER_GLITCH` already cleared the
-    // default target and drew the screen base: this pass then binds, clears
-    // and draws nothing, so the target is filled exactly once.
-    bool screenAlreadyComposited_ = false;
-    // Main-framebuffer blits drawn since registration; the headless probes
-    // that prove which pass drew the screen base read it.
+    // True on a RENDER tick the glitch pass drew its output: the main
+    // framebuffer is then presented from that output, not its composite.
+    bool glitchPublished_ = false;
+    const Texture2D *glitchOutput_ = nullptr;
+    // Main-framebuffer blits drawn since registration, from the composite and
+    // from the glitch output; the headless probes that prove which image the
+    // screen shows read them.
     std::uint64_t ordinaryBlitCount_ = 0;
+    std::uint64_t glitchOutputBlitCount_ = 0;
 
     void beginFrame(ScreenBlitEncoder &encoder) {
-        screenAlreadyComposited_ = IRPrefab::Glitch::screenCompositedForCurrentRenderTick();
-        if (screenAlreadyComposited_) {
-            return;
-        }
+        glitchPublished_ = IRPrefab::Glitch::outputPublishedForCurrentRenderTick();
+        glitchOutput_ = glitchPublished_ ? IRPrefab::Glitch::presentedMainColorOrNull() : nullptr;
         encoder.beginScreen();
     }
 
@@ -119,10 +143,12 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
         const C_WorldTransform &cameraWorldXform,
         const C_Name &name
     ) {
-        if (screenAlreadyComposited_) {
+        const bool isMainFramebuffer = name.name_ == "mainFramebuffer";
+        if (isMainFramebuffer && glitchPublished_) {
+            encoder.drawGlitchOutput(framebuffer, glitchOutput_, cameraWorldXform.translation_);
+            ++glitchOutputBlitCount_;
             return;
         }
-        const bool isMainFramebuffer = name.name_ == "mainFramebuffer";
         encoder.drawFramebuffer(framebuffer, cameraWorldXform.translation_, isMainFramebuffer);
         if (isMainFramebuffer) {
             ++ordinaryBlitCount_;

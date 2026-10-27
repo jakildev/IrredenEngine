@@ -3,10 +3,11 @@ using namespace metal;
 
 #include "ir_glitch_common.metal"
 
-// Period-quantised glitch over the composed main framebuffer, drawn straight
-// onto the screen target in place of the ordinary blit. Mirrors
-// shaders/v_framebuffer_glitch.glsl + f_framebuffer_glitch.glsl and
-// `IRPrefab::Glitch::samplePlan` (glitch_math.hpp) step for step.
+// Period-quantised glitch over the composed main framebuffer, drawn into the
+// pass's output image texel for texel; the ordinary blit then places that
+// image on screen. Mirrors shaders/v_framebuffer_glitch.glsl +
+// f_framebuffer_glitch.glsl and `IRPrefab::Glitch::samplePlan`
+// (glitch_math.hpp) step for step.
 
 struct VertexIn {
     float2 position [[attribute(0)]];
@@ -58,7 +59,9 @@ vertex VertexOut v_framebuffer_glitch(
     const int2 size = int2(mainColor.get_width(), mainColor.get_height());
     out.position = frameData.mvpMatrix * float4(in.position, 1.0, 1.0);
     out.position.y = -out.position.y;
-    out.texelCoords = float2(in.texCoords.x, 1.0 - in.texCoords.y) * float2(size);
+    // The output is the composite's twin, so the texel read is the texel
+    // written: no origin flip here, unlike a stage that samples for the screen.
+    out.texelCoords = in.texCoords * float2(size);
     out.depthCenter = 1.0f;
     if (frameData.hashInputs.w != 0u) {
         for (int i = 0; i < kGlitchDepthProbeCount; ++i) {

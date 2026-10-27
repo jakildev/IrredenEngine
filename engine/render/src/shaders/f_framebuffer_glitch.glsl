@@ -2,8 +2,8 @@
 
 #include "ir_glitch_common.glsl"
 
-// Period-quantised glitch over the composed main framebuffer, drawn straight
-// onto the screen target in place of the ordinary blit. Mirrors
+// Period-quantised glitch over the composed main framebuffer, drawn into the
+// pass's output image texel for texel for the blit and the recorder. Mirrors
 // `IRPrefab::Glitch::samplePlan` (glitch_math.hpp) step for step over the
 // per-frame tables the CPU uploads: tear, cells and depth tear move the source
 // texel in whole trixels; hold and depth hold choose the image read; split

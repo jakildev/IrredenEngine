@@ -124,6 +124,9 @@ World::World(
         m_worldConfig["video_capture_output_width"].get_integer(),
         m_worldConfig["video_capture_output_height"].get_integer()
     );
+    m_videoManager.configureCapturePostEffects(
+        m_worldConfig["video_capture_post_effects"].get_boolean()
+    );
     m_videoManager.configureScreenshotOutputDir(
         m_worldConfig["screenshot_output_dir"].get_string()
     );

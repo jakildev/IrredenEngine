@@ -12,6 +12,7 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
+#include <irreden/render/glitch.hpp>
 
 #include "video_backend.hpp"
 
@@ -73,6 +74,10 @@ void VideoManager::configureCaptureOutputResolution(int width, int height) {
     m_outputHeightOverride = (height > 0) ? height : 0;
 }
 
+void VideoManager::configureCapturePostEffects(bool enabled) {
+    m_capturePostEffects = enabled;
+}
+
 void VideoManager::configureScreenshotOutputDir(const std::string &outputDirPath) {
     m_screenshotOutputDirPath = outputDirPath;
 }
@@ -88,9 +93,7 @@ void VideoManager::requestScreenshot() {
 }
 
 void VideoManager::requestScreenshotWithCrops(
-    const char *shotLabel,
-    const RoiCrop *crops,
-    int numCrops
+    const char *shotLabel, const RoiCrop *crops, int numCrops
 ) {
     m_screenshotRequested = true;
     m_pendingScreenshotShotLabel = (shotLabel != nullptr) ? shotLabel : "";
@@ -144,11 +147,9 @@ void VideoManager::render() {
         return;
     }
 
-    const int64_t expectedFrames =
-        m_totalFixedUpdates * static_cast<int64_t>(m_targetFps) /
-        static_cast<int64_t>(IRConstants::kFPS);
-    const int framesToCapture =
-        static_cast<int>(expectedFrames - m_totalCapturedFrames);
+    const int64_t expectedFrames = m_totalFixedUpdates * static_cast<int64_t>(m_targetFps) /
+                                   static_cast<int64_t>(IRConstants::kFPS);
+    const int framesToCapture = static_cast<int>(expectedFrames - m_totalCapturedFrames);
 
     if (framesToCapture <= 0) {
         return;
@@ -167,7 +168,8 @@ void VideoManager::render() {
     if (duplicates > 0) {
         IRE_LOG_WARN(
             "Video capture: {} frames due, submitting {} duplicate(s) for catchup",
-            framesToCapture, duplicates
+            framesToCapture,
+            duplicates
         );
     }
     for (int i = 0; i < duplicates; ++i) {
@@ -300,10 +302,12 @@ void VideoManager::armAudioInput() {
     if (source.startCapture(captureConfig, std::move(audioCallback))) {
         m_audioInputArmed = true;
         adoptAudioInputFormat();
-        IRE_LOG_INFO("Audio input armed (device='{}', rate={}, ch={})",
-                     m_audioInputDeviceName.c_str(),
-                     m_audioSampleRate,
-                     m_audioChannels);
+        IRE_LOG_INFO(
+            "Audio input armed (device='{}', rate={}, ch={})",
+            m_audioInputDeviceName.c_str(),
+            m_audioSampleRate,
+            m_audioChannels
+        );
     } else {
         IRE_LOG_WARN(
             "Audio input capture unavailable; video recording will continue without audio. "
@@ -392,6 +396,16 @@ void VideoManager::toggleCapture() {
         outputResolution.y,
         videoBitrate
     );
+    if (m_capturePostEffects) {
+        IRE_LOG_INFO(
+            "Recording the presented image: screen post effects (the glitch pass) are in the clip."
+        );
+    } else {
+        IRE_LOG_WARN(
+            "Recording the RAW COMPOSITE: video_capture_post_effects = false, so screen post "
+            "effects (the glitch pass) are LEFT OUT of this clip and it will not match the screen."
+        );
+    }
 
     VideoRecorderConfig config;
     config.output_file_path_ = m_outputFilePath;
@@ -420,7 +434,10 @@ void VideoManager::toggleCapture() {
         IRE_LOG_INFO(
             "A/V sync: audio device latency={:.1f}ms, "
             "auto offset={:.1f}ms, manual trim={:.1f}ms, total={:.1f}ms",
-            audioDeviceLatencyMs, autoOffsetMs, m_audioSyncOffsetMs, totalOffsetMs
+            audioDeviceLatencyMs,
+            autoOffsetMs,
+            m_audioSyncOffsetMs,
+            totalOffsetMs
         );
     }
 
@@ -461,10 +478,7 @@ std::string VideoManager::screenshotFilePathForIndex(std::uint64_t index) const 
 }
 
 void VideoManager::writePendingRoiCrops(
-    const std::uint8_t *frameData,
-    int frameWidth,
-    int frameHeight,
-    std::uint64_t shotIndex
+    const std::uint8_t *frameData, int frameWidth, int frameHeight, std::uint64_t shotIndex
 ) {
     if (m_pendingScreenshotCrops.empty()) {
         return;
@@ -481,25 +495,30 @@ void VideoManager::writePendingRoiCrops(
         const int outH = y1 - y0;
         if (outW <= 0 || outH <= 0) {
             IRE_LOG_WARN(
-                "ROI crop '{}' for shot '{}' degenerate after clamp (rect={},{} {}x{} -> {}x{}); skipping",
-                crop.label_, m_pendingScreenshotShotLabel,
-                crop.x_, crop.y_, crop.w_, crop.h_, outW, outH
+                "ROI crop '{}' for shot '{}' degenerate after clamp (rect={},{} {}x{} -> {}x{}); "
+                "skipping",
+                crop.label_,
+                m_pendingScreenshotShotLabel,
+                crop.x_,
+                crop.y_,
+                crop.w_,
+                crop.h_,
+                outW,
+                outH
             );
             continue;
         }
         const std::size_t rowBytes = static_cast<std::size_t>(outW) * 4U;
         std::vector<std::uint8_t> cropData(rowBytes * static_cast<std::size_t>(outH));
         for (int y = 0; y < outH; ++y) {
-            const std::uint8_t *src =
-                frameData +
-                (static_cast<std::size_t>(y0 + y) * static_cast<std::size_t>(frameWidth) +
-                 static_cast<std::size_t>(x0)) *
-                    4U;
+            const std::uint8_t *src = frameData + (static_cast<std::size_t>(y0 + y) *
+                                                       static_cast<std::size_t>(frameWidth) +
+                                                   static_cast<std::size_t>(x0)) *
+                                                      4U;
             std::memcpy(cropData.data() + static_cast<std::size_t>(y) * rowBytes, src, rowBytes);
         }
         const std::string filename =
-            indexedPrefix + "_" + m_pendingScreenshotShotLabel +
-            "__crop_" + crop.label_ + ".png";
+            indexedPrefix + "_" + m_pendingScreenshotShotLabel + "__crop_" + crop.label_ + ".png";
         const std::string path = (outputDir / filename).string();
         IRRender::writePNG(path.c_str(), outW, outH, 4, cropData.data());
         IRE_LOG_INFO("Saved ROI crop: {}", path);
@@ -527,7 +546,9 @@ bool VideoManager::captureScreenshot() {
         imageData.data()
     );
     if (!didCapture) {
-        IRE_LOG_WARN("Default framebuffer screenshot readback is not available for the active backend.");
+        IRE_LOG_WARN(
+            "Default framebuffer screenshot readback is not available for the active backend."
+        );
         return false;
     }
 
@@ -542,19 +563,25 @@ bool VideoManager::captureScreenshot() {
     );
     IRE_LOG_INFO("Saved screenshot: {}", outputPath);
 
-    writePendingRoiCrops(
-        imageData.data(),
-        sourceResolution.x,
-        sourceResolution.y,
-        shotIndex
-    );
+    writePendingRoiCrops(imageData.data(), sourceResolution.x, sourceResolution.y, shotIndex);
     m_pendingScreenshotShotLabel.clear();
     m_pendingScreenshotCrops.clear();
     return true;
 }
 
+// The main framebuffer's image as presented this frame (no debug overlay, no
+// HUD): a screen post pass's output when one drew this tick and post effects
+// are not opted out, else the composite. Both are the framebuffer's size.
+const IRRender::Texture2D &
+VideoManager::presentedMainColor(const IRComponents::C_TrixelCanvasFramebuffer &framebuffer) const {
+    return *captureSource(
+        m_capturePostEffects,
+        IRPrefab::Glitch::presentedMainColorOrNull(),
+        &framebuffer.getTextureColor()
+    );
+}
+
 bool VideoManager::captureCanvasScreenshot() {
-    // Read directly from the main canvas framebuffer texture (no debug overlay, no HUD).
     const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
         IREntity::getEntity("mainFramebuffer")
     );
@@ -562,15 +589,16 @@ bool VideoManager::captureCanvasScreenshot() {
     const std::size_t pixelCount =
         static_cast<std::size_t>(sourceResolution.x) * static_cast<std::size_t>(sourceResolution.y);
     std::vector<std::uint8_t> imageData(pixelCount * 4U);
-    framebuffer.framebuffer_.second->getTextureColor().getSubImage2D(
-        0,
-        0,
-        sourceResolution.x,
-        sourceResolution.y,
-        IRRender::PixelDataFormat::RGBA,
-        IRRender::PixelDataType::UNSIGNED_BYTE,
-        imageData.data()
-    );
+    presentedMainColor(framebuffer)
+        .getSubImage2D(
+            0,
+            0,
+            sourceResolution.x,
+            sourceResolution.y,
+            IRRender::PixelDataFormat::RGBA,
+            IRRender::PixelDataType::UNSIGNED_BYTE,
+            imageData.data()
+        );
 
     // OpenGL texture origin is lower-left, flip for PNG output.
     const std::size_t rowBytes = static_cast<std::size_t>(sourceResolution.x) * 4U;
@@ -603,7 +631,7 @@ bool VideoManager::captureFrame() {
     );
 
     const CaptureFrameStatus captureStatus = IRVideo::captureFrame(
-        framebuffer.framebuffer_.second->getTextureColor(),
+        presentedMainColor(framebuffer),
         m_sourceFrameWidth,
         m_sourceFrameHeight,
         m_sourceFrameBytes,
