@@ -1,0 +1,34 @@
+{
+  "entries": [
+    {
+      "stem": "ir_lighting_frame_data",
+      "side": "glsl",
+      "kind": "by-design",
+      "reason": "GLSL declares the FrameDataLightingToTrixel uniform block in its own include; the Metal struct is co-located in metal/ir_world_lighting.metal."
+    },
+    {
+      "stem": "ir_source_face_scatter_vertex",
+      "side": "glsl",
+      "kind": "by-design",
+      "reason": "Metal bundles the source-face scatter vertex and fragment stages in metal/ir_source_face_scatter_body.metal, which source_face_scatter.metal and source_face_scatter_early.metal include."
+    },
+    {
+      "stem": "ir_source_face_scatter_fragment",
+      "side": "glsl",
+      "kind": "by-design",
+      "reason": "Metal bundles the source-face scatter vertex and fragment stages in metal/ir_source_face_scatter_body.metal, which source_face_scatter.metal and source_face_scatter_early.metal include."
+    },
+    {
+      "stem": "ir_peraxis_scatter_interface",
+      "side": "metal",
+      "kind": "by-design",
+      "reason": "Metal-only shared VertexOut/FragmentOut stage interface; GLSL declares the equivalent out/in varyings inside v_peraxis_scatter.glsl and the f_peraxis_* stages; the five peraxis_*.metal entry points include this interface."
+    },
+    {
+      "stem": "ir_source_face_scatter_body",
+      "side": "metal",
+      "kind": "by-design",
+      "reason": "Metal-only bundled form of ir_source_face_scatter_vertex.glsl and ir_source_face_scatter_fragment.glsl."
+    }
+  ]
+}

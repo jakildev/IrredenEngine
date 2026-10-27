@@ -1,0 +1,36 @@
+name: Shader Parity
+
+# Every GLSL shader needs a Metal counterpart and every Metal one a GLSL
+# counterpart, or a reasoned entry in parity_allowlist.json
+# (docs/design/objectives/backend-parity.md, done-means row 3).
+# scripts/shader_parity_audit.py is a presence audit over the whole shader
+# tree, so it reads the same on a PR and on master and needs no base
+# comparison. The rules live in that script's docstring; its suite runs in
+# render-harness-tests.yml.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "engine/render/src/shaders/**"
+      - "scripts/shader_parity_audit.py"
+      - ".github/workflows/shader-parity.yml"
+  pull_request:
+    paths:
+      - "engine/render/src/shaders/**"
+      - "scripts/shader_parity_audit.py"
+      - ".github/workflows/shader-parity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shader-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Shader counterpart audit
+        run: python3 scripts/shader_parity_audit.py

@@ -52,20 +52,21 @@ CLAUDE-BASELINE §Naming) ↔ `engine/render/src/shaders/metal/*.metal`. One
 **one** `.metal` file (`framebuffer_to_screen.metal` is the pattern), and a
 `.metal` file ports to **both** `v_<key>.glsl` and `f_<key>.glsl`.
 
-Missing-counterpart audit, GLSL → MSL:
+Missing-counterpart audit, both directions, from the repo root:
 
 ```bash
-cd engine/render/src/shaders
-for glsl in *.glsl; do
-    base="${glsl%.glsl}"
-    key="${base#c_}"; key="${key#v_}"; key="${key#f_}"; key="${key#g_}"
-    if ! ls metal/${key}.metal >/dev/null 2>&1; then
-        echo "MISSING METAL: $glsl  →  metal/${key}.metal"
-    fi
-done
+python3 scripts/shader_parity_audit.py
 ```
 
-Invert it for MSL → GLSL. For the C++ side, Glob both `opengl_*.cpp` and
+It prints every unpaired shader with the file it expects and exits 1 on any;
+the `shader-parity` workflow runs the same command on every shader PR. The
+tree keeps the `c_` and `ir_` prefixes on the Metal side and drops the
+`v_`/`f_`/`g_` ones, so do not strip prefixes by hand. A deliberate asymmetry
+goes in `engine/render/src/shaders/parity_allowlist.json`: `by-design` with a
+reason when the counterpart is bundled or co-located, `deferred` with a
+`follow_up` issue when the port is still owed.
+
+For the C++ side, Glob both `opengl_*.cpp` and
 `metal_*.cpp`, strip the prefixes, and compare stems — then read
 `opengl_render_impl.cpp` against `metal_render_impl.cpp`, because real gaps are
 functions, not files. `metal_runtime.cpp`, `metal_cocoa_bridge.mm`, and
