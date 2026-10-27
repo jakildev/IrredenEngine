@@ -154,7 +154,7 @@ HandOffRequest parseRequest(const sol::object &arg) {
             raise("request keys must be strings");
         }
         const std::string name = key.as<std::string>();
-        if (name != "argv" && name != "resume") {
+        if (name != "argv" && name != "resume" && name != "releaseMidi") {
             raise("unknown key '" + name + "'");
         }
     }
@@ -169,8 +169,38 @@ HandOffRequest parseRequest(const sol::object &arg) {
             raise("resume = false is not supported; the process always resumes");
         }
     }
+    const sol::object releaseMidi = options["releaseMidi"];
+    if (releaseMidi.valid() && releaseMidi.get_type() != sol::type::lua_nil) {
+        if (releaseMidi.get_type() != sol::type::boolean) {
+            raise("releaseMidi must be a boolean");
+        }
+        request.releaseMidi_ = releaseMidi.as<bool>();
+    }
     return request;
 }
+
+class ScopedMidiRestore {
+  public:
+    ScopedMidiRestore(HandOffMidiBracket *bracket, HandOffResult &result)
+        : m_bracket(bracket)
+        , m_result(result) {}
+
+    ~ScopedMidiRestore() {
+        restore();
+    }
+
+    void restore() {
+        if (m_bracket == nullptr) {
+            return;
+        }
+        m_result.midiLost_ = m_bracket->restore();
+        m_bracket = nullptr;
+    }
+
+  private:
+    HandOffMidiBracket *m_bracket;
+    HandOffResult &m_result;
+};
 
 } // namespace
 
@@ -191,7 +221,8 @@ HandOffOutcome runHandOff(
     const HandOffRequest &request,
     const HandOffEnvironment &environment,
     HandOffPlatform &platform,
-    const std::optional<std::filesystem::path> &toolRoot
+    const std::optional<std::filesystem::path> &toolRoot,
+    HandOffMidiBracket *midiBracket
 ) {
     HandOffOutcome outcome;
     HandOffResult &result = outcome.result_;
@@ -253,6 +284,10 @@ HandOffOutcome runHandOff(
     IRE_LOG_INFO("IREngine.handOff: suspending for {}", request.argv_.front());
     platform.drainGpu();
     outcome.suspended_ = true;
+    ScopedMidiRestore midiRestore{request.releaseMidi_ ? midiBracket : nullptr, result};
+    if (request.releaseMidi_ && midiBracket != nullptr) {
+        midiBracket->release();
+    }
     if (holdsLease) {
         const ChildExit release = platform.runToExit(wrapperCommand(
             environment,
@@ -265,6 +300,8 @@ HandOffOutcome runHandOff(
         }
         IRE_LOG_INFO("IREngine.handOff: released the gpu lease");
     }
+
+    midiRestore.restore();
 
     std::vector<std::string> runArgs;
     if (buildDir.has_value()) {
@@ -314,13 +351,14 @@ HandOffOutcome runHandOff(
     const HandOffRequest &request,
     const HandOffEnvironment &environment,
     HandOffPlatform &platform,
-    ToolService &toolService
+    ToolService &toolService,
+    HandOffMidiBracket *midiBracket
 ) {
     if (toolService.live()) {
         throw std::runtime_error("IREngine.handOff: a tool is still running");
     }
     if (!toolService.root().has_value()) {
-        return runHandOff(request, environment, platform, std::nullopt);
+        return runHandOff(request, environment, platform, std::nullopt, midiBracket);
     }
     const std::optional<std::filesystem::path> activeRoot = toolService.activeRoot();
     if (!activeRoot.has_value()) {
@@ -330,7 +368,7 @@ HandOffOutcome runHandOff(
             "the active root '" + toolService.activeRootId() + "' is no longer a live worktree";
         return refused;
     }
-    return runHandOff(request, environment, platform, activeRoot);
+    return runHandOff(request, environment, platform, activeRoot, midiBracket);
 }
 
 void bindHandOffLua(
@@ -359,6 +397,11 @@ void bindHandOffLua(
             if (!result.error_.empty()) {
                 out["error"] = result.error_;
             }
+            sol::table midiLost = view.create_table(static_cast<int>(result.midiLost_.size()), 0);
+            for (std::size_t i = 0; i < result.midiLost_.size(); ++i) {
+                midiLost[i + 1] = result.midiLost_[i];
+            }
+            out["midiLost"] = midiLost;
             return out;
         }
     );

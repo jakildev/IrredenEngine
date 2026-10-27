@@ -6,9 +6,8 @@
 #include <irreden/audio/ir_audio_types.hpp>
 #include <irreden/audio/midi_input_frame_buffer.hpp>
 #include <irreden/audio/midi_message_ring.hpp>
+#include <irreden/audio/midi_backend.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
-
-#include <RtMidi.h>
 
 #include <memory>
 #include <string>
@@ -27,30 +26,35 @@ namespace IRAudio {
 // callback thread before ring_ (its write target) is torn down.
 struct MidiInPort {
     MidiMessageRing ring_;
-    int portIndex_;
+    int logicalHandle_;
+    int backendIndex_;
+    unsigned int occurrence_;
     std::string name_;
     bool overflowing_{false};
-    std::unique_ptr<RtMidiIn> rtMidiIn_;
+    std::unique_ptr<detail::IMidiInBackend> backend_;
 };
 
 class MidiIn {
   public:
     MidiIn();
+    explicit MidiIn(detail::MidiInBackendFactory backendFactory);
     ~MidiIn();
 
     void tick();
 
     // Opens an input port by hardcoded interface enum or by device-name
-    // substring. Returns the RtMidi port index (used as the stable port
-    // handle / source-port id) or -1 if no port matches. Opening an
+    // substring. Returns a session-local logical handle / source-port id or
+    // -1 if no port matches. Opening an
     // already-open port is a no-op that returns the existing handle.
     int openPort(MidiInInterfaces midiInInterface);
     int openPort(const std::string &deviceName);
 
     const std::vector<std::string> &getPortNames() const;
-    // RtMidi indices of every currently-open input port (one per device),
+    // Logical handles of every currently-open input port (one per device),
     // in open order — lets a per-port consumer enumerate its lanes.
     std::vector<int> getOpenPortIndices() const;
+    void releasePorts();
+    std::vector<std::string> restorePorts();
 
     void processMidiMessageQueue();
 
@@ -84,13 +88,14 @@ class MidiIn {
     // Enumeration probe only — never opened for input. Null when the RtMidi
     // client failed to init (no MIDI server available); degraded state is
     // 0 ports, every query/tick path already tolerates that.
-    std::unique_ptr<RtMidiIn> m_rtMidiIn;
+    detail::MidiInBackendFactory m_backendFactory;
     unsigned int m_numberPorts;
     std::vector<std::string> m_portNames;
     std::vector<std::unique_ptr<MidiInPort>> m_ports;
     MidiInputFrameBuffer m_frameBuffer;
 
     void clearPreviousMessages();
+    void refreshPortNames();
 };
 
 void onRtMidiMessage(

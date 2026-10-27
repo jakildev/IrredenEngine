@@ -19,6 +19,27 @@
 
 namespace IREngine {
 
+namespace {
+
+class AudioMidiBracket final : public HandOffMidiBracket {
+  public:
+    explicit AudioMidiBracket(IRAudio::AudioManager &audioManager)
+        : m_audioManager(audioManager) {}
+
+    void release() override {
+        m_audioManager.releaseMidiPorts();
+    }
+
+    std::vector<std::string> restore() override {
+        return m_audioManager.restoreMidiPorts();
+    }
+
+  private:
+    IRAudio::AudioManager &m_audioManager;
+};
+
+} // namespace
+
 World::World(
     const char *configFileName,
     const char *configPresetFile,
@@ -244,8 +265,14 @@ HandOffResult World::handOff(const HandOffRequest &request) {
         unsupported.error_ = "no process platform";
         return unsupported;
     }
-    const HandOffOutcome outcome =
-        runHandOff(request, HandOffEnvironment::fromProcess(), *m_handOffPlatform, m_toolService);
+    AudioMidiBracket midiBracket{m_audioManager};
+    const HandOffOutcome outcome = runHandOff(
+        request,
+        HandOffEnvironment::fromProcess(),
+        *m_handOffPlatform,
+        m_toolService,
+        &midiBracket
+    );
     if (outcome.leaseLost_) {
         m_handOffLeaseLost = true;
     } else if (outcome.suspended_) {

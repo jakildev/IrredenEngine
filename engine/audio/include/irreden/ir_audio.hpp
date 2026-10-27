@@ -34,10 +34,10 @@ IAudioCaptureSource &getAudioCaptureSource();
 std::vector<std::string> midiInPorts();
 /// Returns the names of all MIDI output ports discovered at startup.
 std::vector<std::string> midiOutPorts();
-/// Returns the RtMidi port indices of every currently-open MIDI input port,
+/// Returns the logical handles of every currently-open MIDI input port,
 /// in open order — lets a per-port consumer enumerate its active lanes.
 std::vector<int> midiInOpenPorts();
-/// Returns the RtMidi port indices of every currently-open MIDI output port.
+/// Returns the logical handles of every currently-open MIDI output port.
 std::vector<int> midiOutOpenPorts();
 /// Returns every audio device the backend reported at startup, by name: the
 /// names a capture config (`video_capture_audio_input_device_name`) matches.
@@ -45,17 +45,17 @@ std::vector<AudioDeviceSummary> audioDevices();
 /// Opens a MIDI input port by hardcoded interface index.
 int openPortMidiIn(MidiInInterfaces midiInInterface);
 /// Opens the first MIDI input port whose name contains @p deviceName (substring match).
-/// Returns the port index on success, or -1 if no port matches (logs a warning).
+/// Returns a session-local logical handle on success, or -1 if no port matches.
 int openPortMidiIn(const std::string &deviceName);
 /// Opens a MIDI output port by hardcoded interface index.
 int openPortMidiOut(MidiOutInterfaces midiOutInterface);
 /// Opens the first MIDI output port whose name contains @p deviceName (substring match).
-/// Returns the port index on success, or -1 if no port matches (logs a warning).
+/// Returns a session-local logical handle on success, or -1 if no port matches.
 int openPortMidiOut(const std::string &deviceName);
 /// Sends a raw MIDI message to the default output port (the first one opened).
 void sendMidiMessage(const std::vector<unsigned char> &message);
-/// Sends a raw MIDI message to a specific open output port by its RtMidi port
-/// index (the handle returned by @ref openPortMidiOut). Falls back to a warning
+/// Sends a raw MIDI message to a specific open output port by the logical
+/// handle returned by @ref openPortMidiOut. Falls back to a warning
 /// if the port isn't open.
 void sendMidiMessage(int portIndex, const std::vector<unsigned char> &message);
 

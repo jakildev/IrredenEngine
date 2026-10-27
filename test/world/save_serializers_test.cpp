@@ -595,6 +595,15 @@ TEST(SaveSerializers, BindPointsRoundTripsEmpty) {
 
 // --- audio/ ----------------------------------------------------------------
 
+TEST(SaveSerializers, MidiLogicalHandlesRoundTripAtVersionOne) {
+    EXPECT_EQ(roundTrip(C_MidiDevice{17}).portIndex_, 17);
+    C_MidiSourcePort source;
+    source.portIndex_ = 23;
+    EXPECT_EQ(roundTrip(source).portIndex_, 23);
+    EXPECT_EQ(IRWorld::SaveTrait<C_MidiDevice>::kSaveVersion, 1u);
+    EXPECT_EQ(IRWorld::SaveTrait<C_MidiSourcePort>::kSaveVersion, 1u);
+}
+
 TEST(SaveSerializers, MidiSequenceRoundTrips) {
     C_MidiSequence sequence{140.0f, 3, 4, 2, false};
     sequence.insertNote(0.0, 0.25, 60, 100);

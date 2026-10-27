@@ -13,8 +13,9 @@ editor afterwards. Lua surface summary: [`engine/script/CLAUDE.md`](../../engine
 local r = IREngine.handOff{
     argv = { "IRMyCreation", "--auto-record", "600" },
     resume = true,
+    releaseMidi = true,
 }
--- r.ok, r.supported, r.exitCode (set once the child started), r.verdict, r.error
+-- r.ok, r.supported, r.exitCode, r.verdict, r.error, r.midiLost
 ```
 
 - `argv` is a non-empty dense array of strings: the child's `ir-run`
@@ -22,6 +23,10 @@ local r = IREngine.handOff{
   argument; nothing is joined into a shell command.
 - `resume` defaults to `true`; `false` raises. Replacing the parent for good
   is a different lifecycle, not an alternate meaning of this call.
+- `releaseMidi` defaults to `false`. When true, the parent stops its MIDI
+  clock, closes every MIDI endpoint for the child, and restores each endpoint
+  into its existing logical handle before returning. `midiLost` is the dense
+  list of endpoint names that did not return.
 - `argv[1]` is a target name, not an `ir-run` option. The wrapper receives
   `--` immediately before it. When C++ configured a tool root, the child build
   tree is fixed at `<toolRoot>/build`; Lua cannot choose another directory.
@@ -49,14 +54,21 @@ local r = IREngine.handOff{
 1. validate the request and the wrapper capability;
 2. drain the GPU — `RenderDevice::finish()` (`glFinish`; Metal commits and
    waits on the frame command buffer);
-3. release the `ir-run` gpu lease when this run holds one;
-4. with a tool root, launch `ir-run --build-dir <toolRoot>/build --result-file
+3. when requested, stop the MIDI clock, send All Notes Off, and close MIDI
+   inputs and outputs;
+4. release the `ir-run` gpu lease when this run holds one;
+5. with a tool root, launch `ir-run --build-dir <toolRoot>/build --result-file
    <path> -- <argv...>`; without one, launch `ir-run -- <argv...>`; then
    block in the OS wait (`posix_spawn` +
    `waitpid`, or `CreateProcessW` + `WaitForSingleObject`), stdio inherited so
    the child's `ir-run: RESULT=` line lands in the parent's log;
-5. reacquire the lease;
-6. re-baseline the clock (`TimeManager::resumeAfterSuspend`) and return.
+6. reacquire the lease;
+7. restore MIDI endpoints, then re-baseline the clock
+   (`TimeManager::resumeAfterSuspend`) and return.
+
+MIDI restoration is scope-bound and runs exactly once after closure even when
+lease release, child start, child exit, or lease reacquisition fails. A clock
+stopped by the bracket stays stopped.
 
 Drain precedes release on every path: a release followed by a drain would let
 the child link shaders while the parent still has GPU work queued, the
@@ -118,9 +130,11 @@ remains the compatibility surface for existing consumers.
 - **Only the gpu lease is lent.** A benchmark parent keeps its cpu and perf
   locks, so a child argv carrying `--auto-profile` is refused before anything
   is released (it would queue on the parent's own locks).
-- **Audio and MIDI stay open.** The parent keeps its audio stream and RtMidi
-  ports while handed off. WinMM MIDI ports open in one process at a time on
-  Windows, so a child that opens the same port fails to open it.
+- **Audio stays open; MIDI release is opt-in.** Without `releaseMidi`, the
+  parent retains its MIDI ports. With it, logical handles remain reserved and
+  restoration matches exact endpoint name plus same-name occurrence. Windows'
+  in-box USB-MIDI class driver is single-client for measured devices, while
+  vendor drivers may permit multiple clients.
 - **Native Windows ghosting.** A window that stops pumping messages for 5 s is
   marked "(Not Responding)" and DWM swaps it for a ghost whose close ends the
   process (`ir-run` reports that as `RESULT=HOST-CLOSED`). The launcher calls

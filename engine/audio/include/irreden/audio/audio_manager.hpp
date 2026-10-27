@@ -13,6 +13,7 @@
 
 #include <functional>
 #include <utility>
+#include <vector>
 
 namespace IRAudio {
 
@@ -56,6 +57,9 @@ class AudioManager {
     inline void clearOutboundMidiObserver() {
         m_outboundMidiObserver = nullptr;
     }
+
+    void releaseMidiPorts();
+    std::vector<std::string> restoreMidiPorts();
     // Fire the registered observer (no-op if none). AudioManager fires its own
     // observer rather than exposing the stored std::function, mirroring how
     // Audio fires m_inputCallback internally — keeps the callable encapsulated.

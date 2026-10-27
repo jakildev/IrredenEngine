@@ -20,6 +20,7 @@ add_executable(IrredenEngineTest
   audio/synthetic_audio_capture_test.cpp
   audio/midi_clock_test.cpp
   audio/midi_in_tick_test.cpp
+  audio/midi_hand_off_test.cpp
   audio/midi_message_ring_test.cpp
   audio/midi_multiport_test.cpp
   audio/music_theory_test.cpp

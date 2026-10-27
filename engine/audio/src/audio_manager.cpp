@@ -64,4 +64,18 @@ AudioManager::~AudioManager() {
     IRE_LOG_DEBUG("Destroyed AudioManager");
 }
 
+void AudioManager::releaseMidiPorts() {
+    m_midiClock.stop();
+    m_midiOut.sendAllNotesOff();
+    m_midiIn.releasePorts();
+    m_midiOut.releasePorts();
+}
+
+std::vector<std::string> AudioManager::restoreMidiPorts() {
+    std::vector<std::string> lost = m_midiIn.restorePorts();
+    std::vector<std::string> outputLost = m_midiOut.restorePorts();
+    lost.insert(lost.end(), outputLost.begin(), outputLost.end());
+    return lost;
+}
+
 } // namespace IRAudio

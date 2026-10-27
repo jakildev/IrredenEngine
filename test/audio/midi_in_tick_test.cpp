@@ -17,11 +17,25 @@
 
 namespace IRAudio {
 
+class DetachedMidiInBackend final : public detail::IMidiInBackend {
+  public:
+    unsigned int portCount() override {
+        return 0;
+    }
+    std::string portName(unsigned int) override {
+        return {};
+    }
+    void openPort(unsigned int) override {}
+    void setCallback(detail::MidiCallback, void *) override {}
+};
+
 struct MidiInTestAccess {
     static MidiInPort &attachPort(MidiIn &midiIn, int portIndex) {
         auto port = std::make_unique<MidiInPort>();
-        port->portIndex_ = portIndex;
+        port->logicalHandle_ = portIndex;
+        port->backendIndex_ = portIndex;
         port->name_ = "detached test port";
+        port->backend_ = std::make_unique<DetachedMidiInBackend>();
         midiIn.m_ports.push_back(std::move(port));
         return *midiIn.m_ports.back();
     }
