@@ -5,6 +5,15 @@
 
 namespace IRVideo {
 
+/// The image a recording reads this frame: the presented one (a screen post
+/// pass's output, when one drew this tick) unless post effects are opted out
+/// or none was drawn, in which case the composite itself.
+template <class Image>
+constexpr const Image *
+captureSource(bool postEffects, const Image *presented, const Image *composite) {
+    return (postEffects && presented != nullptr) ? presented : composite;
+}
+
 class VideoManager;
 
 /// Byte width of a single row in an RGBA frame buffer passed to @c recordFrame /

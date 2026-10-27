@@ -7,10 +7,9 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 
-#include <irreden/common/components/component_world_transform.hpp>
-#include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_glitch_state.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
+#include <irreden/render/framebuffer.hpp>
 #include <irreden/render/framebuffer_screen_math.hpp>
 #include <irreden/render/glitch_math.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -124,18 +123,18 @@ inline GlitchFramePlan planGlitchFrame(
 }
 
 // The GPU work of one enabled frame. `encodeFrame` issues it in this order and
-// nothing else: `recreateHistory` on first use and on a resize,
-// `copyHistory` on a hold-tick change, then always one `bindAndClearScreen`
-// and one `drawScreenBase`. `GlitchGpuEncoder` encodes it; the headless
-// probes record it.
+// nothing else: `recreateImages` on first use and on a resize, `copyHistory`
+// on a hold-tick change, then always one `bindAndClearOutput` and one
+// `drawOutput`. `GlitchGpuEncoder` encodes it; the headless probes record it.
 class GlitchEncoder {
   public:
-    // Replaces the one history image with one of @p size.
-    virtual void recreateHistory(IRMath::ivec2 size) = 0;
+    // Replaces the history image and the output framebuffer with ones of
+    // @p size.
+    virtual void recreateImages(IRMath::ivec2 size) = 0;
     // Snapshots the unglitched main colour into the history image.
     virtual void copyHistory() = 0;
-    virtual void bindAndClearScreen() = 0;
-    virtual void drawScreenBase(const FrameDataFramebufferGlitch &frameData) = 0;
+    virtual void bindAndClearOutput() = 0;
+    virtual void drawOutput(const FrameDataFramebufferGlitch &frameData) = 0;
 
   protected:
     ~GlitchEncoder() = default;
@@ -146,19 +145,24 @@ class GlitchGpuEncoder final : public GlitchEncoder {
     GlitchGpuEncoder(
         const C_TrixelCanvasFramebuffer &source,
         std::pair<ResourceId, Texture2D *> &history,
+        std::pair<ResourceId, Framebuffer *> &output,
         Buffer &frameDataBuf,
         ShaderProgram &program,
         VAO &quadVao
     )
         : m_source{source}
         , m_history{history}
+        , m_output{output}
         , m_frameDataBuf{frameDataBuf}
         , m_program{program}
         , m_quadVao{quadVao} {}
 
-    void recreateHistory(IRMath::ivec2 size) override {
+    void recreateImages(IRMath::ivec2 size) override {
         if (m_history.second != nullptr) {
             IRRender::destroyResource<Texture2D>(m_history.first);
+        }
+        if (m_output.second != nullptr) {
+            IRRender::destroyResource<Framebuffer>(m_output.first);
         }
         m_history = IRRender::createResource<Texture2D>(
             TextureKind::TEXTURE_2D,
@@ -168,18 +172,27 @@ class GlitchGpuEncoder final : public GlitchEncoder {
             TextureWrap::CLAMP_TO_EDGE,
             TextureFilter::NEAREST
         );
+        // The output is the main colour's twin texel for texel, so the blit
+        // and the recorder read it exactly as they read the composite. Its
+        // depth attachment only completes the target.
+        m_output = IRRender::createResource<Framebuffer>(
+            size,
+            IRMath::ivec2(0),
+            TextureFormat::RGBA8,
+            TextureFormat::DEPTH24_STENCIL8
+        );
     }
 
     void copyHistory() override {
         IRRender::device()->copyTexture2D(m_source.getTextureColor(), *m_history.second);
     }
 
-    void bindAndClearScreen() override {
-        IRRender::device()->bindDefaultFramebuffer();
-        IRRender::device()->clearDefaultFramebuffer();
+    void bindAndClearOutput() override {
+        m_output.second->bind();
+        m_output.second->clear();
     }
 
-    void drawScreenBase(const FrameDataFramebufferGlitch &frameData) override {
+    void drawOutput(const FrameDataFramebufferGlitch &frameData) override {
         m_frameDataBuf.subData(0, sizeof(FrameDataFramebufferGlitch), &frameData);
         m_frameDataBuf.bindBase(BufferTarget::UNIFORM, kBufferIndex_FramebufferGlitchFrameData);
         m_program.use();
@@ -193,16 +206,19 @@ class GlitchGpuEncoder final : public GlitchEncoder {
   private:
     const C_TrixelCanvasFramebuffer &m_source;
     std::pair<ResourceId, Texture2D *> &m_history;
+    std::pair<ResourceId, Framebuffer *> &m_output;
     Buffer &m_frameDataBuf;
     ShaderProgram &m_program;
     VAO &m_quadVao;
 };
 
-// Replaces the main framebuffer's screen blit with a glitched one on enabled
-// frames: one fullscreen fragment reads the composed main colour, its depth
-// attachment and a history snapshot, and writes the default screen target
-// directly. Owns exactly one image, the history texture. Off frames encode no
-// GPU work and leave `FRAMEBUFFER_TO_SCREEN` to blit as usual.
+// Glitches the main framebuffer's composite into an output image of the same
+// size on enabled frames: one fullscreen fragment reads the composed main
+// colour, its depth attachment and a history snapshot. `FRAMEBUFFER_TO_SCREEN`
+// then presents the output in place of the composite, and the recorder reads
+// the same output, so a clip carries what the screen showed
+// (`IRPrefab::Glitch::presentedMainColorOrNull`). Owns two images, the history
+// texture and the output framebuffer. Off frames encode no GPU work.
 template <> struct System<FRAMEBUFFER_GLITCH> {
     static constexpr std::uint64_t kNotPublished = std::numeric_limits<std::uint64_t>::max();
 
@@ -212,10 +228,12 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
     FrameDataFramebufferGlitch frameData_{};
 
     // Unglitched snapshot of the composed main colour, retaken on each hold
-    // tick. Sized to the main framebuffer's resolution-plus-buffer and
-    // recreated with it; the rendering resource manager owns its lifetime.
+    // tick, and the glitched output. Both are sized to the main framebuffer's
+    // resolution-plus-buffer and recreated with it; the rendering resource
+    // manager owns their lifetime.
     std::pair<ResourceId, Texture2D *> history_{0, nullptr};
-    IRMath::ivec2 historySize_ = IRMath::ivec2(0);
+    std::pair<ResourceId, Framebuffer *> output_{0, nullptr};
+    IRMath::ivec2 imageSize_ = IRMath::ivec2(0);
     bool historyValid_ = false;
     std::int64_t lastHoldTick_ = 0;
 
@@ -225,8 +243,8 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
     bool enabledThisFrame_ = false;
     std::uint64_t renderTick_ = 0;
 
-    // RENDER event tick whose screen base this pass drew, stamped after the
-    // draw is encoded.
+    // RENDER event tick whose output this pass drew, stamped after the draw
+    // is encoded.
     std::uint64_t publishedRenderTick_ = kNotPublished;
 
     // Encoder calls issued, per frame and since registration; the
@@ -240,8 +258,14 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
         return publishedRenderTick_ == renderTick;
     }
 
-    bool ownsHistoryImage() const {
-        return history_.second != nullptr;
+    bool ownsImages() const {
+        return history_.second != nullptr && output_.second != nullptr;
+    }
+
+    // The glitched output's colour, or null before the first enabled frame.
+    // Current only on a RENDER tick `isPublishedForRenderTick` reports.
+    const Texture2D *outputColorOrNull() const {
+        return output_.second != nullptr ? &output_.second->getTextureColor() : nullptr;
     }
 
     void beginTick() {
@@ -264,21 +288,16 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
     }
 
     // One enabled frame through @p encoder. A resize withdraws the publication
-    // before the history is replaced: the snapshot and any screen base drawn
-    // against the old size are void. The pass publishes only after the
-    // screen-base draw, so `FRAMEBUFFER_TO_SCREEN` never skips a frame this
-    // pass did not draw.
-    void encodeFrame(
-        GlitchEncoder &encoder,
-        IRMath::ivec2 framebufferSize,
-        IRMath::ivec2 trixelStep,
-        const IRMath::mat4 &mvpMatrix
-    ) {
-        if (historySize_ != framebufferSize) {
+    // before the images are replaced: the snapshot and any output drawn
+    // against the old size are void. The pass publishes only after the output
+    // draw, so no reader presents an output this pass did not draw.
+    void
+    encodeFrame(GlitchEncoder &encoder, IRMath::ivec2 framebufferSize, IRMath::ivec2 trixelStep) {
+        if (imageSize_ != framebufferSize) {
             publishedRenderTick_ = kNotPublished;
             historyValid_ = false;
-            historySize_ = framebufferSize;
-            encoder.recreateHistory(framebufferSize);
+            imageSize_ = framebufferSize;
+            encoder.recreateImages(framebufferSize);
         }
         const bool copyHistory =
             planGlitchFrame(&state_, clock_.holdTick_, historyValid_, lastHoldTick_).copyHistory_;
@@ -286,56 +305,42 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
         const IRPrefab::Glitch::FrameTables tables = IRPrefab::Glitch::frameTables(
             IRPrefab::Glitch::frameParams(state_, clock_, trixelStep, framebufferSize)
         );
-        frameData_ =
-            packGlitchFrameData(tables, IRPrefab::Glitch::toTickWords(clock_.holdTick_), mvpMatrix);
+        frameData_ = packGlitchFrameData(
+            tables,
+            IRPrefab::Glitch::toTickWords(clock_.holdTick_),
+            detail::framebufferSelfMvp(framebufferSize)
+        );
 
         {
             IRRender::GpuSubStageScope scope("framebufferGlitch");
             if (copyHistory) {
-                // Snapshot before the default target is bound, from the
-                // unglitched composite: feeding glitched output back would
-                // accumulate artifacts.
+                // Snapshot from the unglitched composite: feeding glitched
+                // output back would accumulate artifacts.
                 encoder.copyHistory();
                 historyValid_ = true;
                 lastHoldTick_ = clock_.holdTick_;
                 ++frameHistoryCopies_;
                 ++historyCopyCount_;
             }
-            encoder.bindAndClearScreen();
-            encoder.drawScreenBase(frameData_);
+            encoder.bindAndClearOutput();
+            encoder.drawOutput(frameData_);
         }
         ++frameDraws_;
         ++drawCount_;
         publishedRenderTick_ = renderTick_;
     }
 
-    void tick(
-        const C_TrixelCanvasFramebuffer &framebuffer,
-        const C_WorldTransform &cameraWorldXform,
-        const C_Name &name
-    ) {
+    void tick(const C_TrixelCanvasFramebuffer &framebuffer, const C_Name &name) {
         if (!enabledThisFrame_ || name.name_ != "mainFramebuffer") {
             return;
         }
         IR_PROFILE_SCOPE("framebufferGlitch");
-        const IRMath::ivec2 size = framebuffer.getResolutionPlusBuffer();
-        GlitchGpuEncoder encoder{framebuffer, history_, *frameDataBuf_, *program_, *quadVao_};
+        GlitchGpuEncoder
+            encoder{framebuffer, history_, output_, *frameDataBuf_, *program_, *quadVao_};
         encodeFrame(
             encoder,
-            size,
-            IRPrefab::Glitch::trixelStepForZoom(IRRender::getCameraZoom()),
-            detail::framebufferScreenMvp(
-                size,
-                cameraWorldXform.translation_,
-                IRMath::vec2(
-                    IRPrefab::Camera::screenResidual(
-                        IRRender::getEffectiveCameraIso(),
-                        IRRender::getCameraZoom(),
-                        IRRender::getOutputScaleFactor()
-                    )
-                ),
-                true
-            )
+            framebuffer.getResolutionPlusBuffer(),
+            IRPrefab::Glitch::trixelStepForZoom(IRRender::getCameraZoom())
         );
     }
 
@@ -355,10 +360,9 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
             BufferTarget::UNIFORM,
             kBufferIndex_FramebufferGlitchFrameData
         );
-        SystemId id =
-            registerSystem<FRAMEBUFFER_GLITCH, C_TrixelCanvasFramebuffer, C_WorldTransform, C_Name>(
-                "FramebufferGlitch"
-            );
+        SystemId id = registerSystem<FRAMEBUFFER_GLITCH, C_TrixelCanvasFramebuffer, C_Name>(
+            "FramebufferGlitch"
+        );
         auto *sys = getSystemParams<System<FRAMEBUFFER_GLITCH>>(id);
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("FramebufferGlitchFrameData");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("FramebufferGlitchProgram");

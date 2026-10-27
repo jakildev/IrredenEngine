@@ -11,7 +11,7 @@ glitch can belong to an object (see [Subjects](#subjects)).
 
 | Pass | Slot | Reads | Status |
 |---|---|---|---|
-| `FRAMEBUFFER_GLITCH` | RENDER, after every main-framebuffer producer (`TRIXEL_TO_FRAMEBUFFER`, `VIEWPORT_TO_FRAMEBUFFER`, framebuffer debug overlays), immediately before `FRAMEBUFFER_TO_SCREEN` | main framebuffer colour + depth, one history image | shipped |
+| `FRAMEBUFFER_GLITCH` | RENDER, after every main-framebuffer producer (`TRIXEL_TO_FRAMEBUFFER`, `VIEWPORT_TO_FRAMEBUFFER`, framebuffer debug overlays), immediately before `FRAMEBUFFER_TO_SCREEN` | main framebuffer colour + depth, one history image; writes one output image the blit and the recorder present | shipped |
 | `TRIXEL_GLITCH` | RENDER, after every main/per-axis colour producer (`LIGHTING_TO_TRIXEL`, `FOG_TO_TRIXEL` when registered), immediately before `TRIXEL_TO_FRAMEBUFFER` | the main and active per-axis canvases' colour, distance and entity-id planes, tick-start history | shipped |
 | World-space jumps | none | — | creation-authored whole-voxel `TRANSFORM_TRANSLATION` modifiers from Lua, keyed off the same `IRRender.glitch().tick` |
 
@@ -86,30 +86,38 @@ framebuffer edge. A sub-trixel offset reads as a different medium.
 
 ## Resources and publication
 
-`FRAMEBUFFER_GLITCH` owns exactly one image: an RGBA8 history texture sized to
-the main framebuffer's resolution-plus-buffer, allocated on first enabled use,
-recreated with the framebuffer, and owned through the rendering resource
-manager. It is refreshed with `RenderDevice::copyTexture2D` from the
-*unglitched* composite on a hold-tick change (and on first enable or resize),
-and only when hold or depth reads it. Feeding glitched output back would
-accumulate artifacts.
+`FRAMEBUFFER_GLITCH` owns two images, both sized to the main framebuffer's
+resolution-plus-buffer, allocated together on first enabled use, recreated
+together with the framebuffer, and owned through the rendering resource
+manager:
 
-There is no output attachment. On an enabled frame the pass binds and clears
-the default screen target itself and draws the glitched framebuffer with the
-blit's placement (`framebuffer_screen_math.hpp`), then stamps the RENDER event
-tick. `IRPrefab::Glitch::screenCompositedForCurrentRenderTick()` is true only
-for that tick, and `FRAMEBUFFER_TO_SCREEN` then skips its bind, clear and
-draw. The target is cleared and drawn exactly once per frame.
+- an RGBA8 **history** texture, refreshed with `RenderDevice::copyTexture2D`
+  from the *unglitched* composite on a hold-tick change (and on first enable
+  or resize), and only when hold or depth reads it. Feeding glitched output
+  back would accumulate artifacts;
+- an RGBA8 **output** framebuffer, the composite's twin texel for texel. On
+  an enabled frame the pass binds and clears it and draws the glitched
+  framebuffer over it with `framebufferSelfMvp` (`framebuffer_screen_math.hpp`),
+  then stamps the RENDER event tick.
+
+`IRPrefab::Glitch::outputPublishedForCurrentRenderTick()` is true only for
+that tick. `FRAMEBUFFER_TO_SCREEN` then presents the output for the main
+framebuffer with the blit's own placement, in place of the composite, so the
+screen target is still cleared and drawn exactly once per frame by the blit.
+`IRPrefab::Glitch::presentedMainColorOrNull()` names the same output for any
+other reader of the presented image: the recorder reads it, so a clip carries
+what the screen showed (see [Recording](#recording)).
 
 An enabled frame runs `encodeFrame`, which issues its GPU work through a
-`GlitchEncoder`: `recreateHistory` on first use or on a framebuffer resize
+`GlitchEncoder`: `recreateImages` on first use or on a framebuffer resize
 (after withdrawing the publication), `copyHistory` on a hold-tick change and
-after an off tick, then one `bindAndClearScreen` and one `drawScreenBase`. The
-pass publishes only after that draw. `tick` resolves the camera and hands
-`encodeFrame` a `GlitchGpuEncoder`, which makes the device and resource calls.
+after an off tick, then one `bindAndClearOutput` and one `drawOutput`. The
+pass publishes only after that draw. `tick` hands `encodeFrame` a
+`GlitchGpuEncoder`, which makes the device and resource calls.
 `FRAMEBUFFER_TO_SCREEN` has the same shape: `beginFrame` and `encodeBlit`
 decide and count, and issue their work through a `ScreenBlitEncoder`
-(`beginScreen`, then one `drawFramebuffer` per framebuffer) that
+(`beginScreen`, then per framebuffer one `drawFramebuffer`, or
+`drawGlitchOutput` for the main framebuffer on a published tick) that
 `ScreenBlitGpuEncoder` encodes.
 `test/render/prefab_system_probe_test.cpp` runs both passes against recording
 encoders, with a recording `RenderDevice` catching any call made outside them,
@@ -121,13 +129,24 @@ no draw, no timing scope. The live `framebufferGlitch` row is written to zero
 and the ordinary blit runs unchanged. `IRShapeDebug --glitch-test standard-off`
 proves the off path byte-identical against the standing references.
 
+## Recording
+
+A recording reads the presented image, not the composite: on a tick the pass
+drew its output, `VideoManager` captures that output (through
+`presentedMainColorOrNull`), and on every other tick the composite, both at
+the framebuffer's size. Canvas screenshots (`requestCanvasScreenshot`) read
+the same way; a default-framebuffer screenshot already read the screen. The
+config key `video_capture_post_effects` (default `true`) opts a creation out:
+the clip then holds the raw composite while the screen glitches, and every
+recording start logs that at WARN level so a clip that differs from the
+screen is never a quiet surprise.
+
 ## Cost
 
-The pass draws the default screen target, so it shades the game-resolution
-pixel count times `outputScale²`: a 1280x720 game on a 2x HiDPI target is
-2560x1440 fragments. Its budget is therefore stated at 1x output (one output
-pixel per game pixel), as the GPU cost it adds over the base composite it
-replaces:
+The pass draws its output image, so it shades the game-resolution pixel count
+at any output scale; the blit that places the output on screen costs what
+the composite's blit did. Its budget is stated at 1x output (one output pixel
+per game pixel), as the GPU cost it adds over the base composite:
 
     UCB95(framebufferGlitch per-run means, --glitch-test all)
       - mean(fbToScreen per-run means, --glitch-test off)  <  0.30 ms
@@ -140,7 +159,7 @@ the 1280x720 game resolution) gives a 1280x720 target at output scale 1; a
 in `save_files/profile_report.txt`.
 
 Measured on an Apple M4 Max (macOS Metal, 300 profiled frames per run, runs
-interleaved all/off):
+interleaved all/off) while the pass still drew the screen target directly:
 
 | Output | `framebufferGlitch`, all effects | `fbToScreen`, pass off | Added |
 |---|---|---|---|
@@ -149,7 +168,9 @@ interleaved all/off):
 
 Four times the pixels cost about 3.2 times as much: roughly 0.08 ms is fixed
 per enabled frame (encoder boundaries, the clear, the history copy) and the
-rest scales with output pixels. CPU cost per call is about 0.025 ms.
+rest scales with shaded pixels. With the output image the shaded count is the
+1x row's at every output scale, plus one ordinary blit. CPU cost per call is
+about 0.025 ms.
 
 GPU timing gotcha: the pass's vertex stage reads the composite (texel size
 and the depth probes). A Metal render pass whose vertex stage reads no

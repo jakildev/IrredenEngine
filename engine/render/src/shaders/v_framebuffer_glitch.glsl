@@ -2,8 +2,9 @@
 
 #include "ir_glitch_common.glsl"
 
-// Places the main framebuffer on the screen exactly as v_framebuffer_to_screen
-// does; the glitch fragment replaces that blit on enabled frames.
+// Covers the pass's output image, the main framebuffer's twin, texel for texel
+// (`framebufferSelfMvp`); v_framebuffer_to_screen then places that image on
+// screen as it would the framebuffer itself.
 
 layout (location = 0) in vec2 aPos;
 layout (location = 1) in vec2 aTexCoords;

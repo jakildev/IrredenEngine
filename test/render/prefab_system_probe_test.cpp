@@ -178,21 +178,22 @@ TEST_F(PrefabSystemProbeTest, SettingsMenuRegistrationRequiresMainThread) {
     expectMainThreadRegistration(id, "SettingsMenu");
 }
 
-// `FRAMEBUFFER_TO_SCREEN` skips its blit only when the glitch pass published
-// the CURRENT RENDER tick. Registering through `registerSystem` directly sets
-// up the params without `create()`'s GPU resources.
+// `FRAMEBUFFER_TO_SCREEN` presents the glitch output only when the glitch pass
+// published the CURRENT RENDER tick. Registering through `registerSystem`
+// directly sets up the params without `create()`'s GPU resources.
 IRSystem::SystemId registerGlitchParamsOnly() {
     return IRSystem::registerSystem<
         IRSystem::FRAMEBUFFER_GLITCH,
         IRComponents::C_TrixelCanvasFramebuffer,
-        IRComponents::C_WorldTransform,
         IRComponents::C_Name>("FramebufferGlitch");
 }
 
 TEST_F(PrefabSystemProbeTest, GlitchPublicationReadsFalseWhenTheSystemIsAbsent) {
     ASSERT_EQ(IRSystem::findSystem(IRSystem::FRAMEBUFFER_GLITCH), IRSystem::kNullSystemId);
     EXPECT_EQ(IRPrefab::Glitch::systemOrNull(), nullptr);
-    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+    EXPECT_FALSE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
+    EXPECT_EQ(IRPrefab::Glitch::presentedMainColorOrNull(), nullptr)
+        << "with no pass the composite itself is what the screen shows";
 }
 
 TEST_F(PrefabSystemProbeTest, GlitchPublicationHoldsForTheCurrentRenderTickOnly) {
@@ -200,19 +201,21 @@ TEST_F(PrefabSystemProbeTest, GlitchPublicationHoldsForTheCurrentRenderTickOnly)
     ASSERT_EQ(id, IRSystem::SystemId{0});
     auto *system = IRPrefab::Glitch::systemOrNull();
     ASSERT_NE(system, nullptr);
-    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
+    EXPECT_FALSE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick())
         << "a freshly registered pass has published nothing";
-    EXPECT_FALSE(system->ownsHistoryImage()) << "history allocates on first enabled use";
+    EXPECT_FALSE(system->ownsImages()) << "the images allocate on first enabled use";
 
     startRenderClock();
     advanceRenderTick();
     const std::uint64_t current = IRSystem::getEventTickCount(IRTime::Events::RENDER);
 
     system->publishedRenderTick_ = current;
-    EXPECT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+    EXPECT_TRUE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
+    EXPECT_EQ(IRPrefab::Glitch::presentedMainColorOrNull(), nullptr)
+        << "a publication names an image only once the pass owns one";
 
     advanceRenderTick();
-    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
+    EXPECT_FALSE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick())
         << "a publication from the previous RENDER tick is stale";
 }
 
@@ -235,13 +238,13 @@ TEST_F(PrefabSystemProbeTest, GlitchOffFrameDoesNoWorkAndZeroesItsTimingRow) {
     EXPECT_EQ(system->frameDraws_, 0);
     EXPECT_EQ(system->historyCopyCount_, 0u);
     EXPECT_EQ(system->drawCount_, 0u);
-    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+    EXPECT_FALSE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
 }
 
-// The screen-base destination and resource contract. The glitch pass's real
+// The output-image and resource contract. The glitch pass's real
 // `encodeFrame` and the blit's real `beginFrame` / `encodeBlit` run against
-// recording encoders, so every image allocation, history copy, default-target
-// clear and screen-base draw either pass issues lands in one ordered log. A
+// recording encoders, so every image allocation, history copy, output clear,
+// output draw and screen blit either pass issues lands in one ordered log. A
 // recording device appends any device call made outside the encoders to the
 // same log. The systems' `tick` / `beginTick` only resolve the camera, the
 // framebuffer and the GPU encoders; those need a live RenderManager and
@@ -256,32 +259,36 @@ class GlitchRecordingEncoder final : public IRSystem::GlitchEncoder {
     explicit GlitchRecordingEncoder(RenderOpLog &log)
         : m_log{log} {}
 
-    void recreateHistory(IRMath::ivec2 size) override {
-        EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
-            << "the publication must be withdrawn before its history is replaced";
+    // One image set is the history texture plus the output framebuffer.
+    void recreateImages(IRMath::ivec2 size) override {
+        EXPECT_FALSE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick())
+            << "the publication must be withdrawn before its images are replaced";
         if (liveImages_ > 0) {
-            m_log.push_back("glitch:destroyHistory");
+            m_log.push_back("glitch:destroyImages");
             --liveImages_;
         }
-        m_log.push_back("glitch:createHistory");
+        m_log.push_back("glitch:createImages");
         ++liveImages_;
-        historySize_ = size;
+        imageSize_ = size;
     }
     void copyHistory() override {
         EXPECT_GT(liveImages_, 0) << "a copy needs a history image";
         m_log.push_back("glitch:copyHistory");
     }
-    void bindAndClearScreen() override {
-        m_log.push_back("glitch:bindAndClearScreen");
+    void bindAndClearOutput() override {
+        EXPECT_GT(liveImages_, 0) << "a draw needs an output image";
+        m_log.push_back("glitch:bindAndClearOutput");
     }
-    void drawScreenBase(const IRSystem::FrameDataFramebufferGlitch &) override {
-        EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
-            << "the pass must not publish before its screen-base draw";
-        m_log.push_back("glitch:drawScreenBase");
+    void drawOutput(const IRSystem::FrameDataFramebufferGlitch &frameData) override {
+        EXPECT_FALSE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick())
+            << "the pass must not publish before its output draw";
+        EXPECT_EQ(frameData.mvpMatrix_, IRSystem::detail::framebufferSelfMvp(imageSize_))
+            << "the output is drawn texel for texel over the composite";
+        m_log.push_back("glitch:drawOutput");
     }
 
     int liveImages_ = 0;
-    IRMath::ivec2 historySize_{0};
+    IRMath::ivec2 imageSize_{0};
 
   private:
     RenderOpLog &m_log;
@@ -299,6 +306,15 @@ class ScreenBlitRecordingEncoder final : public IRSystem::ScreenBlitEncoder {
         const IRComponents::C_TrixelCanvasFramebuffer &, IRMath::vec3, bool isMainFramebuffer
     ) override {
         m_log.push_back(isMainFramebuffer ? "blit:drawMainFramebuffer" : "blit:drawFramebuffer");
+    }
+    // The output pointer is null here: a recording glitch encoder allocates
+    // no image, so only the publication proves the blit's choice.
+    void drawGlitchOutput(
+        const IRComponents::C_TrixelCanvasFramebuffer &, const IRRender::Texture2D *, IRMath::vec3
+    ) override {
+        EXPECT_TRUE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick())
+            << "the blit presents the glitch output only on a tick the pass drew it";
+        m_log.push_back("blit:drawGlitchOutput");
     }
 
   private:
@@ -427,9 +443,9 @@ class GlitchScheduleProbeTest : public PrefabSystemProbeTest {
         advanceRenderTick();
         m_glitch->beginTick();
         if (m_glitch->enabledThisFrame_) {
-            m_glitch->encodeFrame(m_encoder, framebufferSize, kProbeTrixelStep, IRMath::mat4(1.0f));
+            m_glitch->encodeFrame(m_encoder, framebufferSize, kProbeTrixelStep);
         } else {
-            m_glitch->tick(m_offscreenFramebuffer, m_cameraXform, m_mainName);
+            m_glitch->tick(m_offscreenFramebuffer, m_mainName);
         }
         runBlit();
         return m_log;
@@ -454,69 +470,86 @@ class GlitchScheduleProbeTest : public PrefabSystemProbeTest {
     const IRComponents::C_Name m_mainName{"mainFramebuffer"};
 };
 
-TEST_F(GlitchScheduleProbeTest, EnabledFrameClearsAndDrawsTheScreenBaseOnceInPlaceOfTheBlit) {
+TEST_F(GlitchScheduleProbeTest, EnabledFrameDrawsTheOutputOnceAndTheBlitPresentsIt) {
     enableHoldGlitch();
 
     EXPECT_EQ(
         renderFrame(),
         (RenderOpLog{
-            "glitch:createHistory",
+            "glitch:createImages",
             "glitch:copyHistory",
-            "glitch:bindAndClearScreen",
-            "glitch:drawScreenBase"
+            "glitch:bindAndClearOutput",
+            "glitch:drawOutput",
+            "blit:beginScreen",
+            "blit:drawGlitchOutput"
         })
-    ) << "first use allocates and seeds the history, then clears and draws once; "
-         "the ordinary blit issues nothing";
-    EXPECT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
-    EXPECT_TRUE(m_blit->screenAlreadyComposited_);
+    ) << "first use allocates the images and seeds the history, then clears and draws the "
+         "output once; the blit presents that output, not the composite";
+    EXPECT_TRUE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
+    EXPECT_TRUE(m_blit->glitchPublished_);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 0u);
+    EXPECT_EQ(m_blit->glitchOutputBlitCount_, 1u);
     EXPECT_EQ(m_encoder.liveImages_, 1);
-    EXPECT_EQ(m_encoder.historySize_, kProbeFramebufferSize);
+    EXPECT_EQ(m_encoder.imageSize_, kProbeFramebufferSize);
     EXPECT_TRUE(m_glitch->historyValid_);
 
-    EXPECT_EQ(renderFrame(), (RenderOpLog{"glitch:bindAndClearScreen", "glitch:drawScreenBase"}))
-        << "the same hold tick reuses the image and its snapshot";
+    EXPECT_EQ(
+        renderFrame(),
+        (RenderOpLog{
+            "glitch:bindAndClearOutput",
+            "glitch:drawOutput",
+            "blit:beginScreen",
+            "blit:drawGlitchOutput"
+        })
+    ) << "the same hold tick reuses the images and the snapshot";
 
     advanceRenderTick();
     m_glitch->beginTick();
     m_glitch->clock_.holdTick_ += 1;
     m_log.clear();
-    m_glitch->encodeFrame(m_encoder, kProbeFramebufferSize, kProbeTrixelStep, IRMath::mat4(1.0f));
+    m_glitch->encodeFrame(m_encoder, kProbeFramebufferSize, kProbeTrixelStep);
     runBlit();
     EXPECT_EQ(
         m_log,
-        (RenderOpLog{"glitch:copyHistory", "glitch:bindAndClearScreen", "glitch:drawScreenBase"})
+        (RenderOpLog{
+            "glitch:copyHistory",
+            "glitch:bindAndClearOutput",
+            "glitch:drawOutput",
+            "blit:beginScreen",
+            "blit:drawGlitchOutput"
+        })
     ) << "a new hold tick re-snapshots into the same image";
 
     EXPECT_EQ(m_encoder.liveImages_, 1);
     EXPECT_EQ(m_glitch->historyCopyCount_, 2u);
     EXPECT_EQ(m_glitch->drawCount_, 3u);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 0u);
+    EXPECT_EQ(m_blit->glitchOutputBlitCount_, 3u);
 }
 
-TEST_F(GlitchScheduleProbeTest, ResizeWithdrawsPublicationAndReplacesOnlyTheHistory) {
+TEST_F(GlitchScheduleProbeTest, ResizeWithdrawsPublicationAndReplacesTheImages) {
     enableHoldGlitch();
     renderFrame();
-    ASSERT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+    ASSERT_TRUE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
 
     // A resize inside an already-published tick: the encoder asserts the
-    // publication is gone before the history is replaced.
+    // publication is gone before the images are replaced.
     const IRMath::ivec2 resized{kProbeFramebufferSize.x * 2, kProbeFramebufferSize.y + 6};
     m_log.clear();
-    m_glitch->encodeFrame(m_encoder, resized, kProbeTrixelStep, IRMath::mat4(1.0f));
+    m_glitch->encodeFrame(m_encoder, resized, kProbeTrixelStep);
     EXPECT_EQ(
         m_log,
         (RenderOpLog{
-            "glitch:destroyHistory",
-            "glitch:createHistory",
+            "glitch:destroyImages",
+            "glitch:createImages",
             "glitch:copyHistory",
-            "glitch:bindAndClearScreen",
-            "glitch:drawScreenBase"
+            "glitch:bindAndClearOutput",
+            "glitch:drawOutput"
         })
     ) << "the replacement history is reseeded on the same hold tick";
-    EXPECT_EQ(m_encoder.liveImages_, 1) << "the history is replaced, not joined";
-    EXPECT_EQ(m_encoder.historySize_, resized);
-    EXPECT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+    EXPECT_EQ(m_encoder.liveImages_, 1) << "the images are replaced, not joined";
+    EXPECT_EQ(m_encoder.imageSize_, resized);
+    EXPECT_TRUE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
 
     // Without a history reader the replacement is allocated but never copied.
     auto &state = IREntity::singleton<IRComponents::C_GlitchState>();
@@ -525,45 +558,55 @@ TEST_F(GlitchScheduleProbeTest, ResizeWithdrawsPublicationAndReplacesOnlyTheHist
     EXPECT_EQ(
         renderFrame(kProbeFramebufferSize),
         (RenderOpLog{
-            "glitch:destroyHistory",
-            "glitch:createHistory",
-            "glitch:bindAndClearScreen",
-            "glitch:drawScreenBase"
+            "glitch:destroyImages",
+            "glitch:createImages",
+            "glitch:bindAndClearOutput",
+            "glitch:drawOutput",
+            "blit:beginScreen",
+            "blit:drawGlitchOutput"
         })
     );
     EXPECT_EQ(m_glitch->historyCopyCount_, 2u);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 0u);
 }
 
-TEST_F(GlitchScheduleProbeTest, OffFrameLeavesTheScreenBaseToTheOrdinaryBlit) {
+TEST_F(GlitchScheduleProbeTest, OffFrameLeavesTheCompositeToTheOrdinaryBlit) {
     EXPECT_EQ(renderFrame(), (RenderOpLog{"blit:beginScreen", "blit:drawMainFramebuffer"}))
         << "with no glitch state the blit clears and draws the main framebuffer once";
-    EXPECT_FALSE(m_blit->screenAlreadyComposited_);
+    EXPECT_FALSE(m_blit->glitchPublished_);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 1u);
     EXPECT_EQ(m_encoder.liveImages_, 0) << "an unused pass allocates nothing";
 
     auto &state = enableHoldGlitch();
     renderFrame();
     ASSERT_EQ(m_blit->ordinaryBlitCount_, 1u);
+    ASSERT_EQ(m_blit->glitchOutputBlitCount_, 1u);
 
     state.intensity_ = 0.0f;
     EXPECT_EQ(renderFrame(), (RenderOpLog{"blit:beginScreen", "blit:drawMainFramebuffer"}))
-        << "an off tick encodes no glitch work; the blit clears and draws once";
-    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
-    EXPECT_FALSE(m_blit->screenAlreadyComposited_);
+        << "an off tick encodes no glitch work; the blit draws the composite once";
+    EXPECT_FALSE(IRPrefab::Glitch::outputPublishedForCurrentRenderTick());
+    EXPECT_FALSE(m_blit->glitchPublished_);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 2u);
     EXPECT_EQ(m_glitch->frameDraws_, 0);
     EXPECT_EQ(m_glitch->frameHistoryCopies_, 0);
-    EXPECT_EQ(m_encoder.liveImages_, 1) << "an off tick keeps the history image";
+    EXPECT_EQ(m_encoder.liveImages_, 1) << "an off tick keeps the images";
     EXPECT_FALSE(m_glitch->historyValid_);
 
     state.intensity_ = 1.0f;
     EXPECT_EQ(
         renderFrame(),
-        (RenderOpLog{"glitch:copyHistory", "glitch:bindAndClearScreen", "glitch:drawScreenBase"})
+        (RenderOpLog{
+            "glitch:copyHistory",
+            "glitch:bindAndClearOutput",
+            "glitch:drawOutput",
+            "blit:beginScreen",
+            "blit:drawGlitchOutput"
+        })
     ) << "the snapshot from before the off tick is stale";
     EXPECT_EQ(m_encoder.liveImages_, 1);
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 2u);
+    EXPECT_EQ(m_blit->glitchOutputBlitCount_, 2u);
 }
 
 // ---- TRIXEL_GLITCH ------------------------------------------------------------
