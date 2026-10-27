@@ -87,6 +87,7 @@ OUT_OF_TREE_SUBJECTS=(
     '.github/workflows/no-plan-files.yml'
     '.github/workflows/python-lint.yml'
     '.github/workflows/render-harness-tests.yml'
+    '.github/workflows/shader-parity.yml'
     'ruff.toml'
     '.clang-format'
     '.claude/agents/review-acceptance.md'
