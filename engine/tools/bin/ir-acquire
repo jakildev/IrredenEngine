@@ -51,8 +51,10 @@ quiet_record=""
 quiet_parker_pid=""
 
 lease_token=""
+hold_sleeper_pid=""
 
 cleanup() {
+    [[ -z "$hold_sleeper_pid" ]] || kill "$hold_sleeper_pid" 2>/dev/null || true
     [[ -z "$lease_token" ]] || ir_gpu_lease_drop "$lease_token"
     if [[ -n "$quiet_parker_pid" ]]; then
         kill "$quiet_parker_pid" 2>/dev/null || true
@@ -64,7 +66,12 @@ cleanup() {
     ir_release_all
 }
 
-trap cleanup EXIT INT TERM HUP
+# The EXIT trap releases; a signal arm only ends the script. A handler that
+# returned would resume the queue loop or the hold, and run the command later.
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 usage() {
     sed -n '2,/^$/p' "$0"
@@ -219,9 +226,14 @@ fi
 
 if [[ $# -lt 1 ]]; then
     # No command — sleep until SIGINT/SIGTERM. Useful for manual experiments
-    # ("hold the gpu lock for 30s while I run X by hand").
+    # ("hold the gpu lock for 30s while I run X by hand"). `wait` returns to a
+    # trapped signal at once; a foreground `sleep` would defer it a minute.
     echo "ir-acquire: held; ctrl-c or kill -TERM $$ to release" >&2
-    while true; do sleep 60; done
+    while true; do
+        sleep 60 &
+        hold_sleeper_pid=$!
+        wait "$hold_sleeper_pid"
+    done
 fi
 
 # Run the command with the locks held; trap releases on exit. The exports let

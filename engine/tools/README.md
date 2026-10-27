@@ -67,10 +67,16 @@ target ms) are documented inline in `concurrency.toml`.
 
 Lock dirs under `$XDG_RUNTIME_DIR/irreden/locks/` (Linux) or
 `/tmp/irreden-$USER/locks/` (macOS / hosts without `$XDG_RUNTIME_DIR`).
-Three resource types:
+Three resource types, plus the gate that serializes CPU slot walks:
 
 - `cpu/slot-{1..budget}/` — N independent slot dirs, one per core in the
   budget. Acquiring N slots = grabbing N free slot dirs.
+- `cpu/walk/` — exclusive gate over one slot walk. A requester grabs free
+  slots and, when it comes up short, hands the partial set back, all under
+  the gate; a held gate counts as a failed attempt and is retried. Two
+  ungated walks that overlap leapfrog each other into a livelock on a
+  many-core host. `ir-acquire --info` prints `cpu walk gate: held by …`
+  while it is held.
 - `gpu/lock/` — single exclusive lock dir.
 - `perf/lock/` — single exclusive lock dir.
 
@@ -134,6 +140,16 @@ The guarantee excludes interactive processes without leases, fleet daemons,
 non-fleet work, double-forked descendants, the measurement harness, and the
 CPU a native-Windows process spends in a sample interval it exits during,
 because Windows process time never absorbs an exited child.
+
+## Signals
+
+The EXIT trap releases every held lock. INT, TERM and HUP end `ir-acquire`
+with 130, 143 and 129: a requester still queued never runs its command, and
+the no-command hold (`ir-acquire gpu`) exits as soon as the signal lands.
+Signals are not forwarded to the wrapped command. A signal that arrives while
+a foreground child runs (the command, a retry sleep) takes effect when that
+child returns, so a process-group signal or a kill of the command itself is
+what stops a running command.
 
 ## Acquire-late, release-early
 

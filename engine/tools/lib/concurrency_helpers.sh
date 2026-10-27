@@ -704,6 +704,12 @@ ir_acquire_exclusive() {
 # Acquire N CPU slot locks out of the configured budget. Slots are
 # represented as slot-N dirs; we walk 1..budget and grab the first N free
 # ones. Slot identity is meaningless — only the count matters.
+#
+# One attempt (the walk, and on a shortfall handing the partials back) runs
+# under the cpu/walk gate. Two ungated walks that overlap leapfrog each
+# other, both come up short, and the fixed retry sleep keeps them in phase:
+# a livelock once a walk outlasts the sleep. A held gate is a failed
+# attempt. The gate is never held across a park, a sleep or the command.
 # Usage: ir_acquire_cpu <count> [--nonblock] [--timeout SECS]
 ir_acquire_cpu() {
     local want="$1"
@@ -726,26 +732,31 @@ ir_acquire_cpu() {
     fi
     local started
     started="$(date +%s)"
+    local gate="$IR_LOCK_ROOT/cpu/walk"
     local got=()
     while true; do
         _ir_quiet_defer_nonbenchmark
-        local i
-        for (( i=1; i<=budget; i++ )); do
-            (( ${#got[@]} >= want )) && break
-            local slot="$IR_LOCK_ROOT/cpu/slot-$i"
-            if _ir_try_lock "$slot"; then
-                got+=("$slot")
-                _ir_record_held "$slot"
+        if _ir_try_lock "$gate"; then
+            _ir_record_held "$gate"
+            local i
+            for (( i=1; i<=budget; i++ )); do
+                (( ${#got[@]} >= want )) && break
+                local slot="$IR_LOCK_ROOT/cpu/slot-$i"
+                if _ir_try_lock "$slot"; then
+                    got+=("$slot")
+                    _ir_record_held "$slot"
+                fi
+            done
+            # Couldn't get enough — release the partials before the gate.
+            if (( ${#got[@]} < want )); then
+                for slot in ${got[@]+"${got[@]}"}; do
+                    _ir_release_one "$slot"
+                done
+                got=()
             fi
-        done
-        if (( ${#got[@]} >= want )); then
-            return 0
+            _ir_release_one "$gate"
+            (( ${#got[@]} == 0 )) || return 0
         fi
-        # Couldn't get enough — release the partials and either retry or fail.
-        for slot in ${got[@]+"${got[@]}"}; do
-            _ir_release_one "$slot"
-        done
-        got=()
         if $nonblock; then
             return 1
         fi
@@ -1134,6 +1145,11 @@ ir_print_lock_state() {
     [[ -d "$IR_LOCK_ROOT/perf/lock" ]] && perf_holder="$(_ir_lock_holder "$IR_LOCK_ROOT/perf/lock" || echo "?")"
 
     echo "cpu budget: $budget ($in_use in use, $(( budget - in_use )) free)"
+    # A held gate stalls every CPU acquisition on the host; free prints nothing.
+    local gate="$IR_LOCK_ROOT/cpu/walk" gate_holder
+    if [[ -d "$gate" ]] && gate_holder="$(_ir_lock_holder "$gate")"; then
+        echo "cpu walk gate: held by $(_ir_lock_holder_info "$gate" "$gate_holder")"
+    fi
     if [[ -n "$gpu_holder" ]]; then
         echo "gpu lock: held by $(_ir_lock_holder_info "$IR_LOCK_ROOT/gpu/lock" "$gpu_holder")"
     else
