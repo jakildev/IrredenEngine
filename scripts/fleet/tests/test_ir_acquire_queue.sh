@@ -26,9 +26,11 @@ TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ir-acquire-queue.XXXXXX")
 PIDS=()
 # A child forked for `cmd &` and signalled before it execs runs this inherited
 # trap; only the suite's own shell may kill the cases and remove TMP_ROOT. The
-# child leaves through a bare `exit`, which keeps its signal status.
+# child leaves through a bare `exit`, which keeps its signal status. Bash 3.2
+# has no BASHPID, and its BASH_SUBSHELL reads 0 in a `cmd &` child, so the
+# fallback asks a fresh sh for its parent's pid.
 cleanup() {
-    [[ "$BASHPID" == "$$" ]] || exit
+    [[ "${BASHPID:-$(exec sh -c 'echo "$PPID"')}" == "$$" ]] || exit
     local p
     for p in ${PIDS[@]+"${PIDS[@]}"}; do kill -KILL "$p" 2>/dev/null || true; done
     for p in ${PIDS[@]+"${PIDS[@]}"}; do wait "$p" 2>/dev/null || true; done
