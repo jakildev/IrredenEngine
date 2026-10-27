@@ -14,52 +14,44 @@ and the plan review.
 **The plan is a comment, not a file.** The canonical plan is a `## Plan`
 comment on the issue, read with any later `## Plan corrections` comments.
 Nothing is committed or staged — no plan-doc PR, no plan file in the
-implementation PR, no local copy. Drift the implementer absorbed at pickup
-is recorded in the PR body under `## Plan departures` (§ "Drift at
-pickup"). Engine-level *design docs* (`docs/design/<feature>.md`) that need
-review independent of a task are a separate docs-first PR —
-[`architect-protocol.md`](architect-protocol.md) §"Handling
-`fleet:design-blocked` PRs".
+implementation PR, no local copy. Drift absorbed at pickup is recorded in
+the PR body under `## Plan departures` (§ "Drift at pickup"). Engine-level
+*design docs* (`docs/design/<feature>.md`) that need review independent of
+a task are a separate docs-first PR — [`architect-protocol.md`](architect-protocol.md)
+§"Handling `fleet:design-blocked` PRs".
 
 ---
 
 ## Plans are lightweight
 
-A plan locks what a reviewer would reject the PR for getting wrong and
-leaves the rest to the implementer. The contract is **Scope**, the
-**Decisions**, and the **Acceptance criteria**; everything else is context,
-and everything that moves between planning and pickup is the implementer's
-to absorb (§ "Drift at pickup"). A plan that is longer, more literal, or
-more choreographed than that goes stale on the next surface move and costs
-a re-plan round instead of a rebase. Concretely:
+A plan locks what a reviewer would reject the PR for getting wrong — the
+**Scope**, the **Decisions**, the **Acceptance criteria** — and leaves the
+rest to the implementer, who absorbs whatever moves between planning and
+pickup (§ "Drift at pickup"). A longer, more literal or more choreographed
+plan goes stale on the next surface move and costs a re-plan, not a rebase:
 
 - **About a page.** A handful of locked decisions — public names and
   surfaces, formats, ownership boundaries, what is out of scope — each with
-  its rejected alternative in a line. `fleet-plan-lint` warns past ~150
-  lines; a longer plan is almost always locking detail that is the
-  implementer's.
-- **Lock behaviour, not transcripts.** A status string, a log line, an
-  argv or a sequence of log lines belongs in a plan only when it is a
-  contract another party reads (a child's argv, a probe's PASS line, a
-  flag). Otherwise a criterion names what its validator must distinguish,
-  and the implementer picks the wording.
-- **A dependency's surface is the dependency's to shape.** A plan that
-  consumes an unlanded API locks the behaviour it needs and names the
-  issue; call shape, key names and field names are read at pickup from
-  what landed. Never lock a guessed shape.
-- **No pickup choreography.** A plan never tells the worker to park,
-  release the claim, or add `fleet:needs-human` because the surface moved
-  or another PR touches the same files: that is a rebase at pickup and
-  again before `commit-and-push`. The only bail a plan scripts is a phase-0
-  premise refutation (step 2, mechanism premises).
-- **Leave open details open, explicitly.** A detail that is not
-  load-bearing is marked `(implementer's call)` rather than guessed. The
-  lint's fork check rejects an *undecided design choice* ("option A or
-  B"), not a delegated detail.
-- **Verified current state is the facts the decisions rest on**, with
-  their sources — not a census of the tree or of open PRs. In-flight PRs
-  on the same surface are reconciled by ownership (which change lands
-  where), never by sequencing on their heads.
+  its rejected alternative in a line; `fleet-plan-lint` warns past ~150
+  lines.
+- **Lock behaviour, not transcripts.** A status string, log line or argv
+  belongs in a plan only as a contract another party reads (a child's argv,
+  a probe's PASS line, a flag); otherwise a criterion names what its
+  validator must distinguish and the implementer picks the wording.
+- **A dependency's surface is the dependency's to shape.** A plan consuming
+  an unlanded API locks the behaviour it needs and names the issue; call,
+  key and field names are read at pickup from what landed, never guessed.
+- **No pickup choreography.** A plan never scripts a park, a claim release
+  or `fleet:needs-human` because the surface moved or another PR touches
+  the same files — that is a rebase at pickup and before `commit-and-push`.
+  The only scripted bail is a phase-0 premise refutation (step 2).
+- **Leave open details open, explicitly**: `(implementer's call)`, not a
+  guess. The lint's fork check rejects an undecided design choice ("option
+  A or B"), not a delegated detail.
+- **Reconcile in-flight PRs by ownership** (which change lands where),
+  never by sequencing on their heads: `**Blocked by:**` names work the plan
+  consumes, not a neighbour editing the same file. Verified current state
+  is the facts the decisions rest on, not a census of the tree or of PRs.
 
 ---
 
@@ -89,9 +81,8 @@ a re-plan round instead of a rebase. Concretely:
    A plan is a contract, not a script: **Scope** (what done means),
    **Decisions** (what is locked), and **Acceptance criteria** (runnable,
    positive-fire) carry the contract; everything else is context the
-   implementer may depart from. It is lightweight (§ "Plans are
-   lightweight"): about a page, a handful of locked decisions, nothing that
-   goes stale when the tree moves. It covers:
+   implementer may depart from. About a page (§ "Plans are lightweight"),
+   covering:
 
    - **Verified current state and confirmed repro.** For a defect, the
      repro you ran against the actual code path, not the path the issue
@@ -130,18 +121,14 @@ a re-plan round instead of a rebase. Concretely:
      human removing `fleet:needs-human` re-enters it.
 
      No choreography: no file-by-file step lists, paste-ready code,
-     line-number anchors, or pickup instructions (a park, a claim release,
-     a re-plan trigger) beyond a phase-0 bail. An `### Approach sketch` is
-     welcome and advisory.
+     line-number anchors, or pickup instructions beyond a phase-0 bail. An
+     `### Approach sketch` is welcome and advisory.
      Investigation done during planning is recorded as facts (Verified
      current state, Decisions), never re-cast as steps.
    - **Sibling and in-flight reconciliation.** Check the parent ticket's
      other carve-offs and every open PR on the same surface; a plan that
      duplicates or contradicts one wastes a worker round. Reconcile by
-     ownership (which change lands where), never by sequencing on PR
-     heads: a `**Blocked by:**` line names work this plan consumes, not a
-     neighbour that edits the same file — the worker rebases over that at
-     pickup.
+     ownership, never by sequencing (§ "Plans are lightweight").
    - **One task or a stack**, with a model tag (`[fable]` / `[opus]` /
      `[sonnet]`) per piece — FLEET.md §"Model split".
    - **Acceptance criteria** — the definition of done. Each criterion names
@@ -248,13 +235,10 @@ a re-plan round instead of a rebase. Concretely:
    reading them for plausibility; `fleet-plan-lint <N>` is the structural
    half.
 
-   **Drift is not a bounce.** A moved symbol, a PR that merged or opened on
-   the same surface since the plan was written, or a dependency whose shape
-   is still unlanded is a `## Plan corrections` note — or nothing, since
-   the worker absorbs it at pickup — never "not sound". Bounce only when a
-   locked decision is wrong or a load-bearing premise is unmeasured. A plan
-   that scripts a pickup park or locks a guessed dependency shape
-   (§ "Plans are lightweight") gets a correction striking it, not a bounce.
+   **Drift is not a bounce.** A moved symbol, a neighbour PR merged or open
+   on the same surface, or an unlanded dependency's shape is at most a
+   `## Plan corrections` note (the worker absorbs it at pickup), as is
+   striking a scripted pickup park or a guessed dependency shape.
    - **Sound →** remove `fleet:plan-review`; the scout stamps `fleet:queued`.
    - **Sound with corrections →** bounded fixes that change no locked
      decision (a wrong path, a stale reference, a missing gotcha, a
@@ -268,10 +252,8 @@ a re-plan round instead of a rebase. Concretely:
    neither gate label, the scout stamps `fleet:queued` plus the model label.
    The worker reads the newest `## Plan` comment plus every later
    `## Plan corrections` comment (`fleet-issue view <N>` shows both) and
-   opens **one** PR (`Closes #<N>`). Drift between the plan and the tree is
-   absorbed and recorded in the PR body under `## Plan departures`; only a
-   contract break — Scope or a criterion unmeetable, a locked decision
-   refuted or needing a product call — escalates (§ "Drift at pickup").
+   opens **one** PR (`Closes #<N>`). Drift is absorbed and recorded under
+   `## Plan departures`; only a contract break escalates (§ "Drift at pickup").
 
 **Disagree with the issue's direction?** Comment your concerns, keep
 `fleet:needs-plan`, add `fleet:needs-human`, release the claim — the park
@@ -296,46 +278,37 @@ stale uses the flow below.
 
 ## Drift at pickup: adapt, record, escalate only on a contract break
 
-A plan is read against the tree at pickup, and the tree has moved since it
-was written. The worker absorbs that movement; it does not re-plan it, and
-it does not park on it — whatever a plan's Gotchas say.
-
-**Absorb and record** — one line each under `## Plan departures` in the PR
-body (what the plan said, what the tree has, what you did):
+The tree has moved since the plan was written. The worker absorbs that
+movement — no re-plan, no park, whatever the plan's Gotchas say — and
+records each item as one line under `## Plan departures` in the PR body
+(what the plan said, what the tree has, what you did):
 
 - a renamed, moved or removed symbol, helper or file;
-- a PR that merged since the plan, or one still open on the same files
-  (rebase at pickup and again before `commit-and-push`);
+- a PR merged since the plan, or one open on the same files (rebase at
+  pickup and again before `commit-and-push`);
 - a blocker that landed with an equivalent surface under other names or
   another call shape;
-- a literal (status text, log line, path) the implementation words
-  differently while the validator still distinguishes the outcomes;
+- a literal (status text, log line, path) worded differently while the
+  validator still distinguishes the outcomes;
 - an approach-sketch step that turns out wrong.
 
-**Escalate** — `fleet:design-blocked` with `## NEEDS-DESIGN` on the PR once
-work has started, or the `Plan stale:` flip below before it has — only on
-a contract break:
-
-- Scope can no longer be met as written;
-- an acceptance criterion cannot be met, or is unmeetable on any host;
-- a locked decision is refuted (a phase-0 premise fails) or contradicts
-  the tree in a way whose resolution is a product or architecture call.
-
-A locked decision that can be honoured in substance under a different
-shape is a departure, not a break. The acceptance grader reads
-`## Plan departures` and grades substance
-([`AUTHOR-PIPELINE.md § Acceptance evidence`](AUTHOR-PIPELINE.md#acceptance-evidence)).
+**Escalate only on a contract break** — `fleet:design-blocked` with
+`## NEEDS-DESIGN` on the PR once work has started, else the `Plan stale:`
+flip below: Scope can no longer be met as written; an acceptance criterion
+is unmeetable; or a locked decision is refuted (a phase-0 premise fails)
+or contradicts the tree in a way only a product or architecture call
+resolves. A decision honoured in substance under a different shape is a
+departure, not a break; the acceptance grader reads `## Plan departures`
+and grades substance ([`AUTHOR-PIPELINE.md § Acceptance evidence`](AUTHOR-PIPELINE.md#acceptance-evidence)).
 
 ---
 
 ## Re-planning a stale queued plan
 
-When a `fleet:queued` task's plan is stale — a contract break per § "Drift
-at pickup" found before any work started: its blocker shipped a design
-under which a locked decision cannot be honoured, a premise was refuted, a
-decision was superseded — **flip and move on**, no lock, no inline
-re-derivation. A renamed symbol, a moved helper, a merged neighbour or a
-different-but-equivalent surface is not stale; it is absorbed at pickup:
+When a `fleet:queued` task's plan is stale — a contract break (§ "Drift at
+pickup") found before work started: its blocker shipped a design a locked
+decision cannot survive, a premise was refuted, a decision was superseded
+— **flip and move on**, no lock, no inline re-derivation:
 
 ```
 gh issue edit <N> --repo <owner/repo> \
