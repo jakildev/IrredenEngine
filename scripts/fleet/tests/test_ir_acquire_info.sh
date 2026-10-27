@@ -18,8 +18,10 @@ fi
 LOCK_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ir-acquire-info.XXXXXX")
 PS_STUB=$(mktemp -d "${TMPDIR:-/tmp}/ir-acquire-info-ps.XXXXXX")
 holder_pid=""
+gate_pid=""
 cleanup() {
     [[ -n "$holder_pid" ]] && kill -TERM -- "-$holder_pid" 2>/dev/null || true
+    [[ -n "$gate_pid" ]] && kill "$gate_pid" 2>/dev/null || true
     set +m
     [[ -n "$holder_pid" ]] && wait "$holder_pid" 2>/dev/null || true
     rm -rf "$LOCK_ROOT" "$PS_STUB"
@@ -47,6 +49,7 @@ chmod +x "$PS_STUB/ps"
 
 info="$(PATH="$PS_STUB:$PATH" IR_LOCK_ROOT="$LOCK_ROOT" "$ACQUIRE" --info)"
 assert_contains "$info" "gpu lock: held by pid $holder_pid" "--info names the gpu holder pid"
+assert_absent "$info" "cpu walk gate" "--info prints no walk-gate line while the gate is free"
 if grep -Eq "gpu lock: held by pid $holder_pid \\(age [0-9]+s, command: .*sleep 30\\)" <<<"$info"; then
     ok "--info names a non-negative holder age and command"
 else
@@ -79,5 +82,12 @@ else
     bad "--info reports a non-zero age for a hold at least 2 s old"
     printf '        info: %s\n' "$aged_info"
 fi
+
+sleep 30 & gate_pid=$!
+IR_LOCK_ROOT="$LOCK_ROOT" bash -c 'source "$1"; _ir_try_lock "$IR_LOCK_ROOT/cpu/walk" "$2" ""' \
+    _ "$REPO_ROOT/engine/tools/lib/concurrency_helpers.sh" "$gate_pid"
+gate_info="$(IR_LOCK_ROOT="$LOCK_ROOT" "$ACQUIRE" --info)"
+assert_contains "$gate_info" "cpu walk gate: held by pid $gate_pid" "--info names the walk-gate holder"
+assert_contains "$gate_info" "gpu lock: held by pid $holder_pid" "a held gate leaves the gpu line unchanged"
 
 summarize "ir-acquire info tests"
