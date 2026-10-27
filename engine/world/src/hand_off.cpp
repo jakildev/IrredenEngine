@@ -296,12 +296,11 @@ HandOffOutcome runHandOff(
         ));
         if (!exitedZero(release)) {
             result.error_ = "could not release the gpu lease (" + describeExit(release) + ")";
+            midiRestore.restore();
             return outcome;
         }
         IRE_LOG_INFO("IREngine.handOff: released the gpu lease");
     }
-
-    midiRestore.restore();
 
     std::vector<std::string> runArgs;
     if (buildDir.has_value()) {
@@ -331,10 +330,13 @@ HandOffOutcome runHandOff(
             outcome.leaseLost_ = true;
             result.error_ = "could not reacquire the gpu lease (" + describeExit(reacquire) + ")";
             IRE_LOG_ERROR("IREngine.handOff: {}; closing without rendering again", result.error_);
+            midiRestore.restore();
             return outcome;
         }
         IRE_LOG_INFO("IREngine.handOff: reacquired the gpu lease");
     }
+
+    midiRestore.restore();
 
     if (!child.started_) {
         result.error_ = "the child did not start: " + child.error_;

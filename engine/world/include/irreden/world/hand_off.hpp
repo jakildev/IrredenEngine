@@ -106,9 +106,10 @@ HandOffOutcome runHandOff(
 
 using HandOffInvoker = std::function<HandOffResult(const HandOffRequest &)>;
 
-/// Installs `IREngine.handOff{ argv = {...}, resume = true, releaseMidi = false }`. Malformed
-/// input, `resume = false`, and a call off the main thread raise before
-/// @p invoker runs.
+/// Installs
+/// `IREngine.handOff{ argv = {...}, resume = true, releaseMidi = false }`.
+/// Malformed input, `resume = false`, and a call off the main thread raise
+/// before @p invoker runs.
 void bindHandOffLua(
     IRScript::LuaScript &script, HandOffInvoker invoker, std::function<bool()> isMainThread
 );

@@ -55,6 +55,19 @@ AudioManager::AudioManager(
     IRE_LOG_INFO("Created AudioManager");
 }
 
+AudioManager::AudioManager(
+    detail::MidiInBackendFactory midiInBackendFactory,
+    detail::MidiOutBackendFactory midiOutBackendFactory
+)
+    : m_audio{}
+    , m_midiIn{std::move(midiInBackendFactory)}
+    , m_midiOut{std::move(midiOutBackendFactory)}
+    , m_midiClock{midiClockWrite(*this), midiClockObserveTransport(*this)}
+    , m_audioPlayback{} {
+    g_audioManager = this;
+    IRE_LOG_INFO("Created AudioManager");
+}
+
 AudioManager::~AudioManager() {
     m_midiClock.stop();
     m_midiOut.sendAllNotesOff();

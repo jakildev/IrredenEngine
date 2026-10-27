@@ -4,9 +4,9 @@
 #include <irreden/ir_profile.hpp>
 
 #include <irreden/audio/ir_audio_types.hpp>
+#include <irreden/audio/midi_backend.hpp>
 #include <irreden/audio/midi_input_frame_buffer.hpp>
 #include <irreden/audio/midi_message_ring.hpp>
-#include <irreden/audio/midi_backend.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
 
 #include <memory>

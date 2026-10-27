@@ -30,6 +30,10 @@ class AudioManager {
         std::unique_ptr<detail::IAudioInputBackend> outputBackend,
         detail::AudioInputDeadlines deadlines = {}
     );
+    AudioManager(
+        detail::MidiInBackendFactory midiInBackendFactory,
+        detail::MidiOutBackendFactory midiOutBackendFactory
+    );
     ~AudioManager();
 
     inline MidiIn &getMidiIn() {
