@@ -32,6 +32,9 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from verify_common import select_package_zip  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WINDOWS_WALK_SCRIPT = REPO_ROOT / "cmake" / "windows_dll_walk.cmake"
 MACOS_WALK_SCRIPT = REPO_ROOT / "cmake" / "macos_bundle_dylibs.cmake"
@@ -373,16 +376,11 @@ def check_macos_audit(build_dir: Path, target: str, zip_path: Path | None,
 
 def select_zip(build_dir: Path, target: str, platform: str,
                zip_path: Path | None) -> Path:
-    if zip_path is None:
-        zips = sorted(build_dir.glob(f"{target}-{platform}-*.zip"))
-        if len(zips) != 1:
-            fail_usage(f"expected one {target}-{platform}-*.zip in {build_dir}, "
-                       f"found {[path.name for path in zips]}; build "
-                       f"{target}Package or pass --zip")
-        zip_path = zips[0]
-    if not zip_path.is_file():
-        fail_usage(f"no package at {zip_path}")
-    return zip_path
+    try:
+        return select_package_zip(build_dir, target, platform, zip_path)
+    except ValueError as exc:
+        fail_usage(str(exc))
+        raise
 
 
 def extract_zip(zip_path: Path, root: Path,

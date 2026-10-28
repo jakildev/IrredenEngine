@@ -15,7 +15,7 @@ REVIEW_ROLES = ("sonnet-reviewer", "opus-reviewer", "smoke-worker")
 DISPLAY_VALIDATORS = (
     "scripts/author-entity.py", "scripts/cull-verify.py", "scripts/depth-tier-verify.py",
     "scripts/feeder-margin-verify.py", "scripts/gui-verify.py", "scripts/light-verify.py",
-    "scripts/occlusion-fire-verify.py", "scripts/pivot-verify.py",
+    "scripts/occlusion-fire-verify.py", "scripts/package-smoke.py", "scripts/pivot-verify.py",
     "scripts/render-continuous-zoom-metric.py", "scripts/render-verify.py",
     "scripts/perf/repeat_profile.py", "scripts/perf/perf_grid_matrix.sh")
 # The fleet-jobs profiles that run a DISPLAY_VALIDATORS script detached;
@@ -125,6 +125,7 @@ def check(path, role):
                "--auto-screenshot", "10"], "allow"),
              (["python3", "scripts/render-verify.py", "--target", "IRShapeDebug"], "allow"),
              (["python3", "scripts/perf/repeat_profile.py", "--target", "IRPerfGrid"], "allow"),
+             (["python3", "scripts/package-smoke.py", "--target", "IRShapeDebug"], "allow"),
              (["python3", "-c", "print(1)"], None),
              (["fleet-jobs", "start", "render-verify", "--", "--target", "IRShapeDebug"], "allow"),
              (["fleet-jobs", "start", "light-verify", "--", "--if-changed"], "allow"),

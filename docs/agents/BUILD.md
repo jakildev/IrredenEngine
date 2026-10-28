@@ -380,8 +380,7 @@ runs by double-click on a clean box. `IRShapeDebug` is the reference.
   compressed) beside a ~278 MiB debug exe, a ~124 MiB zip. To check a
   bundle, run `python3 scripts/package-verify.py [--target <target>]`
   (resolver probe over the built exe plus a closure audit of the unzipped
-  package), then unzip it into an empty directory and run the exe with only
-  `%SystemRoot%\System32;%SystemRoot%` on `PATH`.
+  package), then the clean-box smoke below.
 - **macOS** — `cmake/macos_bundle_dylibs.cmake` uses CMake's Mach-O runtime
   resolver to copy the complete non-system dylib closure next to the exe. It
   rewrites every non-system load edge and copied install ID to
@@ -392,21 +391,17 @@ runs by double-click on a clean box. `IRShapeDebug` is the reference.
   exercise the recursive resolver and audit every extracted Mach-O, including
   signatures, load commands, rpaths, and the transitive-only count.
 
-  A clean-box smoke denies both common Homebrew prefixes while launching the
-  unpacked executable through `fleet-run`; run this from a normal macOS shell
-  because an already-sandboxed process cannot nest `sandbox-exec`:
-
-  ```bash
-  PACKAGE_SMOKE_ROOT="$(mktemp -d)"
-  ditto -x -k build/IRShapeDebug-macos-arm64.zip "$PACKAGE_SMOKE_ROOT"
-  sandbox-exec -p '(version 1) (allow default) (deny file-read* (subpath "/opt/homebrew") (subpath "/usr/local"))' \
-    env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH \
-        -u DYLD_FALLBACK_FRAMEWORK_PATH \
-        fleet-run --build-dir "$PACKAGE_SMOKE_ROOT" \
-          IRShapeDebug --auto-screenshot 10
-  ```
-
-  The required terminal reading is `ir-run: RESULT=CLEAN`; the profile makes
-  any accidental package-manager load fail even on the build host.
+**Clean-box smoke.** After `fleet-build --target <target>Package`, run
+`python3 scripts/package-smoke.py --target <target> --build-dir build`. It
+unzips the archive into an empty directory and launches it via `fleet-run
+--build-dir`, passing each host's restriction as `ir-run` child options so it
+reaches only the packaged exe (wrapping `fleet-run` breaks its bash chain);
+the per-host restrictions and exit codes are in the script's docstring. A pass
+prints `ir-run: RESULT=CLEAN`, then `package-smoke: RESULT=PASS`; another
+verdict prints `RESULT=FAIL`. macOS also prints `isolation=applied` (Homebrew
+reads denied) or `isolation=skipped`, which is not clean-box evidence: run it
+from a normal shell, as a sandboxed process cannot nest `sandbox-exec`. Only
+the macOS arm is measured; `scripts/tests/test_package_smoke.py` pins Windows
+and Linux until a native run.
 
 Packaging never runs as part of a normal `--target <exe>` build.

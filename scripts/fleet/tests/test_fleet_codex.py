@@ -239,10 +239,26 @@ class Transport(unittest.TestCase):
             text = policy.rules(root, "sonnet-reviewer")
             for pattern in (["python3", "scripts/render-verify.py"],
                             ["python3", str(root / "scripts/perf/repeat_profile.py")],
+                            ["python3", "scripts/package-smoke.py"],
+                            ["python3", str(root / "scripts/package-smoke.py")],
                             ["bash", "scripts/perf/perf_grid_matrix.sh"],
                             ["scripts/perf/perf_grid_matrix.sh"]):
                 self.assertIn(f"pattern={json.dumps(pattern)}, decision=\"allow\"", text)
             self.assertNotIn('pattern=["python3"]', text)
+
+    @unittest.skipUnless(shutil.which("codex"), "codex CLI absent; text-level case above")
+    def test_package_smoke_gets_the_display_validator_decision(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            path = policy.prepare(root, "worker")
+            for script in ("scripts/package-smoke.py", "scripts/render-verify.py"):
+                for form in (script, str(root / script)):
+                    cmd = ["python3", form, "--target", "IRShapeDebug"]
+                    with self.subTest(cmd=cmd):
+                        result = subprocess.run(
+                            ["codex", "execpolicy", "check", "--rules", str(path), "--", *cmd],
+                            check=True, capture_output=True, text=True, timeout=15)
+                        self.assertEqual(json.loads(result.stdout).get("decision"), "allow")
 
     def test_fleet_jobs_gets_only_the_display_profile_rules(self):
         # A settings entry for fleet-jobs must not become a bare prefix allow:
