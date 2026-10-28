@@ -12,7 +12,7 @@
 
 // `IRAudio.setNoteSpacing` / `noteSpacing` over the singleton the triggers
 // and `MIDI_NOTE_SPACING` share: every key checked before any write, and
-// enabling refused until the system that flushes the queue is registered.
+// enabling refused until the system that flushes the queue is in UPDATE.
 class LuaMidiNoteSpacingTest : public testing::Test {
   protected:
     LuaMidiNoteSpacingTest() {
@@ -49,13 +49,22 @@ TEST_F(LuaMidiNoteSpacingTest, ReadsBackWhatItSetsAndRejectsBadInput) {
     EXPECT_EQ(spacing.staggerFrames_, 3);
 }
 
-TEST_F(LuaMidiNoteSpacingTest, EnablingNeedsTheFlushSystem) {
+TEST_F(LuaMidiNoteSpacingTest, EnablingNeedsTheFlushSystemInUpdate) {
     EXPECT_FALSE(scriptSucceeds("IRAudio.setNoteSpacing({ enabled = true })"));
     EXPECT_FALSE(IRPrefab::MidiNotes::spacing().enabled_);
-    IRSystem::createSystem<IRSystem::MIDI_NOTE_SPACING>();
+    // Registered but never ticked: the queue would never drain.
+    m_lua.registerPrefabSystem<IRSystem::MIDI_NOTE_SPACING>();
+    EXPECT_FALSE(scriptSucceeds("IRAudio.setNoteSpacing({ enabled = true })"));
+    EXPECT_FALSE(IRPrefab::MidiNotes::spacing().enabled_);
+    // Composed into UPDATE by name from Lua.
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        assert(IRSystem.SystemName.MIDI_NOTE_SPACING ~= nil)
+        IRSystem.appendSystem(IRTime.UPDATE, IRSystem.systemId(IRSystem.SystemName.MIDI_NOTE_SPACING))
+    )lua"));
     EXPECT_TRUE(scriptSucceeds("IRAudio.setNoteSpacing({ enabled = true, staggerFrames = 2 })"));
     EXPECT_TRUE(IRPrefab::MidiNotes::spacing().enabled_);
     EXPECT_TRUE(scriptSucceeds("assert(IRAudio.noteSpacing().enabled == true)"));
+    EXPECT_TRUE(scriptSucceeds("assert(IRAudio.noteSpacing().droppedNotes == 0)"));
     EXPECT_TRUE(scriptSucceeds("IRAudio.setNoteSpacing({ enabled = false })"));
     EXPECT_FALSE(IRPrefab::MidiNotes::spacing().enabled_);
 }

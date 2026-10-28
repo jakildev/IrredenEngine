@@ -29,9 +29,10 @@ template <> struct System<CONTACT_MIDI_TRIGGER> {
 
     static SystemId create() {
         IRPrefab::MidiNotes::ensureSpacingSingleton();
-        return registerSystem<CONTACT_MIDI_TRIGGER, IRComponents::C_ContactEvent, IRComponents::C_MidiNote>(
-            "ContactMidiTrigger"
-        );
+        return registerSystem<
+            CONTACT_MIDI_TRIGGER,
+            IRComponents::C_ContactEvent,
+            IRComponents::C_MidiNote>("ContactMidiTrigger");
     }
 };
 

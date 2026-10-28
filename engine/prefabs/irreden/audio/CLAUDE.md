@@ -44,8 +44,9 @@ Many of these have `_lua.hpp` siblings that bind them into Lua.
 - `PERIODIC_IDLE_MIDI_TRIGGER` — the same on `C_PeriodicIdle` cycle
   completion.
 - `MIDI_NOTE_SPACING` (UPDATE, after the triggers, before
-  `MIDI_DELAY_PROCESS`) — plans and emits the frame's queued notes. Without
-  it the policy cannot be enabled (`IRAudio.setNoteSpacing` refuses).
+  `OUTPUT_MIDI_MESSAGE_OUT`) — plans the queued notes and sends each spaced
+  NOTE_ON / NOTE_OFF on its frame. Not in UPDATE, the policy cannot be
+  enabled (`IRAudio.setNoteSpacing` refuses).
 - `MIDI_DELAY_PROCESS` — decrements `C_MidiDelay`; when it hits zero,
   emits a `NOTE_OFF` transient entity and marks delay = -1 to prevent
   re-fire.

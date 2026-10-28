@@ -404,6 +404,10 @@ class SystemManager {
         return it == m_systemPipelineGroups.end() ? kEmpty : it->second;
     }
 
+    /// Whether `system` is in `event`'s live pipeline. Registration alone
+    /// never runs a system; a contract that needs one ticking checks this.
+    bool isInPipeline(IRTime::Events event, SystemId system) const;
+
   private:
     SystemId m_nextSystemId = 0;
     std::vector<C_Name> m_systemNames;

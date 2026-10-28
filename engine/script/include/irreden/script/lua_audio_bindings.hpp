@@ -74,12 +74,12 @@ inline void bindAudioApi(LuaScript &script) {
 
     // The note spacing policy (`docs/design/midi-note-spacing.md`): a partial
     // update that checks every key before any write; `enabled = true` needs
-    // `MIDI_NOTE_SPACING` registered, since only it flushes the queue.
+    // `MIDI_NOTE_SPACING` in the UPDATE pipeline, since only it flushes the
+    // queue.
     audio["setNoteSpacing"] = [](sol::this_state state, sol::object optionsObject) {
         constexpr const char *kCaller = "IRAudio.setNoteSpacing";
-        static constexpr std::array<std::string_view, 4> kKeys{
-            "enabled", "staggerFrames", "maxVoices", "maxDelayFrames"
-        };
+        static constexpr std::array<std::string_view, 4>
+            kKeys{"enabled", "staggerFrames", "maxVoices", "maxDelayFrames"};
         const sol::table options = optionsTable(state, optionsObject, kCaller);
         rejectUnknownKeys(options, kKeys, kCaller);
         IRComponents::C_MidiNoteSpacing &spacing = IRPrefab::MidiNotes::spacing();
@@ -91,10 +91,14 @@ inline void bindAudioApi(LuaScript &script) {
             }
             enabled = enabledObject.as<bool>();
         }
-        const int stagger = integerOption(options, "staggerFrames", spacing.staggerFrames_, 1, 600, kCaller);
+        const int stagger =
+            integerOption(options, "staggerFrames", spacing.staggerFrames_, 1, 600, kCaller);
         const int voices = integerOption(options, "maxVoices", spacing.maxVoices_, 0, 128, kCaller);
-        const int maxDelay = integerOption(options, "maxDelayFrames", spacing.maxDelayFrames_, 0, 6000, kCaller);
-        if (enabled && IRSystem::findSystem(IRSystem::MIDI_NOTE_SPACING) == IRSystem::kNullSystemId) {
+        const int maxDelay =
+            integerOption(options, "maxDelayFrames", spacing.maxDelayFrames_, 0, 6000, kCaller);
+        const IRSystem::SystemId flush = IRSystem::findSystem(IRSystem::MIDI_NOTE_SPACING);
+        if (enabled && (flush == IRSystem::kNullSystemId ||
+                        !IRSystem::isInPipeline(IRTime::Events::UPDATE, flush))) {
             throw sol::error{
                 std::string(kCaller) +
                 ": enabling needs MIDI_NOTE_SPACING in the UPDATE pipeline, which flushes the queue"
@@ -113,6 +117,7 @@ inline void bindAudioApi(LuaScript &script) {
         out["staggerFrames"] = spacing.staggerFrames_;
         out["maxVoices"] = spacing.maxVoices_;
         out["maxDelayFrames"] = spacing.maxDelayFrames_;
+        out["droppedNotes"] = static_cast<lua_Integer>(spacing.droppedNotes_);
         return out;
     };
 
