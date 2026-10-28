@@ -259,8 +259,8 @@ run_dev() {  # run_dev <VAR=val>... <script> <args...>; the script's own output 
 
 shape_log="$(run_dev RENDER=both SPIN_RATE=30 shape-rotate-jitter-sweep "$BUILD" box 8 3)"
 assert_eq "$shape_log" \
-"--build-dir|$BUILD|IRShapeDebug|--spin-shape|box|--spin-yaw|30|--auto-screenshot|3|--zoom|8|
---build-dir|$BUILD|IRShapeDebug|--spin-shape|box|--spin-shape-voxel|--spin-yaw|30|--auto-screenshot|3|--zoom|8|" \
+"--build-dir|$BUILD|IRShapeDebug|--spin-shape|box|--pivot-origin|--spin-yaw|30|--auto-screenshot|3|--zoom|8|
+--build-dir|$BUILD|IRShapeDebug|--spin-shape|box|--spin-shape-voxel|--pivot-origin|--spin-yaw|30|--auto-screenshot|3|--zoom|8|" \
     "shape-rotate-jitter-sweep: sdf + voxel runs, original args"
 
 perf_log="$(run_dev perf-grid-rotate-sweep "$BUILD" dense 80)"
