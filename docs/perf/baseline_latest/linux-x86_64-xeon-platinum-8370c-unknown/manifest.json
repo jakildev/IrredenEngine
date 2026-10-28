@@ -1,11 +1,11 @@
 {
-  "target": "IRPerfGrid",
+  "target": "both",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "0def88754",
+  "git_sha": "468c8e57f",
   "git_dirty": false,
-  "run_name": "0def88754-ci",
-  "started_at": "2026-10-23T19:10:19Z",
+  "run_name": "468c8e57f-ci",
+  "started_at": "2026-10-28T02:19:02Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,13 +17,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 115.176,
+        "before": 115.412,
         "before_samples": [
-          115.176,
-          115.354,
-          115.156
+          115.475,
+          115.412,
+          115.289
         ],
-        "after": 115.942
+        "after": 115.534
       }
     },
     {
@@ -36,25 +36,63 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 115.279,
+        "before": 115.413,
         "before_samples": [
-          115.288,
-          115.279,
-          115.136
+          115.328,
+          115.446,
+          115.413
         ],
-        "after": 115.259
+        "after": 115.797
+      }
+    },
+    {
+      "id": "target=IRLuaPerfGrid,zoom=1,sub_mode=full,sub_base=1",
+      "target": "IRLuaPerfGrid",
+      "zoom": 1,
+      "sub_mode": "full",
+      "sub_base": 1,
+      "exit_status": 0,
+      "status": "ok",
+      "report": "target=IRLuaPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
+      "load_ref_ms": {
+        "before": 115.378,
+        "before_samples": [
+          115.316,
+          115.378,
+          115.562
+        ],
+        "after": 115.416
+      }
+    },
+    {
+      "id": "target=IRLuaPerfGrid,zoom=4,sub_mode=full,sub_base=1",
+      "target": "IRLuaPerfGrid",
+      "zoom": 4,
+      "sub_mode": "full",
+      "sub_base": 1,
+      "exit_status": 0,
+      "status": "ok",
+      "report": "target=IRLuaPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
+      "load_ref_ms": {
+        "before": 115.296,
+        "before_samples": [
+          115.22,
+          115.296,
+          115.464
+        ],
+        "after": 115.785
       }
     }
   ],
-  "finished_at": "2026-10-23T19:13:09Z",
+  "finished_at": "2026-10-28T02:23:48Z",
   "calibration": {
-    "ref_ms": 115.382,
+    "ref_ms": 115.413,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-xeon-platinum-8370c-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3546,
+        "mhz": 3491,
         "model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
         "threads": 4
       },
@@ -70,6 +108,6 @@
       },
       "slug": "linux-x86_64-xeon-platinum-8370c-unknown"
     },
-    "math_sha": "ca66cb785275d24102b5db8db8c6af1c464d670c"
+    "math_sha": "2b26d6323de14ecc0cccad2eccebd9ed37db2dae"
   }
 }
