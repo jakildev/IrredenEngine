@@ -38,6 +38,10 @@ A voxel run is the voxel letters' projection applied to a line of cubes:
 `SCREEN` runs level along the letter plane. `measureVoxelRun` gives the
 box, `voxelRunCell(i, ...)` where cube `i` sits in it (for a marker at the
 lit end). Cubes paint farthest first, so a later cube hides the one behind.
+The run is laid out through a face map of its whole box, and an X or Y run is
+diagonal on screen, so that box grows with `count` squared: a run whose box
+passes `kMaxVoxelRunTexels` (2^22 texels — 125 cubes of edge 16 along X or Y)
+raises in every `IRCanvas` run call and asserts in `layoutVoxelRun`.
 
 `LuaScript::bindLuaCanvasDraw()` installs `IRCanvas` (opt-in, like
 `IRFog`). A canvas is named as `IRRender.getCanvas` knows it; `createLayer`

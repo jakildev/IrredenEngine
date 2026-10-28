@@ -233,17 +233,19 @@ inline int integerOption(
         throw sol::error{std::string(caller) + ": " + key + " must be a whole number"};
     }
     const double number = value.as<double>();
-    if (!IRMath::isFinite(number) || number != IRMath::floor(number) || number < lo || number > hi) {
+    if (!IRMath::isFinite(number) || number != IRMath::floor(number) || number < lo ||
+        number > hi) {
         throw sol::error{
-            std::string(caller) + ": " + key + " must be a whole number in [" +
-            std::to_string(lo) + ", " + std::to_string(hi) + "]"
+            std::string(caller) + ": " + key + " must be a whole number in [" + std::to_string(lo) +
+            ", " + std::to_string(hi) + "]"
         };
     }
     return static_cast<int>(number);
 }
 
 // The colour under `key` (colorFromLua), or `fallback` when absent.
-inline IRMath::Color colorOption(const sol::table &options, const char *key, IRMath::Color fallback) {
+inline IRMath::Color
+colorOption(const sol::table &options, const char *key, IRMath::Color fallback) {
     const sol::object value = options[key];
     if (!value.valid() || value.get_type() == sol::type::lua_nil) {
         return fallback;

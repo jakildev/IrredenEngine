@@ -94,17 +94,45 @@ inline IRComponents::TextAlignV canvasDrawAlignV(const sol::table &options, cons
 }
 
 inline constexpr std::array<std::string_view, 9> kCanvasDrawTextKeys{
-    "color", "fontSize", "size", "distance", "alignH", "alignV", "boxWidth", "boxHeight", "wrapWidth",
+    "color",
+    "fontSize",
+    "size",
+    "distance",
+    "alignH",
+    "alignV",
+    "boxWidth",
+    "boxHeight",
+    "wrapWidth",
 };
 inline constexpr std::array<std::string_view, 12> kCanvasDrawVoxelTextKeys{
-    "color", "faceX", "faceY", "faceZ", "voxelSize", "depth", "facing",
-    "distance", "alignH", "alignV", "boxWidth", "boxHeight",
+    "color",
+    "faceX",
+    "faceY",
+    "faceZ",
+    "voxelSize",
+    "depth",
+    "facing",
+    "distance",
+    "alignH",
+    "alignV",
+    "boxWidth",
+    "boxHeight",
 };
-inline constexpr std::array<std::string_view, 3> kCanvasDrawMeasureKeys{"voxelSize", "depth", "facing"};
+inline constexpr std::array<std::string_view, 3> kCanvasDrawMeasureKeys{
+    "voxelSize", "depth", "facing"
+};
 inline constexpr std::array<std::string_view, 7> kCanvasDrawVoxelRunKeys{
-    "count", "lit", "voxelSize", "axis", "color", "unlitColor", "distance",
+    "count",
+    "lit",
+    "voxelSize",
+    "axis",
+    "color",
+    "unlitColor",
+    "distance",
 };
-inline constexpr std::array<std::string_view, 3> kCanvasDrawRunMeasureKeys{"count", "voxelSize", "axis"};
+inline constexpr std::array<std::string_view, 3> kCanvasDrawRunMeasureKeys{
+    "count", "voxelSize", "axis"
+};
 
 // An `IRCanvas.Axis` value, X when absent.
 inline IRRender::VoxelRunAxis canvasDrawAxis(const sol::table &options, const char *caller) {
@@ -126,12 +154,20 @@ canvasDrawRunShape(const sol::table &options, const char *caller) {
     run.count_ = integerOption(options, "count", 1, 1, 4096, caller);
     run.voxelSize_ = integerOption(options, "voxelSize", 1, 1, IRRender::kMaxVoxelTextSize, caller);
     run.axis_ = canvasDrawAxis(options, caller);
+    if (!IRRender::voxelRunFits(run.count_, run.voxelSize_, run.axis_)) {
+        throw sol::error{
+            std::string(caller) + ": count and voxelSize make a run larger than " +
+            std::to_string(IRRender::kMaxVoxelRunTexels) + " texels"
+        };
+    }
     return run;
 }
 
-inline IRRender::VoxelTextStyle canvasDrawVoxelStyle(const sol::table &options, const char *caller) {
+inline IRRender::VoxelTextStyle
+canvasDrawVoxelStyle(const sol::table &options, const char *caller) {
     IRRender::VoxelTextStyle style{1, 1, IRRender::VoxelTextFacing::CAMERA};
-    style.voxelSize_ = integerOption(options, "voxelSize", 1, 1, IRRender::kMaxVoxelTextSize, caller);
+    style.voxelSize_ =
+        integerOption(options, "voxelSize", 1, 1, IRRender::kMaxVoxelTextSize, caller);
     style.depth_ = integerOption(options, "depth", 1, 1, IRRender::kMaxVoxelTextDepth, caller);
     const sol::object facing = options["facing"];
     if (facing.valid() && facing.get_type() != sol::type::lua_nil) {
@@ -173,14 +209,16 @@ inline void bindCanvasDraw(
     canvas["Axis"] = axis;
 
     sol::table alignH = lua.create_table();
-#define IR_BIND_ALIGN_H(name) alignH[#name] = static_cast<lua_Integer>(IRComponents::TextAlignH::name)
+#define IR_BIND_ALIGN_H(name)                                                                      \
+    alignH[#name] = static_cast<lua_Integer>(IRComponents::TextAlignH::name)
     IR_BIND_ALIGN_H(LEFT);
     IR_BIND_ALIGN_H(CENTER);
     IR_BIND_ALIGN_H(RIGHT);
 #undef IR_BIND_ALIGN_H
     canvas["AlignH"] = alignH;
     sol::table alignV = lua.create_table();
-#define IR_BIND_ALIGN_V(name) alignV[#name] = static_cast<lua_Integer>(IRComponents::TextAlignV::name)
+#define IR_BIND_ALIGN_V(name)                                                                      \
+    alignV[#name] = static_cast<lua_Integer>(IRComponents::TextAlignV::name)
     IR_BIND_ALIGN_V(TOP);
     IR_BIND_ALIGN_V(CENTER);
     IR_BIND_ALIGN_V(BOTTOM);
@@ -277,17 +315,16 @@ inline void bindCanvasDraw(
         );
     };
 
-    canvas["measureVoxelText"] =
-        [](sol::this_state state, const std::string &text, sol::object optionsObject) {
-            constexpr const char *kCaller = "IRCanvas.measureVoxelText";
-            const sol::table options = optionsTable(state, optionsObject, kCaller);
-            rejectUnknownKeys(options, kCanvasDrawMeasureKeys, kCaller);
-            const IRMath::ivec2 size = IRPrefab::CanvasDraw::measureVoxelText(
-                text,
-                canvasDrawVoxelStyle(options, kCaller)
-            );
-            return std::make_tuple(size.x, size.y);
-        };
+    canvas["measureVoxelText"] = [](sol::this_state state,
+                                    const std::string &text,
+                                    sol::object optionsObject) {
+        constexpr const char *kCaller = "IRCanvas.measureVoxelText";
+        const sol::table options = optionsTable(state, optionsObject, kCaller);
+        rejectUnknownKeys(options, kCanvasDrawMeasureKeys, kCaller);
+        const IRMath::ivec2 size =
+            IRPrefab::CanvasDraw::measureVoxelText(text, canvasDrawVoxelStyle(options, kCaller));
+        return std::make_tuple(size.x, size.y);
+    };
 
     canvas["voxelRun"] = [require](
                              sol::this_state state,
@@ -312,7 +349,10 @@ inline void bindCanvasDraw(
             run.unlit_faces_ = IRRender::shadedVoxelFaceColors(colorFromLua(unlit));
         }
         IRPrefab::CanvasDraw::queueVoxelRun(
-            target, IRMath::ivec2(x, y), run, canvasDrawDistance(options, kCaller)
+            target,
+            IRMath::ivec2(x, y),
+            run,
+            canvasDrawDistance(options, kCaller)
         );
     };
 

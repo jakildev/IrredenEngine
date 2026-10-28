@@ -67,7 +67,8 @@ TEST_F(LuaWidgetColorSwatch, FactoryBuildsTheWidgetWithItsColorAndSelection) {
     const C_WidgetColorSwatch &data = IREntity::getComponent<C_WidgetColorSwatch>(swatch);
     EXPECT_EQ(data.color_.toPackedRGBA(), IRMath::Color(10, 20, 30, 255).toPackedRGBA());
     EXPECT_FALSE(data.selected_);
-    const C_WidgetColorSwatch &picked = IREntity::getComponent<C_WidgetColorSwatch>(entity("picked"));
+    const C_WidgetColorSwatch &picked =
+        IREntity::getComponent<C_WidgetColorSwatch>(entity("picked"));
     EXPECT_TRUE(picked.selected_);
     EXPECT_EQ(picked.color_.toPackedRGBA(), IRMath::Color(1, 2, 3, 4).toPackedRGBA());
 }
@@ -88,7 +89,8 @@ TEST_F(LuaWidgetColorSwatch, ReadersAndSettersRoundTrip) {
 
 TEST_F(LuaWidgetColorSwatch, RejectsBadOptionsAndIds) {
     EXPECT_NE(
-        error("IRGui.makeColorSwatch(0, 0, 8, 8, { 1, 1, 1 }, { colour = true })").find("unknown option"),
+        error("IRGui.makeColorSwatch(0, 0, 8, 8, { 1, 1, 1 }, { colour = true })")
+            .find("unknown option"),
         std::string::npos
     );
     EXPECT_NE(
@@ -99,9 +101,15 @@ TEST_F(LuaWidgetColorSwatch, RejectsBadOptionsAndIds) {
         error("IRGui.makeColorSwatch(0, 0, 8, 8, { 1, 1, 1 }, { onClick = 1 })").find("onClick"),
         std::string::npos
     );
-    EXPECT_NE(error("IRGui.colorSwatchColor(123456)").find("not a color swatch"), std::string::npos);
+    EXPECT_NE(
+        error("IRGui.colorSwatchColor(123456)").find("not a color swatch"),
+        std::string::npos
+    );
     run("label = IRGui.makeLabel(0, 0, 'X')");
-    EXPECT_NE(error("IRGui.setColorSwatchSelected(label, true)").find("not a color swatch"), std::string::npos);
+    EXPECT_NE(
+        error("IRGui.setColorSwatchSelected(label, true)").find("not a color swatch"),
+        std::string::npos
+    );
 }
 
 } // namespace

@@ -299,7 +299,8 @@ inline void expandTextToCommands(
         for (std::size_t j = 0; j < line.count_; ++j) {
             auto &cmd = commands[line.firstIndex_ + j];
             cmd.positionPacked = IRRender::packGlyphPosition(
-                IRRender::unpackGlyphPosition(cmd.positionPacked) + IRMath::ivec2(roundedX, roundedY)
+                IRRender::unpackGlyphPosition(cmd.positionPacked) +
+                IRMath::ivec2(roundedX, roundedY)
             );
         }
     }
@@ -352,7 +353,10 @@ inline void expandVoxelTextToCommands(
             alignV
         );
         commands.push_back(solidCellCommand(
-            origin + offset + run.pos_, run.size_, packedByFace[run.face_], IRRender::kGuiTextDistance
+            origin + offset + run.pos_,
+            run.size_,
+            packedByFace[run.face_],
+            IRRender::kGuiTextDistance
         ));
     }
 }
@@ -378,7 +382,10 @@ inline void expandVoxelRunToCommands(
     };
     for (const IRRender::VoxelTextRun &run : layout.runs_) {
         commands.push_back(solidCellCommand(
-            origin + run.pos_, run.size_, packedByFace[run.face_], IRRender::kGuiTextDistance
+            origin + run.pos_,
+            run.size_,
+            packedByFace[run.face_],
+            IRRender::kGuiTextDistance
         ));
     }
 }

@@ -548,12 +548,11 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
             const sol::table &opts = options.value();
             for (const auto &[key, value] : opts) {
                 const bool known =
-                    key.get_type() == sol::type::string &&
-                    std::find(
-                        kColorSwatchOptionKeys.begin(),
-                        kColorSwatchOptionKeys.end(),
-                        key.as<std::string_view>()
-                    ) != kColorSwatchOptionKeys.end();
+                    key.get_type() == sol::type::string && std::find(
+                                                               kColorSwatchOptionKeys.begin(),
+                                                               kColorSwatchOptionKeys.end(),
+                                                               key.as<std::string_view>()
+                                                           ) != kColorSwatchOptionKeys.end();
                 if (!known) {
                     throw sol::error{
                         std::string(kCaller) + ": unknown option; valid keys are selected, onClick"
@@ -563,14 +562,18 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
             const sol::object selectedValue = opts["selected"];
             if (selectedValue.valid() && selectedValue.get_type() != sol::type::lua_nil) {
                 if (selectedValue.get_type() != sol::type::boolean) {
-                    throw sol::error{std::string(kCaller) + ": option 'selected' must be a boolean"};
+                    throw sol::error{
+                        std::string(kCaller) + ": option 'selected' must be a boolean"
+                    };
                 }
                 selected = selectedValue.as<bool>();
             }
             const sol::object clickValue = opts["onClick"];
             if (clickValue.valid() && clickValue.get_type() != sol::type::lua_nil) {
                 if (clickValue.get_type() != sol::type::function) {
-                    throw sol::error{std::string(kCaller) + ": option 'onClick' must be a function"};
+                    throw sol::error{
+                        std::string(kCaller) + ": option 'onClick' must be a function"
+                    };
                 }
                 onClick = clickValue.as<sol::protected_function>();
             }
@@ -588,9 +591,12 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
         return static_cast<lua_Integer>(id);
     };
     gui["colorSwatchColor"] = [](lua_Integer id) {
-        const IRMath::Color color =
-            requireWidget<IRComponents::C_WidgetColorSwatch>(id, "IRGui.colorSwatchColor", "color swatch")
-                ->color_;
+        const IRMath::Color color = requireWidget<IRComponents::C_WidgetColorSwatch>(
+                                        id,
+                                        "IRGui.colorSwatchColor",
+                                        "color swatch"
+        )
+                                        ->color_;
         return std::make_tuple(
             static_cast<int>(color.red_),
             static_cast<int>(color.green_),
@@ -599,18 +605,26 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
         );
     };
     gui["setColorSwatchColor"] = [](lua_Integer id, sol::object color) {
-        requireWidget<IRComponents::C_WidgetColorSwatch>(id, "IRGui.setColorSwatchColor", "color swatch")
+        requireWidget<IRComponents::C_WidgetColorSwatch>(
+            id,
+            "IRGui.setColorSwatchColor",
+            "color swatch"
+        )
             ->color_ = colorFromLua(color);
     };
     gui["colorSwatchSelected"] = [](lua_Integer id) -> bool {
         return requireWidget<IRComponents::C_WidgetColorSwatch>(
-                   id, "IRGui.colorSwatchSelected", "color swatch"
+                   id,
+                   "IRGui.colorSwatchSelected",
+                   "color swatch"
         )
             ->selected_;
     };
     gui["setColorSwatchSelected"] = [](lua_Integer id, bool selected) {
         requireWidget<IRComponents::C_WidgetColorSwatch>(
-            id, "IRGui.setColorSwatchSelected", "color swatch"
+            id,
+            "IRGui.setColorSwatchSelected",
+            "color swatch"
         )
             ->selected_ = selected;
     };

@@ -129,7 +129,8 @@ batchFor(IRComponents::C_CanvasDrawQueue &queue, IREntity::EntityId canvas) {
 // The texel box a command may write: its glyph cell scaled by its font
 // size, widened by one scale on the right and below and one above, the
 // apron the lattice display's triangles reach past the cell.
-inline void commandBounds(const IRRender::GlyphDrawCommand &cmd, IRMath::ivec2 &lo, IRMath::ivec2 &hi) {
+inline void
+commandBounds(const IRRender::GlyphDrawCommand &cmd, IRMath::ivec2 &lo, IRMath::ivec2 &hi) {
     const int scale = IRMath::max(static_cast<int>(cmd.styleFlags & 0xFFu), 1);
     const int cellWidth = static_cast<int>(
         (cmd.styleFlags >> IRRender::kGlyphStyleCellWidthShift) & IRRender::kGlyphStyleCellMask
@@ -146,9 +147,8 @@ inline void commandBounds(const IRRender::GlyphDrawCommand &cmd, IRMath::ivec2 &
 // text expanders stamp the GUI text distance; a canvas draw carries its own)
 // and records them as one primitive; nothing when none was appended (an
 // empty or fully clipped draw).
-inline void closePrimitive(
-    IRComponents::C_CanvasDrawQueue::Batch &batch, std::size_t first, int distance
-) {
+inline void
+closePrimitive(IRComponents::C_CanvasDrawQueue::Batch &batch, std::size_t first, int distance) {
     if (batch.commands_.size() <= first) {
         return;
     }
@@ -260,7 +260,8 @@ inline void queueVoxelText(
 }
 
 // The texel extent `text` covers in `style`, before any alignment.
-inline IRMath::ivec2 measureVoxelText(std::string_view text, const IRRender::VoxelTextStyle &style) {
+inline IRMath::ivec2
+measureVoxelText(std::string_view text, const IRRender::VoxelTextStyle &style) {
     IRComponents::C_CanvasDrawQueue &drawQueue = queue();
     IRRender::layoutVoxelText(text, style, drawQueue.voxelLayout_, drawQueue.voxelScratch_);
     return drawQueue.voxelLayout_.size_;
@@ -295,7 +296,11 @@ inline void queueVoxelRun(
 
 // A filled rectangle, clipped to the canvas, tiled by solid glyph cells.
 inline void queueRect(
-    IREntity::EntityId canvas, IRMath::ivec2 pos, IRMath::ivec2 size, IRMath::Color color, int distance
+    IREntity::EntityId canvas,
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    IRMath::Color color,
+    int distance
 ) {
     IRComponents::C_CanvasDrawQueue::Batch &batch = detail::batchFor(queue(), canvas);
     IRMath::ivec2 lo;
@@ -310,7 +315,12 @@ inline void queueRect(
         for (int x = lo.x; x < hi.x; x += IRRender::kGlyphWidth) {
             const int w = IRMath::min(IRRender::kGlyphWidth, hi.x - x);
             batch.commands_.push_back(
-                GuiText::solidCellCommand(IRMath::ivec2(x, y), IRMath::ivec2(w, h), packed, distance)
+                GuiText::solidCellCommand(
+                    IRMath::ivec2(x, y),
+                    IRMath::ivec2(w, h),
+                    packed,
+                    distance
+                )
             );
         }
     }
@@ -331,8 +341,20 @@ inline void queueBorder(
     }
     const int t = IRMath::min(thickness, IRMath::min(size.x, size.y));
     queueRect(canvas, pos, IRMath::ivec2(size.x, t), color, distance);
-    queueRect(canvas, IRMath::ivec2(pos.x, pos.y + size.y - t), IRMath::ivec2(size.x, t), color, distance);
-    queueRect(canvas, IRMath::ivec2(pos.x, pos.y + t), IRMath::ivec2(t, size.y - 2 * t), color, distance);
+    queueRect(
+        canvas,
+        IRMath::ivec2(pos.x, pos.y + size.y - t),
+        IRMath::ivec2(size.x, t),
+        color,
+        distance
+    );
+    queueRect(
+        canvas,
+        IRMath::ivec2(pos.x, pos.y + t),
+        IRMath::ivec2(t, size.y - 2 * t),
+        color,
+        distance
+    );
     queueRect(
         canvas,
         IRMath::ivec2(pos.x + size.x - t, pos.y + t),
@@ -355,9 +377,8 @@ inline IREntity::EntityId createLayer(const std::string &name) {
         IREntity::createEntity<IREntity::PrefabTypes::kTrixelCanvas>(name, size);
     IREntity::setComponent(
         canvas,
-        IRComponents::C_TrixelCanvasRenderBehavior{
-            false, false, false, false, false, 0.0f, 0.0f, 0.0f, 0.0f
-        }
+        IRComponents::
+            C_TrixelCanvasRenderBehavior{false, false, false, false, false, 0.0f, 0.0f, 0.0f, 0.0f}
     );
     IREntity::setComponent(canvas, IRComponents::C_CanvasDrawLayer{});
     IREntity::setComponent(canvas, IRComponents::C_Persistent{});

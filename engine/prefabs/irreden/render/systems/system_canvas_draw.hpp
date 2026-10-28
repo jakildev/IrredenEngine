@@ -34,7 +34,8 @@ template <> struct System<CANVAS_DRAW> {
         queue_ = &IRPrefab::CanvasDraw::queue();
     }
 
-    void tick(const IRComponents::C_CanvasDrawLayer &, IRComponents::C_TriangleCanvasTextures &layer) {
+    void
+    tick(const IRComponents::C_CanvasDrawLayer &, IRComponents::C_TriangleCanvasTextures &layer) {
         layer.clear();
     }
 
@@ -69,10 +70,12 @@ template <> struct System<CANVAS_DRAW> {
                 const std::span<const IRRender::GlyphDrawCommand> commands(batch.commands_);
                 std::size_t begin = 0;
                 while (begin < primitives.size()) {
-                    const std::size_t end = IRPrefab::CanvasDraw::overlapGroupEnd(primitives, begin);
+                    const std::size_t end =
+                        IRPrefab::CanvasDraw::overlapGroupEnd(primitives, begin);
                     const std::size_t firstCommand = begin == 0 ? 0 : primitives[begin - 1].end_;
                     IRPrefab::GuiText::dispatchGlyphCommands(
-                        *cmdBuf, commands.subspan(firstCommand, primitives[end - 1].end_ - firstCommand)
+                        *cmdBuf,
+                        commands.subspan(firstCommand, primitives[end - 1].end_ - firstCommand)
                     );
                     begin = end;
                 }

@@ -73,6 +73,9 @@ constexpr VoxelFaceColors shadedVoxelFaceColors(IRMath::Color top) {
 
 constexpr int kMaxVoxelTextSize = 16;
 constexpr int kMaxVoxelTextDepth = 16;
+// Texel area cap on a voxel run's scaled face map, which layoutVoxelRun
+// allocates and scans every time it lays the run out.
+constexpr int kMaxVoxelRunTexels = 1 << 22;
 
 // The world axis a run of cubes follows, named by how it reads on screen:
 // X climbs to the right (/), Y drops to the right (\), SCREEN runs level
@@ -234,7 +237,7 @@ inline void paintUnitGlyph(
         return a.w > b.w;
     });
 
-    faces.assign(static_cast<std::size_t>(bounds.size_.x * bounds.size_.y), kNoFace);
+    faces.assign(static_cast<std::size_t>(bounds.size_.x) * bounds.size_.y, kNoFace);
     for (const IRMath::ivec4 &v : voxels) {
         paintUnitVoxel(faces, bounds.size_, voxelTextCellOrigin(v.x, v.y, v.z) - bounds.min_, 0);
     }
@@ -280,7 +283,7 @@ inline void latticeScaleFaces(
 ) {
     const IRMath::ivec2 size = voxelTextScaledSize(unitSize, scale);
     const int pad = voxelTextScalePad(scale);
-    scaled.assign(static_cast<std::size_t>(size.x * size.y), kNoFace);
+    scaled.assign(static_cast<std::size_t>(size.x) * size.y, kNoFace);
     for (int row = 0; row < unitSize.y; ++row) {
         for (int col = 0; col < unitSize.x; ++col) {
             const std::int8_t face = unit[static_cast<std::size_t>(row * unitSize.x + col)];
@@ -452,6 +455,14 @@ inline IRMath::ivec2 voxelRunSize(int count, int voxelSize, VoxelRunAxis axis) {
     return detail::voxelTextScaledSize(detail::voxelRunCellBounds(count, axis).size_, voxelSize);
 }
 
+// Whether the box of a run of `count` cubes of edge `voxelSize` along `axis`
+// stays within kMaxVoxelRunTexels. An X or Y run is diagonal on screen, so
+// its box grows with count squared.
+inline bool voxelRunFits(int count, int voxelSize, VoxelRunAxis axis) {
+    const IRMath::ivec2 size = voxelRunSize(count, voxelSize, axis);
+    return static_cast<std::int64_t>(size.x) * size.y <= kMaxVoxelRunTexels;
+}
+
 // The texel rect cube `index` of that run covers inside the run's box: its
 // cell's top-left and the cell's 2 x 3 texels, both scaled.
 inline void voxelRunCellRect(
@@ -460,14 +471,18 @@ inline void voxelRunCellRect(
     const detail::VoxelCellBounds bounds = detail::voxelRunCellBounds(count, axis);
     const IRMath::ivec3 v = voxelRunStep(axis) * index;
     const IRMath::ivec2 cell = voxelTextCellOrigin(v.x, v.y, v.z) - bounds.min_;
-    pos = IRMath::ivec2(cell.x * voxelSize, cell.y * voxelSize + detail::voxelTextScalePad(voxelSize));
+    pos = IRMath::ivec2(
+        cell.x * voxelSize,
+        cell.y * voxelSize + detail::voxelTextScalePad(voxelSize)
+    );
     size = IRMath::ivec2(2 * voxelSize, 3 * voxelSize);
 }
 
 // Lays out `count` cubes of edge `voxelSize` from the origin along `axis`,
 // the first `lit` in kVoxelRunLitGroup and the rest in kVoxelRunUnlitGroup,
 // as one line of face runs relative to a parity-aligned origin. Requires
-// 1 <= count, 0 <= lit <= count and 1 <= voxelSize <= kMaxVoxelTextSize.
+// 1 <= count, 0 <= lit <= count, 1 <= voxelSize <= kMaxVoxelTextSize and
+// voxelRunFits.
 inline void layoutVoxelRun(
     int count,
     int lit,
@@ -482,10 +497,15 @@ inline void layoutVoxelRun(
         voxelSize >= 1 && voxelSize <= kMaxVoxelTextSize,
         "layoutVoxelRun: voxelSize out of range"
     );
+    IR_ASSERT(
+        voxelRunFits(count, voxelSize, axis),
+        "layoutVoxelRun: run exceeds kMaxVoxelRunTexels"
+    );
     const detail::VoxelCellBounds bounds = detail::voxelRunCellBounds(count, axis);
     const IRMath::ivec3 step = voxelRunStep(axis);
     scratch.unitFaces_.assign(
-        static_cast<std::size_t>(bounds.size_.x * bounds.size_.y), detail::kNoFace
+        static_cast<std::size_t>(bounds.size_.x) * bounds.size_.y,
+        detail::kNoFace
     );
     // Farthest cube first: a cube's depth key is x + y + z, so the order
     // along the run follows the step's sign.

@@ -6,8 +6,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 
 ## Validators
 
-- `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` — headless GUI
-  assertion table (GPU hover-id parity, help overlay, settings menu, picking).
+- `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` — headless GUI assertion table (GPU hover-id parity, help overlay, settings menu, picking).
 - `python3 scripts/pivot-verify.py --blocks cursor-latch` — cursor pivot;
   `IRShapeDebug --pivot-verify cursor-latch --cursor-pivot-indicator` captures the marker.
 - `scripts/depth-tier-verify.py --only orbitswap --tier 1` — foreground depth

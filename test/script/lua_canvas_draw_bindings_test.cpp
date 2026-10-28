@@ -229,6 +229,38 @@ TEST_F(LuaCanvasDrawBindingsTest, VoxelRunsMeasurePlaceAndLightTheirCubes) {
     EXPECT_FALSE(scriptSucceeds("IRCanvas.voxelRun('gui', 0, 0, { count = 2, axis = 7 })"));
 }
 
+TEST_F(LuaCanvasDrawBindingsTest, DiagonalVoxelRunsAreBoundedByTheirFootprint) {
+    // An X or Y run of 125 cubes of edge 16 is a 2016 x 2064 box, the largest
+    // under kMaxVoxelRunTexels; one more cube makes it 2032 x 2080.
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        for _, axis in ipairs({ IRCanvas.Axis.X, IRCanvas.Axis.Y }) do
+            local shape = { count = 125, voxelSize = 16, axis = axis }
+            local w, h = IRCanvas.measureVoxelRun(shape)
+            assert(w == 2016 and h == 2064, w .. 'x' .. h)
+            IRCanvas.voxelRunCell(125, shape)
+            IRCanvas.voxelRun('gui', 0, 0, { count = 125, lit = 60, voxelSize = 16, axis = axis })
+        end
+        IRCanvas.voxelRun('gui', 0, 0, { count = 4096, voxelSize = 1, axis = IRCanvas.Axis.SCREEN })
+    )lua"));
+    const C_CanvasDrawQueue::Batch *batch = batchFor("gui");
+    ASSERT_NE(batch, nullptr);
+    EXPECT_EQ(batch->primitives_.size(), 3u);
+    for (const char *axis : {"X", "Y"}) {
+        const std::string shape =
+            std::string("{ count = 126, voxelSize = 16, axis = IRCanvas.Axis.") + axis + " }";
+        EXPECT_NE(
+            scriptError("IRCanvas.voxelRun('gui', 0, 0, " + shape + ")").find("larger than"),
+            std::string::npos
+        );
+        EXPECT_FALSE(scriptSucceeds("IRCanvas.measureVoxelRun(" + shape + ")"));
+        EXPECT_FALSE(scriptSucceeds("IRCanvas.voxelRunCell(1, " + shape + ")"));
+    }
+    EXPECT_FALSE(
+        scriptSucceeds("IRCanvas.voxelRun('gui', 0, 0, { count = 4096, voxelSize = 16 })")
+    );
+    EXPECT_EQ(batch->primitives_.size(), 3u);
+}
+
 TEST_F(LuaCanvasDrawBindingsTest, VoxelRunLayoutRefusesBadShapes) {
     IRRender::VoxelTextLayout layout;
     IRRender::VoxelTextScratch scratch;
@@ -242,6 +274,10 @@ TEST_F(LuaCanvasDrawBindingsTest, VoxelRunLayoutRefusesBadShapes) {
     );
     EXPECT_THROW(
         IRRender::layoutVoxelRun(2, 1, 0, IRRender::VoxelRunAxis::X, layout, scratch),
+        std::runtime_error
+    );
+    EXPECT_THROW(
+        IRRender::layoutVoxelRun(126, 0, 16, IRRender::VoxelRunAxis::X, layout, scratch),
         std::runtime_error
     );
     EXPECT_NO_THROW(IRRender::layoutVoxelRun(2, 2, 1, IRRender::VoxelRunAxis::Y, layout, scratch));
@@ -261,16 +297,35 @@ TEST_F(LuaCanvasDrawBindingsTest, LayersAreCreatedOnceAndSized) {
 }
 
 TEST_F(LuaCanvasDrawBindingsTest, RejectsUnknownCanvasesKeysAndRanges) {
-    EXPECT_NE(scriptError("IRCanvas.text('nope', 'X', 0, 0)").find("no canvas named nope"), std::string::npos);
     EXPECT_NE(
-        scriptError("IRCanvas.text('gui', 'X', 0, 0, { colour = { 1, 1, 1 } })").find("unknown option"),
+        scriptError("IRCanvas.text('nope', 'X', 0, 0)").find("no canvas named nope"),
         std::string::npos
     );
-    EXPECT_NE(scriptError("IRCanvas.text('gui', 'X', 0, 0, { fontSize = 0 })").find("fontSize"), std::string::npos);
-    EXPECT_NE(scriptError("IRCanvas.text('gui', 'X', 0, 0, { size = 7 })").find("size must be"), std::string::npos);
-    EXPECT_NE(scriptError("IRCanvas.voxelText('gui', 'X', 0, 0, { voxelSize = 17 })").find("voxelSize"), std::string::npos);
-    EXPECT_NE(scriptError("IRCanvas.voxelText('gui', 'X', 0, 0, { facing = 9 })").find("facing"), std::string::npos);
-    EXPECT_NE(scriptError("IRCanvas.text('gui', 'X', 0, 0, 5)").find("options must be a table"), std::string::npos);
+    EXPECT_NE(
+        scriptError("IRCanvas.text('gui', 'X', 0, 0, { colour = { 1, 1, 1 } })")
+            .find("unknown option"),
+        std::string::npos
+    );
+    EXPECT_NE(
+        scriptError("IRCanvas.text('gui', 'X', 0, 0, { fontSize = 0 })").find("fontSize"),
+        std::string::npos
+    );
+    EXPECT_NE(
+        scriptError("IRCanvas.text('gui', 'X', 0, 0, { size = 7 })").find("size must be"),
+        std::string::npos
+    );
+    EXPECT_NE(
+        scriptError("IRCanvas.voxelText('gui', 'X', 0, 0, { voxelSize = 17 })").find("voxelSize"),
+        std::string::npos
+    );
+    EXPECT_NE(
+        scriptError("IRCanvas.voxelText('gui', 'X', 0, 0, { facing = 9 })").find("facing"),
+        std::string::npos
+    );
+    EXPECT_NE(
+        scriptError("IRCanvas.text('gui', 'X', 0, 0, 5)").find("options must be a table"),
+        std::string::npos
+    );
     EXPECT_EQ(batchFor("gui"), nullptr);
 }
 
