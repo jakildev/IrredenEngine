@@ -55,31 +55,39 @@ class PairTest(unittest.TestCase):
         return self.git("rev-parse", "HEAD")
 
     def build(self):
-        binary = self.root / "build/creations/demos/perf_grid/IRPerfGrid"
-        binary.parent.mkdir(parents=True, exist_ok=True)
-        binary.write_text((self.root / "source").read_text())
-        (binary.parent / "shaders").mkdir(exist_ok=True)
-        (binary.parent / "shaders/a.glsl").write_text(binary.read_text())
-        for name in ("shaders", "configs"):
-            directory = binary.parent / name
-            directory.mkdir(exist_ok=True)
-            if self.git("rev-parse", "HEAD") == self.head:
-                (directory / "head-only.asset").write_text("head asset")
-            else:
-                self.assertFalse((directory / "head-only.asset").exists())
+        source = (self.root / "source").read_text()
+        is_head = self.git("rev-parse", "HEAD") == self.head
+        for target, relative in ci_pair.TARGET_BINARIES.items():
+            binary = self.root / relative
+            binary.parent.mkdir(parents=True, exist_ok=True)
+            binary.write_text(target + source)
+            content = binary.read_text()
+            for name in ("shaders", "configs"):
+                directory = binary.parent / name
+                directory.mkdir(exist_ok=True)
+                (directory / "a.glsl").write_text(content)
+                if is_head:
+                    (directory / "head-only.asset").write_text("head asset")
+                else:
+                    self.assertFalse((directory / "head-only.asset").exists())
 
     def matrix(self, label):
         sha = self.head if self.wrong_ref else self.git("rev-parse", "HEAD")
         directory = self.root / "save_files/perf" / (sha[:9] + "-" + label)
         directory.mkdir(parents=True)
+        cells = []
+        for target in ci_pair.TARGET_BINARIES:
+            for zoom in (1, 4):
+                cell_id = f"target={target},zoom={zoom},sub_mode=full,sub_base=1"
+                report = cell_id + ".txt"
+                cells.append({"id": cell_id, "status": "ok", "exit_status": 0,
+                              "report": report})
+                (directory / report).write_text(
+                    "Frame time: avg=10ms p50=10ms p95=10ms p99=10ms min=10ms max=10ms\n"
+                    "Steady frame time (first 15 of 60 frames excluded): "
+                    "avg=10ms p50=10ms p95=10ms p99=10ms min=10ms max=10ms\n")
         (directory / "manifest.json").write_text(json.dumps({
-            "git_sha": sha[:9], "git_dirty": False,
-            "cells": [{"id": "fixture", "status": "ok", "exit_status": 0,
-                       "report": "fixture.txt"}]}))
-        (directory / "fixture.txt").write_text(
-            "Frame time: avg=10ms p50=10ms p95=10ms p99=10ms min=10ms max=10ms\n"
-            "Steady frame time (first 15 of 60 frames excluded): "
-            "avg=10ms p50=10ms p95=10ms p99=10ms min=10ms max=10ms\n")
+            "git_sha": sha[:9], "git_dirty": False, "cells": cells}))
         return directory
 
     def command(self, command, root, *, capture=False):
@@ -102,6 +110,11 @@ class PairTest(unittest.TestCase):
         self.assertEqual([r["sha"] for r in records], [self.head, self.base, self.head])
         self.assertEqual(records[0]["binary_sha256"], records[2]["binary_sha256"])
         self.assertNotEqual(records[0]["shader_sha256"], records[1]["shader_sha256"])
+        self.assertEqual(set(records[0]["binary_sha256"]), set(ci_pair.TARGET_BINARIES))
+        matrix = next(c for c in self.calls if c[0] == "ir-perf-grid")
+        self.assertEqual(matrix[matrix.index("--target") + 1], "both")
+        build = next(c for c in self.calls if c[:2] == ["cmake", "--build"])
+        self.assertTrue(set(ci_pair.TARGET_BINARIES).issubset(build))
         self.assertEqual(len(list(output.glob("*.md"))), 3)
         self.assertEqual(self.git("rev-parse", "HEAD"), self.head)
         self.assertEqual(self.git("status", "--porcelain"), "")
@@ -120,7 +133,8 @@ class PairTest(unittest.TestCase):
         self.assertEqual(self.git("rev-parse", "HEAD"), self.head)
 
     def test_missing_report_is_rejected_before_switching(self):
-        (self.first / "fixture.txt").unlink()
+        first = json.loads((self.first / "manifest.json").read_text())["cells"][0]
+        (self.first / first["report"]).unlink()
         with self.assertRaisesRegex(ValueError, "missing measurements"):
             ci_pair.run_pair(self.root, self.base, self.first)
         self.assertFalse(any(c[:2] == ["git", "switch"] for c in self.calls))
@@ -136,6 +150,18 @@ class PairTest(unittest.TestCase):
 
 
 class WorkflowTest(unittest.TestCase):
+    def test_workflow_uses_shared_gate_definition(self):
+        workflow = WORKFLOW.read_text()
+        self.assertIn("run: python3 scripts/perf/ci_gate.py build", workflow)
+        self.assertIn(
+            "run: python3 scripts/perf/ci_gate.py matrix --label ci", workflow
+        )
+        self.assertEqual(list(ci_pair.TARGET_BINARIES), ["IRPerfGrid", "IRLuaPerfGrid"])
+        self.assertEqual(
+            ci_pair.MATRIX_COMMAND[ci_pair.MATRIX_COMMAND.index("--target") + 1],
+            "both",
+        )
+
     def test_dispatch_cannot_publish_diagnostic_measurements(self):
         workflow = WORKFLOW.read_text()
         marker = "      - name: Update baseline on the perf-baseline branch\n"

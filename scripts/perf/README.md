@@ -187,8 +187,9 @@ Baselines live on the `perf-baseline` branch under
 sources:
 
 - **Hosted Linux runners** (`linux-x86_64-*`): `perf-gate.yml` writes these on
-  every master push that touches the gated paths, using the 2-cell `--quick`
-  matrix at 60 frames.
+  every master push that touches the gated paths, using the 4-cell
+  `--quick --target both` matrix at 60 frames (`IRPerfGrid` first, then
+  `IRLuaPerfGrid`, each at zoom 1 and 4).
 - **The Windows ship host** (`windows-x86_64-ryzen-9-5950x-rtx-3060-ti`: Ryzen
   9 5950X, RTX 3060 Ti, MSYS2 mingw64, `windows-debug`): seeded by hand with
   the procedure below, using the default 12-cell matrix at 300 frames. No CI
