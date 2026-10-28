@@ -217,6 +217,8 @@ add_executable(IrredenEngineTest
   script/lua_file_bindings_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
+  script/lua_canvas_draw_bindings_test.cpp
+  script/lua_widget_color_swatch_test.cpp
   script/lua_script_utils_test.cpp
   script/lua_standard_bindings_test.cpp
   script/lua_local_transform_lua_test.cpp

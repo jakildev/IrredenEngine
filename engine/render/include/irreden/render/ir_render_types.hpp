@@ -868,6 +868,12 @@ struct GlyphDrawCommand {
 };
 constexpr uint32_t kGlyphStyleLatticeScale = 0x100u;
 constexpr uint32_t kGlyphStyleCellWidthShift = 16u;
+constexpr uint32_t packGlyphPosition(IRMath::ivec2 pos) {
+    return static_cast<uint32_t>(pos.x & 0xFFFF) | (static_cast<uint32_t>(pos.y & 0xFFFF) << 16);
+}
+constexpr IRMath::ivec2 unpackGlyphPosition(uint32_t packed) {
+    return IRMath::ivec2(static_cast<int>(packed & 0xFFFFu), static_cast<int>(packed >> 16u));
+}
 constexpr uint32_t kGlyphStyleCellHeightShift = 20u;
 constexpr uint32_t kGlyphStyleCellMask = 0xFu;
 

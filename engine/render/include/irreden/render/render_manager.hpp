@@ -176,6 +176,10 @@ class RenderManager {
 
     bool hasCanvas(const std::string &name) const;
 
+    /// Register a canvas entity created outside `createCanvas` (a trixel
+    /// canvas prefab) under @p name for `getCanvas`. @p name must be free.
+    void registerCanvas(const std::string &name, EntityId canvas);
+
     void setActiveCanvas(const std::string &name);
     EntityId getActiveCanvasEntity() const;
 

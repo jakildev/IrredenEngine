@@ -6,8 +6,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 
 ## Validators
 
-- `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` — headless GUI
-  assertion table (GPU hover-id parity, help overlay, settings menu, picking).
+- `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` — headless GUI assertion table (GPU hover-id parity, help overlay, settings menu, picking).
 - `python3 scripts/pivot-verify.py --blocks cursor-latch` — cursor pivot;
   `IRShapeDebug --pivot-verify cursor-latch --cursor-pivot-indicator` captures the marker.
 - `scripts/depth-tier-verify.py --only orbitswap --tier 1` — foreground depth
@@ -54,6 +53,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 | `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` → `CAMERA_SCROLL_ZOOM` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT`; the zoom drops the wheel while `C_GuiHoverState` names a hovered widget |
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_HINTS` follows ordinary renderers and `WIDGET_RENDER_DROPDOWN` stays last |
 | `PerfHud::systems()`, `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite (HUD first, so an open help list paints over it) / INPUT after `INPUT_KEY_MOUSE` |
+| `CANVAS_DRAW` | RENDER after `TEXT_TO_TRIXEL` (its text resources), the widget renderers and every producer of a canvas it targets, before `TRIXEL_GLITCH` / `TRIXEL_TO_FRAMEBUFFER`; `IRPrefab::CanvasDraw` queues onto any named canvas at a composite depth ([contract](../../../../docs/design/canvas-draw-layers.md)) |
 | `ENTITY_CANVAS_TO_FRAMEBUFFER` · `FRAMEBUFFER_TO_SCREEN` · `SPRITE_TO_SCREEN` · `GUI_CANVAS_TO_SCREEN` | after `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` alone publishes the frame's [continuous-zoom sample](../../../../docs/design/continuous-camera-zoom.md) (`IRPrefab::Camera::zoomFrame`); sprites after the main canvas's `FRAMEBUFFER_TO_SCREEN`; the GUI composite last, so the GUI sits above sprites ([display contract](../../../../docs/design/gui-trixel-display.md)) |
 | `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` · `FRAMEBUFFER_GLITCH` · `TRIXEL_GLITCH` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` · after every main-framebuffer producer, immediately before `FRAMEBUFFER_TO_SCREEN` · after every main-canvas colour producer, immediately before `TRIXEL_TO_FRAMEBUFFER` ([contract](../../../../docs/design/glitch-pass.md)) |
 

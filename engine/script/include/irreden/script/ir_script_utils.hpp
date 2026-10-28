@@ -3,8 +3,11 @@
 #include <irreden/ir_math.hpp>
 #include <sol/sol.hpp>
 
+#include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -182,6 +185,74 @@ inline IRMath::Color colorFromLua(sol::object obj) {
 // `{x,y,z,w}` / `{1,2,3,4}` table. Asymmetric default vs. `vec3FromLua`
 // (which zero-defaults) because zero-quat is degenerate — every modifier
 // caller would have to override the default anyway.
+// ── Option tables ───────────────────────────────────────────────────────────
+// A binding that takes a trailing `opts` table reads it through these: every
+// key checked against the binding's known set before anything is applied,
+// so a typo raises at the call instead of reading as a default.
+
+// The options table, or an empty one when `options` is absent; a
+// non-table raises `<caller>: options must be a table`.
+inline sol::table optionsTable(sol::this_state state, sol::object options, const char *caller) {
+    sol::state_view view{state};
+    if (!options.valid() || options.get_type() == sol::type::lua_nil) {
+        return view.create_table();
+    }
+    if (options.get_type() != sol::type::table) {
+        throw sol::error{std::string(caller) + ": options must be a table"};
+    }
+    return options.as<sol::table>();
+}
+
+// Raises `<caller>: unknown option (expected ...)` on a key outside `known`.
+inline void rejectUnknownKeys(
+    const sol::table &options, std::span<const std::string_view> known, const char *caller
+) {
+    for (const auto &entry : options) {
+        const sol::object &key = entry.first;
+        if (key.get_type() != sol::type::string ||
+            std::find(known.begin(), known.end(), key.as<std::string_view>()) == known.end()) {
+            std::string message = std::string(caller) + ": unknown option (expected";
+            for (std::size_t i = 0; i < known.size(); ++i) {
+                message += (i == 0 ? " " : ", ");
+                message += known[i];
+            }
+            throw sol::error{message + ")"};
+        }
+    }
+}
+
+// A whole number in [lo, hi] under `key`, or `fallback` when absent.
+inline int integerOption(
+    const sol::table &options, const char *key, int fallback, int lo, int hi, const char *caller
+) {
+    const sol::object value = options[key];
+    if (!value.valid() || value.get_type() == sol::type::lua_nil) {
+        return fallback;
+    }
+    if (value.get_type() != sol::type::number) {
+        throw sol::error{std::string(caller) + ": " + key + " must be a whole number"};
+    }
+    const double number = value.as<double>();
+    if (!IRMath::isFinite(number) || number != IRMath::floor(number) || number < lo ||
+        number > hi) {
+        throw sol::error{
+            std::string(caller) + ": " + key + " must be a whole number in [" + std::to_string(lo) +
+            ", " + std::to_string(hi) + "]"
+        };
+    }
+    return static_cast<int>(number);
+}
+
+// The colour under `key` (colorFromLua), or `fallback` when absent.
+inline IRMath::Color
+colorOption(const sol::table &options, const char *key, IRMath::Color fallback) {
+    const sol::object value = options[key];
+    if (!value.valid() || value.get_type() == sol::type::lua_nil) {
+        return fallback;
+    }
+    return colorFromLua(value);
+}
+
 inline IRMath::vec4 quatFromLua(sol::object obj) {
     if (obj.is<IRMath::vec4>())
         return obj.as<IRMath::vec4>();

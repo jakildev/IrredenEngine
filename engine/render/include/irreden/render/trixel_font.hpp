@@ -834,17 +834,17 @@ constexpr Glyph kGlyph_Asterisk = makeGlyph(
 );
 
 constexpr Glyph kGlyph_Percent = makeGlyph(
-    "....XX"
-    "....XX"
-    "....XX"
-    "......"
+    "XX..XX"
+    "XX.XX."
+    "...XX."
+    "...XX."
     "..XX.."
     "..XX.."
     "..XX.."
-    "......"
-    "XX...."
-    "XX...."
-    "XX...."
+    ".XX..."
+    ".XX..."
+    ".XX.XX"
+    "XX..XX"
 );
 
 constexpr Glyph kGlyph_Pipe = makeGlyph(
