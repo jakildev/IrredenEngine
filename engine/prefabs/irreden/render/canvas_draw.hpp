@@ -112,11 +112,17 @@ inline void ensureQueueSingleton() {
 
 namespace detail {
 
-// The batch collecting `canvas`'s draws this frame, opened on first use.
+// The batch collecting `canvas`'s draws this frame, opened on first use. An
+// empty batch re-reads the canvas size, since a canvas can resize between
+// frames (`RenderManager::resizeGuiCanvas`).
 inline IRComponents::C_CanvasDrawQueue::Batch &
 batchFor(IRComponents::C_CanvasDrawQueue &queue, IREntity::EntityId canvas) {
     for (IRComponents::C_CanvasDrawQueue::Batch &batch : queue.batches_) {
         if (batch.canvas_ == canvas) {
+            if (batch.commands_.empty()) {
+                batch.canvasSize_ =
+                    IREntity::getComponent<IRComponents::C_SizeTriangles>(canvas).size_;
+            }
             return batch;
         }
     }

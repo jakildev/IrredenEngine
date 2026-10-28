@@ -18,8 +18,9 @@ namespace IRComponents {
 struct C_CanvasDrawQueue {
     struct Batch {
         IREntity::EntityId canvas_ = IREntity::kNullEntity;
-        // The canvas's texel size, read once when the batch is opened: text
-        // layout aligns to the canvas's lattice parity and wraps to its edge.
+        // The canvas's texel size, read at the frame's first draw onto it:
+        // text layout aligns to the canvas's lattice parity and wraps to its
+        // edge.
         IRMath::ivec2 canvasSize_ = IRMath::ivec2(0);
         std::vector<IRRender::GlyphDrawCommand> commands_;
         // One queued draw (a text, a voxel text, a rectangle): the texel box

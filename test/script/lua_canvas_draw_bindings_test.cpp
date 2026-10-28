@@ -142,6 +142,24 @@ TEST_F(LuaCanvasDrawBindingsTest, RectIsTiledBySolidCellsAndClipped) {
     EXPECT_TRUE(batch == nullptr || batch->commands_.empty());
 }
 
+TEST_F(LuaCanvasDrawBindingsTest, ARetainedBatchReadsTheCanvasSizeEachFrame) {
+    EXPECT_TRUE(scriptSucceeds("IRCanvas.fillRect('gui', 270, 0, 20, 5, { 0, 0, 0 })"));
+    C_CanvasDrawQueue::Batch &batch = IRPrefab::CanvasDraw::queue().batches_.at(0);
+    ASSERT_EQ(batch.commands_.size(), 1u);
+
+    // The flush empties the batch and keeps it; the canvas then grows, as
+    // `RenderManager::resizeGuiCanvas` grows the GUI canvas.
+    batch.commands_.clear();
+    batch.primitives_.clear();
+    IREntity::getComponent<C_SizeTriangles>(m_canvases.at("gui")).size_ = ivec2(400, 962);
+
+    EXPECT_TRUE(scriptSucceeds("IRCanvas.fillRect('gui', 270, 0, 20, 5, { 0, 0, 0 })"));
+    ASSERT_EQ(IRPrefab::CanvasDraw::queue().batches_.size(), 1u);
+    EXPECT_EQ(batch.canvasSize_, ivec2(400, 962));
+    // Unclipped at the new width: ceil(20 / 6) cells.
+    EXPECT_EQ(batch.commands_.size(), 4u);
+}
+
 TEST_F(LuaCanvasDrawBindingsTest, OverlappingDrawsSplitTheDispatchInCallOrder) {
     EXPECT_TRUE(scriptSucceeds(R"lua(
         IRCanvas.fillRect('gui', 10, 10, 60, 20, { 1, 1, 1 })
