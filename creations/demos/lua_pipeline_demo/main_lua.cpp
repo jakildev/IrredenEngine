@@ -15,6 +15,7 @@
 #include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/modifier.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
+#include <irreden/script/lua_bindings_default.hpp>
 
 // Prefab-system specializations — must be visible at the
 // `registerPrefabSystem<N>()` call sites so `System<N>::create()` can
@@ -43,11 +44,10 @@ void registerLuaBindings() {
         // Lua. The single call wires every Lua-driven ECS surface.
         script.bindLuaDrivenEcs();
 
+        IRScript::registerStandardBindings(script);
+
         // Component pack: bind C_LocalTransform so the Lua-defined system
         // can read it via `arch.C_LocalTransform:at(i)`.
-        script.registerType<IRMath::Color, IRMath::Color(int, int, int, int)>("Color");
-        script.registerType<IRMath::ivec3, IRMath::ivec3(int, int, int)>("ivec3");
-        script.registerType<IRMath::vec3, IRMath::vec3(float, float, float)>("vec3");
         script
             .registerTypesFromTraits<IRComponents::C_LocalTransform, IRComponents::C_VoxelSetNew>();
         script.registerCreateEntityFunction<

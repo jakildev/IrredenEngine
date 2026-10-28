@@ -418,6 +418,13 @@ Not a blocker for any of the work above; flagging for completeness.
      Lua bindings later pick it up automatically.
    - Acceptance: every existing demo still builds and runs unchanged;
      net ~`-100..-150` lines today, growing as new Lua demos land.
+   - **Shipped.** The header registers the full list above under the
+     names `creations/demos/default/lua_bindings.cpp` used (the
+     `IRMidiNote` enum is `MidiNote` in Lua), guarded per `LuaScript`
+     by a registry key. Five creations (`default`, `sprite_demo`,
+     `lua_pipeline_demo`, `collision_overlap_demo`, `launcher`) call it;
+     the creation-side delta is `5 files changed, 11 insertions(+),
+     154 deletions(-)`, net -143 lines.
 
 2. **`script: codegen — match registered Lua name to C++ struct prefix`**
    *Model: sonnet. Area: cmake/lua_codegen, engine/script.*

@@ -19,14 +19,14 @@ specializing `kHasLuaBinding<C_Foo>` and defining `bindLuaType<C_Foo>`. A
 creation lists its types in `lua_component_pack.hpp`; unlisted types are hidden.
 
 - The `registerType` name is the literal class name and the `IRComponent.C_Foo`
-  handle key. Call `bindLuaDrivenEcs()` first, or the handle is never written.
+  handle key. Call `bindLuaDrivenEcs()` first, or the handle is never written, then
+  `registerStandardBindings(script)` (`lua_bindings_default.hpp`: math types, enums, text-align).
 - **C++-component field writes:** bind scalars as member pointers; math fields
   (`{x,y,z[,w]}` via `*FromLua`, ref `C_LocalTransform`) and range-limited enums (a
   throwing setter, ref `C_VoxelSetNew.lodMin`) as `sol::property`. `setAt` writes rows.
-- **Usertype ownership:** the engine registers `LuaEntity` (constructor) and
-  `_IRLuaCppColumnView`/`_IRLuaTypedColumnView` (`bindLuaDrivenEcs`); never
-  re-register them. A second `new_usertype<T>` (pinned sol2) strips `T`'s
-  `__index` at the next GC: `registerType` warns and refuses; raw `new_usertype` won't.
+- **Usertype ownership:** never re-register `LuaEntity` or `_IRLuaCppColumnView`/
+  `_IRLuaTypedColumnView` (`bindLuaDrivenEcs` owns them). A second `new_usertype<T>` (pinned
+  sol2) strips `T`'s `__index` at the next GC: `registerType` warns and refuses; raw won't.
 
 ## Lua-defined components (`IRComponent.register`)
 
