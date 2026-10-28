@@ -27,6 +27,8 @@
 #   ir-run --timeout 0 IRShapeDebug          # explicit opt-out of any default
 #   ir-run --build-dir /path/to/build IrredenEngineTest
 #   ir-run --env IR_SHAPE_PROBE=1 IRShapeDebug
+#   ir-run --child-unset DYLD_LIBRARY_PATH --child-prefix /usr/bin/sandbox-exec \
+#          --child-prefix -p --child-prefix "$PROFILE" IRShapeDebug
 #   ir-run --targets [--plain|--plan|--built] [--build-dir DIR]
 #
 # --timeout budgets the executable's run time only. When the run is
@@ -104,6 +106,9 @@ BUILD_MODE="debug"
 TIMEOUT=""
 TIMEOUT_EXPLICIT=0
 RESULT_FILE="${IR_RUN_RESULT_FILE:-}"
+CHILD_UNSET=()
+CHILD_SET=()
+CHILD_PREFIX=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --release)
@@ -116,6 +121,31 @@ while [[ $# -gt 0 ]]; do
                 exit 2
             fi
             export "$2"
+            shift 2
+            ;;
+        --child-env)
+            if [[ $# -lt 2 || ! "$2" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                echo "ir-run: --child-env requires KEY=VALUE" >&2
+                exit 2
+            fi
+            CHILD_SET+=("$2")
+            shift 2
+            ;;
+        --child-unset)
+            if [[ $# -lt 2 || ! "$2" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+                echo "ir-run: --child-unset requires a variable name" >&2
+                exit 2
+            fi
+            CHILD_UNSET+=("$2")
+            shift 2
+            ;;
+        --child-prefix)
+            # The argument may itself start with '-' (sandbox-exec's -p).
+            if [[ $# -lt 2 || -z "$2" ]]; then
+                echo "ir-run: --child-prefix requires an argument" >&2
+                exit 2
+            fi
+            CHILD_PREFIX+=("$2")
             shift 2
             ;;
         --build-dir)
@@ -198,6 +228,17 @@ Run mode
     --env KEY=VALUE    Export a variable into the child process. Repeat before
                        <executable-name> for multiple variables; use this for
                        probe switches such as IR_SHAPE_PROBE=1.
+    --child-env KEY=VALUE
+    --child-unset NAME
+    --child-prefix ARG Child isolation: restrictions that reach only the
+                       executable, never ir-run or ir-acquire. Each repeats;
+                       the launch becomes
+                         env -u NAME... -- KEY=VALUE... ARG... ./<exe> args...
+                       Prefix arguments are argv elements in order (no shell
+                       string); the first is looked up under the child's
+                       environment, so pass it as an absolute path. The launch
+                       prints "ir-run: child isolation: prefix=... unset=...
+                       set=..." naming the variables, never their values.
     --build-dir <dir>   CMake build directory (must contain the built binary).
                         Default: see "Build directory" below.
     --result-file <path>
@@ -331,7 +372,7 @@ USAGE
 done
 
 if [[ $# -eq 0 ]]; then
-    echo "usage: ir-run [--env KEY=VALUE] [--build-dir <dir>] [--timeout <secs>] <executable-name> [args...]" >&2
+    echo "usage: ir-run [--env KEY=VALUE] [--child-env KEY=VALUE] [--child-unset NAME] [--child-prefix ARG] [--build-dir <dir>] [--timeout <secs>] <executable-name> [args...]" >&2
     echo "       ir-run --targets [--plain | --plan | --built] [--build-dir <dir>]" >&2
     echo "       ir-run --help" >&2
     exit 2
@@ -484,6 +525,29 @@ EXE_DIR=$(dirname "$EXE_PATH")
 EXE_RUN=$(basename "$EXE_PATH")
 
 echo "ir-run: running $BUILD_MODE tree $BUILD_DIR"
+
+# The executable's own launch argv, shared by every launch shape below. Child
+# isolation lives here, innermost, after any ir-acquire and the launch shim:
+# a clean-box PATH or a sandbox denying the package manager's prefix around
+# this bash-4 wrapper chain breaks the chain before the executable starts.
+# A prefix must exec its arguments, as env and sandbox-exec do: the watchdog
+# and the HOST-CLOSED check act on the launched pid as the executable's.
+child_cmd=("./$EXE_RUN" "$@")
+if (( ${#CHILD_UNSET[@]} + ${#CHILD_SET[@]} + ${#CHILD_PREFIX[@]} > 0 )); then
+    child_env=(env)
+    child_set_names=()
+    for name in "${CHILD_UNSET[@]}"; do child_env+=(-u "$name"); done
+    child_env+=(--)
+    for assignment in "${CHILD_SET[@]}"; do
+        child_env+=("$assignment")
+        child_set_names+=("${assignment%%=*}")
+    done
+    child_cmd=("${child_env[@]}" "${CHILD_PREFIX[@]}" "${child_cmd[@]}")
+    child_unset_list="$(IFS=,; echo "${CHILD_UNSET[*]}")"
+    child_set_list="$(IFS=,; echo "${child_set_names[*]}")"
+    echo "ir-run: child isolation: prefix=${CHILD_PREFIX[0]:-none}" \
+         "unset=${child_unset_list:-none} set=${child_set_list:-none}"
+fi
 
 # Pre-compose the ir-acquire prefix (empty when no exclusive verb).
 # Using an array preserves quoting around exe args containing spaces.
@@ -911,10 +975,10 @@ if [[ -z "$TIMEOUT" ]]; then
     if [[ -n "$acquire_verb" || -n "$RESULT_FILE" ]]; then
         echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $*$WINDOW_MODE_NOTE"
         cd "$EXE_DIR"
-        launch=("./$EXE_RUN" "$@")
+        launch=("${child_cmd[@]}")
         ir_launch_begin
         if [[ -n "$LAUNCH_DIR" ]]; then
-            launch=(bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "./$EXE_RUN" "$@")
+            launch=(bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "${child_cmd[@]}")
         fi
         # Disarm `set -e` around the run so we can inspect the exit code
         # ourselves rather than letting bash bail out on the first non-
@@ -929,7 +993,7 @@ if [[ -z "$TIMEOUT" ]]; then
     fi
     echo "ir-run: $EXE_PATH $*$WINDOW_MODE_NOTE"
     cd "$EXE_DIR"
-    exec "./$EXE_RUN" "$@"
+    exec "${child_cmd[@]}"
 fi
 
 # --- Timeout mode: launch, wait, kill, report ------------------------------
@@ -966,13 +1030,13 @@ if (( ${#acquire_prefix[@]} > 0 )); then
     [[ -n "$LAUNCH_DIR" ]] || LAUNCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ir-run-launch.XXXXXX")"
     READY_FILE="$LAUNCH_DIR/pid"
     "${acquire_prefix[@]}" bash -c "$IR_LAUNCH_SHIM" \
-        ir-run-launch "$LAUNCH_DIR" "$HOST_CLOSE" "./$EXE_RUN" "$@" \
+        ir-run-launch "$LAUNCH_DIR" "$HOST_CLOSE" "${child_cmd[@]}" \
         > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 elif [[ -n "$LAUNCH_DIR" ]]; then
-    bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "./$EXE_RUN" "$@" \
+    bash -c "$IR_LAUNCH_SHIM" ir-run-launch "$LAUNCH_DIR" 1 "${child_cmd[@]}" \
         > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 else
-    "./$EXE_RUN" "$@" > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
+    "${child_cmd[@]}" > "$SCAN_OUT_PIPE" 2> "$SCAN_ERR_PIPE" &
 fi
 PID=$!
 

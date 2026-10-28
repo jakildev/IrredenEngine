@@ -151,6 +151,26 @@ def platform_launch_argv(cmd: list[str]) -> list[str]:
     return [resolve_bash(), "-lc", " ".join(shlex.quote(c) for c in cmd)]
 
 
+def select_package_zip(build_dir: Path, target: str, host_platform: str,
+                       zip_path: Path | None) -> Path:
+    """``zip_path``, else the one ``<target>-<host_platform>-*.zip`` in ``build_dir``.
+
+    ``irreden_package_target`` names its archive ``<target>-<platform>-<arch>.zip``.
+    Raises ``ValueError`` when no single archive matches or the file is missing.
+    """
+    if zip_path is None:
+        zips = sorted(build_dir.glob(f"{target}-{host_platform}-*.zip"))
+        if len(zips) != 1:
+            raise ValueError(
+                f"expected one {target}-{host_platform}-*.zip in {build_dir}, "
+                f"found {[path.name for path in zips]}; build {target}Package "
+                f"or pass --zip")
+        zip_path = zips[0]
+    if not zip_path.is_file():
+        raise ValueError(f"no package at {zip_path}")
+    return zip_path
+
+
 def png_dimensions(path: Path) -> tuple[int, int]:
     """Read (width, height) from a PNG's IHDR chunk without decoding pixels.
 
