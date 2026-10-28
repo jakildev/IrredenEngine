@@ -51,7 +51,7 @@ drives the creation's default shot table.
 | `demos/shape_debug` | `IRShapeDebug` | `main.cpp` `kHelpOverlayGuiShots`, `kContinuousZoomGuiShots`, `kCullEvictShots` | `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` (or `--continuous-zoom-gui-test`, `--cull-evict-test`) |
 | `demos/canvas_stress` | `IRCanvasStress` | `main.cpp` `g_hoverCanaryShot` | `python3 scripts/gui-verify.py IRCanvasStress -- --gui-session hover_canary` |
 | `editors/font_maker` | `IRFontMaker` | `main.cpp` `kIdleShots` (default), `kTableShots`, `kEditShots`, `kSampleShots` | `python3 scripts/gui-verify.py IRFontMaker` / `-- --font-maker-test table` (`edit`, `sample`) |
-| `launcher` | `IRLauncher` | `main_lua.cpp` `sessionShots()` (`kMainShots` default, one table per session) | `python3 scripts/gui-verify.py IRLauncher` / `-- --gui-session catalog_tree` |
+| `launcher` | `IRLauncher` | `main_lua.cpp` `sessionShots()` (`kMainShots` default, one table per session) | `python3 scripts/gui-verify.py IRLauncher` / `-- --gui-session catalog_tree --catalog-root creations/launcher/test/fixture_root` (every named session but `multi_root` takes the fixture root; `creations/launcher/CLAUDE.md` § Validators) |
 
 ## Worked example: voxel editor
 
