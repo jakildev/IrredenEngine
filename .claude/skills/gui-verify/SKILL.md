@@ -36,6 +36,25 @@ as the `gui-verify` job profile instead
 ([`FLEET-RUNTIME.md § Long-running jobs`](../../../docs/agents/FLEET-RUNTIME.md#long-running-jobs));
 its evidence is the later terminal `wait`.
 
+## Participants
+
+Every creation that registers `IRPrefab::GuiTest` assertions
+(`git grep -l 'IRPrefab::GuiTest' -- creations`). The target arg is the CMake
+executable; flags after `--` reach the creation. Without a session flag a run
+drives the creation's default shot table.
+
+| Creation | Target | Shots / sessions registered in | Invocation |
+|---|---|---|---|
+| `editors/voxel_editor` | `IRVoxelEditor` | `main.cpp` `kGuiTestShots[]` (default); `session_builder.hpp` (named sessions) | `python3 scripts/gui-verify.py IRVoxelEditor` / `-- --gui-session drag_probe` |
+| `demos/lua_widgets` | `IRLuaWidgetsDemo` | `main_lua.cpp` `kGuiTestShots[]` | `python3 scripts/gui-verify.py IRLuaWidgetsDemo` |
+| `demos/ui_widgets` | `IRUIWidgetsDemo` | `main.cpp` `kShots[]` | `python3 scripts/gui-verify.py IRUIWidgetsDemo` |
+| `demos/shape_debug` | `IRShapeDebug` | `main.cpp` `kHelpOverlayGuiShots`, `kContinuousZoomGuiShots`, `kCullEvictShots` | `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` (or `--continuous-zoom-gui-test`, `--cull-evict-test`) |
+| `demos/canvas_stress` | `IRCanvasStress` | `main.cpp` `g_hoverCanaryShot` | `python3 scripts/gui-verify.py IRCanvasStress -- --gui-session hover_canary` |
+| `editors/font_maker` | `IRFontMaker` | `main.cpp` `kIdleShots` (default), `kTableShots`, `kEditShots`, `kSampleShots` | `python3 scripts/gui-verify.py IRFontMaker` / `-- --font-maker-test table` (`edit`, `sample`) |
+| `launcher` | `IRLauncher` | `main_lua.cpp` `sessionShots()` (`kMainShots` default, one table per session) | `python3 scripts/gui-verify.py IRLauncher` / `-- --gui-session catalog_tree --catalog-root creations/launcher/test/fixture_root` (every named session but `multi_root` takes the fixture root; `creations/launcher/CLAUDE.md` § Validators) |
+
+## Worked example: voxel editor
+
 `creations/editors/voxel_editor/main.cpp` ships two assertion shots in its
 `kGuiTestShots[]` table:
 
