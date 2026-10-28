@@ -45,6 +45,13 @@ where the per-axis smooth-yaw composite is active). The capture order is:
 | 14..25| `cv_frozen_NNN`   | frozen (cull pinned at the reference)   |
 | 26    | `cv_unfreeze`     | UNFREEZE (leaves global state clean)    |
 
+The shared pose list does not by itself fix the rendered camera under the
+stateful default camera-center pivot: a yaw gesture may acquire a new pivot
+offset that later shots inherit. The sweep therefore sets an explicit focus
+for every shot at the z = 0 world point its requested pan centers at yaw 0.
+This keeps each live/frozen pair on the same effective camera while preserving
+compensated-camera coverage in the pan poses.
+
 The freeze reference is deliberately **wide** (zoom 1 at the origin): its iso
 cull viewport is a superset of every zoom-4 sweep pose, so a frozen frame is the
 "cull-effectively-disabled" ground truth — every voxel geometrically on-screen
@@ -53,7 +60,9 @@ diffing `cv_live_NNN` against `cv_frozen_NNN` over the on-screen region answers
 the retention question: any on-screen pixel present in the frozen frame but
 missing in the live frame is content the live cull dropped.
 
-The full-frame screenshots are numbered `screenshot_<counter>.png`; capture order
+The pose-parity guard must pass before any image mismatch is interpreted as a
+cull failure. The full-frame screenshots are numbered
+`screenshot_<counter>.png`; capture order
 makes `cv_live_i` pair with `cv_frozen_i` at counter offset `i + 13`. Diff a pair
 with the committed stdlib comparator:
 
@@ -143,7 +152,7 @@ under smooth-yaw pivot compensation. The two freeze fields are separate facts
 that fail independently: `frozen` is the flag `setCullingFrozen` wrote,
 `cull_frozen` is what `updateCullViewport` last honoured.
 
-`scripts/cull-verify.py` parses those lines and fails the run on any of four
+`scripts/cull-verify.py` parses those lines and fails the run on any of five
 arms:
 
 | arm | asserts | catches |
@@ -152,6 +161,7 @@ arms:
 | engagement | frozen phase reports the freeze set and honoured; live phase reports it clear | a `setCullingFrozen` that accepts the call and pins nothing |
 | pinning | the frozen phase's cull viewport is constant, equals the freeze-reference shot's own reading, and does not track the live camera | a freeze whose flag stays true while `updateCullViewport` stops honouring it |
 | live tracking | the live phase moves its cull viewport across at least two poses | a cull that never updates at all, which would satisfy `pinning` by being globally frozen |
+| pose parity | every live/frozen pair has equal effective `cam` and `zoom` | a stateful camera pivot that makes the paired images different before culling is considered |
 
 Measured on macOS/Metal: with `setCullingFrozen` stubbed to `(void)frozen;`
 the harness exits 1 and prints `cull freeze not engaged` while the image table
@@ -170,7 +180,7 @@ Two properties worth keeping:
   stands down and the harness says so; the constancy half is zoom-independent
   and stays in force.
 
-`scripts/tests/test_cull_verify_freeze_guard.py` drives all four arms on
+`scripts/tests/test_cull_verify_freeze_guard.py` drives all five arms on
 synthetic transcripts, with a red case per arm and no GPU.
 
 ## Findings (macOS / Metal, 2560×1440 framebuffer)

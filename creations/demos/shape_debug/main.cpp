@@ -4099,6 +4099,9 @@ void initSystems() {
                 IRVideo::AutoScreenshotShot shot{};
                 shot.zoom_ = zoom;
                 shot.cameraIso_ = cam;
+                const vec3 onDepth0 = IRMath::isoPixelToPos3D(-cam, 0.0f);
+                shot.pivotFocusWorld_ = IRMath::isoDepthShift(onDepth0, -onDepth0.z);
+                shot.hasPivotFocus_ = true;
                 shot.yawRadians_ = yaw;
                 shot.label_ = label.data();
                 shot.cullAction_ = action;

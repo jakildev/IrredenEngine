@@ -13,8 +13,10 @@ The harness captures two phases in a single run:
   Phase 2 (frozen): cv_frozen_000 … cv_frozen_NNN — cull pinned at wide ref
   Trailer:           cv_unfreeze_000             — cleanup (not compared)
 
-For each i in 0..N-1, live_i is compared against frozen_i.  A mismatch means
-the live cull dropped on-screen geometry that the frozen cull retained.
+For each i in 0..N-1, live_i is compared against frozen_i.  The state guard
+first verifies that both images used the same effective camera and zoom; only
+then does a mismatch mean the live cull dropped on-screen geometry that the
+frozen cull retained.
 
 The image assertion is relative by design — live_i vs frozen_i from the same
 capture.  There is no committed cross-run baseline: absolute render drift on
@@ -34,7 +36,7 @@ harness therefore carries a second, independent assertion set over the cull
       cull_cam=<x>,<y> cull_zoom=<x>,<y> cull_canvas=<w>,<h>
       cam=<x>,<y> zoom=<x>,<y>
 
-Four arms, each failing the run and naming the freeze:
+Five arms, each failing the run and naming the invalid capture state:
 
   (a) census    — one parsed line per captured frame, labels aligned with the
                   shot table.  Zero lines is a failure, never a silent pass.
@@ -45,6 +47,8 @@ Four arms, each failing the run and naming the freeze:
                   live camera.
   (d) tracking  — the live phase moves its cull viewport, so a cull that never
                   updates at all cannot satisfy (c) by being globally frozen.
+  (e) parity    — each live/frozen pair reports the same effective camera and
+                  zoom, so the image comparison isolates the cull.
 
 Arm (a) is what keeps this guard from becoming a second vacuous gate: a matcher
 that silently drops every line would otherwise assert nothing.
@@ -349,10 +353,34 @@ def check_live_tracking(states: list[dict[str, str]]) -> list[str]:
     ]
 
 
+def check_pose_parity(states: list[dict[str, str]]) -> list[str]:
+    """Arm (e): paired images were rendered from the same effective camera."""
+    by_label = {state.get("shot"): state for state in states}
+    failures: list[str] = []
+    for live_label, frozen_label in zip(LIVE_LABELS, FROZEN_LABELS):
+        live = by_label.get(live_label)
+        frozen = by_label.get(frozen_label)
+        if live is None or frozen is None:
+            continue
+        differing = [
+            key for key in ("cam", "zoom")
+            if not _close(_nums(live, key), _nums(frozen, key))
+        ]
+        if differing:
+            failures.append(
+                f"capture pose mismatch: {live_label} and {frozen_label} "
+                f"differ in {','.join(differing)} "
+                f"(live cam={live.get('cam')} zoom={live.get('zoom')}; "
+                f"frozen cam={frozen.get('cam')} zoom={frozen.get('zoom')}) "
+                f"— their image comparison does not isolate the cull"
+            )
+    return failures
+
+
 def run_freeze_guard(output: str,
                      labels: list[str] | None = None
                      ) -> tuple[list[str], list[str]]:
-    """All four arms over a captured run log. Returns (failures, notes)."""
+    """All five arms over a captured run log. Returns (failures, notes)."""
     labels = ALL_LABELS if labels is None else labels
     states = parse_cull_states(output)
     failures = (
@@ -360,6 +388,7 @@ def run_freeze_guard(output: str,
         + check_freeze_engagement(states)
         + check_frozen_pinning(states)
         + check_live_tracking(states)
+        + check_pose_parity(states)
     )
     notes = [f"parsed {len(states)} cull-state line(s)"]
     if states and not pinning_is_zoom_discriminating(states):
@@ -490,13 +519,17 @@ def main(argv: list[str] | None = None) -> int:
             failures.append((label, result))
 
     guard_failures, guard_notes = run_freeze_guard(output)
+    pose_parity_failed = any(
+        failure.startswith("capture pose mismatch:")
+        for failure in guard_failures
+    )
 
     print()
     print("[cull-verify] freeze guard (cull-viewport state):")
     for note in guard_notes:
         print(f"  {note}")
     if not guard_failures:
-        print("  census / engagement / pinning / live-tracking: PASS")
+        print("  census / engagement / pinning / live-tracking / pose-parity: PASS")
 
     print()
     if all_pass and not guard_failures and run_crash is None:
@@ -506,8 +539,8 @@ def main(argv: list[str] | None = None) -> int:
     if guard_failures:
         print(
             f"[cull-verify] {len(guard_failures)} freeze-guard assertion(s) FAIL "
-            f"— the cull freeze this harness exercises is not doing its job, so "
-            f"the live-vs-frozen comparison above proves nothing:"
+            f"— the live/frozen capture state is invalid, so the image "
+            f"comparison above does not isolate the cull:"
         )
         # A fully disabled freeze reds most arms at most shots; the per-shot
         # enumeration is what pins down a single drifting pose, so keep enough
@@ -521,9 +554,14 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     if not all_pass:
+        failure_reason = (
+            "— paired cameras differ, so these image deltas are not a cull verdict:"
+            if pose_parity_failed
+            else "— live cull dropped on-screen content at the following poses:"
+        )
         print(
             f"[cull-verify] {len(failures)} of {POSES_PER_PHASE} poses FAIL "
-            f"— live cull dropped on-screen content at the following poses:"
+            f"{failure_reason}"
         )
         for label, result in failures:
             diff = result.get("diff_path", "(no diff)")
@@ -531,11 +569,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {label}: match={result['match_pct']:.3f}% "
                 f"max_delta={result['max_delta']}  diff={diff}"
             )
-        print(
-            "[cull-verify] A live/frozen mismatch means the live cull culled "
-            "geometry that should have been visible.  Check the diff images "
-            "under " + str(diff_dir)
-        )
+        if not pose_parity_failed:
+            print(
+                "[cull-verify] A live/frozen mismatch means the live cull culled "
+                "geometry that should have been visible.  Check the diff images "
+                "under " + str(diff_dir)
+            )
 
     if run_crash is not None:
         rc, _ = run_crash

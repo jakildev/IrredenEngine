@@ -4,8 +4,8 @@
 ``cv_frozen_i`` from the same run — and it exists because a freeze that stops
 pinning the viewport turns phase 2 into a second live capture: every pair goes
 byte-identical and the harness reports a green pass with the mechanism it exists
-to exercise entirely disabled. The four freeze-guard arms read the cull viewport
-the frames were culled against instead of the frames themselves.
+to exercise entirely disabled. The five freeze-guard arms read the cull and
+camera state associated with the frames instead of the frames themselves.
 
 A guard is only worth its runtime if it is shown to fire. These cases drive the
 arms on synthetic transcripts — the failing transcripts are what the demo emits
@@ -320,6 +320,31 @@ class TestArmDLiveTracking(unittest.TestCase):
 
     def test_working_live_phase_passes(self):
         failures = _cv.check_live_tracking(
+            _cv.parse_cull_states(working_transcript()))
+        self.assertEqual(failures, [])
+
+
+class TestArmEPoseParity(unittest.TestCase):
+    """(e) Rejects a pair rendered from different effective cameras."""
+
+    def test_frozen_pose_camera_drift_fails_and_names_the_pair(self):
+        text = _mutate(
+            working_transcript(),
+            "shot=cv_frozen_006 index=0 frozen=1 cull_frozen=1 "
+            "cull_cam=0.0000,0.0000 cull_zoom=1.0000,1.0000 "
+            "cull_canvas=642,722 cam=7.3333,5.3333",
+            "shot=cv_frozen_006 index=0 frozen=1 cull_frozen=1 "
+            "cull_cam=0.0000,0.0000 cull_zoom=1.0000,1.0000 "
+            "cull_canvas=642,722 cam=8.3333,5.3333",
+        )
+        failures = _cv.check_pose_parity(_cv.parse_cull_states(text))
+        self.assertTrue(
+            any("cv_live_006" in failure and "cv_frozen_006" in failure
+                for failure in failures)
+        )
+
+    def test_working_pairs_pass(self):
+        failures = _cv.check_pose_parity(
             _cv.parse_cull_states(working_transcript()))
         self.assertEqual(failures, [])
 
