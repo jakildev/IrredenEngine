@@ -269,8 +269,7 @@ inline void expandTextToCommands(
         }
 
         IRRender::GlyphDrawCommand cmd;
-        cmd.positionPacked = static_cast<std::uint32_t>(cursor.x & 0xFFFF) |
-                             (static_cast<std::uint32_t>(cursor.y & 0xFFFF) << 16);
+        cmd.positionPacked = IRRender::packGlyphPosition(cursor);
         cmd.firstFontRow = firstFontRow(size, c);
         cmd.colorPacked = packed;
         cmd.distance = static_cast<std::uint32_t>(IRRender::kGuiTextDistance);
@@ -299,12 +298,26 @@ inline void expandTextToCommands(
 
         for (std::size_t j = 0; j < line.count_; ++j) {
             auto &cmd = commands[line.firstIndex_ + j];
-            int cx = static_cast<int>(cmd.positionPacked & 0xFFFF) + roundedX;
-            int cy = static_cast<int>(cmd.positionPacked >> 16) + roundedY;
-            cmd.positionPacked = static_cast<std::uint32_t>(cx & 0xFFFF) |
-                                 (static_cast<std::uint32_t>(cy & 0xFFFF) << 16);
+            cmd.positionPacked = IRRender::packGlyphPosition(
+                IRRender::unpackGlyphPosition(cmd.positionPacked) + IRMath::ivec2(roundedX, roundedY)
+            );
         }
     }
+}
+
+// One solid-cell command covering `size` texels at `pos` (the glyph cell
+// the text shader fills whole); `size` fits a glyph cell.
+inline IRRender::GlyphDrawCommand
+solidCellCommand(IRMath::ivec2 pos, IRMath::ivec2 size, std::uint32_t colorPacked, int distance) {
+    IRRender::GlyphDrawCommand cmd;
+    cmd.positionPacked = IRRender::packGlyphPosition(pos);
+    cmd.firstFontRow = static_cast<std::uint32_t>(kSolidCellStart);
+    cmd.colorPacked = colorPacked;
+    cmd.distance = static_cast<std::uint32_t>(distance);
+    cmd.styleFlags = 1u |
+                     (static_cast<std::uint32_t>(size.x) << IRRender::kGlyphStyleCellWidthShift) |
+                     (static_cast<std::uint32_t>(size.y) << IRRender::kGlyphStyleCellHeightShift);
+    return cmd;
 }
 
 // Appends one solid-cell command per run of `layout` (layoutVoxelText),
@@ -338,17 +351,35 @@ inline void expandVoxelTextToCommands(
             alignH,
             alignV
         );
-        const IRMath::ivec2 pos = origin + offset + run.pos_;
-        IRRender::GlyphDrawCommand cmd;
-        cmd.positionPacked = static_cast<std::uint32_t>(pos.x & 0xFFFF) |
-                             (static_cast<std::uint32_t>(pos.y & 0xFFFF) << 16);
-        cmd.firstFontRow = static_cast<std::uint32_t>(kSolidCellStart);
-        cmd.colorPacked = packedByFace[run.face_];
-        cmd.distance = static_cast<std::uint32_t>(IRRender::kGuiTextDistance);
-        cmd.styleFlags =
-            1u | (static_cast<std::uint32_t>(run.size_.x) << IRRender::kGlyphStyleCellWidthShift) |
-            (static_cast<std::uint32_t>(run.size_.y) << IRRender::kGlyphStyleCellHeightShift);
-        commands.push_back(cmd);
+        commands.push_back(solidCellCommand(
+            origin + offset + run.pos_, run.size_, packedByFace[run.face_], IRRender::kGuiTextDistance
+        ));
+    }
+}
+
+// Appends a voxel run's face runs (layoutVoxelRun) as solid-cell commands
+// at `position`, the lit group in `lit` and the rest in `unlit`.
+inline void expandVoxelRunToCommands(
+    std::vector<IRRender::GlyphDrawCommand> &commands,
+    const IRRender::VoxelTextLayout &layout,
+    IRMath::ivec2 position,
+    IRMath::ivec2 canvasSize,
+    const IRRender::VoxelFaceColors &lit,
+    const IRRender::VoxelFaceColors &unlit
+) {
+    const IRMath::ivec2 origin = IRRender::parityAlignedPosition(position, canvasSize);
+    const std::uint32_t packedByFace[6] = {
+        lit.forFace(IRMath::kXFace).toPackedRGBA(),
+        lit.forFace(IRMath::kYFace).toPackedRGBA(),
+        lit.forFace(IRMath::kZFace).toPackedRGBA(),
+        unlit.forFace(IRMath::kXFace).toPackedRGBA(),
+        unlit.forFace(IRMath::kYFace).toPackedRGBA(),
+        unlit.forFace(IRMath::kZFace).toPackedRGBA(),
+    };
+    for (const IRRender::VoxelTextRun &run : layout.runs_) {
+        commands.push_back(solidCellCommand(
+            origin + run.pos_, run.size_, packedByFace[run.face_], IRRender::kGuiTextDistance
+        ));
     }
 }
 

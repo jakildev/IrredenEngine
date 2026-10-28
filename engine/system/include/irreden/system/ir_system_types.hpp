@@ -188,6 +188,12 @@ enum SystemName {
     TRIXEL_TO_FRAMEBUFFER,
     GUI_TEXT_RENDER,
     TEXT_TO_TRIXEL,
+    // Flushes the frame's queued canvas draws (`IRPrefab::CanvasDraw`: text,
+    // voxel text, rectangles at a chosen composite depth on any named canvas)
+    // and clears the layer canvases it owns. RENDER after TEXT_TO_TRIXEL
+    // (whose text resources it borrows) and every other producer of a target
+    // canvas, before TRIXEL_GLITCH / TRIXEL_TO_FRAMEBUFFER.
+    CANVAS_DRAW,
     FRAMEBUFFER_TO_SCREEN,
     SPRITE_TO_SCREEN,
     // Screen-resolution GUI canvas composite with anti-aliased lattice

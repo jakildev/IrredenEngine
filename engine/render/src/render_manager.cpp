@@ -533,6 +533,11 @@ bool RenderManager::hasCanvas(const std::string &name) const {
     return m_canvasMap.find(name) != m_canvasMap.end();
 }
 
+void RenderManager::registerCanvas(const std::string &name, EntityId canvas) {
+    IR_ASSERT(!hasCanvas(name), "registerCanvas: a canvas named {} exists", name);
+    m_canvasMap[name] = canvas;
+}
+
 void RenderManager::setActiveCanvas(const std::string &name) {
     auto it = m_canvasMap.find(name);
     IR_ASSERT(it != m_canvasMap.end(), "Canvas not found: {}", name);

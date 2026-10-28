@@ -147,6 +147,11 @@ inline bool hasCanvas(const std::string &name) {
     return getRenderManager().hasCanvas(name);
 }
 
+/// Register a canvas entity created by a prefab under @p name for `getCanvas`.
+inline void registerCanvas(const std::string &name, IREntity::EntityId canvas) {
+    getRenderManager().registerCanvas(name, canvas);
+}
+
 /// Set the canvas that receives input from @c setActiveCanvas-aware systems
 /// (e.g. the paint/draw tools in editor mode).
 inline void setActiveCanvas(const std::string &name) {

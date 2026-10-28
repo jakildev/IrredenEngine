@@ -74,6 +74,27 @@ constexpr VoxelFaceColors shadedVoxelFaceColors(IRMath::Color top) {
 constexpr int kMaxVoxelTextSize = 16;
 constexpr int kMaxVoxelTextDepth = 16;
 
+// The world axis a run of cubes follows, named by how it reads on screen:
+// X climbs to the right (/), Y drops to the right (\), SCREEN runs level
+// along the letter plane's (1, -1, 0), the cubes touching edge to edge.
+enum class VoxelRunAxis : int {
+    X = 0,
+    Y = 1,
+    SCREEN = 2,
+};
+
+constexpr IRMath::ivec3 voxelRunStep(VoxelRunAxis axis) {
+    switch (axis) {
+    case VoxelRunAxis::X:
+        return IRMath::ivec3(1, 0, 0);
+    case VoxelRunAxis::Y:
+        return IRMath::ivec3(0, -1, 0);
+    case VoxelRunAxis::SCREEN:
+    default:
+        return IRMath::ivec3(1, -1, 0);
+    }
+}
+
 struct VoxelTextStyle {
     // Edge of one glyph pixel's cube, in unit voxels (one unit voxel is a
     // 2x4-texel hexagon). 0 means flat trixel-font text (no voxel style).
@@ -165,6 +186,24 @@ inline VoxelCellBounds voxelTextCellBounds(VoxelTextFacing facing, int depth) {
     return {lo, hi - lo + IRMath::ivec2(2, 3)};
 }
 
+// Paints one unit cube whose cell's top-left texel is `cell` into `faces`
+// (size.x * size.y, row major): the top's two texels, then the X and Y side
+// faces' two each, every face tagged `face + colorGroup`.
+inline void paintUnitVoxel(
+    std::vector<std::int8_t> &faces, IRMath::ivec2 size, IRMath::ivec2 cell, int colorGroup
+) {
+    const auto put = [&](IRMath::ivec2 texel, int face) {
+        faces[static_cast<std::size_t>(texel.y * size.x + texel.x)] =
+            static_cast<std::int8_t>(face + colorGroup);
+    };
+    put(cell + IRMath::ivec2(0, 0), IRMath::kZFace);
+    put(cell + IRMath::ivec2(1, 0), IRMath::kZFace);
+    put(cell + IRMath::ivec2(0, 1), IRMath::kXFace);
+    put(cell + IRMath::ivec2(0, 2), IRMath::kXFace);
+    put(cell + IRMath::ivec2(1, 1), IRMath::kYFace);
+    put(cell + IRMath::ivec2(1, 2), IRMath::kYFace);
+}
+
 // Paints glyph `glyph` as unit voxels into `faces` (size.x * size.y, row
 // major), farthest voxel first.
 inline void paintUnitGlyph(
@@ -196,19 +235,27 @@ inline void paintUnitGlyph(
     });
 
     faces.assign(static_cast<std::size_t>(bounds.size_.x * bounds.size_.y), kNoFace);
-    const auto put = [&](IRMath::ivec2 texel, int face) {
-        faces[static_cast<std::size_t>(texel.y * bounds.size_.x + texel.x)] =
-            static_cast<std::int8_t>(face);
-    };
     for (const IRMath::ivec4 &v : voxels) {
-        const IRMath::ivec2 cell = voxelTextCellOrigin(v.x, v.y, v.z) - bounds.min_;
-        put(cell + IRMath::ivec2(0, 0), IRMath::kZFace);
-        put(cell + IRMath::ivec2(1, 0), IRMath::kZFace);
-        put(cell + IRMath::ivec2(0, 1), IRMath::kXFace);
-        put(cell + IRMath::ivec2(0, 2), IRMath::kXFace);
-        put(cell + IRMath::ivec2(1, 1), IRMath::kYFace);
-        put(cell + IRMath::ivec2(1, 2), IRMath::kYFace);
+        paintUnitVoxel(faces, bounds.size_, voxelTextCellOrigin(v.x, v.y, v.z) - bounds.min_, 0);
     }
+}
+
+// Texel bounds of the cells a run of `count` cubes along `axis` occupies,
+// shifted so the minimum lands on an even-parity origin.
+inline VoxelCellBounds voxelRunCellBounds(int count, VoxelRunAxis axis) {
+    const IRMath::ivec3 step = voxelRunStep(axis);
+    IRMath::ivec2 lo(INT32_MAX);
+    IRMath::ivec2 hi(INT32_MIN);
+    for (const int i : {0, count - 1}) {
+        const IRMath::ivec3 v = step * i;
+        const IRMath::ivec2 cell = voxelTextCellOrigin(v.x, v.y, v.z);
+        lo = IRMath::min(lo, cell);
+        hi = IRMath::max(hi, cell);
+    }
+    if (((lo.x + lo.y) & 1) != 0) {
+        lo.x -= 1;
+    }
+    return {lo, hi - lo + IRMath::ivec2(2, 3)};
 }
 
 // Rows the lattice scale-up of a unit map reaches above its row 0, rounded
@@ -394,6 +441,71 @@ inline void layoutVoxelText(
         widest,
         static_cast<int>(layout.lineWidths_.size()) * layout.lineStep_ - voxelTextLineGap(style)
     );
+}
+
+// A run's colour groups: a run's face_ is its face plus the group's offset.
+constexpr int kVoxelRunLitGroup = 0;
+constexpr int kVoxelRunUnlitGroup = 3;
+
+// Texel size of a run of `count` cubes of edge `voxelSize` along `axis`.
+inline IRMath::ivec2 voxelRunSize(int count, int voxelSize, VoxelRunAxis axis) {
+    return detail::voxelTextScaledSize(detail::voxelRunCellBounds(count, axis).size_, voxelSize);
+}
+
+// The texel rect cube `index` of that run covers inside the run's box: its
+// cell's top-left and the cell's 2 x 3 texels, both scaled.
+inline void voxelRunCellRect(
+    int count, int voxelSize, VoxelRunAxis axis, int index, IRMath::ivec2 &pos, IRMath::ivec2 &size
+) {
+    const detail::VoxelCellBounds bounds = detail::voxelRunCellBounds(count, axis);
+    const IRMath::ivec3 v = voxelRunStep(axis) * index;
+    const IRMath::ivec2 cell = voxelTextCellOrigin(v.x, v.y, v.z) - bounds.min_;
+    pos = IRMath::ivec2(cell.x * voxelSize, cell.y * voxelSize + detail::voxelTextScalePad(voxelSize));
+    size = IRMath::ivec2(2 * voxelSize, 3 * voxelSize);
+}
+
+// Lays out `count` cubes of edge `voxelSize` from the origin along `axis`,
+// the first `lit` in kVoxelRunLitGroup and the rest in kVoxelRunUnlitGroup,
+// as one line of face runs relative to a parity-aligned origin. Requires
+// 1 <= count, 0 <= lit <= count and 1 <= voxelSize <= kMaxVoxelTextSize.
+inline void layoutVoxelRun(
+    int count,
+    int lit,
+    int voxelSize,
+    VoxelRunAxis axis,
+    VoxelTextLayout &layout,
+    VoxelTextScratch &scratch
+) {
+    IR_ASSERT(count >= 1, "layoutVoxelRun: count out of range");
+    IR_ASSERT(lit >= 0 && lit <= count, "layoutVoxelRun: lit out of range");
+    IR_ASSERT(
+        voxelSize >= 1 && voxelSize <= kMaxVoxelTextSize,
+        "layoutVoxelRun: voxelSize out of range"
+    );
+    const detail::VoxelCellBounds bounds = detail::voxelRunCellBounds(count, axis);
+    const IRMath::ivec3 step = voxelRunStep(axis);
+    scratch.unitFaces_.assign(
+        static_cast<std::size_t>(bounds.size_.x * bounds.size_.y), detail::kNoFace
+    );
+    // Farthest cube first: a cube's depth key is x + y + z, so the order
+    // along the run follows the step's sign.
+    const bool ascending = step.x + step.y + step.z >= 0;
+    for (int k = 0; k < count; ++k) {
+        const int i = ascending ? k : count - 1 - k;
+        const IRMath::ivec3 v = step * i;
+        detail::paintUnitVoxel(
+            scratch.unitFaces_,
+            bounds.size_,
+            voxelTextCellOrigin(v.x, v.y, v.z) - bounds.min_,
+            i < lit ? kVoxelRunLitGroup : kVoxelRunUnlitGroup
+        );
+    }
+    detail::latticeScaleFaces(scratch.unitFaces_, bounds.size_, voxelSize, scratch.faces_);
+    const IRMath::ivec2 box = detail::voxelTextScaledSize(bounds.size_, voxelSize);
+    detail::mergeFaceRuns(scratch.faces_, box, scratch.claimed_, layout.runs_);
+    layout.lineWidths_.assign(1, box.x);
+    layout.lineStep_ = box.y;
+    layout.size_ = box;
 }
 
 } // namespace IRRender

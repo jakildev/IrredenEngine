@@ -184,6 +184,12 @@ The [fog selftest](../../creations/demos/fog_demo/scripts/fog_binding_selftest.l
 - **`IRRender.setCameraZoom` / `getCameraZoom` / `setCameraZoomContinuous` / `isCameraZoomContinuous`:** main camera only; a write reads back exactly only under the continuous policy, and a bad argument raises before any write ([design](../../docs/design/continuous-camera-zoom.md)). **`IRRender.setGlitch{...}` / `glitch()`:** a partial update that checks every key before any write; `phase` is an offset on the engine's fixed-step clock, so lock ticks to an event by writing back `glitch().timeSeconds` when it fires ([design](../../docs/design/glitch-pass.md)).
 - **`IRRender.createViewport` family:** `LuaScript::bindLuaViewport()`, opt-in like `IRFog`;
   every setter takes the id `createViewport` returned ([design](../../docs/design/secondary-viewport.md)).
+- **`IRCanvas`:** `LuaScript::bindLuaCanvasDraw()`, opt-in like `IRFog`. `text`, `voxelText`,
+  `voxelRun` (a line of cubes along `IRCanvas.Axis.*`, `measureVoxelRun` / `voxelRunCell` placing it),
+  `fillRect` and `drawBorder` queue onto any named canvas at a composite depth (`IRCanvas.Depth.*`),
+  `createLayer` makes a main-sized layer canvas; the queue shows only with `CANVAS_DRAW` in RENDER,
+  so a draw is re-issued every frame but may be issued anywhere before that stage
+  ([design](../../docs/design/canvas-draw-layers.md)).
 
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 

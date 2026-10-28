@@ -126,6 +126,9 @@ Framebuffer-to-Screen**, in an orthographic isometric view.
 
 - `TRIXEL_TO_TRIXEL` composites multiple trixel canvases.
 - `TEXT_TO_TRIXEL` renders text via `TrixelFont`.
+- `CANVAS_DRAW` rasterizes the frame's queued canvas draws (text, voxel
+  letters and runs, rectangles) onto any named canvas at a composite depth
+  ([design](../design/canvas-draw-layers.md)).
 - GLSL shaders live in `engine/render/src/shaders/` with `c_` / `v_` /
   `f_` / `g_` prefixes; the Metal backend mirrors them.
 

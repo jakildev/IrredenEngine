@@ -8,6 +8,7 @@
 #include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_audio_bindings.hpp>
+#include <irreden/script/lua_canvas_draw_bindings.hpp>
 #include <irreden/script/lua_collision_bindings.hpp>
 #include <irreden/script/lua_catalog_bindings.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
@@ -1041,6 +1042,10 @@ void LuaScript::bindLuaUndo() {
 
 void LuaScript::bindLuaViewport() {
     detail::bindViewport(*this);
+}
+
+void LuaScript::bindLuaCanvasDraw() {
+    detail::bindCanvasDraw(*this);
 }
 
 void LuaScript::bindLuaFiles() {
