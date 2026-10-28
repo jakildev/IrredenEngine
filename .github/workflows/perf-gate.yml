@@ -4,7 +4,8 @@ name: Perf Gate
 # PR head against the last committed baseline and fails on >10% regression),
 # and on manual dispatch (seeds a baseline, or compares a diagnostic ref).
 # Only fires when the changed paths include engine/render, engine/system,
-# engine/math, or the gate's own sources — asset-only PRs skip this entirely.
+# engine/math, Lua codegen/the Lua perf target, or the gate's own sources —
+# asset-only PRs skip this entirely.
 #
 # Baselines live on the unprotected `perf-baseline` branch. `master` is
 # protected — "changes must be made through a pull request" — so nothing this
@@ -18,6 +19,8 @@ on:
       - 'engine/prefabs/irreden/render/**'
       - 'engine/system/**'
       - 'engine/math/**'
+      - 'cmake/lua_codegen/**'
+      - 'creations/demos/lua_perf_grid/**'
       - '.github/workflows/perf-gate.yml'
       - 'scripts/perf/**'
       - 'scripts/tests/run_all.sh'
@@ -27,6 +30,8 @@ on:
       - 'engine/prefabs/irreden/render/**'
       - 'engine/system/**'
       - 'engine/math/**'
+      - 'cmake/lua_codegen/**'
+      - 'creations/demos/lua_perf_grid/**'
       - '.github/workflows/perf-gate.yml'
       - 'scripts/perf/**'
       - 'scripts/tests/run_all.sh'
@@ -78,6 +83,7 @@ jobs:
           python3 scripts/perf/tests/test_baseline_layouts.py
           python3 scripts/perf/tests/test_ci_pair.py
           scripts/perf/tests/test_baseline_writer.sh
+          scripts/perf/tests/test_both_target_no_report.sh
           scripts/perf/tests/test_load_bracket_capture.sh
           bash test/tools/normalization_test.sh
 
@@ -96,8 +102,8 @@ jobs:
       - name: Configure
         run: cmake --preset linux-debug
 
-      - name: Build IRPerfGrid + ir_ref_bench
-        run: cmake --build build --target IRPerfGrid ir_ref_bench --parallel 4
+      - name: Build both perf grids + ir_ref_bench
+        run: python3 scripts/perf/ci_gate.py build
 
       - name: Install fleet-run CI stub + ir-perf-grid on PATH
         # perf_grid_matrix.sh requires fleet-run on PATH; provide a thin wrapper
@@ -114,10 +120,12 @@ jobs:
           TIMEOUT=120
           if [[ "${1:-}" == "--timeout" ]]; then TIMEOUT="$2"; shift 2; fi
           TARGET="$1"; shift
-          BINARY=$(find "${ENGINE_ROOT}/build" -name "$TARGET" -type f -executable 2>/dev/null | head -1)
-          if [[ -z "$BINARY" ]]; then
-            echo "fleet-run: $TARGET not found in ${ENGINE_ROOT}/build" >&2; exit 1
-          fi
+          case "$TARGET" in
+            IRPerfGrid) BINARY="${ENGINE_ROOT}/build/creations/demos/perf_grid/IRPerfGrid" ;;
+            IRLuaPerfGrid) BINARY="${ENGINE_ROOT}/build/creations/demos/lua_perf_grid/IRLuaPerfGrid" ;;
+            *) echo "fleet-run: unsupported perf target $TARGET" >&2; exit 1 ;;
+          esac
+          if [[ ! -x "$BINARY" ]]; then echo "fleet-run: $BINARY is not executable" >&2; exit 1; fi
           # cd to binary dir so save_files/profile_report.txt lands under BUILD_ROOT
           # (perf_grid_matrix.sh's find_latest_report searches there)
           cd "$(dirname "$BINARY")"
@@ -128,14 +136,13 @@ jobs:
           echo "$GITHUB_WORKSPACE/engine/tools/bin" >> "$GITHUB_PATH"
 
       - name: Run quick perf matrix (head)
-        # Measured on the hosted pool: llvmpipe renders this grid at 490 ms
-        # (zoom 1) to 1030 ms (zoom 4) per frame, so the default 300-frame
-        # window needs five minutes a cell and the matrix's 90-second deadline
-        # killed every one of them. Sixty frames leaves 45 post-warmup samples
-        # and costs 45-66 s a cell. The watchdog is sized from the job's
-        # headroom (no timeout-minutes, so 360 minutes), not from a frame
-        # budget: a cell killed by it writes no report and gates nothing.
-        run: ir-perf-grid --quick --frames 60 --timeout 300 --label ci
+        # The four-cell matrix keeps IRPerfGrid first so every capture pays the
+        # cold Mesa shader-cache cost in the same target. Sixty frames leaves
+        # 45 post-warmup samples. On linux-x86_64-epyc-9v45-96-unknown the C++
+        # cells took 21-61 s and the Lua cells 20-46 s; slower hosted classes
+        # remain well inside the 300-second per-cell watchdog. A killed cell
+        # writes no report and gates nothing.
+        run: python3 scripts/perf/ci_gate.py matrix --label ci
 
       - name: Locate head run directory
         id: head

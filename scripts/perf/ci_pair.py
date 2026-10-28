@@ -13,6 +13,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from ci_gate import BUILD_COMMAND, MATRIX_COMMAND, TARGET_BINARIES
 from compare_perf_runs import load_run, pct_delta, render_markdown, unmeasured_cell_ids
 from repeat_profile import directory_digest
 
@@ -38,10 +39,16 @@ def record_run(root, run_dir, sha):
         cell.get("status") != "ok" or cell.get("exit_status") != 0 for cell in cells
     ) or unmeasured_cell_ids(reports):
         raise ValueError("matrix contains failed or missing measurements")
-    binary = root / "build/creations/demos/perf_grid/IRPerfGrid"
+    binaries = {
+        target: hashlib.sha256((root / path).read_bytes()).hexdigest()
+        for target, path in TARGET_BINARIES.items()
+    }
+    shaders = {
+        target: directory_digest((root / path).parent / "shaders")
+        for target, path in TARGET_BINARIES.items()
+    }
     return {"sha": sha, "directory": run_dir.relative_to(root).as_posix(),
-            "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-            "shader_sha256": directory_digest(binary.parent / "shaders")}
+            "binary_sha256": binaries, "shader_sha256": shaders}
 
 
 def compare(output, base_dir, head_dir, name):
@@ -58,6 +65,16 @@ def compare(output, base_dir, head_dir, name):
         report += (f"| `{cell}` | {before.avg:.2f} | {after.avg:.2f} | "
                    f"{pct_delta(before.avg, after.avg):+.1f}% |\n")
     (output / name).write_text(report)
+
+
+def clear_binaries_and_assets(root):
+    for binary_path in TARGET_BINARIES.values():
+        binary = root / binary_path
+        binary.unlink(missing_ok=True)
+        for name in ("shaders", "data", "scripts", "configs"):
+            directory = binary.parent / name
+            if directory.exists():
+                shutil.rmtree(directory)
 
 
 def run_pair(root, base_ref, first_head_dir):
@@ -80,16 +97,9 @@ def run_pair(root, base_ref, first_head_dir):
             checked(["cmake", "--preset", "linux-debug"], root)
             # Historical refs can use POST_BUILD asset copies, so force a
             # relink. copy_directory retains files deleted by the measured ref.
-            binary = root / "build/creations/demos/perf_grid/IRPerfGrid"
-            binary.unlink(missing_ok=True)
-            for name in ("shaders", "data", "scripts", "configs"):
-                directory = binary.parent / name
-                if directory.exists():
-                    shutil.rmtree(directory)
-            checked(["cmake", "--build", "build", "--target", "IRPerfGrid",
-                     "ir_ref_bench", "--parallel", "4"], root)
-            checked(["ir-perf-grid", "--quick", "--frames", "60", "--timeout",
-                     "300", "--label", label], root)
+            clear_binaries_and_assets(root)
+            checked(BUILD_COMMAND, root)
+            checked([*MATRIX_COMMAND, "--label", label], root)
             matches = list((root / "save_files/perf").glob(f"*-{label}"))
             if len(matches) != 1:
                 raise ValueError("paired matrix must produce exactly one run")

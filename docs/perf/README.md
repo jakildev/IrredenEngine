@@ -407,13 +407,15 @@ recent baseline. The older free-form file
 
 | Trigger | What it does |
 |---------|--------------|
-| Push to `master` (perf paths) | Runs `--quick` matrix, appends the result to `docs/perf/baseline_latest/<slug>/` on the `perf-baseline` branch |
+| Push to `master` (perf paths) | Runs the four-cell `--quick --target both` matrix, appends the result to `docs/perf/baseline_latest/<slug>/` on the `perf-baseline` branch |
 | Manual `workflow_dispatch` | Same, on demand — how a missing host SKU gets seeded |
-| PR touching perf paths | Runs `--quick` matrix, fetches the baseline from `perf-baseline`, compares, posts a markdown table as a PR comment |
+| PR touching perf paths | Runs the same four-cell matrix, fetches the baseline from `perf-baseline`, compares, posts a markdown table as a PR comment |
 
 The perf paths include the gate's own sources
-(`.github/workflows/perf-gate.yml`, `scripts/perf/**`), so a change to
-the gate is exercised by the gate.
+(`.github/workflows/perf-gate.yml`, `scripts/perf/**`), Lua code generation
+(`cmake/lua_codegen/**`), and the Lua perf-grid target
+(`creations/demos/lua_perf_grid/**`), so changes to either measured surface
+exercise the gate.
 
 **Pass/fail rules:**
 
@@ -491,11 +493,24 @@ covers the calibration helpers and the gate's decision tree. All three run as
 the perf-gate job's first step after checkout, before the build.
 
 CI uses 60 frames per quick-matrix cell (45 post-warmup samples) with a
-300-second watchdog. Measured on the hosted pool, llvmpipe renders the quick
-grid at 490 ms (zoom 1) to 1030 ms (zoom 4) per frame, so a cell costs 45-66 s
-and the stock 300-frame window needed five minutes. A cell killed by the
-watchdog writes no report at all, so the watchdog is sized from the job's
-headroom rather than from a frame-time target. The full
+300-second watchdog. The matrix measures `IRPerfGrid` first, then
+`IRLuaPerfGrid`, at zoom 1 and 4; `scripts/perf/ci_gate.py` is the shared
+build and matrix definition used by the workflow and the diagnostic pair.
+On hosted runner `linux-x86_64-epyc-9v45-96-unknown`, two consecutive probe
+runs measured the following frame averages (steady averages in parentheses)
+and cell wall times:
+
+| target / zoom | run 1 | run 2 | cell wall |
+|---|---:|---:|---:|
+| `IRPerfGrid` / 1 | 351.4 ms (273.0) | 277.0 ms (266.6) | 32 s / 21 s |
+| `IRPerfGrid` / 4 | 957.4 ms (946.3) | 961.4 ms (953.7) | 61 s / 61 s |
+| `IRLuaPerfGrid` / 1 | 280.9 ms (278.5) | 262.8 ms (253.9) | 20 s / 20 s |
+| `IRLuaPerfGrid` / 4 | 709.8 ms (700.4) | 708.7 ms (699.0) | 46 s / 46 s |
+
+The four-cell matrices took 2:39 and 2:28, about 66 seconds more than the
+two-cell matrix on that runner class. A cell killed by the watchdog writes no
+report at all, so the watchdog is sized from the job's headroom rather than
+from a frame-time target. The full
 run directory, including each cell's `.log`, is uploaded for seven days as
 `perf-run-<workflow-run-id>` so a timeout, crash, or display failure can be
 diagnosed from the check run.
@@ -512,7 +527,8 @@ markdown table, but also exits non-zero on regression.
 
 **Host stability note:** GitHub Actions `ubuntu-latest` runners are
 shared and can have run-to-run timing jitter of 5–15%. The gate uses
-`--quick` (2 cells) to reduce wall time and variance. If the gate
+`--quick --target both` (4 cells) to reduce wall time and variance while
+covering both system-definition paths. If the gate
 produces false positives, lower `--regress-pct` conservatively or
 migrate to a dedicated self-hosted Linux runner for stability.
 
