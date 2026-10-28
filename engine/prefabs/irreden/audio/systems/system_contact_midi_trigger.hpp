@@ -15,16 +15,18 @@ namespace IRSystem {
 // after the hold while the policy is off, a queued note while it is on.
 template <> struct System<CONTACT_MIDI_TRIGGER> {
     IRComponents::C_MidiNoteSpacing *spacing_ = nullptr;
+    bool spacingDrains_ = false;
 
     void beginTick() {
         spacing_ = &IRPrefab::MidiNotes::spacing();
+        spacingDrains_ = IRPrefab::MidiNotes::spacingDrains();
     }
 
     void tick(const IRComponents::C_ContactEvent &contact, IRComponents::C_MidiNote &midiNote) {
         if (!contact.entered_) {
             return;
         }
-        IRPrefab::MidiNotes::trigger(*spacing_, midiNote);
+        IRPrefab::MidiNotes::trigger(*spacing_, midiNote, spacingDrains_);
     }
 
     static SystemId create() {

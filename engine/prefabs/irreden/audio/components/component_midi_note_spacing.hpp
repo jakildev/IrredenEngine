@@ -34,8 +34,9 @@ struct C_MidiNoteSpacing {
         std::uint8_t channel_; // as the C_MidiNote carries it, normalized at plan time
         int holdFrames_;
     };
-    // A planned note the spacing system still owes a message for: its
-    // NOTE_ON until `onSent_`, then its NOTE_OFF at `offFrame_`. A cut moves
+    // A note the spacing system still owes a message for: a planned one's
+    // NOTE_ON until `onSent_`, then its NOTE_OFF at `offFrame_` (an
+    // immediate note's hold end enters already `onSent_`). A cut moves
     // `offFrame_` earlier, so the superseded hold end never goes out.
     struct Scheduled {
         std::uint8_t note_;

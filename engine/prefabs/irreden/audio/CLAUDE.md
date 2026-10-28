@@ -39,7 +39,8 @@ Many of these have `_lua.hpp` siblings that bind them into Lua.
   (`C_MidiMessage + C_MidiOut + C_Lifetime{1}`). Handles looping.
 - `CONTACT_MIDI_TRIGGER` (UPDATE pipeline) — on `C_ContactEvent`
   enter, hands the `C_MidiNote` to `IRPrefab::MidiNotes::trigger`: `NOTE_ON`
-  now and `NOTE_OFF` after the hold via `C_MidiDelay`, or a queued note under
+  now and `NOTE_OFF` after the hold (owned by the spacing schedule while
+  `MIDI_NOTE_SPACING` is in UPDATE, else `C_MidiDelay`), or a queued note under
   the spacing policy.
 - `PERIODIC_IDLE_MIDI_TRIGGER` — the same on `C_PeriodicIdle` cycle
   completion.

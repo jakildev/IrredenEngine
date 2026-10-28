@@ -3,7 +3,6 @@
 
 #include <irreden/ir_audio.hpp>
 #include <irreden/ir_profile.hpp>
-#include <irreden/ir_system.hpp>
 #include <irreden/audio/components/component_midi_note_spacing.hpp>
 #include <irreden/audio/midi_note_spacing.hpp>
 #include <irreden/script/ir_script_utils.hpp>
@@ -96,9 +95,7 @@ inline void bindAudioApi(LuaScript &script) {
         const int voices = integerOption(options, "maxVoices", spacing.maxVoices_, 0, 128, kCaller);
         const int maxDelay =
             integerOption(options, "maxDelayFrames", spacing.maxDelayFrames_, 0, 6000, kCaller);
-        const IRSystem::SystemId flush = IRSystem::findSystem(IRSystem::MIDI_NOTE_SPACING);
-        if (enabled && (flush == IRSystem::kNullSystemId ||
-                        !IRSystem::isInPipeline(IRTime::Events::UPDATE, flush))) {
+        if (enabled && !IRPrefab::MidiNotes::spacingDrains()) {
             throw sol::error{
                 std::string(kCaller) +
                 ": enabling needs MIDI_NOTE_SPACING in the UPDATE pipeline, which flushes the queue"
