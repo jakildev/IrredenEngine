@@ -395,12 +395,13 @@ runs by double-click on a clean box. `IRShapeDebug` is the reference.
 `python3 scripts/package-smoke.py --target <target> --build-dir build`. It
 unzips the archive into an empty directory and launches it via `fleet-run
 --build-dir`, passing each host's restriction as `ir-run` child options so it
-reaches only the packaged exe (wrapping `fleet-run` itself breaks its bash
-chain); the per-host restrictions and exit codes are in the script's
-docstring. A pass prints `ir-run: RESULT=CLEAN`, then `package-smoke:
-RESULT=PASS`. On macOS, run it from a normal shell (sandboxed processes cannot
-nest `sandbox-exec`); `isolation=skipped` is not clean-box evidence. Only the
-macOS arm is measured so far; `scripts/tests/test_package_smoke.py` pins the
-Windows and Linux arms until a native run.
+reaches only the packaged exe (wrapping `fleet-run` breaks its bash chain);
+the per-host restrictions and exit codes are in the script's docstring. A pass
+prints `ir-run: RESULT=CLEAN`, then `package-smoke: RESULT=PASS`; another
+verdict prints `RESULT=FAIL`. macOS also prints `isolation=applied` (Homebrew
+reads denied) or `isolation=skipped`, which is not clean-box evidence: run it
+from a normal shell, as a sandboxed process cannot nest `sandbox-exec`. Only
+the macOS arm is measured; `scripts/tests/test_package_smoke.py` pins Windows
+and Linux until a native run.
 
 Packaging never runs as part of a normal `--target <exe>` build.
