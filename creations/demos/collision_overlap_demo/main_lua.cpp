@@ -29,6 +29,7 @@
 #include <irreden/update/components/component_velocity_3d_lua.hpp>
 #include <irreden/update/components/component_acceleration_3d.hpp>
 #include <irreden/update/components/component_collision_response.hpp>
+#include <irreden/script/lua_bindings_default.hpp>
 
 // Prefab systems composed into the pipelines (visible so System<N>::create()
 // can instantiate at the registerPrefabSystems<> call site).
@@ -167,17 +168,7 @@ void registerLuaBindings() {
         // Wire IRCollision + IRSystem/IRComponent/IRTime/... onto the state.
         script.bindLuaDrivenEcs();
 
-        // `vec3` is a per-creation math usertype (not bound by the ECS surface);
-        // main.lua needs it to construct C_LocalTransform.
-        script.registerType<IRMath::vec3, IRMath::vec3(float, float, float)>(
-            "vec3",
-            "x",
-            &IRMath::vec3::x,
-            "y",
-            &IRMath::vec3::y,
-            "z",
-            &IRMath::vec3::z
-        );
+        IRScript::registerStandardBindings(script);
 
         // Lua-construct the collision component bundle.
         script.registerTypesFromTraits<

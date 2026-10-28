@@ -85,6 +85,7 @@
 #include <irreden/render/systems/system_widget_render_dock_preview.hpp>
 #include <irreden/render/systems/system_widget_render_splitter.hpp>
 #include <irreden/render/systems/system_widget_render_text_input.hpp>
+#include <irreden/script/lua_bindings_default.hpp>
 #include <irreden/script/lua_widget_bindings.hpp>
 #include <irreden/utility/path_utils.hpp>
 
@@ -1066,9 +1067,7 @@ void registerLuaBindings() {
         // Rebinds IRGui with image paths confined to the tool root, replacing
         // the run-directory base bindLuaDrivenEcs() installs.
         IRScript::detail::bindWidgets(script, root);
-        script.registerType<IRMath::Color, IRMath::Color(int, int, int, int)>("Color");
-        script.registerType<IRMath::ivec3, IRMath::ivec3(int, int, int)>("ivec3");
-        script.registerType<IRMath::vec3, IRMath::vec3(float, float, float)>("vec3");
+        IRScript::registerStandardBindings(script);
         script
             .registerTypesFromTraits<IRComponents::C_LocalTransform, IRComponents::C_VoxelSetNew>();
         script.registerCreateEntityFunction<
