@@ -576,6 +576,33 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
         requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.isDropdownOpen", "dropdown");
         return IRPrefab::Widget::isDropdownOpen(static_cast<IREntity::EntityId>(id));
     };
+    // The open strip's rect `{ x, y, w, h }` in GUI-canvas trixels as the
+    // renderer and the layout audit place it; nil while the strip is closed.
+    gui["dropdownStrip"] = [](sol::this_state state, lua_Integer id) -> sol::object {
+        const auto *dropdown =
+            requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.dropdownStrip", "dropdown");
+        sol::state_view view{state};
+        if (!dropdown->isOpen_) {
+            return sol::make_object(view, sol::lua_nil);
+        }
+        const auto widget = static_cast<IREntity::EntityId>(id);
+        const IRPrefab::GuiRect strip = IRPrefab::WidgetText::dropdownStripRect(
+            IREntity::getComponent<IRComponents::C_Widget>(widget),
+            *dropdown,
+            IREntity::getComponent<IRComponents::C_GuiPosition>(widget).pos_,
+            IRPrefab::Widget::dropdownStripLayout(widget)
+        );
+        return view.create_table_with(
+            "x",
+            strip.pos_.x,
+            "y",
+            strip.pos_.y,
+            "w",
+            strip.size_.x,
+            "h",
+            strip.size_.y
+        );
+    };
     // Opens or closes the item strip as a click on the header would.
     gui["setDropdownOpen"] = [](lua_Integer id, bool open) {
         auto *dropdown =
