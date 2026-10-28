@@ -65,9 +65,11 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <list>
 #include <numbers>
 #include <string>
+#include <thread>
 
 using namespace IRComponents;
 using namespace IREntity;
@@ -482,6 +484,7 @@ void registerLuaBindings() {
                 "AutoProfile",
                 [](C_Name &) {},
                 []() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(400));
                     ++g_autoProfileCount;
                     if (g_autoProfileCount >= g_autoProfileFrames) {
                         IR_LOG_INFO(
