@@ -36,7 +36,7 @@ namespace IRPrefab::Fog {
 
 /// Cells past `radius + edge` a source can still affect. A hard disc
 /// (`edge` 0) lifts unexplored matter up to `kFogLosRimFadeCells` past its
-/// radius (ir_fog_common's kFogRimFadeCells); an occluded source must
+/// radius (ir_fog_apply's kFogRimFadeCells); an occluded source must
 /// suppress that lift too, or the fade halo reappears behind the shadow. The
 /// margin covers the antialiasing floor.
 constexpr float kFogLosRimFadeCells = 8.0f;
