@@ -8,18 +8,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[2] / "lint_creation_manifests.py"
-CORPUS = Path(__file__).resolve().parents[3] / "test/asset/fixtures/creation_manifest"
+SCRIPT = Path(__file__).resolve().parents[1] / "lint_creation_manifests.py"
+CORPUS = Path(__file__).resolve().parents[2] / "test/asset/fixtures/creation_manifest"
 TRACKED_DOC = "/".join(("docs", "design", "voxel-and-sdf-rendering.md"))
+FIXTURE_CREATION_DIRS = (
+    "creations/demos/valid",
+    "creations/editors/font_maker",
+    "creations/editors/voxel_editor",
+    "creations/launcher",
+)
 
 
 class CreationManifestLintTest(unittest.TestCase):
     def fixture(self, root: Path) -> None:
-        for directory in (
-            "creations/demos/valid",
-            "creations/editors/font_maker",
-            "creations/editors/voxel_editor",
-        ):
+        for directory in FIXTURE_CREATION_DIRS:
             path = root / directory
             path.mkdir(parents=True)
             (path / "creation.json").write_text(
@@ -98,11 +100,25 @@ class CreationManifestLintTest(unittest.TestCase):
             self.fixture(root)
             result = self.run_lint(root)
             self.assertEqual(result.returncode, 0)
-            self.assertIn("creation manifests: 3/3", result.stdout)
+            self.assertIn("creation manifests: 4/4", result.stdout)
             (root / "creations/editors/font_maker/creation.json").unlink()
             missing = self.run_lint(root)
             self.assertNotEqual(missing.returncode, 0)
             self.assertIn("font_maker: missing creation.json", missing.stderr)
+
+    def test_malformed_launcher_manifest_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.fixture(root)
+            manifest = root / "creations/launcher/creation.json"
+            data = json.loads(manifest.read_text())
+            data.pop("description")
+            manifest.write_text(json.dumps(data))
+            result = self.run_lint(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(
+                "launcher/creation.json: missing required key(s): description", result.stderr
+            )
 
     def test_target_name_and_display_rules(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -149,7 +165,8 @@ class CreationManifestLintTest(unittest.TestCase):
         )
 
     def set_package(self, root: Path, value: object) -> None:
-        for manifest in sorted(root.glob("creations/*/*/creation.json")):
+        for directory in FIXTURE_CREATION_DIRS:
+            manifest = root / directory / "creation.json"
             data = json.loads(manifest.read_text())
             data["targets"][0]["package"] = value
             manifest.write_text(json.dumps(data))

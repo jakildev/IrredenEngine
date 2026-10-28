@@ -40,7 +40,8 @@ demo inside the launcher window; renaming existing targets.
 Design: [`docs/design/engine-launcher.md`](../engine-launcher.md). The v1
 launcher has landed through epic #4525: manifests, the catalog, the
 tool-spawn service, hand-off with verdicts, previews, the dockspace and the
-Package button. v2's first slice, worktree roots and the picker (§D7-v2),
+Package button. The manifest lint covers the launcher alongside every tracked
+CMake creation. v2's first slice, worktree roots and the picker (§D7-v2),
 lands with #4675; the per-host hand checks remain open.
 
 ## Progress ledger

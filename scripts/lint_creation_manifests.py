@@ -19,7 +19,8 @@ TARGET_NAME_PATTERN = re.compile(r"^IR[A-Z][A-Za-z0-9]*$")
 
 def creation_dirs(root: Path) -> list[Path]:
     demos = sorted(path for path in (root / "creations/demos").iterdir() if path.is_dir())
-    return demos + [root / "creations/editors" / editor for editor in TRACKED_EDITORS]
+    editors = [root / "creations/editors" / editor for editor in TRACKED_EDITORS]
+    return demos + editors + [root / "creations/launcher"]
 
 
 def fail(path: Path, message: str) -> None:
