@@ -22,8 +22,10 @@ eyeball.
 - [ ] Per-axis rotating voxels cast into the shared sun map again without
   the self-occlusion artifact (#1435); scatter-quad conservative-coverage
   waffle resolved (#1494).
-- [ ] Cull-freeze validation stays green: yaw-time culling never drops
-  on-screen content (`IRShapeDebug --cull-validate`).
+- [x] Cull-freeze validation stays green: yaw-time culling never drops
+  on-screen content (`IRShapeDebug --cull-validate`) — macOS/Metal on
+  2026-10-27: two consecutive 12/12 PASS runs, with all five state-guard arms
+  PASS.
 
 ## Non-goals
 Frame-rate / perf targets (tracked by the perf gate, not this objective);
