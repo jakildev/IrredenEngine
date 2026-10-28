@@ -1,4 +1,5 @@
 #include <irreden/ir_engine.hpp>
+#include <irreden/ir_video.hpp>
 #include "lua_bindings.hpp"
 
 // COMPONENTS
@@ -43,6 +44,16 @@
 // Input + prefab command bindings live in scripts/commands.lua via the
 // IRCommand / IRInput Lua surface; see docs/design/lua-input-commands.md.
 
+namespace {
+
+constexpr IRVideo::AutoScreenshotShot kShots[] = {
+    {1.0f, vec2(0.0f, 0.0f), 0.0f, "default_zoom1"},
+};
+
+int g_autoWarmupFrames = 0;
+
+} // namespace
+
 void initSystems();
 void initEntities();
 
@@ -51,6 +62,7 @@ int main(int argc, char **argv) {
 
     IRDefaultCreation::registerLuaBindings();
     IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     IREngine::runScript("commands.lua");
     IREngine::gameLoop();
@@ -96,5 +108,6 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
          IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>()}
     );
+    IRVideo::appendAutoScreenshotIfRequested(renderPipeline, g_autoWarmupFrames, kShots);
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
