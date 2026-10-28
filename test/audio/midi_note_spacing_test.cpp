@@ -248,3 +248,70 @@ TEST(MidiNoteSpacingPlan, ADenseFrameStaysWithinTheFixedCapacity) {
     EXPECT_EQ(s->scheduledCount_, C_MidiNoteSpacing::kMaxScheduledNotes);
     EXPECT_EQ(s->droppedNotes_, 3 * 5 + C_MidiNoteSpacing::kMaxPendingNotes);
 }
+
+TEST(MidiNoteSpacingPlan, ALoweredVoiceCountCutsDownToItWhereTheNextNoteLands) {
+    auto s = makeSpacing(1);
+    IRPrefab::MidiNotes::queue(*s, pending(60, 30));
+    IRPrefab::MidiNotes::queue(*s, pending(64, 30));
+    IRPrefab::MidiNotes::queue(*s, pending(67, 30));
+    std::vector<Sent> sent;
+    run(*s, 3, sent); // 60 at 0, 64 at 1, 67 at 2, all sounding
+    s->maxVoices_ = 1;
+    IRPrefab::MidiNotes::queue(*s, pending(72, 30));
+    run(*s, 1, sent); // 72 at 3 needs the one voice: all three end there
+    for (const std::uint8_t note : {60, 64, 67}) {
+        EXPECT_FALSE(soundingAfter(sent, note, 3)) << int(note);
+    }
+    EXPECT_TRUE(soundingAfter(sent, 72, 3));
+    // The NOTE_OFFs go out before the NOTE_ON, and no old hold end follows.
+    ASSERT_EQ(sent.size(), 7u);
+    EXPECT_EQ(sent[6].status_, kNoteOnCh0);
+    EXPECT_EQ(sent[6].note_, 72);
+    run(*s, 40, sent);
+    EXPECT_EQ(withStatus(sent, kNoteOffCh0).size(), 4u);
+}
+
+TEST(MidiNoteSpacingPlan, OffTheImmediateNoteEndsTheSpacedOneOfItsPitch) {
+    // Spaced 60 holds to frame 10; the policy goes off at frame 3 and an
+    // immediate 60 holds 20 frames. The spaced 60 ends before the immediate
+    // NOTE_ON, and its hold end at 10 never goes out to silence the new 60.
+    auto s = makeSpacing(1);
+    IRPrefab::MidiNotes::TriggerPlan plan{};
+    EXPECT_EQ(IRPrefab::MidiNotes::planTrigger(*s, C_MidiNote{60, 100, 0, 10.0f / 60.0f}, plan), 0);
+    std::vector<Sent> sent;
+    run(*s, 3, sent);
+    ASSERT_TRUE(soundingAfter(sent, 60, 2));
+    s->enabled_ = false;
+    const int count =
+        IRPrefab::MidiNotes::planTrigger(*s, C_MidiNote{60, 90, 0, 20.0f / 60.0f}, plan);
+    ASSERT_EQ(count, 3);
+    EXPECT_EQ(plan[0].delayFrames_, 0);
+    EXPECT_EQ(plan[0].status_, kNoteOffCh0);
+    EXPECT_EQ(plan[1].delayFrames_, 0);
+    EXPECT_EQ(plan[1].status_, kNoteOnCh0);
+    EXPECT_EQ(plan[2].status_, kNoteOffCh0);
+    EXPECT_EQ(plan[2].delayFrames_, 20);
+    EXPECT_EQ(s->scheduledCount_, 0);
+    sent.clear();
+    run(*s, 20, sent); // through the spaced note's old hold end
+    EXPECT_TRUE(sent.empty());
+}
+
+TEST(MidiNoteSpacingPlan, OffTheImmediateNoteDropsAQueuedOneOfItsPitch) {
+    // Queued under the policy, not yet planned: the immediate 60 supersedes
+    // it, so it never sounds after the immediate one; other notes keep going.
+    auto s = makeSpacing(1);
+    IRPrefab::MidiNotes::queue(*s, pending(60, 10));
+    IRPrefab::MidiNotes::queue(*s, pending(64, 10));
+    s->enabled_ = false;
+    IRPrefab::MidiNotes::TriggerPlan plan{};
+    const int count =
+        IRPrefab::MidiNotes::planTrigger(*s, C_MidiNote{60, 90, 0, 20.0f / 60.0f}, plan);
+    ASSERT_EQ(count, 2);
+    EXPECT_EQ(plan[0].status_, kNoteOnCh0);
+    std::vector<Sent> sent;
+    run(*s, 20, sent);
+    ASSERT_EQ(sent.size(), 2u);
+    EXPECT_EQ(sent[0].note_, 64);
+    EXPECT_EQ(sent[1].note_, 64);
+}

@@ -9,7 +9,7 @@ high, a whole number of frames apart, behind any note still queued, within
 the output's voice count.
 
 Code: [`midi_note_spacing.hpp`](../../engine/prefabs/irreden/audio/midi_note_spacing.hpp)
-(`IRPrefab::MidiNotes`: `trigger`, `planImmediate`, `queue`, `planFrame`, `emit`),
+(`IRPrefab::MidiNotes`: `trigger`, `planTrigger`, `planImmediate`, `queue`, `planFrame`, `emit`),
 [`component_midi_note_spacing.hpp`](../../engine/prefabs/irreden/audio/components/component_midi_note_spacing.hpp),
 [`system_midi_note_spacing.hpp`](../../engine/prefabs/irreden/audio/systems/system_midi_note_spacing.hpp),
 the `IRAudio.setNoteSpacing` / `noteSpacing` bindings in
@@ -52,32 +52,40 @@ IRAudio.setNoteSpacing({ enabled = true, staggerFrames = 1, maxVoices = 6, maxDe
    the picture.
 5. **A cut moves the hold end.** A note that lands on a pitch and channel
    still sounding ends that note there, and with `maxVoices_` set a note
-   that needs a voice then ends the oldest sounding one. The cut note's
+   that needs a voice then ends the oldest sounding ones until it has one
+   (so a cap lowered mid-hold takes hold where the next note lands). The cut note's
    NOTE_OFF moves to the frame the new note lands (a frame's NOTE_OFFs go
    out before its NOTE_ONs), and its original hold end is gone, so it can
    never silence a later note of the same pitch; a cut note whose NOTE_ON
    had not gone out yet never sounds.
-6. **Fixed capacity.** The pending list (128) and the schedule (256) are
+6. **Off, an immediate note takes over its pitch.** Turning the policy off
+   leaves the planned notes draining through the schedule. A trigger that
+   now sends at once first ends a spaced note of its pitch and channel
+   (its NOTE_OFF ahead of the new NOTE_ON, its scheduled hold end gone) and
+   drops a queued or planned one, so no spaced message can silence or
+   follow the immediate note.
+7. **Fixed capacity.** The pending list (128) and the schedule (256) are
    fixed arrays, so neither the trigger tick nor the spacing tick
    allocates. A note that finds either full is dropped and counted in
    `droppedNotes_` (`IRAudio.noteSpacing().droppedNotes`); reaching it
    means a backlog of seconds, which `maxDelayFrames_` bounds.
-7. **Enabling needs the flush.** A queued note only leaves through
+8. **Enabling needs the flush.** A queued note only leaves through
    `System<MIDI_NOTE_SPACING>`; the Lua setter refuses `enabled = true`
    while that system is not in the UPDATE pipeline
    (`IRSystem::isInPipeline`), so a pipeline without it keeps the immediate
    behaviour instead of swallowing notes. Its order there is not checked:
    placed before a trigger, a note waits one more frame.
-8. **Opt-out of the snapshot.** The singleton holds one frame's queue and
+9. **Opt-out of the snapshot.** The singleton holds one frame's queue and
    the schedule; a save never carries a frame in flight.
 
 ## Headless coverage
 
 `test/audio/midi_note_spacing_test.cpp` drives `planImmediate`, `queue` and
-`planFrame` a frame at a time without a world: order, stagger, the queue
-across frames, the voice cut, a repeated pitch through the cut note's old
-hold end, the delay cap, channel normalization, and a dense frame against
-the fixed capacity. `test/script/lua_midi_note_spacing_test.cpp` drives the
+`planFrame` / `planTrigger` a frame at a time without a world: order,
+stagger, the queue across frames, the voice cut and a cap lowered under
+several sounding notes, a repeated pitch through the cut note's old hold
+end, the policy turned off mid-hold under an immediate retrigger, the delay
+cap, channel normalization, and a dense frame against the fixed capacity. `test/script/lua_midi_note_spacing_test.cpp` drives the
 bindings: read-back, every rejection, and the refusal to enable while the
 system is unregistered or registered but outside UPDATE, then composing it
 into UPDATE by `IRSystem.SystemName.MIDI_NOTE_SPACING`.

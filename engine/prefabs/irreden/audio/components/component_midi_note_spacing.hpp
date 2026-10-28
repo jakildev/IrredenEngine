@@ -11,8 +11,8 @@ namespace IRComponents {
 // NOTE_OFF after the hold. On, the frame's notes queue here and
 // `MIDI_NOTE_SPACING` lays them out low to high, `staggerFrames_` apart and
 // after any note still queued from an earlier frame, holding at most
-// `maxVoices_` sounding at once (the oldest is cut off the frame a new one
-// needs its voice), so a chord lands as an even upward strum the output can
+// `maxVoices_` sounding at once (the oldest are cut off the frame a new one
+// needs a voice), so a chord lands as an even upward strum the output can
 // voice. Frames are the fixed update step; `maxDelayFrames_` caps how far
 // behind the queue a note may wait.
 //

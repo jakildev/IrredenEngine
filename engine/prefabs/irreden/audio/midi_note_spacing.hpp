@@ -14,6 +14,7 @@
 #include <irreden/update/components/component_lifetime.hpp>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
@@ -22,9 +23,10 @@
 // the NOTE_OFF after the hold, with it on the note waits for
 // `System<MIDI_NOTE_SPACING>` to plan the frame (`planFrame`) and emit it;
 // that system owns a spaced note's NOTE_ON and NOTE_OFF until both go out,
-// so a cut cancels the superseded hold end. `planImmediate` / `queue` /
-// `planFrame` are pure over the component so they test without a world;
-// `emit` turns a plan into message entities.
+// so a cut cancels the superseded hold end, and once the policy is off an
+// immediate note ends the spaced one of its pitch first. `planTrigger` /
+// `planImmediate` / `queue` / `planFrame` are pure over the component so
+// they test without a world; `emit` turns a plan into message entities.
 namespace IRPrefab::MidiNotes {
 
 struct ScheduledMessage {
@@ -76,6 +78,9 @@ inline std::array<ScheduledMessage, 2> planImmediate(const IRComponents::C_MidiN
 inline constexpr int kMaxFrameMessages = 2 * IRComponents::C_MidiNoteSpacing::kMaxScheduledNotes;
 using FramePlan = std::array<ScheduledMessage, kMaxFrameMessages>;
 
+// A trigger's plan: an ended spaced note's NOTE_OFF, then `planImmediate`.
+using TriggerPlan = std::array<ScheduledMessage, 3>;
+
 // Queues a note for the next `planFrame`, keeping the pending list low to
 // high (equal pitches in trigger order). A full list drops the note.
 inline void
@@ -113,14 +118,69 @@ inline void cutScheduled(IRComponents::C_MidiNoteSpacing &s, int index, long fra
     v.offFrame_ = frame;
 }
 
+// The oldest scheduled note still sounding on `frame`, -1 when fewer than
+// `maxVoices` are.
+inline int voiceToCut(const IRComponents::C_MidiNoteSpacing &s, long frame) {
+    int sounding = 0;
+    int oldest = -1;
+    for (int i = 0; i < s.scheduledCount_; ++i) {
+        const IRComponents::C_MidiNoteSpacing::Scheduled &v = s.scheduled_[i];
+        if (v.offFrame_ <= frame) {
+            continue;
+        }
+        ++sounding;
+        if (oldest < 0 || v.onFrame_ < s.scheduled_[oldest].onFrame_) {
+            oldest = i;
+        }
+    }
+    return sounding >= s.maxVoices_ ? oldest : -1;
+}
+
 } // namespace detail
+
+// With the policy off, an immediate note of `note` on `channel` (normalized)
+// takes over from the spaced ones the schedule still owns: a queued or
+// planned note of that pitch and channel is dropped, and one already
+// sounding ends now, its NOTE_OFF written to `off`, so its scheduled hold
+// end can never silence the immediate note. Returns whether `off` was
+// written.
+inline bool endSpacedNote(
+    IRComponents::C_MidiNoteSpacing &s,
+    std::uint8_t note,
+    std::uint8_t channel,
+    ScheduledMessage &off
+) {
+    int kept = 0;
+    for (int i = 0; i < s.pendingCount_; ++i) {
+        const IRComponents::C_MidiNoteSpacing::Pending &p = s.pending_[i];
+        if (p.note_ != note || IRAudio::normalizeMidiChannel(p.channel_) != channel) {
+            s.pending_[kept++] = p;
+        }
+    }
+    s.pendingCount_ = kept;
+    bool sounding = false;
+    for (int i = 0; i < s.scheduledCount_;) {
+        const IRComponents::C_MidiNoteSpacing::Scheduled &v = s.scheduled_[i];
+        if (v.note_ != note || v.channel_ != channel) {
+            ++i;
+            continue;
+        }
+        if (v.onSent_ && !sounding) {
+            off = {0, noteOffStatus(channel), note, v.velocity_};
+            sounding = true;
+        }
+        detail::removeScheduled(s, i);
+    }
+    return sounding;
+}
 
 // Plans the frame's pending notes, then appends every message due this
 // frame (NOTE_OFFs before NOTE_ONs, all with a delay of 0) and advances the
 // frame. A note lands low to high, `staggerFrames_` after the one before it
 // and never before the queue's next free frame (capped `maxDelayFrames_`
 // behind this one). Where it lands it cuts a still-sounding note of its own
-// pitch and channel, then, past `maxVoices_`, the oldest sounding note.
+// pitch and channel, then, past `maxVoices_`, the oldest sounding notes
+// until it has a voice.
 // Returns the message count.
 inline int planFrame(IRComponents::C_MidiNoteSpacing &s, FramePlan &out) {
     using Scheduled = IRComponents::C_MidiNoteSpacing::Scheduled;
@@ -144,20 +204,9 @@ inline int planFrame(IRComponents::C_MidiNoteSpacing &s, FramePlan &out) {
             }
         }
         if (s.maxVoices_ > 0) {
-            int sounding = 0;
-            int oldest = -1;
-            for (int i = 0; i < s.scheduledCount_; ++i) {
-                const Scheduled &v = s.scheduled_[i];
-                if (v.offFrame_ <= onFrame) {
-                    continue;
-                }
-                ++sounding;
-                if (oldest < 0 || v.onFrame_ < s.scheduled_[oldest].onFrame_) {
-                    oldest = i;
-                }
-            }
-            if (sounding >= s.maxVoices_) {
-                detail::cutScheduled(s, oldest, onFrame);
+            for (int cut = detail::voiceToCut(s, onFrame); cut >= 0;
+                 cut = detail::voiceToCut(s, onFrame)) {
+                detail::cutScheduled(s, cut, onFrame);
             }
         }
         s.scheduled_[s.scheduledCount_++] =
@@ -207,13 +256,30 @@ inline void emit(std::span<const ScheduledMessage> plan) {
     }
 }
 
-// A trigger's note: queued under the policy when it is on, else sent now.
-inline void trigger(IRComponents::C_MidiNoteSpacing &s, const IRComponents::C_MidiNote &note) {
+// A trigger's note: queued under the policy when it is on (no messages),
+// else the immediate plan, behind the NOTE_OFF of a spaced note it ends
+// (`endSpacedNote`). Returns the message count.
+inline int planTrigger(
+    IRComponents::C_MidiNoteSpacing &s, const IRComponents::C_MidiNote &note, TriggerPlan &out
+) {
     if (s.enabled_) {
         queue(s, {note.note_, note.velocity_, note.channel_, holdFrames(note)});
-        return;
+        return 0;
     }
-    emit(planImmediate(note));
+    int count = 0;
+    if (endSpacedNote(s, note.note_, IRAudio::normalizeMidiChannel(note.channel_), out[0])) {
+        count = 1;
+    }
+    for (const ScheduledMessage &m : planImmediate(note)) {
+        out[count++] = m;
+    }
+    return count;
+}
+
+inline void trigger(IRComponents::C_MidiNoteSpacing &s, const IRComponents::C_MidiNote &note) {
+    TriggerPlan plan{};
+    const int count = planTrigger(s, note, plan);
+    emit(std::span{plan.data(), static_cast<std::size_t>(count)});
 }
 
 } // namespace IRPrefab::MidiNotes
