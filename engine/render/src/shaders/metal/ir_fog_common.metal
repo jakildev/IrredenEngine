@@ -6,14 +6,8 @@
 // body must normalize equal to the GLSL twin (FogCrossSectionShaderParity).
 
 #include "ir_iso_common.metal"
-#include "ir_fog_color.metal"
+#include "ir_fog_apply.metal"
 #include "ir_fog_los.metal"
-
-constant float kFogCutTone = 0.85f;
-constant float kFogCutMaxRimCells = 2.0f;
-// MUST equal kFogHiddenKeepCells (ir_voxel_face_select.metal).
-constant float kFogRimFadeCells = 8.0f;
-constant float kFogRimFadeLevel = 0.75f;
 
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles];
@@ -34,23 +28,6 @@ struct FogObserverData {
     // The canvas's reveal-surface treatment, (enabled, dissolveDensity, capTone, phase).
     float4 revealSurfaceTreatment;
 };
-
-struct FogReveal {
-    float state;
-    float gridState;
-    float hardDistPastRim;
-    float styledBand;
-};
-
-inline float fogRevealSurfaceBandWeight(float surfaceVisibility) {
-    return 4.0f * surfaceVisibility * (1.0f - surfaceVisibility);
-}
-
-inline float3 fogCutCapBlend(
-    float3 color, float3 sourceColor, float tone, float state, float weight
-) {
-    return mix(color, mix(sourceColor * tone, sourceColor, state), weight);
-}
 
 // Grid texel of world column `col`: (state integer, channel mask), or
 // (0, kFogChannelDefault) for a column outside the window. GLSL twin:
@@ -258,49 +235,16 @@ inline FogReveal fogRevealSample(
 }
 
 inline float4 fogApplyReveal(
-    FogReveal reveal,
-    int faceAxis,
-    float4 sourceColor,
-    constant FogObserverData& fogObservers
+    FogReveal reveal, int faceAxis, float4 sourceColor, constant FogObserverData& fogObservers
 ) {
-    float3 outColor = fogStateColor(
-        reveal.state,
-        sourceColor.rgb,
-        fogObservers.unexploredColor.rgb
-    );
-    if (reveal.gridState < kFogExploredValue) {
-        const float u = 1.0f - smoothstep(0.0f, kFogRimFadeCells, reveal.hardDistPastRim);
-        outColor = mix(outColor, sourceColor.rgb, kFogRimFadeLevel * u * u);
-        if (fogObservers.visionCircleCount > 0 && faceAxis != 2) {
-            const float capBlend = 1.0f - smoothstep(
-                0.0f,
-                kFogCutMaxRimCells,
-                max(reveal.hardDistPastRim, 0.0f)
-            );
-            outColor = fogCutCapBlend(outColor, sourceColor.rgb, kFogCutTone, reveal.state, capBlend);
-        }
-    }
-    if (reveal.styledBand > 0.0f) {
-        outColor = fogCutCapBlend(
-            outColor,
-            sourceColor.rgb,
-            fogObservers.revealSurfaceTreatment.z,
-            reveal.state,
-            reveal.styledBand
-        );
-    }
-    return float4(outColor, sourceColor.a);
+    return fogApplyReveal(reveal, faceAxis, sourceColor, fogObservers.unexploredColor,
+        fogObservers.visionCircleCount, fogObservers.revealSurfaceTreatment);
 }
 
 inline float4 fogApplyBody(
-    float state,
-    float4 sourceColor,
-    constant FogObserverData& fogObservers
+    float state, float4 sourceColor, constant FogObserverData& fogObservers
 ) {
-    return float4(
-        fogStateColor(state, sourceColor.rgb, fogObservers.unexploredColor.rgb),
-        sourceColor.a
-    );
+    return fogApplyBody(state, sourceColor, fogObservers.unexploredColor);
 }
 
 inline float fogOverflowBodyState(uint classByte) {

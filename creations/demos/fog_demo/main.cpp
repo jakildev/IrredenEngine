@@ -2045,7 +2045,7 @@ std::vector<IRMath::uvec2> g_ceilingStaticCarriers;
 std::vector<int> g_ceilingStaticDistances;
 // A readback channel within this of its prediction matches it.
 constexpr float kSurfaceProbeColorTolerance = 3.0f;
-// The fog pass's hard-disc rim lift, mirrored from ir_fog_common
+// The fog pass's hard-disc rim lift, mirrored from ir_fog_apply
 // (kFogRimFadeCells, kFogRimFadeLevel).
 constexpr float kFogRimFadeCells = 8.0f;
 constexpr float kFogRimFadeLevel = 0.75f;

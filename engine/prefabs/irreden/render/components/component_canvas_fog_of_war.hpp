@@ -179,7 +179,7 @@ constexpr float kFogLosHardGate = 0.0f;
 constexpr float kFogVisionCeilingOff = -1.0f;
 // The tone the fog pass multiplies a cut face's source colour by: the radial
 // rim cap's fixed tone, and the reveal-surface treatment's default `capTone`.
-// Mirrored as `kFogCutTone` in `ir_fog_common.glsl` / `metal/ir_fog_common.metal`.
+// Mirrored as `kFogCutTone` in `ir_fog_apply.glsl` / `metal/ir_fog_apply.metal`.
 constexpr float kFogCutTone = 0.85f;
 
 // Half-cells per world unit of the column field: a voxel box edge lands on

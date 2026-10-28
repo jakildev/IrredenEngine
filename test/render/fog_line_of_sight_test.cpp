@@ -480,8 +480,8 @@ TEST(FogLineOfSightTest, EightSourcesUseIndependentParams) {
 // both shared fog reveals and both gate helpers carry.
 TEST(FogLineOfSightTest, ReachCoversTheShaderRimFade) {
     for (const char *kernel :
-         {"/ir_fog_common.glsl",
-          "/metal/ir_fog_common.metal",
+         {"/ir_fog_apply.glsl",
+          "/metal/ir_fog_apply.metal",
           "/ir_fog_los.glsl",
           "/metal/ir_fog_los.metal"}) {
         std::ifstream file(std::string(IR_TEST_RENDER_SHADER_DIR) + kernel);
