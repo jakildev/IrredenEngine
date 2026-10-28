@@ -22,6 +22,11 @@ creation composes MIDI behavior by adding components to entities.
 - `C_MidiChannel` — 0–15 wrapper. `normalizeMidiChannel()` converts to
   MIDI wire format.
 - `C_MidiDelay` — countdown timer for scheduling a delayed `NOTE_OFF`.
+- `C_MidiNoteSpacing` — world singleton: the policy that spaces what the
+  trigger systems fire (low to high, a stagger of frames apart, behind the
+  queue, within a voice count). Off by default; `IRPrefab::MidiNotes`
+  (`midi_note_spacing.hpp`) owns the planner
+  ([design](../../../../docs/design/midi-note-spacing.md)).
 - `C_ContactEvent` — tag for entities whose collision events should trigger
   MIDI.
 
@@ -33,9 +38,14 @@ Many of these have `_lua.hpp` siblings that bind them into Lua.
   frame, emits queued messages as ephemeral entities
   (`C_MidiMessage + C_MidiOut + C_Lifetime{1}`). Handles looping.
 - `CONTACT_MIDI_TRIGGER` (UPDATE pipeline) — on `C_ContactEvent`
-  enter, fires `NOTE_ON` and schedules `NOTE_OFF` via `C_MidiDelay`.
-- `PERIODIC_IDLE_MIDI_TRIGGER` — fires `NOTE_ON` on `C_PeriodicIdle`
-  cycle completion.
+  enter, hands the `C_MidiNote` to `IRPrefab::MidiNotes::trigger`: `NOTE_ON`
+  now and `NOTE_OFF` after the hold via `C_MidiDelay`, or a queued note under
+  the spacing policy.
+- `PERIODIC_IDLE_MIDI_TRIGGER` — the same on `C_PeriodicIdle` cycle
+  completion.
+- `MIDI_NOTE_SPACING` (UPDATE, after the triggers, before
+  `MIDI_DELAY_PROCESS`) — plans and emits the frame's queued notes. Without
+  it the policy cannot be enabled (`IRAudio.setNoteSpacing` refuses).
 - `MIDI_DELAY_PROCESS` — decrements `C_MidiDelay`; when it hits zero,
   emits a `NOTE_OFF` transient entity and marks delay = -1 to prevent
   re-fire.

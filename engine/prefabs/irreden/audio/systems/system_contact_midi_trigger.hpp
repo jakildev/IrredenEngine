@@ -2,54 +2,35 @@
 #define SYSTEM_CONTACT_MIDI_TRIGGER_H
 
 #include <irreden/ir_system.hpp>
-#include <irreden/ir_entity.hpp>
-#include <irreden/ir_audio.hpp>
-#include <irreden/ir_constants.hpp>
-#include <irreden/ir_math.hpp>
 
-#include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/audio/components/component_midi_note.hpp>
-#include <irreden/audio/components/component_midi_message.hpp>
-#include <irreden/audio/components/component_midi_delay.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
-#include <irreden/update/components/component_lifetime.hpp>
-
-using namespace IRComponents;
-using namespace IRAudio;
+#include <irreden/audio/components/component_midi_note_spacing.hpp>
+#include <irreden/audio/midi_note_spacing.hpp>
+#include <irreden/update/components/component_contact_event.hpp>
 
 namespace IRSystem {
 
+// A `C_ContactEvent` enter fires the entity's `C_MidiNote` through the note
+// spacing policy (`IRPrefab::MidiNotes::trigger`): NOTE_ON now and NOTE_OFF
+// after the hold while the policy is off, a queued note while it is on.
 template <> struct System<CONTACT_MIDI_TRIGGER> {
-    static SystemId create() {
-        return createSystem<C_ContactEvent, C_MidiNote>(
-            "ContactMidiTrigger",
-            [](const C_ContactEvent &contact, C_MidiNote &midiNote) {
-                if (!contact.entered_) {
-                    return;
-                }
-                unsigned char channel = normalizeMidiChannel(midiNote.channel_);
-                IREntity::createEntity(
-                    C_MidiMessage{
-                        buildMidiStatus(kMidiStatus_NOTE_ON, channel),
-                        midiNote.note_,
-                        midiNote.velocity_
-                    },
-                    C_MidiOut{},
-                    C_Lifetime{1}
-                );
+    IRComponents::C_MidiNoteSpacing *spacing_ = nullptr;
 
-                int holdFrames = static_cast<int>(midiNote.holdSeconds_ * IRConstants::kFPS);
-                holdFrames = IRMath::max(holdFrames, 1);
-                IREntity::createEntity(
-                    C_MidiMessage{
-                        buildMidiStatus(kMidiStatus_NOTE_OFF, channel),
-                        midiNote.note_,
-                        midiNote.velocity_
-                    },
-                    C_MidiDelay{holdFrames},
-                    C_Lifetime{holdFrames + 10}
-                );
-            }
+    void beginTick() {
+        spacing_ = &IRPrefab::MidiNotes::spacing();
+    }
+
+    void tick(const IRComponents::C_ContactEvent &contact, IRComponents::C_MidiNote &midiNote) {
+        if (!contact.entered_) {
+            return;
+        }
+        IRPrefab::MidiNotes::trigger(*spacing_, midiNote);
+    }
+
+    static SystemId create() {
+        IRPrefab::MidiNotes::ensureSpacingSingleton();
+        return registerSystem<CONTACT_MIDI_TRIGGER, IRComponents::C_ContactEvent, IRComponents::C_MidiNote>(
+            "ContactMidiTrigger"
         );
     }
 };
