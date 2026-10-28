@@ -226,6 +226,36 @@ TEST_F(LuaWidgetValues, SetDropdownOpenRevealsIntoTheClippedWindow) {
     EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(id).topIndex(layout), 29 - 5 + 1);
 }
 
+TEST_F(LuaWidgetValues, DropdownStripReportsTheOpenStripRectAndNilWhileClosed) {
+    IREntity::singleton<IRComponents::C_WidgetInputFrame>().guiCanvasSize_ =
+        IRMath::ivec2(640, 100);
+    run(R"lua(
+        local items = {}
+        for i = 1, 40 do items[i] = "ITEM " .. i end
+        dd = IRGui.makeDropdown(0, 55, 100, 20, items, 30, 10)
+    )lua");
+    const IREntity::EntityId id = entity("dd");
+    EXPECT_TRUE(eval<bool>("IRGui.dropdownStrip(dd) == nil")) << "a closed dropdown has no strip";
+
+    run("IRGui.setDropdownOpen(dd, true)");
+    const C_WidgetDropdown &dropdown = IREntity::getComponent<C_WidgetDropdown>(id);
+    const IRPrefab::GuiRect expected = IRPrefab::WidgetText::dropdownStripRect(
+        IREntity::getComponent<C_Widget>(id),
+        dropdown,
+        IREntity::getComponent<IRComponents::C_GuiPosition>(id).pos_,
+        IRPrefab::Widget::dropdownStripLayout(id)
+    );
+    ASSERT_GT(expected.size_.y, 0);
+    EXPECT_LE(expected.pos_.y + expected.size_.y, 55) << "the strip opens above the header";
+    EXPECT_EQ(eval<int>("IRGui.dropdownStrip(dd).x"), expected.pos_.x);
+    EXPECT_EQ(eval<int>("IRGui.dropdownStrip(dd).y"), expected.pos_.y);
+    EXPECT_EQ(eval<int>("IRGui.dropdownStrip(dd).w"), expected.size_.x);
+    EXPECT_EQ(eval<int>("IRGui.dropdownStrip(dd).h"), expected.size_.y);
+
+    run("IRGui.setDropdownOpen(dd, false)");
+    EXPECT_TRUE(eval<bool>("IRGui.dropdownStrip(dd) == nil"));
+}
+
 TEST_F(LuaWidgetValues, ListDefaultsToNoSelectionAndReadsOneBased) {
     run(R"lua(list = IRGui.makeList(0, 0, 100, 54, { "A", "B", "C", "D" }))lua");
     const IREntity::EntityId id = entity("list");
