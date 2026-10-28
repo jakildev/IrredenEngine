@@ -1,11 +1,11 @@
 {
-  "target": "IRPerfGrid",
+  "target": "both",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "ee85797c0",
+  "git_sha": "468c8e57f",
   "git_dirty": false,
-  "run_name": "ee85797c0-ci",
-  "started_at": "2026-10-27T17:04:59Z",
+  "run_name": "468c8e57f-ci",
+  "started_at": "2026-10-28T01:46:20Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,13 +17,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 103.536,
+        "before": 103.665,
         "before_samples": [
-          103.451,
-          103.536,
-          103.563
+          103.665,
+          103.501,
+          103.704
         ],
-        "after": 103.696
+        "after": 103.375
       }
     },
     {
@@ -36,25 +36,63 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 103.592,
+        "before": 103.532,
         "before_samples": [
-          103.517,
-          103.7,
-          103.592
+          103.532,
+          103.473,
+          103.667
         ],
-        "after": 103.647
+        "after": 103.595
+      }
+    },
+    {
+      "id": "target=IRLuaPerfGrid,zoom=1,sub_mode=full,sub_base=1",
+      "target": "IRLuaPerfGrid",
+      "zoom": 1,
+      "sub_mode": "full",
+      "sub_base": 1,
+      "exit_status": 0,
+      "status": "ok",
+      "report": "target=IRLuaPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
+      "load_ref_ms": {
+        "before": 103.558,
+        "before_samples": [
+          103.473,
+          103.804,
+          103.558
+        ],
+        "after": 103.604
+      }
+    },
+    {
+      "id": "target=IRLuaPerfGrid,zoom=4,sub_mode=full,sub_base=1",
+      "target": "IRLuaPerfGrid",
+      "zoom": 4,
+      "sub_mode": "full",
+      "sub_base": 1,
+      "exit_status": 0,
+      "status": "ok",
+      "report": "target=IRLuaPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
+      "load_ref_ms": {
+        "before": 103.625,
+        "before_samples": [
+          103.382,
+          103.625,
+          103.836
+        ],
+        "after": 103.575
       }
     }
   ],
-  "finished_at": "2026-10-27T17:07:41Z",
+  "finished_at": "2026-10-28T01:51:00Z",
   "calibration": {
-    "ref_ms": 103.756,
+    "ref_ms": 104.006,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-7763-64-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3219,
+        "mhz": 3249,
         "model": "AMD EPYC 7763 64-Core Processor",
         "threads": 4
       },
@@ -63,7 +101,7 @@
       },
       "os": {
         "distro": "Ubuntu 24.04.5 LTS",
-        "kernel": "Linux 7.0.0-1017-azure"
+        "kernel": "Linux 6.17.0-1022-azure"
       },
       "ram": {
         "gb": 15
