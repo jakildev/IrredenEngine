@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Compare direct SDF and baked occupancy with matched pose and timing controls.
-
-The four-subject fixture is a representation probe, not a population benchmark.
-Reports include warmup and steady windows; startup baking is not timed here.
-"""
+"""Profile direct SDF and baked occupancy across geometry and workload controls."""
 
 import argparse
 import json
@@ -12,7 +8,11 @@ from pathlib import Path
 from profile_matrix import run_rounds, summarize, verify_artifacts, write_cases
 
 
-def cases() -> dict[str, list[str]]:
+def cases(suite: str = "baseline") -> dict[str, list[str]]:
+    if suite == "qualification":
+        return _qualification_cases()
+    if suite != "baseline":
+        raise ValueError(f"Unknown SDF control suite: {suite}")
     selected = {}
     for pose, yaw in (("0", "0"), ("45", "0.7853981633974483")):
         for shadows in ("on", "off"):
@@ -23,6 +23,45 @@ def cases() -> dict[str, list[str]]:
                         "--config-preset", f"configs/perf/sdf-{timing}.lua",
                         *(["--no-shadows"] if shadows == "off" else []),
                     ]
+    return selected
+
+
+def _qualification_cases() -> dict[str, list[str]]:
+    """Independent density, overlap, motion, presentation and lighting arms."""
+    workloads = {}
+    for representation, density in (("direct", 1), ("baked", 1), ("baked", 2)):
+        workloads[f"density-{representation}-{density}"] = [
+            "--sdf-voxel-scene", representation, "--sdf-voxel-density", str(density)]
+    for representation in ("direct", "baked"):
+        for copies in (1, 4, 16):
+            for overlap in (False, True):
+                name = f"population-{representation}-{copies}-overlap{int(overlap)}"
+                workloads[name] = [
+                    "--sdf-voxel-scene", representation, "--sdf-voxel-copies", str(copies),
+                    *(["--sdf-voxel-overlap"] if overlap else []),
+                ]
+        for pose in ("root", "parented"):
+            workloads[f"motion-{representation}-{pose}"] = [
+                "--sdf-voxel-scene", representation, "--sdf-voxel-pose", pose,
+                "--sdf-voxel-motion",
+            ]
+    for presentation in ("grid", "detached", "revoxelized"):
+        for pose in ("root", "parented"):
+            workloads[f"presentation-{presentation}-{pose}"] = [
+                "--sdf-voxel-scene", "baked", "--sdf-voxel-presentation", presentation,
+                "--sdf-voxel-pose", pose,
+            ]
+        workloads[f"local-light-only-{presentation}"] = [
+            "--sdf-voxel-scene", "baked", "--sdf-voxel-presentation", presentation,
+            "--no-shadows",
+        ]
+    selected = {}
+    for name, arguments in workloads.items():
+        for timing in ("on", "off"):
+            selected[f"{name}-timing-{timing}"] = [
+                *arguments, "--yaw", "0.7853981633974483",
+                "--config-preset", f"configs/perf/sdf-{timing}.lua",
+            ]
     return selected
 
 
@@ -44,15 +83,23 @@ def main() -> int:
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--zoom", type=int, choices=(1, 2, 4, 8, 16), default=4)
+    parser.add_argument("--suite", choices=("qualification", "baseline"),
+                        default="qualification")
+    parser.add_argument("--case", action="append", dest="case_names")
     args = parser.parse_args()
     if args.rounds < 1 or args.frames < 2:
         parser.error("rounds must be positive and frames must be at least two")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    selected = cases()
+    selected = cases(args.suite)
+    invalid = set(args.case_names or ()) - selected.keys()
+    if invalid:
+        parser.error(f"unknown {args.suite} cases: {', '.join(sorted(invalid))}")
+    if args.case_names:
+        selected = {name: selected[name] for name in args.case_names}
     common = ["--auto-profile", str(args.frames), "--zoom", str(args.zoom),
               "--sdf-voxel-blockers", "--no-ao", "--window-mode", "offscreen"]
-    write_cases(output, args.rounds, common, selected, target="IRShapeDebug")
+    write_cases(output, args.rounds, common, selected, target="IRShapeDebug", suite=args.suite)
 
     def after_round():
         verify_artifacts(output)
@@ -61,7 +108,8 @@ def main() -> int:
             "GPU stage rows are sampled timeline intervals, not additive exclusive costs. "
             "Timing-off cases retain the GPU frame envelope. Compare representations within "
             "the same pose, shadow and timing mode; finite occupancy differs from analytic "
-            "geometry. Four subjects do not establish population scaling or Release performance."
+            "geometry. The startup witness reports baker wall time and dense record payload; "
+            "process peak/resident memory and driver allocation remain separate measurements."
         ))
 
     run_rounds(output, selected, common, args.rounds, after_round,

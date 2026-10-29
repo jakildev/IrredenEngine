@@ -80,6 +80,28 @@ view and effective subdivisions 4/2 with external voxel casters and a local ligh
 This comparison checks transform-path equivalence, not absolute correctness of
 every voxel step, local-light occlusion or projected shadow boundary.
 
+The qualification fixture also exposes independent workload controls:
+
+- `--sdf-voxel-density 1|2` keeps the baked object at the same world scale while
+  changing its authored sampling lattice. Density 2 uses a 21-cell edge, doubles
+  descriptor parameters, and applies a one-half entity scale. It therefore tests
+  finer authored occupancy rather than making the object twice as large.
+- `--sdf-voxel-copies 1|4|16` changes population. `--sdf-voxel-overlap` moves
+  those groups into nearly coincident projections; without it groups are spaced.
+- `--sdf-voxel-motion` continuously rotates each root, or the shared parent when
+  `--sdf-voxel-pose parented` is selected. Camera motion remains a separate input.
+- `--sdf-voxel-presentation grid|detached|revoxelized` selects shared GRID,
+  rigid DETACHED source faces, or DETACHED_REVOXELIZE. It is rejected for direct
+  SDF because those modes describe occupancy presentation, not analytic shapes.
+
+Every run prints one `SDF-OCCUPANCY` witness even in Release. It records startup
+bake wall time, dense slots, occupied cells and dense-record payload. These are
+not process RSS or driver residency; the profile manifest retains them beside
+the frame/GPU evidence so those quantities cannot be confused. The qualification
+matrix in `scripts/perf/sdf_controls.py` crosses each workload arm with stage
+timing on/off. `--suite baseline` preserves the original 16-case reproduction;
+`--case` supports bounded smoke and cross-host slices.
+
 For sun-only receiver comparisons, add `--no-ao --no-local-lights`; the isolated
 scene honors both. `--surface-lighting` enables the existing experimental
 continuous per-axis receiver. It changes where an eligible face samples lighting,
@@ -97,6 +119,16 @@ uploads, then measure geometry, shadow, AO and lighting stages and complete fram
 time on both backends before choosing defaults. Dynamic fields that change every
 frame need a separate GPU occupancy-generation design and cost comparison.
 Further analytic receiver extensions are deferred while this route is evaluated.
+
+A baked asset is invalidated by changes to its primitive type, authored
+parameters, grid bounds, density/phase, threshold convention, material records or
+recipe version. Entity translation, rotation and uniform presentation scale do
+not invalidate GRID source occupancy: they rebuild or present that occupancy via
+the selected runtime route. Editing occupied cells updates the ordinary voxel set
+through its existing mutation/resync contract. A changing procedural field is
+not a cheap invalidation case; rebaking it on the CPU every frame duplicates
+dense allocation and upload work, so it should remain direct procedural content
+until a separately bounded dynamic GPU baker is designed and measured.
 
 ## Shared geometric contract
 
@@ -243,6 +275,16 @@ stage timing crossed at yaw 0/45. Baked geometry has lower average GPU spans
 in these cells; diagonal wall-frame results are mixed. It does not measure
 startup baking, total residency, population scaling or continuous receiving,
 and does not establish a general speed advantage for either representation.
+
+Those measurements support a narrow choice today: bake a stable built-in recipe
+when it needs ordinary voxel editing, shared GRID lighting/occlusion, asset
+serialization, or an explicitly voxelized detached silhouette. Keep direct SDF
+for unlit/procedural tools, transient fields, and measured primitive-heavy scenes
+where descriptor compactness or analytic presentation is the requirement. The
+baseline does not justify automatic migration: it omitted startup/RSS/driver
+residency, population scaling, motion and OpenGL, and its yaw-45 whole-frame result
+reversed the lower baked GPU envelope. Composed/custom recipes and dynamic GPU
+baking remain follow-ups until the new controls produce a bounded result.
 
 ## Current acceptance work
 
