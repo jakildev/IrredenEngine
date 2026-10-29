@@ -1,5 +1,5 @@
 {
-  "module": "test/module",
+  "module": "../../../../creations/editors/voxel_editor/test/module",
   "part_names": [
     "stem",
     "blob",

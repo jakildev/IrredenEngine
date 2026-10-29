@@ -4,10 +4,13 @@ editor's save directory and what it writes to the asset directory."""
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -164,6 +167,28 @@ class CommitPrefabTest(unittest.TestCase):
                 self._commit(tmp, None, manifest)
             self.assertIn("twice", str(raised.exception))
 
+    def test_absolute_asset_dir_uses_its_assets_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save_dir = Path(tmp) / "save"
+            _write_save(save_dir)
+            asset_dir = Path(tmp) / "checkout" / "assets" / "voxel" / "entities"
+            ref_dir = author_entity.prefab_reference_prefix(asset_dir)
+
+            author_entity.commit_prefab(
+                author_entity.prefab_files(save_dir), "proof", asset_dir, ref_dir, None
+            )
+
+            manifest = (asset_dir / "proof" / "proof.prefab.lua").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn('voxel_ref = "assets/voxel/entities/proof/part_0.vxs"', manifest)
+            self.assertNotIn(str(asset_dir), manifest)
+
+    def test_absolute_asset_dir_without_assets_is_refused(self) -> None:
+        with self.assertRaises(SystemExit) as raised:
+            author_entity.prefab_reference_prefix(Path("/tmp/entity-output"))
+        self.assertIn("assets component", str(raised.exception))
+
 
 class AuthorArgsTest(unittest.TestCase):
     RECORDED = {"module": "test/module", "part_names": ["stem", "frame"]}
@@ -174,10 +199,56 @@ class AuthorArgsTest(unittest.TestCase):
 
     def test_written_arguments_load_back(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = author_entity.write_author_args(Path(tmp), self.RECORDED)
+            expected = {**self.RECORDED, "module": str(Path(tmp) / "module")}
+            path = author_entity.write_author_args(Path(tmp), expected)
 
             self.assertEqual(path.name, "author.json")
-            self.assertEqual(author_entity.load_author_args(Path(tmp)), self.RECORDED)
+            self.assertEqual(author_entity.load_author_args(Path(tmp)), expected)
+
+    def test_relative_module_loads_from_the_prefab_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefab_dir = Path(tmp) / "assets" / "voxel" / "entities" / "proof"
+            prefab_dir.mkdir(parents=True)
+            (prefab_dir / "author.json").write_text('{"module": "../../module"}')
+
+            loaded = author_entity.load_author_args(prefab_dir)
+
+        self.assertEqual(loaded["module"], os.path.abspath(prefab_dir / "../../module"))
+
+    def test_absolute_module_writes_prefab_relative(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefab_dir = Path(tmp) / "assets" / "voxel" / "entities" / "proof"
+            prefab_dir.mkdir(parents=True)
+            module = Path(tmp) / "creations" / "test" / "module"
+
+            author_entity.write_author_args(prefab_dir, {"module": str(module)})
+
+            raw = json.loads((prefab_dir / "author.json").read_text(encoding="utf-8"))
+            recorded = author_entity.load_author_args(prefab_dir)
+        self.assertEqual(raw["module"], os.path.relpath(module, prefab_dir))
+        self.assertEqual(recorded["module"], os.path.abspath(module))
+
+    def test_legacy_absolute_module_loads_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefab_dir = Path(tmp) / "proof"
+            prefab_dir.mkdir()
+            module = str(Path(tmp) / "legacy" / "module")
+            (prefab_dir / "author.json").write_text(json.dumps({"module": module}))
+
+            recorded = author_entity.load_author_args(prefab_dir)
+        self.assertEqual(recorded["module"], module)
+
+    def test_cross_drive_module_fallback_keeps_the_absolute_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefab_dir = Path(tmp) / "proof"
+            prefab_dir.mkdir()
+            module = "D:/modules/test"
+            with mock.patch.object(author_entity.os.path, "isabs", return_value=True):
+                with mock.patch.object(author_entity.os.path, "relpath", side_effect=ValueError):
+                    author_entity.write_author_args(prefab_dir, {"module": module})
+
+            recorded = json.loads((prefab_dir / "author.json").read_text(encoding="utf-8"))
+        self.assertEqual(recorded["module"], module)
 
     def test_writing_the_same_arguments_twice_is_byte_identical(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
