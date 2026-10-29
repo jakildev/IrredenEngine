@@ -15,7 +15,7 @@ routine, proven by scripted interaction rather than claimed.
   world→screen mapping accuracy, drag stroke, A/D binding overload
   (`docs/design/editor-authoring-friction.md` §"Phase 0 mechanism probe"
   — run, gate passed).
-- [ ] The gui_scale space mismatch is reconciled —
+- [x] The gui_scale space mismatch is reconciled —
   `GuiInputEvent.screenPx_` and `worldToScreen` agree on one space
   (the known ergonomic gap in `editor-authoring-friction.md`).
 - [x] The editor participates in the verify culture beyond its current
@@ -54,10 +54,11 @@ committed under `assets/voxel/entities/` with sidecars, and played back by
 `IRShapeDebug --load-vxs`. The Phase-0 mechanism probes ran and the gate
 passed (`editor-authoring-friction.md` §"Phase 0 mechanism probe").
 
-Row 3 stays open: `debug_overlay_draws.hpp`'s `worldToScreen` still
-projects through the viewport centre alone, while the picking chain's inverse
-`worldPos3DToMouseScreenPx` carries the letterbox, buffer and canvas-centre
-terms; nothing reconciles the two.
+Row 3 is closed: the dead debug-overlay `worldToScreen` / `screenToWorld`
+helpers, which projected through the viewport centre alone, are removed.
+`worldPos3DToMouseScreenPx`, the picking chain's inverse, is the single owner
+of the world-to-window-pixel projection and agrees with
+`GuiInputEvent.screenPx_`.
 
 The entity-creator epic (#3974) closed on 2026-10-13 and its post-merge
 follow-ups have landed: remove part (#4181), PARTS list scroll (#4222), linear
