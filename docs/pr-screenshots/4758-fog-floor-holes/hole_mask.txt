@@ -1,0 +1,4 @@
+capture=2560x1440 holePixels=35552 plainBlackButTreatedLit=4272
+holes black in hard-LOS control=0
+holes black in fully revealed (flat) control=0
+components=44 minPx=8 medianPx=384 maxPx=13056
