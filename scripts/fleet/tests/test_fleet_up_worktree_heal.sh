@@ -64,7 +64,13 @@ if fleet_worktree_registered "$WT"; then
 else
     ok "shared predicate rejects a missing admin directory"
 fi
-assert_contains "$FLEET_WORKTREE_ERROR" "not a git repository" "shared predicate keeps Git's first error line"
+# Git >= 2.56 names a gitfile whose admin dir is gone; older Git reports the
+# generic "not a git repository".
+case "$FLEET_WORKTREE_ERROR" in
+    *"not a git repository"*|*"gitfile does not point to a valid repository"*)
+        ok "shared predicate keeps Git's first error line" ;;
+    *) bad "shared predicate lost Git's error line: $FLEET_WORKTREE_ERROR" ;;
+esac
 ensure_worktree "$REPO" .claude/worktrees/pool-1 fleet/pool-1 claude/pool-1-scratch
 assert_eq "$(git -C "$WT" rev-parse HEAD)" "$before_head" "heal keeps the scratch ref at its prior commit"
 assert_eq "$(tree_hash "$WT")" "$before_hash" "heal preserves working-tree bytes"
