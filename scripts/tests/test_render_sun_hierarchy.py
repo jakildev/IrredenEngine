@@ -181,6 +181,7 @@ int main(){
     require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0 &&
             sunDepthBuf.readCount==0,"empty pool skips build");
     // Global record exhaustion: the retained prefix is complete for tiles that kept every record.
+    // A tile that lost records never traverses it and answers from the sampled layers.
     uint exhaustedComparisons=0;
     for(uint cascade:{0u,1u})for(uint requested:{65535u,65536u,65537u,70000u}){
         const uint retained=std::min(requested,65536u);
@@ -193,10 +194,13 @@ int main(){
             build();
             require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==8192,
                     "exhausted pool publishes its retained prefix");
-            require(sample({2.9f,3.5f},10,cascade)==1,
-                    "retained blocker survives global record exhaustion");
-            require(sunDepthBuf.readCount<=retained*kSourceFaceRecordWords,
-                    "retained-pool traversal visits each record at most once");
+            require(sample({2.9f,3.5f},10,cascade)==float(!lost),lost
+                    ?"lost tile answers from the sampled layers, not the retained pool"
+                    :"retained blocker survives global record exhaustion");
+            require(lost?sunDepthBuf.readCount==0
+                        :sunDepthBuf.readCount<=retained*kSourceFaceRecordWords,lost
+                    ?"lost tile never traverses the retained pool"
+                    :"retained-pool traversal visits each record at most once");
             ++exhaustedComparisons;
         }
         if(requested<=65536)continue;
@@ -466,13 +470,11 @@ class SunHierarchyTest(unittest.TestCase):
                 "hierarchyLeaves == sourceSunHierarchyLeafCount(retainedFaces)", "true"),
             "demote_analytic_bounds": ("if (bounds.low.w > 0.0) return true;", ""),
             "ignore_depth_window": ("separation < maxShadowThrow", "true"),
-            "certify_lost_tile": ("sourceQueryComplete = sourceFaceTileRetainsRecords(count);",
-                                  "sourceQueryComplete = true;"),
             "ignore_lost_bit": ("return (count & kSourceFaceTileRecordLost) == 0u;",
                                 "return true;"),
-            "skip_lost_tile_hierarchy": ("const bool queryHierarchy = !sourceQueryComplete &&",
-                                         "const bool queryHierarchy = !sourceQueryComplete && "
-                                         "sourceFaceTileRetainsRecords(count) &&"),
+            "query_lost_tile_hierarchy": (
+                "!sourceQueryComplete && sourceFaceTileRetainsRecords(count) &&",
+                "!sourceQueryComplete &&"),
             "count_unpublished_records": (
                 "return requested < kSourceFaceCapacity ? requested : kSourceFaceCapacity;",
                 "return requested;"),

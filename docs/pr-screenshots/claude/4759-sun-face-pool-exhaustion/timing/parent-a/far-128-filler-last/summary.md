@@ -1,21 +1,21 @@
 | Measurement | Mean ms | Run min–max ms | One-sided 95% upper bound ms |
 |---|---:|---:|---:|
-| frame avg | 101.400 | 101.400–101.400 | n/a |
-| frame p95 | 110.140 | 110.140–110.140 | n/a |
-| frame p99 | 128.840 | 128.840–128.840 | n/a |
-| steady frame avg | 100.750 | 100.750–100.750 | n/a |
-| steady frame p95 | 110.060 | 110.060–110.060 | n/a |
-| steady frame p99 | 128.840 | 128.840–128.840 | n/a |
-| GPU frame commandBufferSpans | 53.985 | 53.985–53.985 | n/a |
-| GPU frame envelope | 53.985 | 53.985–53.985 | n/a |
-| GPU bakeSunShadowMap | 0.009 | 0.009–0.009 | n/a |
-| GPU canvasClear | 0.085 | 0.085–0.085 | n/a |
-| GPU cardinalSurfaceFb | 1.127 | 1.127–1.127 | n/a |
-| GPU computeLightVolume | 0.092 | 0.092–0.092 | n/a |
-| GPU computeSunShadow | 0.043 | 0.043–0.043 | n/a |
+| frame avg | 101.990 | 101.990–101.990 | n/a |
+| frame p95 | 112.490 | 112.490–112.490 | n/a |
+| frame p99 | 128.590 | 128.590–128.590 | n/a |
+| steady frame avg | 102.730 | 102.730–102.730 | n/a |
+| steady frame p95 | 112.490 | 112.490–112.490 | n/a |
+| steady frame p99 | 128.590 | 128.590–128.590 | n/a |
+| GPU frame commandBufferSpans | 54.493 | 54.493–54.493 | n/a |
+| GPU frame envelope | 54.493 | 54.493–54.493 | n/a |
+| GPU bakeSunShadowMap | 0.008 | 0.008–0.008 | n/a |
+| GPU canvasClear | 0.087 | 0.087–0.087 | n/a |
+| GPU cardinalSurfaceFb | 1.160 | 1.160–1.160 | n/a |
+| GPU computeLightVolume | 0.098 | 0.098–0.098 | n/a |
+| GPU computeSunShadow | 0.044 | 0.044–0.044 | n/a |
 | GPU computeVoxelAO | 0.020 | 0.020–0.020 | n/a |
-| GPU entityCanvasToFb | 7.013 | 7.013–7.013 | n/a |
-| GPU fbToScreen | 0.039 | 0.039–0.039 | n/a |
+| GPU entityCanvasToFb | 6.824 | 6.824–6.824 | n/a |
+| GPU fbToScreen | 0.038 | 0.038–0.038 | n/a |
 | GPU lightingToTrixel | 0.014 | 0.014–0.014 | n/a |
 | GPU trixelToFb | 0.071 | 0.071–0.071 | n/a |
 | GPU voxelCardinalElect | 0.020 | 0.020–0.020 | n/a |
@@ -26,7 +26,7 @@
 
 | Steady frames pooled over runs | Frames | Mean ms | p95 ms | p99 ms | Max ms |
 |---|---:|---:|---:|---:|---:|
-| first 90 of each run excluded | 270 | 100.750 | 110.064 | 128.835 | 132.907 |
+| first 90 of each run excluded | 270 | 102.728 | 112.486 | 128.590 | 204.464 |
 
 | Fixed updates per rendered frame | Mean | Run min–max | Max in a frame |
 |---|---:|---:|---:|

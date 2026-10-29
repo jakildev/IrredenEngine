@@ -86,26 +86,34 @@ Reservations past the 65,536th record publish no geometry, but every lower ID
 is a published record once the bake dispatches finish. The first failed
 reservation requests the hierarchy, which is then built over that retained
 prefix. Each tile overlapped by a failed reservation carries the lost-record
-bit. Every incomplete tile then queries the ready hierarchy:
+bit:
 
-- A tile without the bit retained all of its candidates, so a hierarchy miss is
-  as exact as with a complete pool and suppresses the indexed sampled layer.
-- A tile with the bit accepts hierarchy hits, which are real blockers, but a
-  miss certifies nothing: the indexed sampled layer stays eligible for the
-  geometry outside the pool.
+- An incomplete tile without the bit retained all of its candidates, so it
+  queries the ready hierarchy, and a miss is as exact as with a complete pool
+  and suppresses the indexed sampled layer.
+- A tile with the bit never queries the hierarchy and answers from the sampled
+  layers, as when the pool was complete but the tile overflowed without a
+  ready hierarchy. No retained-pool miss can certify it, and a traversal for
+  hits alone can visit the whole retained pool per receiver: a dense
+  262,144-voxel grid exhausts the pool every frame and loses records on nearly
+  every tile; querying those tiles costs 15.8 ms of `computeSunShadow` per
+  frame on Metal against 0.05 ms for sampled answers.
 
-Complete inline tiles keep their local list, as before. The result can only add
-exact blockers relative to sampled fallback. Which records are lost still
-follows bake-dispatch order, so a tile's exact or sampled treatment depends on
-that order; in exchange, the lost set never discards stored geometry.
+Complete inline tiles keep their local list. Every tile is therefore either
+exact or answered by the sampled layers; incomplete storage is never certified
+complete. Which records are lost still follows bake-dispatch order,
+so a tile's exact or sampled treatment depends on that order.
 
 [Native Metal controls](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md)
 force exhaustion with a rigid filler plate created before or after the
 casters. With the receiver's records retained, crowded cardinal and oblique
-scenes now match their sufficient-capacity controls exactly, where the parent
-lost 200–228 shadow pixels. When the lower caster's own records are lost, the
-hole remains unchanged: its depth survives only in the nearest-depth sampled
-layer, behind the distant casters. Recovering it needs either
+scenes, static or with the caster stack drifting across the receiver every
+frame, match their sufficient-capacity controls exactly, where the parent lost
+200–228 shadow pixels. When the lower caster's own records are lost, the hole
+remains unchanged: its depth survives only in the nearest-depth sampled layer,
+behind the distant casters. Analytic solids reach that limit regardless of
+creation order, because `SHAPES_TO_TRIXEL` bakes them after every voxel canvas
+and their records are the first lost. Recovering it needs either
 dispatch-order-independent retention of receiver-relevant records, or capacity
 that does not exhaust; neither a larger bias nor accepting partial lists
 supplies that information. Raster-only casters in the primary layer share the
