@@ -188,6 +188,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         if (!voxelSet.renders() || voxelSet.numVoxels_ <= 0) {
             return;
         }
+        notePeakCapacity(voxelSet.allocatedVoxels_);
 
         IREntity::EntityId canvas = voxelSet.canvasEntity_;
         if (canvas == IREntity::kNullEntity) {
@@ -371,10 +372,14 @@ template <> struct System<REBUILD_GRID_VOXELS> {
                            (speculative != required && voxelSet.growAllocation(pool, required));
         if (grown) {
             ++capacityStats_.growths_;
-            capacityStats_.peakCapacity_ =
-                IRMath::max(capacityStats_.peakCapacity_, voxelSet.allocatedVoxels_);
+            notePeakCapacity(voxelSet.allocatedVoxels_);
         }
         return grown;
+    }
+
+    // Peak covers every resident allocation the rebuild visits, grown or not.
+    void notePeakCapacity(int allocated) {
+        capacityStats_.peakCapacity_ = IRMath::max(capacityStats_.peakCapacity_, allocated);
     }
 
     // An unadmitted pose renders nothing: the whole allocation goes inactive

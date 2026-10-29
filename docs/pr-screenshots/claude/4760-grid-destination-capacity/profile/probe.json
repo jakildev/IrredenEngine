@@ -3,7 +3,7 @@
     "command": [
       "fleet-run",
       "--build-dir",
-      "build-release",
+      "build",
       "--timeout",
       "240",
       "IRCanvasStress",
@@ -23,7 +23,7 @@
       "offscreen",
       "--focus-exact-fit-plate",
       "--grid-capacity-probe",
-      "probe-plate.txt"
+      "/tmp/pool-1-4804/probe/probe-plate.txt"
     ],
     "lines": [
       "[grid-capacity] tick=1 authored=144 capacity=216 unadmitted=0 growths=1 failures=0 peak_capacity=216 pool_resident=216 pool_peak_resident=360 pool_live=360 budget=262144"
@@ -33,7 +33,7 @@
     "command": [
       "fleet-run",
       "--build-dir",
-      "build-release",
+      "build",
       "--timeout",
       "240",
       "IRCanvasStress",
@@ -52,10 +52,10 @@
       "--window-mode",
       "offscreen",
       "--grid-capacity-probe",
-      "probe-cube.txt"
+      "/tmp/pool-1-4804/probe/probe-cube.txt"
     ],
     "lines": [
-      "[grid-capacity] tick=1 authored=1728 capacity=1728 unadmitted=0 growths=0 failures=0 peak_capacity=0 pool_resident=1728 pool_peak_resident=1728 pool_live=1728 budget=262144"
+      "[grid-capacity] tick=1 authored=1728 capacity=1728 unadmitted=0 growths=0 failures=0 peak_capacity=1728 pool_resident=1728 pool_peak_resident=1728 pool_live=1728 budget=262144"
     ]
   }
 }

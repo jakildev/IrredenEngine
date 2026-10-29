@@ -17,7 +17,8 @@ DISPLAY_VALIDATORS = (
     "scripts/feeder-margin-verify.py", "scripts/gui-verify.py", "scripts/light-verify.py",
     "scripts/occlusion-fire-verify.py", "scripts/package-smoke.py", "scripts/pivot-verify.py",
     "scripts/render-continuous-zoom-metric.py", "scripts/render-verify.py",
-    "scripts/perf/repeat_profile.py", "scripts/perf/perf_grid_matrix.sh")
+    "scripts/perf/grid_capacity_controls.py", "scripts/perf/repeat_profile.py",
+    "scripts/perf/perf_grid_matrix.sh")
 # The fleet-jobs profiles that run a DISPLAY_VALIDATORS script detached;
 # fleet-jobs' DISPLAY_PROFILES names the same set.
 DISPLAY_PROFILES = ("render-verify", "light-verify", "gui-verify")

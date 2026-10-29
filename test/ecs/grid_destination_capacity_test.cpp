@@ -356,6 +356,7 @@ TEST_F(GridDestinationCapacityTest, ExactFitPlateGrowsOnceToRetainEveryExposedCe
     EXPECT_GE(set(plate).allocatedVoxels_, 145);
     EXPECT_LE(set(plate).allocatedVoxels_, 216);
     EXPECT_EQ(set(plate).allocatedVoxels_, 216) << "3/2 high-water request";
+    EXPECT_EQ(m_rebuild.capacityStats_.peakCapacity_, 216);
     EXPECT_EQ(set(plate).unadmittedDestinationCells_, 0);
 }
 
@@ -373,6 +374,7 @@ TEST_F(GridDestinationCapacityTest, DenseSolidNeverGrowsForInteriorCells) {
     }
     EXPECT_EQ(set(entity).allocatedVoxels_, 1728);
     EXPECT_EQ(m_rebuild.capacityStats_.growths_, 0u);
+    EXPECT_EQ(m_rebuild.capacityStats_.peakCapacity_, 1728) << "peak reads a set that never grew";
 }
 
 // Shapes x signed Y/Z rotations x scales x translations, each subject placed

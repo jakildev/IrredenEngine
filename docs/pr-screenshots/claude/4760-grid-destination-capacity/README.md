@@ -112,10 +112,15 @@ Over a 2000-frame spinning run (about 1000 update ticks, more than one
 revolution) each fixture wrote exactly one line, at update tick 1
 ([profile/probe.json](profile/probe.json)):
 
-| Fixture | Authored | Capacity | Growths | Failures | Pool resident / peak / live slots | Budget |
-|---|---:|---:|---:|---:|---|---:|
-| plate | 144 | 216 | 1 | 0 | 216 / 360 / 360 | 262,144 |
-| cube | 1728 | 1728 | 0 | 0 | 1728 / 1728 / 1728 | 262,144 |
+| Fixture | Authored | Capacity | Peak capacity | Growths | Failures | Pool resident / peak / live slots | Budget |
+|---|---:|---:|---:|---:|---:|---|---:|
+| plate | 144 | 216 | 216 | 1 | 0 | 216 / 360 / 360 | 262,144 |
+| cube | 1728 | 1728 | 1728 | 0 | 0 | 1728 / 1728 / 1728 | 262,144 |
+
+Peak capacity is the largest resident allocation the rebuild has visited, grown
+or not, so the cube that never grows reads 1728. The probe was re-run on the
+Debug head build for that reading; every other value matches the earlier
+Release run, and none of these readings depends on the build type.
 
 The plate's peak of 360 slots is the migration: the 144-slot span is freed only
 after the 216-slot replacement is seeded. The freed 144 slots stay stranded
