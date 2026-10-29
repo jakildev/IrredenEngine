@@ -199,6 +199,11 @@ branch is rewritten only through `fleet-pr-checkout-detached` +
 `fleet-pr-amend-push`. CI re-runs the same check on every push and every
 title/body edit (`pr-closes-lint.yml`).
 
+GitHub's `closingIssuesReferences` oracle can lag after a body edit. An
+oracle-only reference to a closed issue is printed as informational because
+the merge cannot close that issue again; an issue found in the title, commit,
+or body still fails regardless of its state.
+
 #### 8a. Checks keyed on `Closes #N` (before `gh pr create`)
 
 Skip when the body has no `Closes #N`, or for the queue-manager role (its

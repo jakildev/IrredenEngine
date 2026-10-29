@@ -14,6 +14,10 @@ array of messages, or of `{"sha", "message"}` objects), `--base <branch>`
 `--body-file` are required with the first two and override the fetched values
 with `--pr`.
 
+GitHub's closing-reference oracle can lag an edit to the PR body. An
+oracle-only reference to a closed issue is informational because the merge
+cannot close it again; a scan hit still fails regardless of issue state.
+
 Exit 0: every would-close ref is declared. 1: undeclared refs, each printed
 with its source. 2: usage error, unreadable input, or zero commits scanned.
 """
@@ -136,14 +140,29 @@ def pr_inputs(number, slug):
 
 
 def pr_oracle(number, slug):
-    """GitHub's closingIssuesReferences as keys; None when the read fails."""
+    """GitHub closing references keyed by issue, or None when the read fails."""
     try:
-        data = gh_json(["pr", "view", str(number), "--repo", slug,
-                        "--json", "closingIssuesReferences"])
-        refs = set()
-        for ref in data["closingIssuesReferences"]:
+        owner, repo_name = slug.split("/", 1)
+        query = """
+            query ClosingReferences($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  closingIssuesReferences(first: 100) {
+                    nodes { number state repository { name owner { login } } }
+                  }
+                }
+              }
+            }
+        """
+        data = gh_json(["api", "graphql", "-f", f"query={query}",
+                        "-F", f"owner={owner}", "-F", f"repo={repo_name}",
+                        "-F", f"number={number}"])
+        refs = {}
+        nodes = data["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["nodes"]
+        for ref in nodes:
             repo = ref["repository"]
-            refs.add((f"{repo['owner']['login']}/{repo['name']}".lower(), int(ref["number"])))
+            key = (f"{repo['owner']['login']}/{repo['name']}".lower(), int(ref["number"]))
+            refs[key] = str(ref.get("state") or "OPEN").upper()
         return refs
     except (InputError, KeyError, TypeError, ValueError) as exc:
         print(f"note: closingIssuesReferences unread ({exc}); oracle skipped",
@@ -154,14 +173,17 @@ def pr_oracle(number, slug):
 def load_oracle_file(path):
     try:
         data = json.loads(read_text(path, "closing-refs file"))
-        return {(f"{r['repository']['owner']['login']}/{r['repository']['name']}".lower(),
-                 int(r["number"])) for r in data}
+        return {
+            (f"{r['repository']['owner']['login']}/{r['repository']['name']}".lower(),
+             int(r["number"])): str(r.get("state") or "OPEN").upper()
+            for r in data
+        }
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         raise InputError(f"closing-refs file {path}: {exc}") from exc
 
 
 def lint(title, commits, body, pr_slug, oracle=None):
-    """(would-close hits, declared keys, undeclared hits); a hit is (key, source, text)."""
+    """Return scan hits, declarations, failures, and stale oracle-only keys."""
     hits = [(k, f"title line {n}", t) for k, n, t in raw_closing_refs(title, pr_slug)]
     for index, (sha, message) in enumerate(commits, 1):
         label = f"commit {index}/{len(commits)}" + (f" {sha[:9]}" if sha else "")
@@ -170,10 +192,12 @@ def lint(title, commits, body, pr_slug, oracle=None):
     hits += [(k, f"body line {n}" if n else "body", t)
              for k, n, t in body_would_close_refs(body, pr_slug)]
     seen = {k for k, _, _ in hits}
-    hits += [(k, "oracle", "closingIssuesReferences")
-             for k in sorted(oracle or ()) if k not in seen]
+    oracle_hits = [(key, state) for key, state in (oracle or {}).items() if key not in seen]
+    stale = sorted(key for key, state in oracle_hits if state == "CLOSED")
+    hits += [(key, "oracle", "closingIssuesReferences")
+             for key, state in oracle_hits if state != "CLOSED"]
     declared = declared_closing_refs(body, pr_slug)
-    return hits, declared, [h for h in hits if h[0] not in declared]
+    return hits, declared, [h for h in hits if h[0] not in declared], stale
 
 
 def display(key, pr_slug):
@@ -227,11 +251,13 @@ def main(argv=None):
               file=sys.stderr)
         return 2
 
-    hits, declared, undeclared = lint(title, commits, body, pr_slug, oracle)
+    hits, declared, undeclared, stale = lint(title, commits, body, pr_slug, oracle)
     would = sorted({k for k, _, _ in hits})
     print("would close: " + (", ".join(display(k, pr_slug) for k in would) or "(none)"))
     print("declared:    " + (", ".join(display(k, pr_slug) for k in sorted(declared))
                              or "(none)"))
+    for key in stale:
+        print(f"STALE-ORACLE {display(key, pr_slug)} (closed)")
     if not undeclared:
         print("PASS: every issue the merge would close is declared on a link line")
         return 0
