@@ -1,0 +1,34 @@
+"""Receiver-shadow polygon oracle captures: yaw x fog x surface opt-in (IRCanvasStress)."""
+from pathlib import Path
+import hashlib, json, os, subprocess, sys
+root = Path('/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1')
+sys.path.insert(0, str(root / 'scripts'))
+from verify_common import collect_full_frames, platform_launch_argv, run_result
+out = Path(sys.argv[1]); out.mkdir(parents=True, exist_ok=True)
+yaws = sys.argv[2].split(',')
+extra = sys.argv[3:] if len(sys.argv) > 3 else []
+common = ['--only', 'shadowbox,floor', '--probe-grid', '--probe-floor-mode', 'grid',
+          '--probe-floor-span', '40', '--sun-direction', '0', '0', '-1', '--no-spin',
+          '--no-auto-rotate', '--pivot-origin', '--zoom', '4', '--subdivisions', '1', '--no-ao',
+          '--auto-screenshot', '10', '--sweep-frames', '1', '10', '--probe-overlapping-source', *extra]
+results = {}
+for yaw in yaws:
+    for fog in ('0', '16'):
+        for surface in ('0', '1'):
+            label = f'yaw{yaw}-fog{fog}-surface{surface}'
+            folder = out / label; folder.mkdir(exist_ok=True)
+            config = folder / 'config.lua'
+            config.write_text('config={window_mode="offscreen",profiling_enabled=false,gpu_stage_timing=false,init_window_width=1280,init_window_height=720,game_resolution_width=1280,game_resolution_height=720,screenshot_output_dir=' + json.dumps(str(folder)) + '}\n')
+            command = ['fleet-run', '--timeout', '240', 'IRCanvasStress', '--config-preset', str(config), *common, '--yaw', yaw, '--fog-reveal', fog]
+            env = {**os.environ, 'IR_PERAXIS_SURFACE_LIGHTING': surface}
+            with (folder / 'run.log').open('w') as stream:
+                r = subprocess.run(platform_launch_argv(command), cwd=root, env=env, stdout=stream, stderr=subprocess.STDOUT)
+            log = (folder / 'run.log').read_text()
+            shots = collect_full_frames(folder)
+            routes = [l.split('SURFACE-ROUTE ')[1] for l in log.splitlines() if 'SURFACE-ROUTE' in l]
+            results[label] = {'command': command, 'env': {'IR_PERAXIS_SURFACE_LIGHTING': surface},
+                              'returncode': r.returncode, 'result': run_result(log),
+                              'routes': routes, 'frames': [s.name for s in shots],
+                              'sha256': [hashlib.sha256(s.read_bytes()).hexdigest() for s in shots]}
+            print(label, results[label]['result'], routes, flush=True)
+(out / 'captures.json').write_text(json.dumps(results, indent=2) + '\n')

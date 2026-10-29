@@ -284,7 +284,8 @@ def routing_harness(variant):
                      r"perAxisSurfaceLightingEligible_\s*=[^;]+;", begin, re.DOTALL)[0]
     active_scan = braced_block(gate, r"if\s*\(cardinalGlitchPresentationActive_\)")
     gate = gate.replace(active_scan, "")
-    lighting_switch = (ROOT / "engine/prefabs/irreden/render/per_axis_surface_lighting.hpp").read_text()
+    lighting_switch = (
+        ROOT / "engine/prefabs/irreden/render/per_axis_surface_lighting.hpp").read_text()
     fog_route = ("namespace IRPrefab::PerAxisSurfaceLighting {\n"
                  + lighting_switch[lighting_switch.index("enum class SurfaceFogRoute"):
                                    lighting_switch.index("// The lazy")]

@@ -201,7 +201,8 @@ def source_for(backend):
                      r"perAxisSurfaceLightingEligible_\s*=[^;]+;", producer, re.DOTALL).group()
     active_scan = extract_block(gate, "if (cardinalGlitchPresentationActive_) {")
     gate = gate.replace(active_scan, "")
-    lighting_switch = (ROOT / "engine/prefabs/irreden/render/per_axis_surface_lighting.hpp").read_text()
+    lighting_switch = (
+        ROOT / "engine/prefabs/irreden/render/per_axis_surface_lighting.hpp").read_text()
     fog_route = ("namespace IRPrefab::PerAxisSurfaceLighting {\n"
                  + lighting_switch[lighting_switch.index("enum class SurfaceFogRoute"):
                                    lighting_switch.index("// The lazy")]
