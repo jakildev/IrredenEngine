@@ -80,7 +80,7 @@ struct C_FrameDataTrixelToFramebuffer{
 };
 struct C_PerAxisTrixelCanvases{
  static constexpr int kAxisCount=3;
- struct AxisTextures{std::pair<int,Texture*> colors_,distances_,ao_;};
+ struct AxisTextures{std::pair<int,Texture*> colors_,distances_,ao_,entityIds_;};
  std::array<Texture,9> textures{{{100},{101},{102},{200},{201},{202},{300},{301},{302}}};
  std::array<AxisTextures,3> axes_;
  Buffer cells{25},indirect{126},indirectArgs{127},overflow{125},overflowArgs{128};
@@ -157,6 +157,8 @@ struct Adapter{
  ShaderProgram *visibleLightingProgram_=&visible,*scatterProgram_=&beauty;
  ShaderProgram *scatterProbeProgram_=&probe;
  ShaderProgram *queryStatsProgram_=&queryStats;
+ bool surfaceFogEnabled_=false;
+ ShaderProgram* surfaceFogTwin(ShaderProgram* program){return program;}
  void bindSunShadowResources(){sunReady=true;event("sun");}
  void bindSurfaceLightingResources(){surfaceReady=true;event("surface");}
  void restoreSurfaceLightingResources(){textures[4]=400;event("restoreSurface");}

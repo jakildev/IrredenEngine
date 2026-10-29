@@ -185,6 +185,56 @@ class SurfaceLightingControlsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "no profile reports"):
                 verify_routes(output, selected, expected_environments=expected, rounds=1)
 
+    def test_fog_arm_propagates_and_requires_the_fog_pass_and_compute_fallback(self):
+        name = "cardinal-zoom4-overlap0"
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "matrix"
+            arguments = ["controls", "--output", str(output), "--adoption-matrix",
+                         "--case", name, "--fog-reveal", "16"]
+            with patch("sys.argv", arguments), \
+                    patch("surface_lighting_controls.run_rounds") as run:
+                self.assertEqual(main(), 0)
+            common = run.call_args.args[2]
+            self.assertEqual(common[-2:], ["--fog-reveal", "16"])
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "matrix"
+            arguments = ["controls", "--output", str(output), "--case", name,
+                         "--fog-reveal", "16", "--no-stage-timing"]
+            with patch("sys.argv", arguments), \
+                    patch("surface_lighting_controls.run_rounds") as run:
+                self.assertEqual(main(), 0)
+            self.assertEqual(run.call_args.args[2][-3:],
+                             ["--fog-reveal", "16", "--no-stage-timing"])
+        selected, expected = adoption_cases({name: cases()[name]})
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            for arm in selected:
+                surface = expected[arm]["IR_PERAXIS_SURFACE_LIGHTING"] == "1"
+                stage = "cardinalSurfaceFb" if surface else "trixelToFb"
+                directory = output / arm / "round-1"
+                directory.mkdir(parents=True)
+                (directory / "manifest.json").write_text("{}")
+                report = directory / "run-1.txt"
+                text = f"--- GPU stage timing ---\n{stage} 0.1 0.1 0.1 20\n"
+                report.write_text(text + "fogToTrixel 0.1 0.1 0.1 20\n")
+                verify_routes(output, {arm: []}, expected_environments=expected, fog=True)
+                report.write_text(text)
+                with self.assertRaisesRegex(ValueError, "no completed fogToTrixel"):
+                    verify_routes(output, {arm: []}, expected_environments=expected, fog=True)
+                if not surface:
+                    # Fog keeps an opted-out cardinal frame in compute.
+                    report.write_text(text + "fogToTrixel 0.1 0.1 0.1 20\n"
+                                      + "cardinalSurfaceFb 0.1 0.1 0.1 20\n")
+                    with self.assertRaisesRegex(ValueError, "unexpected cardinalSurfaceFb"):
+                        verify_routes(output, {arm: []}, expected_environments=expected,
+                                      fog=True)
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "matrix"
+            with patch("sys.argv", ["controls", "--output", str(output), "--fog-reveal", "-1"]), \
+                    patch("sys.stderr"), self.assertRaises(SystemExit):
+                main()
+            self.assertFalse(output.exists())
+
     def test_paired_controls_keep_geometry_and_camera(self):
         selected = cases()
         self.assertEqual(len(selected), 20)

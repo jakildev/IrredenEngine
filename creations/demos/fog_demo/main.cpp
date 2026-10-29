@@ -79,6 +79,7 @@
 
 // Fog driver-side API (revealRadius / setCell) and the BODY reveal systems.
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/per_axis_surface_lighting.hpp>
 #include <irreden/render/fog_reveal_systems.hpp>
 
 // Scene systems.
@@ -3846,6 +3847,11 @@ int main(int argc, char **argv) {
         IRRender::gpuStageTiming().enabled_ = true;
     }
     initSystems();
+    // These modes assert on FOG_TO_TRIXEL's canvas writes, which a surface
+    // route leaves to the composite, so they keep fog in compute.
+    if (g_channelProbe || g_worldPan || g_exploredDecay) {
+        IRPrefab::PerAxisSurfaceLighting::setEnabled(false);
+    }
     initCommands();
     initEntities();
     IREngine::gameLoop();

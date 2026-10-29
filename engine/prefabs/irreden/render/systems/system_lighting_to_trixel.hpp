@@ -12,6 +12,7 @@
 #include <cstdlib>
 
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -146,6 +147,14 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // The switch is `IRPrefab::PerAxisSurfaceLighting`'s singleton.
     bool perAxisSurfaceLightingEligible_ = false;
     bool perAxisSurfaceLightingReady_ = false;
+    // COMPOSE: FOG_TO_TRIXEL leaves the surface routes' samples to the
+    // composite, which fogs them against `fogSurfaceObserversBuf_` — this
+    // frame's snapshot of `mainCanvasFog_`'s observers, which the fog pass's
+    // shared per-canvas upload would otherwise overwrite before the composite.
+    IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute surfaceFogRoute_ =
+        IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute::NONE;
+    const C_CanvasFogOfWar *mainCanvasFog_ = nullptr;
+    Buffer *fogSurfaceObserversBuf_ = nullptr;
     Buffer *frameDataBuf_ = nullptr;
     // Reuse the voxel pipeline's per-frame UBO so we can recover the
     // world voxel position of each pixel via the same iso math the AO
@@ -573,6 +582,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         cardinalGlitchSourceReady_ = false;
         perAxisSurfaceLightingEligible_ = false;
         perAxisSurfaceLightingReady_ = false;
+        surfaceFogRoute_ = IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute::NONE;
+        mainCanvasFog_ = nullptr;
         if (animationParamsBuf_ == nullptr && findSystem(SHAPES_TO_TRIXEL) != kNullSystemId) {
             animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
             shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
@@ -639,6 +650,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 mainCanvasLightVolume_ = lv.value();
             if (ao.has_value())
                 mainCanvasAO_ = ao.value();
+            auto fog = IREntity::getComponentOptional<C_CanvasFogOfWar>(perAxisCanvasEntity_);
+            if (fog.has_value())
+                mainCanvasFog_ = fog.value();
         }
         resolveMainCanvasVoxelFrameInputs(
             perAxisCanvasEntity_,
@@ -646,14 +660,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             &mainVoxelPool_,
             &mainCanvasRotation_
         );
-        // Fog still consumes lit colors. Debug modes and incomplete pipelines
-        // retain the compute path; presentation must never mistake them for albedo.
+        // Debug modes and incomplete pipelines retain the compute path;
+        // presentation must never mistake them for albedo.
         bool worldSurfaceLightingEligible = false;
         if (mainCanvasTextures_ != nullptr && mainCanvasAO_ != nullptr &&
             mainCanvasSunShadow_ != nullptr && mainCanvasLightVolume_ != nullptr &&
             findSystem(COMPUTE_SUN_SHADOW) != kNullSystemId &&
             findSystem(TRIXEL_TO_FRAMEBUFFER) != kNullSystemId &&
-            findSystem(FOG_TO_TRIXEL) == kNullSystemId &&
             IRRender::getDebugOverlay() == DebugOverlayMode::NONE &&
             !IRRender::getDepthColorDebugMode()) {
             auto behavior =
@@ -661,36 +674,64 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             worldSurfaceLightingEligible =
                 behavior.has_value() && behavior.value()->useCameraPositionIso_;
         }
-        cardinalSurfaceLightingEligible_ =
-            worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&
-            (perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated());
-        if (cardinalSurfaceLightingEligible_ && findSystem(TRIXEL_GLITCH) != kNullSystemId) {
-            const auto subjectNodes =
-                IREntity::queryArchetypeNodesSimple(IREntity::getArchetype<C_GlitchSubject>());
-            for (auto *node : subjectNodes) {
-                const auto &subjects = IREntity::getComponentData<C_GlitchSubject>(node);
-                for (const C_GlitchSubject &subject : subjects) {
-                    if (IRPrefab::Glitch::isSubjectActive(subject)) {
-                        cardinalGlitchPresentationActive_ = true;
-                        break;
-                    }
-                }
-                if (cardinalGlitchPresentationActive_) {
-                    break;
-                }
-            }
-            if (cardinalGlitchPresentationActive_) {
-                auto &textures = const_cast<C_TriangleCanvasTextures &>(*mainCanvasTextures_);
-                ensureGlitchSourcePrograms();
-                ensureGlitchPresentationImages(textures);
-            }
-        }
         const C_PerAxisSurfaceLighting *surfaceLighting =
             IREntity::singletonOrNull<C_PerAxisSurfaceLighting>();
-        perAxisSurfaceLightingEligible_ = worldSurfaceLightingEligible &&
-                                          surfaceLighting != nullptr && surfaceLighting->enabled_ &&
+        const bool surfaceLightingEnabled = surfaceLighting != nullptr && surfaceLighting->enabled_;
+        const bool fogPassRegistered = findSystem(FOG_TO_TRIXEL) != kNullSystemId;
+        const bool cardinalCandidate =
+            worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&
+            (perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated());
+        // The scan runs only where its answer can change a route.
+        const bool glitchSubjectActive =
+            worldSurfaceLightingEligible && findSystem(TRIXEL_GLITCH) != kNullSystemId &&
+            (!fogPassRegistered || surfaceLightingEnabled) &&
+            (cardinalCandidate || (fogPassRegistered && mainCanvasFog_ != nullptr)) &&
+            anyGlitchSubjectActive();
+        surfaceFogRoute_ = IRPrefab::PerAxisSurfaceLighting::surfaceFogRoute(
+            fogPassRegistered,
+            mainCanvasFog_ != nullptr ? &mainCanvasFog_->observers_ : nullptr,
+            surfaceLightingEnabled,
+            glitchSubjectActive
+        );
+        if (surfaceFogRoute_ == IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute::FALLBACK) {
+            worldSurfaceLightingEligible = false;
+        }
+        cardinalSurfaceLightingEligible_ = cardinalCandidate && worldSurfaceLightingEligible;
+        cardinalGlitchPresentationActive_ = cardinalSurfaceLightingEligible_ && glitchSubjectActive;
+        if (cardinalGlitchPresentationActive_) {
+            auto &textures = const_cast<C_TriangleCanvasTextures &>(*mainCanvasTextures_);
+            ensureGlitchSourcePrograms();
+            ensureGlitchPresentationImages(textures);
+        }
+        perAxisSurfaceLightingEligible_ = worldSurfaceLightingEligible && surfaceLightingEnabled &&
                                           perAxisCanvases_ != nullptr &&
                                           perAxisCanvases_->isAllocated();
+        if (surfaceFogRoute_ == IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute::COMPOSE &&
+            (cardinalSurfaceLightingEligible_ || perAxisSurfaceLightingEligible_)) {
+            fogSurfaceObserversBuf_
+                ->subData(0, sizeof(FrameDataFogObservers), &mainCanvasFog_->observers_);
+        }
+    }
+
+    bool anyGlitchSubjectActive() const {
+        const auto subjectNodes =
+            IREntity::queryArchetypeNodesSimple(IREntity::getArchetype<C_GlitchSubject>());
+        for (auto *node : subjectNodes) {
+            for (const C_GlitchSubject &subject :
+                 IREntity::getComponentData<C_GlitchSubject>(node)) {
+                if (IRPrefab::Glitch::isSubjectActive(subject)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// True once this frame's surface-lit main canvas samples are left
+    /// unfogged for the composite.
+    bool surfaceFogComposed() const {
+        return surfaceFogRoute_ == IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute::COMPOSE &&
+               (cardinalSurfaceLightingReady_ || perAxisSurfaceLightingReady_);
     }
 
     // Restore the main world canvas's voxel frame data so FOG_TO_TRIXEL /
@@ -822,6 +863,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // ahead of LIGHTING_TO_TRIXEL); safe to resolve here.
         p->lightSourceBuf_ = IRRender::getNamedResource<Buffer>("LightSourceBuffer");
         p->paletteLUT_ = IRRender::getNamedResource<Texture2D>("PaletteLUT_Nearest");
+        p->fogSurfaceObserversBuf_ = IRRender::createNamedResource<Buffer>(
+                                         "FogSurfaceObservers",
+                                         nullptr,
+                                         sizeof(FrameDataFogObservers),
+                                         BUFFER_STORAGE_DYNAMIC
+        )
+                                         .second;
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.
         return systemId;

@@ -13,6 +13,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_glitch.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
+#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
@@ -58,7 +59,17 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     bool shapeProbeEnabled_ = false;
     ShaderProgram *shapeLightingProgram_ = nullptr;
     ShaderProgram *cardinalLightingProgram_ = nullptr;
+    ShaderProgram *cardinalLightingFogProgram_ = nullptr;
     bool cardinalLightingEnabled_ = false;
+    // The surface routes' samples arrive unfogged; their lit draws fog them
+    // against lighting's observer snapshot and `surfaceFog_`'s textures.
+    bool surfaceFogEnabled_ = false;
+    const C_CanvasFogOfWar *surfaceFog_ = nullptr;
+    // TRIXEL_TO_TRIXEL's UBO, which owns the slot the snapshot borrows; null
+    // when that system is not registered.
+    Buffer *trixelToTrixelFrameBuf_ = nullptr;
+    // The last surface route logged as SURFACE-ROUTE; -1 before the first frame.
+    int loggedSurfaceRoute_ = -1;
     System<LIGHTING_TO_TRIXEL> *lighting_ = nullptr;
     System<TRIXEL_GLITCH> *trixelGlitch_ = nullptr;
     bool cardinalGlitchOverrideEnabled_ = false;
@@ -73,6 +84,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     ShaderProgram *scatterLightingProgram_ = nullptr;
     ShaderProgram *visibleLightingProgram_ = nullptr;
     ShaderProgram *queryStatsProgram_ = nullptr;
+    ShaderProgram *scatterLightingFogProgram_ = nullptr;
+    ShaderProgram *visibleLightingFogProgram_ = nullptr;
+    ShaderProgram *queryStatsFogProgram_ = nullptr;
     bool scatterProbeEnabled_ = false;
     bool scatterLightingEnabled_ = false;
     bool visibilityPrepassEnabled_ = false;
@@ -267,6 +281,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             frameData.frameData_.perAxisStoreFrame_.z =
                 static_cast<int>(IRMath::rasterYawCardinalIndex(voxelFrame.rasterYaw_));
             frameData.frameData_.visualYaw_ = voxelFrame.rasterYaw_;
+            frameData.frameData_.visibleFaceIds_ = voxelFrame.visibleFaceIds_;
         }
         if ((shapeProbeEnabled_ || shapeLightingEnabled_ || cardinalLighting) &&
             entity == perAxisCanvasEntity_)
@@ -283,7 +298,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 (shapeLightingEnabled_ ? shapeLightingProgram_ : shapeProbeProgram_)->use();
             } else if (cardinalLighting) {
                 bindSunShadowResources();
-                cardinalLightingProgram_->use();
+                (surfaceFogEnabled_ ? cardinalLightingFogProgram_ : cardinalLightingProgram_)
+                    ->use();
             }
             if ((probe && shapeLightingEnabled_) || cardinalLighting) {
                 bindSurfaceLightingResources();
@@ -310,6 +326,29 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             if (probe || cardinalLighting)
                 program_->use();
         }
+    }
+
+    // Route witness for harness logs: which surface draws this frame runs and
+    // whether they compose fog, written whenever that changes.
+    void logSurfaceRoute() {
+        using IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute;
+        const SurfaceFogRoute fogRoute =
+            lighting_ != nullptr ? lighting_->surfaceFogRoute_ : SurfaceFogRoute::NONE;
+        const int route = (cardinalLightingEnabled_ ? 1 : 0) | (scatterLightingEnabled_ ? 2 : 0) |
+                          (static_cast<int>(fogRoute) << 2);
+        if (route == loggedSurfaceRoute_) {
+            return;
+        }
+        loggedSurfaceRoute_ = route;
+        IR_LOG_INFO(
+            "SURFACE-ROUTE cardinal={} perAxis={} fog={} fogComposed={}",
+            cardinalLightingEnabled_ ? 1 : 0,
+            scatterLightingEnabled_ ? 1 : 0,
+            fogRoute == SurfaceFogRoute::COMPOSE
+                ? "compose"
+                : (fogRoute == SurfaceFogRoute::FALLBACK ? "fallback" : "none"),
+            surfaceFogEnabled_ ? 1 : 0
+        );
     }
 
     void bindShapeProbe(const C_TriangleCanvasTextures &canvas) {
@@ -346,6 +385,29 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // GL keeps its image binding; Metal's render encoder reads only the
         // texture table, so the sampler bind must be last in its shared namespace.
         lightVolumeId->bind(7);
+        if (surfaceFogEnabled_) {
+            bindSurfaceFogResources();
+        }
+    }
+
+    // The fog-composing lit programs' observer snapshot, fog window and
+    // line-of-sight field. The snapshot borrows TRIXEL_TO_TRIXEL's slot.
+    void bindSurfaceFogResources() {
+        lighting_->fogSurfaceObserversBuf_->bindBase(
+            BufferTarget::UNIFORM,
+            kBufferIndex_FogSurfaceObservers
+        );
+        surfaceFog_->getTexture()->bind(kFogSurfaceWindowTextureUnit);
+        surfaceFog_->getLosTexture()->bind(kFogSurfaceLineOfSightTextureUnit);
+    }
+
+    void restoreSurfaceFogResources() {
+        if (trixelToTrixelFrameBuf_ != nullptr) {
+            trixelToTrixelFrameBuf_->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataTrixelToTrixel
+            );
+        }
     }
 
     void restoreSurfaceLightingResources() {
@@ -356,6 +418,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // The per-axis store can be released on a later cardinal frame. Leave
         // the persistent Metal texture table pointing at the main canvas AO.
         surfaceAO_->getTexture()->bind(4);
+        if (surfaceFogEnabled_) {
+            restoreSurfaceFogResources();
+        }
     }
 
     void restoreShapeProbe() {
@@ -513,12 +578,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             }
             // Both passes must share the compiled fragment function: independent
             // interpolation rounding can cross a quantized depth boundary.
-            (visibilityPrepass
-                 ? (visibilityStatsEnabled_ ? queryStatsProgram_ : visibleLightingProgram_)
-                 : (scatterLightingEnabled_
-                        ? scatterLightingProgram_
-                        : (scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_)))
-                ->use();
+            ShaderProgram *program =
+                visibilityPrepass
+                    ? (visibilityStatsEnabled_ ? queryStatsProgram_ : visibleLightingProgram_)
+                    : (scatterLightingEnabled_
+                           ? scatterLightingProgram_
+                           : (scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_));
+            (surfaceFogEnabled_ ? surfaceFogTwin(program) : program)->use();
             if (visibilityPrepass) {
                 // Order prior shader writes before the API clear reuses this buffer.
                 IRRender::device()->memoryBarrier(BarrierType::ALL);
@@ -607,6 +673,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             if (bindAO) {
                 tex.ao_.second->bind(4);
             }
+            if (bindAO && surfaceFogEnabled_) {
+                tex.entityIds_.second->bind(2);
+            }
             cellCompacted->bindRange(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisCellCompacted,
@@ -656,6 +725,56 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             BUFFER_STORAGE_DYNAMIC
         );
         visibilityPixelCount_ = pixels;
+    }
+
+    // Compiled on the first fog-composing frame; a pipeline that never fogs
+    // its surface routes never pays for them.
+    void createSurfaceFogPrograms() {
+        const auto create = [](const char *name, const char *vertex, const char *fragment) {
+            return IRRender::createNamedResource<ShaderProgram>(
+                       name,
+                       std::vector{
+                           ShaderStage{vertex, ShaderType::VERTEX},
+                           ShaderStage{fragment, ShaderType::FRAGMENT}
+                       }
+            ).second;
+        };
+        cardinalLightingFogProgram_ = create(
+            "CanvasCardinalLightingFogProgram",
+            IRRender::kFileVertTrixelToFramebuffer,
+            IRRender::kFileFragTrixelToFramebufferLitVoxelsFog
+        );
+        scatterLightingFogProgram_ = create(
+            "PerAxisSurfaceLightingFogProgram",
+            IRRender::kFileVertPerAxisScatter,
+            IRRender::kFileFragPerAxisSurfaceLightingFog
+        );
+        visibleLightingFogProgram_ = create(
+            "PerAxisVisibleLightingFogProgram",
+            IRRender::kFileVertPerAxisScatter,
+            IRRender::kFileFragPerAxisVisibleLightingFog
+        );
+        if (queryStatsProgram_ != nullptr) {
+            queryStatsFogProgram_ = create(
+                "PerAxisQueryStatsFogProgram",
+                IRRender::kFileVertPerAxisScatter,
+                IRRender::kFileFragPerAxisQueryStatsFog
+            );
+        }
+        trixelToTrixelFrameBuf_ =
+            IRRender::getNamedResourceOrNull<Buffer>("TrixelToTrixelFrameData");
+    }
+
+    // The fog-composing twin of a lit scatter program; any other program is
+    // never drawn while the composite fogs.
+    ShaderProgram *surfaceFogTwin(ShaderProgram *program) const {
+        if (program == queryStatsProgram_) {
+            return queryStatsFogProgram_;
+        }
+        if (program == visibleLightingProgram_) {
+            return visibleLightingFogProgram_;
+        }
+        return program == scatterLightingProgram_ ? scatterLightingFogProgram_ : program;
     }
 
     // Rebind slots 25/26 to VOXEL_TO_TRIXEL_STAGE_1's compaction buffers after the
@@ -755,8 +874,14 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             surfaceAO_ = lighting_->mainCanvasAO_;
             surfaceLightVolume_ = lighting_->mainCanvasLightVolume_;
         }
-        // Fog currently owns post-lighting canvas color; retain it until fragment fog composition
-        // exists.
+        surfaceFogEnabled_ = lighting_ != nullptr && lighting_->surfaceFogComposed();
+        surfaceFog_ = surfaceFogEnabled_ ? lighting_->mainCanvasFog_ : nullptr;
+        if (surfaceFogEnabled_ && cardinalLightingFogProgram_ == nullptr) {
+            createSurfaceFogPrograms();
+        }
+        logSurfaceRoute();
+        // Fog still owns post-lighting colour on shape receivers: this route
+        // has no fog-composing twin.
         if (shapeReceiverAvailable &&
             (IRRender::getDebugOverlay() == DebugOverlayMode::NONE ||
              IRRender::getDebugOverlay() == DebugOverlayMode::NORMALS) &&

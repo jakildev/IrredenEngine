@@ -25,7 +25,12 @@ must have neither. This certifies the selected draw path, not pixel coverage or
 shadow correctness. The independent receiver-polygon and crowded-overlap
 diagnostics own those checks.
 The usual `IRPerfGrid` fog pipeline disables surface lighting, so its perf gate
-does not qualify these paths.
+does not qualify these paths. `--fog-reveal <radius>` instead fogs the main canvas
+outside an analytic disc about the origin: every arm must then complete
+`fogToTrixel` samples, and a surface-off cardinal arm must keep the compute
+`trixelToFb` route. `--no-stage-timing` is the instrumentation control: it records
+wall-frame timing with GPU stage timestamps off and skips the route checks, so
+pair it with a timed matrix of the same arms.
 
 Use `--adoption-matrix` to compare all four explicit surface-lighting 0/1 ×
 visibility-prepass 0/1 arms. Repeated `--case` arguments select a bounded subset,

@@ -16,6 +16,7 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/systems/system_lighting_to_trixel.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -23,7 +24,7 @@ using namespace IRRender;
 
 namespace IRSystem {
 
-// Must match local_size in c_fog_to_trixel.glsl / .metal.
+// Must match local_size in c_fog_to_trixel_body.glsl / .metal.
 constexpr int kFogToTrixelGroupSize = 16;
 
 // Screen-space fog-of-war pass. Sits between LIGHTING_TO_TRIXEL (which
@@ -31,6 +32,11 @@ constexpr int kFogToTrixelGroupSize = 16;
 // fog masks the *lit* canvas — explored cells fade their lighting too,
 // not just the base albedo. On the main canvas it also paints the per-axis
 // canvases and the per-axis overflow lane (dispatchPerAxisFog).
+//
+// When LIGHTING_TO_TRIXEL preserved the main canvas's albedo for a surface
+// route, the composite fogs those samples itself (`surfaceFogComposed`): the
+// cardinal route's voxel surfaces take the preserving kernel and the per-axis
+// route skips its canvases and overflow lane.
 //
 // GUI canvases skip this pass via the same
 // `useCameraPositionIso_ == false` early-return that lighting uses; GUI
@@ -44,7 +50,9 @@ constexpr int kFogToTrixelGroupSize = 16;
 // param — so the cull and this post-process always see the same fog.
 template <> struct System<FOG_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
+    ShaderProgram *preserveSurfacesProgram_ = nullptr;
     ShaderProgram *overflowProgram_ = nullptr;
+    const System<LIGHTING_TO_TRIXEL> *lighting_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
     // Tiny per-canvas UBO carrying the live analytic vision circles. Uploaded
     // every frame (a few vec4 + a count) — small and unconditional, so unlike
@@ -92,16 +100,35 @@ template <> struct System<FOG_TO_TRIXEL> {
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         observerBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
 
+        const bool mainCanvas = entity == perAxisCanvasEntity_;
+        const bool preserveSurfaces =
+            mainCanvas && lighting_ != nullptr && lighting_->cardinalSurfaceLightingReady_;
+        if (preserveSurfaces && preserveSurfacesProgram_ == nullptr) {
+            // Compiled on the first frame that preserves surfaces.
+            preserveSurfacesProgram_ =
+                IRRender::createNamedResource<ShaderProgram>(
+                    "FogToTrixelPreserveSurfacesProgram",
+                    std::vector{
+                        ShaderStage{IRRender::kFileCompFogToTrixelSurface, ShaderType::COMPUTE}
+                    }
+                ).second;
+        }
         {
             GpuSubStageScope mainScope("fogToTrixel");
+            if (preserveSurfaces) {
+                preserveSurfacesProgram_->use();
+            }
             const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kFogToTrixelGroupSize);
             const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kFogToTrixelGroupSize);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            if (preserveSurfaces) {
+                program_->use();
+            }
         }
 
-        if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
-            perAxisCanvases_->isAllocated()) {
+        if (mainCanvas && perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated() &&
+            !(lighting_ != nullptr && lighting_->perAxisSurfaceLightingReady_)) {
             dispatchPerAxisFog(*perAxisCanvases_, canvasTextures, fog);
         }
     }
@@ -174,6 +201,10 @@ template <> struct System<FOG_TO_TRIXEL> {
 
     void beginTick() {
         program_->use();
+        const SystemId lightingId = findSystem(LIGHTING_TO_TRIXEL);
+        lighting_ = lightingId != kNullSystemId
+                        ? getSystemParams<System<LIGHTING_TO_TRIXEL>>(lightingId)
+                        : nullptr;
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
         if (perAxisCanvasEntity_ == IREntity::kNullEntity) {
@@ -211,6 +242,7 @@ template <> struct System<FOG_TO_TRIXEL> {
             C_CanvasFogOfWar>("FogToTrixel");
         auto *params = getSystemParams<System<FOG_TO_TRIXEL>>(systemId);
         params->program_ = IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
+
         params->overflowProgram_ =
             IRRender::getNamedResource<ShaderProgram>("FogOverflowFacesProgram");
         params->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");

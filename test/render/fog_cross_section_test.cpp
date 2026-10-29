@@ -124,9 +124,9 @@ const std::string kGlslShapeBodyPath =
 const std::string kMetalShapeBodyPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_shapes_to_trixel_body.metal";
 const std::string kGlslFogPassPath =
-    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel.glsl";
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_to_trixel_body.glsl";
 const std::string kMetalFogPassPath =
-    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_fog_to_trixel.metal";
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_fog_to_trixel_body.metal";
 const std::string kGlslFogOverflowPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_overflow_faces.glsl";
 const std::string kMetalFogOverflowPath =
@@ -1213,7 +1213,7 @@ TEST(FogCrossSectionShaderParity, CeilingSelectionBindingsAndCapSitesArePresentO
               "fogCeilingRetained(neighbour",
               "fogSelectionCell(neighbour.xy"})
             EXPECT_NE(select.find(term), std::string::npos) << term << extension;
-        for (const char *stem : {"c_fog_to_trixel", "c_fog_overflow_faces"}) {
+        for (const char *stem : {"c_fog_to_trixel_body", "c_fog_overflow_faces"}) {
             const auto paint = read(stem);
             EXPECT_NE(paint.find("fogCeilingCutFace("), std::string::npos) << stem;
             EXPECT_LT(paint.find("fogCeilingCutFace("), paint.find("reveal.state >= 1.0")) << stem;

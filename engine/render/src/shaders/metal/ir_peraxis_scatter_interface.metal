@@ -22,6 +22,9 @@ struct VertexOut {
     float depthColorExtent [[flat]];
     // Face/cell priority within a depth band.
     float cellTieOffset [[flat]];
+    // An overflow entry's fog class byte, plus kScatterFogCarrierCutFace on a
+    // cut face; 0 for a cell, whose class rides its axis canvas's entity id.
+    uint fogCarrier [[flat]];
 };
 
 struct FragmentOut {

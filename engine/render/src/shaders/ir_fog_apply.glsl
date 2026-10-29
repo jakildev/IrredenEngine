@@ -47,6 +47,11 @@ vec3 fogCutCapBlend(vec3 color, vec3 sourceColor, float tone, float state, float
     return mix(color, mix(sourceColor * tone, sourceColor, state), weight);
 }
 
+// A cross-section face whose ceiling neighbour is cut: the cap tone at state 0.
+vec4 fogApplyCutCap(vec4 sourceColor, float capTone) {
+    return vec4(fogCutCapBlend(sourceColor.rgb, sourceColor.rgb, capTone, 0.0, 1.0), sourceColor.a);
+}
+
 // Only meaningful for state < 1.0; a fully revealed sample keeps its colour.
 vec4 fogApplyReveal(FogReveal reveal, int faceAxis, vec4 sourceColor, vec4 unexploredColor,
     int visionCircleCount, vec4 revealSurfaceTreatment) {

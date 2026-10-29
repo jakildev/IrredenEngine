@@ -15,6 +15,8 @@
 //
 // Include-FRAGMENT: the wrapper supplies the image slot before including it:
 //   #define IR_FOG_LOS_BINDING <slot>
+// or, from a fragment stage, a sampler unit:
+//   #define IR_FOG_LOS_SAMPLER_BINDING <unit>
 // c_fog_to_trixel binds image 4; the GL probe test binds its own slot. The
 // kernel includes ir_iso_common first.
 // Metal twin: metal/ir_fog_los.metal — keep the pure helpers byte-identical
@@ -54,11 +56,21 @@ const int kFogLosRouteCardinal = 0;  // the cardinal voxel raster's lower-corner
 const int kFogLosRoutePerAxis = 1;   // the per-axis / overflow store's lower-corner lattice
 const int kFogLosRouteAnalytic = 2;  // an exact world surface point
 
+#ifdef IR_FOG_LOS_SAMPLER_BINDING
+// A fragment stage reads the field through a sampler unit instead, for the
+// reason ir_fog_common gives for the fog window.
+layout(binding = IR_FOG_LOS_SAMPLER_BINDING) uniform sampler2D fogLineOfSight;
+
+vec4 fogLosTexel(ivec2 texel) {
+    return texelFetch(fogLineOfSight, texel, 0);
+}
+#else
 layout(rgba32f, binding = IR_FOG_LOS_BINDING) readonly uniform image2D fogLineOfSight;
 
 vec4 fogLosTexel(ivec2 texel) {
     return imageLoad(fogLineOfSight, texel);
 }
+#endif
 
 bool fogLosSourceGated(int losSourceMask, int source) {
     return ((losSourceMask >> source) & 1) != 0;

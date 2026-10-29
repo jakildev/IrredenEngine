@@ -58,8 +58,7 @@ kernel void c_fog_overflow_faces(
         const float3 facePoint = pos3D;
         if (fogCeilingCutFace(facePoint, faceId, fogObservers, canvasFogOfWar)) {
             const float4 sourceColor = unpackColor(colorPacked);
-            const float4 capColor = float4(fogCutCapBlend(sourceColor.rgb,
-                sourceColor.rgb, fogObservers.revealSurfaceTreatment.z, 0.0, 1.0), sourceColor.a);
+            const float4 capColor = fogApplyCutCap(sourceColor, fogObservers.revealSurfaceTreatment.z);
             overflowScratch[entryBase + 1u] = packColor(capColor);
             return;
         }

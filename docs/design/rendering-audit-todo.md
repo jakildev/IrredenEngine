@@ -124,8 +124,9 @@ this is additional qualification of the continuous route, not a sampled fix.
 Rigid bounds picking now shares compositing's scaled origin encoding and floors
 to hover iso bins. It remains an anchor approximation, not surface picking.
 
-The next implementation slice is fog-compatible continuous receiving, retaining
-the opt-in until representative cost gates pass. Then qualify entity mode changes,
+[Fog-compatible continuous receiving](../pr-screenshots/claude/4757-fog-surface-receiving/README.md)
+is implemented behind the same opt-in, which stays off until representative cost
+gates pass. Next qualify entity mode changes,
 other cardinal crossings, curved/concave side receivers and native Windows/OpenGL
 against independent geometry. Attribute the five existing reference mismatches
 before refreshing them. Global face-record pool overflow and Release million-entity
@@ -158,9 +159,9 @@ These are untimed Metal controls, and both subdivision settings produce the
 same image and counters. Next qualify cost on a guarded host and add geometry
 whose subdivision changes the workload, alongside the polygon oracle at near-
 cardinal angles, fractional negative camera positions and side receivers.
-Preserve the fog fallback until albedo/fog application and the shared lighting/
-fog-observer buffer binding are made compatible; do not remove that exclusion
-as a default-switch shortcut. Any default promotion must retain a real explicit
+On a fog pipeline the surface routes run only under the opt-in and only while the
+main canvas has no line-of-sight source or active glitch subject; otherwise fog
+keeps lighting in compute. Any default promotion must retain a real explicit
 environment opt-out, runtime switch and producer/consumer readiness checks.
 The [resource-free fog composition extraction](../pr-screenshots/codex/fog-surface-composition/README.md)
 preserves all 13 native full frames and seven crops exactly, with numerical
@@ -168,13 +169,15 @@ GLSL/MSL coverage of rim, cap, treatment band, alpha and observer forwarding.
 It does not enable continuous fog receiving or alter resource bindings. Its
 LOS control exposes pre-existing black holes around the wall: isolate reveal
 coverage, cut-face admission and LOS before adopting the gated route.
-The next bounded fog integration can keep continuous receiving opt-in and admit
-only canvases whose current fog LOS source mask is zero. Preserve albedo through
-lighting and fog, retain FIELD/BODY/EXEMPT and cut-face provenance, then apply
-the existing fog color transform once after surface lighting. Bind the main
-observer snapshot explicitly in a non-conflicting presentation slot. Gated LOS
-must retain its compute fallback; calling its visibility marches per output
-fragment would add an unqualified cost. A post-hoc multiplier on stored lit RGB
+The fog integration preserves albedo through lighting and fog: the preserving
+fog kernel skips exactly the samples the lighting kernel left as albedo, and the
+lit composite applies the shared color transform once after surface lighting,
+keeping FIELD/BODY/EXEMPT and cut-face provenance. LIGHTING_TO_TRIXEL owns the
+main canvas's observer snapshot, bound at TRIXEL_TO_TRIXEL's slot with the
+owner restored after each lit draw. Gated LOS keeps its compute fallback;
+calling its visibility marches per output fragment would add an unqualified
+cost. SDF shape samples, LOS-gated sources and active glitch presentation stay
+on compute. A post-hoc multiplier on stored lit RGB
 cannot isolate sunlight from ambient/local light after tone mapping and clipping.
 Choose the visibility-prepass default separately from the accurate receiver
 default. Release million-entity qualification still needs explicit visible

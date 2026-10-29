@@ -1467,6 +1467,15 @@ constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 // before its own dispatch (the engine's rebind-before-use discipline). Both
 // shaders hard-code `27` for this UBO — keep them in lockstep with this alias.
 constexpr std::uint32_t kBufferIndex_FogObservers = kBufferIndex_FrameDataLightingToTrixel;
+// The main canvas's observer snapshot, read by the fog-composing surface-lit
+// framebuffer fragments, which still read lighting at 27. Aliases the slot
+// only the TRIXEL_TO_TRIXEL compute reads; TRIXEL_TO_FRAMEBUFFER binds the
+// snapshot for its lit draws and restores TrixelToTrixelFrameData after them.
+// The same draws sample the fog window at texture unit 8 and the
+// line-of-sight field at 9, both above every unit the composite programs use.
+constexpr std::uint32_t kBufferIndex_FogSurfaceObservers = kBufferIndex_FrameDataTrixelToTrixel;
+constexpr std::uint32_t kFogSurfaceWindowTextureUnit = 8;
+constexpr std::uint32_t kFogSurfaceLineOfSightTextureUnit = 9;
 // Aliases the light-occlusion-grid slot. The light-volume propagate
 // shader reads LightOcclusionGrid; the sun bake writes /
 // the sun shadow lookup reads SunShadowDepthMap. TRIXEL_TO_FRAMEBUFFER

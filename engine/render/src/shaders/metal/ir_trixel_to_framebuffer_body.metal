@@ -22,6 +22,9 @@ using namespace metal;
 #if IR_CARDINAL_LIGHTING
 #include "ir_cardinal_voxel_receiver.metal"
 #endif
+#if IR_SURFACE_FOG
+#include "ir_fog_common.metal"
+#endif
 
 struct VertexIn {
     float2 position [[attribute(0)]];
@@ -102,6 +105,33 @@ vertex VertexOut v_trixel_to_framebuffer(
     return out;
 }
 
+#if IR_SURFACE_FOG
+// GLSL twin: cardinalFogSamplePoint in ../ir_trixel_to_framebuffer_body.glsl.
+static float3 cardinalFogSamplePoint(
+    int2 pixel, int rawDist, uint2 rawId, constant FrameDataIsoTriangles& frameData
+) {
+    const int2 options = int2(frameData.cardinalReceiver.zw);
+    const int scale = effectiveTrixelSubdivisionScale(options);
+    const int depth = scale > 1 && decodeAnalyticSurface(rawId)
+        ? decodeDepthSingle(rawDist) - cardinalRasterLatticeDepthOffset(scale)
+        : decodeDepthSingle(rawDist);
+    return trixelCanvasPixelToWorld3D(pixel, depth, frameData.perAxisBase,
+        frameData.cardinalReceiver.xy, options, frameData.visualYaw);
+}
+
+// GLSL twin: cardinalFogAaFloor in ../ir_trixel_to_framebuffer_body.glsl.
+static float cardinalFogAaFloor(
+    int2 pixel, int rawDist, uint2 rawId, constant FrameDataIsoTriangles& frameData,
+    constant FogObserverData& fogObservers
+) {
+    if (fogObservers.visionCircleCount == 0) {
+        return 0.0f;
+    }
+    return length(cardinalFogSamplePoint(pixel + int2(1, 0), rawDist, rawId, frameData).xy -
+        cardinalFogSamplePoint(pixel, rawDist, rawId, frameData).xy);
+}
+#endif
+
 fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     VertexOut in [[stage_in]],
     texture2d<float> triangleColors [[texture(0)]],
@@ -128,6 +158,12 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     texture3d<float> lightVolume [[texture(5)]],
     texture2d<float> glitchPresentationOverrides [[texture(6)]],
     texture3d<float, access::read> lightVolumeId [[texture(7)]],
+#endif
+#if IR_SURFACE_FOG
+    // buffer(10) = kBufferIndex_FogSurfaceObservers: lighting holds 27.
+    constant FogObserverData& fogObservers [[buffer(10)]],
+    texture2d<uint, access::read> canvasFogOfWar [[texture(8)]],
+    texture2d<float, access::read> fogLineOfSight [[texture(9)]],
 #endif
     device HoveredEntityIdBuffer& hovered [[buffer(14)]]
 ) {
@@ -192,8 +228,9 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 #endif
 
 #if IR_CARDINAL_LIGHTING
+    const uint2 cardinalRawId = triangleEntityIds.read(sampleCoord).rg;
     if (!glitchPresentationOverride && color.a >= 0.1 && lighting.lightingEnabled != 0 && frameData.cardinalLightingEnabled != 0 &&
-        isCardinalVoxelSurface(triangleEntityIds.read(sampleCoord).rg)) {
+        isCardinalVoxelSurface(cardinalRawId)) {
         const float3 position = cardinalVoxelSurfacePoint(
             originRaw, int2(sampleCoord), rawDist, frameData.perAxisBase,
             frameData.cardinalReceiver.xy, int2(frameData.cardinalReceiver.zw),
@@ -204,6 +241,17 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
         const float3 localLightPosition = trixelCanvasPixelToWorld3D(int2(sampleCoord), decodeDepthSingle(rawDist), frameData.perAxisBase, frameData.cardinalReceiver.xy, int2(frameData.cardinalReceiver.zw), frameData.visualYaw);
         color.rgb = worldSurfaceLighting(color.rgb, surfaceAO.read(sampleCoord).r, position, normal,
             frameData.casterViewToWorld, localLightPosition, lighting, volumeParams, sunFrameData, sunDepthBuf, lights, paletteLUT, lightVolume, lightVolumeId);
+#if IR_SURFACE_FOG
+        // FOG_TO_TRIXEL left this pixel's albedo unfogged. Its reveal is
+        // sampled where the kernel would have sampled it.
+        color = fogComposeSurface(color, decodeFogBody(cardinalRawId),
+            float(decodeFogBodyFactor(cardinalRawId)) / 255.0f, false,
+            cardinalFogSamplePoint(int2(sampleCoord), rawDist, cardinalRawId, frameData),
+            float3(0.0f),
+            frameData.visibleFaceIds[decodeSlot(rawDist)] ^ decodeFlipSingle(rawDist),
+            cardinalFogAaFloor(int2(sampleCoord), rawDist, cardinalRawId, frameData, fogObservers),
+            decodeAnalyticSurface(cardinalRawId), fogObservers, canvasFogOfWar, fogLineOfSight);
+#endif
     }
 #endif
 

@@ -191,9 +191,16 @@ template<class T>std::optional<T*> getComponentOptional(int){
 }
 struct Axes {bool allocated;bool isAllocated()const{return allocated;}};
 struct Program {int calls=0;void use(){++calls;}};
+struct FrameDataFogObservers {int losSourceMask_=0;};
+FOG_ROUTE
+// The main canvas's fog gates a source, so a registered fog pass keeps compute.
+struct Fog {FrameDataFogObservers observers_{1};} mainFog;
 struct Producer {
     bool perAxisSurfaceLightingEligible_=false,perAxisSurfaceLightingReady_=false;
-    bool cardinalSurfaceLightingEligible_=false;
+    bool cardinalSurfaceLightingEligible_=false,cardinalGlitchPresentationActive_=false;
+    IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute surfaceFogRoute_{};
+    const Fog* mainCanvasFog_=&mainFog;
+    bool anyGlitchSubjectActive(){return false;}
     Axes* perAxisCanvases_=nullptr;
     const int *mainCanvasTextures_=nullptr,*mainCanvasAO_=nullptr;
     const int *mainCanvasSunShadow_=nullptr,*mainCanvasLightVolume_=nullptr;
@@ -233,7 +240,7 @@ int main(){
         IREntity::behaviorLookups=0;
         producer.begin();
         const bool commonResources=on(3)&&on(4)&&on(5)&&on(6);
-        const bool commonPipeline=on(7)&&on(8)&&on(9)&&on(10)&&on(11);
+        const bool commonPipeline=on(7)&&on(8)&&on(10)&&on(11);
         if(IREntity::behaviorLookups!=int(commonResources&&commonPipeline)){
             std::fprintf(stderr,"shared behavior lookup\n");return 8;
         }
@@ -275,12 +282,13 @@ def routing_harness(variant):
         r"perAxisSurfaceLighting(?:Eligible|Ready)_\s*=\s*false\s*;", begin))
     gate = re.search(r"bool worldSurfaceLightingEligible = false;.*?"
                      r"perAxisSurfaceLightingEligible_\s*=[^;]+;", begin, re.DOTALL)[0]
-    active_scan = braced_block(
-        gate,
-        r"if\s*\(cardinalSurfaceLightingEligible_\s*&&\s*"
-        r"findSystem\(TRIXEL_GLITCH\)\s*!=\s*kNullSystemId\)",
-    )
+    active_scan = braced_block(gate, r"if\s*\(cardinalGlitchPresentationActive_\)")
     gate = gate.replace(active_scan, "")
+    lighting_switch = (ROOT / "engine/prefabs/irreden/render/per_axis_surface_lighting.hpp").read_text()
+    fog_route = ("namespace IRPrefab::PerAxisSurfaceLighting {\n"
+                 + lighting_switch[lighting_switch.index("enum class SurfaceFogRoute"):
+                                   lighting_switch.index("// The lazy")]
+                 .replace("IRComponents::", "") + "}\n")
     tick = functions(producer, "tick")
     skip_detached = braced_block(tick, r"if\s*\(\s*!behavior\.useCameraPositionIso_\b")
     publish = braced_block(
@@ -297,7 +305,8 @@ def routing_harness(variant):
     elif variant == "consumer-eligibility":
         consume = consume.replace("perAxisSurfaceLightingReady_", "perAxisSurfaceLightingEligible_")
     elif variant == "fog-accepted":
-        gate = re.sub(r"findSystem\(FOG_TO_TRIXEL\)\s*==\s*kNullSystemId", "true", gate)
+        gate = re.sub(r"if\s*\(surfaceFogRoute_\s*==\s*IRPrefab::PerAxisSurfaceLighting::"
+                      r"SurfaceFogRoute::FALLBACK\)", "if (false)", gate)
     elif variant == "relight-eligible":
         publish = re.sub(r"if\s*\(perAxisSurfaceLightingEligible_\)", "if (false)", publish)
     elif variant == "presence-enables":
@@ -309,7 +318,7 @@ def routing_harness(variant):
     elif variant == "per-axis-voxel-pool":
         gate = gate.replace("perAxisSurfaceLightingEligible_ =",
                             "perAxisSurfaceLightingEligible_ = mainVoxelPool_ != nullptr &&")
-    return (ROUTING_ADAPTER + "void begin(){" + reset + gate + "}\n"
+    return (ROUTING_ADAPTER.replace("FOG_ROUTE", fog_route) + "void begin(){" + reset + gate + "}\n"
             "void tick(int entity,const int* shadow){int canvasTextures=0,ao=0;"
             "const auto& behavior=IREntity::behavior;" + skip_detached + publish + "}\n};\n"
             "bool consume(const Producer* lighting_){bool scatterLightingEnabled_=false;"
@@ -386,6 +395,8 @@ struct Volume {
 struct Binding {
     Lighting* lighting_;
     Volume* surfaceLightVolume_;
+    bool surfaceFogEnabled_=false;
+    void bindSurfaceFogResources(){}
 """
 
 BINDING_CASES = r"""

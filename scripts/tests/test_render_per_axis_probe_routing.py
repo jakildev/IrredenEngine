@@ -79,6 +79,8 @@ struct Adapter {
  ShaderProgram *visibleLightingProgram_=&visibleLighting;
  ShaderProgram *queryStatsProgram_=&queryStats;
  void bindSurfaceLightingResources(){++surfaceBinds;}
+ bool surfaceFogEnabled_=false;
+ ShaderProgram* surfaceFogTwin(ShaderProgram* program){return program;}
 """
 
 CASES = r"""

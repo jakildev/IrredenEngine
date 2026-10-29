@@ -26,9 +26,15 @@
 #include "ir_fog_apply.glsl"
 #include "ir_fog_los.glsl"
 
-// binding 27 ALIASES kBufferIndex_FrameDataLightingToTrixel — the Metal 0-30
-// buffer table is full, and fog runs after lighting is done with the slot.
-layout(std140, binding = 27) uniform FogObserverData {
+// The compute fog passes read the block at 27, which ALIASES
+// kBufferIndex_FrameDataLightingToTrixel — the Metal 0-30 buffer table is full,
+// and fog runs after lighting is done with the slot. A surface-lit fragment
+// stage still reads lighting there, so it defines IR_FOG_OBSERVER_BINDING to
+// kBufferIndex_FogSurfaceObservers before including this file.
+#ifndef IR_FOG_OBSERVER_BINDING
+#define IR_FOG_OBSERVER_BINDING 27
+#endif
+layout(std140, binding = IR_FOG_OBSERVER_BINDING) uniform FogObserverData {
     // (centerX, centerY, radius, edgeSoftness) in world units.
     vec4 visionCircles[kMaxFogVisionCircles];
     int visionCircleCount;
@@ -59,7 +65,26 @@ layout(std140, binding = 27) uniform FogObserverData {
     vec4 revealSurfaceTreatment;
 };
 
+#ifdef IR_FOG_GRID_SAMPLER_BINDING
+// Fragment stages read the window through a sampler unit: GL guarantees only
+// eight fragment image units, and Metal shares one slot table between samplers
+// and images, so no image unit is free in both. The texture is NEAREST.
+layout(binding = IR_FOG_GRID_SAMPLER_BINDING) uniform usampler2D canvasFogOfWar;
+uvec4 fogGridTexel(ivec2 texel) {
+    return texelFetch(canvasFogOfWar, texel, 0);
+}
+ivec2 fogGridSize() {
+    return textureSize(canvasFogOfWar, 0);
+}
+#else
 layout(rg32ui, binding = 2) readonly uniform uimage2D canvasFogOfWar;
+uvec4 fogGridTexel(ivec2 texel) {
+    return imageLoad(canvasFogOfWar, texel);
+}
+ivec2 fogGridSize() {
+    return imageSize(canvasFogOfWar);
+}
+#endif
 
 // Grid texel of world column `col`: (state integer, channel mask), or
 // (0, kFogChannelDefault) — unexplored on the default channel — for a column
@@ -71,14 +96,14 @@ uvec2 fogTapTexel(ivec2 col, ivec2 fogSize) {
     if (cell.x < 0) {
         return uvec2(0u, kFogChannelDefault);
     }
-    return imageLoad(canvasFogOfWar, cell).rg;
+    return fogGridTexel(cell).rg;
 }
 
 bool fogCeilingCutFace(vec3 facePoint, int faceId) {
     const ivec3 normal = faceOutwardNormal6I(faceId);
     const ivec3 owner = roundHalfUp(facePoint - 0.5 * vec3(normal));
     const ivec3 neighbor = owner + normal;
-    const uvec2 cell = fogTapTexel(neighbor.xy, imageSize(canvasFogOfWar));
+    const uvec2 cell = fogTapTexel(neighbor.xy, fogGridSize());
     return !fogCeilingRetained(neighbor, cell, visionCircles,
         visionCircleHeights, visionCircleCeilings, visionCircleChannels,
         visionCircleCount, revealSurfaceTreatment, revealSurfaceTreatment.w);
@@ -145,7 +170,7 @@ FogReveal fogRevealSample(
     bool analyticSurface
 ) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
-    const ivec2 fogSize = imageSize(canvasFogOfWar);
+    const ivec2 fogSize = fogGridSize();
     const uvec2 gridTexel = fogTapTexel(surfaceVoxel.xy, fogSize);
     const float gridState = fogTexelState(gridTexel.x);
     const uint cellChannels = gridTexel.y;
@@ -270,4 +295,25 @@ vec4 fogApplyBody(float state, vec4 sourceColor) {
 // The BODY state an overflow entry's class byte carries (encodeFogOverflowClassByte).
 float fogOverflowBodyState(uint classByte) {
     return float(classByte) / 254.0;
+}
+
+// The fog a surface-lit fragment composes once over its displayed colour,
+// classifying the sample as FOG_TO_TRIXEL does: a BODY sample takes its
+// carrier state (EXEMPT carries 1.0), a cut face under a cut ceiling the cap
+// tone, any other FIELD sample its reveal. Callers admit only frames with no
+// line-of-sight source, so `pos3D` is also the sample's line-of-sight and
+// column point.
+vec4 fogComposeSurface(
+    vec4 litColor, bool body, float bodyState, bool cutFace, vec3 pos3D, vec3 cutFacePoint,
+    int faceId, float aaFloor, bool analyticSurface
+) {
+    if (body) {
+        return bodyState < 1.0 ? fogApplyBody(bodyState, litColor) : litColor;
+    }
+    if (cutFace && fogCeilingCutFace(cutFacePoint, faceId)) {
+        return fogApplyCutCap(litColor, revealSurfaceTreatment.z);
+    }
+    const FogReveal reveal =
+        fogRevealSample(pos3D, pos3D, pos3D, faceId >> 1, aaFloor, analyticSurface);
+    return reveal.state >= 1.0 ? litColor : fogApplyReveal(reveal, faceId >> 1, litColor);
 }
