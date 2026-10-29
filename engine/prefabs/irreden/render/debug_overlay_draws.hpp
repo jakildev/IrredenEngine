@@ -237,6 +237,13 @@ inline void clear() {
     getScreenTriangles().clear();
 }
 
+/// The window point @p worldPos projects to: @ref IRRender::worldPos3DToMouseScreenPx,
+/// the cursor space (window points, top-left origin). Not the `draw*Screen`
+/// space, which is viewport pixels with a bottom-up y.
+inline IRMath::vec2 worldToScreen(IRMath::vec3 worldPos) {
+    return IRMath::vec2(IRRender::worldPos3DToMouseScreenPx(worldPos));
+}
+
 constexpr std::size_t kDebugOverlayMaxVertices = 512 * 1024;
 constexpr std::size_t kDebugOverlayTriangleVertexCount = 3;
 constexpr std::size_t kDebugOverlayLineVertexCount = 2;

@@ -41,7 +41,9 @@
 // raises below that. The flush clamps the top end to `kCircleLutMaxSegments`.
 //
 // Deliberately NOT bound: `clear()` (the flush owns clearing — a Lua caller
-// clearing mid-frame would silently drop other systems' draws).
+// clearing mid-frame would silently drop other systems' draws) and
+// `worldToScreen` (a C++ alias of `IRRender::worldPos3DToMouseScreenPx` that no
+// current creation needs from Lua).
 
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>

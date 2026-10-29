@@ -54,11 +54,11 @@ committed under `assets/voxel/entities/` with sidecars, and played back by
 `IRShapeDebug --load-vxs`. The Phase-0 mechanism probes ran and the gate
 passed (`editor-authoring-friction.md` §"Phase 0 mechanism probe").
 
-Row 3 is closed: the dead debug-overlay `worldToScreen` / `screenToWorld`
-helpers, which projected through the viewport centre alone, are removed.
-`worldPos3DToMouseScreenPx`, the picking chain's inverse, is the single owner
-of the world-to-window-pixel projection and agrees with
-`GuiInputEvent.screenPx_`.
+Row 3 is closed: the debug-overlay `worldToScreen` delegates to
+`worldPos3DToMouseScreenPx`, the picking chain's inverse, which is the single
+owner of the world-to-window-pixel projection and agrees with
+`GuiInputEvent.screenPx_`. The uncalled `screenToWorld` inverse, which
+projected through the viewport centre alone, is removed.
 
 The entity-creator epic (#3974) closed on 2026-10-13 and its post-merge
 follow-ups have landed: remove part (#4181), PARTS list scroll (#4222), linear
