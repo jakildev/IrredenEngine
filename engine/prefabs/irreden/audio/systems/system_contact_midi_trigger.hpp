@@ -34,7 +34,8 @@ template <> struct System<CONTACT_MIDI_TRIGGER> {
         return registerSystem<
             CONTACT_MIDI_TRIGGER,
             IRComponents::C_ContactEvent,
-            IRComponents::C_MidiNote>("ContactMidiTrigger");
+            IRComponents::C_MidiNote,
+            AlsoWrites<IRComponents::C_MidiNoteSpacing>>("ContactMidiTrigger");
     }
 };
 

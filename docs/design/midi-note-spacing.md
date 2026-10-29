@@ -83,7 +83,9 @@ IRAudio.setNoteSpacing({ enabled = true, staggerFrames = 1, maxVoices = 6, maxDe
    while that system is not in the UPDATE pipeline
    (`IRSystem::isInPipeline`), so a pipeline without it keeps the immediate
    behaviour instead of swallowing notes. Its order there is not checked:
-   placed before a trigger, a note waits one more frame.
+   placed before a trigger, a note waits one more frame. Both triggers
+   declare their write to the singleton (`AlsoWrites<C_MidiNoteSpacing>`),
+   so the group validator rejects a trigger in the spacing system's group.
 9. **Messages are staged.** The triggers and the spacing system emit from
    inside their ticks, so `emit` stages each message entity for the next
    `flushStructuralChanges`; the group boundary after the emitting system
@@ -104,7 +106,9 @@ the delay cap, channel normalization, and a dense frame against the fixed
 capacity. `MidiNoteSpacingPipelineTest` runs `CONTACT_MIDI_TRIGGER`,
 `MIDI_NOTE_SPACING` and an output probe in UPDATE order: the staged
 messages reach the probe on their frame, and enabling mid-hold never lets
-the immediate note's hold end silence the spaced retrigger. `test/script/lua_midi_note_spacing_test.cpp` drives the
+the immediate note's hold end silence the spaced retrigger;
+`MidiNoteSpacingGroupTest` has the validator reject either trigger in
+the spacing system's group. `test/script/lua_midi_note_spacing_test.cpp` drives the
 bindings: read-back, every rejection, and the refusal to enable while the
 system is unregistered or registered but outside UPDATE, then composing it
 into UPDATE by `IRSystem.SystemName.MIDI_NOTE_SPACING`.

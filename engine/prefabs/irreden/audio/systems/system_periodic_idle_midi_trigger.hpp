@@ -33,7 +33,8 @@ template <> struct System<PERIODIC_IDLE_MIDI_TRIGGER> {
         return registerSystem<
             PERIODIC_IDLE_MIDI_TRIGGER,
             IRComponents::C_PeriodicIdle,
-            IRComponents::C_MidiNote>("PeriodicIdleMidiTrigger");
+            IRComponents::C_MidiNote,
+            AlsoWrites<IRComponents::C_MidiNoteSpacing>>("PeriodicIdleMidiTrigger");
     }
 };
 

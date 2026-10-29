@@ -12,12 +12,14 @@
 #include <irreden/audio/midi_note_spacing.hpp>
 #include <irreden/audio/systems/system_contact_midi_trigger.hpp>
 #include <irreden/audio/systems/system_midi_note_spacing.hpp>
+#include <irreden/audio/systems/system_periodic_idle_midi_trigger.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
 
 #include <cstdint>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <vector>
 
 // The planner over `C_MidiNoteSpacing` is pure, so these drive it without a
@@ -523,4 +525,42 @@ TEST_F(MidiNoteSpacingPipelineTest, EnablingMidHoldNeverSilencesTheSpacedRetrigg
         [&delayed](const IRComponents::C_MidiDelay &) { ++delayed; }
     );
     EXPECT_EQ(delayed, 0);
+}
+
+// Both triggers write the `C_MidiNoteSpacing` singleton the spacing system
+// plans from, so the group validator keeps each of them out of the spacing
+// system's group.
+class MidiNoteSpacingGroupTest : public testing::Test {
+  protected:
+    IRTime::TimeManager m_timeManager;
+    IREntity::EntityManager m_entityManager;
+    IRSystem::SystemManager m_systemManager;
+};
+
+TEST_F(MidiNoteSpacingGroupTest, TheTriggersAndTheSpacingSystemPassInSeparateGroups) {
+    m_systemManager.registerPipelineGroups(
+        IRTime::Events::UPDATE,
+        {{IRSystem::createSystem<IRSystem::CONTACT_MIDI_TRIGGER>()},
+         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE_MIDI_TRIGGER>()},
+         {IRSystem::createSystem<IRSystem::MIDI_NOTE_SPACING>()}}
+    );
+    EXPECT_NO_THROW(m_systemManager.validateAllPipelineGroups());
+}
+
+TEST_F(MidiNoteSpacingGroupTest, TheContactTriggerCannotShareTheSpacingSystemsGroup) {
+    m_systemManager.registerPipelineGroups(
+        IRTime::Events::UPDATE,
+        {{IRSystem::createSystem<IRSystem::CONTACT_MIDI_TRIGGER>(),
+          IRSystem::createSystem<IRSystem::MIDI_NOTE_SPACING>()}}
+    );
+    EXPECT_THROW(m_systemManager.validateAllPipelineGroups(), std::runtime_error);
+}
+
+TEST_F(MidiNoteSpacingGroupTest, ThePeriodicTriggerCannotShareTheSpacingSystemsGroup) {
+    m_systemManager.registerPipelineGroups(
+        IRTime::Events::UPDATE,
+        {{IRSystem::createSystem<IRSystem::PERIODIC_IDLE_MIDI_TRIGGER>(),
+          IRSystem::createSystem<IRSystem::MIDI_NOTE_SPACING>()}}
+    );
+    EXPECT_THROW(m_systemManager.validateAllPipelineGroups(), std::runtime_error);
 }
