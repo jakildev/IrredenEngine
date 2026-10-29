@@ -1,0 +1,1209 @@
+{
+ "shot": 1,
+ "changed_framebuffer_pixels": 99,
+ "shape_records": 0,
+ "face_records": 1189,
+ "mapping": {
+  "canvas_covered_samples": 18976,
+  "covered_but_background": 0
+ },
+ "classes": {
+  "darker": {
+   "pixels": 35,
+   "graded": 35,
+   "not_graded": {
+    "not_cardinal_voxel": 0,
+    "sun_facing_away": 0
+   },
+   "ref_agrees_cpu_centre": 35,
+   "cap_agrees_cpu_limited": 35,
+   "cap_agrees_cpu_ray": 35,
+   "cpu_centre_lit": 35,
+   "cpu_limited_lit": 0,
+   "edge_limited": 1,
+   "marginal": 0,
+   "ray_inside_micro_square": 34,
+   "max_ray_offset": 1.25,
+   "shadowed_fraction_bins": {
+    "0": 0,
+    "(0,.25]": 1,
+    "(.25,.5]": 34,
+    "(.5,.75]": 0,
+    "(.75,1)": 0,
+    "1": 0
+   },
+   "master_agrees_cpu_ray": 35
+  },
+  "brighter": {
+   "pixels": 64,
+   "graded": 64,
+   "not_graded": {
+    "not_cardinal_voxel": 0,
+    "sun_facing_away": 0
+   },
+   "ref_agrees_cpu_centre": 64,
+   "cap_agrees_cpu_limited": 64,
+   "cap_agrees_cpu_ray": 64,
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 64,
+   "edge_limited": 4,
+   "marginal": 0,
+   "ray_inside_micro_square": 43,
+   "max_ray_offset": 1.25,
+   "shadowed_fraction_bins": {
+    "0": 0,
+    "(0,.25]": 0,
+    "(.25,.5]": 3,
+    "(.5,.75]": 41,
+    "(.75,1)": 20,
+    "1": 0
+   },
+   "master_agrees_cpu_ray": 64
+  }
+ },
+ "components": [
+  {
+   "kind": "brighter",
+   "pixels": 4,
+   "graded": 4,
+   "bbox_framebuffer": [
+    347,
+    287,
+    349,
+    289
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 4,
+   "cap_agrees_cpu_limited": 4,
+   "ref_agrees_cpu_centre": 4,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 3,
+   "graded": 3,
+   "bbox_framebuffer": [
+    426,
+    252,
+    427,
+    253
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 3,
+   "cap_agrees_cpu_limited": 3,
+   "ref_agrees_cpu_centre": 3,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 3,
+   "graded": 3,
+   "bbox_framebuffer": [
+    351,
+    282,
+    353,
+    283
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 3,
+   "cap_agrees_cpu_limited": 3,
+   "ref_agrees_cpu_centre": 3,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 3,
+   "graded": 3,
+   "bbox_framebuffer": [
+    431,
+    290,
+    433,
+    291
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 3,
+   "cap_agrees_cpu_limited": 3,
+   "ref_agrees_cpu_centre": 3,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 3,
+   "graded": 3,
+   "bbox_framebuffer": [
+    391,
+    302,
+    393,
+    303
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 3,
+   "cap_agrees_cpu_limited": 3,
+   "ref_agrees_cpu_centre": 3,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 3,
+   "graded": 3,
+   "bbox_framebuffer": [
+    295,
+    310,
+    297,
+    311
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 3,
+   "cap_agrees_cpu_limited": 3,
+   "ref_agrees_cpu_centre": 3,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 3,
+   "graded": 3,
+   "bbox_framebuffer": [
+    391,
+    318,
+    393,
+    319
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 3,
+   "cap_agrees_cpu_limited": 3,
+   "ref_agrees_cpu_centre": 3,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    428,
+    247,
+    429,
+    247
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    342,
+    282,
+    343,
+    282
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    298,
+    293,
+    299,
+    293
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    334,
+    294,
+    335,
+    294
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    310,
+    298,
+    311,
+    298
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    438,
+    298,
+    439,
+    298
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    386,
+    305,
+    387,
+    305
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    302,
+    310,
+    303,
+    310
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    290,
+    313,
+    291,
+    313
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    422,
+    314,
+    423,
+    314
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    398,
+    318,
+    399,
+    318
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    386,
+    321,
+    387,
+    321
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 2,
+   "graded": 2,
+   "bbox_framebuffer": [
+    398,
+    326,
+    399,
+    326
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 2,
+   "cap_agrees_cpu_limited": 2,
+   "ref_agrees_cpu_centre": 2,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    419,
+    241,
+    419,
+    241
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    427,
+    250,
+    427,
+    250
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    337,
+    276,
+    337,
+    276
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    353,
+    276,
+    353,
+    276
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    444,
+    285,
+    444,
+    285
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    329,
+    288,
+    329,
+    288
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    305,
+    292,
+    305,
+    292
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    300,
+    301,
+    300,
+    301
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    412,
+    301,
+    412,
+    301
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    313,
+    304,
+    313,
+    304
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    441,
+    304,
+    441,
+    304
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    417,
+    308,
+    417,
+    308
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    300,
+    309,
+    300,
+    309
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    396,
+    317,
+    396,
+    317
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    409,
+    320,
+    409,
+    320
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "brighter",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    388,
+    329,
+    388,
+    329
+   ],
+   "cpu_centre_lit": 0,
+   "cpu_limited_lit": 1,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    426,
+    249,
+    426,
+    249
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    297,
+    277,
+    297,
+    277
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    348,
+    280,
+    348,
+    280
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    346,
+    281,
+    346,
+    281
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    385,
+    289,
+    385,
+    289
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    344,
+    290,
+    344,
+    290
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    342,
+    291,
+    342,
+    291
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    324,
+    292,
+    324,
+    292
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    340,
+    292,
+    340,
+    292
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    322,
+    293,
+    322,
+    293
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    338,
+    293,
+    338,
+    293
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    320,
+    294,
+    320,
+    294
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    448,
+    294,
+    448,
+    294
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    318,
+    295,
+    318,
+    295
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    446,
+    295,
+    446,
+    295
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    316,
+    296,
+    316,
+    296
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    444,
+    296,
+    444,
+    296
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    314,
+    297,
+    314,
+    297
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    442,
+    297,
+    442,
+    297
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    308,
+    308,
+    308,
+    308
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    436,
+    308,
+    436,
+    308
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    306,
+    309,
+    306,
+    309
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    434,
+    309,
+    434,
+    309
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    432,
+    310,
+    432,
+    310
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    430,
+    311,
+    430,
+    311
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    412,
+    312,
+    412,
+    312
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    428,
+    312,
+    428,
+    312
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    410,
+    313,
+    410,
+    313
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    426,
+    313,
+    426,
+    313
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    408,
+    314,
+    408,
+    314
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    406,
+    315,
+    406,
+    315
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    404,
+    316,
+    404,
+    316
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    402,
+    317,
+    402,
+    317
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    404,
+    324,
+    404,
+    324
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  },
+  {
+   "kind": "darker",
+   "pixels": 1,
+   "graded": 1,
+   "bbox_framebuffer": [
+    402,
+    325,
+    402,
+    325
+   ],
+   "cpu_centre_lit": 1,
+   "cpu_limited_lit": 0,
+   "cap_agrees_cpu_limited": 1,
+   "ref_agrees_cpu_centre": 1,
+   "marginal": 0
+  }
+ ],
+ "edge_speckles": {
+  "edge_speckles": 10,
+  "cpu_shadowed": 10,
+  "cpu_lit": 0,
+  "not_cardinal_voxel": 0,
+  "marginal": 0
+ }
+}

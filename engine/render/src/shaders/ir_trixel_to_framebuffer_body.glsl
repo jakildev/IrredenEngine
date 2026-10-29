@@ -148,7 +148,7 @@ void main() {
         const vec3 position = cardinalVoxelSurfacePoint(
             originRaw, ivec2(sampleCoord), rawDist, perAxisBase,
             cardinalReceiver.xy, ivec2(cardinalReceiver.zw),
-            perAxisStoreFrame.z);
+            perAxisStoreFrame.z, triangleDistances, triangleEntityIds);
         const vec3 normal = rotateCardinalZInv(
             faceOutwardNormal(decodeSlot(rawDist)) * (decodeFlipSingle(rawDist) != 0 ? -1.0 : 1.0),
             perAxisStoreFrame.z);

@@ -8,9 +8,10 @@ one exact colour form 4-connected components. A component no larger than
 shaded lit levels of that albedo is an edge speckle: it sits where two faces
 meet.
 
-Unit voxels under a fixed sun cast shadows at least one voxel long along the
-sun direction, so a lit face cannot carry a projected shadow one trixel across.
-Such a speckle is the receiver's own edge occluding its shadow query.
+An edge speckle is the signature of a receiver point that left its face and was
+occluded by the neighbouring voxel. A continuous receiver can also show a true
+shadow tip one trixel wide, so a gate's ceiling is the count an independent
+shadow oracle confirms as real, not zero.
 
 Structural-metric contract (render-verify ``_run_structural_metric``): prints
 a JSON object; exit 0 within thresholds, 1 exceeded, 2 I/O or format error.
@@ -37,7 +38,7 @@ def scalar_brighter(dark, lit, ratio: float) -> bool:
 
 
 def measure(path: str, roi, background, max_component_px: int,
-            lit_ratio: float) -> dict:
+            lit_ratio: float, sample_limit=8) -> dict:
     w, h, bpp, pixels = rmu.read_png(path)
     rx, ry, rw, rh = rmu.resolve_roi(roi, w, h)
 
@@ -104,7 +105,7 @@ def measure(path: str, roi, background, max_component_px: int,
         "shadow_boundary_pixels": len(seeds),
         "speckles": speckles,
         "edge_speckles": edge_speckles,
-        "edge_speckle_samples": edge_boxes[:8],
+        "edge_speckle_samples": edge_boxes[:sample_limit],
     }
 
 

@@ -26,14 +26,19 @@ SIDE = tuple(round(c * 0.62) for c in ALBEDO)
 SHADOW = tuple(round(c * 0.30) for c in ALBEDO)
 
 REFERENCES = REPO / "creations/demos/canvas_stress/test/references/macos-debug"
+MANIFEST = REFERENCES.parent / "manifest.json"
 RETAINED = REPO / "docs/pr-screenshots/claude/4763-canvas-stress-mismatch-attribution/master"
-# Changed-pixel bounding boxes of each row, padded, as x,y,w,h.
-ROWS = {
-    "modeswitch_grid": "1208,658,148,132",
-    "detach_grid": "1590,576,182,178",
-    "impulse_midspin": "518,360,390,314",
-    "impulse_settled": "538,384,364,282",
-}
+
+
+def speckle_gates():
+    """Every `shadow-speckle` structural gate in the CanvasStress manifest, by row."""
+    gates = {}
+    for run in json.loads(MANIFEST.read_text())["extra_runs"]:
+        for row, entries in run.get("structural", {}).items():
+            for entry in entries:
+                if entry["metric"] == "shadow-speckle":
+                    gates[row] = entry["max_edge_speckles"]
+    return gates
 
 
 def two_face_capture(path, dark_cells):
@@ -103,17 +108,24 @@ class ShadowSpeckleMetricTest(unittest.TestCase):
 
 
 class RetainedCanvasStressFramesTest(unittest.TestCase):
-    """The committed references carry no edge speckles; master's frames do."""
+    """The manifest gates pass the committed references and fail the retained
+    frames of the unlimited receiver, row for row."""
 
-    def edge_speckles(self, image, roi):
-        return metric.measure(
-            str(image), rmu.parse_roi(roi), (0, 0, 0), 4, 1.8)["edge_speckles"]
+    def edge_speckles(self, image):
+        result = metric.measure(str(image), None, tuple(rmu.DEFAULT_BG), 4, 1.8,
+                                sample_limit=None)
+        self.assertEqual(len(result["edge_speckle_samples"]), result["edge_speckles"])
+        return result["edge_speckles"]
 
-    def test_references_are_clean_and_master_frames_are_not(self):
-        for row, roi in ROWS.items():
+    def test_gates_pass_references_and_fail_unlimited_receiver_frames(self):
+        gates = speckle_gates()
+        retained = sorted(path.stem for path in RETAINED.glob("*.png"))
+        self.assertEqual(retained, sorted(set(gates) - {"modeswitch_grid_return"}))
+        for row, limit in gates.items():
             with self.subTest(row=row):
-                self.assertEqual(self.edge_speckles(REFERENCES / f"{row}.png", roi), 0)
-                self.assertGreaterEqual(self.edge_speckles(RETAINED / f"{row}.png", roi), 50)
+                self.assertLessEqual(self.edge_speckles(REFERENCES / f"{row}.png"), limit)
+                if row in retained:
+                    self.assertGreater(self.edge_speckles(RETAINED / f"{row}.png"), limit)
 
 
 if __name__ == "__main__":

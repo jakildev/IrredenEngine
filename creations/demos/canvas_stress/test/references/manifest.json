@@ -28,7 +28,11 @@
         "modeswitch_detached",
         "modeswitch_revox",
         "modeswitch_grid_return"
-      ]
+      ],
+      "structural": {
+        "modeswitch_grid": [{"metric": "shadow-speckle", "max_edge_speckles": 24}],
+        "modeswitch_grid_return": [{"metric": "shadow-speckle", "max_edge_speckles": 24}]
+      }
     },
     {
       "name": "sharedparts",
@@ -40,7 +44,10 @@
       "name": "detach",
       "demo_args": ["--only", "detach", "--no-auto-rotate", "--no-spin"],
       "warmup": 30,
-      "shots": ["detach_hosted", "detach_own_canvas", "detach_grid"]
+      "shots": ["detach_hosted", "detach_own_canvas", "detach_grid"],
+      "structural": {
+        "detach_grid": [{"metric": "shadow-speckle", "max_edge_speckles": 21}]
+      }
     },
     {
       "name": "compare",
@@ -52,7 +59,11 @@
       "name": "impulse",
       "demo_args": ["--only", "impulse", "--no-auto-rotate"],
       "warmup": 6,
-      "shots": ["impulse_midspin", "impulse_settled"]
+      "shots": ["impulse_midspin", "impulse_settled"],
+      "structural": {
+        "impulse_midspin": [{"metric": "shadow-speckle", "max_edge_speckles": 57}],
+        "impulse_settled": [{"metric": "shadow-speckle", "max_edge_speckles": 10}]
+      }
     },
     {
       "name": "floor_selfshadow",

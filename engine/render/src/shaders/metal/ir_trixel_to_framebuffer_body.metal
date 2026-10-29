@@ -197,7 +197,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
         const float3 position = cardinalVoxelSurfacePoint(
             originRaw, int2(sampleCoord), rawDist, frameData.perAxisBase,
             frameData.cardinalReceiver.xy, int2(frameData.cardinalReceiver.zw),
-            frameData.perAxisStoreFrame.z);
+            frameData.perAxisStoreFrame.z, triangleDistances, triangleEntityIds);
         const float3 normal = rotateCardinalZInv(
             faceOutwardNormal(decodeSlot(rawDist)) * (decodeFlipSingle(rawDist) != 0 ? -1.0 : 1.0),
             frameData.perAxisStoreFrame.z);

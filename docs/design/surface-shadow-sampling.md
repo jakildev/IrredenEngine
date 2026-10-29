@@ -55,10 +55,45 @@ existing exact face-sample center and `a` the slot's unsigned unit axis. The
 intersection is `p + dot(c-p,a) * (1,1,1)`, followed by inverse cardinal rotation.
 Adding the same scalar to XYZ preserves iso projection and places the point on
 the stored plane. Polarity affects the normal and stored plane, not the ray.
-Do not clamp this receiver point to the owning micro-square: rectangular storage
-can select it beyond that square, and clamping creates discontinuities across a
-coplanar surface. This extrapolation is a receiver raster contract, not permission
-to extrapolate finite caster footprints.
+
+Rectangular storage can select the point beyond the owning micro-square. Each
+in-plane axis `e` of the slot is then limited independently. With
+`s = dot(point - c, e)` in the cardinal-0 frame and half extent `0.5 / density`,
+a point with `|s|` within the half extent (plus `1e-4`) stays. Otherwise the
+gather reads the texel one micro-step along `sign(s) * e` from the owner texel.
+That step is the iso image of `e` (`(-1,-1)`, `(1,-1)` or `(0,2)`), so it keeps
+the owner's half of the texel pair. The neighbour is coplanar when it stores the
+same slot and flip at depth `owner ± 1` and carries the cardinal-voxel marker.
+Across a coplanar neighbour the extrapolation stays, so a flat run remains one
+continuous receiver. Across anything else (another face, an overwritten texel,
+off-canvas), `s` is clamped to the half extent on that axis. Without the limit,
+an edge fragment's point lands at or behind the neighbouring voxel, and the
+finite query reads it as occluded by that voxel. The result is one-trixel
+shadow islands along concave and convex edges. The diagonal neighbour is not
+probed. The probe costs one distance read and one entity-id read per
+overshooting axis, on the overshoot branch only. This extrapolation is a
+receiver raster contract, not permission to extrapolate finite caster
+footprints.
+
+Against centre-sampled references the continuous receiver changes two classes
+of pixel. Edge islands (shadowed pixels on a face boundary) come from an
+unlimited point behind the neighbouring voxel, and the clamp arm removes them.
+The remaining changes are sample-point changes, not defects. The texel pair
+once displayed one centre sample. Each fragment now shows its own point, so a
+shadow boundary inside a micro-square lights or darkens part of the pair. A
+true shadow tip can therefore be one trixel wide.
+
+Validators: `scripts/tests/test_render_cardinal_voxel_receiver.py` runs both
+backends' receiver in a C++ adapter against staged neighbour texels. The
+coplanar arm keeps the ray/plane intersection. The absent, wrong-slot,
+wrong-flip, one-plane-off, no-marker and off-canvas arms clamp. Mutants for an
+unconditional clamp, an unconditional extrapolation, a probe of the opposite
+neighbour, and a coplanarity test that ignores slot, flip, depth, provenance or
+the canvas bounds all fail. `scripts/render-shadow-speckle-metric.py` counts
+reference-free edge speckles. The IRCanvasStress manifest gates its five GRID
+mode-switch, detach and impulse rows on per-row ceilings, set to the counts the
+offline CPU oracle confirmed as true shadow
+(`docs/pr-screenshots/claude/4763-canvas-stress-mismatch-attribution/tools/receiver_oracle.py`).
 
 The producer publishes readiness only after the main canvas tick. Consumer
 resources alone cannot establish that color is albedo. Both stages require the
