@@ -14,7 +14,7 @@ on a machine with none of the dev toolchain installed.
 - [ ] A per-host package smoke exists: build + clean-box-run of a
   packaged reference demo (`IRShapeDebug` is the wired
   `irreden_package_target` reference) on each of the three hosts.
-- [ ] The `BUILD.md` "maturing the Linux build is first-class ongoing
+- [x] The `BUILD.md` "maturing the Linux build is first-class ongoing
   work / expect Linux-only breaks" caveat is retired — Linux build
   breakage is no longer an expected class.
 - [ ] `fleet:needs-<host>-smoke` backlogs stay drained as a matter of
@@ -26,22 +26,43 @@ beyond the existing ad-hoc re-sign; WSL MIDI forwarding (MIDI demos run
 from the Windows-native clone by design).
 
 ## Current state
-Three presets (`linux-debug` / `windows-debug` / `macos-debug`) with
-per-host build docs and bootstrap scripts; `irreden_package_target`
-produces per-platform zips; the native-Windows clone is the
-authoritative does-this-actually-ship host; platform-catchup processes
-cross-host smoke labels on all three hosts. `scripts/package-smoke.py`
-is the automated clean-box smoke: it unpacks the package and launches it
-through `fleet-run` with the host's clean-box restrictions applied to the
-executable only. Its macOS arm is measured; the Windows (#4774) and Linux
-(#4775) arms still need a native run. The remaining gaps are those two
-native arms and Linux build maturity.
+Three debug presets with release twins (`CMakePresets.json`), bootstrap
+scripts for Linux and macOS (`scripts/bootstrap_linux.sh`,
+`scripts/bootstrap_macos.sh`; none for Windows), and the native-Windows
+clone as the authoritative does-this-actually-ship host.
+`irreden_package_target` (`cmake/ir_functions.cmake`) stages the executable
+with its `data/`, `shaders/` and `scripts/`, bundles the Windows DLL closure
+(`cmake/windows_bundle_dlls.cmake`) or the macOS Mach-O closure
+(`cmake/macos_bundle_dylibs.cmake`), and zips `<target>-<os>-<arch>.zip`;
+`IRShapeDebug`, `IRPersistRoundtrip` and `IRSceneReset` are wired, and the
+launcher's Package button builds the target (`creations/launcher/main.lua`).
+`scripts/package-verify.py` audits the extracted Windows or macOS archive's
+library closure statically. `scripts/package-smoke.py` (#4765, PR #4778) is
+the automated clean-box smoke: it unpacks the package, restores the archived
+mode bits and launches the executable through `fleet-run`, with the host's
+clean-box restriction applied by `ir-run`'s child options (`--child-env` /
+`--child-unset` / `--child-prefix`) to the executable alone. Its macOS arm is
+measured (`IRShapeDebug` runs CLEAN under the Homebrew-denial `sandbox-exec`
+profile with `DYLD_*` unset; an archive missing `libglfw.3.dylib` fails with
+the dyld error); the Windows (#4774) and Linux (#4775) arms are approved and
+wait for a native run on their hosts, so row 2 stays open.
+The Linux "expect breakage" caveat is gone (PR #3260): `BUILD.md` says a
+Linux-only break is fixed in a dedicated PR, and `engine-tests.yml` builds
+`linux-debug` demos on every PR, so row 3 verifies. Smoke labels are a
+post-merge ledger since #4160 (the OpenGL tier mints
+`fleet:needs-windows-smoke` only; the Linux label is retired for minting):
+36 Windows and 12 macOS merged PRs carry an undrained label today, the
+oldest from 2026-09-21 and 2026-08-21, so row 4 stays open.
 
 ## Progress ledger
 | Date | Epic / issue | Delta |
 |---|---|---|
 | 2026-07-20 | — | objective seeded |
+| 2026-09-12 | PR #3260 | `BUILD.md` "maturing the Linux build / expect Linux-specific breakage" caveat removed; `engine-tests.yml` builds `linux-debug` demos on every PR. Row 3 verifies. |
+| 2026-10-06 | #4160 | smoke labels become a post-merge ledger; `fleet:needs-linux-smoke` retired for minting (the OpenGL tier routes to Windows) |
 | 2026-10-12 | #4352 | Windows package bundles the exe's full transitive DLL closure (FFmpeg + codecs + MinGW runtime); a hand-run clean-box launch and `--auto-record` pass with only the system dirs on `PATH`. The automated per-host smoke row stays open. |
 | 2026-10-13 | #4333 / PR #4394 | macOS package bundles and ad-hoc signs the complete non-system dylib closure; an extracted-archive audit proves all load edges are bundle-local. The automated per-host smoke row stays open. |
 | 2026-10-22 | #4674 | IRLauncher shows Package on targets whose `creation.json` sets `package` (`IRShapeDebug`, `IRPersistRoundtrip`, `IRSceneReset`): it builds `<target>Package` and shows the archive path the catalog finds. It does not run a clean-box smoke, so the per-host smoke row stays open. |
+| 2026-10-27 | sweep; #4765 | re-verified against master `ee85797c0`; row 3 ticked; backlog depth measured (windows 36, oldest 2026-09-21; macos 12, oldest 2026-08-21); #4765 filed for the automated package smoke (row 2) |
 | 2026-10-27 | #4765 | `scripts/package-smoke.py` automates the clean-box smoke via new `ir-run` child options (`--child-env` / `--child-unset` / `--child-prefix`) that restrict only the packaged executable. macOS arm measured: `IRShapeDebug` runs CLEAN under the Homebrew-denial `sandbox-exec` profile with `DYLD_*` unset; an archive missing `libglfw.3.dylib` fails with the dyld error. The per-host smoke row stays open until the Windows (#4774) and Linux (#4775) arms land. |
+| 2026-10-28 | #4774, #4775 | Windows and Linux arms approved for their native runs (`fleet:agent-approved`, plan-residual of #4765; host-pinned) |
