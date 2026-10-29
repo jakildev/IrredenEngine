@@ -98,6 +98,11 @@ inline constexpr IRMath::ivec3 kSessionRayDirection = IRMath::ivec3(1);
 // editor's drag state machine sees a PRESSED, a HELD, and a RELEASED sample.
 inline constexpr int kFramesPerClickStep = 1;
 
+// A second press on a slider within this many frames of the first reads as a
+// double click (system_widget_input.hpp) and restores the authored default
+// instead of dragging. A drag on a slider this recently pressed idles first.
+inline constexpr int kSliderRepressIdleFrames = 19;
+
 // Camera zoom sessions author at by default: every face is 8 x 8 screen pixels,
 // so a capture reads clearly. A face aim resolves down to zoom 1.
 inline constexpr float kSessionZoom = 4.0f;
@@ -829,6 +834,7 @@ class Builder {
         m_current.zoom_ = zoom;
         m_current.cameraIso_ = cameraIso;
         m_frame = 0;
+        ++m_segmentIndex;
     }
 
     // Single left click that places a voxel at `target` (place mode) or erases
@@ -1122,6 +1128,10 @@ class Builder {
     void dragGuiSlider(
         const IRVoxelEditor::SliderGeometry &geom, float minValue, float maxValue, float value
     ) {
+        if (m_lastDraggedSliderPos == geom.pos_ && m_segmentIndex - m_lastSliderDragSegment <= 1)
+            m_frame += kSliderRepressIdleFrames;
+        m_lastDraggedSliderPos = geom.pos_;
+        m_lastSliderDragSegment = m_segmentIndex;
         const float farValue = (value > (minValue + maxValue) * 0.5f) ? minValue : maxValue;
         // GUI hitboxes are half-open ([pos, pos + size)), so the max end of the
         // track lies one trixel outside it: press one trixel inside either end.
@@ -2462,6 +2472,9 @@ class Builder {
     Recipe m_recipe;
     Segment m_current;
     int m_frame = 0;
+    int m_segmentIndex = 0;
+    IRMath::ivec2 m_lastDraggedSliderPos{-1};
+    int m_lastSliderDragSegment = 0;
     bool m_eraseMode = false;
     SymmetryState m_symmetry;
     // The box a holdBox pressed and no releaseBox has released yet.
