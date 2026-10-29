@@ -189,8 +189,15 @@ def sdf_occupancy_witness(log_text: str) -> dict[str, int | str] | None:
         return None
     witness: dict[str, int | str] = {}
     for field in matches[0].split():
+        if "=" not in field:
+            return None
         name, value = field.split("=", 1)
-        witness[name] = value if name == "representation" else int(value)
+        if not name or not value:
+            return None
+        try:
+            witness[name] = value if name == "representation" else int(value)
+        except ValueError:
+            return None
     return witness
 
 

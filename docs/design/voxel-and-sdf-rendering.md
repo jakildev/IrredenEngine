@@ -88,6 +88,9 @@ The qualification fixture also exposes independent workload controls:
   finer authored occupancy rather than making the object twice as large.
 - `--sdf-voxel-copies 1|4|16` changes population. `--sdf-voxel-overlap` moves
   those groups into nearly coincident projections; without it groups are spaced.
+- The spaced population arms size and center their receiver floor to cover every
+  group. Their single local light remains an isolated one-group probe, so local
+  lighting cost is intentionally not a population-scaling measurement.
 - `--sdf-voxel-motion` continuously rotates each root, or the shared parent when
   `--sdf-voxel-pose parented` is selected. Camera motion remains a separate input.
 - `--sdf-voxel-presentation grid|detached|revoxelized` selects shared GRID,

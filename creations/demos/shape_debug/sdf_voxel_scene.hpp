@@ -18,6 +18,10 @@
 namespace IRShapeDebug {
 
 struct SdfVoxelScene {
+    static constexpr float kCopySpacing = 44.0f;
+    static constexpr int kCopyColumns = 4;
+    static constexpr int kFloorPadding = 48;
+
     enum class Pose { REST, ROOT, PARENTED };
     enum class Presentation { GRID, DETACHED_SOURCE, DETACHED_REVOXELIZED };
 
@@ -99,10 +103,10 @@ struct SdfVoxelScene {
             IREntity::setComponent(parent, C_AutoSpin{vec3(0.5f, 1.0f, 1.0f), 0.004f});
         }
         for (int copy = 0; copy < copies; ++copy) {
-            const int column = copy % 4;
-            const int row = copy / 4;
+            const int column = copy % kCopyColumns;
+            const int row = copy / kCopyColumns;
             const vec3 copyOffset = overlap ? vec3(copy * 0.4f, copy * -0.3f, copy * 0.2f)
-                                            : vec3(column * 44.0f, row * 44.0f, 0.0f);
+                                            : vec3(column * kCopySpacing, row * kCopySpacing, 0.0f);
             for (std::size_t subjectIndex = 0; subjectIndex < subjects.size(); ++subjectIndex) {
                 const auto &subject = subjects[subjectIndex];
                 C_LocalTransform transform{subject.position_ + copyOffset};
@@ -156,11 +160,21 @@ struct SdfVoxelScene {
                 }
             }
         }
-        const int floorEdge = copies == 1 ? 48 : 192;
+        const int floorColumns = IRMath::min(copies, kCopyColumns);
+        const int floorRows = (copies + kCopyColumns - 1) / kCopyColumns;
+        const vec3 floorCenter(
+            (floorColumns - 1) * kCopySpacing / 2.0f,
+            (floorRows - 1) * kCopySpacing / 2.0f,
+            6
+        );
         IREntity::createEntity(
-            C_LocalTransform{vec3(0, 0, 6)},
+            C_LocalTransform{floorCenter},
             C_VoxelSetNew{
-                ivec3(floorEdge, floorEdge, 1),
+                ivec3(
+                    (floorColumns - 1) * static_cast<int>(kCopySpacing) + kFloorPadding,
+                    (floorRows - 1) * static_cast<int>(kCopySpacing) + kFloorPadding,
+                    1
+                ),
                 Color{130, 135, 145, 255},
                 EntityAnchor::CENTER
             },

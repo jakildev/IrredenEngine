@@ -52,6 +52,8 @@ class ShapeProfileArgumentsTest(unittest.TestCase):
             "record_bytes=1200\n"
         )
         self.assertEqual(witness["bake_us"], 42)
+        self.assertIsNone(sdf_occupancy_witness("SDF-OCCUPANCY representation=baked copies=\n"))
+        self.assertIsNone(sdf_occupancy_witness("SDF-OCCUPANCY representation=baked copies\n"))
         self.assertEqual(witness["representation"], "baked")
 
     def test_ambiguous_or_scene_changing_flags_are_rejected(self):
