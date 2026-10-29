@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "frame_budget_ms": 16.666667,
+  "resolution": [1280, 720],
+  "build_type": "Release",
+  "rounds": 3,
+  "frames": 300,
+  "order": "forward on odd rounds; reverse on even rounds",
+  "suites": [
+    {
+      "id": "million",
+      "driver": "million_controls.py",
+      "argv": ["--tree", "build-release"],
+      "resolution_config": "creations/demos/perf_grid/config.lua",
+      "budgets": {
+        "total_entities": 1000000,
+        "update_entities": 1000000,
+        "visible_occupancy": "measured from Voxel cull stats",
+        "canvas_count": 1,
+        "canvas_area_pixels": 921600,
+        "subdivision_mode": "full",
+        "base_subdivisions": 1,
+        "zoom": 4,
+        "shadow_state": "on",
+        "overflow": "report max entries, cap, and dropped entries"
+      },
+      "coverage": ["cardinal", "intermediate", "continuous rotation", "timing on/off"]
+    },
+    {
+      "id": "rotation",
+      "driver": "rotation_controls.py",
+      "argv": ["--suite", "motion"],
+      "resolution_config": "creations/demos/perf_grid/config.lua",
+      "budgets": {
+        "total_entities": 262144,
+        "update_entities": 262144,
+        "visible_occupancy": "measured from Voxel cull stats",
+        "canvas_count": 1,
+        "canvas_area_pixels": 921600,
+        "subdivision_mode": "full",
+        "base_subdivisions": [1, 4],
+        "zoom": [1, 4],
+        "shadow_state": "on",
+        "overflow": "report max entries, cap, and dropped entries"
+      },
+      "coverage": ["cardinal", "intermediate", "continuous rotation", "changed subdivision work"]
+    },
+    {
+      "id": "surface",
+      "driver": "surface_lighting_controls.py",
+      "argv": [
+        "--scene", "grid-overlap",
+        "--adoption-matrix",
+        "--case", "per-axis-zoom1-receivers-subdiv1",
+        "--case", "per-axis-zoom1-receivers-subdiv4",
+        "--case", "per-axis-zoom4-receivers-subdiv1",
+        "--case", "per-axis-zoom4-receivers-subdiv4"
+      ],
+      "resolution_config": "creations/demos/perf_grid/config.lua",
+      "budgets": {
+        "total_entities": "report",
+        "update_entities": "report",
+        "visible_occupancy": "measured from Voxel cull stats",
+        "canvas_count": 1,
+        "canvas_area_pixels": 921600,
+        "subdivision_mode": "fixture subdivisions 1 and 4",
+        "base_subdivisions": [1, 4],
+        "zoom": [1, 4],
+        "shadow_state": "on",
+        "overflow": "report max entries, cap, and dropped entries"
+      },
+      "coverage": ["sampled/continuous receiver", "visibility prepass off/on", "build plus query/draw"]
+    },
+    {
+      "id": "private-canvases",
+      "driver": "repeat_profile.py",
+      "argv": [
+        "--target", "IRCanvasStress"
+      ],
+      "resolution_config": "creations/demos/canvas_stress/config.lua",
+      "demo_argv": [
+        "--only", "orbit",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--yaw", "0.6",
+        "--zoom", "1",
+        "--window-mode", "offscreen"
+      ],
+      "budgets": {
+        "total_entities": "report",
+        "update_entities": "report",
+        "visible_occupancy": "measured from Voxel cull stats",
+        "canvas_count": 9,
+        "private_canvas_count": 8,
+        "private_canvas_area_pixels": 209520,
+        "private_canvas_edge_range_pixels": [120, 192],
+        "subdivision_mode": "fixture default",
+        "base_subdivisions": 1,
+        "zoom": 1,
+        "shadow_state": "on",
+        "overflow": "report max entries, cap, and dropped entries"
+      },
+      "coverage": ["private-canvas fragmentation"]
+    }
+  ],
+  "untimed_oracles": [
+    {
+      "id": "prepass-rejection",
+      "requirement": "VISIBILITY-PROBE counters show rejected fragments in the prepass-on arm and zero prepass work in the off arm"
+    },
+    {
+      "id": "render-correctness",
+      "requirement": "matched prepass off/on images and crowded overflow controls pass outside the timed window"
+    },
+    {
+      "id": "sharp-shadow-correctness",
+      "requirement": "receiver polygon oracle passes with sharp geometry-correct shadow coverage"
+    }
+  ]
+}

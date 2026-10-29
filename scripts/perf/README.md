@@ -1,5 +1,19 @@
 # scripts/perf — perf matrix, comparison, and the perf gate
 
+## Explicit capacity envelope
+
+`capacity_envelope.py` executes the checked-in
+`capacity_envelope.json` specification into one platform-specific output root.
+It composes the million, rotation, surface-lighting, and private-canvas controls
+without merging Metal and OpenGL results. Hardware, backend, power/thermal state,
+Release build, resolution, populations, visibility, canvas area, subdivision,
+shadows, and overflow budgets stay explicit. Use `--dry-run` to inspect the exact
+commands before reserving a quiet host. Timed results do not replace the separate
+prepass-rejection, receiver-shadow, and crowded-overflow oracles.
+
+The [current qualification](../../docs/perf/capacity-envelope/README.md) records
+the measured Metal shortfall and the still-unqualified Windows/OpenGL row.
+
 `perf_grid_matrix.sh` drives `IRPerfGrid` across a matrix of cells and writes
 `save_files/perf/<sha>[-<label>]/` (one `<cell>.txt` profile report per cell
 plus `manifest.json`). `ir-perf-grid` (`engine/tools/bin/`) is the entry point:
