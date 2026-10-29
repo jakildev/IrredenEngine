@@ -27,9 +27,8 @@ reproduces one view; [grade.py](grade.py) grades a directory.
 `scripts/render-grid-cell-metric.py` derives the expected destination cells from
 the authored box and an explicit double-precision rotation matrix, views them
 under the camera yaw, and compares every pixel outside a one-pixel band.
-[metrics-head.json](metrics-head.json) holds every head row and command;
-[metrics-parent.json](metrics-parent.json) holds the nine parent frames that differ
-from head (the other fifteen are byte-identical and grade identically).
+[metrics-head.json](metrics-head.json) and [metrics-parent.json](metrics-parent.json)
+hold every row and its command, 24 per side.
 
 | Fixture, view | Yaw | Parent: missing exposed cells / missing px | Head: missing exposed cells / missing, extra, wrong-face px |
 |---|---|---|---|
@@ -42,9 +41,10 @@ from head (the other fifteen are byte-identical and grade identically).
 |---|---|
 | ![parent](parent/plate-normals-yaw0.png) | ![head](head/plate-normals-yaw0.png) |
 
-All 12 cube captures and three of four plate shadow captures are byte-identical
-between parent and head; only head copies are stored. `parent/` holds the nine
-frames that differ.
+`parent/` and `head/` each hold all 24 frames, and every `captures.json` record
+names a file under its own side. All 12 cube captures and three of four plate
+shadow captures are byte-identical between parent and head; the other nine
+differ.
 
 Metric controls ([metric-controls.json](metric-controls.json)): grading a head
 capture at the wrong yaw (0° as 90°, 90° as 270°) or as the wrong fixture fails
@@ -61,7 +61,8 @@ grade the route the overlay shows, not the one a player sees.
 
 `python3 grade.py <repo> --shadow-regression .` reads every shadow frame's
 hash from [captures.json](captures.json), re-hashes the stored file, and writes
-[shadow-regression.json](shadow-regression.json); it exits 1 on any failed row.
+[shadow-regression.json](shadow-regression.json); it exits 1 on any failed row,
+and on any record whose stored file is outside its own side's directory.
 
 | Fixture | Yaw | Grade | Result |
 |---|---|---|---|
@@ -79,8 +80,11 @@ python3 scripts/render-grid-cell-metric.py head/plate-shadow-yaw270.png --fixtur
   --gained-from parent/plate-normals-yaw270.png
 ```
 
-Control: the same frames with one head pixel changed at (10, 10), outside the
-footprint, grade `outside_footprint_pixels: 1` and `grade.py` exits 1.
+Controls, each `grade.py` exit 1:
+
+- one head pixel changed at (10, 10), outside the footprint: `outside_footprint_pixels: 1`;
+- one parent pixel changed in `parent/cube-shadow-yaw90.png`, hash updated to match: that row fails byte-identity;
+- the parent cube 90° shadow record pointed at `head/cube-shadow-yaw90.png`: refused before grading.
 
 ### Terminator readings (information, outside #4760)
 

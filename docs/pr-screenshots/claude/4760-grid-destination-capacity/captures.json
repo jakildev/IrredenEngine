@@ -26,7 +26,6 @@
       "0",
       "4.7123889804",
       "4",
-      "--grid-capacity-probe",
       "--no-ao",
       "--no-shadows",
       "--debug-overlay",
@@ -91,7 +90,6 @@
       "0",
       "4.7123889804",
       "4",
-      "--grid-capacity-probe",
       "--focus-exact-fit-plate"
     ],
     "launch": "ir-run: running debug tree <parent-worktree>/build-release",
@@ -152,7 +150,6 @@
       "0",
       "4.7123889804",
       "4",
-      "--grid-capacity-probe",
       "--no-ao",
       "--debug-overlay",
       "shadow",
@@ -166,19 +163,19 @@
         "path": "plate-shadow-yaw0.png",
         "yaw": 0,
         "sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
-        "stored": "head/plate-shadow-yaw0.png"
+        "stored": "parent/plate-shadow-yaw0.png"
       },
       {
         "path": "plate-shadow-yaw90.png",
         "yaw": 90,
         "sha256": "60328b49df4c2c9fa5aa5c6f3d7f712a15c8af9c1fa376ab17980379ead2efe8",
-        "stored": "head/plate-shadow-yaw90.png"
+        "stored": "parent/plate-shadow-yaw90.png"
       },
       {
         "path": "plate-shadow-yaw180.png",
         "yaw": 180,
         "sha256": "e2e4177dde534dbf15b368caa23e106a2c015d8a86ca72dc9cc13cf76a2f5c9f",
-        "stored": "head/plate-shadow-yaw180.png"
+        "stored": "parent/plate-shadow-yaw180.png"
       },
       {
         "path": "plate-shadow-yaw270.png",
@@ -216,7 +213,6 @@
       "0",
       "4.7123889804",
       "4",
-      "--grid-capacity-probe",
       "--no-ao",
       "--no-shadows",
       "--debug-overlay",
@@ -230,25 +226,25 @@
         "path": "cube-normals-yaw0.png",
         "yaw": 0,
         "sha256": "a06f74579f66d59dae111429d749f73bb1e7810902f37ea0972546e234877917",
-        "stored": "head/cube-normals-yaw0.png"
+        "stored": "parent/cube-normals-yaw0.png"
       },
       {
         "path": "cube-normals-yaw90.png",
         "yaw": 90,
         "sha256": "d63b3fc7181d4ab0e8aad2ad61715c5428a736549b803ebf853973cf146958fd",
-        "stored": "head/cube-normals-yaw90.png"
+        "stored": "parent/cube-normals-yaw90.png"
       },
       {
         "path": "cube-normals-yaw180.png",
         "yaw": 180,
         "sha256": "14d79f90b2e85c66cc5531adcf7ddf2c97b8bdf2613dabbc7b105988f6d5f51d",
-        "stored": "head/cube-normals-yaw180.png"
+        "stored": "parent/cube-normals-yaw180.png"
       },
       {
         "path": "cube-normals-yaw270.png",
         "yaw": 270,
         "sha256": "a786e70a0236bc8854e53b943877077b4ed616396eb2a743c3c00a51f07ddf1c",
-        "stored": "head/cube-normals-yaw270.png"
+        "stored": "parent/cube-normals-yaw270.png"
       }
     ],
     "side": "parent"
@@ -279,8 +275,7 @@
       "--sweep-yaw",
       "0",
       "4.7123889804",
-      "4",
-      "--grid-capacity-probe"
+      "4"
     ],
     "launch": "ir-run: running debug tree <parent-worktree>/build-release",
     "clean_exit": true,
@@ -290,25 +285,25 @@
         "path": "cube-beauty-yaw0.png",
         "yaw": 0,
         "sha256": "ffc38f771ff6288c7e5ab97115666042696dfdb9a72cf1953e79cdd47e78ac21",
-        "stored": "head/cube-beauty-yaw0.png"
+        "stored": "parent/cube-beauty-yaw0.png"
       },
       {
         "path": "cube-beauty-yaw90.png",
         "yaw": 90,
         "sha256": "cc7bd3eaa28adfd18dbf4849533282a61c81c44e250883cfb686bed345c8a7be",
-        "stored": "head/cube-beauty-yaw90.png"
+        "stored": "parent/cube-beauty-yaw90.png"
       },
       {
         "path": "cube-beauty-yaw180.png",
         "yaw": 180,
         "sha256": "540404f6e41550b2bb1a5c1f8154c842534cc7c6411e53d2b29635433a29bc7c",
-        "stored": "head/cube-beauty-yaw180.png"
+        "stored": "parent/cube-beauty-yaw180.png"
       },
       {
         "path": "cube-beauty-yaw270.png",
         "yaw": 270,
         "sha256": "8901375b39749441f80225cef9ccdadb8be4fe1dd2e2adeeee6d4b8fadb0b628",
-        "stored": "head/cube-beauty-yaw270.png"
+        "stored": "parent/cube-beauty-yaw270.png"
       }
     ],
     "side": "parent"
@@ -340,7 +335,6 @@
       "0",
       "4.7123889804",
       "4",
-      "--grid-capacity-probe",
       "--no-ao",
       "--debug-overlay",
       "shadow"
@@ -353,25 +347,25 @@
         "path": "cube-shadow-yaw0.png",
         "yaw": 0,
         "sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
-        "stored": "head/cube-shadow-yaw0.png"
+        "stored": "parent/cube-shadow-yaw0.png"
       },
       {
         "path": "cube-shadow-yaw90.png",
         "yaw": 90,
         "sha256": "d82db542c4d7a7af9c6231b6b467fd0838c8064789a8a988b5c8d1817e89af5b",
-        "stored": "head/cube-shadow-yaw90.png"
+        "stored": "parent/cube-shadow-yaw90.png"
       },
       {
         "path": "cube-shadow-yaw180.png",
         "yaw": 180,
         "sha256": "96beac96e94387091f3f464d38835a3380fb6fed30754e48824190aad5d35f70",
-        "stored": "head/cube-shadow-yaw180.png"
+        "stored": "parent/cube-shadow-yaw180.png"
       },
       {
         "path": "cube-shadow-yaw270.png",
         "yaw": 270,
         "sha256": "6caab51f3d469e704036ad6cd346269a445476e10f22d24785f239f8fe6c4797",
-        "stored": "head/cube-shadow-yaw270.png"
+        "stored": "parent/cube-shadow-yaw270.png"
       }
     ],
     "side": "parent"

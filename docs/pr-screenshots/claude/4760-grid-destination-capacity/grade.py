@@ -46,6 +46,10 @@ def grade_shadow_regression(repo, evidence):
     stored = {}
     for record in json.loads((evidence / "captures.json").read_text()):
         for image in record["images"]:
+            # A parent record that names a head file would grade a frame
+            # against itself.
+            if Path(image["stored"]).parts[0] != record["side"]:
+                sys.exit(f"{image['stored']}: stored outside {record['side']}/")
             path = evidence / image["stored"]
             if hashlib.sha256(path.read_bytes()).hexdigest() != image["sha256"]:
                 sys.exit(f"{path}: sha256 differs from captures.json")
