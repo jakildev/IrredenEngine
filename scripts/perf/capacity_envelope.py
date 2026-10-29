@@ -4,7 +4,6 @@
 import argparse
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
@@ -32,6 +31,8 @@ def validate_spec(spec: dict) -> dict:
         raise ValueError("capacity specification requires schema_version 1")
     if spec.get("build_type") != "Release":
         raise ValueError("capacity measurements require a Release build")
+    if spec.get("build_tree") != "build-release":
+        raise ValueError("capacity measurements require the build-release tree")
     resolution = spec.get("resolution")
     if not isinstance(resolution, list) or len(resolution) != 2 or any(
         not isinstance(value, int) or value <= 0 for value in resolution
@@ -119,6 +120,10 @@ def verify_resolution_configs(root: Path, spec: dict) -> dict[str, str]:
 def suite_command(root: Path, output: Path, suite: dict, spec: dict) -> list[str]:
     command = [sys.executable, str(root / "scripts/perf" / suite["driver"])]
     command.extend(suite["argv"])
+    if suite["driver"] == "million_controls.py":
+        command.extend(["--tree", spec["build_tree"]])
+    else:
+        command.append("--release")
     if suite["driver"] == "repeat_profile.py":
         command.extend(["--repeats", str(spec["rounds"])])
     else:
@@ -199,6 +204,8 @@ def main() -> int:
     parser.add_argument("--power-thermal-state", required=True)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if not args.power_thermal_state.strip():
+        parser.error("--power-thermal-state must not be empty")
     spec = load_spec()
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
@@ -209,9 +216,8 @@ def main() -> int:
         return 0
     output.mkdir(parents=True, exist_ok=False)
     write_metadata(output, args, spec, resolution_configs)
-    environment = {**os.environ, "IRREDEN_BUILD_DIR": str(root / "build-release")}
     for command in commands:
-        subprocess.run(command, check=True, cwd=root, env=environment)
+        subprocess.run(command, check=True, cwd=root)
     status = verify_output(output, spec)
     (output / "qualification-status.json").write_text(json.dumps(status, indent=2) + "\n")
     print(output)

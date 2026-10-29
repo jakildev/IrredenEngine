@@ -3,6 +3,7 @@
   "frame_budget_ms": 16.666667,
   "resolution": [1280, 720],
   "build_type": "Release",
+  "build_tree": "build-release",
   "rounds": 3,
   "frames": 300,
   "order": "forward on odd rounds; reverse on even rounds",
@@ -10,7 +11,7 @@
     {
       "id": "million",
       "driver": "million_controls.py",
-      "argv": ["--tree", "build-release"],
+      "argv": [],
       "resolution_config": "creations/demos/perf_grid/config.lua",
       "budgets": {
         "total_entities": 1000000,
@@ -51,6 +52,7 @@
       "argv": [
         "--scene", "grid-overlap",
         "--adoption-matrix",
+        "--timeout", "600",
         "--case", "per-axis-zoom1-receivers-subdiv1",
         "--case", "per-axis-zoom1-receivers-subdiv4",
         "--case", "per-axis-zoom4-receivers-subdiv1",
@@ -75,7 +77,8 @@
       "id": "private-canvases",
       "driver": "repeat_profile.py",
       "argv": [
-        "--target", "IRCanvasStress"
+        "--target", "IRCanvasStress",
+        "--timeout", "600"
       ],
       "resolution_config": "creations/demos/canvas_stress/config.lua",
       "demo_argv": [

@@ -233,6 +233,11 @@ on that mean (mean + t(0.95, N−1) · sd / √N; `n/a` at one repeat). Only the
 profile arguments are accepted; any other flag fails with `unsupported ShapeDebug
 profile argument`:
 
+Use `--release` to select the worktree's `build-release` tree. A repeated
+`--render-env NAME=VALUE` sets and records approved render experiment variables
+without an environment prefix, which keeps display-backed Codex runs eligible
+for their narrow launcher permission.
+
 - required: `--auto-profile <frames>`, `--yaw`, `--zoom`,
   `--sdf-voxel-scene direct|baked`, `--config-preset configs/perf/sdf-on.lua|sdf-off.lua`
 - optional: `--sdf-voxel-blockers`, `--no-ao`, `--no-shadows`

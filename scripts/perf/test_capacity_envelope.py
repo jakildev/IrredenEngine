@@ -42,6 +42,10 @@ class SpecificationTest(unittest.TestCase):
         spec = load_spec()
         for suite in spec["suites"]:
             command = suite_command(Path("/engine"), Path("/evidence"), suite, spec)
+            if suite["driver"] == "million_controls.py":
+                self.assertEqual(command[command.index("--tree") + 1], spec["build_tree"])
+            else:
+                self.assertIn("--release", command)
             if suite["driver"] == "repeat_profile.py":
                 self.assertEqual(command[command.index("--repeats") + 1], str(spec["rounds"]))
                 self.assertEqual(
