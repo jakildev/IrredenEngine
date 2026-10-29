@@ -122,9 +122,8 @@ revolution) each fixture wrote exactly one line, at update tick 1
 | cube | 1728 | 1728 | 1728 | 0 | 0 | 1728 / 1728 / 1728 | 262,144 |
 
 Peak capacity is the largest resident allocation the rebuild has visited, grown
-or not, so the cube that never grows reads 1728. The probe was re-run on the
-Debug head build for that reading; every other value matches the earlier
-Release run, and none of these readings depends on the build type.
+or not, so the cube that never grows reads 1728. These are the untimed probe
+runs that close the Release profile below, on the same head Release binary.
 
 The plate's peak of 360 slots is the migration: the 144-slot span is freed only
 after the 216-slot replacement is seeded. The freed 144 slots stay stranded
@@ -137,20 +136,27 @@ The admission budget is the pool size, capped at 2,000,000 destination cells.
 {parent, head} × {plate, cube}, forward and reverse, 2000 frames each with the
 set spinning (750 steady update ticks per run, more than the 600-tick
 revolution), under `ir-acquire benchmark`. The quiet window held for the whole
-run (`IR_QUIET_REPORT_FILE` reads `GUARDED`). [profile/summary.md](profile/summary.md):
+run (`IR_QUIET_REPORT_FILE` reads `GUARDED`). Head is the Release build of
+`3decc0f55`, the commit that adds the per-tick peak-capacity update; parent is
+`469402034` plus the fixture flag. Every run's manifest agrees on its side's
+commit, binary and shader hashes, build type and power source
+([profile/builds.json](profile/builds.json)). [profile/summary.md](profile/summary.md):
 
 | Case | Frame mean ms | Steady mean / p95 / p99 ms | `RebuildGridVoxels` mean / min / max ms |
 |---|---:|---:|---:|
-| parent-plate | 8.377 | 8.332 / 8.909 / 9.390 | 0.0250 / 0.0050 / 0.1410 |
-| head-plate | 8.372 | 8.334 / 8.930 / 9.398 | 0.0268 / 0.0050 / 0.1390 |
-| parent-cube | 8.383 | 8.334 / 8.898 / 9.336 | 0.1242 / 0.0240 / 0.4210 |
-| head-cube | 8.375 | 8.334 / 8.921 / 9.352 | 0.1263 / 0.0250 / 0.3430 |
+| parent-plate | 8.355 | 8.332 / 8.866 / 9.340 | 0.0267 / 0.0050 / 0.7830 |
+| head-plate | 8.365 | 8.332 / 9.101 / 9.373 | 0.0278 / 0.0050 / 0.1440 |
+| parent-cube | 8.400 | 8.332 / 9.111 / 9.318 | 0.1247 / 0.0250 / 0.4300 |
+| head-cube | 8.370 | 8.335 / 9.073 / 9.331 | 0.1247 / 0.0250 / 0.3540 |
 
 Frames are paced at about 120 Hz offscreen, so frame time measures the pacing
-wait, not the rebuild. The rebuild means differ by less than their run spread;
-there is no speedup claim. The profile report keeps a per-frame series only for
-whole frames, so `RebuildGridVoxels` reports mean, min and max; its max is the
-upper bound on its p99. The capacity readings above are unchanged on this run.
+wait, not the rebuild. Per-run `RebuildGridVoxels` means span 0.024–0.029 ms
+(parent plate) and 0.027–0.029 ms (head plate), 0.117–0.138 ms (parent cube) and
+0.112–0.137 ms (head cube): the parent/head difference is inside the run spread,
+and there is no speedup claim. The parent-plate max of 0.783 ms is one run
+(round 2); its other three runs peak at 0.059–0.063 ms. The profile report keeps
+a per-frame series only for whole frames, so `RebuildGridVoxels` reports mean,
+min and max; its max is the upper bound on its p99.
 
 ## Not covered
 
