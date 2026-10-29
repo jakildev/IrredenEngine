@@ -1,5 +1,6 @@
 """Edge-speckle metric: synthetic controls and the retained CanvasStress frames."""
 
+import functools
 import importlib.machinery
 import importlib.util
 import json
@@ -41,6 +42,16 @@ def speckle_gates():
     return gates
 
 
+def read_frame(image, measured_at=None):
+    return metric.measure(str(image), None, tuple(rmu.DEFAULT_BG), 1, 1.8,
+                          trixel_px=measured_at, sample_limit=None)
+
+
+# Committed frames are read once across both tests; rescaled copies reuse one
+# temporary path and are never cached.
+read_committed_frame = functools.lru_cache(maxsize=None)(read_frame)
+
+
 def two_face_capture(path, dark_cells):
     """A 16x16 tile: TOP face above row 8, SIDE face below, black border."""
     pixels = bytearray()
@@ -56,6 +67,19 @@ def two_face_capture(path, dark_cells):
     rmu.write_png(str(path), 16, 16, bytes(pixels), 3)
 
 
+def rescaled(src, dst, num, den):
+    """Nearest-neighbour copy of ``src`` at ``num/den`` of its size: what the
+    same frame looks like at another capture scale."""
+    w, h, bpp, pixels = rmu.read_png(str(src))
+    out_w, out_h = w * num // den, h * num // den
+    columns = [(x * den // num) * bpp for x in range(out_w)]
+    rows = []
+    for y in range(out_h):
+        start = (y * den // num) * w * bpp
+        rows.append(b"".join(pixels[start + c:start + c + 3] for c in columns))
+    rmu.write_png(str(dst), out_w, out_h, b"".join(rows), 3)
+
+
 def block(x, y, size=2):
     return {(x + dx, y + dy) for dx in range(size) for dy in range(size)}
 
@@ -69,7 +93,7 @@ class ShadowSpeckleMetricTest(unittest.TestCase):
     def measure(self, dark_cells):
         path = self.root / "capture.png"
         two_face_capture(path, dark_cells)
-        return metric.measure(str(path), None, (0, 0, 0), 4, 1.8)
+        return metric.measure(str(path), None, (0, 0, 0), 1, 1.8, trixel_px=2)
 
     def test_trixel_on_face_boundary_is_an_edge_speckle(self):
         result = self.measure(block(6, 7))
@@ -95,7 +119,8 @@ class ShadowSpeckleMetricTest(unittest.TestCase):
         two_face_capture(path, block(6, 7) | block(10, 7))
         for limit, code in (("2", 0), ("1", 1)):
             proc = subprocess.run(
-                [sys.executable, str(SCRIPT), str(path), "--max-edge-speckles", limit],
+                [sys.executable, str(SCRIPT), str(path), "--trixel-px", "2",
+                 "--max-edge-speckles", limit],
                 capture_output=True, text=True)
             self.assertEqual(proc.returncode, code, proc.stdout + proc.stderr)
             self.assertEqual(json.loads(proc.stdout)["edge_speckles"], 2)
@@ -111,9 +136,10 @@ class RetainedCanvasStressFramesTest(unittest.TestCase):
     """The manifest gates pass the committed references and fail the retained
     frames of the unlimited receiver, row for row."""
 
-    def edge_speckles(self, image):
-        result = metric.measure(str(image), None, tuple(rmu.DEFAULT_BG), 4, 1.8,
-                                sample_limit=None)
+    def edge_speckles(self, image, trixel_px=2, measured_at=None):
+        committed = image.parent in (REFERENCES, RETAINED)
+        result = (read_committed_frame if committed else read_frame)(image, measured_at)
+        self.assertEqual(result["trixel_px"], measured_at or trixel_px)
         self.assertEqual(len(result["edge_speckle_samples"]), result["edge_speckles"])
         return result["edge_speckles"]
 
@@ -126,6 +152,27 @@ class RetainedCanvasStressFramesTest(unittest.TestCase):
                 self.assertLessEqual(self.edge_speckles(REFERENCES / f"{row}.png"), limit)
                 if row in retained:
                     self.assertGreater(self.edge_speckles(RETAINED / f"{row}.png"), limit)
+
+    def test_ceilings_grade_every_capture_scale_alike(self):
+        """A 1x capture (Windows/OpenGL) and a 3x one of the same frame read
+        the 2x count; a pixel cutoff fixed at the 2x trixel overcounts at 1x."""
+        gates = speckle_gates()
+        frames = [REFERENCES / f"{row}.png" for row in gates]
+        frames += sorted(RETAINED.glob("*.png"))
+        with tempfile.TemporaryDirectory() as temporary:
+            scaled = Path(temporary) / "scaled.png"
+            for frame in frames:
+                with self.subTest(frame=frame.relative_to(REPO)):
+                    count = self.edge_speckles(frame)
+                    rescaled(frame, scaled, 1, 2)
+                    self.assertEqual(self.edge_speckles(scaled, trixel_px=1), count)
+            settled = REFERENCES / "impulse_settled.png"
+            rescaled(settled, scaled, 3, 2)
+            self.assertEqual(self.edge_speckles(scaled, trixel_px=3),
+                             self.edge_speckles(settled))
+            rescaled(settled, scaled, 1, 2)
+            self.assertGreater(self.edge_speckles(scaled, measured_at=2),
+                               gates["impulse_settled"])
 
 
 if __name__ == "__main__":

@@ -93,8 +93,13 @@ Per-pixel classes, master vs reference ([`tools/pairs.py`](tools/pairs.py)):
 
 Edge speckles are counted by
 [`scripts/render-shadow-speckle-metric.py`](../../../../scripts/render-shadow-speckle-metric.py).
-These are components of at most 4 px that are shadowed against a lit
+These are components of at most one trixel that are shadowed against a lit
 same-albedo neighbour and whose ring touches two distinct lit face levels.
+The metric measures the trixel pitch from the capture (2 px a side here), so
+a 1x Windows/OpenGL capture reads the same count: nearest-neighbour 1x and 3x
+copies of every gated reference and retained master frame match the 2x count
+exactly (`scripts/tests/test_render_shadow_speckle_metric.py`). A cutoff fixed
+at 4 px reads 50 / 39 / 94 / 27 on the 1x references.
 The passing control rows (`modeswitch_revox`, `detach_own_canvas`,
 `sharedparts_spin_a`) read 0.
 
