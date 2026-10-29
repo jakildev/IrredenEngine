@@ -212,6 +212,154 @@
       }
     },
     {
+      "name": "grid_capacity_plate_normals",
+      "demo_args": [
+        "--only",
+        "orbit",
+        "--focus-orbit",
+        "6",
+        "--focus-exact-fit-plate",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--no-shadows",
+        "--debug-overlay",
+        "normals",
+        "--zoom",
+        "8",
+        "--subdivisions",
+        "1",
+        "--sweep-yaw",
+        "0",
+        "4.71238898",
+        "4"
+      ],
+      "warmup": 6,
+      "shots": [
+        "grid_capacity_plate_normals_0",
+        "grid_capacity_plate_normals_90",
+        "grid_capacity_plate_normals_180",
+        "grid_capacity_plate_normals_270"
+      ],
+      "structural_only": [
+        "grid_capacity_plate_normals_0",
+        "grid_capacity_plate_normals_90",
+        "grid_capacity_plate_normals_180",
+        "grid_capacity_plate_normals_270"
+      ],
+      "structural": {
+        "grid_capacity_plate_normals_0": [
+          {
+            "metric": "grid-cell",
+            "fixture": "plate",
+            "yaw": 0,
+            "zoom": 8,
+            "view": "normals"
+          }
+        ],
+        "grid_capacity_plate_normals_90": [
+          {
+            "metric": "grid-cell",
+            "fixture": "plate",
+            "yaw": 90,
+            "zoom": 8,
+            "view": "normals"
+          }
+        ],
+        "grid_capacity_plate_normals_180": [
+          {
+            "metric": "grid-cell",
+            "fixture": "plate",
+            "yaw": 180,
+            "zoom": 8,
+            "view": "normals"
+          }
+        ],
+        "grid_capacity_plate_normals_270": [
+          {
+            "metric": "grid-cell",
+            "fixture": "plate",
+            "yaw": 270,
+            "zoom": 8,
+            "view": "normals"
+          }
+        ]
+      }
+    },
+    {
+      "name": "grid_capacity_plate_beauty",
+      "demo_args": [
+        "--only",
+        "orbit",
+        "--focus-orbit",
+        "6",
+        "--focus-exact-fit-plate",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "8",
+        "--subdivisions",
+        "1",
+        "--sweep-yaw",
+        "0",
+        "4.71238898",
+        "4"
+      ],
+      "warmup": 6,
+      "shots": [
+        "grid_capacity_plate_beauty_0",
+        "grid_capacity_plate_beauty_90",
+        "grid_capacity_plate_beauty_180",
+        "grid_capacity_plate_beauty_270"
+      ],
+      "structural_only": [
+        "grid_capacity_plate_beauty_0",
+        "grid_capacity_plate_beauty_90",
+        "grid_capacity_plate_beauty_180",
+        "grid_capacity_plate_beauty_270"
+      ],
+      "structural": {
+        "grid_capacity_plate_beauty_0": [
+          {
+            "metric": "grid-cell",
+            "fixture": "plate",
+            "yaw": 0,
+            "zoom": 8,
+            "view": "beauty"
+          }
+        ],
+        "grid_capacity_plate_beauty_90": [
+          {
+            "metric": "grid-cell",
+            "fixture": "plate",
+            "yaw": 90,
+            "zoom": 8,
+            "view": "beauty"
+          }
+        ],
+        "grid_capacity_plate_beauty_180": [
+          {
+            "metric": "grid-cell",
+            "fixture": "plate",
+            "yaw": 180,
+            "zoom": 8,
+            "view": "beauty"
+          }
+        ],
+        "grid_capacity_plate_beauty_270": [
+          {
+            "metric": "grid-cell",
+            "fixture": "plate",
+            "yaw": 270,
+            "zoom": 8,
+            "view": "beauty"
+          }
+        ]
+      }
+    },
+    {
       "name": "cylinder_receiver",
       "demo_args": [
         "--only",

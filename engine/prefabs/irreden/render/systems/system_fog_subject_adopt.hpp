@@ -125,7 +125,7 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
             voxelSet.visible_ = false;
             hide.pool_->clearActiveMaskRange(
                 voxelSet.voxelStartIdx_,
-                static_cast<std::size_t>(voxelSet.numVoxels_)
+                static_cast<std::size_t>(voxelSet.allocatedVoxels_)
             );
         });
     }

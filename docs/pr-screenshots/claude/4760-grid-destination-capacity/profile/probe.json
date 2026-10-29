@@ -1,0 +1,61 @@
+{
+  "plate": {
+    "command": [
+      "fleet-run",
+      "--build-dir",
+      "build-release",
+      "--timeout",
+      "240",
+      "IRCanvasStress",
+      "--profile-frames",
+      "2000",
+      "--only",
+      "orbit",
+      "--focus-orbit",
+      "6",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--window-mode",
+      "offscreen",
+      "--focus-exact-fit-plate",
+      "--grid-capacity-probe",
+      "probe-plate.txt"
+    ],
+    "lines": [
+      "[grid-capacity] tick=1 authored=144 capacity=216 unadmitted=0 growths=1 failures=0 peak_capacity=216 pool_resident=216 pool_peak_resident=360 pool_live=360 budget=262144"
+    ]
+  },
+  "cube": {
+    "command": [
+      "fleet-run",
+      "--build-dir",
+      "build-release",
+      "--timeout",
+      "240",
+      "IRCanvasStress",
+      "--profile-frames",
+      "2000",
+      "--only",
+      "orbit",
+      "--focus-orbit",
+      "6",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--window-mode",
+      "offscreen",
+      "--grid-capacity-probe",
+      "probe-cube.txt"
+    ],
+    "lines": [
+      "[grid-capacity] tick=1 authored=1728 capacity=1728 unadmitted=0 growths=0 failures=0 peak_capacity=0 pool_resident=1728 pool_peak_resident=1728 pool_live=1728 budget=262144"
+    ]
+  }
+}

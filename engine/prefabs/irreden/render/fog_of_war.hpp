@@ -886,18 +886,17 @@ isOnFogCanvas(const IRComponents::C_ShapeDescriptor &shape, IREntity::EntityId a
 /// The pool records @p voxelSet owns, addressed through the live @p pool by
 /// index rather than the set's cached span: a canvas migration copies the
 /// pool component and relocates its storage, so the span a set captured at
-/// allocation is not a per-frame handle. `[voxelStartIdx_, +numVoxels_)` is.
+/// allocation is not a per-frame handle. `[voxelStartIdx_, +allocatedVoxels_)`
+/// is; it includes a GRID set's rotated destination tail, which carries the
+/// same carrier as the authored records.
 inline std::span<IRComponents::C_Voxel>
 poolRecords(IRComponents::C_VoxelPool &pool, const IRComponents::C_VoxelSetNew &voxelSet) {
     std::vector<IRComponents::C_Voxel> &records = pool.getColors();
-    if (voxelSet.numVoxels_ <= 0 ||
-        voxelSet.voxelStartIdx_ + static_cast<std::size_t>(voxelSet.numVoxels_) > records.size()) {
+    const std::size_t count = static_cast<std::size_t>(voxelSet.allocatedVoxels_);
+    if (voxelSet.numVoxels_ <= 0 || voxelSet.voxelStartIdx_ + count > records.size()) {
         return {};
     }
-    return std::span<IRComponents::C_Voxel>{
-        records.data() + voxelSet.voxelStartIdx_,
-        static_cast<std::size_t>(voxelSet.numVoxels_)
-    };
+    return std::span<IRComponents::C_Voxel>{records.data() + voxelSet.voxelStartIdx_, count};
 }
 
 /// The BODY carrier currently stamped on @p voxelSet's first record, or 0
@@ -1767,7 +1766,7 @@ restoreHideRouteState(IREntity::EntityId entity, IRComponents::C_FogRevealed &re
                                               : (*voxelSet)->canvasEntity_;
         if (IRComponents::C_VoxelPool *pool = IRPrefab::VoxelPool::detail::poolForCanvas(canvas)) {
             const std::size_t start = (*voxelSet)->voxelStartIdx_;
-            const std::size_t count = static_cast<std::size_t>((*voxelSet)->numVoxels_);
+            const std::size_t count = static_cast<std::size_t>((*voxelSet)->allocatedVoxels_);
             if ((*voxelSet)->masksActive()) {
                 pool->resyncActiveMaskFromColors(start, count);
             } else {
@@ -1846,7 +1845,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         IRComponents::C_VoxelPool *pool = IRPrefab::VoxelPool::detail::poolForCanvas(canvas);
         if (pool != nullptr && !combinedCanvasOwner) {
             rangeStart = voxelSet->voxelStartIdx_;
-            rangeCount = static_cast<std::size_t>(voxelSet->numVoxels_);
+            rangeCount = static_cast<std::size_t>(voxelSet->allocatedVoxels_);
             switch (subjectClass) {
             case FogSubjectClass::BODY:
                 stampBodyCarrier(*pool, *voxelSet, true, 0);

@@ -53,7 +53,7 @@ namespace IRPrefab::VoxelPool {
 inline void restageSet(IRComponents::C_VoxelSetNew &set) {
     const std::size_t spanStart = set.voxelStartIdx_;
     const std::size_t spanCount =
-        set.numVoxels_ > 0 ? static_cast<std::size_t>(set.numVoxels_) : 0u;
+        set.numVoxels_ > 0 ? static_cast<std::size_t>(set.allocatedVoxels_) : 0u;
     const std::uint32_t priorityCount = set.perTrixelPriorityVoxelCount_;
     const IREntity::EntityId canvas = set.canvasEntity_;
     bool sourcePolicyManaged = false;

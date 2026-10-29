@@ -1,0 +1,409 @@
+[
+  {
+    "image": "plate-beauty-yaw0.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-beauty-yaw0.png",
+      "plate",
+      "--yaw",
+      "0",
+      "--view",
+      "beauty"
+    ],
+    "result": {
+      "missing_pixels": 1349,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 175104,
+      "observed_pixels": 173568,
+      "face_interior_pixels": [
+        10966,
+        145782,
+        10696
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": false,
+      "visible_expected_cells": 145,
+      "missing_exposed_cells": 1,
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_silhouette",
+      "fixture": "plate",
+      "yaw": 0.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  },
+  {
+    "image": "plate-beauty-yaw180.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-beauty-yaw180.png",
+      "plate",
+      "--yaw",
+      "180",
+      "--view",
+      "beauty"
+    ],
+    "result": {
+      "missing_pixels": 1349,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 175104,
+      "observed_pixels": 173568,
+      "face_interior_pixels": [
+        10966,
+        145782,
+        10696
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": false,
+      "visible_expected_cells": 145,
+      "missing_exposed_cells": 1,
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_silhouette",
+      "fixture": "plate",
+      "yaw": 180.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  },
+  {
+    "image": "plate-beauty-yaw270.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-beauty-yaw270.png",
+      "plate",
+      "--yaw",
+      "270",
+      "--view",
+      "beauty"
+    ],
+    "result": {
+      "missing_pixels": 1349,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 175104,
+      "observed_pixels": 173568,
+      "face_interior_pixels": [
+        145782,
+        10966,
+        10696
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": false,
+      "visible_expected_cells": 145,
+      "missing_exposed_cells": 1,
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_silhouette",
+      "fixture": "plate",
+      "yaw": 270.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  },
+  {
+    "image": "plate-beauty-yaw90.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-beauty-yaw90.png",
+      "plate",
+      "--yaw",
+      "90",
+      "--view",
+      "beauty"
+    ],
+    "result": {
+      "missing_pixels": 1349,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 175104,
+      "observed_pixels": 173568,
+      "face_interior_pixels": [
+        145782,
+        10966,
+        10696
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": false,
+      "visible_expected_cells": 145,
+      "missing_exposed_cells": 1,
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_silhouette",
+      "fixture": "plate",
+      "yaw": 90.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  },
+  {
+    "image": "plate-normals-yaw0.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-normals-yaw0.png",
+      "plate",
+      "--yaw",
+      "0"
+    ],
+    "result": {
+      "missing_pixels": 1349,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 175104,
+      "observed_pixels": 173568,
+      "face_interior_pixels": [
+        10966,
+        145782,
+        10696
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": false,
+      "visible_expected_cells": 145,
+      "missing_exposed_cells": 1,
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_faces",
+      "fixture": "plate",
+      "yaw": 0.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  },
+  {
+    "image": "plate-normals-yaw180.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-normals-yaw180.png",
+      "plate",
+      "--yaw",
+      "180"
+    ],
+    "result": {
+      "missing_pixels": 1349,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 175104,
+      "observed_pixels": 173568,
+      "face_interior_pixels": [
+        10966,
+        145782,
+        10696
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": false,
+      "visible_expected_cells": 145,
+      "missing_exposed_cells": 1,
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_faces",
+      "fixture": "plate",
+      "yaw": 180.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  },
+  {
+    "image": "plate-normals-yaw270.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-normals-yaw270.png",
+      "plate",
+      "--yaw",
+      "270"
+    ],
+    "result": {
+      "missing_pixels": 1349,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 175104,
+      "observed_pixels": 173568,
+      "face_interior_pixels": [
+        145782,
+        10966,
+        10696
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": false,
+      "visible_expected_cells": 145,
+      "missing_exposed_cells": 1,
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_faces",
+      "fixture": "plate",
+      "yaw": 270.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  },
+  {
+    "image": "plate-normals-yaw90.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-normals-yaw90.png",
+      "plate",
+      "--yaw",
+      "90"
+    ],
+    "result": {
+      "missing_pixels": 1349,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 175104,
+      "observed_pixels": 173568,
+      "face_interior_pixels": [
+        145782,
+        10966,
+        10696
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": false,
+      "visible_expected_cells": 145,
+      "missing_exposed_cells": 1,
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_faces",
+      "fixture": "plate",
+      "yaw": 90.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  },
+  {
+    "image": "plate-shadow-yaw270.png",
+    "exit": 1,
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-shadow-yaw270.png",
+      "plate",
+      "--yaw",
+      "270",
+      "--view",
+      "shadow",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "result": {
+      "false_shadow_pixels": 2082,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.164,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 2784,
+      "lit_interior_pixels": 20384,
+      "shadowed_interior_pixels": 0,
+      "backfacing_pixels": 148480,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": false,
+      "pass": false,
+      "reason": "fixture has no shadowed interior; occlusion is untested",
+      "tie_cells": 0,
+      "clipped": false,
+      "expected_cells": 145,
+      "expected_exposed_cells": 145,
+      "scope": "grid_cell_sun",
+      "fixture": "plate",
+      "yaw": 270.0,
+      "iso_scale": [
+        32,
+        16
+      ]
+    }
+  }
+]

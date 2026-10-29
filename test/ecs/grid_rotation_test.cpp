@@ -384,11 +384,10 @@ class GridInverseSurfaceTest : public ::testing::Test {
         IRSystem::System<IRSystem::REBUILD_GRID_VOXELS> rebuild;
         GridRecords first;
         for (int pass = 0; pass < 2; ++pass) {
-            EXPECT_TRUE(
-                rebuild.inverseArm(voxelSet, transform, pool, voxelSet.voxelStartIdx_, capacity)
-            );
+            rebuild.inverseArm(voxelSet, transform, pool);
+            EXPECT_EQ(voxelSet.unadmittedDestinationCells_, 0);
             GridRecords actual;
-            for (int i = 0; i < capacity; ++i) {
+            for (int i = 0; i < voxelSet.allocatedVoxels_; ++i) {
                 const auto slot = voxelSet.voxelStartIdx_ + static_cast<std::size_t>(i);
                 if (pool.getColors()[slot].color_.alpha_ == 0) {
                     continue;

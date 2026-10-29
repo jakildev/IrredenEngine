@@ -1,0 +1,98 @@
+[
+  {
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/head/plate-normals-yaw0.png",
+      "--fixture",
+      "plate",
+      "--yaw",
+      "90"
+    ],
+    "exit": 1,
+    "result": {
+      "pass": false,
+      "missing_exposed_cells": 40,
+      "missing_pixels": 52421,
+      "extra_pixels": 52800,
+      "wrong_face_pixels": 21781
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/head/plate-normals-yaw90.png",
+      "--fixture",
+      "plate",
+      "--yaw",
+      "270"
+    ],
+    "exit": 1,
+    "result": {
+      "pass": false,
+      "missing_exposed_cells": 32,
+      "missing_pixels": 34564,
+      "extra_pixels": 34816,
+      "wrong_face_pixels": 134062
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/head/plate-normals-yaw0.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "0"
+    ],
+    "exit": 1,
+    "result": {
+      "pass": false,
+      "missing_exposed_cells": 139,
+      "missing_pixels": 200262,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 78055
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/head/cube-normals-yaw0.png",
+      "--fixture",
+      "plate",
+      "--yaw",
+      "0"
+    ],
+    "exit": 1,
+    "result": {
+      "pass": false,
+      "missing_exposed_cells": 0,
+      "missing_pixels": 0,
+      "extra_pixels": 201314,
+      "wrong_face_pixels": 85867
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "docs/pr-screenshots/claude/4760-grid-destination-capacity/parent/plate-beauty-yaw0.png",
+      "--fixture",
+      "plate",
+      "--yaw",
+      "0",
+      "--view",
+      "beauty"
+    ],
+    "exit": 1,
+    "result": {
+      "pass": false,
+      "missing_exposed_cells": 1,
+      "missing_pixels": 1349,
+      "extra_pixels": 0
+    }
+  }
+]

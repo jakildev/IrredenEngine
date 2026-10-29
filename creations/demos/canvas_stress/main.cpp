@@ -1,3 +1,4 @@
+#include <fstream>
 #include <optional>
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
@@ -246,6 +247,8 @@ struct CanvasStressSettings {
     bool modeSwitchCaptureProbePending_ = false;
     IRScript::LuaScript *modeSwitchScript_ = nullptr;
     EntityId modeSwitchEntity_ = kNullEntity;
+    // The focused GRID orbit set the --grid-capacity-probe line reports.
+    EntityId gridCapacitySet_ = kNullEntity;
     int modeSwitchBaselineCanvasCount_ = 0;
 };
 
@@ -979,13 +982,26 @@ void spawnOrbitShape(
     const ivec3 shapeSize = adjacent ? ivec3(2, 1, 1) : ivec3(sourceExtent);
 
     if (mode == RotationMode::GRID) {
+        // An exact-fit extent x 1 x extent plate allocates only its authored
+        // cells, unlike a plate carved from the full box: rotated in plane it
+        // covers more exposed destination cells than it has slots.
+        const bool exactFitPlate = focused && IREngine::args().getFlag("--focus-exact-fit-plate");
         const EntityId e = IREntity::createEntity(
             C_LocalTransform{worldPos, initialRotation},
             C_RotationMode{RotationMode::GRID},
             C_AutoSpin{spinAxis, spinRate},
-            C_VoxelSetNew{shapeSize, color, true}
+            C_VoxelSetNew{
+                exactFitPlate ? ivec3(sourceExtent, 1, sourceExtent) : shapeSize,
+                color,
+                true
+            }
         );
-        carveOrbitShape(IREntity::getComponent<C_VoxelSetNew>(e), shape);
+        if (!exactFitPlate) {
+            carveOrbitShape(IREntity::getComponent<C_VoxelSetNew>(e), shape);
+        }
+        if (focused) {
+            g_settings.gridCapacitySet_ = e;
+        }
         return;
     }
     // Detached: private canvas + pool scale with the shape so large and small
@@ -1675,6 +1691,96 @@ bool hostResampledSpan(EntityId hostCanvas, std::size_t start, std::size_t count
     return false;
 }
 
+struct GridCapacityReading {
+    int authored_ = 0;
+    int capacity_ = 0;
+    int unadmitted_ = 0;
+    std::uint64_t growths_ = 0;
+    std::uint64_t failures_ = 0;
+    int peakCapacity_ = 0;
+    std::size_t poolResident_ = 0;
+    std::size_t poolPeakResident_ = 0;
+    int poolLive_ = 0;
+    int budget_ = 0;
+
+    bool operator==(const GridCapacityReading &) const = default;
+};
+
+struct GridCapacityProbeState {
+    IRSystem::SystemId rebuild_ = IRSystem::kNullSystemId;
+    std::ofstream out_;
+    std::optional<GridCapacityReading> last_;
+    std::uint64_t tick_ = 0;
+};
+
+// Appends one `[grid-capacity]` line to the --grid-capacity-probe file per
+// change of the focused GRID set's authored/allocated slots, the rebuild's
+// growth and failure counts, and the main pool's resident and peak slots.
+// A file, not the log, so Release profile runs report it too. Runs after
+// both GRID rebuild arms.
+IRSystem::SystemId createGridCapacityProbe(IRSystem::SystemId rebuild, const std::string &path) {
+    auto state = std::make_unique<GridCapacityProbeState>();
+    state->rebuild_ = rebuild;
+    state->out_.open(path, std::ios::trunc);
+    IR_ASSERT(state->out_.is_open(), "--grid-capacity-probe: cannot open {}", path);
+    GridCapacityProbeState *statePtr = state.get();
+    const IRSystem::SystemId system = IRSystem::createSystem<C_Camera>(
+        "GridCapacityProbe",
+        [](C_Camera &) {},
+        [statePtr]() {
+            ++statePtr->tick_;
+            auto voxelSet =
+                IREntity::getComponentOptional<C_VoxelSetNew>(g_settings.gridCapacitySet_);
+            if (!voxelSet.has_value()) {
+                return;
+            }
+            const auto &stats =
+                IRSystem::getSystemParams<IRSystem::System<IRSystem::REBUILD_GRID_VOXELS>>(
+                    statePtr->rebuild_
+                )
+                    ->capacityStats_;
+            const C_VoxelPool &pool =
+                IREntity::getComponent<C_VoxelPool>(IRRender::getCanvas("main"));
+            const GridCapacityReading reading{
+                (*voxelSet)->numVoxels_,
+                (*voxelSet)->allocatedVoxels_,
+                (*voxelSet)->unadmittedDestinationCells_,
+                stats.growths_,
+                stats.failures_,
+                stats.peakCapacity_,
+                pool.residentSlotCount(),
+                pool.peakResidentSlotCount(),
+                pool.getLiveVoxelCount(),
+                pool.getVoxelPoolSize()
+            };
+            if (statePtr->last_ == reading) {
+                return;
+            }
+            statePtr->last_ = reading;
+            const std::string line = fmt::format(
+                "[grid-capacity] tick={} authored={} capacity={} unadmitted={} growths={} "
+                "failures={} peak_capacity={} pool_resident={} pool_peak_resident={} "
+                "pool_live={} budget={}",
+                statePtr->tick_,
+                reading.authored_,
+                reading.capacity_,
+                reading.unadmitted_,
+                reading.growths_,
+                reading.failures_,
+                reading.peakCapacity_,
+                reading.poolResident_,
+                reading.poolPeakResident_,
+                reading.poolLive_,
+                reading.budget_
+            );
+            statePtr->out_ << line << std::endl;
+            IR_LOG_INFO("{}", line);
+        }
+    );
+    IRSystem::setSystemParams(system, std::move(state));
+    return system;
+}
+
 IRSystem::SystemId createDetachEarlyDriver() {
     return IRSystem::createSystem<C_Camera>(
         "DetachProbeEarly",
@@ -2042,6 +2148,16 @@ void registerArgs() {
     args.flag("--mixed-shape-hollow", "Carve only the box marker SDF shell");
     args.flag("--mixed-shape-depth-color", "Color marker cells by surface depth");
     args.flag("--focus-identity", "Use identity rotation for the focused orbit shape");
+    args.flag(
+        "--focus-exact-fit-plate",
+        "Allocate the focused GRID orbit shape as an exact-fit extent x 1 x extent plate"
+    );
+    args.string(
+        "--grid-capacity-probe",
+        "Append the focused GRID set's destination capacity and the main pool's slot counts "
+        "to this file whenever they change",
+        ""
+    );
     args.flag("--focus-alternate-parity", "Shift the focused orbit canvas origin by one trixel");
     args.integer(
         "--focus-canvas-scale",
@@ -2491,8 +2607,15 @@ void initSystems() {
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>());
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>());
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>());
-    updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>());
+    const IRSystem::SystemId rebuildGrid = IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>();
+    updatePipeline.push_back(rebuildGrid);
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>());
+    if (IREngine::args().wasProvided("--grid-capacity-probe")) {
+        updatePipeline.push_back(createGridCapacityProbe(
+            rebuildGrid,
+            IREngine::args().getString("--grid-capacity-probe")
+        ));
+    }
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>());
     if (compositeGroups) {
         // Posts each hosted part's pose to its host canvas; needs the owner

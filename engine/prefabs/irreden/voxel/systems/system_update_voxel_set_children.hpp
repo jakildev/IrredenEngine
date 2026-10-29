@@ -151,7 +151,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         // doing the work rather than silently dropping geometry at startup.
         if (cullValid_ && !pool.isRangeVisible(
                               voxelSet.voxelStartIdx_,
-                              static_cast<std::size_t>(voxelSet.numVoxels_),
+                              static_cast<std::size_t>(voxelSet.allocatedVoxels_),
                               viewport_
                           )) {
             return;
@@ -194,11 +194,11 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         if (voxelSet.ownerEntityId_ == IREntity::kNullEntity && entityId != IREntity::kNullEntity &&
             voxelSet.numVoxels_ > 0) {
             // Disjoint per-set span fill + idempotent dirty bool — benign
-            // under concurrency (each set owns [voxelStartIdx_, +numVoxels_)).
+            // under concurrency (each set owns [voxelStartIdx_, +allocatedVoxels_)).
             voxelSet.ownerEntityId_ = entityId;
             pool.setEntityIdForRange(
                 voxelSet.voxelStartIdx_,
-                static_cast<std::size_t>(voxelSet.numVoxels_),
+                static_cast<std::size_t>(voxelSet.allocatedVoxels_),
                 entityId
             );
         }

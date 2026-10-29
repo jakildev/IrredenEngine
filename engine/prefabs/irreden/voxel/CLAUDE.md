@@ -77,13 +77,13 @@ out-of-range writes are errors. Use `sdf_fill.hpp` for in-place fills and
   voxels lag one frame. Visible sets upload every frame; only the shared
   shadow-feeder cull gate skips work. Its parallel workers write disjoint spans
   and merge queued-position ranges in `endTick`.
-- `REBUILD_GRID_VOXELS` runs after that baseline update for explicit GRID
-  entities. It walks destination cells and inverse-maps them into source
-  occupancy (forward scatter is not surjective and leaves rotation holes).
-  Covered-cell overflow drops interior cells first so the visible surface is
-  retained; source-cell aliasing is deterministic first-wins in authored order.
-  Rotated output carries `VoxelReserved::kRotatedEmit` for the render
-  pipeline's silhouette-riser face rule.
+- `REBUILD_GRID_VOXELS` runs after that baseline update for explicit GRID entities, inverse-
+  mapping dest cells into source occupancy (forward scatter leaves holes); aliasing is first-wins.
+  It emits every exposed dest cell; interior cells fill what remains. `allocatedVoxels_` (resident
+  slots) can exceed `numVoxels_` (authored records): the rebuild grows it to a bounded 3/2 high-water
+  mark, the output-only tail is inactive at identity, and masks, owner ids, cull ranges and frees span
+  the allocation while edits and saves use the authored count. An unadmitted pose fails closed (header
+  contract). Rotated output carries `VoxelReserved::kRotatedEmit` for the silhouette-riser face rule.
 - `REBUILD_GRID_VOXELS_IMPLICIT` handles entities with no `C_RotationMode`
   (absence means GRID everywhere else); register it right after the explicit
   system. Their archetypes are disjoint; the twin delegates to the same code.
