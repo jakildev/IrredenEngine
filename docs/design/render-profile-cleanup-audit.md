@@ -223,7 +223,10 @@ missing, extra or wrong-face pixels, and the dense solid is identical on both.
 The direct-sun overlay disagrees with the lattice-ray oracle at stair
 terminators (missed shadow up to 13,872 px on the solid at 180°) identically on
 parent and head, so that disagreement predates and is independent of capacity.
-Interleaved capture-free Release profiles show no measurable frame or
+The shadow overlay disables the cardinal continuous receiver and shows the
+compute sun route, so the reading is not a statement about the production
+route. Parent and head shadow frames are byte-identical except where the
+plate's gained cell lands. Interleaved capture-free Release profiles show no measurable frame or
 `RebuildGridVoxels` mean difference. Commands and results:
 [evidence](../pr-screenshots/claude/4760-grid-destination-capacity/README.md).
 

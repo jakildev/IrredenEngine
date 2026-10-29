@@ -53,8 +53,40 @@ frame fails with one missing cell.
 
 ## Direct-sun overlay
 
-The shadow overlay is graded against rays through the expected occupancy
-(`--view shadow --terminator-tolerance 0`):
+Any debug overlay keeps the compute sun route (`System<LIGHTING_TO_TRIXEL>`
+enables the cardinal continuous receiver only with no overlay), so these frames
+grade the route the overlay shows, not the one a player sees.
+
+### Regression grade (criterion 3)
+
+`python3 grade.py <repo> --shadow-regression .` reads every shadow frame's
+hash from [captures.json](captures.json), re-hashes the stored file, and writes
+[shadow-regression.json](shadow-regression.json); it exits 1 on any failed row.
+
+| Fixture | Yaw | Grade | Result |
+|---|---|---|---|
+| cube | 0 / 90 / 180 / 270 | parent and head byte-identical | pass (4 of 4) |
+| plate | 0 / 90 / 180 | parent and head byte-identical | pass (3 of 3) |
+| plate | 270 | differing pixels inside the gained cell's footprint, dilated by 1 px | pass: 224 differing px, 0 outside; footprint 1,536 px (1,762 dilated) |
+
+The gained cell is the one cell `missing_cells` names on
+`parent/plate-normals-yaw270.png` (view cell `[0, 1, 8]`), painted by the
+metric's painter at yaw 270° and zoom 8:
+
+```text
+python3 scripts/render-grid-cell-metric.py head/plate-shadow-yaw270.png --fixture plate
+  --yaw 270 --zoom 8 --regression-parent parent/plate-shadow-yaw270.png
+  --gained-from parent/plate-normals-yaw270.png
+```
+
+Control: the same frames with one head pixel changed at (10, 10), outside the
+footprint, grade `outside_footprint_pixels: 1` and `grade.py` exits 1.
+
+### Terminator readings (information, outside #4760)
+
+`--view shadow` against rays through the expected occupancy. Every reading is
+the same at `--terminator-tolerance 0` and at the default 0.5, and identical on
+parent and head except plate 270°:
 
 | Fixture | Yaw | False / missed px, parent | False / missed px, head | Occlusion exercised |
 |---|---|---|---|---|
@@ -67,11 +99,11 @@ The shadow overlay is graded against rays through the expected occupancy
 | plate | 180 | 0 / 848 | 0 / 848 | yes |
 | plate | 270 | 2,082 / 0 | 2,272 / 0 | no |
 
-The disagreement sits on thin strips at the staircase's tread/riser junctions
-and is pixel-identical on parent and head for the unchanged solid, so it belongs
-to the main-canvas sun sampling, not to capacity. At plate 270° the added cell
-carries the same class of false shadow as its neighbours (+190 px). No row meets
-"zero false or missed interior shadow samples".
+The disagreement sits on thin strips at the staircase's tread/riser junctions,
+and the unchanged solid gives the same readings on parent and head, so it comes
+from the compute sun route, not from capacity. At plate 270° the added cell
+carries the same class of false shadow as its neighbours (+190 px). The
+production-route shadow oracle is owned by #4763.
 
 ## Capacity readings
 
@@ -95,23 +127,25 @@ The admission budget is the pool size, capped at 2,000,000 destination cells.
 `scripts/perf/grid_capacity_controls.py` ran four capture-free rounds of
 {parent, head} × {plate, cube}, forward and reverse, 2000 frames each with the
 set spinning (750 steady update ticks per run, more than the 600-tick
-revolution). [profile/summary.md](profile/summary.md):
+revolution), under `ir-acquire benchmark`. The quiet window held for the whole
+run (`IR_QUIET_REPORT_FILE` reads `GUARDED`). [profile/summary.md](profile/summary.md):
 
-| Case | Frame mean ms | Steady mean / p95 / p99 ms | `RebuildGridVoxels` mean (min–max) ms |
+| Case | Frame mean ms | Steady mean / p95 / p99 ms | `RebuildGridVoxels` mean / min / max ms |
 |---|---:|---:|---:|
-| parent-plate | 8.383 | 8.332 / 8.973 / 9.388 | 0.0215 (0.0050–0.1020) |
-| head-plate | 8.373 | 8.335 / 8.902 / 9.401 | 0.0205 (0.0050–0.1210) |
-| parent-cube | 8.373 | 8.332 / 8.887 / 9.266 | 0.1020 (0.0250–0.3460) |
-| head-cube | 8.373 | 8.340 / 8.945 / 9.403 | 0.0905 (0.0240–2.4280) |
+| parent-plate | 8.377 | 8.332 / 8.909 / 9.390 | 0.0250 / 0.0050 / 0.1410 |
+| head-plate | 8.372 | 8.334 / 8.930 / 9.398 | 0.0268 / 0.0050 / 0.1390 |
+| parent-cube | 8.383 | 8.334 / 8.898 / 9.336 | 0.1242 / 0.0240 / 0.4210 |
+| head-cube | 8.375 | 8.334 / 8.921 / 9.352 | 0.1263 / 0.0250 / 0.3430 |
 
 Frames are paced at about 120 Hz offscreen, so frame time measures the pacing
 wait, not the rebuild. The rebuild means differ by less than their run spread;
-there is no speedup claim. The benchmark wrapper reported a quiet-window breach
-from another fleet pane (`uncovered` lease), so these rows are not
-quiet-certified. The profile report keeps a per-frame series only for whole
-frames, so `RebuildGridVoxels` has mean, min and max but no p95 or p99.
+there is no speedup claim. The profile report keeps a per-frame series only for
+whole frames, so `RebuildGridVoxels` reports mean, min and max; its max is the
+upper bound on its p99. The capacity readings above are unchanged on this run.
 
 ## Not covered
 
-- OpenGL: no capture on this macOS host.
+- OpenGL: no capture on this macOS host. The OpenGL parent/head frames and
+  `grid-cell` readings are owned by #4808 (`render-verify --target IRCanvasStress`
+  on `windows-debug` at the merge commit, parent control on its first parent).
 - Interior occupancy, AO and light volume for solids that omit interior cells.

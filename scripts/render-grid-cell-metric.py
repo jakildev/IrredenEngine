@@ -27,7 +27,14 @@ non-black pixel is occupied, and face colours are not compared.
 and grades each sun-facing interior trixel against a ray through the expected
 destination occupancy (the revox metric's lattice visibility). A conclusive
 shadow row needs both lit and shadowed interiors; otherwise it reports
-`occlusion_exercised: false` and exits 1.
+`occlusion_exercised: false` and exits 1. Any debug overlay keeps the compute
+sun route, so this grades that route, not the cardinal surface receiver a
+player sees.
+
+`--regression-parent P --gained-from N` grades a change instead: every pixel
+that differs between parent frame P and the image must lie inside the painted
+footprint, dilated by one pixel, of the cells `missing_cells` reports absent
+on the parent normals frame N. It fails when N names no absent cell.
 """
 
 import argparse
@@ -127,12 +134,13 @@ def expected_image(width, height, fixture, yaw, scale, origin, sun=None):
                   if any(not lattice.covered(tuple(cell[i] + n[i] for i in range(3)))
                          for n in neighbors))
     stats.update(expected_cells=stats.pop("occupied_cells"), expected_exposed_cells=exposed,
-                 tie_cells=lattice.world_ties)
+                 tie_cells=lattice.world_ties, cells=lattice.occupied())
     return labels, owner, palette, stats
 
 
 def missing_cells(width, height, bpp, pixels, owner):
-    """Expected cells whose interior (one-pixel-band) pixels are mostly absent."""
+    """Visible-cell count and the owner indices of expected cells whose
+    interior (one-pixel-band) pixels are mostly absent."""
     interior, absent = {}, {}
     for index, cell in enumerate(owner):
         if not cell:
@@ -145,8 +153,67 @@ def missing_cells(width, height, bpp, pixels, owner):
         interior[cell] = interior.get(cell, 0) + 1
         absent[cell] = absent.get(cell, 0) + (not any(pixels[index * bpp:index * bpp + 3]))
     visible = len(interior)
-    missing = sum(1 for cell, count in interior.items() if absent[cell] * 2 > count)
+    missing = sorted(cell for cell, count in interior.items() if absent[cell] * 2 > count)
     return visible, missing
+
+
+def differing_pixels(width, height, bpp, before, after):
+    """Indices of pixels whose bytes differ between two same-sized frames."""
+    stride = width * bpp
+    differing = []
+    for y in range(height):
+        row = slice(y * stride, (y + 1) * stride)
+        if before[row] == after[row]:
+            continue
+        differing.extend(y * width + x for x in range(width)
+                         if before[y * stride + x * bpp:y * stride + (x + 1) * bpp]
+                         != after[y * stride + x * bpp:y * stride + (x + 1) * bpp])
+    return differing
+
+
+def dilated_footprint(width, height, owner, cells, dilation=1):
+    """Pixels the painter gives `cells` (owner indices), grown by `dilation`."""
+    painted = [index for index, cell in enumerate(owner) if cell in cells]
+    footprint = set()
+    for index in painted:
+        x, y = index % width, index // width
+        footprint.update(yy * width + xx
+                         for yy in range(max(0, y - dilation), min(height, y + dilation + 1))
+                         for xx in range(max(0, x - dilation), min(width, x + dilation + 1)))
+    return len(painted), footprint
+
+
+def regression_grade(args, scale_for):
+    """Parent/head frames may differ only inside the gained cells' footprint.
+
+    The gained cells are the expected cells `missing_cells` reports absent on
+    the parent normals frame (`--gained-from`), painted at the same yaw and
+    scale; every pixel that differs between `--regression-parent` and the
+    graded image must lie inside their footprint dilated by one pixel.
+    """
+    width, height, bpp, normals = read_png(str(args.gained_from))
+    scale = scale_for(width)
+    _, owner, _, stats = expected_image(width, height, FIXTURES[args.fixture],
+                                        math.radians(args.yaw), scale,
+                                        (width / 2, height / 2))
+    cells = stats.pop("cells")
+    _, gained = missing_cells(width, height, bpp, normals, owner)
+    frames = [read_png(str(path)) for path in (args.regression_parent, args.image)]
+    if any(frame[:3] != (width, height, bpp) for frame in frames):
+        raise ValueError("parent, head and normals frames must share size and format")
+    differing = differing_pixels(width, height, bpp, frames[0][3], frames[1][3])
+    painted, footprint = dilated_footprint(width, height, owner, set(gained))
+    outside = sum(1 for index in differing if index not in footprint)
+    return dict(
+        scope="grid_cell_regression", image=str(args.image),
+        parent=str(args.regression_parent), gained_from=str(args.gained_from),
+        fixture=args.fixture, yaw=args.yaw, iso_scale=list(scale),
+        gained_cells=[list(cells[index - 1]) for index in gained],
+        footprint_pixels=painted, dilated_footprint_pixels=len(footprint),
+        differing_pixels=len(differing), outside_footprint_pixels=outside,
+        clipped=stats["clipped"], tie_cells=stats["tie_cells"],
+        **{"pass": bool(gained) and outside == 0 and not stats["clipped"]
+           and stats["tie_cells"] == 0})
 
 
 def main(argv=None):
@@ -165,7 +232,15 @@ def main(argv=None):
     parser.add_argument("--sun", type=float, nargs=3, default=REVOX.DEFAULT_SUN)
     parser.add_argument("--terminator-tolerance", type=float, default=REVOX.TERMINATOR_TOLERANCE)
     parser.add_argument("--diagnostic-prefix", type=Path)
+    regression = parser.add_argument_group(
+        "regression grade", "grade IMAGE against a parent frame of the same view instead")
+    regression.add_argument("--regression-parent", type=Path,
+                            help="parent frame; IMAGE may differ only inside the gained cells")
+    regression.add_argument("--gained-from", type=Path,
+                            help="parent normals frame naming the gained (absent) cells")
     args = parser.parse_args(argv)
+    if (args.regression_parent is None) != (args.gained_from is None):
+        parser.error("--regression-parent and --gained-from go together")
     if not math.isfinite(args.yaw) or args.yaw % 90 != 0:
         parser.error("yaw must be a multiple of 90 degrees (GRID cells stay on the lattice)")
     if args.zoom is not None and not (math.isfinite(args.zoom) and args.zoom > 0):
@@ -175,15 +250,24 @@ def main(argv=None):
     shadow = args.view == "shadow"
     if not all(math.isfinite(v) for v in args.sun) or not any(args.sun):
         parser.error("sun must be a finite, non-zero direction")
+
+    def scale_for(width):
+        if args.zoom is None:
+            return args.iso_scale
+        unit = args.zoom * 2 * width / GAME_WIDTH
+        return (unit, unit / 2)
+
     try:
+        if args.regression_parent is not None:
+            result = regression_grade(args, scale_for)
+            print(json.dumps(result))
+            return 0 if result["pass"] else 1
         width, height, bpp, pixels = read_png(str(args.image))
-        scale = args.iso_scale
-        if args.zoom is not None:
-            unit = args.zoom * 2 * width / GAME_WIDTH
-            scale = (unit, unit / 2)
+        scale = scale_for(width)
         expected, owner, palette, stats = expected_image(
             width, height, FIXTURES[args.fixture], math.radians(args.yaw), scale,
             (width / 2, height / 2), tuple(args.sun) if shadow else None)
+        cells = stats.pop("cells")
         if shadow:
             lit = stats.pop("lit")
             result, errors = REVOX.compare_shadow(width, height, bpp, pixels, expected, lit,
@@ -195,8 +279,9 @@ def main(argv=None):
             result, errors = REVOX.compare(width, height, bpp, pixels, expected, palette,
                                            faces=args.view != "beauty")
             visible, missing = missing_cells(width, height, bpp, pixels, owner)
-            result.update(visible_expected_cells=visible, missing_exposed_cells=missing)
-            result["pass"] &= missing == 0
+            result.update(visible_expected_cells=visible, missing_exposed_cells=len(missing),
+                          missing_cells=[list(cells[index - 1]) for index in missing])
+            result["pass"] &= not missing
         result.update(stats)
         result.update(image=str(args.image),
                       scope=("grid_cell_sun" if shadow else
