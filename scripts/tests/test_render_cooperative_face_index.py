@@ -68,6 +68,7 @@ int main(){
   const uint records=offMap||degenerate?0:repeats*groups;
   if(sunDepthBuf[kSourceFaceHeaderOffset]!=records+(exhausted?65536:0))return 1;
   if(barrierCalls!=records*64*2)return 6;
+  if(exhausted&&records&&sunDepthBuf[kSourceFaceHierarchyNeededOffset]!=1)return 16;
   uint completeSpillTiles=0,incompleteTiles=0;
   for(uint tile=0;tile<32768;++tile){
    const uint x=tile%128,y=(tile%16384)/128;
@@ -82,7 +83,7 @@ int main(){
     if(count!=65&&count!=257)return 8;
     completeSpillTiles+=count==65;
     incompleteTiles+=count==257;
-   }else if(count!=(covered?(exhausted?257:records):0))return 2;
+   }else if(count!=(covered?(exhausted?kSourceFaceTileRecordLost:records):0))return 2;
    std::vector<uint> ids;
    for(uint slot=0;slot<std::min(covered&&!exhausted?records:0,64u);++slot)
     ids.push_back(sunDepthBuf[base+1+slot]);
@@ -148,6 +149,10 @@ class CooperativeFaceIndexTest(unittest.TestCase):
             "uint old=p;p=std::max(p,n);return old;",
             "std::atomic_ref<uint> ref(p);uint old=ref.load();"
             "while(old<n&&!ref.compare_exchange_weak(old,n)){}return old;")
+        preamble = preamble.replace("std::uint64_t atomicOrs=0;",
+                                    "std::atomic<std::uint64_t> atomicOrs{0};")
+        preamble = preamble.replace("uint old=p;p|=n;return old;",
+                                    "return std::atomic_ref<uint>(p).fetch_or(n);")
         preamble = preamble.replace("uint old=p;p=n;return old;",
                                     "return std::atomic_ref<uint>(p).exchange(n);")
         preamble = preamble.replace("*p=n;", "std::atomic_ref<uint>(*p).store(n);")
@@ -168,6 +173,9 @@ class CooperativeFaceIndexTest(unittest.TestCase):
                     "slot < kSourceFaceTileQueryCapacity", "slot < 65u"),
                 "unmarked_capacity_failure": source.replace(
                     "kSourceFaceTileQueryCapacity + 1u", "0u"),
+                "unmarked_record_loss": source.replace("kSourceFaceTileRecordLost", "0u"),
+                "missing_record_hierarchy_request": source.replace(
+                    "faceIndex == kSourceFaceCapacity", "false"),
             }
             call = ("indexSourceSunFace(indexedCorner,u,v);" if suffix == "glsl" else
                     "indexSourceSunFace(sunDepthBuf.data,indexedCorner,u,v,sunFrame,"

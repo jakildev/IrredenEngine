@@ -47,6 +47,12 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
         sizeof(spillRequested),
         &spillRequested
     );
+    std::uint32_t hierarchy[2] = {};
+    buffer->getSubData(
+        std::size_t(kSourceFaceHierarchyNeededOffset) * sizeof(std::uint32_t),
+        sizeof(hierarchy),
+        hierarchy
+    );
     frameBuffer->getSubData(0, sizeof(frame), &frame);
     output << std::setprecision(9);
     output << "# active=1\n";
@@ -54,6 +60,8 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
     output << "# face_record_capacity=" << kSourceFaceCapacity << "\n";
     output << "# spill_nodes_requested=" << spillRequested << "\n";
     output << "# spill_node_capacity=" << kSourceFaceSpillCapacity << "\n";
+    output << "# hierarchy_needed=" << hierarchy[0] << "\n";
+    output << "# hierarchy_ready_leaves=" << hierarchy[1] << "\n";
     output << "# tile_inline_capacity=" << kSourceFaceTileCapacity << "\n";
     output << "# buffer_bytes=" << std::size_t(kSourceFaceBufferWords) * sizeof(std::uint32_t)
            << "\n";
@@ -90,23 +98,26 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
             output << '\n';
         }
     }
-    output << "cascade,x,y,count,complete,u_min,v_min,u_max,v_max\n";
+    output << "cascade,x,y,count,complete,u_min,v_min,u_max,v_max,records_lost\n";
     for (std::uint32_t tile = 0; tile < kSourceFaceTileCount; ++tile) {
         const auto cascade = tile / (kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis);
         const auto x = tile % kSourceFaceTilesPerAxis;
         const auto y = (tile / kSourceFaceTilesPerAxis) % kSourceFaceTilesPerAxis;
-        const auto count = words
+        const auto counter = words
             [kSourceFaceTileOffset - kSourceFaceHeaderOffset +
              tile * (kSourceFaceTileCapacity + 1u)];
+        const auto count = counter & ~kSourceFaceTileRecordLost;
+        const bool recordsLost = (counter & kSourceFaceTileRecordLost) != 0u;
         const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
         const auto size = (cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_) *
                           float(kSourceFaceTileEdge);
         const auto low = origin + IRMath::vec2(float(x), float(y)) * size;
         const auto high = low + size;
         output << cascade << ',' << x << ',' << y << ',' << count << ','
-               << (count <= kSourceFaceTileQueryCapacity &&
+               << (!recordsLost && count <= kSourceFaceTileQueryCapacity &&
                    (count <= kSourceFaceTileCapacity || spillRequested <= kSourceFaceSpillCapacity))
-               << ',' << low.x << ',' << low.y << ',' << high.x << ',' << high.y << "\n";
+               << ',' << low.x << ',' << low.y << ',' << high.x << ',' << high.y << ','
+               << recordsLost << "\n";
     }
     output.close();
     return !output.fail();

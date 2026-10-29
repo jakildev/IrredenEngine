@@ -25,6 +25,7 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
             if (lane == 0u) {
 #endif
             faceIndex = atomicAdd(sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))], 1u);
+            if (faceIndex == kSourceFaceCapacity) atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))], 1u);
             if (faceIndex < kSourceFaceCapacity) {
                 const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
                 sunDepthBuf[record + 9u] = type;
@@ -55,7 +56,7 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
             const uint base = sourceFaceTileBase(tile);
             if (faceIndex >= kSourceFaceCapacity) {
-                atomicMax(sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u);
+                atomicOr(sunDepthBuf[base], kSourceFaceTileRecordLost);
                 continue;
             }
             const uint slot = atomicAdd(sunDepthBuf[base], 1u);

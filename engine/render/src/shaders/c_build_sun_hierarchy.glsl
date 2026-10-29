@@ -50,8 +50,8 @@ void reduceSourceSunHierarchy(uint lane, uint level, uint rootNode) {
 void main() {
     const uint lane = gl_LocalInvocationID.x;
     const uint group = gl_WorkGroupID.x;
-    const uint records = sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))];
-    if (records == 0u || records > kSourceFaceCapacity ||
+    const uint records = sourceFaceRetainedRecords(sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))]);
+    if (records == 0u ||
         sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))] == 0u) return;
     const uint leaves = sourceSunHierarchyLeafCount(records);
     const uint pass = uint(hierarchyDispatch.x);

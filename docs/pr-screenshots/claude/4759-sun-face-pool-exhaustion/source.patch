@@ -1,0 +1,350 @@
+diff --git a/creations/demos/canvas_stress/main.cpp b/creations/demos/canvas_stress/main.cpp
+index d45ee3695..792ce0af3 100644
+--- a/creations/demos/canvas_stress/main.cpp
++++ b/creations/demos/canvas_stress/main.cpp
+@@ -2125,6 +2125,20 @@ void registerArgs() {
+         1
+     );
+     args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
++    args.integer(
++        "--probe-record-pool-filler",
++        "Side of a flat rigid source plate that fills the sun face record pool, 0..512 (0 off)",
++        0
++    );
++    args.numbers(
++        "--probe-record-pool-filler-offset",
++        "Record-pool filler translation from the shadowbox <x> <y> <z>",
++        3
++    );
++    args.flag(
++        "--probe-record-pool-filler-last",
++        "Create the record-pool filler after the shadowbox casters instead of before them"
++    );
+     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
+     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
+     args.flag(
+@@ -3205,6 +3219,48 @@ void initEntities() {
+             vec3(0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f) +
+             (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
+         const Color color{80, 120, 240, 255};
++        // Bake dispatches allocate records in creation order, so the filler's
++        // position in that order decides whether the shadowbox casters keep theirs.
++        const int fillerSide =
++            IRMath::clamp(IREngine::args().getInt("--probe-record-pool-filler"), 0, 512);
++        const bool fillerLast = IREngine::args().getFlag("--probe-record-pool-filler-last");
++        const auto spawnRecordPoolFiller = [&]() {
++            const auto offsetValues =
++                IREngine::args().getFloats("--probe-record-pool-filler-offset");
++            const vec3 offset = offsetValues.empty()
++                                    ? vec3(0.0f)
++                                    : vec3(offsetValues[0], offsetValues[1], offsetValues[2]);
++            auto filler = IRPrefab::EntityCanvas::createWithVoxelPool(
++                "record_pool_filler",
++                ivec2(1024),
++                ivec3(fillerSide, fillerSide, 1)
++            );
++            IREntity::createEntity(
++                C_LocalTransform{vec3(0.0f)},
++                C_VoxelSetNew{
++                    ivec3(fillerSide, fillerSide, 1),
++                    Color{120, 200, 120, 255},
++                    true,
++                    filler.canvasEntity_
++                }
++            );
++            IREntity::createEntity(
++                C_LocalTransform{position + offset},
++                C_RotationMode{RotationMode::DETACHED},
++                filler
++            );
++            IR_LOG_INFO(
++                "RECORD-POOL-FILLER side={} order={} offset=({},{},{})",
++                fillerSide,
++                fillerLast ? "last" : "first",
++                offset.x,
++                offset.y,
++                offset.z
++            );
++        };
++        if (fillerSide > 0 && !fillerLast) {
++            spawnRecordPoolFiller();
++        }
+         if (IREngine::args().getFlag("--probe-overlapping-source")) {
+             const auto sourceOffsetValues =
+                 IREngine::args().getFloats("--probe-overlapping-source-offset");
+@@ -3333,6 +3389,9 @@ void initEntities() {
+                 canvas
+             );
+         }
++        if (fillerSide > 0 && fillerLast) {
++            spawnRecordPoolFiller();
++        }
+     }
+ 
+     // Per-trixel priority interpenetration demo — OPT-IN only
+diff --git a/engine/prefabs/irreden/render/sun_face_query_layout.hpp b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+index c92893f45..60a8f2c07 100644
+--- a/engine/prefabs/irreden/render/sun_face_query_layout.hpp
++++ b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+@@ -42,6 +42,8 @@ constexpr std::uint32_t kSourceFaceHierarchyMaxLeaves =
+ constexpr std::uint32_t kSourceFaceHierarchyNodeWords = 8u;
+ constexpr std::uint32_t kSourceFaceBufferWords =
+     kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
++// Sticky tile-count bit: a failed record reservation left overlapping geometry outside the pool.
++constexpr std::uint32_t kSourceFaceTileRecordLost = 0x80000000u;
+ 
+ constexpr int kSourceFaceHierarchyLevels = 14;
+ constexpr int kSourceFaceHierarchyBuildPasses = 2;
+@@ -78,6 +80,11 @@ static_assert(
+     "Spill allocation attempts must not wrap the counter"
+ );
+ 
++static_assert(
++    kSourceFaceCapacity < kSourceFaceTileRecordLost,
++    "Retained-record appends to one tile must not reach the lost-record bit"
++);
++
+ static_assert(
+     kSourceFaceMapDimension % kSourceFaceTileEdge == 0u,
+     "Source face tiles must divide each shadow cascade"
+diff --git a/engine/prefabs/irreden/render/sun_shadow_probe.hpp b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
+index 76658d55a..5dd115271 100644
+--- a/engine/prefabs/irreden/render/sun_shadow_probe.hpp
++++ b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
+@@ -47,6 +47,12 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
+         sizeof(spillRequested),
+         &spillRequested
+     );
++    std::uint32_t hierarchy[2] = {};
++    buffer->getSubData(
++        std::size_t(kSourceFaceHierarchyNeededOffset) * sizeof(std::uint32_t),
++        sizeof(hierarchy),
++        hierarchy
++    );
+     frameBuffer->getSubData(0, sizeof(frame), &frame);
+     output << std::setprecision(9);
+     output << "# active=1\n";
+@@ -54,6 +60,8 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
+     output << "# face_record_capacity=" << kSourceFaceCapacity << "\n";
+     output << "# spill_nodes_requested=" << spillRequested << "\n";
+     output << "# spill_node_capacity=" << kSourceFaceSpillCapacity << "\n";
++    output << "# hierarchy_needed=" << hierarchy[0] << "\n";
++    output << "# hierarchy_ready_leaves=" << hierarchy[1] << "\n";
+     output << "# tile_inline_capacity=" << kSourceFaceTileCapacity << "\n";
+     output << "# buffer_bytes=" << std::size_t(kSourceFaceBufferWords) * sizeof(std::uint32_t)
+            << "\n";
+@@ -90,23 +98,26 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
+             output << '\n';
+         }
+     }
+-    output << "cascade,x,y,count,complete,u_min,v_min,u_max,v_max\n";
++    output << "cascade,x,y,count,complete,u_min,v_min,u_max,v_max,records_lost\n";
+     for (std::uint32_t tile = 0; tile < kSourceFaceTileCount; ++tile) {
+         const auto cascade = tile / (kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis);
+         const auto x = tile % kSourceFaceTilesPerAxis;
+         const auto y = (tile / kSourceFaceTilesPerAxis) % kSourceFaceTilesPerAxis;
+-        const auto count = words
++        const auto counter = words
+             [kSourceFaceTileOffset - kSourceFaceHeaderOffset +
+              tile * (kSourceFaceTileCapacity + 1u)];
++        const auto count = counter & ~kSourceFaceTileRecordLost;
++        const bool recordsLost = (counter & kSourceFaceTileRecordLost) != 0u;
+         const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
+         const auto size = (cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_) *
+                           float(kSourceFaceTileEdge);
+         const auto low = origin + IRMath::vec2(float(x), float(y)) * size;
+         const auto high = low + size;
+         output << cascade << ',' << x << ',' << y << ',' << count << ','
+-               << (count <= kSourceFaceTileQueryCapacity &&
++               << (!recordsLost && count <= kSourceFaceTileQueryCapacity &&
+                    (count <= kSourceFaceTileCapacity || spillRequested <= kSourceFaceSpillCapacity))
+-               << ',' << low.x << ',' << low.y << ',' << high.x << ',' << high.y << "\n";
++               << ',' << low.x << ',' << low.y << ',' << high.x << ',' << high.y << ','
++               << recordsLost << "\n";
+     }
+     output.close();
+     return !output.fail();
+diff --git a/engine/render/src/shaders/c_build_sun_hierarchy.glsl b/engine/render/src/shaders/c_build_sun_hierarchy.glsl
+index bbf89bc53..73255faa7 100644
+--- a/engine/render/src/shaders/c_build_sun_hierarchy.glsl
++++ b/engine/render/src/shaders/c_build_sun_hierarchy.glsl
+@@ -50,8 +50,8 @@ void reduceSourceSunHierarchy(uint lane, uint level, uint rootNode) {
+ void main() {
+     const uint lane = gl_LocalInvocationID.x;
+     const uint group = gl_WorkGroupID.x;
+-    const uint records = sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))];
+-    if (records == 0u || records > kSourceFaceCapacity ||
++    const uint records = sourceFaceRetainedRecords(sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))]);
++    if (records == 0u ||
+         sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))] == 0u) return;
+     const uint leaves = sourceSunHierarchyLeafCount(records);
+     const uint pass = uint(hierarchyDispatch.x);
+diff --git a/engine/render/src/shaders/ir_sun_face_index.glsl b/engine/render/src/shaders/ir_sun_face_index.glsl
+index f8aef5c1c..4830a4d8c 100644
+--- a/engine/render/src/shaders/ir_sun_face_index.glsl
++++ b/engine/render/src/shaders/ir_sun_face_index.glsl
+@@ -25,6 +25,7 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
+             if (lane == 0u) {
+ #endif
+             faceIndex = atomicAdd(sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))], 1u);
++            if (faceIndex == kSourceFaceCapacity) atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))], 1u);
+             if (faceIndex < kSourceFaceCapacity) {
+                 const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
+                 sunDepthBuf[record + 9u] = type;
+@@ -55,7 +56,7 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
+             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
+             const uint base = sourceFaceTileBase(tile);
+             if (faceIndex >= kSourceFaceCapacity) {
+-                atomicMax(sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u);
++                atomicOr(sunDepthBuf[base], kSourceFaceTileRecordLost);
+                 continue;
+             }
+             const uint slot = atomicAdd(sunDepthBuf[base], 1u);
+diff --git a/engine/render/src/shaders/ir_sun_face_query_layout.glsl b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+index 602c6ec5f..35d653f59 100644
+--- a/engine/render/src/shaders/ir_sun_face_query_layout.glsl
++++ b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+@@ -30,6 +30,8 @@ const uint kSourceFaceHierarchyNodeWords = 8u;
+ const uint kSourceFaceHierarchyWorkgroupSize = 128u;
+ const uint kSourceFaceHierarchyBuildPasses = 2u;
+ const uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
++// Sticky tile-count bit: a failed record reservation left overlapping geometry outside the pool.
++const uint kSourceFaceTileRecordLost = 0x80000000u;
+ 
+ // Every header access passes `uint(sunDepthBuf.length())`: NVIDIA's cold link
+ // time grows with a compile-time-constant SSBO index, and this one costs minutes
+@@ -61,6 +63,15 @@ bool sourceFaceQueryComplete(uint count) {
+     return count <= kSourceFaceTileQueryCapacity;
+ }
+ 
++bool sourceFaceTileRetainsRecords(uint count) {
++    return (count & kSourceFaceTileRecordLost) == 0u;
++}
++
++// Reservations past capacity publish nothing; every lower ID holds a published record.
++uint sourceFaceRetainedRecords(uint requested) {
++    return requested < kSourceFaceCapacity ? requested : kSourceFaceCapacity;
++}
++
+ // Positive separation is a front hit, including conservative rounded boundaries.
+ float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, vec3 edgeV
+ #if IR_SUN_QUERY_STATS
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 79bc672ae..2fef8995f 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -142,16 +142,18 @@ float sampleCascadeShadow(
+             const uint count = sunDepthBuf[tileBase];
+             sourceQueryComplete = sourceFaceQueryComplete(count)
+                 && (count <= kSourceFaceTileCapacity || sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))] <= kSourceFaceSpillCapacity);
++            const uint retainedFaces = sourceFaceRetainedRecords(sourceFaceCount);
+             const uint hierarchyLeaves = !sourceQueryComplete ? sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] : 0u;
+-            const bool queryHierarchy = !sourceQueryComplete && sourceFaceCount <= kSourceFaceCapacity &&
+-                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(sourceFaceCount);
++            const bool queryHierarchy = !sourceQueryComplete &&
++                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(retainedFaces);
+             if (queryHierarchy) {
+-                sourceQueryComplete = true;
++                // Retained-pool hits are exact; a miss cannot certify a tile that lost records.
++                sourceQueryComplete = sourceFaceTileRetainsRecords(count);
+                 if (dot(normal, sunDir) > 0.0) {
+ #if IR_SUN_QUERY_STATS
+                     sunQueryStats.counts[kSunQueryIndexed] += 1u;
+ #endif
+-                    if (sourceSunHierarchyBlocks(hierarchyLeaves, sourceFaceCount,
++                    if (sourceSunHierarchyBlocks(hierarchyLeaves, retainedFaces,
+                                                  sunUV, sunZ, maxShadowThrow
+ #if IR_SUN_QUERY_STATS
+                         , sunQueryStats
+diff --git a/engine/render/src/shaders/metal/c_build_sun_hierarchy.metal b/engine/render/src/shaders/metal/c_build_sun_hierarchy.metal
+index 0832daa2c..f1020b4a4 100644
+--- a/engine/render/src/shaders/metal/c_build_sun_hierarchy.metal
++++ b/engine/render/src/shaders/metal/c_build_sun_hierarchy.metal
+@@ -50,8 +50,8 @@ kernel void c_build_sun_hierarchy(device uint* sunDepthBuf [[buffer(28)]],
+     uint lane [[thread_index_in_threadgroup]], uint3 groupId [[threadgroup_position_in_grid]]) {
+     threadgroup SourceSunBounds hierarchyBounds[2u * kSourceFaceHierarchyWorkgroupSize];
+     const uint group = groupId.x;
+-    const uint records = sunDepthBuf[kSourceFaceHeaderOffset];
+-    if (records == 0u || records > kSourceFaceCapacity ||
++    const uint records = sourceFaceRetainedRecords(sunDepthBuf[kSourceFaceHeaderOffset]);
++    if (records == 0u ||
+         sunDepthBuf[kSourceFaceHierarchyNeededOffset] == 0u) return;
+     const uint leaves = sourceSunHierarchyLeafCount(records);
+     const uint pass = uint(params.hierarchyDispatch.x);
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_index.metal b/engine/render/src/shaders/metal/ir_sun_face_index.metal
+index 11edfb96c..7852b286a 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_index.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_index.metal
+@@ -28,6 +28,7 @@ inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corne
+             if (lane == 0u) {
+ #endif
+             faceIndex = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 1u, memory_order_relaxed);
++            if (faceIndex == kSourceFaceCapacity) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 1u, memory_order_relaxed);
+             if (faceIndex < kSourceFaceCapacity) {
+                 const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
+                 atomic_store_explicit(&sunDepthBuf[record + 9u], type, memory_order_relaxed);
+@@ -58,7 +59,7 @@ inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corne
+             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
+             const uint base = sourceFaceTileBase(tile);
+             if (faceIndex >= kSourceFaceCapacity) {
+-                atomic_fetch_max_explicit(&sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u, memory_order_relaxed);
++                atomic_fetch_or_explicit(&sunDepthBuf[base], kSourceFaceTileRecordLost, memory_order_relaxed);
+                 continue;
+             }
+             const uint slot = atomic_fetch_add_explicit(&sunDepthBuf[base], 1u, memory_order_relaxed);
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+index 8b90f481a..cd886a43d 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+@@ -30,6 +30,8 @@ constant uint kSourceFaceHierarchyNodeWords = 8u;
+ constant uint kSourceFaceHierarchyWorkgroupSize = 128u;
+ constant uint kSourceFaceHierarchyBuildPasses = 2u;
+ constant uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
++// Sticky tile-count bit: a failed record reservation left overlapping geometry outside the pool.
++constant uint kSourceFaceTileRecordLost = 0x80000000u;
+ 
+ inline uint sourceFaceTileBase(uint tileIndex) {
+     return kSourceFaceTileOffset + tileIndex * (kSourceFaceTileCapacity + 1u);
+@@ -39,6 +41,15 @@ inline bool sourceFaceQueryComplete(uint count) {
+     return count <= kSourceFaceTileQueryCapacity;
+ }
+ 
++inline bool sourceFaceTileRetainsRecords(uint count) {
++    return (count & kSourceFaceTileRecordLost) == 0u;
++}
++
++// Reservations past capacity publish nothing; every lower ID holds a published record.
++inline uint sourceFaceRetainedRecords(uint requested) {
++    return requested < kSourceFaceCapacity ? requested : kSourceFaceCapacity;
++}
++
+ // Positive separation is a front hit, including conservative rounded boundaries.
+ inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, float3 edgeU, float3 edgeV
+ #if IR_SUN_QUERY_STATS
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index fcbfb4c7e..57bf3fd6a 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -141,16 +141,18 @@ inline float sampleCascadeShadow(
+             const uint count = sunDepthBuf[tileBase];
+             sourceQueryComplete = sourceFaceQueryComplete(count)
+                 && (count <= kSourceFaceTileCapacity || sunDepthBuf[kSourceFaceSpillCounterOffset] <= kSourceFaceSpillCapacity);
++            const uint retainedFaces = sourceFaceRetainedRecords(sourceFaceCount);
+             const uint hierarchyLeaves = !sourceQueryComplete ? sunDepthBuf[kSourceFaceHierarchyReadyOffset] : 0u;
+-            const bool queryHierarchy = !sourceQueryComplete && sourceFaceCount <= kSourceFaceCapacity &&
+-                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(sourceFaceCount);
++            const bool queryHierarchy = !sourceQueryComplete &&
++                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(retainedFaces);
+             if (queryHierarchy) {
+-                sourceQueryComplete = true;
++                // Retained-pool hits are exact; a miss cannot certify a tile that lost records.
++                sourceQueryComplete = sourceFaceTileRetainsRecords(count);
+                 if (dot(normal, sunDir) > 0.0) {
+ #if IR_SUN_QUERY_STATS
+                     sunQueryStats.counts[kSunQueryIndexed] += 1u;
+ #endif
+-                    if (sourceSunHierarchyBlocks(sunDepthBuf, hierarchyLeaves, sourceFaceCount,
++                    if (sourceSunHierarchyBlocks(sunDepthBuf, hierarchyLeaves, retainedFaces,
+                                                  sunUV, sunZ, maxShadowThrow
+ #if IR_SUN_QUERY_STATS
+                         , sunQueryStats

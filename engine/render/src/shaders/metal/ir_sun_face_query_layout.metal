@@ -30,6 +30,8 @@ constant uint kSourceFaceHierarchyNodeWords = 8u;
 constant uint kSourceFaceHierarchyWorkgroupSize = 128u;
 constant uint kSourceFaceHierarchyBuildPasses = 2u;
 constant uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+// Sticky tile-count bit: a failed record reservation left overlapping geometry outside the pool.
+constant uint kSourceFaceTileRecordLost = 0x80000000u;
 
 inline uint sourceFaceTileBase(uint tileIndex) {
     return kSourceFaceTileOffset + tileIndex * (kSourceFaceTileCapacity + 1u);
@@ -37,6 +39,15 @@ inline uint sourceFaceTileBase(uint tileIndex) {
 
 inline bool sourceFaceQueryComplete(uint count) {
     return count <= kSourceFaceTileQueryCapacity;
+}
+
+inline bool sourceFaceTileRetainsRecords(uint count) {
+    return (count & kSourceFaceTileRecordLost) == 0u;
+}
+
+// Reservations past capacity publish nothing; every lower ID holds a published record.
+inline uint sourceFaceRetainedRecords(uint requested) {
+    return requested < kSourceFaceCapacity ? requested : kSourceFaceCapacity;
 }
 
 // Positive separation is a front hit, including conservative rounded boundaries.

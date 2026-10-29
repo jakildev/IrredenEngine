@@ -26,6 +26,7 @@ PREAMBLE = r"""
 using uint = std::uint32_t;
 using atomic_uint = uint;
 std::uint64_t atomicAdds=0, atomicMaxes=0, atomicExchanges=0;
+std::uint64_t atomicOrs=0;
 using std::abs;
 constexpr int memory_order_relaxed = 0;
 struct vec2 {
@@ -63,6 +64,8 @@ template<class T,class U> T as_type(U a){T b;std::memcpy(&b,&a,4);return b;}
 uint atomicAdd(uint& p,uint n){++atomicAdds;uint old=p;p+=n;return old;}
 uint atomicMax(uint& p,uint n){++atomicMaxes;uint old=p;p=std::max(p,n);return old;}
 uint atomicExchange(uint& p,uint n){++atomicExchanges;uint old=p;p=n;return old;}
+uint atomicOr(uint& p,uint n){++atomicOrs;uint old=p;p|=n;return old;}
+uint atomic_fetch_or_explicit(uint* p,uint n,int){return atomicOr(*p,n);}
 uint atomic_exchange_explicit(uint* p,uint n,int){return atomicExchange(*p,n);}
 uint atomic_fetch_add_explicit(uint* p,uint n,int){return atomicAdd(*p,n);}
 uint atomic_fetch_max_explicit(uint* p,uint n,int){return atomicMax(*p,n);}
@@ -89,7 +92,7 @@ constexpr uint guardWords=32, canary=0xa5c31e79u, unwritten=0xccccccccu;
 std::vector<uint> actual(kSourceFaceBufferWords+2*guardWords,canary),expected;
 uint* oracle;
 void reset() {
-    atomicAdds=atomicMaxes=atomicExchanges=0;
+    atomicAdds=atomicMaxes=atomicExchanges=atomicOrs=0;
     std::fill(actual.begin(),actual.end(),canary);
     sunDepthBuf={actual.data()+guardWords,kSourceFaceBufferWords};
     std::fill(sunDepthBuf.data,sunDepthBuf.data+kSourceFaceBufferWords,unwritten);
@@ -127,11 +130,17 @@ bool check(const char* label) {
 // Explicit fixture tile IDs are independent of the shader's bounds arithmetic.
 void emit(vec3 corner,vec3 u,vec3 v,const std::vector<uint>& tiles) {
     const auto addsBefore=atomicAdds, maxesBefore=atomicMaxes, exchangesBefore=atomicExchanges;
-    uint expectedAdds=0,expectedMaxes=0,expectedExchanges=0;
+    const auto orsBefore=atomicOrs;
+    uint expectedAdds=0,expectedMaxes=0,expectedExchanges=0,expectedOrs=0;
     CALL_INDEX
     if(!tiles.empty()) {
         const uint id=oracle[kSourceFaceHeaderOffset]++;
         ++expectedAdds;
+        // The first lost record requests the retained-pool hierarchy.
+        if(id==65536) {
+            oracle[kSourceFaceHierarchyNeededOffset]=1;
+            expectedExchanges+=HIERARCHY_FLAG_USES_EXCHANGE;
+        }
         if(id<65536) {
             oracle[kSourceFaceRecordOffset+id*kSourceFaceRecordWords+9]=0;
             const vec3 vectors[]={corner,u,v};
@@ -141,8 +150,8 @@ void emit(vec3 corner,vec3 u,vec3 v,const std::vector<uint>& tiles) {
         for(uint tile:tiles) {
             uint* list=oracle+kSourceFaceTileOffset+tile*65;
             if(id>=65536) {
-                list[0]=std::max(list[0],257u);
-                ++expectedMaxes;
+                list[0]|=0x80000000u;
+                ++expectedOrs;
                 continue;
             }
             const uint count=list[0]++;
@@ -174,7 +183,7 @@ void emit(vec3 corner,vec3 u,vec3 v,const std::vector<uint>& tiles) {
     }
     if(CHECK_ATOMIC_WORKLOAD &&
        (atomicAdds-addsBefore!=expectedAdds || atomicMaxes-maxesBefore!=expectedMaxes ||
-        atomicExchanges-exchangesBefore!=expectedExchanges)) {
+        atomicExchanges-exchangesBefore!=expectedExchanges || atomicOrs-orsBefore!=expectedOrs)) {
         std::cerr<<"unexpected index atomic workload\n";
         std::exit(18);
     }
@@ -269,7 +278,10 @@ int main() {
     if(!check("65536th record") || sunDepthBuf[kSourceFaceHeaderOffset]!=65536) return 9;
     emit({32,32,2},u,v,{387,388,515,516,16514});
     if(!check("65537th record fallback") ||
-       sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+516*65])) return 10;
+       sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+516*65]) ||
+       sourceFaceTileRetainsRecords(sunDepthBuf[kSourceFaceTileOffset+516*65]) ||
+       !sourceFaceTileRetainsRecords(sunDepthBuf[kSourceFaceTileOffset]) ||
+       sunDepthBuf[kSourceFaceHierarchyNeededOffset]!=1) return 10;
     emit({48,48,2},u,v,{645,646,773,774,16643});
     if(!check("overflow on previously empty tiles")) return 11;
     report("global-exhaustion");
@@ -325,6 +337,13 @@ int main() {
                    stale.begin()+guardWords+kSourceFaceSpillNodeOffset)) return 28;
     for(uint n=0;n<65;++n) emit(corner,u,v,{0,1,128,129,16384,16385});
     if(!check("reused nodes have no stale tail") || !allCandidates(0,0,65)) return 29;
+
+    // Record loss alone, with no tile overflow, must still request the retained-pool hierarchy.
+    reset();
+    sunDepthBuf[kSourceFaceHeaderOffset]=oracle[kSourceFaceHeaderOffset]=65536;
+    emit({32,32,2},u,v,{387,388,515,516,16514});
+    if(!check("isolated record loss") || sourceFaceTileRetainsRecords(
+           sunDepthBuf[kSourceFaceTileOffset+387*65])) return 38;
 
     for(uint seed=1;seed<=12;++seed) {
         reset();
@@ -387,6 +406,11 @@ class SourceFaceIndexTest(unittest.TestCase):
                     "cascade < kSourceFaceCascadeCount", "cascade < 1u"),
                 "unmarked_global_overflow": indexer.replace(
                     "kSourceFaceTileQueryCapacity + 1u", "0u"),
+                "unmarked_record_loss": indexer.replace("kSourceFaceTileRecordLost", "0u"),
+                "record_loss_as_tile_overflow": indexer.replace(
+                    "kSourceFaceTileRecordLost", "kSourceFaceTileQueryCapacity + 1u"),
+                "missing_record_hierarchy_request": indexer.replace(
+                    "faceIndex == kSourceFaceCapacity", "false"),
                 "tile_list_overrun": indexer.replace(
                     "slot < kSourceFaceTileCapacity", "slot <= kSourceFaceTileCapacity"),
                 "record_overrun": indexer.replace(

@@ -23,15 +23,18 @@ Consumers run only after the bake dispatches and their existing memory barriers
 complete; the head exchange alone does not publish a node to concurrent readers.
 
 A tile is exact only when all its candidates are available. A count above 256
-selects the complete-pool hierarchy when ready, or sampled fallback otherwise. Failed record or spill allocation raises the tile
-counter above that ceiling with atomic max; later reservations cannot make it
-complete again. No partial-list hit is accepted as an exact result.
+selects the hierarchy when ready, or sampled fallback otherwise. Failed spill
+allocation raises the tile counter above that ceiling with atomic max. Failed
+record allocation sets the counter's sticky lost-record bit (`0x80000000`)
+with atomic or; retained appends stay below it because one tile receives at
+most one append per retained record. Neither can be undone by later
+reservations. No partial-list hit is accepted as an exact result.
 
 If the shared spill pool is exhausted, **every spilled tile** uses the hierarchy
 or sampled fallback for that frame, even tiles that obtained all their nodes. Otherwise allocation order
 could decide which receivers get geometric coverage. Complete inline tiles
-remain exact. Global record exhaustion invalidates each affected tile; it does
-not invalidate complete tiles touched only by successfully published records.
+remain exact. Global record exhaustion is handled per tile; see
+[Record-pool exhaustion](#record-pool-exhaustion).
 
 The default-off small-pool reference remains a diagnostic. Production queries
 prune the global record pool through the hierarchy only for incomplete tiles.
@@ -57,8 +60,9 @@ between them and before consumers. Each 128-thread workgroup uses an 8 KiB share
 heap: the first pass builds disjoint subtrees of up to 128 leaves, and one second
 workgroup joins their roots. Every used node keeps its global binary-heap index.
 Local reductions synchronize every level; no group polls another group. Kernels
-skip work when no overflow exists, the pool is empty, or any record allocation
-failed. Each pass binds an immutable parameter buffer; no per-frame CPU readback,
+skip work when neither overflow nor record loss occurred, or the pool is empty.
+After record exhaustion they build over the retained prefix of 65,536 records.
+Each pass binds an immutable parameter buffer; no per-frame CPU readback,
 sorting, or parameter allocation is needed. Only the second pass publishes the
 dynamic power-of-two leaf count, after the root is complete. Old nodes remain
 unreachable after clear or pool shrinkage.
@@ -75,6 +79,37 @@ support starting without spatial sorting. Those timings do **not** measure this
 engine schedule: even empty builds still incur two dispatch submissions.
 Full-scene parent/head measurements, native Windows execution and global-pool
 scaling remain required before claiming a throughput gain.
+
+## Record-pool exhaustion
+
+Reservations past the 65,536th record publish no geometry, but every lower ID
+is a published record once the bake dispatches finish. The first failed
+reservation requests the hierarchy, which is then built over that retained
+prefix. Each tile overlapped by a failed reservation carries the lost-record
+bit. Every incomplete tile then queries the ready hierarchy:
+
+- A tile without the bit retained all of its candidates, so a hierarchy miss is
+  as exact as with a complete pool and suppresses the indexed sampled layer.
+- A tile with the bit accepts hierarchy hits, which are real blockers, but a
+  miss certifies nothing: the indexed sampled layer stays eligible for the
+  geometry outside the pool.
+
+Complete inline tiles keep their local list, as before. The result can only add
+exact blockers relative to sampled fallback. Which records are lost still
+follows bake-dispatch order, so a tile's exact or sampled treatment depends on
+that order; in exchange, the lost set never discards stored geometry.
+
+[Native Metal controls](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md)
+force exhaustion with a rigid filler plate created before or after the
+casters. With the receiver's records retained, crowded cardinal and oblique
+scenes now match their sufficient-capacity controls exactly, where the parent
+lost 200–228 shadow pixels. When the lower caster's own records are lost, the
+hole remains unchanged: its depth survives only in the nearest-depth sampled
+layer, behind the distant casters. Recovering it needs either
+dispatch-order-independent retention of receiver-relevant records, or capacity
+that does not exhaust; neither a larger bias nor accepting partial lists
+supplies that information. Raster-only casters in the primary layer share the
+same nearest-depth loss, independent of pool capacity.
 
 ## Evidence and limits
 
@@ -105,13 +140,14 @@ sample cannot answer an arbitrary bounded interval query: if receiver depth is
 10, a lower caster is at 2 and the throw limit is 100, adding a caster at -120
 replaces 2 with -120; the stored caster is then too distant. Complete finite-face
 queries still find the lower caster. The hierarchy now extends that guarantee
-to incomplete tiles with a complete pool. Exhausted pools, unpublished hierarchy
-frames and raster-only casters can still lose it. Increasing bias, blending or accepting every retained partial-list
+to incomplete tiles whose records the pool retained, including during global
+record exhaustion. Records lost to exhaustion, unpublished hierarchy frames and
+raster-only casters can still lose it. Increasing bias, blending or accepting every retained partial-list
 hit does not restore the missing information.
 
 The hierarchy retains finite face bounds and depth intervals, so it can skip
 disjoint geometry without discarding a lower blocker. Remaining representation
-work includes exhausted record pools and raster-only sampled layers. It must preserve the finite
+work includes records lost to an exhausted pool and raster-only sampled layers. It must preserve the finite
 throw limit and allocation-order independence. The moving-block report also
 needs native Windows scene reproduction; this mechanism alone does not identify
 every visible speckle. [Sampler controls and scene evidence](../pr-screenshots/codex/overlapping-caster-shadow/README.md)
@@ -220,5 +256,5 @@ cardinal fixtures. Separate reference-free query timings include a complete
 key/range/sort/tree build measurement; the repeated coherent receiver grid is
 not a frame-rate benchmark. Preserve the complete-tile fast path when
 evaluating an overflow fallback. Production selection still needs mixed
-analytic/raster-only completeness, pool-exhaustion handling, engine resource
+analytic/raster-only completeness, lost-record recovery, engine resource
 integration, native OpenGL parity and actual moving-scene qualification.

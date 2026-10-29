@@ -30,6 +30,8 @@ const uint kSourceFaceHierarchyNodeWords = 8u;
 const uint kSourceFaceHierarchyWorkgroupSize = 128u;
 const uint kSourceFaceHierarchyBuildPasses = 2u;
 const uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+// Sticky tile-count bit: a failed record reservation left overlapping geometry outside the pool.
+const uint kSourceFaceTileRecordLost = 0x80000000u;
 
 // Every header access passes `uint(sunDepthBuf.length())`: NVIDIA's cold link
 // time grows with a compile-time-constant SSBO index, and this one costs minutes
@@ -59,6 +61,15 @@ uint sourceFaceTileBase(uint tileIndex) {
 
 bool sourceFaceQueryComplete(uint count) {
     return count <= kSourceFaceTileQueryCapacity;
+}
+
+bool sourceFaceTileRetainsRecords(uint count) {
+    return (count & kSourceFaceTileRecordLost) == 0u;
+}
+
+// Reservations past capacity publish nothing; every lower ID holds a published record.
+uint sourceFaceRetainedRecords(uint requested) {
+    return requested < kSourceFaceCapacity ? requested : kSourceFaceCapacity;
 }
 
 // Positive separation is a front hit, including conservative rounded boundaries.

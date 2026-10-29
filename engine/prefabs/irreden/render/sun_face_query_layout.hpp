@@ -42,6 +42,8 @@ constexpr std::uint32_t kSourceFaceHierarchyMaxLeaves =
 constexpr std::uint32_t kSourceFaceHierarchyNodeWords = 8u;
 constexpr std::uint32_t kSourceFaceBufferWords =
     kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+// Sticky tile-count bit: a failed record reservation left overlapping geometry outside the pool.
+constexpr std::uint32_t kSourceFaceTileRecordLost = 0x80000000u;
 
 constexpr int kSourceFaceHierarchyLevels = 14;
 constexpr int kSourceFaceHierarchyBuildPasses = 2;
@@ -76,6 +78,11 @@ static_assert(
 static_assert(
     kSourceFaceTileCount * (kSourceFaceTileQueryCapacity - kSourceFaceTileCapacity) < 0xFFFFFFFFu,
     "Spill allocation attempts must not wrap the counter"
+);
+
+static_assert(
+    kSourceFaceCapacity < kSourceFaceTileRecordLost,
+    "Retained-record appends to one tile must not reach the lost-record bit"
 );
 
 static_assert(

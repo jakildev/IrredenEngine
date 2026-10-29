@@ -50,8 +50,8 @@ kernel void c_build_sun_hierarchy(device uint* sunDepthBuf [[buffer(28)]],
     uint lane [[thread_index_in_threadgroup]], uint3 groupId [[threadgroup_position_in_grid]]) {
     threadgroup SourceSunBounds hierarchyBounds[2u * kSourceFaceHierarchyWorkgroupSize];
     const uint group = groupId.x;
-    const uint records = sunDepthBuf[kSourceFaceHeaderOffset];
-    if (records == 0u || records > kSourceFaceCapacity ||
+    const uint records = sourceFaceRetainedRecords(sunDepthBuf[kSourceFaceHeaderOffset]);
+    if (records == 0u ||
         sunDepthBuf[kSourceFaceHierarchyNeededOffset] == 0u) return;
     const uint leaves = sourceSunHierarchyLeafCount(records);
     const uint pass = uint(params.hierarchyDispatch.x);

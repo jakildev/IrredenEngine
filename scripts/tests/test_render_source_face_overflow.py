@@ -324,7 +324,7 @@ int main(){
             ++comparisons;
         }
         // A failed global reservation can poison an empty tile without publishing IDs.
-        reset(kSourceFaceCapacity+1,kSourceFaceTileQueryCapacity+1,cascade);
+        reset(kSourceFaceCapacity+1,kSourceFaceTileRecordLost,cascade);
         for(uint i=0;i<64;++i)sunDepthBuf.words[tileBase(cascade)+1+i]=empty;
         fallback(cascade,empty,depth(1));
         require(sample({2.9f,3.5f},10,cascade)==1,"exhaustion retains fallback");

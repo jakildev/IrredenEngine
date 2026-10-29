@@ -53,8 +53,8 @@ def summarize(path, world_point=None):
                 or not 0 < spill["tile_inline_capacity"] < capacity
                 or spill["buffer_bytes"] <= 0):
             raise ValueError("invalid spill dimensions")
-    result = [{"occupied_tiles": 0, "incomplete_tiles": 0, "max_counter": 0}
-              for _ in range(cascades)]
+    result = [{"occupied_tiles": 0, "incomplete_tiles": 0, "record_lost_tiles": 0,
+               "max_counter": 0} for _ in range(cascades)]
     projected = None
     if world_point is not None:
         if len(world_point) != 3 or not all(math.isfinite(value) for value in world_point):
@@ -93,7 +93,11 @@ def summarize(path, world_point=None):
         if (not 0 <= cascade < cascades or not 0 <= x < dimension
                 or not 0 <= y < dimension or count < 0 or key in seen):
             raise ValueError("invalid or duplicate tile")
-        expected_complete = count <= capacity and (
+        # Older captures predate the column; their tiles could not report lost records.
+        lost = int(row.get("records_lost", 0))
+        if lost not in (0, 1):
+            raise ValueError("invalid lost-record flag")
+        expected_complete = not lost and count <= capacity and (
             not spill_exhausted or count <= spill["tile_inline_capacity"])
         if complete != int(expected_complete):
             raise ValueError("tile completeness disagrees with capacity")
@@ -113,6 +117,7 @@ def summarize(path, world_point=None):
         stats = result[cascade]
         stats["occupied_tiles"] += count > 0
         stats["incomplete_tiles"] += not complete
+        stats["record_lost_tiles"] += lost
         stats["max_counter"] = max(stats["max_counter"], count)
     if len(seen) != cascades * dimension * dimension:
         raise ValueError("missing tile rows")
@@ -120,6 +125,9 @@ def summarize(path, world_point=None):
                "face_record_capacity": record_capacity,
                "tile_capacity": capacity, "cascades": result}
     summary.update(spill)
+    for key in ("hierarchy_needed", "hierarchy_ready_leaves"):
+        if key in metadata:
+            summary[key] = int(metadata[key])
     if projected is not None:
         summary["sun_uv"] = projected
         summary["point_tiles"] = point_tiles

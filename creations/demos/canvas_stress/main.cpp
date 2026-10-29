@@ -2125,6 +2125,20 @@ void registerArgs() {
         1
     );
     args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
+    args.integer(
+        "--probe-record-pool-filler",
+        "Side of a flat rigid source plate that fills the sun face record pool, 0..512 (0 off)",
+        0
+    );
+    args.numbers(
+        "--probe-record-pool-filler-offset",
+        "Record-pool filler translation from the shadowbox <x> <y> <z>",
+        3
+    );
+    args.flag(
+        "--probe-record-pool-filler-last",
+        "Create the record-pool filler after the shadowbox casters instead of before them"
+    );
     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
     args.flag(
@@ -3205,6 +3219,48 @@ void initEntities() {
             vec3(0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f) +
             (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
         const Color color{80, 120, 240, 255};
+        // Bake dispatches allocate records in creation order, so the filler's
+        // position in that order decides whether the shadowbox casters keep theirs.
+        const int fillerSide =
+            IRMath::clamp(IREngine::args().getInt("--probe-record-pool-filler"), 0, 512);
+        const bool fillerLast = IREngine::args().getFlag("--probe-record-pool-filler-last");
+        const auto spawnRecordPoolFiller = [&]() {
+            const auto offsetValues =
+                IREngine::args().getFloats("--probe-record-pool-filler-offset");
+            const vec3 offset = offsetValues.empty()
+                                    ? vec3(0.0f)
+                                    : vec3(offsetValues[0], offsetValues[1], offsetValues[2]);
+            auto filler = IRPrefab::EntityCanvas::createWithVoxelPool(
+                "record_pool_filler",
+                ivec2(1024),
+                ivec3(fillerSide, fillerSide, 1)
+            );
+            IREntity::createEntity(
+                C_LocalTransform{vec3(0.0f)},
+                C_VoxelSetNew{
+                    ivec3(fillerSide, fillerSide, 1),
+                    Color{120, 200, 120, 255},
+                    true,
+                    filler.canvasEntity_
+                }
+            );
+            IREntity::createEntity(
+                C_LocalTransform{position + offset},
+                C_RotationMode{RotationMode::DETACHED},
+                filler
+            );
+            IR_LOG_INFO(
+                "RECORD-POOL-FILLER side={} order={} offset=({},{},{})",
+                fillerSide,
+                fillerLast ? "last" : "first",
+                offset.x,
+                offset.y,
+                offset.z
+            );
+        };
+        if (fillerSide > 0 && !fillerLast) {
+            spawnRecordPoolFiller();
+        }
         if (IREngine::args().getFlag("--probe-overlapping-source")) {
             const auto sourceOffsetValues =
                 IREngine::args().getFloats("--probe-overlapping-source-offset");
@@ -3332,6 +3388,9 @@ void initEntities() {
                 },
                 canvas
             );
+        }
+        if (fillerSide > 0 && fillerLast) {
+            spawnRecordPoolFiller();
         }
     }
 
