@@ -300,6 +300,25 @@ class ResolveModuleDirTest(unittest.TestCase):
     def test_a_name_that_is_no_worktree_directory_is_passed_as_given(self) -> None:
         self.assertEqual(author_entity.resolve_module_dir("test/module"), "test/module")
 
+    def test_a_worktree_directory_resolves_outside_the_worktree_cwd(self) -> None:
+        module = "creations/editors/voxel_editor/test/module"
+        with tempfile.TemporaryDirectory() as tmp:
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(tmp)
+                resolved = author_entity.resolve_prefab_module_dir(module)
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertTrue(Path(resolved).is_absolute())
+        self.assertTrue(Path(resolved).is_dir())
+
+    def test_an_executable_relative_prefab_module_is_refused(self) -> None:
+        with self.assertRaises(SystemExit) as raised:
+            author_entity.resolve_prefab_module_dir("test/module")
+
+        self.assertIn("cannot be recorded portably", str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

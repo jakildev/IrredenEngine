@@ -23,7 +23,8 @@ Usage:
     python3 scripts/author-entity.py rock
     python3 scripts/author-entity.py rock --scene-size 16 16 16 --no-build
     python3 scripts/author-entity.py ant --session ant --scene-size 20 20 20
-    python3 scripts/author-entity.py --prefab composite_proof --module test/module
+    python3 scripts/author-entity.py --prefab composite_proof \\
+        --module creations/editors/voxel_editor/test/module
 
 A single ``scene_frame_0.vxs`` commits as ``<entity>.vxs``; a multi-frame
 entity (e.g. the bird) commits as ``<entity>_frame_N.vxs``.
@@ -192,6 +193,7 @@ def write_author_args(prefab_dir: Path, author_args: dict) -> Path:
         try:
             recorded["module"] = os.path.relpath(module, prefab_dir)
         except ValueError:
+            # Windows paths on different drives have no relative form.
             pass
     path = prefab_dir / AUTHOR_ARGS_NAME
     path.write_text(json.dumps(recorded, indent=2, sort_keys=True) + "\n",
@@ -206,6 +208,18 @@ def resolve_module_dir(module: str) -> str:
     passed as given."""
     in_worktree = verify_common.detect_worktree_root(verify_common.SCRIPT_DIR) / module
     return str(in_worktree) if in_worktree.is_dir() else module
+
+
+def resolve_prefab_module_dir(module: str) -> str:
+    """Resolve a prefab module to a path that ``author.json`` can record."""
+    resolved = resolve_module_dir(module)
+    if not os.path.isabs(resolved):
+        raise SystemExit(
+            "[author-entity] prefab --module must be an absolute path or name an "
+            "existing worktree-relative directory; executable-relative paths "
+            "cannot be recorded portably"
+        )
+    return resolved
 
 
 def run_session(exe: Path, save_dir: Path, session: str, scene_size: list[int] | None,
@@ -314,7 +328,14 @@ def main() -> None:
 
     given_author_args = {key: getattr(args, key) for key in AUTHOR_ARG_KEYS}
     if given_author_args["module"]:
-        given_author_args["module"] = os.path.abspath(given_author_args["module"])
+        if prefab:
+            given_author_args["module"] = resolve_prefab_module_dir(
+                given_author_args["module"]
+            )
+        else:
+            given_author_args["module"] = resolve_module_dir(
+                given_author_args["module"]
+            )
     author_args = merge_author_args(
         given_author_args,
         load_author_args(asset_dir / name) if prefab else {},
