@@ -2,10 +2,10 @@
   "target": "both",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "d37675629",
+  "git_sha": "15edcf745",
   "git_dirty": false,
-  "run_name": "d37675629-ci",
-  "started_at": "2026-10-30T06:36:18Z",
+  "run_name": "15edcf745-ci",
+  "started_at": "2026-10-30T06:39:48Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,13 +17,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 90.002,
+        "before": 89.962,
         "before_samples": [
-          89.914,
-          90.02,
-          90.002
+          89.667,
+          89.962,
+          90.065
         ],
-        "after": 89.875
+        "after": 90.178
       }
     },
     {
@@ -36,13 +36,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 89.915,
+        "before": 89.952,
         "before_samples": [
-          89.898,
-          89.987,
-          89.915
+          89.765,
+          89.952,
+          89.979
         ],
-        "after": 89.634
+        "after": 90.026
       }
     },
     {
@@ -55,13 +55,13 @@
       "status": "ok",
       "report": "target=IRLuaPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 89.997,
+        "before": 89.937,
         "before_samples": [
-          90.19,
-          89.9,
-          89.997
+          89.937,
+          89.926,
+          90.036
         ],
-        "after": 90.008
+        "after": 89.972
       }
     },
     {
@@ -74,25 +74,25 @@
       "status": "ok",
       "report": "target=IRLuaPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 89.917,
+        "before": 89.87,
         "before_samples": [
-          89.961,
-          89.741,
-          89.917
+          89.87,
+          89.822,
+          89.939
         ],
-        "after": 89.971
+        "after": 90.042
       }
     }
   ],
-  "finished_at": "2026-10-30T06:39:44Z",
+  "finished_at": "2026-10-30T06:43:20Z",
   "calibration": {
-    "ref_ms": 90.974,
+    "ref_ms": 90.029,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-9v74-80-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3695,
+        "mhz": 3769,
         "model": "AMD EPYC 9V74 80-Core Processor",
         "threads": 4
       },
