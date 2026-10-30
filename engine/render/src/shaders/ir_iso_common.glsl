@@ -346,6 +346,13 @@ bool overflowEntryIsCutFace(uint word) {
     return (word & kOverflowCutFaceBit) != 0u;
 }
 
+// The scatter's flat fog carrier for an overflow entry (word 0, colour word):
+// the class byte in bits 7:0 and kScatterFogCarrierCutFace for a cut face.
+const uint kScatterFogCarrierCutFace = 0x100u;
+uint scatterOverflowFogCarrier(uint cellWord, uint colorWord) {
+    return (colorWord >> 24u) | (overflowEntryIsCutFace(cellWord) ? kScatterFogCarrierCutFace : 0u);
+}
+
 // Per-axis fractional encoding:
 // (depth << 15) | (wFrac4 << 11) | (flip << 10) | (uFrac4 << 6)
 // | (vFrac4 << 2) | slot. Frac fields in 0..15 where 8 = cell centre

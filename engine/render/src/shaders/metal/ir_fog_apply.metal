@@ -27,6 +27,11 @@ inline float3 fogCutCapBlend(
     return mix(color, mix(sourceColor * tone, sourceColor, state), weight);
 }
 
+// GLSL twin: fogApplyCutCap in ../ir_fog_apply.glsl.
+inline float4 fogApplyCutCap(float4 sourceColor, float capTone) {
+    return float4(fogCutCapBlend(sourceColor.rgb, sourceColor.rgb, capTone, 0.0f, 1.0f), sourceColor.a);
+}
+
 inline float4 fogApplyReveal(
     FogReveal reveal,
     int faceAxis,

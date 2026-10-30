@@ -98,6 +98,9 @@ flat out int vDepthColorMode;
 flat out float vDepthColorExtent;
 // Face/cell priority within a depth band.
 flat out float vCellTieOffset;
+// An overflow entry's fog class byte, plus kScatterFogCarrierCutFace on a cut
+// face; 0 for a cell, whose class rides its axis canvas's entity id.
+flat out uint vFogCarrier;
 
 // Composite-instrumentation overlay modes — raw DebugOverlayMode
 // values (ir_render_enums.hpp). Both modes recolor the scattered quad and
@@ -160,6 +163,10 @@ void main() {
         color = texelFetch(triangleColors, ij, 0);
         rawDist = texelFetch(triangleDistances, ij, 0).r;
     }
+    vFogCarrier = overflowMode != 0
+        ? scatterOverflowFogCarrier(compactedCells[uint(gl_InstanceID) * 3u],
+                                    compactedCells[uint(gl_InstanceID) * 3u + 1u])
+        : 0u;
     // Empty cell — kColorClear alpha is 0 (matches the gather's discard test).
     // Degenerate the whole instance off-screen so it produces no fragments.
     if (color.a < 0.1) {

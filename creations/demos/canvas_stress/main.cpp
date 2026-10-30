@@ -55,6 +55,7 @@
 #include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/update/components/component_angular_velocity.hpp>
 #include <irreden/update/systems/system_angular_velocity_damped.hpp>
@@ -75,6 +76,7 @@
 #include <irreden/render/depth_probe.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/entity_canvas.hpp>
+#include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/trixel_text.hpp>
 
@@ -2196,6 +2198,12 @@ void registerArgs() {
     args.flag("--no-lighting", "Disable world lighting");
     args.flag("--no-shadows", "Disable sun shadows while retaining directional shading");
     args.flag("--no-ao", "Disable ambient occlusion");
+    args.number(
+        "--fog-reveal",
+        "Fog the main canvas outside an analytic disc of this world radius about the origin "
+        "(0 = no fog pass)",
+        0.0f
+    );
     args.flag("--probe-sky", "Isolate HDR sky lighting with a white sky and zero sun intensity");
     args.numbers(
         "--sun-direction",
@@ -2357,6 +2365,10 @@ void registerArgs() {
     );
     args.flag("--auto-profile", "CPU and GPU timing; write save_files/profile_report.txt on exit");
     args.integer("--profile-frames", "Profile N frames and exit without captures", 0);
+    args.flag(
+        "--no-stage-timing",
+        "Profile wall-frame timing only, with GPU stage timestamps off (instrumentation control)"
+    );
     args.flag(
         "--probe-assert",
         "Run the scripted probe of --only modeswitch, detach or residency; exit nonzero on failure"
@@ -2562,7 +2574,7 @@ int main(int argc, char **argv) {
     }
     if (g_settings.autoProfile_) {
         IREngine::enableFrameTiming(true);
-        IRRender::gpuStageTiming().enabled_ = true;
+        IRRender::gpuStageTiming().enabled_ = !IREngine::args().getFlag("--no-stage-timing");
     }
 
     initSystems();
@@ -2754,6 +2766,9 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>());
+        if (IREngine::args().getFloat("--fog-reveal") > 0.0f) {
+            renderPipeline.push_back(IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>());
+        }
     }
     // Per-mode in-scene labels for the comparison region. The main canvas
     // is cleared + rebuilt every frame, so labels must be redrawn here each frame
@@ -3158,6 +3173,11 @@ std::optional<C_ShapeDescriptor> analyticProbeDescriptor(Color color) {
 void initEntities() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
+    const float fogRevealRadius = IREngine::args().getFloat("--fog-reveal");
+    if (fogRevealRadius > 0.0f) {
+        IRPrefab::Fog::attachToCanvas(mainCanvas);
+        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, fogRevealRadius);
+    }
 
     if (modeSwitchGroupRequested()) {
         g_settings.modeSwitchBaselineCanvasCount_ = IREntity::countComponents<C_DetachedCanvas>();

@@ -251,4 +251,22 @@ inline float fogOverflowBodyState(uint classByte) {
     return float(classByte) / 254.0f;
 }
 
+// GLSL twin: fogComposeSurface in ../ir_fog_common.glsl.
+inline float4 fogComposeSurface(
+    float4 litColor, bool body, float bodyState, bool cutFace, float3 pos3D, float3 cutFacePoint,
+    int faceId, float aaFloor, bool analyticSurface, constant FogObserverData& fogObservers,
+    texture2d<uint, access::read> canvasFogOfWar, texture2d<float, access::read> fogLineOfSight
+) {
+    if (body) {
+        return bodyState < 1.0f ? fogApplyBody(bodyState, litColor, fogObservers) : litColor;
+    }
+    if (cutFace && fogCeilingCutFace(cutFacePoint, faceId, fogObservers, canvasFogOfWar)) {
+        return fogApplyCutCap(litColor, fogObservers.revealSurfaceTreatment.z);
+    }
+    const FogReveal reveal = fogRevealSample(pos3D, pos3D, pos3D, faceId >> 1, aaFloor,
+        analyticSurface, fogObservers, canvasFogOfWar, fogLineOfSight);
+    return reveal.state >= 1.0f ? litColor
+                                : fogApplyReveal(reveal, faceId >> 1, litColor, fogObservers);
+}
+
 #endif // IR_FOG_COMMON_METAL_INCLUDED

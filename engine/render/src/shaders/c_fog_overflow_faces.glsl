@@ -86,8 +86,7 @@ void main() {
         const vec3 facePoint = pos3D;
         if (fogCeilingCutFace(facePoint, faceId)) {
             const vec4 sourceColor = unpackColor(colorPacked);
-            const vec4 capColor = vec4(fogCutCapBlend(sourceColor.rgb,
-                sourceColor.rgb, revealSurfaceTreatment.z, 0.0, 1.0), sourceColor.a);
+            const vec4 capColor = fogApplyCutCap(sourceColor, revealSurfaceTreatment.z);
             overflowScratch[entryBase + 1u] = packColor(capColor);
             return;
         }

@@ -81,10 +81,17 @@ int *mainCanvasTextures_=&resource,*mainVoxelPool_=&resource,*mainCanvasAO_=&res
 int *mainCanvasSunShadow_=&resource,*mainCanvasLightVolume_=&resource;
 Axis* perAxisCanvases_=nullptr;
 int perAxisCanvasEntity_=1;
+struct FrameDataFogObservers {int losSourceMask_=0;};
+FOG_ROUTE
+struct Fog {FrameDataFogObservers observers_;} mainFog;
+const Fog* mainCanvasFog_=nullptr;
+bool glitchActive=false;
 struct Producer {
  bool cardinalSurfaceLightingEligible_=false,cardinalSurfaceLightingReady_=false;
  bool cardinalGlitchPresentationActive_=false,cardinalGlitchSourceReady_=false;
  bool perAxisSurfaceLightingEligible_=false;
+ IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute surfaceFogRoute_{};
+ bool anyGlitchSubjectActive(){return glitchActive;}
  void begin(){RESET GATE}
  void tick(int entity){PUBLISH}
  void prepare(int entity){PREPARE}
@@ -94,8 +101,10 @@ bool cardinalLightingEnabled_=false,cardinalGlitchOverrideEnabled_=false;
 bool shapeProbeEnabled_=false,shapeLightingEnabled_=false;
 int selected=0,shapeBindings=0,sunBindings=0;
 struct Program {int id;void use(){selected=id;}} shapeProgram{2},probeProgram{3},cardinalProgram{1};
+Program cardinalFogProgram{4};
 Program *shapeLightingProgram_=&shapeProgram,*shapeProbeProgram_=&probeProgram;
-Program *cardinalLightingProgram_=&cardinalProgram;
+Program *cardinalLightingProgram_=&cardinalProgram,*cardinalLightingFogProgram_=&cardinalFogProgram;
+bool surfaceFogEnabled_=false;
 struct Geometry {bool valid=false;bool samplesValid()const{return valid;}};
 struct {Geometry shapeGeometry_;} triangleCanvasTextures;
 void bindShapeProbe(decltype(triangleCanvasTextures)&){++shapeBindings;}
@@ -110,23 +119,31 @@ void select(int entity){
 
 CHECKS = r"""
 int main(){
- for(int bad=-1;bad<14;++bad){
+ for(int bad=-1;bad<19;++bad){
   mainCanvasTextures_=mainVoxelPool_=mainCanvasAO_=mainCanvasSunShadow_=mainCanvasLightVolume_=&resource;
   perAxisCanvases_=nullptr;axes.allocated=true;
   systems[0]=systems[1]=true;systems[2]=systems[3]=false;
+  surfaceLighting.enabled_=true;mainCanvasFog_=nullptr;mainFog.observers_.losSourceMask_=0;
+  glitchActive=false;
   IRRender::overlay=DebugOverlayMode::NONE;IRRender::depthDebug=false;
   hasBehavior=true;behavior.useCameraPositionIso_=true;
   if(bad==0)mainCanvasTextures_=nullptr;if(bad==1)mainVoxelPool_=nullptr;
   if(bad==2)mainCanvasAO_=nullptr;if(bad==3)mainCanvasSunShadow_=nullptr;
   if(bad==4)mainCanvasLightVolume_=nullptr;if(bad==5)perAxisCanvases_=&axes;
   if(bad==6)systems[0]=false;if(bad==7)systems[1]=false;
-  if(bad==8)systems[2]=true;if(bad==9)systems[3]=true;
+  // A fog pipeline keeps compute fog unless the opt-in admits the route.
+  if(bad==8){systems[2]=true;surfaceLighting.enabled_=false;}if(bad==9)systems[3]=true;
+  if(bad>=14&&bad<=18){systems[2]=true;mainCanvasFog_=&mainFog;}
+  if(bad==14)mainFog.observers_.losSourceMask_=1;
+  if(bad==15){systems[3]=true;glitchActive=true;}
+  if(bad==17)mainCanvasFog_=nullptr;
+  if(bad==18){systems[3]=true;glitchActive=true;mainCanvasFog_=nullptr;}
   if(bad==10)IRRender::overlay=DebugOverlayMode::OTHER;
   if(bad==11)IRRender::depthDebug=true;if(bad==12)behavior.useCameraPositionIso_=false;
   if(bad==13)hasBehavior=false;
   producer.cardinalSurfaceLightingEligible_=producer.cardinalSurfaceLightingReady_=true;
   producer.begin();consume();
-  const bool eligible=bad<0||bad==9;
+  const bool eligible=bad<0||bad==9||bad==16||bad==17||bad==18;
   require(producer.cardinalSurfaceLightingEligible_==eligible,"producer eligibility");
   require(!cardinalLightingEnabled_,"begin resets readiness before main tick");
   producer.tick(2);consume();require(!cardinalLightingEnabled_,"secondary tick cannot publish");
@@ -136,7 +153,8 @@ int main(){
  lighting_=nullptr;consume();require(!cardinalLightingEnabled_,"missing producer is not ready");
  lighting_=&producer;
  for(bool ready:{false,true})for(int entity:{1,2})for(bool shapes:{false,true})
- for(bool valid:{false,true})for(bool probe:{false,true}){
+ for(bool valid:{false,true})for(bool probe:{false,true})for(bool fog:{false,true}){
+  surfaceFogEnabled_=fog;
   producer.cardinalSurfaceLightingEligible_=!ready;
   producer.cardinalSurfaceLightingReady_=ready;consume();
   producer.prepare(entity);
@@ -145,7 +163,7 @@ int main(){
   triangleCanvasTextures.shapeGeometry_.valid=valid;select(entity);
   const bool main=entity==1,shape=main&&valid&&(shapes||probe);
   require(scatterDebugMode==int(main&&ready),"consumer flag follows ready main canvas");
-  require(selected==(shape?(shapes?2:3):(main&&ready?1:0)),
+  require(selected==(shape?(shapes?2:3):(main&&ready?(fog?4:1):0)),
           "mixed shape/cardinal program selection");
   require(shapeBindings==int(shape)&&sunBindings==int(!shape&&main&&ready),
           "selected resource route");
@@ -181,11 +199,14 @@ def source_for(backend):
     consumer = (systems / "system_trixel_to_framebuffer.hpp").read_text()
     gate = re.search(r"bool worldSurfaceLightingEligible = false;.*?"
                      r"perAxisSurfaceLightingEligible_\s*=[^;]+;", producer, re.DOTALL).group()
-    active_scan = extract_block(
-        gate,
-        "if (cardinalSurfaceLightingEligible_ && findSystem(TRIXEL_GLITCH) != kNullSystemId) {",
-    )
+    active_scan = extract_block(gate, "if (cardinalGlitchPresentationActive_) {")
     gate = gate.replace(active_scan, "")
+    lighting_switch = (
+        ROOT / "engine/prefabs/irreden/render/per_axis_surface_lighting.hpp").read_text()
+    fog_route = ("namespace IRPrefab::PerAxisSurfaceLighting {\n"
+                 + lighting_switch[lighting_switch.index("enum class SurfaceFogRoute"):
+                                   lighting_switch.index("// The lazy")]
+                 .replace("IRComponents::", "") + "}\n")
     publish = extract_block(producer, "if (entity == perAxisCanvasEntity_) {")
     reset = re.search(r"cardinalSurfaceLightingEligible_ = false;\s*"
                       r"cardinalSurfaceLightingReady_ = false;", producer).group()
@@ -198,7 +219,8 @@ def source_for(backend):
     start = consumer.index("const bool probe = (shapeProbeEnabled_")
     selection = consumer[start:consumer.index("if ((probe && shapeLightingEnabled_)", start)]
     host = PREAMBLE
-    for token, code in (("RESET", reset), ("GATE", gate), ("PUBLISH", publish),
+    for token, code in (("FOG_ROUTE", fog_route), ("RESET", reset), ("GATE", gate),
+                        ("PUBLISH", publish),
                         ("PREPARE", prepare), ("CONSUME", consume), ("SELECT_FLAG", flag),
                         ("SELECT_PROGRAM", selection)):
         host = host.replace(token, code)
@@ -221,6 +243,8 @@ def source_for(backend):
     for prefix in ("voxelFrameData.", "frameData.", "lighting."):
         predicates = predicates.replace(prefix, "")
     predicates = predicates.replace("cardinalLightingEnabled", "scatterDebugMode")
+    predicates = predicates.replace("isCardinalVoxelSurface(cardinalRawId)",
+                                    "isCardinalVoxelSurface(id)")
     predicates = re.sub(r"imageLoad\(trixelEntityIds, pixel\)\.xy|"
                         r"trixelEntityIds.read\(uint2\(pixel\)\)\.xy|"
                         r"texelFetch\(triangleEntityIds, sampleCoord, 0\)\.rg|"

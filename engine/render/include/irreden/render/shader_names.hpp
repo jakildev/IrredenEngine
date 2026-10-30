@@ -31,6 +31,9 @@ const char *const kFileVertTrixelToFramebuffer = "shaders/v_trixel_to_framebuffe
 const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebufferLitVoxels =
     "shaders/f_trixel_to_framebuffer_lit_voxels.glsl";
+// Fog-composing twin: also fogs the lit receiver once (IR_SURFACE_FOG).
+const char *const kFileFragTrixelToFramebufferLitVoxelsFog =
+    "shaders/f_trixel_to_framebuffer_lit_voxels_fog.glsl";
 const char *const kFileFragTrixelToFramebufferLitShapes =
     "shaders/f_trixel_to_framebuffer_lit_shapes.glsl";
 const char *const kFileFragTrixelToFramebufferShapes =
@@ -50,6 +53,12 @@ const char *const kFileFragPerAxisSurfaceShadow = "shaders/f_peraxis_surface_sha
 const char *const kFileFragPerAxisSurfaceLighting = "shaders/f_peraxis_surface_lighting.glsl";
 const char *const kFileFragPerAxisVisibleLighting = "shaders/f_peraxis_visible_lighting.glsl";
 const char *const kFileFragPerAxisQueryStats = "shaders/f_peraxis_query_stats.glsl";
+// Fog-composing twins of the three lit scatter fragments (IR_PER_AXIS_SURFACE_FOG).
+const char *const kFileFragPerAxisSurfaceLightingFog =
+    "shaders/f_peraxis_surface_lighting_fog.glsl";
+const char *const kFileFragPerAxisVisibleLightingFog =
+    "shaders/f_peraxis_visible_lighting_fog.glsl";
+const char *const kFileFragPerAxisQueryStatsFog = "shaders/f_peraxis_query_stats_fog.glsl";
 // The per-axis empty-cell compaction pre-pass scans each canvas's
 // distance image and atomic-appends every occupied cell's linear index into a
 // per-axis SSBO region + sets the indirect instanced-draw arg count, so the
@@ -114,6 +123,8 @@ const char *const kFileCompLightingToTrixelShapesGlitchSource =
 // metal_pipeline.cpp).
 const char *const kFileCompLightOverflowFaces = "shaders/c_light_overflow_faces.glsl";
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
+// Skips the main canvas's cardinal voxel surfaces, which the composite fogs.
+const char *const kFileCompFogToTrixelSurface = "shaders/c_fog_to_trixel_surface.glsl";
 const char *const kFileCompFogOverflowFaces = "shaders/c_fog_overflow_faces.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
 const char *const kFileCompComputeVoxelAOShapes = "shaders/c_compute_voxel_ao_shapes.glsl";

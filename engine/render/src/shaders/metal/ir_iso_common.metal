@@ -317,6 +317,12 @@ inline uint encodeFogOverflowClassByte(bool isFogBody, uint factor) {
     return isFogBody ? ((factor & 0xFFu) * 254u + 127u) / 255u : kFogOverflowFieldByte;
 }
 
+// GLSL twin: scatterOverflowFogCarrier in ../ir_iso_common.glsl.
+constant uint kScatterFogCarrierCutFace = 0x100u;
+inline uint scatterOverflowFogCarrier(uint cellWord, uint colorWord) {
+    return (colorWord >> 24u) | (overflowEntryIsCutFace(cellWord) ? kScatterFogCarrierCutFace : 0u);
+}
+
 // Per-axis fractional encoding:
 // (depth << 15) | (wFrac4 << 11) | (flip << 10) | (uFrac4 << 6)
 // | (vFrac4 << 2) | slot. Frac fields in 0..15 where 8 = cell centre

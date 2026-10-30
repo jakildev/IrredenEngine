@@ -130,6 +130,10 @@ vertex VertexOut v_peraxis_scatter(
         color = triangleColors.read(uint2(ij));
         rawDist = triangleDistances.read(uint2(ij)).r;
     }
+    out.fogCarrier = frameData.overflowMode != 0
+        ? scatterOverflowFogCarrier(compactedCells[instanceId * 3u],
+                                    compactedCells[instanceId * 3u + 1u])
+        : 0u;
     if (color.a < 0.1f) {
         out.position = float4(2.0, 2.0, 2.0, 1.0);
         out.color = float4(0.0);

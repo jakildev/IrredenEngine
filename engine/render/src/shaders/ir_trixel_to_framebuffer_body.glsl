@@ -26,6 +26,12 @@
 #if IR_SHAPE_LIGHTING
 #include "ir_shape_surface_lighting.glsl"
 #endif
+#if IR_SURFACE_FOG
+#define IR_FOG_OBSERVER_BINDING 10
+#define IR_FOG_GRID_SAMPLER_BINDING 8
+#define IR_FOG_LOS_SAMPLER_BINDING 9
+#include "ir_fog_common.glsl"
+#endif
 #if IR_CARDINAL_LIGHTING
 #include "ir_cardinal_voxel_receiver.glsl"
 #if !IR_SHAPE_LIGHTING
@@ -85,6 +91,29 @@ layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
 
 out vec4 FragColor;
 
+#if IR_SURFACE_FOG
+// FOG_TO_TRIXEL's cardinal pixel-to-world recovery, against the receiver
+// frame the cardinal lighting route publishes in this block.
+vec3 cardinalFogSamplePoint(ivec2 pixel, int rawDist, uvec2 rawId) {
+    const ivec2 options = ivec2(cardinalReceiver.zw);
+    const int scale = effectiveTrixelSubdivisionScale(options);
+    const int depth = scale > 1 && decodeAnalyticSurface(rawId)
+        ? decodeDepthSingle(rawDist) - cardinalRasterLatticeDepthOffset(scale)
+        : decodeDepthSingle(rawDist);
+    return trixelCanvasPixelToWorld3D(pixel, depth, perAxisBase, cardinalReceiver.xy, options,
+        visualYaw);
+}
+
+// World units per canvas pixel at this sample, which floors a disc's AA rim.
+float cardinalFogAaFloor(ivec2 pixel, int rawDist, uvec2 rawId) {
+    if (visionCircleCount == 0) {
+        return 0.0;
+    }
+    return length(cardinalFogSamplePoint(pixel + ivec2(1, 0), rawDist, rawId).xy -
+        cardinalFogSamplePoint(pixel, rawDist, rawId).xy);
+}
+#endif
+
 float normalizeDistance(int dist) {
     return float(dist - kMinTriangleDistance) / float(kMaxTriangleDistance - kMinTriangleDistance);
 }
@@ -143,8 +172,9 @@ void main() {
 #endif
 
 #if IR_CARDINAL_LIGHTING
+    const uvec2 cardinalRawId = texelFetch(triangleEntityIds, sampleCoord, 0).rg;
     if (!glitchPresentationOverride && color.a >= 0.1 && lightingEnabled != 0 && cardinalLightingEnabled != 0 &&
-        isCardinalVoxelSurface(texelFetch(triangleEntityIds, sampleCoord, 0).rg)) {
+        isCardinalVoxelSurface(cardinalRawId)) {
         const vec3 position = cardinalVoxelSurfacePoint(
             originRaw, ivec2(sampleCoord), rawDist, perAxisBase,
             cardinalReceiver.xy, ivec2(cardinalReceiver.zw),
@@ -155,6 +185,16 @@ void main() {
         const vec3 localLightPosition = trixelCanvasPixelToWorld3D(ivec2(sampleCoord), decodeDepthSingle(rawDist), perAxisBase, cardinalReceiver.xy, ivec2(cardinalReceiver.zw), visualYaw);
         color.rgb = worldSurfaceLighting(color.rgb, texelFetch(surfaceAO, sampleCoord, 0).r, position, normal,
             casterViewToWorld, localLightPosition);
+#if IR_SURFACE_FOG
+        // FOG_TO_TRIXEL left this pixel's albedo unfogged. Its reveal is
+        // sampled where the kernel would have sampled it.
+        color = fogComposeSurface(color, decodeFogBody(cardinalRawId),
+            float(decodeFogBodyFactor(cardinalRawId)) / 255.0, false,
+            cardinalFogSamplePoint(ivec2(sampleCoord), rawDist, cardinalRawId), vec3(0.0),
+            visibleFaceIds[decodeSlot(rawDist)] ^ decodeFlipSingle(rawDist),
+            cardinalFogAaFloor(ivec2(sampleCoord), rawDist, cardinalRawId),
+            decodeAnalyticSurface(cardinalRawId));
+#endif
     }
 #endif
 

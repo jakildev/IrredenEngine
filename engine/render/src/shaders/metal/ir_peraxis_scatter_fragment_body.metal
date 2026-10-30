@@ -7,6 +7,9 @@
 #ifndef IR_PER_AXIS_SURFACE_LIGHTING
 #define IR_PER_AXIS_SURFACE_LIGHTING 0
 #endif
+#ifndef IR_PER_AXIS_SURFACE_FOG
+#define IR_PER_AXIS_SURFACE_FOG 0
+#endif
 
 // HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel_body.metal so
 // voxel-scatter depth-color is bit-exact with the SDF twin when mode is on.
@@ -33,6 +36,14 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
     , texture2d<float> surfaceAO [[texture(4)]]
     , texture3d<float> lightVolume [[texture(5)]]
     , texture3d<float, access::read> lightVolumeId [[texture(7)]]
+#endif
+#if IR_PER_AXIS_SURFACE_FOG
+    // The cell's own axis-canvas entity id: its fog class and cut-face provenance.
+    , texture2d<uint, access::read> perAxisEntityIds [[texture(2)]]
+    // buffer(10) = kBufferIndex_FogSurfaceObservers: lighting holds 27.
+    , constant FogObserverData& fogObservers [[buffer(10)]]
+    , texture2d<uint, access::read> canvasFogOfWar [[texture(8)]]
+    , texture2d<float, access::read> fogLineOfSight [[texture(9)]]
 #endif
 ) {
     FragmentOut out;
@@ -82,6 +93,32 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
             , sunQueryStats
 #endif
     ), in.color.a);
+#if IR_PER_AXIS_SURFACE_FOG
+    // GLSL twin: the IR_PER_AXIS_SURFACE_FOG block of ../ir_peraxis_scatter_fragment_body.glsl.
+    {
+        bool body;
+        float bodyState;
+        bool cutFace;
+        bool analyticSurface = false;
+        if (in.ownerPixel.x < 0) {
+            const uint classByte = in.fogCarrier & 0xFFu;
+            body = classByte != kFogOverflowFieldByte;
+            bodyState = fogOverflowBodyState(classByte);
+            cutFace = (in.fogCarrier & kScatterFogCarrierCutFace) != 0u;
+        } else {
+            const uint2 rawId = perAxisEntityIds.read(uint2(in.ownerPixel)).rg;
+            body = decodeFogBody(rawId);
+            bodyState = float(decodeFogBodyFactor(rawId)) / 255.0f;
+            cutFace = decodeCutFace(rawId);
+            analyticSurface = decodeAnalyticSurface(rawId);
+        }
+        const float aaFloor = fogObservers.visionCircleCount > 0
+            ? length(isoPositionToPos3D(float2(1.0f, 0.0f), 0.0f).xy) : 0.0f;
+        out.color = fogComposeSurface(out.color, body, bodyState, cutFace, in.faceOrigin,
+            in.faceOrigin, in.faceId, aaFloor, analyticSurface, fogObservers, canvasFogOfWar,
+            fogLineOfSight);
+    }
+#endif
 #if IR_SUN_QUERY_STATS
     for (uint counter = 0u; counter < kSunQueryCounterCount; ++counter) {
         const uint value = sunQueryStats.counts[counter];

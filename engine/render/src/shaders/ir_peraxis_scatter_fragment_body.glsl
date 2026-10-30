@@ -7,6 +7,9 @@
 #ifndef IR_PER_AXIS_SURFACE_LIGHTING
 #define IR_PER_AXIS_SURFACE_LIGHTING 0
 #endif
+#ifndef IR_PER_AXIS_SURFACE_FOG
+#define IR_PER_AXIS_SURFACE_FOG 0
+#endif
 
 flat in vec4 vColor;
 flat in vec3 vFaceOrigin;
@@ -24,6 +27,11 @@ flat in int vDepthColorMode;
 flat in float vDepthColorExtent;
 // Face/cell priority within a depth band.
 flat in float vCellTieOffset;
+#if IR_PER_AXIS_SURFACE_FOG
+flat in uint vFogCarrier;
+// The cell's own axis-canvas entity id: its fog class and cut-face provenance.
+layout(binding = 2) uniform usampler2D perAxisEntityIds;
+#endif
 
 out vec4 FragColor;
 
@@ -80,6 +88,33 @@ void main() {
             , sunQueryStats
 #endif
     ), vColor.a);
+#if IR_PER_AXIS_SURFACE_FOG
+    // FOG_TO_TRIXEL left this face's albedo unfogged; like its per-axis
+    // routes, the reveal is sampled once per face, at the recovered origin.
+    {
+        bool body;
+        float bodyState;
+        bool cutFace;
+        bool analyticSurface = false;
+        if (vOwnerPixel.x < 0) {
+            const uint classByte = vFogCarrier & 0xFFu;
+            body = classByte != kFogOverflowFieldByte;
+            bodyState = fogOverflowBodyState(classByte);
+            cutFace = (vFogCarrier & kScatterFogCarrierCutFace) != 0u;
+        } else {
+            const uvec2 rawId = texelFetch(perAxisEntityIds, vOwnerPixel, 0).rg;
+            body = decodeFogBody(rawId);
+            bodyState = float(decodeFogBodyFactor(rawId)) / 255.0;
+            cutFace = decodeCutFace(rawId);
+            analyticSurface = decodeAnalyticSurface(rawId);
+        }
+        // One store cell spans this world distance in XY at every face and yaw.
+        const float aaFloor =
+            visionCircleCount > 0 ? length(isoPositionToPos3D(vec2(1.0, 0.0), 0.0).xy) : 0.0;
+        FragColor = fogComposeSurface(FragColor, body, bodyState, cutFace, vFaceOrigin,
+            vFaceOrigin, vFaceId, aaFloor, analyticSurface);
+    }
+#endif
 #if IR_SUN_QUERY_STATS
     for (uint counter = 0u; counter < kSunQueryCounterCount; ++counter) {
         const uint value = sunQueryStats.counts[counter];
