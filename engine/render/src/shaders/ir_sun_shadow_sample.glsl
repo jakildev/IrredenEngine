@@ -142,16 +142,19 @@ float sampleCascadeShadow(
             const uint count = sunDepthBuf[tileBase];
             sourceQueryComplete = sourceFaceQueryComplete(count)
                 && (count <= kSourceFaceTileCapacity || sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))] <= kSourceFaceSpillCapacity);
+            const uint retainedFaces = sourceFaceRetainedRecords(sourceFaceCount);
             const uint hierarchyLeaves = !sourceQueryComplete ? sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] : 0u;
-            const bool queryHierarchy = !sourceQueryComplete && sourceFaceCount <= kSourceFaceCapacity &&
-                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(sourceFaceCount);
+            // A tile that lost records answers from the sampled layers: no retained-pool
+            // miss can certify it, and a hit-only traversal can visit the whole pool per receiver.
+            const bool queryHierarchy = !sourceQueryComplete && sourceFaceTileRetainsRecords(count) &&
+                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(retainedFaces);
             if (queryHierarchy) {
                 sourceQueryComplete = true;
                 if (dot(normal, sunDir) > 0.0) {
 #if IR_SUN_QUERY_STATS
                     sunQueryStats.counts[kSunQueryIndexed] += 1u;
 #endif
-                    if (sourceSunHierarchyBlocks(hierarchyLeaves, sourceFaceCount,
+                    if (sourceSunHierarchyBlocks(hierarchyLeaves, retainedFaces,
                                                  sunUV, sunZ, maxShadowThrow
 #if IR_SUN_QUERY_STATS
                         , sunQueryStats

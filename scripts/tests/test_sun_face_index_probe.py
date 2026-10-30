@@ -14,13 +14,13 @@ SPEC.loader.exec_module(PROBE)
 
 
 class SourceFaceIndexProbeTest(unittest.TestCase):
-    def evaluate(self, rows, *, metadata=None, bounds=False, world_point=None):
+    def evaluate(self, rows, *, metadata=None, bounds=False, world_point=None, columns=None):
         values = {"active": "1", "tile_capacity": "64", "tiles_per_axis": "2",
                   "cascade_count": "1", "face_records_requested": "70000",
                   "face_record_capacity": "65536", "basis_u": "1,0,0", "basis_v": "0,1,0"}
         if metadata is not None:
             values.update(metadata)
-        columns = "cascade,x,y,count,complete"
+        columns = columns or "cascade,x,y,count,complete"
         if bounds:
             columns += ",u_min,v_min,u_max,v_max"
         with tempfile.TemporaryDirectory() as directory:
@@ -32,8 +32,22 @@ class SourceFaceIndexProbeTest(unittest.TestCase):
     def test_closed_capacity_and_exhausted_record_pool(self):
         result = self.evaluate("0,0,0,0,1\n0,1,0,64,1\n0,0,1,65,0\n0,1,1,70000,0\n")
         self.assertEqual(result["face_records_requested"], 70000)
-        self.assertEqual(result["cascades"], [{"occupied_tiles": 3,
-                                             "incomplete_tiles": 2, "max_counter": 70000}])
+        self.assertEqual(result["cascades"], [{"occupied_tiles": 3, "incomplete_tiles": 2,
+                                             "record_lost_tiles": 0, "max_counter": 70000}])
+
+    def test_lost_records_keep_a_small_tile_incomplete(self):
+        rows = ("cascade,x,y,count,complete,records_lost\n"
+                "0,0,0,0,1,0\n0,1,0,3,0,1\n0,0,1,65,0,0\n0,1,1,0,0,1\n")
+        metadata = {"hierarchy_needed": "1", "hierarchy_ready_leaves": "8192"}
+        result = self.evaluate(rows.split("\n", 1)[1], metadata=metadata,
+                               columns=rows.split("\n", 1)[0])
+        self.assertEqual(result["cascades"][0]["record_lost_tiles"], 2)
+        self.assertEqual(result["cascades"][0]["incomplete_tiles"], 3)
+        self.assertEqual(result["hierarchy_ready_leaves"], 8192)
+        for corrupt in ("0,1,0,3,1,1\n", "0,1,0,3,0,2\n"):
+            with self.subTest(row=corrupt), self.assertRaisesRegex(ValueError, "lost|completeness"):
+                self.evaluate("0,0,0,0,1,0\n" + corrupt + "0,0,1,65,0,0\n0,1,1,0,0,1\n",
+                              columns=rows.split("\n", 1)[0])
 
     def test_spill_capacity_and_global_exhaustion(self):
         metadata = {"tile_capacity": "256", "tile_inline_capacity": "64",

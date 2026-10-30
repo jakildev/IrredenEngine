@@ -163,9 +163,9 @@ int main(){
     sunDepthBuf.readCount=0;
     fallback(0,empty,depth(-120));
     require(sample()==0 && sunDepthBuf.readCount==0,
-            "overflowed record pool cannot certify exact hierarchy");
+            "readiness for unpublished records cannot expose the tree");
     fallback(0,empty,depth(2));
-    require(sample()==1,"overflowed pool preserves sampled fallback");
+    require(sample()==1,"unpublished hierarchy preserves sampled fallback");
     reset(257,257);fill(257,hit);build();clear();
     require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0 &&
             sunDepthBuf.words[kSourceFaceHierarchyNeededOffset]==0,
@@ -176,12 +176,54 @@ int main(){
     buildPass(0);buildPass(1);
     require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0,
             "unneeded build cannot publish stale tree");
-    for(uint count:{0u,65537u}){
-        reset(count,257);sunDepthBuf.words[kSourceFaceHierarchyNeededOffset]=1;
-        buildPass(0);buildPass(1);
-        require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0 &&
-                sunDepthBuf.readCount==0,"empty or overflowed pool skips build");
+    reset(0,257);sunDepthBuf.words[kSourceFaceHierarchyNeededOffset]=1;
+    buildPass(0);buildPass(1);
+    require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0 &&
+            sunDepthBuf.readCount==0,"empty pool skips build");
+    // Global record exhaustion: the retained prefix is complete for tiles that kept every record.
+    // A tile that lost records never traverses it and answers from the sampled layers.
+    uint exhaustedComparisons=0;
+    for(uint cascade:{0u,1u})for(uint requested:{65535u,65536u,65537u,70000u}){
+        const uint retained=std::min(requested,65536u);
+        for(uint position:{0u,retained/2,retained-1})for(uint lost:{0u,1u}){
+            reset(requested,257,cascade);
+            for(uint i=0;i<retained;++i)writeFace(i==position?hit:distant);
+            if(lost)sunDepthBuf.words[tileBase(cascade)]|=kSourceFaceTileRecordLost;
+            fallback(cascade,empty,depth(-120));
+            reverseGroups=position!=0;
+            build();
+            require(sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==8192,
+                    "exhausted pool publishes its retained prefix");
+            require(sample({2.9f,3.5f},10,cascade)==float(!lost),lost
+                    ?"lost tile answers from the sampled layers, not the retained pool"
+                    :"retained blocker survives global record exhaustion");
+            require(lost?sunDepthBuf.readCount==0
+                        :sunDepthBuf.readCount<=retained*kSourceFaceRecordWords,lost
+                    ?"lost tile never traverses the retained pool"
+                    :"retained-pool traversal visits each record at most once");
+            ++exhaustedComparisons;
+        }
+        if(requested<=65536)continue;
+        for(uint lost:{0u,1u}){
+            reset(requested,257|(lost?kSourceFaceTileRecordLost:0u),cascade);
+            fill(65536,distant);build();
+            fallback(cascade,empty,depth(2));
+            require(sample({2.9f,3.5f},10,cascade)==float(lost),lost
+                    ?"lost tile keeps the sampled indexed layer after a retained-pool miss"
+                    :"retained tile certifies a complete retained-pool miss");
+        }
+        // Documented limit: a lost lower record hidden behind a distant sampled depth.
+        reset(requested,kSourceFaceTileRecordLost,cascade);fill(65536,distant);build();
+        fallback(cascade,empty,depth(-120));
+        require(sample({2.9f,3.5f},10,cascade)==0,"lost record under distant depth stays a limit");
+        fallback(cascade,depth(2),depth(-120));
+        require(sample({2.9f,3.5f},10,cascade)==1,"lost tile preserves independent raster layer");
+        clear();
+        require(sunDepthBuf.words[tileBase(cascade)]==0 &&
+                sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]==0,
+                "clear retires lost-record tiles and exhausted readiness");
     }
+    reverseGroups=false;
     reset(257,257);fill(256,miss);writeFace({{100,100,2},{0,0,1},{1,2,0}});
     sunDepthBuf.words[kSourceFaceRecordOffset+256*kSourceFaceRecordWords+9]=7;
     build();
@@ -220,7 +262,8 @@ int main(){
         hits+=expected;misses+=!expected;
     }
     require(hits>100 && misses>100,"hierarchy oracle fixture contains hits and misses");
-    std::cout<<comparisons<<" hierarchy overlap/order controls; readiness, clear, pool, "
+    std::cout<<comparisons<<" hierarchy overlap/order controls; "<<exhaustedComparisons
+             <<" exhausted-pool retained/lost controls; readiness, clear, pool, "
                "analytic admission, mixed-layer controls and "<<hits+misses
              <<" independent triangle rays passed\n";
 }
@@ -424,10 +467,19 @@ class SunHierarchyTest(unittest.TestCase):
                 "i < min(records, first + kSourceFaceHierarchyLeafSize)",
                 "i + 1u < min(records, first + kSourceFaceHierarchyLeafSize)"),
             "accept_incomplete_readiness": (
-                "hierarchyLeaves == sourceSunHierarchyLeafCount(sourceFaceCount)", "true"),
+                "hierarchyLeaves == sourceSunHierarchyLeafCount(retainedFaces)", "true"),
             "demote_analytic_bounds": ("if (bounds.low.w > 0.0) return true;", ""),
             "ignore_depth_window": ("separation < maxShadowThrow", "true"),
-            "accept_overflowed_pool": ("sourceFaceCount <= kSourceFaceCapacity", "true"),
+            "ignore_lost_bit": ("return (count & kSourceFaceTileRecordLost) == 0u;",
+                                "return true;"),
+            "query_lost_tile_hierarchy": (
+                "!sourceQueryComplete && sourceFaceTileRetainsRecords(count) &&",
+                "!sourceQueryComplete &&"),
+            "count_unpublished_records": (
+                "return requested < kSourceFaceCapacity ? requested : kSourceFaceCapacity;",
+                "return requested;"),
+            "reject_exhausted_build": ("if (records == 0u ||",
+                                       "if (records == 0u || records >= kSourceFaceCapacity ||"),
             "publish_subtree_as_complete": ("pass == 1u && lane == 0u", "lane == 0u"),
             "omit_top_root": ("level > 0u; level /= 2u", "level > 1u; level /= 2u"),
             "alias_subtrees": ("subtrees + group : 1u", "subtrees : 1u"),

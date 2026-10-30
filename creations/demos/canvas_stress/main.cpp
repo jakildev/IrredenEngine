@@ -57,8 +57,10 @@
 #include <irreden/update/components/component_angular_velocity.hpp>
 #include <irreden/update/systems/system_angular_velocity_damped.hpp>
 #include <irreden/update/systems/system_auto_spin_local_transform.hpp>
+#include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/update/systems/system_velocity.hpp>
 #include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
@@ -446,6 +448,10 @@ CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
 int g_autoRecordFrames = 0; // 0 = --auto-record not requested
 EntityId g_hoverCanary = IREntity::kNullEntity;
+// First moving overlapping-source caster and its undisplaced spawn point; capture
+// frames log its offset in --probe-overlapping-source-offset units.
+EntityId g_probeDriftLead = IREntity::kNullEntity;
+vec3 g_probeDriftOrigin{};
 constexpr vec3 kHoverCanaryWorldPos{0.0f, 0.0f, -48.0f};
 IRSystem::SystemId g_hoverDetectSystem = IRSystem::kNullSystemId;
 IRVideo::GuiInputEvent g_hoverCanaryMove{0, IRVideo::GuiInputEvent::Type::MOVE, ivec2(0)};
@@ -2125,6 +2131,20 @@ void registerArgs() {
         1
     );
     args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
+    args.integer(
+        "--probe-record-pool-filler",
+        "Side of a flat rigid source plate that fills the sun face record pool, 0..512 (0 off)",
+        0
+    );
+    args.numbers(
+        "--probe-record-pool-filler-offset",
+        "Record-pool filler translation from the shadowbox <x> <y> <z>",
+        3
+    );
+    args.flag(
+        "--probe-record-pool-filler-last",
+        "Create the record-pool filler after the shadowbox casters instead of before them"
+    );
     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
     args.flag(
@@ -2159,6 +2179,11 @@ void registerArgs() {
     args.numbers(
         "--probe-overlapping-source-offset",
         "Offset the external source caster from the central sun ray <x> <y> <z>",
+        3
+    );
+    args.numbers(
+        "--probe-overlapping-source-velocity",
+        "Move every overlapping source caster at <x> <y> <z> units per second",
         3
     );
     args.numbers("--analytic-box-offset", "Analytic shadowbox translation offset <x> <y> <z>", 3);
@@ -2489,6 +2514,11 @@ void initSystems() {
         )
     );
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>());
+    // Auto-capture runs one fixed UPDATE tick per render frame, so a moving
+    // caster's captured pose depends only on the frame index.
+    if (IREngine::args().wasProvided("--probe-overlapping-source-velocity")) {
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::VELOCITY_3D>());
+    }
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>());
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>());
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>());
@@ -2886,6 +2916,18 @@ void initSystems() {
             } else if (detachGroupRequested()) {
                 advanceDetachCapture(shotIndex);
             }
+            if (g_probeDriftLead != IREntity::kNullEntity) {
+                const vec3 offset =
+                    IREntity::getComponent<C_LocalTransform>(g_probeDriftLead).translation_ -
+                    g_probeDriftOrigin;
+                IR_LOG_INFO(
+                    "PROBE-DRIFT shot={} offset=({:.9g},{:.9g},{:.9g})",
+                    shotIndex,
+                    offset.x,
+                    offset.y,
+                    offset.z
+                );
+            }
             if (IREngine::args().getFlag("--sun-face-index-probe") ||
                 IREngine::args().getFlag("--sun-face-geometry-probe")) {
                 const std::string path = "sun-face-index-" + std::to_string(shotIndex) + ".csv";
@@ -3205,6 +3247,48 @@ void initEntities() {
             vec3(0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f) +
             (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
         const Color color{80, 120, 240, 255};
+        // Bake dispatches allocate records in creation order, so the filler's
+        // position in that order decides whether the shadowbox casters keep theirs.
+        const int fillerSide =
+            IRMath::clamp(IREngine::args().getInt("--probe-record-pool-filler"), 0, 512);
+        const bool fillerLast = IREngine::args().getFlag("--probe-record-pool-filler-last");
+        const auto spawnRecordPoolFiller = [&]() {
+            const auto offsetValues =
+                IREngine::args().getFloats("--probe-record-pool-filler-offset");
+            const vec3 offset = offsetValues.empty()
+                                    ? vec3(0.0f)
+                                    : vec3(offsetValues[0], offsetValues[1], offsetValues[2]);
+            auto filler = IRPrefab::EntityCanvas::createWithVoxelPool(
+                "record_pool_filler",
+                ivec2(1024),
+                ivec3(fillerSide, fillerSide, 1)
+            );
+            IREntity::createEntity(
+                C_LocalTransform{vec3(0.0f)},
+                C_VoxelSetNew{
+                    ivec3(fillerSide, fillerSide, 1),
+                    Color{120, 200, 120, 255},
+                    true,
+                    filler.canvasEntity_
+                }
+            );
+            IREntity::createEntity(
+                C_LocalTransform{position + offset},
+                C_RotationMode{RotationMode::DETACHED},
+                filler
+            );
+            IR_LOG_INFO(
+                "RECORD-POOL-FILLER side={} order={} offset=({},{},{})",
+                fillerSide,
+                fillerLast ? "last" : "first",
+                offset.x,
+                offset.y,
+                offset.z
+            );
+        };
+        if (fillerSide > 0 && !fillerLast) {
+            spawnRecordPoolFiller();
+        }
         if (IREngine::args().getFlag("--probe-overlapping-source")) {
             const auto sourceOffsetValues =
                 IREngine::args().getFloats("--probe-overlapping-source-offset");
@@ -3220,6 +3304,9 @@ void initEntities() {
                     sourceCount
                 );
             }
+            const auto velocityValues =
+                IREngine::args().getFloats("--probe-overlapping-source-velocity");
+            const vec3 sourceOrigin = position + IRRender::getSunDirection() * 12.0f;
             for (int index = 0; index < sourceCount; ++index) {
                 auto overlap = IRPrefab::EntityCanvas::createWithVoxelPool(
                     "overlapping_source_caster",
@@ -3231,14 +3318,24 @@ void initEntities() {
                     C_LocalTransform{vec3(0.0f)},
                     C_VoxelSetNew{ivec3(3), Color{230, 170, 60, 255}, true, overlap.canvasEntity_}
                 );
-                IREntity::createEntity(
+                const EntityId caster = IREntity::createEntity(
                     C_LocalTransform{
-                        position + IRRender::getSunDirection() * 12.0f + sourceOffset,
+                        sourceOrigin + sourceOffset,
                         IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f)), 0.47f)
                     },
                     C_RotationMode{RotationMode::DETACHED},
                     overlap
                 );
+                if (!velocityValues.empty()) {
+                    IREntity::setComponent(
+                        caster,
+                        C_Velocity3D{velocityValues[0], velocityValues[1], velocityValues[2]}
+                    );
+                    if (index == 0) {
+                        g_probeDriftLead = caster;
+                        g_probeDriftOrigin = sourceOrigin;
+                    }
+                }
             }
         }
         if (auto descriptor = analyticProbeDescriptor(color)) {
@@ -3332,6 +3429,9 @@ void initEntities() {
                 },
                 canvas
             );
+        }
+        if (fillerSide > 0 && fillerLast) {
+            spawnRecordPoolFiller();
         }
     }
 

@@ -276,7 +276,7 @@ def parse_layout(source):
         raise ValueError(f"unsupported layout expression: {ast.dump(node)}")
 
     for name, expression in re.findall(r"constant uint (\w+)\s*=\s*([^;]+);", source):
-        expression = re.sub(r"\b(\d+)u\b", r"\1", expression)
+        expression = re.sub(r"\b(0x[0-9A-Fa-f]+|\d+)u\b", r"\1", expression)
         constants[name] = evaluate(ast.parse(expression, mode="eval").body)
     return constants
 

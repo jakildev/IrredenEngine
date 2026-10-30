@@ -222,8 +222,9 @@ int main(){
     for(uint word=kSourceFaceRecordOffset;word<kSourceFaceSpillCounterOffset;++word)
         require(sunDepthBuf[word]==unwritten,"exhausted records must not write geometry");
     for(uint tile=0;tile<kSourceFaceTileCount;++tile)
-        require(!sourceFaceQueryComplete(sunDepthBuf[sourceFaceTileBase(tile)]),
-                "exhausted full-cascade face must invalidate every tile");
+        require(!sourceFaceQueryComplete(sunDepthBuf[sourceFaceTileBase(tile)]) &&
+                !sourceFaceTileRetainsRecords(sunDepthBuf[sourceFaceTileBase(tile)]),
+                "exhausted full-cascade face must mark every tile as missing records");
 
     reset(false);
     sunDepthBuf[kSourceFaceHeaderOffset]=kSourceFaceTileCapacity;
@@ -376,10 +377,10 @@ class SourceFaceIndexCoverageTest(unittest.TestCase):
     def test_full_cascade_capacity_transitions(self):
         for backend in ("glsl", "metal"):
             source = host_source(backend, cases=CAPACITY_CASES)
-            mark_incomplete = ("atomicMax(sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u);"
+            mark_incomplete = ("atomicOr(sunDepthBuf[base], kSourceFaceTileRecordLost);"
                                if backend == "glsl" else
-                               "atomic_fetch_max_explicit(&sunDepthBuf[base], "
-                               "kSourceFaceTileQueryCapacity + 1u, memory_order_relaxed);")
+                               "atomic_fetch_or_explicit(&sunDepthBuf[base], "
+                               "kSourceFaceTileRecordLost, memory_order_relaxed);")
             mutations = {
                 "missing_record_exhaustion": (mark_incomplete, ";"),
                 "primary_off_by_one": ("slot < kSourceFaceTileCapacity",

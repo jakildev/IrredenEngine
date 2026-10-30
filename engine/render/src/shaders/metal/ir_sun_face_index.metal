@@ -28,6 +28,7 @@ inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corne
             if (lane == 0u) {
 #endif
             faceIndex = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 1u, memory_order_relaxed);
+            if (faceIndex == kSourceFaceCapacity) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 1u, memory_order_relaxed);
             if (faceIndex < kSourceFaceCapacity) {
                 const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
                 atomic_store_explicit(&sunDepthBuf[record + 9u], type, memory_order_relaxed);
@@ -58,7 +59,7 @@ inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corne
             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
             const uint base = sourceFaceTileBase(tile);
             if (faceIndex >= kSourceFaceCapacity) {
-                atomic_fetch_max_explicit(&sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u, memory_order_relaxed);
+                atomic_fetch_or_explicit(&sunDepthBuf[base], kSourceFaceTileRecordLost, memory_order_relaxed);
                 continue;
             }
             const uint slot = atomic_fetch_add_explicit(&sunDepthBuf[base], 1u, memory_order_relaxed);
