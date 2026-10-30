@@ -265,7 +265,9 @@ carries a `GPU framebufferGlitch` row.
 varies density, population, overlap, root/parent motion, GRID/rigid/revoxelized
 presentation and isolated local light, each with GPU stage timing on and off.
 Use `--suite baseline` for the retained 16-case yaw/shadow reproduction, and
-repeat `--case <name>` to run a bounded subset. Every accepted ShapeDebug run
+repeat `--case <name>` to run a bounded subset. Pass `--release` to select the
+worktree's supported Release tree directly.
+Every accepted ShapeDebug run
 must carry exactly one Release-compatible `SDF-OCCUPANCY` log witness; the
 runner retains its bake time, slot/occupied counts and dense-record bytes in the
 manifest. Those payload bytes are not process RSS or GPU driver residency.

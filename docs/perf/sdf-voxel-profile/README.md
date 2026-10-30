@@ -63,3 +63,8 @@ earlier rounded-edge miss has a
 The distinct apparent gap in the tilted fixture is a
 [verified clear channel](../../pr-screenshots/codex/tilted-baked-shadow-gaps/README.md).
 Neither attribution closes all voxel shadow defects.
+
+The [AC Release qualification slice](ac-release-qualification/README.md)
+retains matched density, 16-copy overlap and moving-transform measurements. It
+records an overlap-specific baked cost increase while leaving Windows/OpenGL
+and process/driver residency explicitly open.

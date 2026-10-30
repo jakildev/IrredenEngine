@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from repeat_profile import shape_profile_arguments
-from sdf_controls import cases, verify_configurations
+from sdf_controls import cases, runner_options, verify_configurations
 
 
 class SdfControlsTest(unittest.TestCase):
@@ -55,6 +55,12 @@ class SdfControlsTest(unittest.TestCase):
             manifest.write_text("{}")
             with self.assertRaisesRegex(ValueError, "no configuration fingerprint"):
                 verify_configurations(output)
+
+    def test_release_selects_the_release_runner_without_an_environment_prefix(self):
+        self.assertEqual(("--target", "IRShapeDebug"), runner_options(False))
+        self.assertEqual(
+            ("--target", "IRShapeDebug", "--release"), runner_options(True)
+        )
 
 
 if __name__ == "__main__":
