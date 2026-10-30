@@ -107,4 +107,4 @@ objective-linked decomposition for the entity creator.
 | 2026-10-20 | PR #4640 | `--gui-layout-check` gates the editor shot table |
 | 2026-10-23 | #4402 / PR #4694; PR #4689 | COPY YAW bound to sessions (`test_yaw`); shared undo service and the `undo_history` session (30 sessions, 8 fixture) |
 | 2026-10-27 | sweep | re-verified against master `ee85797c0`; audit list drained; row 3 reframed (`worldToScreen` is a dead helper); no Part 4 yet |
-| 2026-10-30 | #4767 / PR #4791 | debug-overlay `worldToScreen` delegates to `worldPos3DToMouseScreenPx`; dead `screenToWorld` removed; Done-means row 3 verifies |
+| 2026-10-29 | #4767 / PR #4791 | debug-overlay `worldToScreen` delegates to `worldPos3DToMouseScreenPx`; dead `screenToWorld` removed; Done-means row 3 verifies |
