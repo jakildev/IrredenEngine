@@ -145,9 +145,13 @@ bool SystemManager::pollCadenceDue(SystemId system, std::uint64_t now) {
     return true;
 }
 
-bool SystemManager::isStillLiveInPriorPipeline(IRTime::Events priorEvent, SystemId system) const {
-    const auto it = m_systemPipelineGroups.find(priorEvent);
+bool SystemManager::isInPipeline(IRTime::Events event, SystemId system) const {
+    const auto it = m_systemPipelineGroups.find(event);
     return it != m_systemPipelineGroups.end() && pipelineGroupsContain(it->second, system);
+}
+
+bool SystemManager::isStillLiveInPriorPipeline(IRTime::Events priorEvent, SystemId system) const {
+    return isInPipeline(priorEvent, system);
 }
 
 void SystemManager::stampCadenceJoin(IRTime::Events event, SystemId system) {

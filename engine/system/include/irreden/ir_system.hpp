@@ -670,6 +670,13 @@ void clearPipeline(IRTime::Events event);
 
 void executePipeline(IRTime::Events event);
 
+/// Whether `system` is in `event`'s live pipeline. Registration alone
+/// (`createSystem`, `findSystem`) never runs a system; a contract that needs
+/// one ticking checks this.
+inline bool isInPipeline(IRTime::Events event, SystemId system) {
+    return getSystemManager().isInPipeline(event, system);
+}
+
 // Per-system update cadence. Run a system on 1-in-`cadence` phase
 // ticks (1 = every tick, the default); off-cadence ticks skip the entire
 // dispatch. `offset` (0..cadence-1) staggers the initial phase so sibling

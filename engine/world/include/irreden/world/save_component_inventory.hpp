@@ -18,6 +18,7 @@
 #include <irreden/audio/components/component_midi_device.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
 #include <irreden/audio/components/component_midi_note.hpp>
+#include <irreden/audio/components/component_midi_note_spacing.hpp>
 #include <irreden/audio/components/component_midi_sequence.hpp>
 #include <irreden/audio/components/component_midi_source_port.hpp>
 #include <irreden/common/components/component_auto_spin.hpp>
@@ -261,6 +262,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_GLFWJoystick)
 IR_SAVE_OPT_OUT(IRComponents::C_MidiMessage)
 IR_SAVE_OPT_OUT(IRComponents::C_MidiMessageData)
 IR_SAVE_OPT_OUT(IRComponents::C_MidiMessageStatus)
+// C_MidiNoteSpacing: OPT-OUT — one frame's queued notes and the notes still
+// sounding; a snapshot never holds a frame in flight. The policy's numbers
+// are the creation's settings, re-applied at load.
+IR_SAVE_OPT_OUT(IRComponents::C_MidiNoteSpacing)
 IR_SAVE_OPT_OUT(IRComponents::C_MidiIn)
 IR_SAVE_OPT_OUT(IRComponents::C_MidiOut)
 
@@ -568,6 +573,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_MidiMessage,
     IRComponents::C_MidiMessageData,
     IRComponents::C_MidiMessageStatus,
+    IRComponents::C_MidiNoteSpacing,
     IRComponents::C_MidiIn,
     IRComponents::C_MidiOut,
     IRComponents::C_SystemRelation,

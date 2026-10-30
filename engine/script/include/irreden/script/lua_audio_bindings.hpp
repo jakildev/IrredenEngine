@@ -3,14 +3,18 @@
 
 #include <irreden/ir_audio.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/audio/components/component_midi_note_spacing.hpp>
+#include <irreden/audio/midi_note_spacing.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <sol/sol.hpp>
 
+#include <array>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -66,6 +70,53 @@ inline void bindAudioApi(LuaScript &script) {
     IR_BIND_AUDIO_BUS(MUSIC);
 #undef IR_BIND_AUDIO_BUS
     audio["Bus"] = bus;
+
+    // The note spacing policy (`docs/design/midi-note-spacing.md`): a partial
+    // update that checks every key before any write; `enabled = true` needs
+    // `MIDI_NOTE_SPACING` in the UPDATE pipeline, since only it flushes the
+    // queue.
+    audio["setNoteSpacing"] = [](sol::this_state state, sol::object optionsObject) {
+        constexpr const char *kCaller = "IRAudio.setNoteSpacing";
+        static constexpr std::array<std::string_view, 4>
+            kKeys{"enabled", "staggerFrames", "maxVoices", "maxDelayFrames"};
+        const sol::table options = optionsTable(state, optionsObject, kCaller);
+        rejectUnknownKeys(options, kKeys, kCaller);
+        IRComponents::C_MidiNoteSpacing &spacing = IRPrefab::MidiNotes::spacing();
+        const sol::object enabledObject = options["enabled"];
+        bool enabled = spacing.enabled_;
+        if (enabledObject.valid() && enabledObject.get_type() != sol::type::lua_nil) {
+            if (enabledObject.get_type() != sol::type::boolean) {
+                throw sol::error{std::string(kCaller) + ": enabled must be true or false"};
+            }
+            enabled = enabledObject.as<bool>();
+        }
+        const int stagger =
+            integerOption(options, "staggerFrames", spacing.staggerFrames_, 1, 600, kCaller);
+        const int voices = integerOption(options, "maxVoices", spacing.maxVoices_, 0, 128, kCaller);
+        const int maxDelay =
+            integerOption(options, "maxDelayFrames", spacing.maxDelayFrames_, 0, 6000, kCaller);
+        if (enabled && !IRPrefab::MidiNotes::spacingDrains()) {
+            throw sol::error{
+                std::string(kCaller) +
+                ": enabling needs MIDI_NOTE_SPACING in the UPDATE pipeline, which flushes the queue"
+            };
+        }
+        spacing.enabled_ = enabled;
+        spacing.staggerFrames_ = stagger;
+        spacing.maxVoices_ = voices;
+        spacing.maxDelayFrames_ = maxDelay;
+    };
+    audio["noteSpacing"] = [](sol::this_state state) -> sol::table {
+        const IRComponents::C_MidiNoteSpacing &spacing = IRPrefab::MidiNotes::spacing();
+        sol::state_view view{state};
+        sol::table out = view.create_table();
+        out["enabled"] = spacing.enabled_;
+        out["staggerFrames"] = spacing.staggerFrames_;
+        out["maxVoices"] = spacing.maxVoices_;
+        out["maxDelayFrames"] = spacing.maxDelayFrames_;
+        out["droppedNotes"] = static_cast<lua_Integer>(spacing.droppedNotes_);
+        return out;
+    };
 
     audio["playSound"] = [](const std::string &path,
                             sol::object busObj,

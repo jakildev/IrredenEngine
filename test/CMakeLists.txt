@@ -19,6 +19,7 @@ add_executable(IrredenEngineTest
   audio/audio_playback_test.cpp
   audio/synthetic_audio_capture_test.cpp
   audio/midi_clock_test.cpp
+  audio/midi_note_spacing_test.cpp
   audio/midi_in_tick_test.cpp
   audio/midi_hand_off_test.cpp
   audio/midi_message_ring_test.cpp
@@ -218,6 +219,7 @@ add_executable(IrredenEngineTest
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
   script/lua_canvas_draw_bindings_test.cpp
+  script/lua_midi_note_spacing_test.cpp
   script/lua_widget_color_swatch_test.cpp
   script/lua_script_utils_test.cpp
   script/lua_standard_bindings_test.cpp
