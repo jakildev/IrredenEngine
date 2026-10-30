@@ -122,6 +122,12 @@ This is the crux, and it passed 8/8. Key results:
   the injected cursor. The GUI-canvas full-resolution setting only affects
   widget hitboxes; scene picking goes through the output-view/game-canvas chain,
   which `worldPos3DToMouseScreenPx` mirrors.
+- **Resolved: one projection owner.** The debug-overlay `worldToScreen` now
+  delegates to `worldPos3DToMouseScreenPx` with its signature kept, because an
+  out-of-tree creation calls it. Its uncalled `screenToWorld` inverse, which
+  encoded the viewport-centre-only space, is removed.
+  `worldPos3DToMouseScreenPx` is the only world-to-window-pixel projection, and
+  `GuiInputEvent.screenPx_` already reads in that space.
 - **Vertical picking needs zoom ≥ 2.** At zoom 1.0 the iso step is `(2,1)` px
   per iso unit — only **1 px per iso-Y unit**, so the cell-centre half-offset
   is below integer-pixel resolution and `floor()` tips to the neighbouring iso

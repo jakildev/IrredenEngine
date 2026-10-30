@@ -237,32 +237,11 @@ inline void clear() {
     getScreenTriangles().clear();
 }
 
+/// The window point @p worldPos projects to: @ref IRRender::worldPos3DToMouseScreenPx,
+/// the cursor space (window points, top-left origin). Not the `draw*Screen`
+/// space, which is viewport pixels with a bottom-up y.
 inline IRMath::vec2 worldToScreen(IRMath::vec3 worldPos) {
-    IRMath::vec2 stepSize = IRMath::vec2(IRRender::getTriangleStepSizeScreen());
-    IRMath::vec2 viewport = IRMath::vec2(IRRender::getViewport());
-    IRMath::vec2 screenCenter = viewport * 0.5f;
-    IRMath::vec2 camIso = IRRender::getEffectiveCameraIso();
-
-    IRMath::vec2 posIso = IRMath::pos3DtoPos2DIso(worldPos);
-    IRMath::vec2 relIso = posIso + camIso;
-    IRMath::vec2 screenOffset = IRMath::isoDeltaToScreenDelta(relIso, stepSize);
-    return screenCenter + screenOffset;
-}
-
-inline IRMath::vec3 screenToWorld(IRMath::vec2 screenPos, float zLevel = 0.0f) {
-    IRMath::vec2 stepSize = IRMath::vec2(IRRender::getTriangleStepSizeScreen());
-    IRMath::vec2 viewport = IRMath::vec2(IRRender::getViewport());
-    IRMath::vec2 screenCenter = viewport * 0.5f;
-    IRMath::vec2 camIso = IRRender::getEffectiveCameraIso();
-
-    IRMath::vec2 screenOffset = screenPos - screenCenter;
-    IRMath::vec2 relIso = IRMath::screenDeltaToIsoDelta(screenOffset, stepSize);
-    IRMath::vec2 posIso = relIso - camIso;
-
-    const float zShift = 2.0f * zLevel;
-    const float x = -0.5f * (posIso.x + posIso.y - zShift);
-    const float y = 0.5f * (posIso.x - posIso.y + zShift);
-    return IRMath::vec3(x, y, zLevel);
+    return IRMath::vec2(IRRender::worldPos3DToMouseScreenPx(worldPos));
 }
 
 constexpr std::size_t kDebugOverlayMaxVertices = 512 * 1024;
