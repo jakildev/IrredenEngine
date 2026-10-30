@@ -1,0 +1,10 @@
+FOG-SURFACE-PROBE scene=occlusion_high_ground_soft canvas=642x722 slabTexels=2944 hidden=2368 lit=417 gpuPartial=1081 partialBand=159 dissolved=39 retained=120 capToned=0 disagreements=29 bandMin=304,352 bandMax=323,371
+FOG-HOLE-ORACLE scale=8 ridge=x[-0.5,1.5] y[-7.5,8.5] top=-0.5 slabTop=36502 band=18817 expectedHoles=4477.9 treatedHoles=2080 holeKeys=6 graded=27349 gradedBand=13514 seam=3636 seamMisses=58 holesOutsideDissolve=0 controlRemoved=0 holesUnlitBefore=0
+FOG-HOLE-ORACLE policy=authored misses=2066
+FOG-HOLE-ORACLE policy=losIgnored misses=9417
+FOG-HOLE-ORACLE policy=hardLos misses=1631
+FOG-HOLE-ORACLE policy=admissionInverted misses=11448
+FOG-HOLE-ORACLE policy=keyShifted misses=3098
+FOG-SURFACE-PROBE FAIL: the readback disagrees with the authored reveal and cut policy
+ir-run: RESULT=CRASH exe=IRFogDemo exit=1 signal=none
+ir-run: this run FAILED the clean-exit policy — outputs saved before the crash do not make it green. Fix the crash before shipping, whoever introduced it (docs/agents/FLEET.md §"Clean-exit policy").

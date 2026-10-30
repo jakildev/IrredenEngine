@@ -114,7 +114,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <list>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -1724,14 +1726,19 @@ void snapshotBodyProbeBeforeFog() {
     textures.readColorsSynced(g_bodyProbeBeforeColors);
 }
 
+// The voxel raster's subdivision for @p frameData's frame.
+int rasterScale(const IRRender::FrameDataVoxelToCanvas &frameData) {
+    return frameData.voxelRenderOptions_.x != 0 ? IRMath::max(frameData.voxelRenderOptions_.y, 1)
+                                                : 1;
+}
+
 // CPU twin of the fog pass's pixel → world recovery on the cardinal
 // single-canvas route (yaw 0): iso = pixel - frame offset, then the iso
 // inverse at the stored depth, then the subdivision rescale.
 vec3 canvasTexelToWorld(
     IRMath::ivec2 texel, int encoded, const IRRender::FrameDataVoxelToCanvas &frameData
 ) {
-    const int scale =
-        frameData.voxelRenderOptions_.x != 0 ? IRMath::max(frameData.voxelRenderOptions_.y, 1) : 1;
+    const int scale = rasterScale(frameData);
     const IRMath::ivec2 frameOffset =
         frameData.trixelCanvasOffsetZ1_ +
         IRMath::ivec2(IRMath::floor(frameData.cameraTrixelOffset_ * static_cast<float>(scale)));
@@ -2695,10 +2702,13 @@ void probeEntityRevealIds() {
 // shared ground slab (top voxel centre 4, drawn top plane 4) with every vision
 // circle gated at eye height kOcclusionEyeHeight above kOcclusionGroundZ
 // (E.z = 3, one unit above the slab top). The ridge is a voxel wall on the
-// slab — an even-sized set at x -0.5..0.5, y -7.5..7.5, z -0.5..2.5, drawn as
-// the boxes x -0.5..1.5, y -7.5..8.5 with its top plane at -0.5, four and a
-// half units above the ground — the only occluder in the ground scenes; the
-// grid stays unexplored so only the discs reveal:
+// slab — an even-sized set at x -0.5..0.5, y -7.5..7.5, z -0.5..2.5, drawn at
+// the shots' subdivision as the boxes x -0.5..1.5, y -7.5..8.5 with its top
+// plane at -0.5, four and a half units above the ground — the only occluder in
+// the ground scenes; the grid stays unexplored so only the discs reveal. The
+// warmup frames render at subdivision 1, which snaps the half-integer set to
+// x 0..2, y -7..9, top plane 0, so there the high-ground observer stands on
+// the ridge's -X edge and only the +X ground is shadowed:
 //   ground           observer on the ground at -X: the near ground and the
 //                    ridge's facing wall reveal, the ridge top (the eye is
 //                    below it) and the ground behind the ridge (+X) stay black
@@ -2879,6 +2889,407 @@ void probeOcclusionLineOfSight() {
         "FOG-LOS-PROBE near={} far={}",
         IRPrefab::Fog::lineOfSight(eye, vec3(kOcclusionNearProbe)) ? 1 : 0,
         IRPrefab::Fog::lineOfSight(eye, vec3(kOcclusionFarProbe)) ? 1 : 0
+    );
+}
+
+// The high-ground scene's authored geometry, read by the hole oracle below
+// instead of the published column field. A voxel box of `size` centred on
+// `centre` places its voxels at centre - (size - 1) / 2 through
+// centre + (size - 1) / 2; the raster snaps each position onto its subdivision
+// lattice and fills the unit cube on that corner, and a column's top plane is
+// its lowest snapped z (+Z is down). The slab is three voxels deep, centred
+// on z 5 (createEdgeGroundSlab).
+constexpr float kOcclusionSlabTopVoxelZ = 4.0f;
+
+struct OcclusionRidgeBounds {
+    vec2 min_;
+    vec2 max_;
+    float topZ_;
+};
+
+// The ridge's drawn footprint and top plane at raster subdivision @p scale.
+OcclusionRidgeBounds snappedOcclusionRidge(int scale) {
+    const auto snap = [scale](float position) {
+        return static_cast<float>(IRMath::roundHalfUp(position * static_cast<float>(scale))) /
+               static_cast<float>(scale);
+    };
+    const vec3 halfSpan = 0.5f * (vec3(kOcclusionRidgeSize) - vec3(1.0f));
+    const vec3 low = kOcclusionRidgeCenter - halfSpan;
+    const vec3 high = kOcclusionRidgeCenter + halfSpan;
+    return OcclusionRidgeBounds{
+        vec2(snap(low.x), snap(low.y)),
+        vec2(snap(high.x) + 1.0f, snap(high.y) + 1.0f),
+        snap(low.z)
+    };
+}
+
+// The clearance the high-ground eye's segment keeps over @p ridge on its way
+// to the slab-top point @p target. The eye stands inside the ridge footprint
+// and the segment descends to the target, so its lowest point over the ridge
+// is where it leaves the footprint, and the ridge is the only column whose top
+// lies above the target: that one exit is both the gate's hard clearance and
+// the band clearance the softness grades. The target is the slab's top plane
+// stepped kFogLosFaceBias up its normal, as the pass's canonical sample is.
+float authoredHighGroundClearance(const OcclusionRidgeBounds &ridge, vec2 target) {
+    const vec3 eye(vec2(kOcclusionRidgeObserver), kOcclusionRidgeObserver.z - kOcclusionEyeHeight);
+    const vec2 delta = target - vec2(eye);
+    float tExit = std::numeric_limits<float>::infinity();
+    for (int axis = 0; axis < 2; ++axis) {
+        if (delta[axis] != 0.0f) {
+            const float wall = delta[axis] > 0.0f ? ridge.max_[axis] : ridge.min_[axis];
+            tExit = IRMath::min(tExit, (wall - eye[axis]) / delta[axis]);
+        }
+    }
+    const float targetZ = kOcclusionSlabTopVoxelZ - IRPrefab::Fog::kFogLosFaceBias;
+    return ridge.topZ_ - (eye.z + tExit * (targetZ - eye.z));
+}
+
+// The reveal and cut policies the hole oracle grades the readback under: the
+// authored one, and four corruptions of a single decision the readback must
+// reject. LOS_IGNORED drops the gate, HARD_LOS drops its softness,
+// ADMISSION_INVERTED flips the dissolve test, and KEY_SHIFTED keys the
+// dissolve on the neighbouring voxel.
+enum class HoleOraclePolicy {
+    AUTHORED,
+    LOS_IGNORED,
+    HARD_LOS,
+    ADMISSION_INVERTED,
+    KEY_SHIFTED,
+};
+constexpr std::array<std::pair<HoleOraclePolicy, const char *>, 5> kHoleOraclePolicies{{
+    {HoleOraclePolicy::AUTHORED, "authored"},
+    {HoleOraclePolicy::LOS_IGNORED, "losIgnored"},
+    {HoleOraclePolicy::HARD_LOS, "hardLos"},
+    {HoleOraclePolicy::ADMISSION_INVERTED, "admissionInverted"},
+    {HoleOraclePolicy::KEY_SHIFTED, "keyShifted"},
+}};
+// A texel grades only where its verdict cannot turn on rounding: its
+// clearance clear of the gate's two knees and its dissolve key clear of the
+// admission threshold. A retained texel's state must also stay far enough
+// from zero that its colour cannot read as unexplored.
+constexpr float kHoleOracleClearanceMargin = 0.05f;
+constexpr float kHoleOracleHashMargin = 0.01f;
+constexpr float kHoleOracleMinRetainedState = 0.1f;
+// A texel recovered on a half-integer plane lies on the seam between two
+// dissolve keys, and the pass's rounding of its own recovery may land it on
+// either; it must match the verdict under one of the two.
+constexpr float kHoleOracleSeamEpsilon = 1.0e-3f;
+// Each corrupted policy must miss at least this share of the graded band.
+constexpr int kHoleOracleCorruptionShareDivisor = 8;
+
+// The gate's factor from an authored clearance, written out rather than taken
+// from losVisibilityFromClearance so the oracle shares no code with the
+// engine's line-of-sight path.
+float holeOracleVisibility(float clearance, float softness) {
+    return clearance < -IRComponents::kFogLosClearanceTolerance
+               ? 0.0f
+               : IRMath::smoothstep(0.0f, softness, clearance);
+}
+
+// Whether @p policy paints a slab-top texel the unexplored colour, given its
+// authored clearance and dissolve key.
+bool holeOracleHidden(
+    HoleOraclePolicy policy, float clearance, IRMath::ivec3 key, float softness, float density
+) {
+    if (policy == HoleOraclePolicy::LOS_IGNORED) {
+        return false;
+    }
+    const float visibility = holeOracleVisibility(clearance, softness);
+    if (visibility <= 0.0f) {
+        return true;
+    }
+    if (policy == HoleOraclePolicy::HARD_LOS || visibility >= 1.0f) {
+        return false;
+    }
+    const IRMath::ivec3 hashed =
+        policy == HoleOraclePolicy::KEY_SHIFTED ? key + IRMath::ivec3(1, 0, 0) : key;
+    const bool dissolved =
+        IRPrefab::Fog::detail::revealSurfaceHash01(hashed) > IRMath::mix(1.0f, visibility, density);
+    return policy == HoleOraclePolicy::ADMISSION_INVERTED ? !dissolved : dissolved;
+}
+
+// The texels of one dissolve key on the slab top: how many the readback
+// paints unexplored and how many the authored policy dissolves.
+struct HoleOracleCell {
+    int texels_ = 0;
+    int hidden_ = 0;
+    int dissolved_ = 0;
+    float clearance_ = 0.0f;
+};
+
+// The capture frame's two controls, taken at the shot pose: the fog output
+// of the frame ahead of it, rendered with the treatment off, and the capture
+// frame's lit composite ahead of the fog pass.
+int g_holeProbeFrame = 0;
+int g_autoSettleFrames = 0;
+std::vector<Color> g_holeControlColors;
+std::vector<Color> g_holeBeforeColors;
+
+int holeProbeCaptureFrame() {
+    return g_autoWarmupFrames + 1 + g_autoSettleFrames;
+}
+
+// Render front: the frame ahead of the capture renders untreated, and the
+// capture frame restores the treatment after reading that frame back.
+void driveOcclusionHoleControl() {
+    ++g_holeProbeFrame;
+    if (g_holeProbeFrame == holeProbeCaptureFrame() - 1) {
+        IRPrefab::Fog::clearRevealSurfaceTreatment();
+    } else if (g_holeProbeFrame == holeProbeCaptureFrame()) {
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity())
+            .readColors(g_holeControlColors);
+        IRPrefab::Fog::setRevealSurfaceTreatment(kRevealTreatmentDensity, kRevealTreatmentTone);
+    }
+}
+
+void snapshotOcclusionHoleBefore() {
+    if (g_holeProbeFrame == holeProbeCaptureFrame()) {
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity())
+            .readColorsSynced(g_holeBeforeColors);
+    }
+}
+
+// The black holes in the high-ground soft band, graded on the capture frame
+// against the authored geometry rather than the published column field:
+// every slab-top texel well inside the hard disc is classified by the ridge
+// clearance of its own segment and its dissolve key. The authored policy must
+// reproduce the readback on every graded texel and each corrupted policy must
+// miss a share of the band. The treatment-off control keeps every texel the
+// treatment dissolves, so the holes are exactly the treated difference, and
+// the lit composite under each hole is the slab's own: the geometry, depth
+// winner and lighting are intact before the fog pass paints it.
+void probeOcclusionHoles(int) {
+    const auto canvas = IRRender::getActiveCanvasEntity();
+    const auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(canvas);
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(canvas);
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    std::vector<int> distances;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColorsSynced(colors);
+    textures.readDistances(distances);
+    requireSurfaceProbe(
+        g_holeProbeFrame == holeProbeCaptureFrame() &&
+            g_holeControlColors.size() == colors.size() &&
+            g_holeBeforeColors.size() == colors.size(),
+        "the hole oracle's controls were not taken at the capture pose"
+    );
+    const auto &frameData =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
+            IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+        )
+            ->frameData_;
+    const int scale = rasterScale(frameData);
+    const OcclusionRidgeBounds ridge = snappedOcclusionRidge(scale);
+    const vec3 unexplored(fog.observers_.unexploredColor_);
+    const vec2 centre(kOcclusionRidgeObserver);
+    const auto slab = static_cast<std::uint32_t>(g_occlusionSlab);
+    const float softness = g_occlusionLosSoftness;
+    const float density = fog.observers_.dissolveDensity();
+    const float gradedRadius = kOcclusionRadius - 1.0f;
+
+    int slabTop = 0;
+    int graded = 0;
+    int gradedBand = 0;
+    int seamTexels = 0;
+    int seamMisses = 0;
+    std::array<int, kHoleOraclePolicies.size()> misses{};
+    int treatedHoles = 0;
+    int holesOutsideDissolve = 0;
+    int controlRemoved = 0;
+    int holesUnlitBefore = 0;
+    float expectedHoles = 0.0f;
+    int bandTexels = 0;
+    std::map<std::array<int, 3>, HoleOracleCell> cells;
+    for (int y = 0; y < textures.size_.y; ++y) {
+        for (int x = 0; x < textures.size_.x; ++x) {
+            const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
+            if (carriers[i].x != slab) {
+                continue;
+            }
+            const vec3 world = canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], frameData);
+            if (IRMath::length(vec2(world) - centre) > gradedRadius ||
+                IRMath::abs(world.z - kOcclusionSlabTopVoxelZ) >= 0.5f) {
+                continue;
+            }
+            ++slabTop;
+            const float clearance = authoredHighGroundClearance(ridge, vec2(world));
+            const float visibility = holeOracleVisibility(clearance, softness);
+            const bool inBand = visibility > 0.0f && visibility < 1.0f;
+            const float keep = IRMath::mix(1.0f, visibility, density);
+            const IRMath::ivec3 key = IRMath::roundVec3HalfUp(world);
+            const IRMath::ivec3 low = IRMath::roundVec3HalfUp(
+                world - vec3(kHoleOracleSeamEpsilon, kHoleOracleSeamEpsilon, 0.0f)
+            );
+            const bool seam = low != key;
+            const std::array<IRMath::ivec3, 4> seamKeys{
+                key,
+                IRMath::ivec3(low.x, key.y, key.z),
+                IRMath::ivec3(key.x, low.y, key.z),
+                low
+            };
+            const bool hidden = colorMatches(colors[i], unexplored);
+            const bool controlHidden = colorMatches(g_holeControlColors[i], unexplored);
+            const auto hiddenUnder = [&](HoleOraclePolicy policy, IRMath::ivec3 at) {
+                return holeOracleHidden(policy, clearance, at, softness, density);
+            };
+            const auto anyKey = [&](auto &&test) {
+                return std::any_of(seamKeys.begin(), seamKeys.end(), test);
+            };
+            const bool dissolved = inBand && anyKey([&](IRMath::ivec3 at) {
+                                       return hiddenUnder(HoleOraclePolicy::AUTHORED, at);
+                                   });
+
+            HoleOracleCell &cell = cells[{key.x, key.y, key.z}];
+            ++cell.texels_;
+            cell.hidden_ += hidden ? 1 : 0;
+            cell.dissolved_ += dissolved ? 1 : 0;
+            cell.clearance_ = clearance;
+            if (hidden && !controlHidden) {
+                ++treatedHoles;
+                holesOutsideDissolve += dissolved ? 0 : 1;
+                holesUnlitBefore += colorMatches(g_holeBeforeColors[i], unexplored) ? 1 : 0;
+            }
+            if (controlHidden && visibility >= kHoleOracleMinRetainedState) {
+                ++controlRemoved;
+            }
+            if (inBand) {
+                ++bandTexels;
+                expectedHoles += 1.0f - keep;
+            }
+
+            const auto hashDecisive = [&](IRMath::ivec3 at) {
+                return IRMath::abs(IRPrefab::Fog::detail::revealSurfaceHash01(at) - keep) >
+                       kHoleOracleHashMargin;
+            };
+            const bool decisive =
+                IRMath::abs(clearance) > kHoleOracleClearanceMargin &&
+                IRMath::abs(clearance - softness) > kHoleOracleClearanceMargin &&
+                (!inBand || std::all_of(seamKeys.begin(), seamKeys.end(), hashDecisive)) &&
+                (visibility <= 0.0f || dissolved || visibility >= kHoleOracleMinRetainedState);
+            if (!decisive) {
+                continue;
+            }
+            if (seam) {
+                ++seamTexels;
+                seamMisses += anyKey([&](IRMath::ivec3 at) {
+                    return hiddenUnder(HoleOraclePolicy::AUTHORED, at) == hidden;
+                })
+                                  ? 0
+                                  : 1;
+                continue;
+            }
+            ++graded;
+            gradedBand += inBand ? 1 : 0;
+            for (std::size_t p = 0; p < kHoleOraclePolicies.size(); ++p) {
+                misses[p] += hiddenUnder(kHoleOraclePolicies[p].first, key) != hidden ? 1 : 0;
+            }
+        }
+    }
+
+    // A whole hole key beside a whole retained band key, both clear of the
+    // admission threshold: the selected samples.
+    const auto clearOfThreshold = [&](const std::array<int, 3> &at, const HoleOracleCell &of) {
+        const float keep =
+            IRMath::mix(1.0f, holeOracleVisibility(of.clearance_, softness), density);
+        return IRMath::abs(
+                   IRPrefab::Fog::detail::revealSurfaceHash01(IRMath::ivec3(at[0], at[1], at[2])) -
+                   keep
+               ) > kHoleOracleHashMargin;
+    };
+    int holeKeys = 0;
+    int selected = 0;
+    for (const auto &[key, cell] : cells) {
+        if (cell.dissolved_ != cell.texels_ || cell.hidden_ != cell.texels_) {
+            continue;
+        }
+        ++holeKeys;
+        if (selected >= 3 || !clearOfThreshold(key, cell)) {
+            continue;
+        }
+        for (const IRMath::ivec2 step :
+             {IRMath::ivec2(1, 0),
+              IRMath::ivec2(-1, 0),
+              IRMath::ivec2(0, 1),
+              IRMath::ivec2(0, -1)}) {
+            const auto kept = cells.find({key[0] + step.x, key[1] + step.y, key[2]});
+            if (kept == cells.end() || kept->second.hidden_ != 0 ||
+                kept->second.clearance_ <= 0.0f || kept->second.clearance_ >= softness ||
+                !clearOfThreshold(kept->first, kept->second)) {
+                continue;
+            }
+            const auto describe = [&](const std::array<int, 3> &at, const HoleOracleCell &of) {
+                const IRMath::ivec3 voxel(at[0], at[1], at[2]);
+                return fmt::format(
+                    "({},{},{}) clearance={:.3f} hash={:.3f} keep<={:.3f}",
+                    voxel.x,
+                    voxel.y,
+                    voxel.z,
+                    of.clearance_,
+                    IRPrefab::Fog::detail::revealSurfaceHash01(voxel),
+                    IRMath::mix(1.0f, holeOracleVisibility(of.clearance_, softness), density)
+                );
+            };
+            IR_LOG_INFO(
+                "FOG-HOLE-ORACLE hole={} kept={}",
+                describe(key, cell),
+                describe(kept->first, kept->second)
+            );
+            ++selected;
+            break;
+        }
+    }
+
+    IR_LOG_INFO(
+        "FOG-HOLE-ORACLE scale={} ridge=x[{},{}] y[{},{}] top={} slabTop={} band={} "
+        "expectedHoles={:.1f} treatedHoles={} holeKeys={} graded={} gradedBand={} seam={} "
+        "seamMisses={} holesOutsideDissolve={} controlRemoved={} holesUnlitBefore={}",
+        scale,
+        ridge.min_.x,
+        ridge.max_.x,
+        ridge.min_.y,
+        ridge.max_.y,
+        ridge.topZ_,
+        slabTop,
+        bandTexels,
+        expectedHoles,
+        treatedHoles,
+        holeKeys,
+        graded,
+        gradedBand,
+        seamTexels,
+        seamMisses,
+        holesOutsideDissolve,
+        controlRemoved,
+        holesUnlitBefore
+    );
+    for (std::size_t p = 0; p < kHoleOraclePolicies.size(); ++p) {
+        IR_LOG_INFO(
+            "FOG-HOLE-ORACLE policy={} misses={}",
+            kHoleOraclePolicies[p].second,
+            misses[p]
+        );
+    }
+    requireSurfaceProbe(gradedBand > 0, "the hole oracle graded no band texel");
+    requireSurfaceProbe(
+        misses[0] == 0 && seamMisses == 0,
+        "the readback disagrees with the authored reveal and cut policy"
+    );
+    requireSurfaceProbe(selected > 0, "no hole key has a retained band neighbour");
+    for (std::size_t p = 1; p < kHoleOraclePolicies.size(); ++p) {
+        requireSurfaceProbe(
+            misses[p] * kHoleOracleCorruptionShareDivisor >= gradedBand,
+            "a corrupted policy is indistinguishable from the readback"
+        );
+    }
+    requireSurfaceProbe(
+        treatedHoles > 0 && holesOutsideDissolve == 0,
+        "a treated hole lies outside the authored dissolve"
+    );
+    requireSurfaceProbe(controlRemoved == 0, "the treatment-off control removed visible floor");
+    requireSurfaceProbe(
+        holesUnlitBefore == 0,
+        "a hole's lit composite was already unexplored before the fog pass"
     );
 }
 
@@ -3970,7 +4381,12 @@ void initSystems() {
             IRSystem::createSystem<C_Name>(
                 "FogBodyProbeBeforeSnapshot",
                 [](C_Name &) {},
-                []() { snapshotBodyProbeBeforeFog(); }
+                [occlusionSurfaceProbe]() {
+                    snapshotBodyProbeBeforeFog();
+                    if (occlusionSurfaceProbe) {
+                        snapshotOcclusionHoleBefore();
+                    }
+                }
             )
         );
     }
@@ -4097,7 +4513,10 @@ void initSystems() {
             IRSystem::createSystem<C_Name>(
                 "FogOcclusionSurfaceProbe",
                 [](C_Name &) {},
-                []() { probeOcclusionSurface(); }
+                []() {
+                    probeOcclusionSurface();
+                    driveOcclusionHoleControl();
+                }
             )
         );
     }
@@ -4152,6 +4571,7 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = g_ceilingTreatment && !g_ceilingShadow ? 8 : 3;
+        g_autoSettleFrames = cfg.settleFrames_;
         if (g_lightingDensityCheck) {
             cfg.onCaptureFrame_ = &probeLightingDensity;
         } else if (g_worldPan) {
@@ -4168,6 +4588,8 @@ void initSystems() {
             cfg.onCaptureFrame_ = &probeManySources;
         } else if (g_detachedBody || g_detachedExempt || g_detachedFieldHidden) {
             cfg.onCaptureFrame_ = &probeDetachedCanvas;
+        } else if (occlusionSurfaceProbe) {
+            cfg.onCaptureFrame_ = &probeOcclusionHoles;
         }
         // --edge-zcost-asym / --edge-zcost-ceiling capture the asymmetric /
         // hard-ceiling height-penalty readouts; --detached-edge zooms on a
