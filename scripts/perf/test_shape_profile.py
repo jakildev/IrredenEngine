@@ -13,6 +13,7 @@ from unittest.mock import patch
 from compare_perf_runs import CellReport, FrameTiming, GpuFrameTiming, GpuStage
 from repeat_profile import (
     main,
+    sdf_occupancy_witness,
     shape_configuration,
     shape_measurement_failure,
     shape_profile_arguments,
@@ -37,6 +38,23 @@ class ShapeProfileArgumentsTest(unittest.TestCase):
                 parsed = shape_profile_arguments([*args, "--sdf-voxel-blockers", "--no-ao",
                                                   "--no-shadows"])
                 self.assertEqual(parsed["--sdf-voxel-scene"], representation)
+
+    def test_workload_controls_and_release_witness_are_structured(self):
+        parsed = shape_profile_arguments([
+            *ARGS, "--sdf-voxel-pose", "parented", "--sdf-voxel-presentation",
+            "revoxelized", "--sdf-voxel-density", "2", "--sdf-voxel-copies", "16",
+            "--sdf-voxel-overlap", "--sdf-voxel-motion", "--no-local-lights",
+        ])
+        self.assertEqual(parsed["--sdf-voxel-copies"], "16")
+        witness = sdf_occupancy_witness(
+            "SDF-OCCUPANCY representation=baked presentation=2 density=2 copies=16 "
+            "overlap=1 moving=1 bake_us=42 allocated_slots=100 occupied_cells=25 "
+            "record_bytes=1200\n"
+        )
+        self.assertEqual(witness["bake_us"], 42)
+        self.assertIsNone(sdf_occupancy_witness("SDF-OCCUPANCY representation=baked copies=\n"))
+        self.assertIsNone(sdf_occupancy_witness("SDF-OCCUPANCY representation=baked copies\n"))
+        self.assertEqual(witness["representation"], "baked")
 
     def test_ambiguous_or_scene_changing_flags_are_rejected(self):
         for extra in (["--auto-screenshot", "5"], ["--auto-record", "30"],
@@ -196,7 +214,13 @@ class ShapeProfileWitnessTest(unittest.TestCase):
                     self.assertEqual(command[-2:], ["--window-mode", "offscreen"])
                     quiet = "unguarded" if failure == "quiet" else "guarded"
                     result = "ERROR" if failure == "unclean" else "CLEAN"
-                    log.write_text(f"ir-run: QUIET={quiet}\nRESULT={result}\n")
+                    log.write_text(
+                        f"ir-run: QUIET={quiet}\n"
+                        "SDF-OCCUPANCY representation=baked presentation=0 density=1 "
+                        "copies=1 overlap=0 moving=0 bake_us=42 allocated_slots=100 "
+                        "occupied_cells=25 record_bytes=1200\n"
+                        f"RESULT={result}\n"
+                    )
                     text = WITNESSED_REPORT.replace("-135.000", "45.000")
                     text = text.replace("maxDropped=7", "maxDropped=0")
                     text = text.replace("explicit focus on 8", "explicit focus on 0")

@@ -1572,6 +1572,16 @@ void registerCliArgs() {
         "rest"
     );
     args.enumValue(
+        "--sdf-voxel-presentation",
+        "Baked occupancy presentation: shared GRID, rigid source faces, or detached revoxelization",
+        {"grid", "detached", "revoxelized"},
+        "grid"
+    );
+    args.integer("--sdf-voxel-density", "Authored bake samples per world cell (1 or 2)", 1);
+    args.integer("--sdf-voxel-copies", "Repeated four-subject groups (1, 4, or 16)", 1);
+    args.flag("--sdf-voxel-overlap", "Overlap repeated subject groups instead of spacing them");
+    args.flag("--sdf-voxel-motion", "Continuously rotate roots or their shared parent");
+    args.enumValue(
         "--glitch-test",
         "Framebuffer glitch fixture "
         "(none|standard-off|off|tear|hold|split|bars|cells|depth-tear|depth-hold|hold-divisor|all)",
@@ -1956,8 +1966,13 @@ int main(int argc, char **argv) {
         return 2;
     }
     const bool sdfVoxelScene = IREngine::args().getEnum("--sdf-voxel-scene") != "off";
+    const int sdfVoxelDensity = IREngine::args().getInt("--sdf-voxel-density");
+    const int sdfVoxelCopies = IREngine::args().getInt("--sdf-voxel-copies");
     if (((IREngine::args().getFlag("--sdf-voxel-blockers") ||
-          IREngine::args().getEnum("--sdf-voxel-pose") != "rest") &&
+          IREngine::args().getEnum("--sdf-voxel-pose") != "rest" ||
+          IREngine::args().getEnum("--sdf-voxel-presentation") != "grid" || sdfVoxelDensity != 1 ||
+          sdfVoxelCopies != 1 || IREngine::args().getFlag("--sdf-voxel-overlap") ||
+          IREngine::args().getFlag("--sdf-voxel-motion")) &&
          !sdfVoxelScene) ||
         (sdfVoxelScene &&
          (g_lodScene || g_guiTest || g_continuousZoomGuiTest || g_cullValidate ||
@@ -1970,6 +1985,21 @@ int main(int argc, char **argv) {
           IREngine::args().getFlag("--ao-contact-probe")))) {
         IR_LOG_ERROR(
             "--sdf-voxel-scene requires an isolated scene; blockers/pose require that scene"
+        );
+        return 2;
+    }
+    if (sdfVoxelScene && ((sdfVoxelDensity != 1 && sdfVoxelDensity != 2) ||
+                          (sdfVoxelCopies != 1 && sdfVoxelCopies != 4 && sdfVoxelCopies != 16))) {
+        IR_LOG_ERROR(
+            "--sdf-voxel-density requires 1 or 2; --sdf-voxel-copies requires 1, 4, or 16"
+        );
+        return 2;
+    }
+    if (IREngine::args().getEnum("--sdf-voxel-scene") == "direct" &&
+        (IREngine::args().getEnum("--sdf-voxel-presentation") != "grid" || sdfVoxelDensity != 1)) {
+        IR_LOG_ERROR(
+            "Detached presentation and authored density are occupancy-only controls; use "
+            "--sdf-voxel-scene baked"
         );
         return 2;
     }
@@ -3782,7 +3812,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()
     };
-    if (!g_loadPrefabPath.empty() || g_lodScene) {
+    if (!g_loadPrefabPath.empty() || g_lodScene || IREngine::args().getFlag("--sdf-voxel-motion")) {
         // After LOD_UPDATE, so the parts follow this tick's tier, and before
         // PROPAGATE_TRANSFORM, so a part spawned this tick is placed this tick
         // and a part's spin reaches its world transform the tick it turns.
@@ -5430,7 +5460,16 @@ void initEntities() {
             pose == "root"       ? Pose::ROOT
             : pose == "parented" ? Pose::PARENTED
                                  : Pose::REST,
-            !IREngine::args().getFlag("--no-local-lights")
+            !IREngine::args().getFlag("--no-local-lights"),
+            IREngine::args().getEnum("--sdf-voxel-presentation") == "detached"
+                ? IRShapeDebug::SdfVoxelScene::Presentation::DETACHED_SOURCE
+            : IREngine::args().getEnum("--sdf-voxel-presentation") == "revoxelized"
+                ? IRShapeDebug::SdfVoxelScene::Presentation::DETACHED_REVOXELIZED
+                : IRShapeDebug::SdfVoxelScene::Presentation::GRID,
+            IREngine::args().getInt("--sdf-voxel-density"),
+            IREngine::args().getInt("--sdf-voxel-copies"),
+            IREngine::args().getFlag("--sdf-voxel-overlap"),
+            IREngine::args().getFlag("--sdf-voxel-motion")
         );
         setupCanvasLighting();
         return;

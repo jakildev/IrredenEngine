@@ -107,8 +107,10 @@ def shape_profile_arguments(demo_args: list[str]) -> dict[str, str]:
     """
     values = {}
     valued = {"--auto-profile", "--yaw", "--zoom", "--sdf-voxel-scene",
-              "--config-preset", "--window-mode", "--glitch-test"}
-    flags = {"--sdf-voxel-blockers", "--no-ao", "--no-shadows"}
+              "--sdf-voxel-pose", "--sdf-voxel-presentation", "--sdf-voxel-density",
+              "--sdf-voxel-copies", "--config-preset", "--window-mode", "--glitch-test"}
+    flags = {"--sdf-voxel-blockers", "--sdf-voxel-overlap", "--sdf-voxel-motion",
+             "--no-local-lights", "--no-ao", "--no-shadows"}
     index = 0
     while index < len(demo_args):
         flag = demo_args[index]
@@ -136,6 +138,18 @@ def shape_profile_arguments(demo_args: list[str]) -> dict[str, str]:
         raise ValueError("ShapeDebug profiles require zoom 1, 2, 4, 8 or 16")
     if values["--sdf-voxel-scene"] not in ("direct", "baked"):
         raise ValueError("ShapeDebug requires the direct or baked SDF fixture")
+    pose = values.get("--sdf-voxel-pose", "rest")
+    presentation = values.get("--sdf-voxel-presentation", "grid")
+    density = values.get("--sdf-voxel-density", "1")
+    copies = values.get("--sdf-voxel-copies", "1")
+    if pose not in ("rest", "root", "parented"):
+        raise ValueError("ShapeDebug SDF pose must be rest, root, or parented")
+    if presentation not in ("grid", "detached", "revoxelized"):
+        raise ValueError("ShapeDebug SDF presentation must be grid, detached, or revoxelized")
+    if values["--sdf-voxel-scene"] == "direct" and (presentation != "grid" or density != "1"):
+        raise ValueError("Direct SDF profiles do not have occupancy presentation or density")
+    if density not in ("1", "2") or copies not in ("1", "4", "16"):
+        raise ValueError("ShapeDebug SDF density must be 1/2 and copies must be 1/4/16")
     if values["--config-preset"] not in (
         "configs/perf/sdf-on.lua", "configs/perf/sdf-off.lua",
     ):
@@ -160,7 +174,31 @@ def shape_configuration(binary: Path, values: dict[str, str]) -> dict[str, str]:
     }
     if "--glitch-test" in values:
         fingerprint["--glitch-test"] = values["--glitch-test"]
+    for name in ("--sdf-voxel-pose", "--sdf-voxel-presentation", "--sdf-voxel-density",
+                 "--sdf-voxel-copies"):
+        fingerprint[name] = values.get(name, "rest" if name.endswith("pose") else
+                                       "grid" if name.endswith("presentation") else "1")
+    for name in ("--sdf-voxel-overlap", "--sdf-voxel-motion", "--no-local-lights"):
+        fingerprint[name] = values.get(name, "false")
     return fingerprint
+
+
+def sdf_occupancy_witness(log_text: str) -> dict[str, int | str] | None:
+    matches = re.findall(r"^SDF-OCCUPANCY (.+)$", log_text, flags=re.MULTILINE)
+    if len(matches) != 1:
+        return None
+    witness: dict[str, int | str] = {}
+    for field in matches[0].split():
+        if "=" not in field:
+            return None
+        name, value = field.split("=", 1)
+        if not name or not value:
+            return None
+        try:
+            witness[name] = value if name == "representation" else int(value)
+        except ValueError:
+            return None
+    return witness
 
 
 def shape_pose_mismatch(demo_args: list[str], witness: RunWitness) -> str | None:
@@ -842,6 +880,7 @@ def main() -> int:
             "engine_logged": engine_logged(log_text),
         }
         if shape_args is not None:
+            run["sdf_occupancy"] = sdf_occupancy_witness(log_text)
             run["configuration_unchanged"] = (
                 shape_configuration(binary, shape_args) == manifest["configuration_sha256"]
             )
@@ -868,6 +907,7 @@ def main() -> int:
             or run.get("measurement_failure") is not None
             or (shape_args is not None and (
                 run["quiet"] != "guarded" or not run["configuration_unchanged"]
+                or run["sdf_occupancy"] is None
             ))
             or run["yaw_pose_mismatch"] is not None
             or run["pivot_mismatch"] is not None
@@ -885,6 +925,8 @@ def main() -> int:
                     reasons.append(f"quiet window was {run['quiet']}")
                 if not run["configuration_unchanged"]:
                     reasons.append("runtime configuration changed during measurement")
+                if run["sdf_occupancy"] is None:
+                    reasons.append("missing SDF occupancy/startup witness")
             print(
                 f"run {index}: failed or missing requested measurements"
                 f"{''.join(f'; {reason}' for reason in reasons if reason)}; inspect {log_path}",

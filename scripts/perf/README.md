@@ -221,7 +221,12 @@ profile argument`:
 
 - required: `--auto-profile <frames>`, `--yaw`, `--zoom`,
   `--sdf-voxel-scene direct|baked`, `--config-preset configs/perf/sdf-on.lua|sdf-off.lua`
-- optional: `--sdf-voxel-blockers`, `--no-ao`, `--no-shadows`
+- optional workload: `--sdf-voxel-pose rest|root|parented`,
+  `--sdf-voxel-presentation grid|detached|revoxelized`,
+  `--sdf-voxel-density 1|2`, `--sdf-voxel-copies 1|4|16`,
+  `--sdf-voxel-overlap`, `--sdf-voxel-motion`
+- optional lighting: `--sdf-voxel-blockers`, `--no-local-lights`, `--no-ao`,
+  `--no-shadows`
 - optional fixture: `--glitch-test <mode>` (`standard-off`, `off`, `tear`, `hold`,
   `split`, `bars`, `cells`, `depth-tear`, `depth-hold`, `hold-divisor`, `all`).
   The mode is recorded in the manifest's `configuration_sha256` block, so runs of
@@ -231,6 +236,15 @@ Executor: `python3 scripts/perf/repeat_profile.py --target IRShapeDebug --output
 --repeats 2 -- --glitch-test all --auto-profile 60 --yaw 0 --zoom 4
 --sdf-voxel-scene direct --config-preset configs/perf/sdf-on.lua`; the summary then
 carries a `GPU framebufferGlitch` row.
+
+`sdf_controls.py` owns the paired matrices. Its default `qualification` suite
+varies density, population, overlap, root/parent motion, GRID/rigid/revoxelized
+presentation and isolated local light, each with GPU stage timing on and off.
+Use `--suite baseline` for the retained 16-case yaw/shadow reproduction, and
+repeat `--case <name>` to run a bounded subset. Every accepted ShapeDebug run
+must carry exactly one Release-compatible `SDF-OCCUPANCY` log witness; the
+runner retains its bake time, slot/occupied counts and dense-record bytes in the
+manifest. Those payload bytes are not process RSS or GPU driver residency.
 
 ## Same-runner Linux diagnostic
 
