@@ -126,7 +126,9 @@ to hover iso bins. It remains an anchor approximation, not surface picking.
 
 [Fog-compatible continuous receiving](../pr-screenshots/claude/4757-fog-surface-receiving/README.md)
 is implemented behind the same opt-in, which stays off until representative cost
-gates pass. Next qualify entity mode changes,
+gates pass. Its receiver-shadow geometry also passes the independent oracle under
+[ambient and local-light controls](../pr-screenshots/claude/4757-receiver-shadow-ambient-local-light/README.md).
+Next qualify entity mode changes,
 other cardinal crossings, curved/concave side receivers and native Windows/OpenGL
 against independent geometry. Attribute the five existing reference mismatches
 before refreshing them. Global face-record pool overflow and Release million-entity

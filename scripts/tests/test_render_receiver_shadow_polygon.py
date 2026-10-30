@@ -500,6 +500,134 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
         image.putpixel((x, y), (0, 0, 0))
         self.assertFalse(oracle.check_image(image, 0)["passed"])
 
+    def local_light_references(self, yaw=0, ambient=oracle.DEFAULT_AMBIENT):
+        """Lit/dark references sharing a striped orange local-light term."""
+        lit_color = oracle.receiver_lit_color(oracle.sun_direction((0, 0, -1)), ambient=ambient)
+        shadow_color = oracle.receiver_shadow_color(ambient)
+        lit = Image.new("RGB", oracle.IMAGE_SIZE)
+        dark = Image.new("RGB", oracle.IMAGE_SIZE)
+        lit_draw, dark_draw = ImageDraw.Draw(lit), ImageDraw.Draw(dark)
+        for x in range(0, oracle.IMAGE_SIZE[0], 7):
+            light = ((x // 7) % 23, (x // 7) % 11, 0)
+            box = (x, 0, x + 6, oracle.IMAGE_SIZE[1])
+            lit_draw.rectangle(box, fill=tuple(map(sum, zip(lit_color, light))))
+            dark_draw.rectangle(box, fill=tuple(map(sum, zip(shadow_color, light))))
+        return lit, dark
+
+    def composite(self, lit, dark, shadow):
+        mask = Image.new("L", oracle.IMAGE_SIZE)
+        ImageDraw.Draw(mask).polygon(shadow, fill=255)
+        image = lit.copy()
+        image.paste(dark, mask=mask)
+        return image
+
+    def test_ambient_palettes_pass_and_reject_the_default_palette(self):
+        for ambient, shadow_color in ((.15, (12, 18, 36)), (.55, (44, 66, 132))):
+            with self.subTest(ambient=ambient):
+                polygons = oracle.fixture_polygons(.6)
+                image = Image.new("RGB", oracle.IMAGE_SIZE, oracle.LIT_COLOR)
+                ImageDraw.Draw(image).polygon(polygons["shadow"], fill=shadow_color)
+                result = oracle.check_image(image, .6, ambient=ambient)
+                self.assertTrue(result["passed"], result["counts"])
+                self.assertEqual(result["shadow_color"], list(shadow_color))
+                self.assertEqual(result["sun_ambient"], ambient)
+                default = oracle.check_image(image, .6)
+                self.assertFalse(default["passed"])
+                self.assertEqual(default["counts"]["missing"], default["counts"]["inside"])
+                self.assertGreaterEqual(default["counts"]["unknown"], default["counts"]["inside"])
+        # An oblique sun makes the lit color ambient-dependent: .55 + .45 * .8 = .91.
+        sun = oracle.sun_direction((.6, 0, -.8))
+        self.assertEqual(oracle.receiver_lit_color(sun, ambient=.55), (73, 109, 218))
+        self.assertEqual(oracle.receiver_lit_color(sun), (69, 103, 206))
+
+    def test_ambient_validation_and_rounding_ties(self):
+        for ambient in (None, "bad", math.nan, math.inf, -.01, 1, 1.5):
+            with self.subTest(ambient=ambient), self.assertRaisesRegex(ValueError, "ambient"):
+                oracle.receiver_shadow_color(ambient)
+        with self.assertRaisesRegex(ValueError, "rounding tie"):
+            oracle.receiver_shadow_color(8.5 / 80)
+        image = Image.new("RGB", oracle.IMAGE_SIZE, oracle.LIT_COLOR)
+        with self.assertRaisesRegex(ValueError, "ambient"):
+            oracle.check_image(image, 0, ambient=1)
+
+    def test_local_light_references_grade_geometry_exactly(self):
+        for yaw in (0, .6, math.pi + .6):
+            with self.subTest(yaw=yaw):
+                lit, dark = self.local_light_references(yaw)
+                polygons = oracle.fixture_polygons(yaw)
+                image = self.composite(lit, dark, polygons["shadow"])
+                result = oracle.check_image(image, yaw, references=(lit, dark))
+                self.assertTrue(result["passed"], result["counts"])
+                self.assertEqual(result["palette"], "reference")
+                self.assertGreater(result["counts"]["local_light"],
+                                   result["counts"]["eligible"] // 2)
+                self.assertFalse(oracle.check_image(image, yaw)["passed"])
+                shifted = self.composite(lit, dark, [(x + 8, y) for x, y in polygons["shadow"]])
+                result = oracle.check_image(shifted, yaw, references=(lit, dark))
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["counts"]["unknown"], 0)
+                self.assertGreater(result["counts"]["missing"], 100)
+                self.assertGreater(result["counts"]["excess"], 100)
+                foreign = image.copy()
+                x, y, _ = next(sample for sample in oracle.receiver_samples(polygons)
+                               if sample[2] < -10)
+                foreign.putpixel((x, y), dark.getpixel((x + 7, y)))
+                result = oracle.check_image(foreign, yaw, references=(lit, dark))
+                self.assertEqual(result["counts"]["unknown"], 1)
+
+    def test_local_light_references_match_ambient_and_no_light_controls(self):
+        lit, dark = self.local_light_references(ambient=.55)
+        polygons = oracle.fixture_polygons(0)
+        image = self.composite(lit, dark, polygons["shadow"])
+        self.assertTrue(oracle.check_image(image, 0, ambient=.55, references=(lit, dark))["passed"])
+        with self.assertRaisesRegex(ValueError, "sun-term"):
+            oracle.check_image(image, 0, references=(lit, dark))
+        plain = (Image.new("RGB", oracle.IMAGE_SIZE, oracle.LIT_COLOR),
+                 Image.new("RGB", oracle.IMAGE_SIZE, oracle.SHADOW_COLOR))
+        result = oracle.check_image(self.image(), 0, references=plain)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["counts"]["local_light"], 0)
+        self.assertEqual(result["counts"]["missing"] + result["counts"]["excess"], 0)
+
+    def test_references_reject_swapped_shadowed_clipped_and_transparent_pairs(self):
+        lit, dark = self.local_light_references()
+        shadow = oracle.fixture_polygons(0)["shadow"]
+        clipped = lit.copy()
+        ImageDraw.Draw(clipped).rectangle((0, 0, *oracle.IMAGE_SIZE), fill=(255, 255, 240))
+        transparent = lit.convert("RGBA")
+        transparent.putalpha(254)
+        for name, pair in (("swapped", (dark, lit)), ("identical", (lit, lit)),
+                           ("shadowed lit", (self.composite(lit, dark, shadow), dark)),
+                           ("clipped", (clipped, dark)), ("transparent", (transparent, dark)),
+                           ("one image", (lit,))):
+            with self.subTest(pair=name), self.assertRaises(ValueError):
+                oracle.check_image(self.composite(lit, dark, shadow), 0, references=pair)
+        with self.assertRaisesRegex(ValueError, "requires"):
+            oracle.check_image(self.image(), 0, references=(lit, dark.resize((1280, 720))))
+
+    def test_reference_cli_requires_both_images_and_reports_local_light(self):
+        lit, dark = self.local_light_references()
+        image = self.composite(lit, dark, oracle.fixture_polygons(0)["shadow"])
+        with tempfile.TemporaryDirectory() as directory:
+            paths = {name: Path(directory) / f"{name}.png" for name in ("image", "lit", "dark")}
+            for name, picture in (("image", image), ("lit", lit), ("dark", dark)):
+                picture.save(paths[name])
+            stdout = io.StringIO()
+            with patch("sys.argv", ["oracle", str(paths["image"]), "--yaw", "0",
+                                     "--lit-reference", str(paths["lit"]),
+                                     "--dark-reference", str(paths["dark"])]), \
+                    patch("sys.stdout", stdout):
+                self.assertEqual(oracle.main(), 0)
+            result = json.loads(stdout.getvalue())
+            self.assertTrue(result["passed"])
+            self.assertEqual(result["palette"], "reference")
+            self.assertGreater(result["counts"]["local_light"], 0)
+            with patch("sys.argv", ["oracle", str(paths["image"]), "--yaw", "0",
+                                     "--lit-reference", str(paths["lit"])]), \
+                    patch("sys.stderr", io.StringIO()), self.assertRaises(SystemExit) as exit_:
+                oracle.main()
+            self.assertEqual(exit_.exception.code, 2)
+
     def test_pixel_centers_and_supporting_line_margin(self):
         square = [(0, 0), (10, 0), (10, 10), (0, 10)]
         self.assertEqual(oracle.polygon_margin((.5, .5), square), .5)
@@ -605,6 +733,30 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
                     self.assertGreater(result["counts"]["missing"], 50)
                     self.assertGreater(result["counts"]["excess"], 50)
 
+
+    def test_retained_native_ambient_and_local_light_controls(self):
+        evidence = (Path(__file__).resolve().parents[2]
+                    / "docs/pr-screenshots/claude/4757-receiver-shadow-ambient-local-light")
+        rows = json.loads((evidence / "results.json").read_text())
+        retained = sorted(path.parent for path in (evidence / "retained").glob("*/*/main.png"))
+        self.assertEqual(len(retained), 4)
+        for folder in retained:
+            key = f"{folder.parent.name}/{folder.name}"
+            row = rows[key]
+            with self.subTest(case=key):
+                references = None
+                if (folder / "lit.png").exists():
+                    references = (Image.open(folder / "lit.png"), Image.open(folder / "dark.png"))
+                with Image.open(folder / "main.png") as image:
+                    result = oracle.check_image(image, row["yaw"], row["camera_iso"],
+                                                ambient=row["sun_ambient"], references=references)
+                self.assertEqual(result["counts"], row["counts"])
+                self.assertEqual(result["passed"], row["passed"])
+                self.assertEqual(result["passed"], key.endswith("surface1"))
+                self.assertEqual(result["counts"]["unknown"], 0)
+                if references is not None:
+                    self.assertGreater(result["counts"]["local_light"],
+                                       result["counts"]["eligible"] // 2)
 
 if __name__ == "__main__":
     unittest.main()
