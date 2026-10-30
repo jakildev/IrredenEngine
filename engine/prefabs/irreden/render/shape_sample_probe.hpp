@@ -86,6 +86,67 @@ inline bool matchesPublication(
 
 } // namespace detail
 
+// The main-canvas gather placement from screenshot pixels to canvas positions,
+// recomputed from the camera and canvas state the gather itself reads.
+struct GatherMap {
+    IRMath::ivec2 framebufferSize_{};
+    IRMath::ivec2 viewport_{};
+    IRMath::ivec2 outputScale_{};
+    IRMath::ivec2 logicalSize_{};
+    IRMath::vec2 zoom_{};
+    IRMath::vec2 gather_{};
+    IRMath::vec2 blitOffset_{};
+    IRMath::vec4 canvasFromPixel_{};
+};
+
+inline GatherMap gatherMap(IREntity::EntityId entity, IRMath::ivec2 canvasSize) {
+    using namespace IRMath;
+    using namespace IRComponents;
+    using Gather = IRSystem::System<IRSystem::TRIXEL_TO_FRAMEBUFFER>;
+    GatherMap map;
+    const auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+    map.framebufferSize_ = framebuffer.getResolutionPlusBuffer();
+    map.viewport_ = IRRender::getViewport();
+    map.outputScale_ = IRRender::getOutputScaleFactor();
+    const vec2 cameraIso = IRRender::getEffectiveCameraIso();
+    const vec2 cameraZoom = IRRender::getCameraZoom();
+    const auto behaviorOpt = IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(entity);
+    const auto behavior = behaviorOpt.has_value() ? **behaviorOpt : C_TrixelCanvasRenderBehavior{};
+    const auto zoomOpt = IREntity::getComponentOptional<C_ZoomLevel>(entity);
+    const int density = behavior.applyRenderSubdivisions_ &&
+                                IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
+                            ? IRRender::getVoxelRenderEffectiveSubdivisions()
+                            : 1;
+    map.zoom_ = (behavior.useCameraZoom_ ? cameraZoom
+                                         : (zoomOpt.has_value() ? (*zoomOpt)->zoom_ : vec2(1))) /
+                float(density);
+    map.gather_ = Gather::canvasGatherTranslation(
+        IRPrefab::Camera::zoomFrame(cameraIso, cameraZoom),
+        behavior,
+        behavior.useCameraPositionIso_ ? cameraIso : vec2(0),
+        map.zoom_,
+        density
+    );
+    map.logicalSize_ = IRPrefab::CanvasCoverage::logicalSize(entity, canvasSize);
+    const auto &world = IREntity::getComponent<C_WorldTransform>("mainFramebuffer");
+    map.blitOffset_ =
+        isoDeltaToScreenDelta(
+            pos3DtoPos2DIso(world.translation_),
+            IRRender::getTriangleStepSizeScreen()
+        ) +
+        vec2(IRPrefab::Camera::screenResidual(cameraIso, cameraZoom, map.outputScale_));
+    IRRender::FrameDataTrixelToFramebuffer gatherFrame{};
+    IRRender::placeGatherQuad(
+        gatherFrame,
+        vec2(map.framebufferSize_),
+        vec2(map.framebufferSize_) * 0.5f + map.gather_,
+        vec2(map.framebufferSize_) * map.zoom_ * (vec2(canvasSize) / vec2(map.logicalSize_)),
+        vec2(canvasSize)
+    );
+    map.canvasFromPixel_ = gatherFrame.canvasFromPixel_;
+    return map;
+}
+
 // Debug-only main-canvas readback, once on a settled capture frame. The retained
 // producer snapshot and same-tick stamp avoid the shared gather UBO (GUI draws
 // overwrite it). This names the canvas sample; it does not certify that later
@@ -95,7 +156,6 @@ inline bool matchesPublication(
 inline bool writeFirstCapture(IRMath::ivec2 pixel, const std::string &path) {
     using namespace IRMath;
     using namespace IRComponents;
-    using Gather = IRSystem::System<IRSystem::TRIXEL_TO_FRAMEBUFFER>;
     IRAsset::JsonSidecarWriter j;
     j.beginObject();
     const auto integer = [&](const char *key, std::int64_t value) {
@@ -141,66 +201,27 @@ inline bool writeFirstCapture(IRMath::ivec2 pixel, const std::string &path) {
         std::size_t(canvas.size_.x) * std::size_t(canvas.size_.y) >
             geometry.ownerCapacityBytes_ / sizeof(std::uint32_t))
         return finish("invalid_submission");
-    const auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-    const ivec2 framebufferSize = framebuffer.getResolutionPlusBuffer();
-    const ivec2 viewport = IRRender::getViewport();
-    const ivec2 outputScale = IRRender::getOutputScaleFactor();
-    const vec2 cameraIso = IRRender::getEffectiveCameraIso();
-    const vec2 cameraZoom = IRRender::getCameraZoom();
-    const auto behaviorOpt = IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(entity);
-    const auto behavior = behaviorOpt.has_value() ? **behaviorOpt : C_TrixelCanvasRenderBehavior{};
-    const auto zoomOpt = IREntity::getComponentOptional<C_ZoomLevel>(entity);
-    const int density = behavior.applyRenderSubdivisions_ &&
-                                IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
-                            ? IRRender::getVoxelRenderEffectiveSubdivisions()
-                            : 1;
-    const vec2 zoom =
-        (behavior.useCameraZoom_ ? cameraZoom
-                                 : (zoomOpt.has_value() ? (*zoomOpt)->zoom_ : vec2(1))) /
-        float(density);
-    const vec2 gather = Gather::canvasGatherTranslation(
-        IRPrefab::Camera::zoomFrame(cameraIso, cameraZoom),
-        behavior,
-        behavior.useCameraPositionIso_ ? cameraIso : vec2(0),
-        zoom,
-        density
-    );
-    const ivec2 logicalSize = IRPrefab::CanvasCoverage::logicalSize(entity, canvas.size_);
-    const auto &world = IREntity::getComponent<C_WorldTransform>("mainFramebuffer");
-    const vec2 blitOffset =
-        isoDeltaToScreenDelta(
-            pos3DtoPos2DIso(world.translation_),
-            IRRender::getTriangleStepSizeScreen()
-        ) +
-        vec2(IRPrefab::Camera::screenResidual(cameraIso, cameraZoom, outputScale));
-    IRRender::FrameDataTrixelToFramebuffer gatherFrame{};
-    IRRender::placeGatherQuad(
-        gatherFrame,
-        vec2(framebufferSize),
-        vec2(framebufferSize) * 0.5f + gather,
-        vec2(framebufferSize) * zoom * (vec2(canvas.size_) / vec2(logicalSize)),
-        vec2(canvas.size_)
-    );
+    const auto map = gatherMap(entity, canvas.size_);
     const auto mapped = detail::mapPixel(
         pixel,
-        viewport,
-        outputScale,
-        framebufferSize,
-        blitOffset,
+        map.viewport_,
+        map.outputScale_,
+        map.framebufferSize_,
+        map.blitOffset_,
         canvas.size_,
-        gatherFrame.canvasFromPixel_
+        map.canvasFromPixel_
     );
-    vector("viewport_size", viewport);
-    vector("output_scale", outputScale);
-    vector("main_framebuffer_size", framebufferSize);
+    vector("viewport_size", map.viewport_);
+    vector("output_scale", map.outputScale_);
+    vector("main_framebuffer_size", map.framebufferSize_);
     vector("pre_upscale_position", mapped.preUpscalePosition_);
     vector("main_framebuffer_pixel", mapped.framebufferPixel_);
     vector("canvas_size", canvas.size_);
-    vector("logical_canvas_size", logicalSize);
+    vector("logical_canvas_size", map.logicalSize_);
     vector("canvas_origin_raw", mapped.canvasOriginRaw_);
     vector("canvas_pixel", mapped.canvasPixel_);
-    vector("gather_translation", gather);
-    vector("canvas_zoom", zoom);
+    vector("gather_translation", map.gather_);
+    vector("canvas_zoom", map.zoom_);
     if (!mapped.valid_)
         return finish("pixel_out_of_bounds");
     j.key("projection");

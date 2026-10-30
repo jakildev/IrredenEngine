@@ -181,7 +181,7 @@ Changes without a visual effect need no captures.
   sweep, and the sun-map bake and receiver share `kSunShadowMaxDistance`. Read
   the [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
   changing the bake kernel or splat controls.
-- Cardinal voxel provenance, reconstruction and cascade units: [surface-sampling contract](../../docs/design/surface-shadow-sampling.md#settled-cardinal-voxel-receivers).
+- Cardinal voxel provenance, reconstruction and cascade units: [surface-sampling contract](../../docs/design/surface-shadow-sampling.md#settled-cardinal-voxel-receivers); the presentation receiver's coplanar-neighbour edge rule: [§](../../docs/design/surface-shadow-sampling.md#cardinal-presentation-receivers).
 
 ## Performance and lifecycle pitfalls
 

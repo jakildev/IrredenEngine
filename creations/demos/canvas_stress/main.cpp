@@ -36,6 +36,7 @@
 #include <irreden/input/systems/system_hitbox_mouse_test.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/cardinal_receiver_probe.hpp>
 #include <irreden/render/sun_shadow_probe.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_camera_scroll_zoom.hpp>
@@ -2155,6 +2156,10 @@ void registerArgs() {
         "--sun-face-geometry-probe",
         "Include lossless sun geometry records with tile counters (capture-only, stalls GPU)"
     );
+    args.flag(
+        "--cardinal-receiver-probe",
+        "Dump main-canvas texels and gather placement on auto-screenshot frames (stalls GPU)"
+    );
     args.integer("--analytic-box-span", "Analytic probe X/Y extent, 1..512 (0 keeps default)", 0);
     args.integer("--analytic-box-count", "Analytic probes for index pressure, 1..128", 1);
     args.numbers(
@@ -2940,6 +2945,15 @@ void initSystems() {
                     shotIndex,
                     path,
                     written
+                );
+            }
+            if (IREngine::args().getFlag("--cardinal-receiver-probe")) {
+                const std::string prefix = "cardinal-receiver-" + std::to_string(shotIndex);
+                IR_LOG_INFO(
+                    "cardinal-receiver-probe: shot={} prefix={} written={}",
+                    shotIndex,
+                    prefix,
+                    IRPrefab::CardinalReceiverProbe::write(prefix)
                 );
             }
         };

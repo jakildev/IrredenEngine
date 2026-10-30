@@ -471,6 +471,108 @@ def routing_harness(backend, shape_receiver):
             + generated + ROUTE_CHECKS), list(variants)
 
 
+# Staged neighbour texels for the fragment receiver: every unstaged texel is far
+# from any owner depth, so only what an arm stages can read as coplanar.
+POINT_ADAPTER = r"""
+#include <map>
+#include <utility>
+using uint=unsigned;using uvec2=V2<uint>;
+vec2 operator/(vec2 a,float b){return {a.x/b,a.y/b};}
+float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
+template<class T> bool anyProvenance(T){return true;}
+struct Texel {int encoded;uvec2 id;};
+std::map<std::pair<int,int>,Texel> staged;
+ivec2 stagedSize(4096,4096);
+Texel stagedAt(ivec2 p){
+ const auto found=staged.find({p.x,p.y});
+ return found==staged.end()?Texel{1<<28,uvec2(0u)}:found->second;
+}
+struct IntTexel {int r;};
+struct UintTexel {uvec2 rg;};
+struct isampler2D {} stagedDistances;
+struct usampler2D {} stagedEntityIds;
+ivec2 textureSize(isampler2D,int){return stagedSize;}
+IntTexel texelFetch(isampler2D,ivec2 p,int){return {stagedAt(p).encoded};}
+UintTexel texelFetch(usampler2D,ivec2 p,int){return {stagedAt(p).id};}
+template<class T> struct texture2d {
+ uint get_width()const{return uint(stagedSize.x);}
+ uint get_height()const{return uint(stagedSize.y);}
+ auto read(uvec2 p)const{
+  const Texel texel=stagedAt(ivec2(int(p.x),int(p.y)));
+  if constexpr(std::is_same<T,int>::value)return IntTexel{texel.encoded};
+  else return UintTexel{texel.id};
+ }
+};
+"""
+
+# Arm 0 stages a coplanar continuation on all four in-plane sides, so points past
+# the micro-square keep the ray/plane intersection. Arms 1-6 each break one
+# coplanarity condition (absent, slot, flip, one plane off, provenance, off
+# canvas), so the point stops at the owner micro-square on that axis.
+POINT_CHECKS = r"""
+     const int eu=axis==0?1:0,ev=axis==2?1:2;
+     // Independent iso steps of the unit view axes.
+     const ivec2 viewIso[3]={ivec2(-1,-1),ivec2(1,-1),ivec2(0,2)};
+     // The producer publishes the next micro-square along each in-plane axis
+     // one iso step on, at the same half, one depth unit deeper.
+     if(i==0)for(int k=0;k<2;++k){
+      const int nu=u+(k==0),nv=v+(k==1);
+      if(nu>=samples||nv>=samples)continue;
+      const std::vector<Tap> saved=taps;const int savedZ=zIdx;
+      const bool savedBoth=bothPolaritiesExposed;
+      zIdx=nu*density+nv;bothPolaritiesExposed=false;taps.clear();produce();
+      const Tap next=taps[0];taps=saved;zIdx=savedZ;bothPolaritiesExposed=savedBoth;
+      const ivec2 step=viewIso[k==0?eu:ev];
+      const vec3 actualNext(next.pixel.x,next.pixel.y,next.encoded);
+      const vec3 expectedNext(taps[i].pixel.x+step.x,taps[i].pixel.y+step.y,taps[i].encoded+8);
+      if(!same(actualNext,expectedNext))
+       return fail("coplanar neighbour publication",actualNext,expectedNext);
+     }
+     for(int arm=0;arm<7;++arm){
+      staged.clear();stagedSize=ivec2(arm==6?0:4096,arm==6?0:4096);
+      if(arm!=1)for(int k=0;k<2;++k)for(int d:{-1,1}){
+       const ivec2 step=viewIso[k==0?eu:ev];
+       int encoded=taps[i].encoded+8*d;
+       uint high=kEntityIdCardinalVoxelMaskInHighWord|3u;
+       if(arm==2)encoded=(encoded&~3)|((encoded&3)+1)%3;
+       if(arm==3)encoded^=4;
+       if(arm==4)encoded+=8;
+       if(arm==5)high=3u;
+       staged[{taps[i].pixel.x+step.x*d,taps[i].pixel.y+step.y*d}]={encoded,uvec2(0x1234u,high)};
+      }
+      for(float fu : {-.9f,-.49f,-.23f,0.f,.19f,.49f,.9f})
+      for(float fv : {-.9f,-.49f,0.f,.49f,.9f}) {
+       const float cu=arm==0?fu:std::max(-.5f,std::min(.5f,fu));
+       const float cv=arm==0?fv:std::max(-.5f,std::min(.5f,fv));
+       vec3 rayPoint=expected,expectedPoint=expected;
+       for(int w=0;w<3;++w){
+        rayPoint[w]+=(basis[cardinal][w][eu]*fu+basis[cardinal][w][ev]*fv)/samples;
+        expectedPoint[w]+=(basis[cardinal][w][eu]*cu+basis[cardinal][w][ev]*cv)/samples;
+       }
+       // Project the independent cube-face ray point to a continuous canvas query.
+       double view[3]={0,0,0};
+       for(int a=0;a<3;++a)for(int w=0;w<3;++w)
+        view[a]+=basis[cardinal][w][a]*rayPoint[w];
+       const vec2 query(
+        float((-view[0]+view[1])*samples+trixelCanvasOffsetZ1.x+
+              std::floor(frameCanvasOffset.x*samples)+1),
+        float((-view[0]-view[1]+2*view[2])*samples+trixelCanvasOffsetZ1.y+
+              std::floor(frameCanvasOffset.y*samples)+1));
+       const vec3 actualPoint=cardinalVoxelSurfacePoint(query,taps[i].pixel,taps[i].encoded,
+         trixelCanvasOffsetZ1,frameCanvasOffset,voxelRenderOptions,cardinal,
+         STAGED_TEXTURES);
+       if(std::abs(actualPoint.x-expectedPoint.x)>8.e-5f ||
+          std::abs(actualPoint.y-expectedPoint.y)>8.e-5f ||
+          std::abs(actualPoint.z-expectedPoint.z)>8.e-5f){
+        if(arm==0)return fail("fragment plane intersection",actualPoint,expectedPoint);
+        char label[48];std::snprintf(label,sizeof label,"micro-square edge limit arm=%d",arm);
+        return fail(label,actualPoint,expectedPoint);
+       }
+      }
+     }
+"""
+
+
 @unittest.skipUnless(COMPILER, "shader controls require a C++ compiler")
 class CardinalVoxelReceiverTest(unittest.TestCase):
     def check_harness(self, backend, source, mutations, rejection):
@@ -503,61 +605,72 @@ class CardinalVoxelReceiverTest(unittest.TestCase):
         for backend in ("glsl", "metal"):
             with self.subTest(backend=backend):
                 source, _ = harness(backend)
-                point = cpp(functions((shader_directory(backend) /
-                                      f"ir_cardinal_voxel_receiver.{backend}").read_text(),
-                                      "cardinalVoxelSurfacePoint"))
-                point = point.replace("point += vec3(dot(center - point, axis));",
-                                      "point = point + vec3(dot(center - point, axis));")
-                # Project independent cube-face vertices to a continuous canvas ray.
-                checks = r"""
-     for(float fu : {-.9f,-.49f,-.23f,0.f,.19f,.49f,.9f})
-     for(float fv : {-.9f,-.49f,0.f,.49f,.9f}) {
-      vec3 expectedPoint=expected;
-      const int eu=axis==0?1:0,ev=axis==2?1:2;
-      for(int w=0;w<3;++w)
-       expectedPoint[w]+=(basis[cardinal][w][eu]*fu+basis[cardinal][w][ev]*fv)/samples;
-      double view[3]={0,0,0};
-      for(int a=0;a<3;++a)for(int w=0;w<3;++w)
-       view[a]+=basis[cardinal][w][a]*expectedPoint[w];
-      const vec2 query(
-       float((-view[0]+view[1])*samples+trixelCanvasOffsetZ1.x+
-             std::floor(frameCanvasOffset.x*samples)+1),
-       float((-view[0]-view[1]+2*view[2])*samples+trixelCanvasOffsetZ1.y+
-             std::floor(frameCanvasOffset.y*samples)+1));
-      const vec3 actualPoint=cardinalVoxelSurfacePoint(query,taps[i].pixel,taps[i].encoded,
-        trixelCanvasOffsetZ1,frameCanvasOffset,voxelRenderOptions,cardinal);
-      if(std::abs(actualPoint.x-expectedPoint.x)>8.e-5f ||
-         std::abs(actualPoint.y-expectedPoint.y)>8.e-5f ||
-         std::abs(actualPoint.z-expectedPoint.z)>8.e-5f)
-       return fail("fragment plane intersection",actualPoint,expectedPoint);
-     }
-"""
-                point = ("vec2 operator/(vec2 a,float b){return {a.x/b,a.y/b};}\n"
-                         "float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}\n" + point)
-                source = source.replace(CHECKS, point + CHECKS.replace(
-                    "     const float worldDepth=", checks + "     const float worldDepth="))
-                variants = (source,
-                            source.replace("- vec2(1.0)) / density", ") / density"),
-                            source.replace("dot(center - point, axis)", "0.0"),
-                            source.replace("return rotateCardinalZInv(point, cardinalIndex);",
-                                           "for(int c=0;c<3;++c)point[c]="
-                                           "std::max(center[c]-.5f/density,"
-                                           "std::min(center[c]+.5f/density,point[c]));"
-                                           "return rotateCardinalZInv(point, cardinalIndex);"))
-                for number, variant in enumerate(variants):
-                    with tempfile.TemporaryDirectory() as directory:
+                receiver = (shader_directory(backend) /
+                            f"ir_cardinal_voxel_receiver.{backend}").read_text()
+                point = cpp("\n".join(functions(receiver, name) for name in (
+                    "cardinalVoxelCoplanarNeighbour", "cardinalVoxelEdgeLimit",
+                    "cardinalVoxelSurfacePoint")))
+                point = replace_once(point, "point += vec3(dot(center - point, axis));",
+                                     "point = point + vec3(dot(center - point, axis));")
+                point = point.replace("uint2", "uvec2")
+                common = (shader_directory(backend) / f"ir_iso_common.{backend}").read_text()
+                provenance = re.search(
+                    r"(?:const|constant) uint kEntityIdCardinalVoxelMaskInHighWord = [^;]+;",
+                    common).group().replace("constant ", "const ")
+                provenance += "\n" + cpp(functions(common, "decodeEntityIdCardinalVoxel"))
+                provenance = provenance.replace("uint2", "uvec2")
+                textures = ("texture2d<int>{},texture2d<uint>{}" if backend == "metal"
+                            else "stagedDistances,stagedEntityIds")
+                prelude = (POINT_ADAPTER + f"#define STAGED_TEXTURES {textures}\n"
+                           + provenance + "\n")
+                source = source.replace(CHECKS, "@POINT@" + CHECKS.replace(
+                    "     const float worldDepth=", POINT_CHECKS + "     const float worldDepth="))
+                variants = {
+                    "production": (None, None, None),
+                    "no_pixel_center": ("- vec2(1.0)) / density", ") / density",
+                                        "fragment plane intersection"),
+                    "off_plane": ("dot(center - point, axis)", "0.0",
+                                  "fragment plane intersection"),
+                    "unconditional_clamp": ("if (cardinalVoxelCoplanarNeighbour(",
+                                            "if (false && cardinalVoxelCoplanarNeighbour(",
+                                            "fragment plane intersection"),
+                    "opposite_neighbour": ("ownerPixel + isoStep", "ownerPixel - isoStep",
+                                           "fragment plane intersection"),
+                    "unconditional_extrapolation": (
+                        "if (abs(s) <= halfExtent + 1.0e-4) return point;", "return point;",
+                        "micro-square edge limit arm=1"),
+                    "ignores_slot": ("decodeSlot(neighbour) == decodeSlot(encoded) &&", "",
+                                     "micro-square edge limit arm=2"),
+                    "ignores_flip": (
+                        "decodeFlipSingle(neighbour) == decodeFlipSingle(encoded) &&", "",
+                        "micro-square edge limit arm=3"),
+                    "ignores_depth": (
+                        "decodeDepthSingle(neighbour) == decodeDepthSingle(encoded) + direction &&",
+                        "", "micro-square edge limit arm=4"),
+                    "ignores_provenance": ("decodeEntityIdCardinalVoxel(", "anyProvenance(",
+                                           "micro-square edge limit arm=5"),
+                    "no_canvas_bounds": (
+                        "if (texel.x < 0 || texel.y < 0 || texel.x >= size.x || "
+                        "texel.y >= size.y) return false;", "",
+                        "micro-square edge limit arm=6"),
+                }
+                for name, (old, new, rejection) in variants.items():
+                    mutant = point if old is None else replace_once(point, old, new)
+                    with self.subTest(variant=name), \
+                            tempfile.TemporaryDirectory() as directory:
                         path = Path(directory)
-                        (path / "point.cpp").write_text(variant)
+                        (path / "point.cpp").write_text(
+                            source.replace("@POINT@", prelude + mutant + "\n"))
                         build = subprocess.run([COMPILER, "-std=c++17", "-O2",
                                                 str(path / "point.cpp"), "-o", str(path / "point")],
                                                capture_output=True, text=True)
                         self.assertEqual(build.returncode, 0, build.stderr)
                         run = subprocess.run([str(path / "point")], capture_output=True, text=True)
-                        if number == 0:
+                        if old is None:
                             self.assertEqual(run.returncode, 0, run.stderr)
                         else:
-                            self.assertNotEqual(run.returncode, 0)
-                            self.assertIn("fragment plane intersection", run.stderr)
+                            self.assertNotEqual(run.returncode, 0, name)
+                            self.assertIn(rejection, run.stderr)
 
     def test_production_publication_to_finite_face_center(self):
         for backend in ("glsl", "metal"):
