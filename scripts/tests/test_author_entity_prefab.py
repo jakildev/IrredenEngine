@@ -217,5 +217,18 @@ class AuthorArgsTest(unittest.TestCase):
         self.assertEqual(merged, {"module": "test/module", "session": "rock"})
 
 
+class ResolveModuleDirTest(unittest.TestCase):
+    def test_a_worktree_directory_is_passed_absolute(self) -> None:
+        module = "creations/editors/voxel_editor/test/module"
+
+        resolved = author_entity.resolve_module_dir(module)
+
+        self.assertTrue(Path(resolved).is_absolute())
+        self.assertTrue(resolved.endswith(module))
+
+    def test_a_name_that_is_no_worktree_directory_is_passed_as_given(self) -> None:
+        self.assertEqual(author_entity.resolve_module_dir("test/module"), "test/module")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -178,6 +178,15 @@ def write_author_args(prefab_dir: Path, author_args: dict) -> Path:
     return path
 
 
+def resolve_module_dir(module: str) -> str:
+    """The editor runs from its build directory, so a ``--module`` that names a
+    directory under the worktree (``creations/.../test/module``) is passed
+    absolute; any other value (``test/module``, staged beside the exe) is
+    passed as given."""
+    in_worktree = verify_common.detect_worktree_root(verify_common.SCRIPT_DIR) / module
+    return str(in_worktree) if in_worktree.is_dir() else module
+
+
 def run_session(exe: Path, save_dir: Path, session: str, scene_size: list[int] | None,
                 warmup: int, timeout: int, module: str | None,
                 module_session: str | None, prefab: bool) -> tuple[int, str, list[Path]]:
@@ -190,7 +199,7 @@ def run_session(exe: Path, save_dir: Path, session: str, scene_size: list[int] |
         EDITOR_TARGET, "--auto-screenshot", str(warmup),
     ]
     if module:
-        cmd += ["--module", module]
+        cmd += ["--module", resolve_module_dir(module)]
     if module_session:
         cmd += ["--module-session", module_session]
     else:
