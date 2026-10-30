@@ -122,6 +122,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--frames", type=int, default=360)
+    parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--release", action="store_true")
     parser.add_argument("--adoption-matrix", action="store_true",
                         help="Compare explicit surface 0/1 and prepass 0/1 arms")
     parser.add_argument("--scene", choices=("shadowbox", "grid-overlap"), default="shadowbox",
@@ -129,8 +131,8 @@ def main():
     parser.add_argument("--case", action="append", dest="case_names",
                         help="Run only this existing case; repeat to select more cases")
     args = parser.parse_args()
-    if args.rounds < 1:
-        parser.error("rounds must be positive")
+    if args.rounds < 1 or args.timeout < 1:
+        parser.error("rounds and timeout must be positive")
     if args.frames < 120:
         parser.error("frames must be at least 120 to retain a steady measurement window")
     if args.case_names and len(set(args.case_names)) != len(args.case_names):
@@ -168,7 +170,11 @@ def main():
                                    {"IR_PERAXIS_SURFACE_LIGHTING": "1",
                                     "IR_PERAXIS_VISIBILITY_STATS": "0"})}
                              for name in selected},
-               runner_options=["--target", "IRCanvasStress"])
+               runner_options=[
+                   "--target", "IRCanvasStress",
+                   "--timeout", str(args.timeout),
+                   *(["--release"] if args.release else []),
+               ])
     return 0
 
 

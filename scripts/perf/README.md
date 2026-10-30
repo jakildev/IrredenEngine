@@ -1,5 +1,19 @@
 # scripts/perf — perf matrix, comparison, and the perf gate
 
+## Explicit capacity envelope
+
+`capacity_envelope.py` executes the checked-in
+`capacity_envelope.json` specification into one platform-specific output root.
+It composes the million, rotation, surface-lighting, and private-canvas controls
+without merging Metal and OpenGL results. Hardware, backend, power/thermal state,
+Release build, resolution, populations, visibility, canvas area, subdivision,
+shadows, and overflow budgets stay explicit. Use `--dry-run` to inspect the exact
+commands before reserving a quiet host. Timed results do not replace the separate
+prepass-rejection, receiver-shadow, and crowded-overflow oracles.
+
+The [current qualification](../../docs/perf/capacity-envelope/README.md) records
+the measured Metal shortfall and the still-unqualified Windows/OpenGL row.
+
 `perf_grid_matrix.sh` drives `IRPerfGrid` across a matrix of cells and writes
 `save_files/perf/<sha>[-<label>]/` (one `<cell>.txt` profile report per cell
 plus `manifest.json`). `ir-perf-grid` (`engine/tools/bin/`) is the entry point:
@@ -218,6 +232,11 @@ metric's mean and min–max over the per-run means, and a one-sided 95% upper bo
 on that mean (mean + t(0.95, N−1) · sd / √N; `n/a` at one repeat). Only these ShapeDebug
 profile arguments are accepted; any other flag fails with `unsupported ShapeDebug
 profile argument`:
+
+Use `--release` to select the worktree's `build-release` tree. A repeated
+`--render-env NAME=VALUE` sets and records approved render experiment variables
+without an environment prefix, which keeps display-backed Codex runs eligible
+for their narrow launcher permission.
 
 - required: `--auto-profile <frames>`, `--yaw`, `--zoom`,
   `--sdf-voxel-scene direct|baked`, `--config-preset configs/perf/sdf-on.lua|sdf-off.lua`

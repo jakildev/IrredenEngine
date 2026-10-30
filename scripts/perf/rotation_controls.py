@@ -96,6 +96,7 @@ def main() -> int:
     )
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--frames", type=int, default=300)
+    parser.add_argument("--release", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if args.rounds < 1 or args.frames < 1:
@@ -114,7 +115,14 @@ def main() -> int:
         verify_artifacts(output)
         summarize(output, selected)
 
-    run_rounds(output, selected, common, args.rounds, after_round)
+    run_rounds(
+        output,
+        selected,
+        common,
+        args.rounds,
+        after_round,
+        runner_options=["--release"] if args.release else [],
+    )
     return 0
 
 

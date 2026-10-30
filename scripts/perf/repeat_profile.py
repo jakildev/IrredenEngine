@@ -4,9 +4,9 @@
 Pass demo arguments after --, including its auto-profile/exit options.
 Optional macOS CPU sampling retains call stacks; sampled timings include its overhead.
 The fleet runner owns benchmark resource coordination. No build is performed.
-IRREDEN_BUILD_DIR selects the build tree (default build/), the same variable
-fleet-run reads, so a Release tree profiles under its own binary fingerprint;
-the manifest records the tree and its CMAKE_BUILD_TYPE.
+Use --release for the worktree's build-release tree or IRREDEN_BUILD_DIR for an
+explicit tree. --render-env sets approved experiment variables without a shell
+environment prefix. The manifest records the tree, build type and variables.
 """
 
 import argparse
@@ -700,7 +700,10 @@ def run_profile(command, root, log_path, binary, sample_seconds, sample_delay):
     sampling = None
     with log_path.open("w") as log:
         with subprocess.Popen(
-            platform_launch_argv(command), cwd=root, stdout=log, stderr=subprocess.STDOUT
+            platform_launch_argv(command),
+            cwd=root,
+            stdout=log,
+            stderr=subprocess.STDOUT,
         ) as demo:
             if sample_seconds:
                 try:
@@ -778,6 +781,18 @@ def run_profile(command, root, log_path, binary, sample_seconds, sample_delay):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", choices=TARGETS, default="IRPerfGrid")
+    parser.add_argument(
+        "--release",
+        action="store_true",
+        help="Profile the worktree's build-release tree through fleet-run --release",
+    )
+    parser.add_argument(
+        "--render-env",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Set and record an approved render experiment variable for the demo",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=120)
@@ -805,6 +820,13 @@ def main() -> int:
         parser.error("CPU sampling duration and delay must be finite and nonnegative")
     if args.cpu_sample_seconds and platform.system() != "Darwin":
         parser.error("CPU sampling currently requires macOS /usr/bin/sample")
+    render_environment = {name: os.environ.get(name) for name in RENDER_EXPERIMENT_ENV}
+    for assignment in args.render_env:
+        name, separator, value = assignment.partition("=")
+        if not separator or name not in RENDER_EXPERIMENT_ENV:
+            parser.error("--render-env requires a known NAME=VALUE render variable")
+        render_environment[name] = value
+        os.environ[name] = value
     demo_args = args.demo_args[1:] if args.demo_args[:1] == ["--"] else args.demo_args
     if "--auto-profile" not in demo_args:
         parser.error("demo arguments must include --auto-profile")
@@ -826,8 +848,16 @@ def main() -> int:
     root = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    command = ["fleet-run", "--timeout", str(args.timeout), args.target, *demo_args]
-    build_dir = Path(os.environ.get("IRREDEN_BUILD_DIR", root / "build")).resolve()
+    command = [
+        "fleet-run",
+        *(["--release"] if args.release else []),
+        "--timeout",
+        str(args.timeout),
+        args.target,
+        *demo_args,
+    ]
+    default_build_dir = root / ("build-release" if args.release else "build")
+    build_dir = Path(os.environ.get("IRREDEN_BUILD_DIR", default_build_dir)).resolve()
     binary = demo_binary(build_dir, args.target)
     source = cmake_source_dir(build_dir, root)
     manifest = {
@@ -845,7 +875,7 @@ def main() -> int:
         "shader_sha256": directory_digest(binary.parent / "shaders"),
         "runtime_scripts_sha256": directory_digest(binary.parent / "scripts"),
         "command": command,
-        "render_environment": {name: os.environ.get(name) for name in RENDER_EXPERIMENT_ENV},
+        "render_environment": render_environment,
         "runs": [],
     }
     if shape_args is not None:
@@ -858,7 +888,12 @@ def main() -> int:
         battery_percent = host_battery_percent()
         log_path = output / f"run-{index}.log"
         exit_code, sampling = run_profile(
-            command, root, log_path, binary, args.cpu_sample_seconds, args.cpu_sample_delay
+            command,
+            root,
+            log_path,
+            binary,
+            args.cpu_sample_seconds,
+            args.cpu_sample_delay,
         )
         fresh = report.exists() and report.stat().st_mtime_ns >= started
         log_text = log_path.read_text()
