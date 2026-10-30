@@ -134,9 +134,10 @@ class DeclaredSet(LintCase):
     def test_link_line_inside_a_fence_does_not_declare(self):
         self.assertExit(self.explicit(["fix: x\n\nCloses #43"], "```\nCloses #43\n```\n"), 1)
 
-    def oracle_file(self, number):
+    def oracle_file(self, number, state="OPEN"):
         oracle = [{"number": number, "repository": {"name": "IrredenEngine",
-                                                    "owner": {"login": "jakildev"}}}]
+                                                    "owner": {"login": "jakildev"}},
+                   "state": state}]
         return ("--closing-refs-file", self.write("oracle.json", json.dumps(oracle)))
 
     def test_mid_sentence_body_keyword_without_a_link_line_fails(self):
@@ -151,6 +152,20 @@ class DeclaredSet(LintCase):
                                extra=self.oracle_file(48))
         self.assertExit(result, 1)
         self.assertIn("UNDECLARED #48  [oracle]", result.stdout)
+
+    def test_oracle_only_closed_ref_is_informational(self):
+        result = self.explicit(["chore: clean"], "Refs issue 49.\n",
+                               extra=self.oracle_file(49, "CLOSED"))
+        self.assertExit(result, 0)
+        self.assertIn("STALE-ORACLE #49 (closed)", result.stdout)
+        self.assertNotIn("UNDECLARED", result.stdout)
+
+    def test_scan_hit_to_a_closed_issue_still_fails(self):
+        result = self.explicit(["fix: x\n\nCloses #50"], "Refs issue 50.\n",
+                               extra=self.oracle_file(50, "CLOSED"))
+        self.assertExit(result, 1)
+        self.assertIn("UNDECLARED #50  [commit 1/1", result.stdout)
+        self.assertNotIn("STALE-ORACLE", result.stdout)
 
 
 class CrossRepo(LintCase):
@@ -210,11 +225,12 @@ if args == ["api", f"repos/{slug}/pulls/3138"]:
 elif args == ["api", "--paginate", "--slurp", f"repos/{slug}/pulls/3138/commits?per_page=100"]:
     pages = [[{"sha": c["sha"], "commit": {"message": c["message"]}}] for c in fx["commits"]]
     print(json.dumps(pages))
-elif args == ["pr", "view", "3138", "--repo", slug, "--json", "closingIssuesReferences"]:
+elif args[:2] == ["api", "graphql"]:
     if os.environ.get("STUB_ORACLE_FAIL"):
         sys.stderr.write("GraphQL: API rate limit exceeded\n")
         sys.exit(1)
-    print(json.dumps({"closingIssuesReferences": []}))
+    print(json.dumps({"data": {"repository": {"pullRequest": {
+        "closingIssuesReferences": {"nodes": []}}}}}))
 else:
     sys.stderr.write("unknown command or flag for stub: %r\n" % (args,))
     sys.exit(1)
