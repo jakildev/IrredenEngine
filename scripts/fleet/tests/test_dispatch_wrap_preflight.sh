@@ -62,8 +62,13 @@ set -e
 assert_eq "$rc" "1" "broken worktree exits 1"
 [[ -f "$FLEET_ALERTS_DIR/dispatch-wrap-pool-broken" ]] \
     && ok "broken worktree writes its alert" || bad "broken worktree alert missing"
-assert_contains "$(<"$FLEET_ALERTS_DIR/dispatch-wrap-pool-broken")" "not a git repository" \
-    "alert carries Git's error"
+# Git >= 2.56 names a gitfile whose admin dir is gone; older Git reports the
+# generic "not a git repository".
+case "$(<"$FLEET_ALERTS_DIR/dispatch-wrap-pool-broken")" in
+    *"not a git repository"*|*"gitfile does not point to a valid repository"*)
+        ok "alert carries Git's error" ;;
+    *) bad "alert lacks Git's error: $(<"$FLEET_ALERTS_DIR/dispatch-wrap-pool-broken")" ;;
+esac
 [[ ! -s "$CLAUDE_ARGV_LOG" ]] && ok "no role process starts" || bad "role process started"
 [[ ! -e "$FLEET_SESSIONS_DIR/pool-broken.session.json" ]] \
     && ok "no sidecar is written" || bad "sidecar was written"
