@@ -277,8 +277,9 @@ TEST_F(SdfBakePool, TiltedCylinderAndTorusLeaveARealChannelBetweenTheirShadows) 
         transform.translation_ = subject.position_;
         transform.rotation_ = vec4(-local.y, local.x, local.w, -local.z);
         IRSystem::System<IRSystem::REBUILD_GRID_VOXELS> rebuild;
-        ASSERT_TRUE(rebuild.inverseArm(set, transform, pool, set.voxelStartIdx_, set.numVoxels_));
-        for (int i = 0; i < set.numVoxels_; ++i) {
+        rebuild.inverseArm(set, transform, pool);
+        ASSERT_EQ(set.unadmittedDestinationCells_, 0);
+        for (int i = 0; i < set.allocatedVoxels_; ++i) {
             const auto slot = set.voxelStartIdx_ + static_cast<std::size_t>(i);
             if (pool.getColors()[slot].color_.alpha_ != 0)
                 occupiedCells[shape].push_back(pool.getPositionGlobals()[slot].pos_);

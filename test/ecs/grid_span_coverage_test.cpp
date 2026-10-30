@@ -84,7 +84,7 @@ class GridSpanCoverageTest : public testing::Test {
 
         const auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
         std::map<Cell, std::uint8_t> emitted;
-        for (int index = 0; index < set.numVoxels_; ++index) {
+        for (int index = 0; index < set.allocatedVoxels_; ++index) {
             const auto slot = set.voxelStartIdx_ + index;
             const auto &voxel = pool.getColors()[slot];
             if (voxel.color_.alpha_ == 0) {
@@ -109,6 +109,7 @@ TEST_F(GridSpanCoverageTest, SolidOverflowRetainsEverySurfaceAndFullOccupancyFac
     const auto emitted = rebuild(IRMath::ivec3(12));
     ASSERT_EQ(expected.size(), 1740u);
     ASSERT_EQ(emitted.size(), 1728u);
+    EXPECT_EQ(m_rebuild.capacityStats_.growths_, 0u) << "interior cells never grow a set";
     int missingInterior = 0;
     int surface = 0;
     for (const auto &cell : expected) {
@@ -131,17 +132,21 @@ TEST_F(GridSpanCoverageTest, SolidOverflowRetainsEverySurfaceAndFullOccupancyFac
     }
 }
 
-TEST_F(GridSpanCoverageTest, ExactFitPlateDemonstratesSurfaceCapacityLimit) {
+TEST_F(GridSpanCoverageTest, ExactFitPlateGrowsToRetainEveryExposedCell) {
     const auto expected = referenceCells(true);
     const auto emitted = rebuild(IRMath::ivec3(12, 1, 12));
     ASSERT_EQ(expected.size(), 145u);
-    ASSERT_EQ(emitted.size(), 144u);
+    EXPECT_EQ(m_rebuild.capacityStats_.growths_, 1u);
+    ASSERT_EQ(emitted.size(), 145u);
     int missingSurface = 0;
     for (const auto &cell : expected) {
         EXPECT_NE(referenceFaceMask(expected, cell), Face::kFaceOccludedMask);
         missingSurface += !emitted.contains(cell);
     }
-    EXPECT_EQ(missingSurface, 1);
+    EXPECT_EQ(missingSurface, 0);
+    for (const auto &[cell, mask] : emitted) {
+        EXPECT_EQ(mask, referenceFaceMask(expected, cell)) << testing::PrintToString(cell);
+    }
 }
 
 TEST_F(GridSpanCoverageTest, CarvedPlateWithFullBoxSpanRetainsEveryCellAndFace) {

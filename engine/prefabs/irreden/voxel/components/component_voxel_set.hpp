@@ -9,6 +9,8 @@
 #include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <span>
 #include <vector>
 
@@ -22,7 +24,24 @@ namespace IRComponents {
 // evaluating SDFs on the GPU. Reserve C_VoxelSetNew for cases that need
 // individual voxel colors (imported voxel art, terrain editing, particles).
 struct C_VoxelSetNew {
+    // Authored record count: the editing, serialization, and local-position
+    // domain, and the length of the four public spans.
     int numVoxels_;
+
+    // Resident pool slots this set owns, starting at `voxelStartIdx_`: equal
+    // to `numVoxels_` until REBUILD_GRID_VOXELS grows it, 0 while staged.
+    // Slots past `numVoxels_` hold rotated destination output only and stay
+    // inactive at identity. Deallocation, active-mask ranges, owner ids, and
+    // cull queries cover this count; never edit or serialize the tail.
+    int allocatedVoxels_ = 0;
+
+    // Exposed destination cells the last rotated pose needed beyond what the
+    // pool could admit. Non-zero means the set is fail-closed: its whole
+    // allocation is inactive, its authored records are intact, and
+    // REBUILD_GRID_VOXELS retries admission every frame without consulting
+    // the cull bounds that the empty allocation can no longer place on screen.
+    int unadmittedDestinationCells_ = 0;
+
     ivec3 size_;
 
     // Transient render gate. A fog-governed BODY matches
@@ -195,6 +214,7 @@ struct C_VoxelSetNew {
             size_ = ivec3(0);
             return;
         }
+        allocatedVoxels_ = numVoxels_;
 
         vec3 offset = anchorOffset(anchor, size);
         for (int x = 0; x < size.x; x++) {
@@ -352,11 +372,98 @@ struct C_VoxelSetNew {
             }
             IRPrefab::VoxelPool::deallocate(
                 voxelStartIdx_,
-                static_cast<size_t>(numVoxels_),
+                static_cast<size_t>(allocatedVoxels_),
                 canvasEntity_
             );
-            IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
+            IRE_LOG_DEBUG("Deallocated {} voxels", allocatedVoxels_);
         }
+    }
+
+    // Move this resident set to a fresh span of @p capacity slots in @p pool,
+    // its own pool. Transactional: the replacement is allocated and fully
+    // seeded before the old span is freed, and nothing changes when the pool
+    // cannot admit the request (returns false). The first `numVoxels_` slots
+    // take the authored records — `rotationSourceVoxels_` while a GRID pose
+    // is active, never the derived destination arrangement — with their
+    // local positions, offsets, globals, and per-voxel transform indices; the
+    // tail starts inactive. Owner id, GPU transform slot, fog carrier policy,
+    // and the active mask are re-applied over the whole new span, and its
+    // positions are queued for upload.
+    bool growAllocation(C_VoxelPool &pool, int capacity) {
+        if (numVoxels_ <= 0 || capacity <= allocatedVoxels_ ||
+            !pool.canAllocateVoxels(static_cast<unsigned int>(capacity))) {
+            return false;
+        }
+        const std::size_t oldStart = voxelStartIdx_;
+        const std::size_t oldCount = static_cast<std::size_t>(allocatedVoxels_);
+        const std::size_t authored = static_cast<std::size_t>(numVoxels_);
+        const std::size_t count = static_cast<std::size_t>(capacity);
+        const IRRender::VoxelPoolAllocation allocation =
+            pool.allocateVoxels(static_cast<unsigned int>(capacity));
+        if (allocation.voxels_.size() != count) {
+            pool.deallocateVoxels(allocation.startIndex_, allocation.voxels_.size());
+            return false;
+        }
+        const std::size_t newStart = allocation.startIndex_;
+
+        std::vector<IRRender::VoxelGpuPosition> &positions = pool.getPositions();
+        std::vector<vec3> &offsets = pool.getPositionOffsets();
+        std::vector<IRRender::VoxelGpuPosition> &globals = pool.getPositionGlobals();
+        std::vector<C_Voxel> &colors = pool.getColors();
+        const bool rotated = rotationSourceVoxels_.size() == authored;
+        for (std::size_t i = 0; i < authored; ++i) {
+            positions[newStart + i] = positions[oldStart + i];
+            offsets[newStart + i] = offsets[oldStart + i];
+            globals[newStart + i] = globals[oldStart + i];
+            colors[newStart + i] = rotated ? rotationSourceVoxels_[i] : colors[oldStart + i];
+        }
+        for (std::size_t i = authored; i < count; ++i) {
+            positions[newStart + i] = IRRender::VoxelGpuPosition{vec3(0.0f), 0.0f};
+            offsets[newStart + i] = vec3(0.0f);
+            globals[newStart + i] = IRRender::VoxelGpuPosition{vec3(0.0f), 0.0f};
+            colors[newStart + i] = C_Voxel{Color{0, 0, 0, 0}};
+        }
+        pool.applyFogCarrierPolicy(std::span<C_Voxel>{colors.data() + newStart, count});
+
+        const std::vector<std::uint32_t> &transformIndices = pool.getTransformIndices();
+        const bool perVoxelTransforms = std::any_of(
+            transformIndices.begin() + static_cast<std::ptrdiff_t>(oldStart),
+            transformIndices.begin() + static_cast<std::ptrdiff_t>(oldStart + authored),
+            [](std::uint32_t index) { return index != IRRender::kVoxelTransformStatic; }
+        );
+        if (perVoxelTransforms) {
+            pool.setTransformIndicesForRange(
+                newStart,
+                std::span<const std::uint32_t>{transformIndices.data() + oldStart, authored}
+            );
+        }
+        if (gpuTransformSlot_ != IRRender::kVoxelTransformStatic) {
+            pool.setTransformIndexForRange(
+                newStart + authored,
+                count - authored,
+                gpuTransformSlot_
+            );
+        }
+        if (ownerEntityId_ != IREntity::kNullEntity) {
+            pool.setEntityIdForRange(newStart, count, ownerEntityId_);
+        }
+        if (masksActive()) {
+            pool.resyncActiveMaskFromColors(newStart, count);
+        } else {
+            pool.clearActiveMaskRange(newStart, count);
+        }
+        pool.queuePositionRange(newStart, count);
+        pool.markRecordsChanged();
+
+        pool.deallocateVoxels(oldStart, oldCount);
+
+        voxelStartIdx_ = newStart;
+        allocatedVoxels_ = capacity;
+        positions_ = allocation.positions_.first(authored);
+        positionOffsets_ = allocation.positionOffsets_.first(authored);
+        globalPositions_ = allocation.positionGlobals_.first(authored);
+        voxels_ = allocation.voxels_.first(authored);
+        return true;
     }
 
     // True while neither render gate hides the set. Every site that writes the
@@ -383,9 +490,13 @@ struct C_VoxelSetNew {
             return;
         }
         if (masksActive()) {
-            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+            IRPrefab::VoxelPool::resyncRangeFromColors(
+                voxelStartIdx_,
+                allocatedVoxels_,
+                canvasEntity_
+            );
         } else {
-            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
+            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, allocatedVoxels_, canvasEntity_);
         }
     }
 
@@ -831,6 +942,8 @@ struct C_VoxelSetNew {
             pendingVoxels_.assign(authored.begin(), authored.end());
         }
         numVoxels_ = 0;
+        allocatedVoxels_ = 0;
+        unadmittedDestinationCells_ = 0;
         voxelStartIdx_ = 0;
         perTrixelPriorityVoxelCount_ = 0;
         positions_ = {};
@@ -900,6 +1013,7 @@ struct C_VoxelSetNew {
             numVoxels_ = 0;
             return;
         }
+        allocatedVoxels_ = numVoxels_;
 
         const vec3 originOffset{origin};
         std::uint32_t priorityVoxels = 0;
@@ -967,7 +1081,7 @@ struct C_VoxelSetNew {
     }
 };
 
-static_assert(sizeof(C_VoxelSetNew) == 192);
+static_assert(sizeof(C_VoxelSetNew) == 200);
 
 } // namespace IRComponents
 

@@ -18,18 +18,21 @@
 // surjective onto the covered dest cells — mid-rotation it leaves up to ~29%
 // of a solid 12³ uncovered (row/strip holes).
 //
-// Span contract, measured across full spins:
-// the span stays at `numVoxels_` — no allocation change. The covered
-// dest-cell count exceeds the span only by a boundary fluctuation (solid
-// 12³: ≤ 48 cells ≈ 2.8% observed; solid 16³: ≤ 144 ≈ 3.5%; carved/thin
-// shapes allocated as full boxes never exceed it). On overflow, INTERIOR dest
-// cells (all 6 neighbors covered) drop first, deterministically in walk
-// order — surface cells always render (solid 12³ surface ≈ 732 ≪ span), so
-// the cap is invisible for solids. Degenerate exact-fit thin allocations (a
-// bare n×n×1 plate) can drop visibly at worst poses (12×12×1: up to 24 of
-// 168 covered cells); allocate the full box and carve (the canvas_stress
-// orbit pattern) when thin fidelity matters. `dropHighWater_` logs each new
-// per-system maximum so overflow stays observable.
+// Destination-capacity contract: a pose must emit every EXPOSED dest cell
+// (at least one of 6 neighbors uncovered); INTERIOR cells fill whatever
+// allocation remains and may drop, deterministically in walk order. The set's
+// allocation (`allocatedVoxels_`) starts at its authored count. When a pose's
+// exposed count exceeds it, the set grows once to a monotonic high-water mark
+// — 3/2 of the current allocation, else the exact exposed count — bounded by
+// the pool size and kMaxDestWalkCells; it never grows for interior cells, so
+// a solid 12³ (610 exposed of 1740 covered) stays at 1728 slots, while an
+// exact-fit 12×12×1 plate at 45° (145 exposed) grows to 216. A pose the pool
+// cannot admit, or whose dest box exceeds kMaxDestWalkCells, fails closed:
+// the whole allocation goes inactive for the frame, the authored records stay
+// intact, and the set retries every frame until a pose fits
+// (`unadmittedDestinationCells_`). Nothing ever emits a truncated surface.
+// `capacityStats_` counts growths and failures; each new per-system maximum
+// of interior drops or of unadmitted cells logs once.
 //
 // While a set rotates, its pool-span colors are a DERIVED arrangement
 // (slot i = "covered dest cell i", colors duplicated wherever one source
@@ -116,15 +119,43 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     std::vector<int> surfaceCells_;            // covered, ≥1 of 6 neighbors uncovered
     std::vector<int> interiorCells_;           // covered, all 6 neighbors covered
 
-    // Highest per-frame dropped-cell count seen by this system instance.
-    // The span-cap drop is expected to be 0 for every shape that allocates
-    // its full box; each new maximum logs once (bounded, observable).
+    // Highest per-frame dropped-interior-cell count seen by this system
+    // instance; each new maximum logs once (bounded, observable).
     int dropHighWater_ = 0;
 
     // Dest-walk guard: a pathological scale can explode the rotated-AABB
-    // volume. Past this many cells the set falls back to the forward map
-    // for the frame (holes over a multi-ms CPU walk + a huge scratch grid).
+    // volume. Past this many cells the pose fails closed for the frame rather
+    // than paying a multi-ms CPU walk and a huge scratch grid. It also caps
+    // admission: no set grows past it.
     static constexpr std::int64_t kMaxDestWalkCells = 2'000'000;
+
+    enum class AdmissionFailure : std::uint8_t {
+        NONE = 0,
+        CAPACITY,
+        WALK_GUARD,
+    };
+
+    // Destination-capacity telemetry for probes (read through
+    // `getSystemParams`). `last*` describe the most recent failed admission.
+    struct CapacityStats {
+        std::uint64_t growths_ = 0;
+        std::uint64_t failures_ = 0;
+        int peakCapacity_ = 0;
+        AdmissionFailure lastFailure_ = AdmissionFailure::NONE;
+        int lastAuthored_ = 0;
+        std::int64_t lastRequired_ = 0;
+        int lastCapacity_ = 0;
+        int lastBudget_ = 0;
+    };
+    CapacityStats capacityStats_;
+    std::int64_t unadmittedHighWater_ = 0;
+
+    // Largest allocation any set in @p pool may grow to.
+    static int admissionBudget(const C_VoxelPool &pool) {
+        return static_cast<int>(
+            IRMath::min(kMaxDestWalkCells, static_cast<std::int64_t>(pool.getVoxelPoolSize()))
+        );
+    }
 
     void beginTick() {
         lastCanvas_ = IREntity::kNullEntity;
@@ -157,6 +188,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         if (!voxelSet.renders() || voxelSet.numVoxels_ <= 0) {
             return;
         }
+        notePeakCapacity(voxelSet.allocatedVoxels_);
 
         IREntity::EntityId canvas = voxelSet.canvasEntity_;
         if (canvas == IREntity::kNullEntity) {
@@ -168,37 +200,24 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         }
         C_VoxelPool &pool = *lastPool_;
 
-        // Cull gate: skip re-rasterization when none of this set's pool
-        // chunks are visible. Visible sets re-rasterize every frame.
-        if (cullValid_ && !pool.isRangeVisible(
-                              voxelSet.voxelStartIdx_,
-                              static_cast<std::size_t>(voxelSet.numVoxels_),
-                              chunkVp_
-                          )) {
+        // Cull gate over the whole allocation: skip re-rasterization when
+        // none of this set's pool chunks are visible. A fail-closed set has
+        // no live voxels to bound, so it bypasses the gate until a pose is
+        // admitted again.
+        if (cullValid_ && voxelSet.unadmittedDestinationCells_ == 0 &&
+            !pool.isRangeVisible(
+                voxelSet.voxelStartIdx_,
+                static_cast<std::size_t>(voxelSet.allocatedVoxels_),
+                chunkVp_
+            )) {
             return;
         }
 
-        const std::vector<IRRender::VoxelGpuPosition> &poolPositions = pool.getPositions();
-        const std::vector<vec3> &poolOffsets = pool.getPositionOffsets();
-        std::vector<IRRender::VoxelGpuPosition> &poolGlobals = pool.getPositionGlobals();
-        std::vector<C_Voxel> &poolColors = pool.getColors();
-
-        const size_t baseIdx = voxelSet.voxelStartIdx_;
-        const size_t availPositions =
-            poolPositions.size() > baseIdx ? poolPositions.size() - baseIdx : 0u;
-        const size_t availOffsets =
-            poolOffsets.size() > baseIdx ? poolOffsets.size() - baseIdx : 0u;
-        const size_t availGlobals =
-            poolGlobals.size() > baseIdx ? poolGlobals.size() - baseIdx : 0u;
-        const size_t availColors = poolColors.size() > baseIdx ? poolColors.size() - baseIdx : 0u;
-        const int safeCount = IRMath::min(
-            voxelSet.numVoxels_,
-            static_cast<int>(IRMath::min(
-                IRMath::min(availPositions, availOffsets),
-                IRMath::min(availGlobals, availColors)
-            ))
-        );
-        if (safeCount <= 0) {
+        // The four pool vectors share the pool size; an allocation that does
+        // not fit inside it is corrupt, never partially rebuilt.
+        if (voxelSet.allocatedVoxels_ < voxelSet.numVoxels_ ||
+            voxelSet.voxelStartIdx_ + static_cast<std::size_t>(voxelSet.allocatedVoxels_) >
+                pool.getColors().size()) {
             return;
         }
 
@@ -206,51 +225,70 @@ template <> struct System<REBUILD_GRID_VOXELS> {
                                      worldTransform.scale_.y == 0.0f ||
                                      worldTransform.scale_.z == 0.0f;
         if (IRPrefab::GridRotation::isIdentityTransform(worldTransform)) {
-            identityArm(voxelSet, worldTransform, pool, baseIdx, safeCount);
-        } else if (
-            degenerateScale || !inverseArm(voxelSet, worldTransform, pool, baseIdx, safeCount)
-        ) {
-            // Zero-scale solids have no inverse, and a pathological dest
-            // volume is cheaper to render with holes than to walk — both
-            // keep the forward map for the frame.
-            forwardArm(voxelSet, worldTransform, pool, baseIdx, safeCount);
+            identityArm(voxelSet, worldTransform, pool);
+        } else if (degenerateScale) {
+            // Zero-scale solids have no inverse; the forward map collapses
+            // them onto a plane without dropping any authored voxel.
+            forwardArm(voxelSet, worldTransform, pool);
+        } else {
+            inverseArm(voxelSet, worldTransform, pool);
         }
+    }
+
+    // Deactivate the output-only tail [numVoxels_, allocatedVoxels_), which
+    // only a rotated pose populates.
+    static void deactivateTail(C_VoxelSetNew &voxelSet, std::vector<C_Voxel> &poolColors) {
+        for (int i = voxelSet.numVoxels_; i < voxelSet.allocatedVoxels_; ++i) {
+            poolColors[voxelSet.voxelStartIdx_ + static_cast<std::size_t>(i)].deactivate();
+        }
+    }
+
+    // Park the whole allocation inactive, authored slots and tail alike.
+    static void deactivateAllocation(C_VoxelSetNew &voxelSet, C_VoxelPool &pool) {
+        std::vector<C_Voxel> &poolColors = pool.getColors();
+        const size_t baseIdx = voxelSet.voxelStartIdx_;
+        const std::size_t capacity = static_cast<std::size_t>(voxelSet.allocatedVoxels_);
+        for (std::size_t i = 0; i < capacity; ++i) {
+            poolColors[baseIdx + i].deactivate();
+        }
+        pool.applyFogCarrierPolicy(std::span<C_Voxel>{poolColors.data() + baseIdx, capacity});
+        pool.resyncActiveMaskFromColors(baseIdx, capacity);
     }
 
     // ---- identity ------------------------------------------------------
     // The identity path, byte-identical for a set that never rotated. A
     // set arriving FROM a rotated pose additionally restores its authored
-    // span from the snapshot (then clears it — see the component header)
-    // and queues the restored positions for upload: the steady-state
+    // span from the snapshot (then clears it — see the component header),
+    // deactivates the output-only tail while keeping its capacity for later
+    // poses, and queues the restored positions for upload: the steady-state
     // identity frames after that queue nothing.
     void identityArm(
-        C_VoxelSetNew &voxelSet,
-        const C_WorldTransform &worldTransform,
-        C_VoxelPool &pool,
-        size_t baseIdx,
-        int safeCount
+        C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform, C_VoxelPool &pool
     ) {
         std::vector<IRRender::VoxelGpuPosition> &poolGlobals = pool.getPositionGlobals();
         const std::vector<IRRender::VoxelGpuPosition> &poolPositions = pool.getPositions();
         const std::vector<vec3> &poolOffsets = pool.getPositionOffsets();
         std::vector<C_Voxel> &poolColors = pool.getColors();
+        const size_t baseIdx = voxelSet.voxelStartIdx_;
+        const int authoredCount = voxelSet.numVoxels_;
+        const std::size_t capacity = static_cast<std::size_t>(voxelSet.allocatedVoxels_);
 
+        voxelSet.unadmittedDestinationCells_ = 0;
         const bool restored = !voxelSet.rotationSourceVoxels_.empty();
         if (restored) {
             const int m =
-                IRMath::min(safeCount, static_cast<int>(voxelSet.rotationSourceVoxels_.size()));
+                IRMath::min(authoredCount, static_cast<int>(voxelSet.rotationSourceVoxels_.size()));
             for (int i = 0; i < m; ++i) {
                 poolColors[baseIdx + i] = voxelSet.rotationSourceVoxels_[i];
             }
-            pool.applyFogCarrierPolicy(
-                std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(safeCount)}
-            );
+            deactivateTail(voxelSet, poolColors);
+            pool.applyFogCarrierPolicy(std::span<C_Voxel>{poolColors.data() + baseIdx, capacity});
             voxelSet.rotationSourceVoxels_.clear();
             voxelSet.rotationSourceVoxels_.shrink_to_fit();
-            pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(safeCount));
+            pool.resyncActiveMaskFromColors(baseIdx, capacity);
         }
 
-        for (int i = 0; i < safeCount; ++i) {
+        for (int i = 0; i < authoredCount; ++i) {
             poolGlobals[baseIdx + i].pos_ = IRPrefab::GridRotation::worldCellForGridVoxel(
                 poolPositions[baseIdx + i].pos_,
                 poolOffsets[baseIdx + i],
@@ -259,91 +297,144 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         }
         // Positions change on every identity frame, so both cull caches need
         // invalidation even when no GPU restore upload is required.
-        pool.markCullBoundsDirty(baseIdx, static_cast<std::size_t>(safeCount));
+        pool.markCullBoundsDirty(baseIdx, capacity);
         if (restored) {
-            pool.queuePositionRange(baseIdx, static_cast<size_t>(safeCount));
+            pool.queuePositionRange(baseIdx, static_cast<size_t>(authoredCount));
         }
 
-        recomputeMaskFromGlobals(pool, baseIdx, safeCount);
+        recomputeMaskFromGlobals(pool, baseIdx, authoredCount);
     }
 
-    // ---- forward fallback ----------------------------------------------
-    // The forward map for the rare frames the inverse walk is
-    // unavailable (zero scale / dest volume past kMaxDestWalkCells). Colors
-    // are re-derived from the snapshot when one exists so a set that was
-    // mid-spin renders its authored colors, not last frame's dest
-    // arrangement; the snapshot is NOT cleared (the set is still rotated).
-    void forwardArm(
-        C_VoxelSetNew &voxelSet,
-        const C_WorldTransform &worldTransform,
-        C_VoxelPool &pool,
-        size_t baseIdx,
-        int safeCount
-    ) {
+    // ---- forward map (zero scale) --------------------------------------
+    // A zero-scale pose has no inverse. Every authored voxel maps forward,
+    // so nothing is dropped; the output-only tail goes inactive. Colors are
+    // re-derived from the snapshot when one exists so a set that was mid-spin
+    // renders its authored colors, not last frame's dest arrangement; the
+    // snapshot is NOT cleared (the set is still rotated).
+    void
+    forwardArm(C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform, C_VoxelPool &pool) {
         std::vector<IRRender::VoxelGpuPosition> &poolGlobals = pool.getPositionGlobals();
         const std::vector<IRRender::VoxelGpuPosition> &poolPositions = pool.getPositions();
         const std::vector<vec3> &poolOffsets = pool.getPositionOffsets();
         std::vector<C_Voxel> &poolColors = pool.getColors();
+        const size_t baseIdx = voxelSet.voxelStartIdx_;
+        const int authoredCount = voxelSet.numVoxels_;
+        const std::size_t capacity = static_cast<std::size_t>(voxelSet.allocatedVoxels_);
 
+        voxelSet.unadmittedDestinationCells_ = 0;
         if (!voxelSet.rotationSourceVoxels_.empty()) {
             const int m =
-                IRMath::min(safeCount, static_cast<int>(voxelSet.rotationSourceVoxels_.size()));
+                IRMath::min(authoredCount, static_cast<int>(voxelSet.rotationSourceVoxels_.size()));
             for (int i = 0; i < m; ++i) {
                 poolColors[baseIdx + i] = voxelSet.rotationSourceVoxels_[i];
             }
-            pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(safeCount));
         }
+        deactivateTail(voxelSet, poolColors);
+        pool.resyncActiveMaskFromColors(baseIdx, capacity);
 
-        for (int i = 0; i < safeCount; ++i) {
+        for (int i = 0; i < authoredCount; ++i) {
             poolGlobals[baseIdx + i].pos_ = IRPrefab::GridRotation::worldCellForGridVoxel(
                 poolPositions[baseIdx + i].pos_,
                 poolOffsets[baseIdx + i],
                 worldTransform
             );
         }
-        pool.markCullBoundsDirty(baseIdx, static_cast<std::size_t>(safeCount));
-        pool.queuePositionRange(baseIdx, static_cast<size_t>(safeCount));
+        pool.markCullBoundsDirty(baseIdx, capacity);
+        pool.queuePositionRange(baseIdx, static_cast<size_t>(authoredCount));
 
         // Same rotated re-voxelize marker the inverse arm sets — this is the
         // forward-map fallback for a ROTATED set, so its cells need the
         // silhouette-riser emit too (component_voxel.hpp VoxelReserved).
-        for (int i = 0; i < safeCount; ++i) {
+        for (int i = 0; i < authoredCount; ++i) {
             if (poolColors[baseIdx + i].color_.alpha_ != 0) {
                 poolColors[baseIdx + i].reserved_ |= VoxelReserved::kRotatedEmit;
             }
         }
         pool.applyFogCarrierPolicy(
-            std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(safeCount)}
+            std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(authoredCount)}
         );
 
-        recomputeMaskFromGlobals(pool, baseIdx, safeCount);
+        recomputeMaskFromGlobals(pool, baseIdx, authoredCount);
+    }
+
+    // ---- admission ---------------------------------------------------------
+    // Grow @p voxelSet so it holds @p required destination cells: 3/2 of the
+    // current allocation first, then the exact requirement when the
+    // speculative span does not fit. False when neither can be admitted.
+    bool admitCapacity(C_VoxelSetNew &voxelSet, C_VoxelPool &pool, int required) {
+        const int budget = admissionBudget(pool);
+        if (required > budget) {
+            return false;
+        }
+        const int current = voxelSet.allocatedVoxels_;
+        const int speculative = IRMath::min(budget, IRMath::max(required, current + current / 2));
+        const bool grown = voxelSet.growAllocation(pool, speculative) ||
+                           (speculative != required && voxelSet.growAllocation(pool, required));
+        if (grown) {
+            ++capacityStats_.growths_;
+            notePeakCapacity(voxelSet.allocatedVoxels_);
+        }
+        return grown;
+    }
+
+    // Peak covers every resident allocation the rebuild visits, grown or not.
+    void notePeakCapacity(int allocated) {
+        capacityStats_.peakCapacity_ = IRMath::max(capacityStats_.peakCapacity_, allocated);
+    }
+
+    // An unadmitted pose renders nothing: the whole allocation goes inactive
+    // (the child-position baseline already rewrote the authored slots this
+    // frame, so a partially refreshed prior pose must not survive) while the
+    // authored records stay in `rotationSourceVoxels_`.
+    void failClosed(
+        C_VoxelSetNew &voxelSet, C_VoxelPool &pool, AdmissionFailure reason, std::int64_t required
+    ) {
+        deactivateAllocation(voxelSet, pool);
+        voxelSet.unadmittedDestinationCells_ = static_cast<int>(
+            IRMath::max(std::int64_t{1}, IRMath::min(required, std::int64_t{kMaxDestWalkCells}))
+        );
+        ++capacityStats_.failures_;
+        capacityStats_.lastFailure_ = reason;
+        capacityStats_.lastAuthored_ = voxelSet.numVoxels_;
+        capacityStats_.lastRequired_ = required;
+        capacityStats_.lastCapacity_ = voxelSet.allocatedVoxels_;
+        capacityStats_.lastBudget_ = admissionBudget(pool);
+        if (required > unadmittedHighWater_) {
+            unadmittedHighWater_ = required;
+            IRE_LOG_ERROR(
+                "REBUILD_GRID_VOXELS: {} — pose not admitted, set renders nothing this frame "
+                "(authored={}, required={}, capacity={}, budget={}, pool resident={}) — new "
+                "high-water for this run",
+                reason == AdmissionFailure::WALK_GUARD ? "dest walk guard" : "capacity",
+                voxelSet.numVoxels_,
+                required,
+                voxelSet.allocatedVoxels_,
+                capacityStats_.lastBudget_,
+                pool.residentSlotCount()
+            );
+        }
     }
 
     // ---- inverse resample ------------------------------------------------
-    // Returns false when the dest walk would exceed kMaxDestWalkCells (the
-    // caller falls back to the forward map); true on completion.
-    bool inverseArm(
-        C_VoxelSetNew &voxelSet,
-        const C_WorldTransform &worldTransform,
-        C_VoxelPool &pool,
-        size_t baseIdx,
-        int safeCount
-    ) {
+    void
+    inverseArm(C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform, C_VoxelPool &pool) {
         std::vector<IRRender::VoxelGpuPosition> &poolGlobals = pool.getPositionGlobals();
         const std::vector<IRRender::VoxelGpuPosition> &poolPositions = pool.getPositions();
         const std::vector<vec3> &poolOffsets = pool.getPositionOffsets();
         std::vector<C_Voxel> &poolColors = pool.getColors();
+        size_t baseIdx = voxelSet.voxelStartIdx_;
+        const int authoredCount = voxelSet.numVoxels_;
 
         // Authored-source snapshot: first rotated frame copies the span
         // (still authored at that moment); the identity arm restores+clears.
         if (voxelSet.rotationSourceVoxels_.empty()) {
             voxelSet.rotationSourceVoxels_.assign(
                 poolColors.begin() + static_cast<std::ptrdiff_t>(baseIdx),
-                poolColors.begin() + static_cast<std::ptrdiff_t>(baseIdx) + safeCount
+                poolColors.begin() + static_cast<std::ptrdiff_t>(baseIdx) + authoredCount
             );
         }
         const std::vector<C_Voxel> &source = voxelSet.rotationSourceVoxels_;
-        const int sourceCount = IRMath::min(safeCount, static_cast<int>(source.size()));
+        const int sourceCount = IRMath::min(authoredCount, static_cast<int>(source.size()));
 
         // Source occupancy grid over the authored AABB, keyed by
         // roundHalfUp(local + offset) — the same convention the detached
@@ -366,14 +457,9 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         }
         if (activeCount == 0) {
             // Fully inactive solid — nothing to cover; park the span inactive.
-            for (int i = 0; i < safeCount; ++i) {
-                poolColors[baseIdx + i].deactivate();
-            }
-            pool.applyFogCarrierPolicy(
-                std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(safeCount)}
-            );
-            pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(safeCount));
-            return true;
+            deactivateAllocation(voxelSet, pool);
+            voxelSet.unadmittedDestinationCells_ = 0;
+            return;
         }
         const ivec3 srcDims = srcMax - srcMin + ivec3(1, 1, 1);
         const int srcCellCount = srcDims.x * srcDims.y * srcDims.z;
@@ -420,7 +506,8 @@ template <> struct System<REBUILD_GRID_VOXELS> {
                                            static_cast<std::int64_t>(destDims.y) *
                                            static_cast<std::int64_t>(destDims.z);
         if (destCellCount > kMaxDestWalkCells) {
-            return false;
+            failClosed(voxelSet, pool, AdmissionFailure::WALK_GUARD, destCellCount);
+            return;
         }
 
         // Inverse walk: one pass over the dest box, recording covered cells
@@ -478,8 +565,19 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             }
         }
 
-        // Author the span: surface cells first, then interior while slots
-        // remain (the span-cap drop policy). Face-occlusion bits are
+        // Admit every exposed cell before writing anything. Growth moves the
+        // span, so the base index is re-read afterwards.
+        const int exposed = static_cast<int>(surfaceCells_.size());
+        if (exposed > voxelSet.allocatedVoxels_ && !admitCapacity(voxelSet, pool, exposed)) {
+            failClosed(voxelSet, pool, AdmissionFailure::CAPACITY, exposed);
+            return;
+        }
+        voxelSet.unadmittedDestinationCells_ = 0;
+        baseIdx = voxelSet.voxelStartIdx_;
+        const int capacity = voxelSet.allocatedVoxels_;
+
+        // Author the allocation: surface cells first, then interior while
+        // slots remain (interior cells are the only ones that drop). Face-occlusion bits are
         // derived from dest-grid adjacency, never copied: a source voxel's
         // bits describe its neighbours in the source lattice, which the
         // rotation does not preserve. Every other flag bit (AO contrib,
@@ -517,44 +615,40 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             ++written;
         };
         for (const int lin : surfaceCells_) {
-            if (written >= safeCount) {
-                break;
-            }
             writeCell(lin);
         }
         for (const int lin : interiorCells_) {
-            if (written >= safeCount) {
+            if (written >= capacity) {
                 break;
             }
             writeCell(lin);
         }
         const int dropped = static_cast<int>(destCells_.size()) - written;
-        for (int i = written; i < safeCount; ++i) {
+        for (int i = written; i < capacity; ++i) {
             poolColors[baseIdx + i].deactivate();
         }
         pool.applyFogCarrierPolicy(
-            std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(safeCount)}
+            std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(capacity)}
         );
 
-        pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(safeCount));
+        pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(capacity));
         if (written > 0) {
             pool.queuePositionRange(baseIdx, static_cast<size_t>(written));
         }
         // Include the deactivated tail: position uploads cannot carry alpha edits.
-        pool.markCullBoundsDirty(baseIdx, static_cast<std::size_t>(safeCount));
+        pool.markCullBoundsDirty(baseIdx, static_cast<std::size_t>(capacity));
 
         if (dropped > dropHighWater_) {
             dropHighWater_ = dropped;
             IRE_LOG_WARN(
-                "REBUILD_GRID_VOXELS span cap: dropped {} of {} covered dest cells "
-                "(span={}, surface={}) — new high-water for this run",
+                "REBUILD_GRID_VOXELS: dropped {} interior of {} covered dest cells "
+                "(capacity={}, surface={}) — new high-water for this run",
                 dropped,
                 destCells_.size(),
-                safeCount,
+                capacity,
                 surfaceCells_.size()
             );
         }
-        return true;
     }
 
     // Recompute the exposed-face mask against the ROTATED world cells for

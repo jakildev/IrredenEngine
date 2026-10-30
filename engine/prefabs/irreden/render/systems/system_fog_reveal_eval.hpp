@@ -41,12 +41,12 @@ inline void applyFogGateToPool(
         if (voxelSet->masksActive()) {
             resolvedPool.resyncActiveMaskFromColors(
                 voxelSet->voxelStartIdx_,
-                static_cast<std::size_t>(voxelSet->numVoxels_)
+                static_cast<std::size_t>(voxelSet->allocatedVoxels_)
             );
         } else {
             resolvedPool.clearActiveMaskRange(
                 voxelSet->voxelStartIdx_,
-                static_cast<std::size_t>(voxelSet->numVoxels_)
+                static_cast<std::size_t>(voxelSet->allocatedVoxels_)
             );
         }
     };

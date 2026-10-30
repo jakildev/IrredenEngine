@@ -163,14 +163,22 @@ def normal_palette(camera):
 
 def expected_image(width, height, fixture, yaw, upright, scale, origin, sun=None):
     rotation, camera = composed_rotation(fixture, yaw, upright)
-    resample = Resample(fixture, rotation)
+    return lattice_image(width, height, Resample(fixture, rotation), camera, scale, origin, sun)
+
+
+def lattice_image(width, height, resample, camera, scale, origin, sun=None, owner=None):
+    """Painter-ordered camera-facing faces of `resample`'s occupied cells.
+
+    With `owner`, each face's pixels also take the 1-based index of its cell
+    in `resample.occupied()` order.
+    """
     cells = resample.occupied()
     labels = bytearray(width * height)
     lit = bytearray(width * height) if sun is not None else None
     sun_direction = view_sun(sun, camera) if sun is not None else None
     trixels = SunTrixels(resample, sun_direction, width, height) if sun is not None else None
     clipped = False
-    for cell in sorted(cells, key=lambda c: -sum(c)):
+    for index, cell in sorted(enumerate(cells, start=1), key=lambda item: -sum(item[1])):
         center = tuple(cell[i] + resample.anchor[i] for i in range(3))
         for label, normal in enumerate(CAMERA_FACING, start=1):
             if not resample.exposed(cell, normal):
@@ -179,6 +187,8 @@ def expected_image(width, height, fixture, yaw, upright, scale, origin, sun=None
             clipped |= any(x < 1 or y < 1 or x >= width - 1 or y >= height - 1
                            for x, y in polygon)
             raster_polygon(labels, width, height, polygon, label)
+            if owner is not None:
+                raster_polygon(owner, width, height, polygon, index)
             if lit is None:
                 continue
             for triangle in face_triangles(center, normal):
@@ -194,7 +204,8 @@ def expected_image(width, height, fixture, yaw, upright, scale, origin, sun=None
     return labels, normal_palette(camera), stats
 
 
-def compare(width, height, bpp, pixels, expected, palette):
+def compare(width, height, bpp, pixels, expected, palette, faces=True):
+    """Silhouette and, with `faces`, per-pixel owner face against `palette`."""
     missing = extra = wrong_face = 0
     errors = bytearray(width * height * 3)
     observed_area = 0
@@ -204,7 +215,7 @@ def compare(width, height, bpp, pixels, expected, palette):
         occupied = any(rgb)
         observed_area += occupied
         silhouette_error = occupied != bool(label)
-        face_error = occupied and label and any(
+        face_error = faces and occupied and label and any(
             abs(a - b) > 1 for a, b in zip(rgb, palette[label]))
         if not label and not silhouette_error:
             continue
@@ -226,7 +237,7 @@ def compare(width, height, bpp, pixels, expected, palette):
                   observed_pixels=observed_area,
                   face_interior_pixels=face_interiors[1:],
                   boundary_tolerance_pixels=1, registration_pixels=[0, 0])
-    result["sufficient_resolution"] = all(count > 0 for count in face_interiors[1:])
+    result["sufficient_resolution"] = not faces or all(count > 0 for count in face_interiors[1:])
     result["pass"] = (missing == extra == wrong_face == 0 and observed_area > 0
                       and result["sufficient_resolution"])
     return result, errors

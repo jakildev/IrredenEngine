@@ -1376,6 +1376,7 @@ TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     C_VoxelSetNew voxelSet{};
     voxelSet.voxelStartIdx_ = 0;
     voxelSet.numVoxels_ = 4;
+    voxelSet.allocatedVoxels_ = 4;
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.pending_.reset(4);
     allocation.voxels_[0].color_.alpha_ = 255;
@@ -1411,6 +1412,7 @@ TEST(FogRevealEvalTest, ShownBodyRestampsItsCarrierOnlyWhenTheFactorMoves) {
     C_VoxelSetNew voxelSet{};
     voxelSet.voxelStartIdx_ = 0;
     voxelSet.numVoxels_ = 4;
+    voxelSet.allocatedVoxels_ = 4;
     voxelSet.voxels_ = allocation.voxels_;
     pool.resyncActiveMaskFromColors(0, 4);
 

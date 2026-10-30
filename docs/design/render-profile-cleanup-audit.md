@@ -204,12 +204,31 @@ the omission neither removes exterior faces nor exposes artificial interior
 faces in this fixture. This is a geometry/mask result, not proof that volume
 sampling, AO, or arbitrary transforms are unaffected.
 
-The capacity limit can still remove visible geometry. A centered 12×1×12 plate
-at the same rotation covers 145 cells, all boundary, but has only 144 slots.
-The negative control demonstrates one missing surface cell. Carving that same
-plate from a 12³ allocated box retains all 145 cells and their face masks.
-These controls distinguish surface loss from interior omission without changing
-allocation policy or treating the generic overflow warning as harmless.
+A fixed span could also remove visible geometry: a centered 12×1×12 plate at the
+same rotation covers 145 cells, all boundary, with only 144 authored slots. The
+rebuild now separates a set's authored record count from its resident
+allocation and grows the allocation, never the authored records, to hold every
+exposed destination cell (`engine/prefabs/irreden/voxel/CLAUDE.md` §"Transform
+and revoxelization pipeline"). The plate grows once to 216 slots (the 3/2
+high-water request) and emits 145/145 cells; the solid stays at 1728 slots and
+still omits its 12 interior cells. A pose the pool cannot admit fails closed for
+the frame instead of emitting a truncated surface.
+
+Native Metal evidence (macOS, `IRCanvasStress --only orbit --focus-orbit 6
+[--focus-exact-fit-plate]`, camera yaw 0/90/180/270°) is graded by
+`scripts/render-grid-cell-metric.py` against an independent double-precision
+destination oracle. The parent build drops exactly one exposed plate cell in
+every beauty and normals row (1,349 missing pixels); the head build has zero
+missing, extra or wrong-face pixels, and the dense solid is identical on both.
+The direct-sun overlay disagrees with the lattice-ray oracle at stair
+terminators (missed shadow up to 13,872 px on the solid at 180°) identically on
+parent and head, so that disagreement predates and is independent of capacity.
+The shadow overlay disables the cardinal continuous receiver and shows the
+compute sun route, so the reading is not a statement about the production
+route. Parent and head shadow frames are byte-identical except where the
+plate's gained cell lands. Interleaved capture-free Release profiles show no measurable frame or
+`RebuildGridVoxels` mean difference. Commands and results:
+[evidence](../pr-screenshots/claude/4760-grid-destination-capacity/README.md).
 
 The independent [gather sampling checks](trixel-gather-sampling.md) cover the
 frozen orbit-6 displayed normals and silhouettes at four cardinal camera yaws
@@ -247,10 +266,9 @@ AO and arbitrary transforms remain outside that claim.
 
 - Extend source-face classification to frozen CanvasStress at 45-degree camera
   yaw; the gather checks cover a different set of camera angles.
-- Define a destination-capacity policy for exact-fit thin or scaled GRID sets
-  whose boundary cells exceed their authored span. The orbit-6 result above
-  resolves the observed 12-cell warning's exterior geometry, not this broader
-  allocation limit or the lighting consequences of missing interior occupancy.
+- Decide whether rotated GRID sets need complete interior occupancy. Capacity
+  grows only for exposed cells, so a solid can still omit interior cells, and
+  the AO and light-volume consequences of that omission are unmeasured.
 
 The timing-attribution experiment remains a separate measurement task. Cleanup
 does not establish a dense-scene speedup, fix inherited visual artifacts, or

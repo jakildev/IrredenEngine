@@ -162,6 +162,7 @@ struct C_VoxelPool {
                 m_freeSpanLookup.erase(size);
             }
             ++m_allocatedSpanCount;
+            noteResidentSlotsAllocated(size);
             ++m_contentGeneration;
             markCullBoundsDirty(startIndex, size);
             IRRender::VoxelPoolAllocation allocation{
@@ -182,6 +183,7 @@ struct C_VoxelPool {
             size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
             ++m_allocatedSpanCount;
+            noteResidentSlotsAllocated(size);
             ++m_contentGeneration;
             markCullBoundsDirty(startIndex, size);
             IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
@@ -263,6 +265,7 @@ struct C_VoxelPool {
         if (m_allocatedSpanCount > 0) {
             --m_allocatedSpanCount;
         }
+        m_residentSlotCount -= IRMath::min(m_residentSlotCount, size);
         ++m_contentGeneration;
     }
 
@@ -351,6 +354,16 @@ struct C_VoxelPool {
     }
     int getLiveVoxelCount() const {
         return m_voxelPoolIndex;
+    }
+    // Slots inside spans handed out and not yet freed, and the high-water mark
+    // of that count. Freed spans waiting for an exact-size reuse count in
+    // neither, so `getLiveVoxelCount() - residentSlotCount()` is the stranded
+    // slot total under the exact-fit allocator.
+    std::size_t residentSlotCount() const {
+        return m_residentSlotCount;
+    }
+    std::size_t peakResidentSlotCount() const {
+        return m_peakResidentSlotCount;
     }
     // Advances on every allocateVoxels / deallocateVoxels and every
     // markRecordsChanged. A consumer caching slot content keys on this: a freed
@@ -992,6 +1005,8 @@ struct C_VoxelPool {
     bool m_hostsCellGroups = false;
     // Spans handed out by allocateVoxels and not yet freed.
     std::size_t m_allocatedSpanCount = 0;
+    std::size_t m_residentSlotCount = 0;
+    std::size_t m_peakResidentSlotCount = 0;
 
     int m_voxelPoolIndex = 0;
     std::uint64_t m_contentGeneration = 0;
@@ -1003,6 +1018,11 @@ struct C_VoxelPool {
     // the C_VoxelSetNew priority mutators + set teardown). hasPerTrixelPriority()
     // reads it once per frame in VOXEL_TO_TRIXEL_STAGE_1 to stamp the canvas.
     int m_perTrixelPriorityVoxelCount = 0;
+
+    void noteResidentSlotsAllocated(std::size_t size) {
+        m_residentSlotCount += size;
+        m_peakResidentSlotCount = IRMath::max(m_peakResidentSlotCount, m_residentSlotCount);
+    }
 
     void updateFreeSpanLookup(size_t startIndex, size_t size) {
         m_freeSpanLookup[size].insert({startIndex, size});
