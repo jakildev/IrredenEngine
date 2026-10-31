@@ -375,7 +375,8 @@ class EntityScene {
                 source.components_,
                 groupId,
                 groupAxis,
-                rotationalOrder
+                rotationalOrder,
+                source.recipeBinding_
             };
             applyBand(clone);
             applyTierOverride(entity);
