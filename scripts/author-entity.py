@@ -23,7 +23,8 @@ Usage:
     python3 scripts/author-entity.py rock
     python3 scripts/author-entity.py rock --scene-size 16 16 16 --no-build
     python3 scripts/author-entity.py ant --session ant --scene-size 20 20 20
-    python3 scripts/author-entity.py --prefab composite_proof --module test/module
+    python3 scripts/author-entity.py --prefab composite_proof \\
+        --module creations/editors/voxel_editor/test/module
 
 A single ``scene_frame_0.vxs`` commits as ``<entity>.vxs``; a multi-frame
 entity (e.g. the bird) commits as ``<entity>_frame_N.vxs``.
@@ -146,6 +147,17 @@ AUTHOR_ARGS_NAME = "author.json"
 AUTHOR_ARG_KEYS = ("session", "module_session", "module", "scene_size", "part_names")
 
 
+def prefab_reference_prefix(asset_dir: Path) -> Path:
+    """Return the portable manifest prefix for a prefab asset directory."""
+    if not asset_dir.is_absolute():
+        return asset_dir
+    for index in range(len(asset_dir.parts) - 1, -1, -1):
+        if asset_dir.parts[index] == "assets":
+            return Path(*asset_dir.parts[index:])
+    raise SystemExit("[author-entity] an absolute --asset-dir must contain an "
+                     "assets component")
+
+
 def load_author_args(prefab_dir: Path) -> dict:
     """The arguments ``prefab_dir``'s prefab was last authored with; empty when
     it has not been authored."""
@@ -157,6 +169,9 @@ def load_author_args(prefab_dir: Path) -> dict:
     if unknown:
         raise SystemExit(f"[author-entity] {path} names unknown argument(s): "
                          f"{', '.join(unknown)}")
+    module = recorded.get("module")
+    if module and not os.path.isabs(module):
+        recorded["module"] = os.path.abspath(prefab_dir / module)
     return recorded
 
 
@@ -172,8 +187,16 @@ def merge_author_args(given: dict, recorded: dict) -> dict:
 
 
 def write_author_args(prefab_dir: Path, author_args: dict) -> Path:
+    recorded = dict(author_args)
+    module = recorded.get("module")
+    if module and os.path.isabs(module):
+        try:
+            recorded["module"] = os.path.relpath(module, prefab_dir)
+        except ValueError:
+            # Windows paths on different drives have no relative form.
+            pass
     path = prefab_dir / AUTHOR_ARGS_NAME
-    path.write_text(json.dumps(author_args, indent=2, sort_keys=True) + "\n",
+    path.write_text(json.dumps(recorded, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8")
     return path
 
@@ -185,6 +208,18 @@ def resolve_module_dir(module: str) -> str:
     passed as given."""
     in_worktree = verify_common.detect_worktree_root(verify_common.SCRIPT_DIR) / module
     return str(in_worktree) if in_worktree.is_dir() else module
+
+
+def resolve_prefab_module_dir(module: str) -> str:
+    """Resolve a prefab module to a path that ``author.json`` can record."""
+    resolved = resolve_module_dir(module)
+    if not os.path.isabs(resolved):
+        raise SystemExit(
+            "[author-entity] prefab --module must be an absolute path or name an "
+            "existing worktree-relative directory; executable-relative paths "
+            "cannot be recorded portably"
+        )
+    return resolved
 
 
 def run_session(exe: Path, save_dir: Path, session: str, scene_size: list[int] | None,
@@ -288,10 +323,21 @@ def main() -> None:
 
     worktree = verify_common.detect_worktree_root(verify_common.SCRIPT_DIR)
     build_dir = Path(os.environ.get("IRREDEN_BUILD_DIR", str(worktree / "build")))
+    ref_dir = prefab_reference_prefix(args.asset_dir) if prefab else None
     asset_dir = args.asset_dir if args.asset_dir.is_absolute() else worktree / args.asset_dir
 
+    given_author_args = {key: getattr(args, key) for key in AUTHOR_ARG_KEYS}
+    if given_author_args["module"]:
+        if prefab:
+            given_author_args["module"] = resolve_prefab_module_dir(
+                given_author_args["module"]
+            )
+        else:
+            given_author_args["module"] = resolve_module_dir(
+                given_author_args["module"]
+            )
     author_args = merge_author_args(
-        {key: getattr(args, key) for key in AUTHOR_ARG_KEYS},
+        given_author_args,
         load_author_args(asset_dir / name) if prefab else {},
     )
     args.module = author_args.get("module")
@@ -348,7 +394,7 @@ def main() -> None:
           f"across two runs")
 
     if prefab:
-        written = commit_prefab(frames2, name, asset_dir, args.asset_dir, args.part_names)
+        written = commit_prefab(frames2, name, asset_dir, ref_dir, args.part_names)
         written.append(write_author_args(asset_dir / name, author_args))
     else:
         written = commit_asset(frames2, name, asset_dir)

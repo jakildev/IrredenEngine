@@ -49,12 +49,14 @@ Design log, findings and the authoring-session history:
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
   `git status assets/` afterwards means the committed asset is unchanged.
   Pass `--module <dir> --module-session <name>` to author from a module-owned
-  session; `--asset-dir` may name an alternate output directory.
+  session; prefab `author.json` records its module path relative to the prefab
+  directory, while absolute `--asset-dir` output is referenced from `assets/`.
 - `python3 scripts/author-entity.py --prefab composite_proof` — the same
   two-run gate over an entity scene (manifest, parts, sidecars), committed to
   `assets/voxel/entities/composite_proof/` with each `voxel_ref` rewritten to
   that staged path. The `--module` and `--part-names` it was authored with are
-  read from that directory's `author.json`; a new prefab passes them once.
+  read from that directory's `author.json`; module records are prefab-relative
+  and a new prefab passes them once.
   `python3 scripts/render-verify.py --target IRShapeDebug` then spawns it for
   the `composite_proof_z*` shots.
 
