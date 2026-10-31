@@ -1,0 +1,48 @@
+{
+  "base_sha": "a6b9953c3eb8743a5c5b8c05889a3bdb9c7bb8ae",
+  "host": "macOS Metal, macos-debug (Debug)",
+  "capture_argv": "fleet-run --timeout 120 IRCanvasStress --auto-screenshot 120 --only compare",
+  "gated_frames": "collect_full_frames index -3 (compare_yaw0) and -2 (compare_yaw_q) of 15; manifest capture_offset -3",
+  "mover": {
+    "commit": "e8a36d033",
+    "pr": 4730,
+    "file": "engine/render/include/irreden/render/trixel_font.hpp"
+  },
+  "references_pre_refresh": {
+    "compare_yaw0": "160ac611707a5ae136e66b0774c7acd55d0dba6510ffc3134486e542ac1ad94f",
+    "compare_yaw_q": "ea2069ebdcfd3f9d45af1f3ea0a3d22b9c0d230aa1b86316c989763bfdc59c6e"
+  },
+  "references_post_refresh": {
+    "compare_yaw0": "a0030b98fbcba22222b8a607cb0ff4ec61b86db1b31218d0c0bd5f0a64a101c9",
+    "compare_yaw_q": "a8fedc3f281ac372b3d47125af12423aac9d54c0449ba3f367e06a894b5980d3"
+  },
+  "arms": {
+    "A_base_plus_restored_pre4730_glyph_rows": {
+      "patch": "patches/armA-restore-4730-glyph-rows.diff",
+      "exe_sha256": "343c527b33d31b26c0d8fd468e61d403a15185808eaee7423911e95b1d1010a9",
+      "result": "RESULT=CLEAN",
+      "frames": {
+        "compare_yaw0": "160ac611707a5ae136e66b0774c7acd55d0dba6510ffc3134486e542ac1ad94f",
+        "compare_yaw_q": "ea2069ebdcfd3f9d45af1f3ea0a3d22b9c0d230aa1b86316c989763bfdc59c6e"
+      }
+    },
+    "B_unmodified_base": {
+      "exe_sha256": "0cba6ae56bcabb3be66b068ac2f0970bd10717edc7fb9479fb80120edbd710f1",
+      "result": "RESULT=CLEAN",
+      "frames": {
+        "compare_yaw0": "a0030b98fbcba22222b8a607cb0ff4ec61b86db1b31218d0c0bd5f0a64a101c9",
+        "compare_yaw_q": "a8fedc3f281ac372b3d47125af12423aac9d54c0449ba3f367e06a894b5980d3"
+      },
+      "note": "captured after restoring trixel_font.hpp and rebuilding; a first base capture before arm A (exe 0eb66eccf15f835e1e738d9df5ff1cab6e580299336d968587202c58c2030052, RESULT=CLEAN) gave identical frames",
+      "first_capture_frames": {
+        "compare_yaw0": "a0030b98fbcba22222b8a607cb0ff4ec61b86db1b31218d0c0bd5f0a64a101c9",
+        "compare_yaw_q": "a8fedc3f281ac372b3d47125af12423aac9d54c0449ba3f367e06a894b5980d3"
+      }
+    }
+  },
+  "checks": {
+    "armA_equals_pre_refresh_references": true,
+    "armB_equals_post_refresh_references": true,
+    "armA_exe_differs_from_armB_exe": true
+  }
+}
