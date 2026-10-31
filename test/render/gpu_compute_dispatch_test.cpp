@@ -2520,11 +2520,21 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     EXPECT_NE(captured.find("# face_records_requested=257\n"), std::string::npos);
     EXPECT_NE(captured.find("# basis_u=0.125,0.25,0.5\n"), std::string::npos);
     EXPECT_NE(captured.find("# basis_v=-0.5,0,0.25\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n0,0,0,256,1,-3,5,-1,9\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n0,127,127,0,1,251,513,253,517\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n1,0,0,0,1,11,-7,19,9\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n1,127,127,257,0,1027,2025,1035,2041\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n0,0,0,256,1,-3,5,-1,9,0\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n0,127,127,0,1,251,513,253,517,0\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n1,0,0,0,1,11,-7,19,9,0\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n1,127,127,257,0,1027,2025,1035,2041,0\n"), std::string::npos);
     EXPECT_EQ(captured.find("# geometry_version="), std::string::npos);
+
+    const std::uint32_t lostCount = completeCount | Shadow::kSourceFaceTileRecordLost;
+    depth.subData(
+        Shadow::kSourceFaceTileOffset * sizeof(std::uint32_t),
+        sizeof(lostCount),
+        &lostCount
+    );
+    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string()));
+    const std::string lost = probe.contents();
+    EXPECT_NE(lost.find("\n0,0,0,256,0,-3,5,-1,9,1\n"), std::string::npos);
 
     const std::uint32_t recordCount = 1;
     const std::array<std::uint32_t, Shadow::kSourceFaceRecordWords> record{
