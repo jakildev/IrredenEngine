@@ -25,6 +25,9 @@ IR_SESSION_PREDICATE_STUB(evaluatePartYawCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartTurnAxisCheck)
 IR_SESSION_PREDICATE_STUB(evaluateGizmoDragCheck)
 IR_SESSION_PREDICATE_STUB(evaluateGizmoTexelCheck)
+IR_SESSION_PREDICATE_STUB(evaluateRecipeValueCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartRecipeMatchCheck)
+IR_SESSION_PREDICATE_STUB(evaluateRecipeHandleTexelCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartSpinCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartAnchorCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartModeDropdownCheck)
@@ -173,7 +176,14 @@ class LuaEditorSessionBindingsTest : public testing::Test {
                     return {}
                 end
                 return { { 1, 1, 1 } }
-            end, { classes = { "hole" } })
+            end, {
+                classes = { "hole" },
+                handles = {
+                    { name = "tip", params = { "count" },
+                      at = function(values, size) return { 1, 1, 1 } end,
+                      drag = function(values, size, point) return { count = point.x } end },
+                },
+            })
             IREditor.registerRecipe("interior_float", {
                 { name = "value", type = IREditor.ParamType.FLOAT, default = 0, min = -1, max = 1 },
             }, function(values, size)
@@ -194,6 +204,28 @@ class LuaEditorSessionBindingsTest : public testing::Test {
             IREditor.registerRecipe("wide_int", {
                 { name = "value", type = IREditor.ParamType.INT, default = 1, min = 0, max = 29 },
             }, function(values, size) return {} end)
+            -- A column at (4, 4) whose top cell is z = 8 - height; its tip
+            -- handle sets the height from the dragged cell's z.
+            IREditor.registerRecipe("matrix_column", {
+                { name = "height", type = IREditor.ParamType.INT, default = 2, min = 1, max = 6 },
+            }, function(values, size, mask)
+                local cells = {}
+                for i = 1, values.height do
+                    if mask.at(4, 4, 8 - i) ~= "hole" then
+                        cells[#cells + 1] = { 4, 4, 8 - i }
+                    end
+                end
+                return cells
+            end, {
+                classes = { "hole" },
+                handles = {
+                    { name = "tip", params = { "height" },
+                      at = function(values, size) return { 4, 4, 8 - values.height } end,
+                      drag = function(values, size, point)
+                          return { height = 8 - point.z }
+                      end },
+                },
+            })
         )lua");
         if (!component.valid()) {
             const sol::error error = component;
@@ -265,6 +297,7 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:setPartSize({8, 8, 8})
         s:addVoxelPart()
         s:applyRecipe("matrix_recipe", { count = 2 })
+        s:dragRecipeHandle("tip", {3, 0, 0})
         s:paintClass({1, 1, 1}, "hole")
         s:dragPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})
         s:holdPartGizmo({1, 0, 0}, {0, 0, 0}, {-1, 0, 0})
@@ -321,6 +354,9 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:expectGizmoDragActive(false, "gizmo_drag")
         s:expectGizmoHandleTexels("gizmo_texels")
         s:expectGizmoHandleTexelsUnchanged("gizmo_texels_unchanged")
+        s:expectRecipeValue(0, "count", 3, "recipe_value")
+        s:expectPartMatchesRecipe(0, "recipe_match")
+        s:expectRecipeHandleTexels("tip", true, "recipe_handle_texels")
         s:expectSliderValue(IREditor.SliderTarget.FPS, 12, 1, "slider")
         s:expectPartGated(0, false, -1, "part_gated")
         s:expectPreviewGated(false, -1, "preview_gated")
@@ -778,6 +814,185 @@ TEST_F(LuaEditorSessionBindingsTest, BuilderOperationsRejectEveryUnsupportedRequ
         operation(noView);
         expectOneErrorAndNoEvents(noView.finish(), "needs a loaded module");
     }
+}
+
+TEST_F(LuaEditorSessionBindingsTest, DragRecipeHandleReplacesTheRecipeCells) {
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    const IRMath::ivec3 size(8);
+    Builder builder("handle_model", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+    builder.addVoxelPart();
+    builder.applyRecipe("matrix_column", {{"height", 4.0f}});
+    builder.toggleTransformMode();
+    const std::size_t eventsBeforeDrags = eventCount(Builder(builder).finish());
+    EXPECT_FALSE(builder.model().occupied(IRMath::ivec3(4, 4, 3)));
+
+    // at (4, 4, 4); the target keeps its coordinate sum.
+    builder.dragRecipeHandle("tip", IRMath::ivec3(6, 4, 2));
+    EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(4, 4, 2)));
+    EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(4, 4, 7)));
+
+    // Shortening clears the cells only the longer column made.
+    builder.dragRecipeHandle("tip", IRMath::ivec3(0, 4, 6));
+    EXPECT_FALSE(builder.model().occupied(IRMath::ivec3(4, 4, 2)));
+    EXPECT_FALSE(builder.model().occupied(IRMath::ivec3(4, 4, 5)));
+    EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(4, 4, 6)));
+
+    // Past max: height 8 clamps to 6.
+    builder.dragRecipeHandle("tip", IRMath::ivec3(10, 4, 0));
+    EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(4, 4, 2)));
+    EXPECT_FALSE(builder.model().occupied(IRMath::ivec3(4, 4, 1)));
+
+    const Recipe recipe = builder.finish();
+    EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
+    EXPECT_GT(eventCount(recipe), eventsBeforeDrags);
+}
+
+TEST_F(LuaEditorSessionBindingsTest, DragRecipeHandleKeepsTheClassMask) {
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    const IRMath::ivec3 size(8);
+    Builder builder("handle_mask", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+    builder.addVoxelPart();
+    builder.applyRecipe("matrix_column", {{"height", 4.0f}});
+    const IRMath::ivec3 hole(4, 4, 6);
+    builder.paintClass(hole, "hole");
+    EXPECT_FALSE(builder.model().occupied(hole));
+    builder.toggleTransformMode();
+
+    builder.dragRecipeHandle("tip", IRMath::ivec3(6, 4, 2));
+    EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(4, 4, 2)));
+    EXPECT_FALSE(builder.model().occupied(hole));
+    EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(4, 4, 7)));
+
+    const Recipe recipe = builder.finish();
+    EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
+}
+
+TEST_F(LuaEditorSessionBindingsTest, DragRecipeHandleRejectsEveryUnsupportedRequest) {
+    const sol::protected_function_result registered = m_lua.lua().safe_script(R"lua(
+        IREditor.registerRecipe("matrix_bad_drag", {
+            { name = "a", type = IREditor.ParamType.INT, default = 1, min = 0, max = 4 },
+            { name = "b", type = IREditor.ParamType.INT, default = 1, min = 0, max = 4 },
+        }, function(values, size) return {} end, {
+            handles = {
+                { name = "tip", params = { "a" },
+                  at = function(values, size) return { 1, 1, 1 } end,
+                  drag = function(values, size, point) return { b = 2 } end },
+            },
+        })
+    )lua");
+    ASSERT_TRUE(registered.valid()) << sol::error(registered).what();
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    const IRMath::ivec3 size(8);
+    const auto expectRejected = [&](const std::function<void(Builder &)> &setup,
+                                    const std::string &handle,
+                                    IRMath::ivec3 target,
+                                    std::string_view token) {
+        Builder reference("reject", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+        setup(reference);
+        Builder builder("reject", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+        setup(builder);
+        const OccupancyModel before = builder.model();
+        builder.dragRecipeHandle(handle, target);
+        EXPECT_TRUE(builder.model().sameOccupancy(before)) << token;
+        const Recipe recipe = builder.finish();
+        ASSERT_EQ(recipe.errors_.size(), 1u) << token;
+        EXPECT_NE(recipe.errors_.front().find(token), std::string::npos) << recipe.errors_.front();
+        EXPECT_EQ(eventCount(recipe), eventCount(reference.finish())) << token;
+    };
+    const auto boundColumn = [](Builder &builder) {
+        builder.addVoxelPart();
+        builder.applyRecipe("matrix_column", {{"height", 4.0f}});
+        builder.toggleTransformMode();
+    };
+    const IRMath::ivec3 onPlane(6, 4, 2);
+
+    expectRejected(
+        [](Builder &builder) {
+            builder.addVoxelPart();
+            builder.applyRecipe("matrix_column", {{"height", 4.0f}});
+        },
+        "tip",
+        onPlane,
+        "outside transform mode"
+    );
+    expectRejected(
+        [](Builder &builder) {
+            builder.applyRecipe("matrix_column", {{"height", 4.0f}});
+            builder.toggleTransformMode();
+        },
+        "tip",
+        onPlane,
+        "needs an entity-scene part"
+    );
+    expectRejected(
+        [](Builder &builder) {
+            builder.addVoxelPart();
+            builder.toggleTransformMode();
+        },
+        "tip",
+        onPlane,
+        "no recipe binding"
+    );
+    expectRejected(boundColumn, "missing", onPlane, "declares no such handle");
+    expectRejected(boundColumn, "tip", IRMath::ivec3(6, 4, 3), "off the plane");
+    expectRejected(
+        [&](Builder &builder) {
+            boundColumn(builder);
+            builder.tapKey(IRInput::kKeyButtonQ);
+        },
+        "tip",
+        onPlane,
+        "camera turned"
+    );
+    expectRejected(
+        [&](Builder &builder) {
+            boundColumn(builder);
+            builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        },
+        "tip",
+        onPlane,
+        "undo, redo or reload"
+    );
+    expectRejected(
+        [](Builder &builder) {
+            builder.addVoxelPart();
+            builder.applyRecipe("matrix_bad_drag", {});
+            builder.toggleTransformMode();
+        },
+        "tip",
+        IRMath::ivec3(2, 1, 0),
+        "does not bind"
+    );
+}
+
+TEST_F(LuaEditorSessionBindingsTest, RegisterRecipeRejectsMalformedHandles) {
+    for (const auto &[opts, token] : std::vector<std::pair<std::string, std::string>>{
+             {"1", "opts must be a table"},
+             {"{ grips = {} }", "unknown opts key"},
+             {"{ handles = 1 }", "must be a list"},
+             {"{ handles = { { params = { 'n' }, at = f, drag = f } } }", "missing its name"},
+             {"{ handles = { { name = 'h', params = {}, at = f, drag = f } } }", "non-empty"},
+             {"{ handles = { { name = 'h', params = { 'm' }, at = f, drag = f } } }",
+              "does not declare"},
+             {"{ handles = { { name = 'h', params = { 'n', 'n' }, at = f, drag = f } } }", "twice"},
+             {"{ handles = { { name = 'h', params = { 'n' }, at = 1, drag = f } } }",
+              "must be functions"},
+             {"{ handles = { { name = 'h', params = { 'n' }, at = f, drag = f },"
+              " { name = 'h', params = { 'n' }, at = f, drag = f } } }",
+              "already used"},
+         }) {
+        const sol::protected_function_result result = m_lua.lua().safe_script(
+            "local f = function() end\n"
+            "IREditor.registerRecipe('malformed', { { name = 'n', type = IREditor.ParamType.INT,"
+            " min = 0, max = 1 } }, f, " +
+                opts + ")",
+            sol::script_pass_on_error
+        );
+        ASSERT_FALSE(result.valid()) << opts;
+        EXPECT_NE(std::string(sol::error(result).what()).find(token), std::string::npos)
+            << sol::error(result).what();
+    }
+    EXPECT_EQ(m_host.recipes().size(), 5u);
 }
 
 // The wheel a segment turns, in rows toward the list's end, and the GUI point

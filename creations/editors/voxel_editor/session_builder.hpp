@@ -107,6 +107,11 @@ inline constexpr int kSliderRepressIdleFrames = 19;
 // so a capture reads clearly. A face aim resolves down to zoom 1.
 inline constexpr float kSessionZoom = 4.0f;
 
+// How far, per axis, a recipe handle's `at` may sit from a whole cell for
+// dragRecipeHandle to name the cell the editor reads at the press. A press
+// lands within a pixel of `at`, an eighth of a cell at the session zoom.
+inline constexpr float kRecipeHandlePressSlack = 0.25f;
+
 // Keep this above the live candidate count so the command-owned Tab walk proves
 // that editor commands do not hand focus to a widget.
 inline constexpr int kTabWalkPresses = 80;
@@ -461,6 +466,30 @@ struct GizmoTexelCheck {
     std::string name_;
 };
 
+// Recipe-binding expectations on one entity-scene part. A RecipeValueCheck
+// reads the bound value of param_ (the part must be bound to a recipe that
+// declares it); a PartRecipeMatchCheck holds when the part's filled cells are
+// exactly its bound recipe's cells at its bound values.
+struct RecipeValueCheck {
+    int partIndex_ = 0;
+    std::string param_;
+    float expected_ = 0.0f;
+    std::string name_;
+};
+
+struct PartRecipeMatchCheck {
+    int partIndex_ = 0;
+    std::string name_;
+};
+
+// Whether the selected part's recipe handle handle_ owns any main-canvas
+// texel.
+struct RecipeHandleTexelCheck {
+    std::string handle_;
+    bool expectDrawn_ = false;
+    std::string name_;
+};
+
 // Spin expectation on one entity-scene part: it carries C_AutoSpin turning
 // radiansPerFrame_ a tick, or with expectEqual_ false, it does not (an absent
 // component counts as not equal).
@@ -650,6 +679,9 @@ struct Recipe {
     std::deque<PartTurnAxisCheck> partTurnAxisChecks_;
     std::deque<GizmoDragCheck> gizmoDragChecks_;
     std::deque<GizmoTexelCheck> gizmoTexelChecks_;
+    std::deque<RecipeValueCheck> recipeValueChecks_;
+    std::deque<PartRecipeMatchCheck> partRecipeMatchChecks_;
+    std::deque<RecipeHandleTexelCheck> recipeHandleTexelChecks_;
     std::deque<PartSpinCheck> partSpinChecks_;
     std::deque<PartModeDropdownCheck> partModeDropdownChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
@@ -723,6 +755,9 @@ bool evaluatePartYawCheck(const void *context, std::string &actual);
 bool evaluatePartTurnAxisCheck(const void *context, std::string &actual);
 bool evaluateGizmoDragCheck(const void *context, std::string &actual);
 bool evaluateGizmoTexelCheck(const void *context, std::string &actual);
+bool evaluateRecipeValueCheck(const void *context, std::string &actual);
+bool evaluatePartRecipeMatchCheck(const void *context, std::string &actual);
+bool evaluateRecipeHandleTexelCheck(const void *context, std::string &actual);
 bool evaluatePartSpinCheck(const void *context, std::string &actual);
 bool evaluatePartModeDropdownCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
@@ -844,6 +879,7 @@ class Builder {
         m_current.cameraIso_ = cameraIso;
         m_frame = 0;
         ++m_segmentIndex;
+        m_cameraTurned = false;
     }
 
     // Single left click that places a voxel at `target` (place mode) or erases
@@ -969,11 +1005,24 @@ class Builder {
     void tapKey(IRInput::KeyMouseButtons key) {
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, key);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, key);
+        m_cameraTurned =
+            m_cameraTurned || key == IRInput::kKeyButtonQ || key == IRInput::kKeyButtonE;
     }
 
     // Tap a key while a modifier is held. The modifier leads the key by two
     // frames so it is already held when the key press drains.
+    // Ctrl+Z and Ctrl+Y replay history the model does not keep, so after
+    // either no part's recipe binding is known until it is APPLYed again.
     void chordKey(IRInput::KeyMouseButtons modifier, IRInput::KeyMouseButtons key) {
+        const bool control = modifier == IRInput::kKeyButtonLeftControl ||
+                             modifier == IRInput::kKeyButtonRightControl;
+        if (control && (key == IRInput::kKeyButtonZ || key == IRInput::kKeyButtonY))
+            forgetBindings();
+        emitChord(modifier, key);
+    }
+
+  private:
+    void emitChord(IRInput::KeyMouseButtons modifier, IRInput::KeyMouseButtons key) {
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, modifier);
         m_frame += kFramesPerClickStep;
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, key);
@@ -981,6 +1030,7 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, modifier);
     }
 
+  public:
     void toggleEraseMode() {
         tapKey(IRInput::kKeyButtonV);
         m_eraseMode = !m_eraseMode;
@@ -991,6 +1041,7 @@ class Builder {
     // cell a handle is drawn over, or the handle takes that click.
     void toggleTransformMode() {
         tapKey(IRInput::kKeyButtonG);
+        m_transformMode = !m_transformMode;
     }
 
     // Enable mirror-symmetry axes for subsequent edits. Taps
@@ -1223,9 +1274,9 @@ class Builder {
             static_cast<std::size_t>(recipe - m_moduleView->recipes_.begin());
         std::vector<RecipeClassMaskEntry> mask;
         if (m_activePart >= 0 && m_activePart < static_cast<int>(m_partBindings.size()) &&
-            m_partBindings[static_cast<std::size_t>(m_activePart)] &&
-            m_partBindings[static_cast<std::size_t>(m_activePart)]->recipe_ == name) {
-            mask = m_partBindings[static_cast<std::size_t>(m_activePart)]->mask_;
+            m_partBindings[static_cast<std::size_t>(m_activePart)].binding_ &&
+            m_partBindings[static_cast<std::size_t>(m_activePart)].binding_->recipe_ == name) {
+            mask = m_partBindings[static_cast<std::size_t>(m_activePart)].binding_->mask_;
         }
         if (!m_moduleView->evaluate_ ||
             !m_moduleView->evaluate_(recipeIndex, values, m_model.size(), mask, cells, error)) {
@@ -1250,26 +1301,39 @@ class Builder {
             );
         }
         clickGui(recipeApplyCenterGuiTrixel());
+        m_recipeListSelected = static_cast<int>(recipeIndex);
         for (const RecipeCell &cell : cells)
             m_model.set(cell.local_, true);
         if (m_activePart >= 0) {
+            PartBinding &shadow = m_partBindings[static_cast<std::size_t>(m_activePart)];
             PartRecipeBinding binding;
             binding.recipe_ = name;
             binding.values_ = values;
             binding.fallbackColor_ = kPaletteColors[0];
             binding.mask_ = std::move(mask);
-            m_partBindings[static_cast<std::size_t>(m_activePart)] = std::move(binding);
+            // The mask APPLY keeps is only as certain as the shadow it came from,
+            // and every mask is empty until the session paints a class.
+            const bool maskKnown = shadow.known_ || recipe->classes_.empty() || !m_classPaintMode;
+            shadow = PartBinding{std::move(binding), maskKnown};
         }
     }
 
     void paintClass(IRMath::ivec3 local, const std::string &className) {
         if (m_moduleView == nullptr || m_activePart < 0 ||
             m_activePart >= static_cast<int>(m_partBindings.size()) ||
-            !m_partBindings[static_cast<std::size_t>(m_activePart)]) {
+            !m_partBindings[static_cast<std::size_t>(m_activePart)].binding_) {
             recordError("paintClass needs a recipe-bound selected part");
             return;
         }
-        PartRecipeBinding &binding = *m_partBindings[static_cast<std::size_t>(m_activePart)];
+        if (!m_partBindings[static_cast<std::size_t>(m_activePart)].known_) {
+            recordError(
+                "paintClass: an undo, redo or reload may have changed the selected part's "
+                "binding; APPLY its recipe again first"
+            );
+            return;
+        }
+        PartRecipeBinding &binding =
+            *m_partBindings[static_cast<std::size_t>(m_activePart)].binding_;
         const auto recipe = std::find_if(
             m_moduleView->recipes_.begin(),
             m_moduleView->recipes_.end(),
@@ -1344,6 +1408,138 @@ class Builder {
             m_classPaintMode = true;
         }
         emitClick(*aim);
+    }
+
+    // Drag the selected part's recipe handle @p handle to set-local cell
+    // @p target: press on the handle's `at` point, move to @p target, release.
+    // The target must lie on the screen plane through `at` (the same
+    // coordinate sum), which is the plane the editor reads the drag on. The
+    // model takes the handle's `drag` result at the press cell and then at
+    // @p target, replacing the recipe's cells as the editor does, and the
+    // RECIPES scroll shadow follows the list's re-pointing. A recipe error,
+    // with nothing emitted: outside transform mode, with the camera turned in
+    // this segment, with no binding on the selected part (or one an undo,
+    // redo, clear or reload may have changed), an unknown handle, or `at` /
+    // `drag` raising.
+    // A handle press lands on whatever owns the pixel under `at`: start from
+    // a handle the part's gizmo leaves uncovered.
+    void dragRecipeHandle(const std::string &handle, IRMath::ivec3 target) {
+        const std::string op = "dragRecipeHandle('" + handle + "')";
+        if (m_moduleView == nullptr) {
+            recordError(op + " needs a loaded module");
+            return;
+        }
+        if (m_heldBox || m_heldGizmo) {
+            recordError(op + " while a button is held in segment " + m_current.label_);
+            return;
+        }
+        if (!m_transformMode) {
+            recordError(op + " outside transform mode, where no recipe handle is drawn");
+            return;
+        }
+        if (m_cameraTurned) {
+            recordError(op + " with the camera turned in segment " + m_current.label_);
+            return;
+        }
+        if (m_activePart < 0) {
+            recordError(op + " needs an entity-scene part");
+            return;
+        }
+        PartBinding &shadow = m_partBindings[static_cast<std::size_t>(m_activePart)];
+        if (!shadow.known_ || !shadow.binding_) {
+            recordError(
+                op + (shadow.known_
+                          ? ": the selected part has no recipe binding"
+                          : ": an undo, redo or reload may have changed the selected part's "
+                            "binding; APPLY its recipe again first")
+            );
+            return;
+        }
+        const PartRecipeBinding &binding = *shadow.binding_;
+        const auto bound = std::find_if(
+            m_moduleView->recipes_.begin(),
+            m_moduleView->recipes_.end(),
+            [&](const ModuleRecipe &candidate) { return candidate.name_ == binding.recipe_; }
+        );
+        if (bound == m_moduleView->recipes_.end()) {
+            recordError(op + ": the bound recipe is not registered");
+            return;
+        }
+        const ModuleRecipe &recipe = *bound;
+        const std::size_t recipeIndex =
+            static_cast<std::size_t>(bound - m_moduleView->recipes_.begin());
+        const auto declared =
+            std::find_if(recipe.handles_.begin(), recipe.handles_.end(), [&](const auto &h) {
+                return h.name_ == handle;
+            });
+        if (declared == recipe.handles_.end()) {
+            recordError(op + ": recipe '" + recipe.name_ + "' declares no such handle");
+            return;
+        }
+        const std::size_t handleIndex =
+            static_cast<std::size_t>(declared - recipe.handles_.begin());
+        IRMath::vec3 at(0.0f);
+        std::string error;
+        if (!m_moduleView->handleAt_ || !m_moduleView->handleDrag_ ||
+            !m_moduleView->handleAt_(
+                recipeIndex,
+                handleIndex,
+                binding.values_,
+                m_model.size(),
+                at,
+                error
+            )) {
+            recordError(op + ": " + error);
+            return;
+        }
+        if (at.x + at.y + at.z != static_cast<float>(target.x + target.y + target.z)) {
+            recordError(
+                op + ": the target's coordinate sum differs from at's, so it is off the plane "
+                     "the drag is read on"
+            );
+            return;
+        }
+        // The editor rounds the cursor's plane point, which lands within a
+        // pixel of `at`; a component near a half cell could round either way.
+        const IRMath::ivec3 pressCell = IRMath::roundVec3HalfUp(at);
+        const IRMath::vec3 pressOffset = IRMath::abs(at - IRMath::vec3(pressCell));
+        if (IRMath::max(pressOffset.x, IRMath::max(pressOffset.y, pressOffset.z)) >
+            kRecipeHandlePressSlack) {
+            recordError(op + ": at is too close to a half cell to name the press cell");
+            return;
+        }
+        OccupancyModel model = m_model;
+        std::vector<float> values = binding.values_;
+        for (const IRMath::ivec3 &point : {pressCell, target}) {
+            std::vector<float> dragged;
+            if (!m_moduleView->handleDrag_(
+                    recipeIndex,
+                    handleIndex,
+                    binding.values_,
+                    m_model.size(),
+                    point,
+                    dragged,
+                    error
+                ) ||
+                (dragged != values &&
+                 !replaceRecipeCells(model, recipeIndex, binding.mask_, values, dragged, error))) {
+                recordError(op + ": " + error);
+                return;
+            }
+            values = std::move(dragged);
+        }
+        emitMove(m_model.origin() + at);
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
+        emitMove(m_model.origin() + IRMath::vec3(target));
+        // One idle frame so the drag reads the moved cursor before the release.
+        m_frame += kFramesPerClickStep;
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+        if (values != binding.values_ && m_recipeListSelected != static_cast<int>(recipeIndex)) {
+            m_recipeList.scrollIntoView(static_cast<int>(recipeIndex), kRecipeListSize.y);
+            m_recipeListSelected = static_cast<int>(recipeIndex);
+        }
+        m_model = std::move(model);
+        shadow.binding_->values_ = std::move(values);
     }
 
     void attachComponent(const std::string &name) {
@@ -1447,6 +1643,7 @@ class Builder {
     // after this; only occupancy asserts, which read the live reloaded set.
     void reload() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonO);
+        forgetBindings();
     }
 
     // Drag the PART SIZE sliders to @p size: the extent every later
@@ -1484,7 +1681,7 @@ class Builder {
         }
         OccupancyModel added(m_partSize, deriveSceneOrigin(m_partSize));
         m_partModels.push_back(added);
-        m_partBindings.emplace_back(std::nullopt);
+        m_partBindings.emplace_back();
         m_activePart = static_cast<int>(m_partModels.size()) - 1;
         m_model = std::move(added);
         reseatMirrors();
@@ -1599,7 +1796,7 @@ class Builder {
             recordError("undoRemovedPart needs a preceding part removal");
             return;
         }
-        chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        emitChord(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         const int index = m_removedPartModel->index_;
         m_partModels.insert(m_partModels.begin() + index, std::move(m_removedPartModel->model_));
         m_partBindings.insert(
@@ -1650,6 +1847,7 @@ class Builder {
 
     void clearEntityScene() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonBackspace);
+        forgetBindings();
     }
 
     void dragWorld(IRMath::vec3 from, IRMath::vec3 to) {
@@ -1958,6 +2156,35 @@ class Builder {
             m_recipe.gizmoTexelChecks_,
             GizmoTexelCheck{m_lastGizmoTexels, {}, std::move(name)},
             &evaluateGizmoTexelCheck
+        );
+    }
+
+    // Assert part @p partIndex's live binding holds @p value for @p param.
+    void expectRecipeValue(int partIndex, std::string param, float value, std::string name) {
+        addPredicateCheck(
+            m_recipe.recipeValueChecks_,
+            RecipeValueCheck{partIndex, std::move(param), value, std::move(name)},
+            &evaluateRecipeValueCheck
+        );
+    }
+
+    // Assert part @p partIndex's filled cells are exactly its bound recipe's
+    // cells at its bound values; a failure names the first differing cell.
+    void expectPartMatchesRecipe(int partIndex, std::string name) {
+        addPredicateCheck(
+            m_recipe.partRecipeMatchChecks_,
+            PartRecipeMatchCheck{partIndex, std::move(name)},
+            &evaluatePartRecipeMatchCheck
+        );
+    }
+
+    // Assert the selected part's recipe handle @p handle owns at least one
+    // main-canvas texel, or with @p drawn false, none.
+    void expectRecipeHandleTexels(std::string handle, bool drawn, std::string name) {
+        addPredicateCheck(
+            m_recipe.recipeHandleTexelChecks_,
+            RecipeHandleTexelCheck{std::move(handle), drawn, std::move(name)},
+            &evaluateRecipeHandleTexelCheck
         );
     }
 
@@ -2330,11 +2557,53 @@ class Builder {
         );
     }
 
+    // What the selected part's recipe binding is, as far as the model knows.
+    struct PartBinding {
+        std::optional<PartRecipeBinding> binding_;
+        bool known_ = true;
+    };
+
     struct RemovedPartModel {
         OccupancyModel model_;
         int index_ = 0;
-        std::optional<PartRecipeBinding> binding_;
+        PartBinding binding_;
     };
+
+    // After an undo, redo, clear or reload the editor holds bindings the
+    // model does not re-read.
+    void forgetBindings() {
+        for (PartBinding &binding : m_partBindings)
+            binding.known_ = false;
+    }
+
+    // Applies the editor's handle re-apply to @p model: a cell the recipe made
+    // only at @p oldValues is cleared, and every cell it makes at @p newValues
+    // is set.
+    bool replaceRecipeCells(
+        OccupancyModel &model,
+        std::size_t recipeIndex,
+        const std::vector<RecipeClassMaskEntry> &mask,
+        const std::vector<float> &oldValues,
+        const std::vector<float> &newValues,
+        std::string &error
+    ) const {
+        std::vector<RecipeCell> oldCells;
+        std::vector<RecipeCell> newCells;
+        if (!m_moduleView->evaluate_(recipeIndex, oldValues, model.size(), mask, oldCells, error) ||
+            !m_moduleView->evaluate_(recipeIndex, newValues, model.size(), mask, newCells, error))
+            return false;
+        for (const RecipeCell &cell : oldCells) {
+            const bool kept =
+                std::any_of(newCells.begin(), newCells.end(), [&cell](const RecipeCell &next) {
+                    return next.local_ == cell.local_;
+                });
+            if (!kept)
+                model.set(cell.local_, false);
+        }
+        for (const RecipeCell &cell : newCells)
+            model.set(cell.local_, true);
+        return true;
+    }
 
     void recordSelectedPartRemoval() {
         m_removedPartModel = RemovedPartModel{
@@ -2590,8 +2859,12 @@ class Builder {
     // only the wheel moves them.
     IRComponents::C_WidgetList m_recipeList;
     IRComponents::C_WidgetList m_componentList;
+    // The RECIPES row the live list has selected: row 0 at build, then the
+    // row applyRecipe clicked or a handle drag re-pointed it to.
+    int m_recipeListSelected = 0;
     std::vector<OccupancyModel> m_partModels;
-    std::vector<std::optional<PartRecipeBinding>> m_partBindings;
+    // Parallel to m_partModels.
+    std::vector<PartBinding> m_partBindings;
     int m_activePart = -1;
     std::optional<RemovedPartModel> m_removedPartModel;
     // The animation's non-active frames, indexed as the editor indexes them
@@ -2608,6 +2881,11 @@ class Builder {
     int m_lastSliderDragSegment = 0;
     bool m_eraseMode = false;
     bool m_classPaintMode = false;
+    // G toggles it; the editor starts with it off.
+    bool m_transformMode = false;
+    // Q or E turned the camera in the current segment; the next segment opens
+    // at the baseline yaw.
+    bool m_cameraTurned = false;
     SymmetryState m_symmetry;
     // The box a holdBox pressed and no releaseBox has released yet.
     std::optional<HeldBox> m_heldBox;
