@@ -97,6 +97,14 @@ The qualification fixture also exposes independent workload controls:
   rigid DETACHED source faces, or DETACHED_REVOXELIZE. It is rejected for direct
   SDF because those modes describe occupancy presentation, not analytic shapes.
 
+The [macOS/Metal presentation qualification](../pr-screenshots/claude/4762-sdf-presentation-qualification/README.md)
+crosses those routes with moving root/parent transforms and full-light versus
+local-light-only controls. GRID retains its coloured subjects and local-light
+response. Both detached routes currently lose the subjects when sun and AO are
+disabled; their full-light arms retain only dark silhouettes or projected-shadow
+evidence. Treat detached baked occupancy as unqualified for lit game geometry
+until that presentation-lighting failure is resolved.
+
 Every run prints one `SDF-OCCUPANCY` witness even in Release. It records startup
 bake wall time, dense slots, occupied cells and dense-record payload. These are
 not process RSS or driver residency; the profile manifest retains them beside
@@ -281,7 +289,8 @@ and does not establish a general speed advantage for either representation.
 
 Those measurements support a narrow choice today: bake a stable built-in recipe
 when it needs ordinary voxel editing, shared GRID lighting/occlusion, asset
-serialization, or an explicitly voxelized detached silhouette. Keep direct SDF
+serialization, or an explicitly voxelized GRID silhouette. Detached baked
+presentation does not yet qualify as ordinary lit geometry. Keep direct SDF
 for unlit/procedural tools, transient fields, and measured primitive-heavy scenes
 where descriptor compactness or analytic presentation is the requirement. The
 baseline does not justify automatic migration: it omitted startup/RSS/driver

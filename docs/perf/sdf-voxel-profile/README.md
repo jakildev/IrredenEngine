@@ -68,3 +68,10 @@ The [AC Release qualification slice](ac-release-qualification/README.md)
 retains matched density, 16-copy overlap and moving-transform measurements. It
 records an overlap-specific baked cost increase while leaving Windows/OpenGL
 and process/driver residency explicitly open.
+
+The [native presentation qualification](../../pr-screenshots/claude/4762-sdf-presentation-qualification/README.md)
+crosses moving root/parent transforms with GRID, rigid DETACHED source faces and
+detached revoxelization. GRID retains lit coloured subjects and isolated local
+lighting; both detached routes currently lose their subject presentation in the
+local-light-only arm, so those captures are diagnostic failures rather than
+approved baselines.
