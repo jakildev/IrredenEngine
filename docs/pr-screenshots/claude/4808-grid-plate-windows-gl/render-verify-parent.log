@@ -47,16 +47,16 @@ compare:compare_yaw0                     FAIL      99.9992    240    54.63
 compare:compare_yaw_q                    FAIL      99.9992    240    54.25
 impulse:impulse_midspin                  SKIP     no windows-debug reference yet
 impulse:impulse_settled                  SKIP     no windows-debug reference yet
-floor_selfshadow:floor_selfshadow_offwide:shadow PASS     
-shadow_overlay_floor:shadow_overlay_floor:shadow PASS     
-world_placed_cast:shadow_overlay_floor:shadow PASS     
-gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS     
-grid_orbit_facing:grid_orbit_facing:normal-facing PASS     
-grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS     
-grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS     
-grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS     
-grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS     
-grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS     
+floor_selfshadow:floor_selfshadow_offwide:shadow PASS
+shadow_overlay_floor:shadow_overlay_floor:shadow PASS
+world_placed_cast:shadow_overlay_floor:shadow PASS
+gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS
+grid_orbit_facing:grid_orbit_facing:normal-facing PASS
+grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS
 cylinder_receiver:cylinder_receiver_000  SKIP     no windows-debug reference yet
 cylinder_receiver:cylinder_receiver_045  SKIP     no windows-debug reference yet
 cylinder_receiver:cylinder_receiver_090  SKIP     no windows-debug reference yet
