@@ -341,6 +341,7 @@ bool g_eraseMode = false;
 // a part's move and rotate gizmo and the starter rig's joint gizmos, so J-mode
 // joint placement and FK posing need it too. Toggled with G; starts OFF.
 bool g_transformMode = false;
+bool g_classPaintMode = false;
 IRSystem::SystemId g_gizmoHoverSystem = IRSystem::kNullSystemId;
 IRSystem::SystemId g_gizmoDragSystem = IRSystem::kNullSystemId;
 
@@ -1702,8 +1703,17 @@ void applyEdit(
     }
 }
 
-void commitStroke(bool derivedStateAlreadySynced = false) {
-    if (g_editor.pendingStroke_.empty()) {
+struct RecipeBindingChange {
+    std::string partId_;
+    std::optional<PartRecipeBinding> before_;
+    std::optional<PartRecipeBinding> after_;
+};
+
+void commitStroke(
+    bool derivedStateAlreadySynced = false,
+    std::optional<RecipeBindingChange> bindingChange = std::nullopt
+) {
+    if (g_editor.pendingStroke_.empty() && !bindingChange) {
         return;
     }
     std::vector<std::pair<IREntity::EntityId, std::string>> editedSets;
@@ -1725,7 +1735,7 @@ void commitStroke(bool derivedStateAlreadySynced = false) {
         editedSets.emplace_back(edit.voxelSet_, std::move(partId));
     }
     auto edits = std::make_shared<std::vector<UndoEdit>>(std::move(g_editor.pendingStroke_));
-    auto applyEdits = [edits, editedSets](bool redo) {
+    auto applyEdits = [edits, editedSets, bindingChange](bool redo) {
         std::unordered_map<IREntity::EntityId, IREntity::EntityId> liveEntities;
         liveEntities.reserve(editedSets.size());
         for (const auto &[originalEntity, partId] : editedSets) {
@@ -1768,6 +1778,14 @@ void commitStroke(bool derivedStateAlreadySynced = false) {
         }
         for (IREntity::EntityId entity : touchedSets) {
             IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
+        }
+        if (bindingChange) {
+            for (EditorPart &part : g_entityScene.parts()) {
+                if (part.id_ == bindingChange->partId_) {
+                    part.recipeBinding_ = redo ? bindingChange->after_ : bindingChange->before_;
+                    break;
+                }
+            }
         }
     };
     IRPrefab::Undo::push({
@@ -2365,10 +2383,29 @@ void applyRecipe(int recipeIndex) {
     for (std::size_t i = 0; i < recipe.params_.size(); ++i)
         values.push_back(IRPrefab::Widget::sliderValue(g_recipeSliders[i]));
     auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+    EditorPart *part = g_entitySceneMode ? g_entityScene.selectedPart() : nullptr;
+    const std::optional<PartRecipeBinding> beforeBinding =
+        part != nullptr ? part->recipeBinding_ : std::nullopt;
+    std::optional<PartRecipeBinding> afterBinding;
+    if (part != nullptr && part->entity_ == g_sceneVoxelSetEntity) {
+        PartRecipeBinding binding;
+        binding.recipe_ = recipe.name_;
+        binding.values_ = values;
+        binding.fallbackColor_ = kPaletteColors[g_editor.activeSwatchIdx_];
+        if (beforeBinding && beforeBinding->recipe_ == recipe.name_)
+            binding.mask_ = beforeBinding->mask_;
+        afterBinding = std::move(binding);
+    }
     std::vector<RecipeCell> cells;
     std::string error;
-    if (!g_moduleHost
-             .evaluate(static_cast<std::size_t>(recipeIndex), values, set.size_, cells, error)) {
+    if (!g_moduleHost.evaluate(
+            static_cast<std::size_t>(recipeIndex),
+            values,
+            set.size_,
+            afterBinding ? afterBinding->mask_ : std::vector<RecipeClassMaskEntry>{},
+            cells,
+            error
+        )) {
         IR_LOG_ERROR("Recipe apply failed: {}", error);
         return;
     }
@@ -2395,7 +2432,12 @@ void applyRecipe(int recipeIndex) {
         );
         ++written;
     }
-    commitStroke();
+    if (part != nullptr && afterBinding) {
+        part->recipeBinding_ = *afterBinding;
+        commitStroke(false, RecipeBindingChange{part->id_, beforeBinding, std::move(afterBinding)});
+    } else {
+        commitStroke();
+    }
     std::string valueText;
     for (std::size_t i = 0; i < values.size(); ++i)
         valueText +=
@@ -2407,6 +2449,108 @@ void applyRecipe(int recipeIndex) {
         written,
         skipped
     );
+}
+
+const ModuleRecipe *boundRecipe(const EditorPart &part, std::size_t &index) {
+    if (!part.recipeBinding_)
+        return nullptr;
+    const auto &recipes = g_moduleHost.recipes();
+    const auto found = std::find_if(recipes.begin(), recipes.end(), [&](const auto &recipe) {
+        return recipe.name_ == part.recipeBinding_->recipe_;
+    });
+    if (found == recipes.end())
+        return nullptr;
+    index = static_cast<std::size_t>(found - recipes.begin());
+    return &*found;
+}
+
+bool classPaintAppliesTo(IREntity::EntityId entity) {
+    if (!g_classPaintMode || !g_entitySceneMode || g_editor.activeSwatchIdx_ < 0)
+        return false;
+    const EditorPart *part = g_entityScene.selectedPart();
+    if (part == nullptr || part->entity_ != entity || !part->recipeBinding_)
+        return false;
+    std::size_t recipeIndex = 0;
+    const ModuleRecipe *recipe = boundRecipe(*part, recipeIndex);
+    return recipe != nullptr &&
+           g_editor.activeSwatchIdx_ < static_cast<int>(recipe->classes_.size());
+}
+
+void paintSelectedRecipeClass(ivec3 local) {
+    EditorPart *part = g_entityScene.selectedPart();
+    if (part == nullptr || !part->recipeBinding_)
+        return;
+    std::size_t recipeIndex = 0;
+    const ModuleRecipe *recipe = boundRecipe(*part, recipeIndex);
+    if (recipe == nullptr || g_editor.activeSwatchIdx_ < 0 ||
+        g_editor.activeSwatchIdx_ >= static_cast<int>(recipe->classes_.size()))
+        return;
+
+    const PartRecipeBinding before = *part->recipeBinding_;
+    PartRecipeBinding after = before;
+    const std::string &className =
+        recipe->classes_[static_cast<std::size_t>(g_editor.activeSwatchIdx_)];
+    auto entry = std::find_if(after.mask_.begin(), after.mask_.end(), [&](const auto &candidate) {
+        return candidate.local_ == local;
+    });
+    if (entry == after.mask_.end())
+        after.mask_.push_back({local, className});
+    else
+        entry->className_ = className;
+
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
+    std::vector<RecipeCell> oldCells;
+    std::vector<RecipeCell> newCells;
+    std::string error;
+    if (!g_moduleHost
+             .evaluate(recipeIndex, before.values_, set.size_, before.mask_, oldCells, error) ||
+        !g_moduleHost
+             .evaluate(recipeIndex, after.values_, set.size_, after.mask_, newCells, error)) {
+        IR_LOG_ERROR("Class paint failed: {}", error);
+        return;
+    }
+    auto cellAt = [](const std::vector<RecipeCell> &cells, ivec3 position) {
+        return std::find_if(cells.begin(), cells.end(), [&](const auto &cell) {
+            return cell.local_ == position;
+        });
+    };
+    for (const RecipeCell &oldCell : oldCells) {
+        if (cellAt(newCells, oldCell.local_) != newCells.end())
+            continue;
+        if (oldCell.local_.x < 0 || oldCell.local_.x >= set.size_.x || oldCell.local_.y < 0 ||
+            oldCell.local_.y >= set.size_.y || oldCell.local_.z < 0 ||
+            oldCell.local_.z >= set.size_.z)
+            continue;
+        const std::size_t flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(oldCell.local_, set.size_));
+        applyEditRaw(part->entity_, set, oldCell.local_, flat, false, after.fallbackColor_, 0);
+    }
+    for (const RecipeCell &newCell : newCells) {
+        const auto oldCell = cellAt(oldCells, newCell.local_);
+        if (oldCell != oldCells.end() &&
+            oldCell->color_.has_value() == newCell.color_.has_value()) {
+            if (!oldCell->color_ ||
+                oldCell->color_->toPackedRGBA() == newCell.color_->toPackedRGBA())
+                continue;
+        }
+        if (newCell.local_.x < 0 || newCell.local_.x >= set.size_.x || newCell.local_.y < 0 ||
+            newCell.local_.y >= set.size_.y || newCell.local_.z < 0 ||
+            newCell.local_.z >= set.size_.z)
+            continue;
+        const std::size_t flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(newCell.local_, set.size_));
+        applyEditRaw(
+            part->entity_,
+            set,
+            newCell.local_,
+            flat,
+            true,
+            newCell.color_.value_or(after.fallbackColor_),
+            0
+        );
+    }
+    part->recipeBinding_ = after;
+    commitStroke(false, RecipeBindingChange{part->id_, before, after});
 }
 
 void updateRecipesPanel() {
@@ -3086,6 +3230,30 @@ bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual) {
     return count == check.expected_;
 }
 
+bool evaluatePartClassMaskCheck(const void *context, std::string &actual) {
+    const PartClassMaskCheck &check = *static_cast<const PartClassMaskCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)];
+    const RecipeClassMaskEntry *entry = nullptr;
+    if (part.recipeBinding_) {
+        const auto found = std::find_if(
+            part.recipeBinding_->mask_.begin(),
+            part.recipeBinding_->mask_.end(),
+            [&](const auto &candidate) { return candidate.local_ == check.local_; }
+        );
+        if (found != part.recipeBinding_->mask_.end())
+            entry = &*found;
+    }
+    const std::optional<std::string> observed =
+        entry != nullptr ? std::optional<std::string>(entry->className_) : std::nullopt;
+    actual = "class=" + observed.value_or("<none>") + " want=" + check.expected_.value_or("<none>");
+    return observed == check.expected_;
+}
+
 bool evaluatePartEditableCheck(const void *context, std::string &actual) {
     const PartEditableCheck &check = *static_cast<const PartEditableCheck *>(context);
     if (check.partIndex_ < 0 ||
@@ -3712,8 +3880,8 @@ std::optional<std::string> resolveRecipeExpect(
     std::vector<RecipeCell> applied;
     std::vector<RecipeCell> atDefaults;
     std::string error;
-    if (!g_moduleHost.evaluate(recipeIndex, sessionValues, size, applied, error) ||
-        !g_moduleHost.evaluate(recipeIndex, defaultValues, size, atDefaults, error))
+    if (!g_moduleHost.evaluate(recipeIndex, sessionValues, size, {}, applied, error) ||
+        !g_moduleHost.evaluate(recipeIndex, defaultValues, size, {}, atDefaults, error))
         return error;
     for (const RecipeCell &cell : applied)
         spec.appliedCells_.push_back(cell.local_);
@@ -4351,6 +4519,19 @@ void initSystems() {
                     status = ctrlNow ? "ERASE FACE" : (shiftNow ? "ERASE LINE" : "ERASE BOX");
                 } else if (IRVoxelEditor::g_bonePaint.active_) {
                     status = "BONE";
+                } else if (IRVoxelEditor::g_classPaintMode) {
+                    const IRVoxelEditor::EditorPart *part =
+                        IRVoxelEditor::g_entityScene.selectedPart();
+                    std::size_t recipeIndex = 0;
+                    const IRVoxelEditor::ModuleRecipe *recipe =
+                        part != nullptr ? IRVoxelEditor::boundRecipe(*part, recipeIndex) : nullptr;
+                    status =
+                        recipe != nullptr && IRVoxelEditor::g_editor.activeSwatchIdx_ <
+                                                 static_cast<int>(recipe->classes_.size())
+                            ? "CLASS " +
+                                  recipe->classes_[static_cast<std::size_t>(IRVoxelEditor::g_editor
+                                                                                .activeSwatchIdx_)]
+                            : "CLASS";
                 } else {
                     status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
                 }
@@ -4493,8 +4674,13 @@ void initSystems() {
                     // target the cells adjacent to the hit face. Latch Alt here
                     // so the HELD end cell resolves in the same frame's sense.
                     IRVoxelEditor::g_fillTool.dragInverted_ = altDown;
-                    const ivec3 startPos =
-                        IRVoxelEditor::editTargetCell(*hit, IRVoxelEditor::g_eraseMode, altDown);
+                    const ivec3 startPos = IRVoxelEditor::classPaintAppliesTo(hit->entity_)
+                                               ? hit->voxelPos_
+                                               : IRVoxelEditor::editTargetCell(
+                                                     *hit,
+                                                     IRVoxelEditor::g_eraseMode,
+                                                     altDown
+                                                 );
                     IRVoxelEditor::g_fillTool.dragging_ = true;
                     IRVoxelEditor::g_fillTool.dragStartWorld_ = startPos;
                     IRVoxelEditor::g_fillTool.dragStartEntity_ = hit->entity_;
@@ -4507,11 +4693,13 @@ void initSystems() {
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD)) {
                 const auto hit = IRVoxelEditor::pickEditable();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
-                    const ivec3 endPos = IRVoxelEditor::editTargetCell(
-                        *hit,
-                        IRVoxelEditor::g_eraseMode,
-                        IRVoxelEditor::g_fillTool.dragInverted_
-                    );
+                    const ivec3 endPos = IRVoxelEditor::classPaintAppliesTo(hit->entity_)
+                                             ? hit->voxelPos_
+                                             : IRVoxelEditor::editTargetCell(
+                                                   *hit,
+                                                   IRVoxelEditor::g_eraseMode,
+                                                   IRVoxelEditor::g_fillTool.dragInverted_
+                                               );
                     IRVoxelEditor::g_fillTool.lastEndWorld_ = endPos;
                     const bool shiftHeld =
                         IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
@@ -4543,7 +4731,15 @@ void initSystems() {
                 // were already captured in the hit-cell frame at PRESS / HELD.
                 const bool place = !IRVoxelEditor::g_eraseMode;
 
-                if (startPos == endPos) {
+                const bool classPaint = IRVoxelEditor::classPaintAppliesTo(targetEntity);
+                if (classPaint && startPos == endPos) {
+                    ivec3 local{};
+                    std::size_t flat = 0;
+                    if (IRVoxelEditor::worldVoxelToLocal(set, gpos, startPos, local, flat))
+                        IRVoxelEditor::paintSelectedRecipeClass(local);
+                } else if (classPaint) {
+                    return;
+                } else if (startPos == endPos) {
                     ivec3 local{};
                     std::size_t flat = 0;
                     if (IRVoxelEditor::worldVoxelToLocal(set, gpos, startPos, local, flat))
@@ -5407,6 +5603,20 @@ void initCommands() {
         "TOGGLE ERASE-FILL MODE"
     );
 
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonU,
+        []() {
+            IRVoxelEditor::g_classPaintMode = !IRVoxelEditor::g_classPaintMode;
+            IR_LOG_INFO("Class paint mode: {}", IRVoxelEditor::g_classPaintMode ? "ON" : "OFF");
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "CLASS PAINT",
+        "TOGGLE RECIPE CLASS PAINT MODE"
+    );
+
     // G — toggle transform mode: gizmo handles take clicks only while it is on.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -5947,7 +6157,8 @@ void initCommands() {
             if (IRVoxelEditor::g_entitySceneMode) {
                 const auto result = IRVoxelEditor::g_entityScene.save(
                     std::string(IRVoxelEditor::kSceneSaveDir),
-                    std::string(IRVoxelEditor::kSceneBaseName)
+                    std::string(IRVoxelEditor::kSceneBaseName),
+                    IRVoxelEditor::g_moduleHost.recipes()
                 );
                 if (result.ok_) {
                     IR_LOG_INFO(
@@ -6031,7 +6242,8 @@ void initCommands() {
                 const auto loaded = IRVoxelEditor::g_entityScene.load(
                     IRVoxelEditor::g_moduleHost.script(),
                     std::string(IRVoxelEditor::kSceneSaveDir),
-                    std::string(IRVoxelEditor::kSceneBaseName)
+                    std::string(IRVoxelEditor::kSceneBaseName),
+                    IRVoxelEditor::g_moduleHost.recipes()
                 );
                 if (!loaded.ok_) {
                     IR_LOG_ERROR("Entity scene load failed: {}", loaded.error_);

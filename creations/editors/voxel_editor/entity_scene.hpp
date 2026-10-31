@@ -18,11 +18,14 @@
 #include <irreden/voxel/grid_rotation.hpp>
 
 #include "component_records.hpp"
+#include "module_session_view.hpp"
 
 #include <algorithm>
 #include <charconv>
 #include <cstddef>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -48,6 +51,7 @@ struct EditorPart {
     int groupId_ = 0;
     IRMath::vec3 groupAxis_ = IRMath::vec3(0.0f, 0.0f, 1.0f);
     int rotationalOrder_ = 0;
+    std::optional<PartRecipeBinding> recipeBinding_;
 };
 
 // The root as a component-attach target; a part is its index.
@@ -155,6 +159,10 @@ class EntityScene {
     }
 
     const std::vector<EditorPart> &parts() const {
+        return m_parts;
+    }
+
+    std::vector<EditorPart> &parts() {
         return m_parts;
     }
 
@@ -367,7 +375,8 @@ class EntityScene {
                 source.components_,
                 groupId,
                 groupAxis,
-                rotationalOrder
+                rotationalOrder,
+                source.recipeBinding_
             };
             applyBand(clone);
             applyTierOverride(entity);
@@ -555,7 +564,11 @@ class EntityScene {
         m_previewSourceEntity = IREntity::kNullEntity;
     }
 
-    EntitySceneResult save(const std::string &dir, const std::string &baseName) const {
+    EntitySceneResult save(
+        const std::string &dir,
+        const std::string &baseName,
+        const std::vector<ModuleRecipe> &recipes = {}
+    ) const {
         if (!active()) {
             return {false, "entity scene is not active"};
         }
@@ -611,17 +624,154 @@ class EntityScene {
                 IRPrefab::Prefab::writeManifest(manifestPath, description)) {
             return {false, *error};
         }
+        const std::string sidecarPath = IRUtility::joinPath(dir, baseName, ".recipes.lua");
+        const bool hasBindings = std::any_of(m_parts.begin(), m_parts.end(), [](const auto &part) {
+            return part.recipeBinding_.has_value();
+        });
+        if (!hasBindings) {
+            std::error_code removeError;
+            std::filesystem::remove(sidecarPath, removeError);
+            return {true, {}};
+        }
+        std::ofstream sidecar(sidecarPath, std::ios::trunc);
+        if (!sidecar)
+            return {false, "could not write recipe sidecar '" + sidecarPath + "'"};
+        sidecar << "return { version = 1, parts = {\n";
+        sidecar << std::setprecision(9);
+        for (const EditorPart &part : m_parts) {
+            if (!part.recipeBinding_)
+                continue;
+            const PartRecipeBinding &binding = *part.recipeBinding_;
+            const auto recipe = std::find_if(recipes.begin(), recipes.end(), [&](const auto &item) {
+                return item.name_ == binding.recipe_;
+            });
+            if (recipe == recipes.end())
+                continue;
+            sidecar << "  [\"" << part.id_ << "\"] = { recipe = \"" << binding.recipe_
+                    << "\", values = {";
+            for (std::size_t i = 0; i < recipe->params_.size() && i < binding.values_.size(); ++i)
+                sidecar << (i == 0 ? " " : ", ") << recipe->params_[i].name_ << " = "
+                        << binding.values_[i];
+            sidecar << " }, fallback = { " << static_cast<int>(binding.fallbackColor_.red_) << ", "
+                    << static_cast<int>(binding.fallbackColor_.green_) << ", "
+                    << static_cast<int>(binding.fallbackColor_.blue_) << ", "
+                    << static_cast<int>(binding.fallbackColor_.alpha_) << " }, mask = {";
+            for (const RecipeClassMaskEntry &entry : binding.mask_) {
+                sidecar << " { " << entry.local_.x << ", " << entry.local_.y << ", "
+                        << entry.local_.z << ", \"" << entry.className_ << "\" },";
+            }
+            sidecar << " } },\n";
+        }
+        sidecar << "} }\n";
+        if (!sidecar)
+            return {false, "failed to write recipe sidecar '" + sidecarPath + "'"};
         return {true, {}};
     }
 
     // A failed load leaves the live scene as it was.
-    EntitySceneResult
-    load(IRScript::LuaScript &script, const std::string &dir, const std::string &baseName) {
+    EntitySceneResult load(
+        IRScript::LuaScript &script,
+        const std::string &dir,
+        const std::string &baseName,
+        const std::vector<ModuleRecipe> &recipes = {}
+    ) {
         const std::string manifestPath = IRUtility::joinPath(dir, baseName, ".prefab.lua");
         IRPrefab::Prefab::ManifestResult manifest =
             IRPrefab::Prefab::readManifest(script, manifestPath);
         if (!manifest.ok()) {
             return {false, manifest.error_};
+        }
+
+        std::vector<std::pair<std::string, PartRecipeBinding>> stagedBindings;
+        const std::string sidecarPath = IRUtility::joinPath(dir, baseName, ".recipes.lua");
+        if (std::filesystem::is_regular_file(sidecarPath)) {
+            sol::protected_function_result result =
+                script.lua().safe_script_file(sidecarPath, sol::script_pass_on_error);
+            if (!result.valid()) {
+                const sol::error error = result;
+                return {false, "recipe sidecar load failed: " + std::string(error.what())};
+            }
+            const sol::object returned = result;
+            if (returned.get_type() != sol::type::table)
+                return {false, "recipe sidecar must return a table"};
+            const sol::table root = returned.as<sol::table>();
+            const sol::optional<int> version = root["version"];
+            const sol::object partsObject = root["parts"];
+            if (!version || *version != 1 || partsObject.get_type() != sol::type::table)
+                return {false, "recipe sidecar needs version 1 and a parts table"};
+            const sol::table parts = partsObject.as<sol::table>();
+            for (const auto &partEntry : parts) {
+                const sol::optional<std::string> partId =
+                    partEntry.first.as<sol::optional<std::string>>();
+                if (!partId || partEntry.second.get_type() != sol::type::table)
+                    continue;
+                const sol::table stored = partEntry.second.as<sol::table>();
+                const sol::optional<std::string> recipeName = stored["recipe"];
+                const auto recipe =
+                    recipeName ? std::find_if(
+                                     recipes.begin(),
+                                     recipes.end(),
+                                     [&](const auto &item) { return item.name_ == *recipeName; }
+                                 )
+                               : recipes.end();
+                if (recipe == recipes.end()) {
+                    IR_LOG_WARN(
+                        "Recipe binding for part '{}' dropped: recipe '{}' is not registered",
+                        *partId,
+                        recipeName.value_or("<missing>")
+                    );
+                    continue;
+                }
+                PartRecipeBinding binding;
+                binding.recipe_ = *recipeName;
+                const sol::object valuesObject = stored["values"];
+                const sol::table values = valuesObject.get_type() == sol::type::table
+                                              ? valuesObject.as<sol::table>()
+                                              : script.lua().create_table();
+                for (const RecipeParam &param : recipe->params_)
+                    binding.values_.push_back(values.get_or(param.name_, param.default_));
+                const sol::object fallbackObject = stored["fallback"];
+                if (fallbackObject.get_type() == sol::type::table) {
+                    const sol::table fallback = fallbackObject.as<sol::table>();
+                    binding.fallbackColor_ = IRMath::Color{
+                        static_cast<std::uint8_t>(fallback.get_or(1, 255)),
+                        static_cast<std::uint8_t>(fallback.get_or(2, 255)),
+                        static_cast<std::uint8_t>(fallback.get_or(3, 255)),
+                        static_cast<std::uint8_t>(fallback.get_or(4, 255))
+                    };
+                }
+                const sol::object maskObject = stored["mask"];
+                if (maskObject.get_type() == sol::type::table) {
+                    const sol::table mask = maskObject.as<sol::table>();
+                    for (std::size_t i = 1; i <= mask.size(); ++i) {
+                        const sol::object entryObject = mask[i];
+                        if (entryObject.get_type() != sol::type::table)
+                            continue;
+                        const sol::table entry = entryObject.as<sol::table>();
+                        const sol::optional<std::string> className = entry[4];
+                        if (!className || std::find(
+                                              recipe->classes_.begin(),
+                                              recipe->classes_.end(),
+                                              *className
+                                          ) == recipe->classes_.end()) {
+                            IR_LOG_WARN(
+                                "Recipe binding for part '{}' dropped an unknown class",
+                                *partId
+                            );
+                            continue;
+                        }
+                        binding.mask_.push_back(
+                            {IRMath::ivec3(
+                                 entry.get_or(1, 0),
+                                 entry.get_or(2, 0),
+                                 entry.get_or(3, 0)
+                             ),
+                             *className}
+                        );
+                    }
+                }
+                stagedBindings.emplace_back(*partId, std::move(binding));
+            }
         }
 
         std::vector<std::optional<IRAsset::DenseVoxelSet>> stagedVoxelSets;
@@ -701,6 +851,12 @@ class EntityScene {
                     description.resident_
                 }
             );
+            const auto binding =
+                std::find_if(stagedBindings.begin(), stagedBindings.end(), [&](const auto &entry) {
+                    return entry.first == description.id_;
+                });
+            if (binding != stagedBindings.end())
+                stagedParts.back().recipeBinding_ = binding->second;
             applyBand(stagedParts.back());
             applyTierOverride(entity);
             stageRotationModeReconcile(entity, description.rotationMode_, description.canvasSize_);
