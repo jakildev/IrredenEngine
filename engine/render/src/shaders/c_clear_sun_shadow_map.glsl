@@ -20,13 +20,16 @@ void main() {
     if (linearIdx >= kTotalTexels) {
         return;
     }
-    if (linearIdx == 0) sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))] = 0u;
-    if (linearIdx == 0) sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))] = 0u;
-    if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))] = 0u;
-    if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] = 0u;
+    const uint boundWords = uint(sunDepthBuf.length());
+    const uint capacity = sourceFaceCapacity(boundWords);
+    // The capacity word beside the header belongs to the allocator and survives the clear.
+    if (linearIdx == 0) sunDepthBuf[sourceFaceHeaderIndex(boundWords)] = 0u;
+    if (linearIdx == 0) sunDepthBuf[sourceFaceSpillCounterIndex(capacity)] = 0u;
+    if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)] = 0u;
+    if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyReadyIndex(capacity)] = 0u;
     if (uint(linearIdx) < kSourceFaceTileCount) {
         sunDepthBuf[sourceFaceTileBase(uint(linearIdx))] = 0u;
-        sunDepthBuf[kSourceFaceSpillHeadOffset + uint(linearIdx)] = 0xFFFFFFFFu;
+        sunDepthBuf[sourceFaceSpillHeadIndex(capacity, uint(linearIdx))] = 0xFFFFFFFFu;
     }
     sunDepthBuf[linearIdx + kSourceFaceFallbackOffset] = 0xFFFFFFFFu;
     sunDepthBuf[linearIdx] = 0xFFFFFFFFu;

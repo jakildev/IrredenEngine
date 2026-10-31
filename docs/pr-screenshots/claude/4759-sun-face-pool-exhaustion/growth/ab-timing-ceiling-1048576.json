@@ -1,0 +1,3824 @@
+{
+  "pairs": 5,
+  "budget": 1.1,
+  "builds": {
+    "baseline": {
+      "build": "/private/tmp/pool4-4798/baseline-build",
+      "extra": []
+    },
+    "growth": {
+      "build": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+      "extra": []
+    }
+  },
+  "cells": {
+    "canvas-control": {
+      "target": "IRCanvasStress",
+      "args": [
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--auto-profile",
+        "--profile-frames",
+        "360",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60"
+      ],
+      "order": "alternating",
+      "samples": {
+        "baseline": [
+          {
+            "frame_avg": 71.47,
+            "frame_p99": 94.29,
+            "steady_avg": 71.56,
+            "steady_p99": 94.29,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 42.925,
+              "commandBufferSpans": 42.925
+            },
+            "gpu_stages": {
+              "canvasClear": 0.054,
+              "voxelCompact": 0.013,
+              "voxelStage1": 0.028,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.02,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.02,
+              "computeSunShadow": 0.049,
+              "computeLightVolume": 0.046,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.467,
+              "entityCanvasToFb": 6.626,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/baseline/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          },
+          {
+            "frame_avg": 72.87,
+            "frame_p99": 78.26,
+            "steady_avg": 72.71,
+            "steady_p99": 75.78,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 43.86,
+              "commandBufferSpans": 43.86
+            },
+            "gpu_stages": {
+              "canvasClear": 0.056,
+              "voxelCompact": 0.013,
+              "voxelStage1": 0.028,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.02,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.02,
+              "computeSunShadow": 0.049,
+              "computeLightVolume": 0.045,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.05,
+              "cardinalSurfaceFb": 0.461,
+              "entityCanvasToFb": 6.782,
+              "fbToScreen": 0.032
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/baseline/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          },
+          {
+            "frame_avg": 73.44,
+            "frame_p99": 81.43,
+            "steady_avg": 72.84,
+            "steady_p99": 75.94,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 44.284,
+              "commandBufferSpans": 44.284
+            },
+            "gpu_stages": {
+              "canvasClear": 0.055,
+              "voxelCompact": 0.013,
+              "voxelStage1": 0.028,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.02,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.02,
+              "computeSunShadow": 0.05,
+              "computeLightVolume": 0.045,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.465,
+              "entityCanvasToFb": 6.838,
+              "fbToScreen": 0.032
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/baseline/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          },
+          {
+            "frame_avg": 72.69,
+            "frame_p99": 76.68,
+            "steady_avg": 72.46,
+            "steady_p99": 76.21,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 43.631,
+              "commandBufferSpans": 43.631
+            },
+            "gpu_stages": {
+              "canvasClear": 0.054,
+              "voxelCompact": 0.013,
+              "voxelStage1": 0.028,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.02,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.02,
+              "computeSunShadow": 0.049,
+              "computeLightVolume": 0.046,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.05,
+              "cardinalSurfaceFb": 0.458,
+              "entityCanvasToFb": 6.896,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/baseline/pair-3",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          },
+          {
+            "frame_avg": 73.2,
+            "frame_p99": 82.66,
+            "steady_avg": 72.8,
+            "steady_p99": 79.41,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 44.099,
+              "commandBufferSpans": 44.099
+            },
+            "gpu_stages": {
+              "canvasClear": 0.057,
+              "voxelCompact": 0.013,
+              "voxelStage1": 0.028,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.02,
+              "computeVoxelAO": 0.021,
+              "bakeSunShadowMap": 0.02,
+              "computeSunShadow": 0.049,
+              "computeLightVolume": 0.045,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.463,
+              "entityCanvasToFb": 6.824,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/baseline/pair-4",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          }
+        ],
+        "growth": [
+          {
+            "frame_avg": 72.62,
+            "frame_p99": 78.52,
+            "steady_avg": 72.37,
+            "steady_p99": 75.71,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 43.734,
+              "commandBufferSpans": 43.734
+            },
+            "gpu_stages": {
+              "canvasClear": 0.029,
+              "voxelCompact": 0.014,
+              "voxelStage1": 0.031,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.019,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.023,
+              "computeSunShadow": 0.048,
+              "computeLightVolume": 0.046,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.455,
+              "entityCanvasToFb": 6.914,
+              "fbToScreen": 0.031
+            },
+            "attempts": 2,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/growth/pair-0-retry2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          },
+          {
+            "frame_avg": 72.7,
+            "frame_p99": 76.55,
+            "steady_avg": 72.31,
+            "steady_p99": 75.83,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 43.659,
+              "commandBufferSpans": 43.659
+            },
+            "gpu_stages": {
+              "canvasClear": 0.029,
+              "voxelCompact": 0.014,
+              "voxelStage1": 0.031,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.019,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.023,
+              "computeSunShadow": 0.048,
+              "computeLightVolume": 0.046,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.456,
+              "entityCanvasToFb": 6.888,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/growth/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          },
+          {
+            "frame_avg": 72.86,
+            "frame_p99": 75.98,
+            "steady_avg": 72.59,
+            "steady_p99": 75.75,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 43.886,
+              "commandBufferSpans": 43.886
+            },
+            "gpu_stages": {
+              "canvasClear": 0.029,
+              "voxelCompact": 0.014,
+              "voxelStage1": 0.032,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.019,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.023,
+              "computeSunShadow": 0.048,
+              "computeLightVolume": 0.046,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.45,
+              "entityCanvasToFb": 6.948,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/growth/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          },
+          {
+            "frame_avg": 72.99,
+            "frame_p99": 76.47,
+            "steady_avg": 72.8,
+            "steady_p99": 76.21,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 43.934,
+              "commandBufferSpans": 43.934
+            },
+            "gpu_stages": {
+              "canvasClear": 0.029,
+              "voxelCompact": 0.014,
+              "voxelStage1": 0.032,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.013,
+              "voxelSunFaces": 0.019,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.022,
+              "computeSunShadow": 0.047,
+              "computeLightVolume": 0.046,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.45,
+              "entityCanvasToFb": 6.952,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/growth/pair-3",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          },
+          {
+            "frame_avg": 72.63,
+            "frame_p99": 76.55,
+            "steady_avg": 72.43,
+            "steady_p99": 76.13,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 43.509,
+              "commandBufferSpans": 43.509
+            },
+            "gpu_stages": {
+              "canvasClear": 0.029,
+              "voxelCompact": 0.014,
+              "voxelStage1": 0.032,
+              "voxelCardinalElect": 0.011,
+              "voxelStage2": 0.012,
+              "voxelSunFaces": 0.019,
+              "computeVoxelAO": 0.022,
+              "bakeSunShadowMap": 0.022,
+              "computeSunShadow": 0.048,
+              "computeLightVolume": 0.045,
+              "lightingToTrixel": 0.01,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.453,
+              "entityCanvasToFb": 6.847,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-control/growth/pair-4",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60"
+            ]
+          }
+        ]
+      },
+      "summary": {
+        "frame_avg": {
+          "baseline": {
+            "mean": 72.734,
+            "min": 71.47,
+            "max": 73.44,
+            "n": 5
+          },
+          "growth": {
+            "mean": 72.76,
+            "min": 72.62,
+            "max": 72.99,
+            "n": 5
+          },
+          "ratio": 1.0003574669343087,
+          "within_budget": true
+        },
+        "frame_p99": {
+          "baseline": {
+            "mean": 82.664,
+            "min": 76.68,
+            "max": 94.29,
+            "n": 5
+          },
+          "growth": {
+            "mean": 76.814,
+            "min": 75.98,
+            "max": 78.52,
+            "n": 5
+          },
+          "ratio": 0.9292315881157456,
+          "within_budget": true
+        },
+        "steady_avg": {
+          "baseline": {
+            "mean": 72.474,
+            "min": 71.56,
+            "max": 72.84,
+            "n": 5
+          },
+          "growth": {
+            "mean": 72.5,
+            "min": 72.31,
+            "max": 72.8,
+            "n": 5
+          },
+          "ratio": 1.0003587493445925,
+          "within_budget": true
+        },
+        "steady_p99": {
+          "baseline": {
+            "mean": 80.326,
+            "min": 75.78,
+            "max": 94.29,
+            "n": 5
+          },
+          "growth": {
+            "mean": 75.926,
+            "min": 75.71,
+            "max": 76.21,
+            "n": 5
+          },
+          "ratio": 0.9452232153972563,
+          "within_budget": true
+        },
+        "gpu_stages": {
+          "bakeSunShadowMap": {
+            "baseline": {
+              "mean": 0.02,
+              "min": 0.02,
+              "max": 0.02
+            },
+            "growth": {
+              "mean": 0.0226,
+              "min": 0.022,
+              "max": 0.023
+            },
+            "delta_ms": 0.002599999999999998,
+            "baseline_spread_ms": 0.0
+          },
+          "canvasClear": {
+            "baseline": {
+              "mean": 0.0552,
+              "min": 0.054,
+              "max": 0.057
+            },
+            "growth": {
+              "mean": 0.029,
+              "min": 0.029,
+              "max": 0.029
+            },
+            "delta_ms": -0.026199999999999998,
+            "baseline_spread_ms": 0.0030000000000000027
+          },
+          "cardinalSurfaceFb": {
+            "baseline": {
+              "mean": 0.46280000000000004,
+              "min": 0.458,
+              "max": 0.467
+            },
+            "growth": {
+              "mean": 0.45280000000000004,
+              "min": 0.45,
+              "max": 0.456
+            },
+            "delta_ms": -0.010000000000000009,
+            "baseline_spread_ms": 0.009000000000000008
+          },
+          "computeLightVolume": {
+            "baseline": {
+              "mean": 0.045399999999999996,
+              "min": 0.045,
+              "max": 0.046
+            },
+            "growth": {
+              "mean": 0.0458,
+              "min": 0.045,
+              "max": 0.046
+            },
+            "delta_ms": 0.0004000000000000045,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "computeSunShadow": {
+            "baseline": {
+              "mean": 0.0492,
+              "min": 0.049,
+              "max": 0.05
+            },
+            "growth": {
+              "mean": 0.0478,
+              "min": 0.047,
+              "max": 0.048
+            },
+            "delta_ms": -0.0013999999999999985,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "computeVoxelAO": {
+            "baseline": {
+              "mean": 0.0218,
+              "min": 0.021,
+              "max": 0.022
+            },
+            "growth": {
+              "mean": 0.022,
+              "min": 0.022,
+              "max": 0.022
+            },
+            "delta_ms": 0.0001999999999999988,
+            "baseline_spread_ms": 0.0009999999999999974
+          },
+          "entityCanvasToFb": {
+            "baseline": {
+              "mean": 6.7932,
+              "min": 6.626,
+              "max": 6.896
+            },
+            "growth": {
+              "mean": 6.9098,
+              "min": 6.847,
+              "max": 6.952
+            },
+            "delta_ms": 0.11660000000000004,
+            "baseline_spread_ms": 0.2699999999999996
+          },
+          "fbToScreen": {
+            "baseline": {
+              "mean": 0.0314,
+              "min": 0.031,
+              "max": 0.032
+            },
+            "growth": {
+              "mean": 0.031,
+              "min": 0.031,
+              "max": 0.031
+            },
+            "delta_ms": -0.0003999999999999976,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "lightingToTrixel": {
+            "baseline": {
+              "mean": 0.01,
+              "min": 0.01,
+              "max": 0.01
+            },
+            "growth": {
+              "mean": 0.01,
+              "min": 0.01,
+              "max": 0.01
+            },
+            "delta_ms": 0.0,
+            "baseline_spread_ms": 0.0
+          },
+          "trixelToFb": {
+            "baseline": {
+              "mean": 0.0494,
+              "min": 0.049,
+              "max": 0.05
+            },
+            "growth": {
+              "mean": 0.049,
+              "min": 0.049,
+              "max": 0.049
+            },
+            "delta_ms": -0.0003999999999999976,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "voxelCardinalElect": {
+            "baseline": {
+              "mean": 0.011,
+              "min": 0.011,
+              "max": 0.011
+            },
+            "growth": {
+              "mean": 0.011,
+              "min": 0.011,
+              "max": 0.011
+            },
+            "delta_ms": 0.0,
+            "baseline_spread_ms": 0.0
+          },
+          "voxelCompact": {
+            "baseline": {
+              "mean": 0.013,
+              "min": 0.013,
+              "max": 0.013
+            },
+            "growth": {
+              "mean": 0.014,
+              "min": 0.014,
+              "max": 0.014
+            },
+            "delta_ms": 0.0010000000000000009,
+            "baseline_spread_ms": 0.0
+          },
+          "voxelStage1": {
+            "baseline": {
+              "mean": 0.028,
+              "min": 0.028,
+              "max": 0.028
+            },
+            "growth": {
+              "mean": 0.0316,
+              "min": 0.031,
+              "max": 0.032
+            },
+            "delta_ms": 0.0036000000000000025,
+            "baseline_spread_ms": 0.0
+          },
+          "voxelStage2": {
+            "baseline": {
+              "mean": 0.012,
+              "min": 0.012,
+              "max": 0.012
+            },
+            "growth": {
+              "mean": 0.0122,
+              "min": 0.012,
+              "max": 0.013
+            },
+            "delta_ms": 0.00020000000000000052,
+            "baseline_spread_ms": 0.0
+          },
+          "voxelSunFaces": {
+            "baseline": {
+              "mean": 0.02,
+              "min": 0.02,
+              "max": 0.02
+            },
+            "growth": {
+              "mean": 0.019,
+              "min": 0.019,
+              "max": 0.019
+            },
+            "delta_ms": -0.0010000000000000009,
+            "baseline_spread_ms": 0.0
+          }
+        }
+      }
+    },
+    "canvas-exhausted": {
+      "target": "IRCanvasStress",
+      "args": [
+        "--only",
+        "shadowbox,floor",
+        "--probe-source-box",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--no-ao",
+        "--yaw",
+        "0",
+        "--zoom",
+        "1",
+        "--auto-profile",
+        "--profile-frames",
+        "360",
+        "--window-mode",
+        "offscreen",
+        "--subdivisions",
+        "1",
+        "--probe-overlapping-source",
+        "--probe-overlapping-source-count",
+        "128",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "-60",
+        "--probe-record-pool-filler",
+        "300",
+        "--probe-record-pool-filler-offset",
+        "200",
+        "-200",
+        "0"
+      ],
+      "order": "alternating",
+      "samples": {
+        "baseline": [
+          {
+            "frame_avg": 102.33,
+            "frame_p99": 135.58,
+            "steady_avg": 102.04,
+            "steady_p99": 135.58,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 54.539,
+              "commandBufferSpans": 54.539
+            },
+            "gpu_stages": {
+              "canvasClear": 0.086,
+              "voxelCompact": 0.025,
+              "voxelStage1": 0.05,
+              "voxelCardinalElect": 0.02,
+              "voxelStage2": 0.021,
+              "voxelSunFaces": 0.039,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.038,
+              "computeSunShadow": 0.038,
+              "computeLightVolume": 0.05,
+              "lightingToTrixel": 0.013,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.638,
+              "entityCanvasToFb": 7.147,
+              "fbToScreen": 0.039
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/baseline/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          },
+          {
+            "frame_avg": 101.28,
+            "frame_p99": 136.83,
+            "steady_avg": 100.15,
+            "steady_p99": 134.59,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 53.666,
+              "commandBufferSpans": 53.666
+            },
+            "gpu_stages": {
+              "canvasClear": 0.083,
+              "voxelCompact": 0.025,
+              "voxelStage1": 0.048,
+              "voxelCardinalElect": 0.019,
+              "voxelStage2": 0.021,
+              "voxelSunFaces": 0.038,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.038,
+              "computeSunShadow": 0.037,
+              "computeLightVolume": 0.05,
+              "lightingToTrixel": 0.013,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.623,
+              "entityCanvasToFb": 6.994,
+              "fbToScreen": 0.039
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/baseline/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          },
+          {
+            "frame_avg": 98.81,
+            "frame_p99": 132.9,
+            "steady_avg": 99.66,
+            "steady_p99": 132.9,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 51.964,
+              "commandBufferSpans": 51.964
+            },
+            "gpu_stages": {
+              "canvasClear": 0.077,
+              "voxelCompact": 0.022,
+              "voxelStage1": 0.044,
+              "voxelCardinalElect": 0.017,
+              "voxelStage2": 0.019,
+              "voxelSunFaces": 0.034,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.036,
+              "computeSunShadow": 0.036,
+              "computeLightVolume": 0.049,
+              "lightingToTrixel": 0.013,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.594,
+              "entityCanvasToFb": 6.852,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/baseline/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          },
+          {
+            "frame_avg": 98.54,
+            "frame_p99": 132.13,
+            "steady_avg": 98.76,
+            "steady_p99": 131.19,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 51.605,
+              "commandBufferSpans": 51.605
+            },
+            "gpu_stages": {
+              "canvasClear": 0.077,
+              "voxelCompact": 0.022,
+              "voxelStage1": 0.044,
+              "voxelCardinalElect": 0.017,
+              "voxelStage2": 0.019,
+              "voxelSunFaces": 0.034,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.036,
+              "computeSunShadow": 0.035,
+              "computeLightVolume": 0.049,
+              "lightingToTrixel": 0.013,
+              "trixelToFb": 0.048,
+              "cardinalSurfaceFb": 0.591,
+              "entityCanvasToFb": 6.874,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/baseline/pair-3",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          },
+          {
+            "frame_avg": 101.91,
+            "frame_p99": 135.7,
+            "steady_avg": 101.98,
+            "steady_p99": 136.33,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 54.164,
+              "commandBufferSpans": 54.164
+            },
+            "gpu_stages": {
+              "canvasClear": 0.086,
+              "voxelCompact": 0.025,
+              "voxelStage1": 0.05,
+              "voxelCardinalElect": 0.02,
+              "voxelStage2": 0.021,
+              "voxelSunFaces": 0.04,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.038,
+              "computeSunShadow": 0.037,
+              "computeLightVolume": 0.05,
+              "lightingToTrixel": 0.013,
+              "trixelToFb": 0.05,
+              "cardinalSurfaceFb": 0.627,
+              "entityCanvasToFb": 7.042,
+              "fbToScreen": 0.039
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/baseline/pair-4",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          }
+        ],
+        "growth": [
+          {
+            "frame_avg": 104.46,
+            "frame_p99": 137.81,
+            "steady_avg": 104.81,
+            "steady_p99": 137.81,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 56.256,
+              "commandBufferSpans": 56.256
+            },
+            "gpu_stages": {
+              "canvasClear": 0.09,
+              "voxelCompact": 0.033,
+              "voxelStage1": 0.066,
+              "voxelCardinalElect": 0.025,
+              "voxelStage2": 0.027,
+              "voxelSunFaces": 0.047,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.054,
+              "computeSunShadow": 0.091,
+              "computeLightVolume": 0.051,
+              "lightingToTrixel": 0.014,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.686,
+              "entityCanvasToFb": 8.675,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/growth/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          },
+          {
+            "frame_avg": 104.79,
+            "frame_p99": 139.49,
+            "steady_avg": 104.66,
+            "steady_p99": 139.71,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 56.569,
+              "commandBufferSpans": 56.569
+            },
+            "gpu_stages": {
+              "canvasClear": 0.084,
+              "voxelCompact": 0.03,
+              "voxelStage1": 0.062,
+              "voxelCardinalElect": 0.024,
+              "voxelStage2": 0.025,
+              "voxelSunFaces": 0.044,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.046,
+              "computeSunShadow": 0.09,
+              "computeLightVolume": 0.049,
+              "lightingToTrixel": 0.013,
+              "trixelToFb": 0.048,
+              "cardinalSurfaceFb": 0.694,
+              "entityCanvasToFb": 8.55,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/growth/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          },
+          {
+            "frame_avg": 104.17,
+            "frame_p99": 135.34,
+            "steady_avg": 103.9,
+            "steady_p99": 136.01,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 56.041,
+              "commandBufferSpans": 56.041
+            },
+            "gpu_stages": {
+              "canvasClear": 0.087,
+              "voxelCompact": 0.032,
+              "voxelStage1": 0.065,
+              "voxelCardinalElect": 0.025,
+              "voxelStage2": 0.026,
+              "voxelSunFaces": 0.046,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.05,
+              "computeSunShadow": 0.089,
+              "computeLightVolume": 0.049,
+              "lightingToTrixel": 0.013,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.681,
+              "entityCanvasToFb": 8.667,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/growth/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          },
+          {
+            "frame_avg": 105.35,
+            "frame_p99": 136.54,
+            "steady_avg": 105.31,
+            "steady_p99": 133.29,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 57.009,
+              "commandBufferSpans": 57.009
+            },
+            "gpu_stages": {
+              "canvasClear": 0.096,
+              "voxelCompact": 0.035,
+              "voxelStage1": 0.071,
+              "voxelCardinalElect": 0.027,
+              "voxelStage2": 0.029,
+              "voxelSunFaces": 0.05,
+              "computeVoxelAO": 0.024,
+              "bakeSunShadowMap": 0.049,
+              "computeSunShadow": 0.092,
+              "computeLightVolume": 0.049,
+              "lightingToTrixel": 0.014,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.707,
+              "entityCanvasToFb": 8.67,
+              "fbToScreen": 0.037
+            },
+            "attempts": 2,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/growth/pair-3-retry2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          },
+          {
+            "frame_avg": 105.01,
+            "frame_p99": 137.08,
+            "steady_avg": 105.39,
+            "steady_p99": 137.08,
+            "steady_frames": 270,
+            "gpu_frame": {
+              "envelope": 56.742,
+              "commandBufferSpans": 56.742
+            },
+            "gpu_stages": {
+              "canvasClear": 0.091,
+              "voxelCompact": 0.033,
+              "voxelStage1": 0.067,
+              "voxelCardinalElect": 0.025,
+              "voxelStage2": 0.027,
+              "voxelSunFaces": 0.047,
+              "computeVoxelAO": 0.025,
+              "bakeSunShadowMap": 0.047,
+              "computeSunShadow": 0.091,
+              "computeLightVolume": 0.05,
+              "lightingToTrixel": 0.014,
+              "trixelToFb": 0.049,
+              "cardinalSurfaceFb": 0.704,
+              "entityCanvasToFb": 8.675,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRCanvasStress",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/canvas-exhausted/growth/pair-4",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--only",
+              "shadowbox,floor",
+              "--probe-source-box",
+              "--probe-floor-mode",
+              "grid",
+              "--probe-floor-span",
+              "40",
+              "--sun-direction",
+              "0",
+              "0",
+              "-1",
+              "--no-spin",
+              "--no-auto-rotate",
+              "--pivot-origin",
+              "--no-ao",
+              "--yaw",
+              "0",
+              "--zoom",
+              "1",
+              "--auto-profile",
+              "--profile-frames",
+              "360",
+              "--window-mode",
+              "offscreen",
+              "--subdivisions",
+              "1",
+              "--probe-overlapping-source",
+              "--probe-overlapping-source-count",
+              "128",
+              "--probe-overlapping-source-offset",
+              "0",
+              "0",
+              "-60",
+              "--probe-record-pool-filler",
+              "300",
+              "--probe-record-pool-filler-offset",
+              "200",
+              "-200",
+              "0"
+            ]
+          }
+        ]
+      },
+      "summary": {
+        "frame_avg": {
+          "baseline": {
+            "mean": 100.574,
+            "min": 98.54,
+            "max": 102.33,
+            "n": 5
+          },
+          "growth": {
+            "mean": 104.756,
+            "min": 104.17,
+            "max": 105.35,
+            "n": 5
+          },
+          "ratio": 1.0415813232048043,
+          "within_budget": true
+        },
+        "frame_p99": {
+          "baseline": {
+            "mean": 134.62800000000001,
+            "min": 132.13,
+            "max": 136.83,
+            "n": 5
+          },
+          "growth": {
+            "mean": 137.252,
+            "min": 135.34,
+            "max": 139.49,
+            "n": 5
+          },
+          "ratio": 1.019490744867338,
+          "within_budget": true
+        },
+        "steady_avg": {
+          "baseline": {
+            "mean": 100.518,
+            "min": 98.76,
+            "max": 102.04,
+            "n": 5
+          },
+          "growth": {
+            "mean": 104.81400000000001,
+            "min": 103.9,
+            "max": 105.39,
+            "n": 5
+          },
+          "ratio": 1.0427386139795858,
+          "within_budget": true
+        },
+        "steady_p99": {
+          "baseline": {
+            "mean": 134.118,
+            "min": 131.19,
+            "max": 136.33,
+            "n": 5
+          },
+          "growth": {
+            "mean": 136.78,
+            "min": 133.29,
+            "max": 139.71,
+            "n": 5
+          },
+          "ratio": 1.0198481933819472,
+          "within_budget": true
+        },
+        "gpu_stages": {
+          "bakeSunShadowMap": {
+            "baseline": {
+              "mean": 0.0372,
+              "min": 0.036,
+              "max": 0.038
+            },
+            "growth": {
+              "mean": 0.0492,
+              "min": 0.046,
+              "max": 0.054
+            },
+            "delta_ms": 0.012000000000000004,
+            "baseline_spread_ms": 0.0020000000000000018
+          },
+          "canvasClear": {
+            "baseline": {
+              "mean": 0.0818,
+              "min": 0.077,
+              "max": 0.086
+            },
+            "growth": {
+              "mean": 0.0896,
+              "min": 0.084,
+              "max": 0.096
+            },
+            "delta_ms": 0.007800000000000001,
+            "baseline_spread_ms": 0.008999999999999994
+          },
+          "cardinalSurfaceFb": {
+            "baseline": {
+              "mean": 0.6146,
+              "min": 0.591,
+              "max": 0.638
+            },
+            "growth": {
+              "mean": 0.6944,
+              "min": 0.681,
+              "max": 0.707
+            },
+            "delta_ms": 0.07979999999999998,
+            "baseline_spread_ms": 0.04700000000000004
+          },
+          "computeLightVolume": {
+            "baseline": {
+              "mean": 0.049600000000000005,
+              "min": 0.049,
+              "max": 0.05
+            },
+            "growth": {
+              "mean": 0.0496,
+              "min": 0.049,
+              "max": 0.051
+            },
+            "delta_ms": -6.938893903907228e-18,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "computeSunShadow": {
+            "baseline": {
+              "mean": 0.0366,
+              "min": 0.035,
+              "max": 0.038
+            },
+            "growth": {
+              "mean": 0.0906,
+              "min": 0.089,
+              "max": 0.092
+            },
+            "delta_ms": 0.054,
+            "baseline_spread_ms": 0.0029999999999999957
+          },
+          "computeVoxelAO": {
+            "baseline": {
+              "mean": 0.025,
+              "min": 0.025,
+              "max": 0.025
+            },
+            "growth": {
+              "mean": 0.024800000000000003,
+              "min": 0.024,
+              "max": 0.025
+            },
+            "delta_ms": -0.0001999999999999988,
+            "baseline_spread_ms": 0.0
+          },
+          "entityCanvasToFb": {
+            "baseline": {
+              "mean": 6.9818,
+              "min": 6.852,
+              "max": 7.147
+            },
+            "growth": {
+              "mean": 8.647400000000001,
+              "min": 8.55,
+              "max": 8.675
+            },
+            "delta_ms": 1.6656000000000013,
+            "baseline_spread_ms": 0.29499999999999993
+          },
+          "fbToScreen": {
+            "baseline": {
+              "mean": 0.0382,
+              "min": 0.037,
+              "max": 0.039
+            },
+            "growth": {
+              "mean": 0.037,
+              "min": 0.037,
+              "max": 0.037
+            },
+            "delta_ms": -0.0011999999999999997,
+            "baseline_spread_ms": 0.0020000000000000018
+          },
+          "lightingToTrixel": {
+            "baseline": {
+              "mean": 0.013,
+              "min": 0.013,
+              "max": 0.013
+            },
+            "growth": {
+              "mean": 0.0136,
+              "min": 0.013,
+              "max": 0.014
+            },
+            "delta_ms": 0.0005999999999999998,
+            "baseline_spread_ms": 0.0
+          },
+          "trixelToFb": {
+            "baseline": {
+              "mean": 0.049,
+              "min": 0.048,
+              "max": 0.05
+            },
+            "growth": {
+              "mean": 0.0488,
+              "min": 0.048,
+              "max": 0.049
+            },
+            "delta_ms": -0.0001999999999999988,
+            "baseline_spread_ms": 0.0020000000000000018
+          },
+          "voxelCardinalElect": {
+            "baseline": {
+              "mean": 0.018600000000000002,
+              "min": 0.017,
+              "max": 0.02
+            },
+            "growth": {
+              "mean": 0.0252,
+              "min": 0.024,
+              "max": 0.027
+            },
+            "delta_ms": 0.006599999999999998,
+            "baseline_spread_ms": 0.002999999999999999
+          },
+          "voxelCompact": {
+            "baseline": {
+              "mean": 0.0238,
+              "min": 0.022,
+              "max": 0.025
+            },
+            "growth": {
+              "mean": 0.032600000000000004,
+              "min": 0.03,
+              "max": 0.035
+            },
+            "delta_ms": 0.008800000000000002,
+            "baseline_spread_ms": 0.0030000000000000027
+          },
+          "voxelStage1": {
+            "baseline": {
+              "mean": 0.0472,
+              "min": 0.044,
+              "max": 0.05
+            },
+            "growth": {
+              "mean": 0.0662,
+              "min": 0.062,
+              "max": 0.071
+            },
+            "delta_ms": 0.018999999999999996,
+            "baseline_spread_ms": 0.006000000000000005
+          },
+          "voxelStage2": {
+            "baseline": {
+              "mean": 0.0202,
+              "min": 0.019,
+              "max": 0.021
+            },
+            "growth": {
+              "mean": 0.0268,
+              "min": 0.025,
+              "max": 0.029
+            },
+            "delta_ms": 0.006600000000000002,
+            "baseline_spread_ms": 0.0020000000000000018
+          },
+          "voxelSunFaces": {
+            "baseline": {
+              "mean": 0.037,
+              "min": 0.034,
+              "max": 0.04
+            },
+            "growth": {
+              "mean": 0.0468,
+              "min": 0.044,
+              "max": 0.05
+            },
+            "delta_ms": 0.009800000000000003,
+            "baseline_spread_ms": 0.005999999999999998
+          }
+        }
+      }
+    },
+    "grid-zoom1": {
+      "target": "IRPerfGrid",
+      "args": [
+        "--auto-profile",
+        "60",
+        "--subdivision-mode",
+        "full",
+        "--base-subdivisions",
+        "1",
+        "--zoom",
+        "1"
+      ],
+      "order": "alternating",
+      "samples": {
+        "baseline": [
+          {
+            "frame_avg": 32.0,
+            "frame_p99": 672.84,
+            "steady_avg": 21.06,
+            "steady_p99": 23.13,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.878,
+              "commandBufferSpans": 4.878
+            },
+            "gpu_stages": {
+              "canvasClear": 0.124,
+              "voxelCompact": 0.305,
+              "voxelStage1": 0.58,
+              "voxelCardinalElect": 0.47,
+              "voxelStage2": 0.467,
+              "voxelSunFaces": 1.101,
+              "textToTrixel": 1.289,
+              "computeVoxelAO": 0.058,
+              "bakeSunShadowMap": 0.091,
+              "computeSunShadow": 0.071,
+              "computeLightVolume": 2.657,
+              "lightingToTrixel": 0.06,
+              "fogToTrixel": 0.034,
+              "trixelToFb": 1.282,
+              "fbToScreen": 0.125
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/baseline/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 32.18,
+            "frame_p99": 665.53,
+            "steady_avg": 21.4,
+            "steady_p99": 23.66,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.875,
+              "commandBufferSpans": 4.875
+            },
+            "gpu_stages": {
+              "canvasClear": 0.068,
+              "voxelCompact": 0.296,
+              "voxelStage1": 0.582,
+              "voxelCardinalElect": 0.47,
+              "voxelStage2": 0.468,
+              "voxelSunFaces": 1.103,
+              "textToTrixel": 1.329,
+              "computeVoxelAO": 0.058,
+              "bakeSunShadowMap": 0.093,
+              "computeSunShadow": 0.073,
+              "computeLightVolume": 2.661,
+              "lightingToTrixel": 0.06,
+              "fogToTrixel": 0.034,
+              "trixelToFb": 1.259,
+              "fbToScreen": 0.126
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/baseline/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 29.73,
+            "frame_p99": 671.25,
+            "steady_avg": 21.33,
+            "steady_p99": 23.78,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.384,
+              "commandBufferSpans": 4.384
+            },
+            "gpu_stages": {
+              "canvasClear": 0.082,
+              "voxelCompact": 0.26,
+              "voxelStage1": 0.521,
+              "voxelCardinalElect": 0.425,
+              "voxelStage2": 0.41,
+              "voxelSunFaces": 0.958,
+              "textToTrixel": 1.09,
+              "computeVoxelAO": 0.051,
+              "bakeSunShadowMap": 0.083,
+              "computeSunShadow": 0.062,
+              "computeLightVolume": 2.356,
+              "lightingToTrixel": 0.053,
+              "fogToTrixel": 0.03,
+              "trixelToFb": 1.144,
+              "fbToScreen": 0.11
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/baseline/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 32.57,
+            "frame_p99": 678.12,
+            "steady_avg": 21.41,
+            "steady_p99": 23.51,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.852,
+              "commandBufferSpans": 4.852
+            },
+            "gpu_stages": {
+              "canvasClear": 0.072,
+              "voxelCompact": 0.32,
+              "voxelStage1": 0.578,
+              "voxelCardinalElect": 0.47,
+              "voxelStage2": 0.465,
+              "voxelSunFaces": 1.104,
+              "textToTrixel": 1.344,
+              "computeVoxelAO": 0.057,
+              "bakeSunShadowMap": 0.093,
+              "computeSunShadow": 0.07,
+              "computeLightVolume": 2.66,
+              "lightingToTrixel": 0.06,
+              "fogToTrixel": 0.034,
+              "trixelToFb": 1.259,
+              "fbToScreen": 0.125
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/baseline/pair-3",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 32.16,
+            "frame_p99": 666.78,
+            "steady_avg": 21.39,
+            "steady_p99": 23.39,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.882,
+              "commandBufferSpans": 4.882
+            },
+            "gpu_stages": {
+              "canvasClear": 0.071,
+              "voxelCompact": 0.295,
+              "voxelStage1": 0.586,
+              "voxelCardinalElect": 0.47,
+              "voxelStage2": 0.467,
+              "voxelSunFaces": 1.101,
+              "textToTrixel": 1.247,
+              "computeVoxelAO": 0.059,
+              "bakeSunShadowMap": 0.092,
+              "computeSunShadow": 0.07,
+              "computeLightVolume": 2.664,
+              "lightingToTrixel": 0.061,
+              "fogToTrixel": 0.035,
+              "trixelToFb": 1.25,
+              "fbToScreen": 0.126
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/baseline/pair-4",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          }
+        ],
+        "growth": [
+          {
+            "frame_avg": 43.5,
+            "frame_p99": 667.45,
+            "steady_avg": 34.38,
+            "steady_p99": 38.86,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 14.12,
+              "commandBufferSpans": 14.12
+            },
+            "gpu_stages": {
+              "canvasClear": 0.039,
+              "voxelCompact": 0.539,
+              "voxelStage1": 0.194,
+              "voxelCardinalElect": 0.12,
+              "voxelStage2": 0.119,
+              "voxelSunFaces": 0.631,
+              "textToTrixel": 0.736,
+              "computeVoxelAO": 0.02,
+              "bakeSunShadowMap": 0.146,
+              "computeSunShadow": 12.129,
+              "computeLightVolume": 13.003,
+              "lightingToTrixel": 0.02,
+              "fogToTrixel": 0.011,
+              "trixelToFb": 0.763,
+              "fbToScreen": 0.032
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/growth/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 43.81,
+            "frame_p99": 664.27,
+            "steady_avg": 34.47,
+            "steady_p99": 37.95,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 14.319,
+              "commandBufferSpans": 14.319
+            },
+            "gpu_stages": {
+              "canvasClear": 0.039,
+              "voxelCompact": 0.509,
+              "voxelStage1": 0.18,
+              "voxelCardinalElect": 0.117,
+              "voxelStage2": 0.114,
+              "voxelSunFaces": 0.615,
+              "textToTrixel": 0.703,
+              "computeVoxelAO": 0.019,
+              "bakeSunShadowMap": 0.143,
+              "computeSunShadow": 12.365,
+              "computeLightVolume": 13.211,
+              "lightingToTrixel": 0.021,
+              "fogToTrixel": 0.011,
+              "trixelToFb": 0.644,
+              "fbToScreen": 0.032
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/growth/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 43.38,
+            "frame_p99": 662.29,
+            "steady_avg": 34.41,
+            "steady_p99": 38.07,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 14.142,
+              "commandBufferSpans": 14.142
+            },
+            "gpu_stages": {
+              "canvasClear": 0.038,
+              "voxelCompact": 0.512,
+              "voxelStage1": 0.179,
+              "voxelCardinalElect": 0.118,
+              "voxelStage2": 0.117,
+              "voxelSunFaces": 0.619,
+              "textToTrixel": 0.683,
+              "computeVoxelAO": 0.019,
+              "bakeSunShadowMap": 0.137,
+              "computeSunShadow": 12.181,
+              "computeLightVolume": 13.02,
+              "lightingToTrixel": 0.02,
+              "fogToTrixel": 0.011,
+              "trixelToFb": 0.637,
+              "fbToScreen": 0.032
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/growth/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 43.92,
+            "frame_p99": 663.39,
+            "steady_avg": 34.88,
+            "steady_p99": 39.91,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 14.33,
+              "commandBufferSpans": 14.33
+            },
+            "gpu_stages": {
+              "canvasClear": 0.056,
+              "voxelCompact": 0.518,
+              "voxelStage1": 0.2,
+              "voxelCardinalElect": 0.119,
+              "voxelStage2": 0.117,
+              "voxelSunFaces": 0.622,
+              "textToTrixel": 0.724,
+              "computeVoxelAO": 0.019,
+              "bakeSunShadowMap": 0.146,
+              "computeSunShadow": 12.299,
+              "computeLightVolume": 13.144,
+              "lightingToTrixel": 0.021,
+              "fogToTrixel": 0.011,
+              "trixelToFb": 0.698,
+              "fbToScreen": 0.032
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/growth/pair-3",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 43.5,
+            "frame_p99": 660.58,
+            "steady_avg": 34.67,
+            "steady_p99": 38.9,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 14.201,
+              "commandBufferSpans": 14.201
+            },
+            "gpu_stages": {
+              "canvasClear": 0.039,
+              "voxelCompact": 0.488,
+              "voxelStage1": 0.178,
+              "voxelCardinalElect": 0.118,
+              "voxelStage2": 0.118,
+              "voxelSunFaces": 0.615,
+              "textToTrixel": 0.675,
+              "computeVoxelAO": 0.019,
+              "bakeSunShadowMap": 0.136,
+              "computeSunShadow": 12.267,
+              "computeLightVolume": 13.11,
+              "lightingToTrixel": 0.02,
+              "fogToTrixel": 0.011,
+              "trixelToFb": 0.668,
+              "fbToScreen": 0.033
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom1/growth/pair-4",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          }
+        ]
+      },
+      "summary": {
+        "frame_avg": {
+          "baseline": {
+            "mean": 31.727999999999998,
+            "min": 29.73,
+            "max": 32.57,
+            "n": 5
+          },
+          "growth": {
+            "mean": 43.622,
+            "min": 43.38,
+            "max": 43.92,
+            "n": 5
+          },
+          "ratio": 1.3748739283913263,
+          "within_budget": false
+        },
+        "frame_p99": {
+          "baseline": {
+            "mean": 670.904,
+            "min": 665.53,
+            "max": 678.12,
+            "n": 5
+          },
+          "growth": {
+            "mean": 663.596,
+            "min": 660.58,
+            "max": 667.45,
+            "n": 5
+          },
+          "ratio": 0.9891072344180389,
+          "within_budget": true
+        },
+        "steady_avg": {
+          "baseline": {
+            "mean": 21.317999999999998,
+            "min": 21.06,
+            "max": 21.41,
+            "n": 5
+          },
+          "growth": {
+            "mean": 34.562,
+            "min": 34.38,
+            "max": 34.88,
+            "n": 5
+          },
+          "ratio": 1.6212590299277607,
+          "within_budget": false
+        },
+        "steady_p99": {
+          "baseline": {
+            "mean": 23.494,
+            "min": 23.13,
+            "max": 23.78,
+            "n": 5
+          },
+          "growth": {
+            "mean": 38.738,
+            "min": 37.95,
+            "max": 39.91,
+            "n": 5
+          },
+          "ratio": 1.6488465140035753,
+          "within_budget": false
+        },
+        "gpu_stages": {
+          "bakeSunShadowMap": {
+            "baseline": {
+              "mean": 0.0904,
+              "min": 0.083,
+              "max": 0.093
+            },
+            "growth": {
+              "mean": 0.1416,
+              "min": 0.136,
+              "max": 0.146
+            },
+            "delta_ms": 0.05120000000000001,
+            "baseline_spread_ms": 0.009999999999999995
+          },
+          "canvasClear": {
+            "baseline": {
+              "mean": 0.0834,
+              "min": 0.068,
+              "max": 0.124
+            },
+            "growth": {
+              "mean": 0.0422,
+              "min": 0.038,
+              "max": 0.056
+            },
+            "delta_ms": -0.0412,
+            "baseline_spread_ms": 0.055999999999999994
+          },
+          "computeLightVolume": {
+            "baseline": {
+              "mean": 2.5996,
+              "min": 2.356,
+              "max": 2.664
+            },
+            "growth": {
+              "mean": 13.0976,
+              "min": 13.003,
+              "max": 13.211
+            },
+            "delta_ms": 10.498,
+            "baseline_spread_ms": 0.3080000000000003
+          },
+          "computeSunShadow": {
+            "baseline": {
+              "mean": 0.0692,
+              "min": 0.062,
+              "max": 0.073
+            },
+            "growth": {
+              "mean": 12.248199999999999,
+              "min": 12.129,
+              "max": 12.365
+            },
+            "delta_ms": 12.178999999999998,
+            "baseline_spread_ms": 0.010999999999999996
+          },
+          "computeVoxelAO": {
+            "baseline": {
+              "mean": 0.0566,
+              "min": 0.051,
+              "max": 0.059
+            },
+            "growth": {
+              "mean": 0.0192,
+              "min": 0.019,
+              "max": 0.02
+            },
+            "delta_ms": -0.0374,
+            "baseline_spread_ms": 0.008
+          },
+          "fbToScreen": {
+            "baseline": {
+              "mean": 0.1224,
+              "min": 0.11,
+              "max": 0.126
+            },
+            "growth": {
+              "mean": 0.0322,
+              "min": 0.032,
+              "max": 0.033
+            },
+            "delta_ms": -0.0902,
+            "baseline_spread_ms": 0.016
+          },
+          "fogToTrixel": {
+            "baseline": {
+              "mean": 0.0334,
+              "min": 0.03,
+              "max": 0.035
+            },
+            "growth": {
+              "mean": 0.011,
+              "min": 0.011,
+              "max": 0.011
+            },
+            "delta_ms": -0.0224,
+            "baseline_spread_ms": 0.0050000000000000044
+          },
+          "lightingToTrixel": {
+            "baseline": {
+              "mean": 0.0588,
+              "min": 0.053,
+              "max": 0.061
+            },
+            "growth": {
+              "mean": 0.0204,
+              "min": 0.02,
+              "max": 0.021
+            },
+            "delta_ms": -0.0384,
+            "baseline_spread_ms": 0.008
+          },
+          "textToTrixel": {
+            "baseline": {
+              "mean": 1.2598,
+              "min": 1.09,
+              "max": 1.344
+            },
+            "growth": {
+              "mean": 0.7042,
+              "min": 0.675,
+              "max": 0.736
+            },
+            "delta_ms": -0.5556,
+            "baseline_spread_ms": 0.254
+          },
+          "trixelToFb": {
+            "baseline": {
+              "mean": 1.2388,
+              "min": 1.144,
+              "max": 1.282
+            },
+            "growth": {
+              "mean": 0.682,
+              "min": 0.637,
+              "max": 0.763
+            },
+            "delta_ms": -0.5567999999999999,
+            "baseline_spread_ms": 0.13800000000000012
+          },
+          "voxelCardinalElect": {
+            "baseline": {
+              "mean": 0.46099999999999997,
+              "min": 0.425,
+              "max": 0.47
+            },
+            "growth": {
+              "mean": 0.11839999999999999,
+              "min": 0.117,
+              "max": 0.12
+            },
+            "delta_ms": -0.34259999999999996,
+            "baseline_spread_ms": 0.044999999999999984
+          },
+          "voxelCompact": {
+            "baseline": {
+              "mean": 0.2952,
+              "min": 0.26,
+              "max": 0.32
+            },
+            "growth": {
+              "mean": 0.5132,
+              "min": 0.488,
+              "max": 0.539
+            },
+            "delta_ms": 0.21799999999999997,
+            "baseline_spread_ms": 0.06
+          },
+          "voxelStage1": {
+            "baseline": {
+              "mean": 0.5694,
+              "min": 0.521,
+              "max": 0.586
+            },
+            "growth": {
+              "mean": 0.1862,
+              "min": 0.178,
+              "max": 0.2
+            },
+            "delta_ms": -0.3832,
+            "baseline_spread_ms": 0.06499999999999995
+          },
+          "voxelStage2": {
+            "baseline": {
+              "mean": 0.4554,
+              "min": 0.41,
+              "max": 0.468
+            },
+            "growth": {
+              "mean": 0.117,
+              "min": 0.114,
+              "max": 0.119
+            },
+            "delta_ms": -0.33840000000000003,
+            "baseline_spread_ms": 0.05800000000000005
+          },
+          "voxelSunFaces": {
+            "baseline": {
+              "mean": 1.0734,
+              "min": 0.958,
+              "max": 1.104
+            },
+            "growth": {
+              "mean": 0.6204,
+              "min": 0.615,
+              "max": 0.631
+            },
+            "delta_ms": -0.45299999999999996,
+            "baseline_spread_ms": 0.14600000000000013
+          }
+        }
+      }
+    },
+    "grid-zoom4": {
+      "target": "IRPerfGrid",
+      "args": [
+        "--auto-profile",
+        "60",
+        "--subdivision-mode",
+        "full",
+        "--base-subdivisions",
+        "1",
+        "--zoom",
+        "4"
+      ],
+      "order": "alternating",
+      "samples": {
+        "baseline": [
+          {
+            "frame_avg": 34.77,
+            "frame_p99": 669.06,
+            "steady_avg": 24.2,
+            "steady_p99": 28.49,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.703,
+              "commandBufferSpans": 7.703
+            },
+            "gpu_stages": {
+              "canvasClear": 0.017,
+              "voxelCompact": 0.184,
+              "voxelStage1": 1.993,
+              "voxelCardinalElect": 1.909,
+              "voxelStage2": 1.904,
+              "voxelSunFaces": 1.034,
+              "textToTrixel": 0.739,
+              "computeVoxelAO": 0.055,
+              "bakeSunShadowMap": 0.038,
+              "computeSunShadow": 0.055,
+              "computeLightVolume": 6.237,
+              "lightingToTrixel": 0.044,
+              "fogToTrixel": 0.016,
+              "trixelToFb": 1.114,
+              "fbToScreen": 0.038
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/baseline/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 35.52,
+            "frame_p99": 682.42,
+            "steady_avg": 24.54,
+            "steady_p99": 28.17,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.406,
+              "commandBufferSpans": 7.406
+            },
+            "gpu_stages": {
+              "canvasClear": 0.032,
+              "voxelCompact": 0.141,
+              "voxelStage1": 1.945,
+              "voxelCardinalElect": 1.826,
+              "voxelStage2": 1.803,
+              "voxelSunFaces": 0.98,
+              "textToTrixel": 0.538,
+              "computeVoxelAO": 0.053,
+              "bakeSunShadowMap": 0.037,
+              "computeSunShadow": 0.053,
+              "computeLightVolume": 6.007,
+              "lightingToTrixel": 0.043,
+              "fogToTrixel": 0.017,
+              "trixelToFb": 1.087,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/baseline/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 35.02,
+            "frame_p99": 669.68,
+            "steady_avg": 24.59,
+            "steady_p99": 28.46,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.523,
+              "commandBufferSpans": 7.523
+            },
+            "gpu_stages": {
+              "canvasClear": 0.013,
+              "voxelCompact": 0.184,
+              "voxelStage1": 1.987,
+              "voxelCardinalElect": 1.856,
+              "voxelStage2": 1.839,
+              "voxelSunFaces": 1.003,
+              "textToTrixel": 0.728,
+              "computeVoxelAO": 0.054,
+              "bakeSunShadowMap": 0.038,
+              "computeSunShadow": 0.053,
+              "computeLightVolume": 6.111,
+              "lightingToTrixel": 0.041,
+              "fogToTrixel": 0.016,
+              "trixelToFb": 1.069,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/baseline/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 35.5,
+            "frame_p99": 678.37,
+            "steady_avg": 24.78,
+            "steady_p99": 28.37,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.445,
+              "commandBufferSpans": 7.445
+            },
+            "gpu_stages": {
+              "canvasClear": 0.029,
+              "voxelCompact": 0.188,
+              "voxelStage1": 1.952,
+              "voxelCardinalElect": 1.878,
+              "voxelStage2": 1.797,
+              "voxelSunFaces": 0.976,
+              "textToTrixel": 0.643,
+              "computeVoxelAO": 0.052,
+              "bakeSunShadowMap": 0.036,
+              "computeSunShadow": 0.052,
+              "computeLightVolume": 6.052,
+              "lightingToTrixel": 0.042,
+              "fogToTrixel": 0.016,
+              "trixelToFb": 1.043,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/baseline/pair-3",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 34.97,
+            "frame_p99": 671.09,
+            "steady_avg": 24.26,
+            "steady_p99": 28.45,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.241,
+              "commandBufferSpans": 7.241
+            },
+            "gpu_stages": {
+              "canvasClear": 0.035,
+              "voxelCompact": 0.133,
+              "voxelStage1": 1.897,
+              "voxelCardinalElect": 1.788,
+              "voxelStage2": 1.762,
+              "voxelSunFaces": 0.96,
+              "textToTrixel": 0.52,
+              "computeVoxelAO": 0.052,
+              "bakeSunShadowMap": 0.036,
+              "computeSunShadow": 0.051,
+              "computeLightVolume": 5.87,
+              "lightingToTrixel": 0.041,
+              "fogToTrixel": 0.016,
+              "trixelToFb": 1.065,
+              "fbToScreen": 0.036
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/baseline/pair-4",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          }
+        ],
+        "growth": [
+          {
+            "frame_avg": 77.41,
+            "frame_p99": 668.82,
+            "steady_avg": 68.7,
+            "steady_p99": 96.75,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 46.306,
+              "commandBufferSpans": 46.306
+            },
+            "gpu_stages": {
+              "canvasClear": 0.046,
+              "voxelCompact": 0.922,
+              "voxelStage1": 1.619,
+              "voxelCardinalElect": 1.502,
+              "voxelStage2": 1.485,
+              "voxelSunFaces": 1.14,
+              "textToTrixel": 1.134,
+              "computeVoxelAO": 0.044,
+              "bakeSunShadowMap": 0.147,
+              "computeSunShadow": 39.91,
+              "computeLightVolume": 44.985,
+              "lightingToTrixel": 0.043,
+              "fogToTrixel": 0.014,
+              "trixelToFb": 1.188,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/growth/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 78.04,
+            "frame_p99": 673.49,
+            "steady_avg": 69.24,
+            "steady_p99": 105.12,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 46.121,
+              "commandBufferSpans": 46.121
+            },
+            "gpu_stages": {
+              "canvasClear": 0.044,
+              "voxelCompact": 0.936,
+              "voxelStage1": 1.668,
+              "voxelCardinalElect": 1.518,
+              "voxelStage2": 1.479,
+              "voxelSunFaces": 1.134,
+              "textToTrixel": 1.119,
+              "computeVoxelAO": 0.044,
+              "bakeSunShadowMap": 0.146,
+              "computeSunShadow": 39.707,
+              "computeLightVolume": 44.835,
+              "lightingToTrixel": 0.044,
+              "fogToTrixel": 0.013,
+              "trixelToFb": 1.128,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/growth/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 77.53,
+            "frame_p99": 681.72,
+            "steady_avg": 68.93,
+            "steady_p99": 89.76,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 45.916,
+              "commandBufferSpans": 45.916
+            },
+            "gpu_stages": {
+              "canvasClear": 0.047,
+              "voxelCompact": 0.915,
+              "voxelStage1": 1.697,
+              "voxelCardinalElect": 1.561,
+              "voxelStage2": 1.509,
+              "voxelSunFaces": 1.153,
+              "textToTrixel": 1.233,
+              "computeVoxelAO": 0.045,
+              "bakeSunShadowMap": 0.153,
+              "computeSunShadow": 39.331,
+              "computeLightVolume": 44.577,
+              "lightingToTrixel": 0.047,
+              "fogToTrixel": 0.014,
+              "trixelToFb": 1.12,
+              "fbToScreen": 0.032
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/growth/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 76.51,
+            "frame_p99": 666.5,
+            "steady_avg": 69.07,
+            "steady_p99": 96.45,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 45.512,
+              "commandBufferSpans": 45.512
+            },
+            "gpu_stages": {
+              "canvasClear": 0.048,
+              "voxelCompact": 0.913,
+              "voxelStage1": 1.582,
+              "voxelCardinalElect": 1.489,
+              "voxelStage2": 1.466,
+              "voxelSunFaces": 1.127,
+              "textToTrixel": 1.145,
+              "computeVoxelAO": 0.044,
+              "bakeSunShadowMap": 0.144,
+              "computeSunShadow": 39.014,
+              "computeLightVolume": 44.018,
+              "lightingToTrixel": 0.042,
+              "fogToTrixel": 0.014,
+              "trixelToFb": 1.113,
+              "fbToScreen": 0.032
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/growth/pair-3",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 76.94,
+            "frame_p99": 671.6,
+            "steady_avg": 69.57,
+            "steady_p99": 107.74,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 45.734,
+              "commandBufferSpans": 45.734
+            },
+            "gpu_stages": {
+              "canvasClear": 0.047,
+              "voxelCompact": 0.937,
+              "voxelStage1": 1.641,
+              "voxelCardinalElect": 1.502,
+              "voxelStage2": 1.477,
+              "voxelSunFaces": 1.137,
+              "textToTrixel": 1.133,
+              "computeVoxelAO": 0.044,
+              "bakeSunShadowMap": 0.15,
+              "computeSunShadow": 39.319,
+              "computeLightVolume": 44.414,
+              "lightingToTrixel": 0.047,
+              "fogToTrixel": 0.014,
+              "trixelToFb": 1.158,
+              "fbToScreen": 0.031
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-growth2/grid-zoom4/growth/pair-4",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          }
+        ]
+      },
+      "summary": {
+        "frame_avg": {
+          "baseline": {
+            "mean": 35.156,
+            "min": 34.77,
+            "max": 35.52,
+            "n": 5
+          },
+          "growth": {
+            "mean": 77.286,
+            "min": 76.51,
+            "max": 78.04,
+            "n": 5
+          },
+          "ratio": 2.19837296620776,
+          "within_budget": false
+        },
+        "frame_p99": {
+          "baseline": {
+            "mean": 674.124,
+            "min": 669.06,
+            "max": 682.42,
+            "n": 5
+          },
+          "growth": {
+            "mean": 672.426,
+            "min": 666.5,
+            "max": 681.72,
+            "n": 5
+          },
+          "ratio": 0.9974811755700732,
+          "within_budget": true
+        },
+        "steady_avg": {
+          "baseline": {
+            "mean": 24.474,
+            "min": 24.2,
+            "max": 24.78,
+            "n": 5
+          },
+          "growth": {
+            "mean": 69.102,
+            "min": 68.7,
+            "max": 69.57,
+            "n": 5
+          },
+          "ratio": 2.823486148565825,
+          "within_budget": false
+        },
+        "steady_p99": {
+          "baseline": {
+            "mean": 28.388,
+            "min": 28.17,
+            "max": 28.49,
+            "n": 5
+          },
+          "growth": {
+            "mean": 99.164,
+            "min": 89.76,
+            "max": 107.74,
+            "n": 5
+          },
+          "ratio": 3.4931661265323375,
+          "within_budget": false
+        },
+        "gpu_stages": {
+          "bakeSunShadowMap": {
+            "baseline": {
+              "mean": 0.037,
+              "min": 0.036,
+              "max": 0.038
+            },
+            "growth": {
+              "mean": 0.148,
+              "min": 0.144,
+              "max": 0.153
+            },
+            "delta_ms": 0.11099999999999999,
+            "baseline_spread_ms": 0.0020000000000000018
+          },
+          "canvasClear": {
+            "baseline": {
+              "mean": 0.0252,
+              "min": 0.013,
+              "max": 0.035
+            },
+            "growth": {
+              "mean": 0.0464,
+              "min": 0.044,
+              "max": 0.048
+            },
+            "delta_ms": 0.021199999999999997,
+            "baseline_spread_ms": 0.022000000000000006
+          },
+          "computeLightVolume": {
+            "baseline": {
+              "mean": 6.0554,
+              "min": 5.87,
+              "max": 6.237
+            },
+            "growth": {
+              "mean": 44.5658,
+              "min": 44.018,
+              "max": 44.985
+            },
+            "delta_ms": 38.510400000000004,
+            "baseline_spread_ms": 0.367
+          },
+          "computeSunShadow": {
+            "baseline": {
+              "mean": 0.0528,
+              "min": 0.051,
+              "max": 0.055
+            },
+            "growth": {
+              "mean": 39.4562,
+              "min": 39.014,
+              "max": 39.91
+            },
+            "delta_ms": 39.403400000000005,
+            "baseline_spread_ms": 0.0040000000000000036
+          },
+          "computeVoxelAO": {
+            "baseline": {
+              "mean": 0.0532,
+              "min": 0.052,
+              "max": 0.055
+            },
+            "growth": {
+              "mean": 0.044199999999999996,
+              "min": 0.044,
+              "max": 0.045
+            },
+            "delta_ms": -0.009000000000000001,
+            "baseline_spread_ms": 0.0030000000000000027
+          },
+          "fbToScreen": {
+            "baseline": {
+              "mean": 0.037,
+              "min": 0.036,
+              "max": 0.038
+            },
+            "growth": {
+              "mean": 0.0314,
+              "min": 0.031,
+              "max": 0.032
+            },
+            "delta_ms": -0.005600000000000001,
+            "baseline_spread_ms": 0.0020000000000000018
+          },
+          "fogToTrixel": {
+            "baseline": {
+              "mean": 0.0162,
+              "min": 0.016,
+              "max": 0.017
+            },
+            "growth": {
+              "mean": 0.0138,
+              "min": 0.013,
+              "max": 0.014
+            },
+            "delta_ms": -0.0023999999999999994,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "lightingToTrixel": {
+            "baseline": {
+              "mean": 0.0422,
+              "min": 0.041,
+              "max": 0.044
+            },
+            "growth": {
+              "mean": 0.0446,
+              "min": 0.042,
+              "max": 0.047
+            },
+            "delta_ms": 0.0023999999999999994,
+            "baseline_spread_ms": 0.0029999999999999957
+          },
+          "textToTrixel": {
+            "baseline": {
+              "mean": 0.6336,
+              "min": 0.52,
+              "max": 0.739
+            },
+            "growth": {
+              "mean": 1.1528,
+              "min": 1.119,
+              "max": 1.233
+            },
+            "delta_ms": 0.5192,
+            "baseline_spread_ms": 0.21899999999999997
+          },
+          "trixelToFb": {
+            "baseline": {
+              "mean": 1.0756,
+              "min": 1.043,
+              "max": 1.114
+            },
+            "growth": {
+              "mean": 1.1414,
+              "min": 1.113,
+              "max": 1.188
+            },
+            "delta_ms": 0.06580000000000008,
+            "baseline_spread_ms": 0.07100000000000017
+          },
+          "voxelCardinalElect": {
+            "baseline": {
+              "mean": 1.8514,
+              "min": 1.788,
+              "max": 1.909
+            },
+            "growth": {
+              "mean": 1.5144,
+              "min": 1.489,
+              "max": 1.561
+            },
+            "delta_ms": -0.33699999999999997,
+            "baseline_spread_ms": 0.121
+          },
+          "voxelCompact": {
+            "baseline": {
+              "mean": 0.166,
+              "min": 0.133,
+              "max": 0.188
+            },
+            "growth": {
+              "mean": 0.9246000000000001,
+              "min": 0.913,
+              "max": 0.937
+            },
+            "delta_ms": 0.7586,
+            "baseline_spread_ms": 0.05499999999999999
+          },
+          "voxelStage1": {
+            "baseline": {
+              "mean": 1.9548,
+              "min": 1.897,
+              "max": 1.993
+            },
+            "growth": {
+              "mean": 1.6414,
+              "min": 1.582,
+              "max": 1.697
+            },
+            "delta_ms": -0.3134000000000001,
+            "baseline_spread_ms": 0.09600000000000009
+          },
+          "voxelStage2": {
+            "baseline": {
+              "mean": 1.821,
+              "min": 1.762,
+              "max": 1.904
+            },
+            "growth": {
+              "mean": 1.4832,
+              "min": 1.466,
+              "max": 1.509
+            },
+            "delta_ms": -0.3377999999999999,
+            "baseline_spread_ms": 0.1419999999999999
+          },
+          "voxelSunFaces": {
+            "baseline": {
+              "mean": 0.9905999999999999,
+              "min": 0.96,
+              "max": 1.034
+            },
+            "growth": {
+              "mean": 1.1381999999999999,
+              "min": 1.127,
+              "max": 1.153
+            },
+            "delta_ms": 0.14759999999999995,
+            "baseline_spread_ms": 0.07400000000000007
+          }
+        }
+      }
+    }
+  }
+}

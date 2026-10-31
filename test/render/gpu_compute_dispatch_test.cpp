@@ -2433,6 +2433,8 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     SunProbeFixture probe;
     auto &bake = probe.registerBake();
     std::vector<std::uint32_t> seed(Shadow::kSourceFaceBufferWords, 0xDEADBEEFu);
+    // The allocator's capacity word addresses every tail offset on Metal.
+    seed[Shadow::kSourceFaceCapacityOffset] = Shadow::kSourceFaceCapacity;
     Buffer depth(seed.data(), seed.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
     FrameDataSun frame{};
     frame.sunBasisU_ = IRMath::vec4(0.125f, 0.25f, 0.5f, 0.0f);

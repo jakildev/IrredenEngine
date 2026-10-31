@@ -74,7 +74,7 @@ float sourceSunGeometrySeparation(uint faceIndex, vec2 sunUV, float sunZ
         : sourceShapeRaySeparation(sunUV, sunZ, geometry.type, geometry.corner, geometry.edgeU, geometry.edgeV);
 }
 
-bool sourceSunHierarchyBlocks(uint leaves, uint records,
+bool sourceSunHierarchyBlocks(uint capacity, uint leaves, uint records,
     vec2 sunUV, float sunZ, float maxShadowThrow
 #if IR_SUN_QUERY_STATS
     , inout SunQueryStats sunQueryStats
@@ -85,7 +85,7 @@ bool sourceSunHierarchyBlocks(uint leaves, uint records,
     uint visited = 0u;
 #endif
     while (true) {
-        if (sourceSunBoundsOverlap(readSourceSunBounds(node), sunUV, sunZ,
+        if (sourceSunBoundsOverlap(readSourceSunBounds(capacity, node), sunUV, sunZ,
                                    kShadowBiasQuantNoise, maxShadowThrow)) {
             if (node < leaves) { node *= 2u; continue; }
             const uint first = (node - leaves) * kSourceFaceHierarchyLeafSize;
@@ -130,7 +130,9 @@ float sampleCascadeShadow(
 #if IR_SUN_QUERY_STATS
     sunQueryStats.counts[kSunQueryCascades] += 1u;
 #endif
-    const uint sourceFaceCount = sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))];
+    const uint boundWords = uint(sunDepthBuf.length());
+    const uint capacity = sourceFaceCapacity(boundWords);
+    const uint sourceFaceCount = sunDepthBuf[sourceFaceHeaderIndex(boundWords)];
     const bool hasSourceFaces = sourceFaceCount != 0u;
     bool sourceQueryComplete = !hasSourceFaces;
     if (surfaceReceiver && hasSourceFaces) {
@@ -141,9 +143,9 @@ float sampleCascadeShadow(
             const uint tileBase = sourceFaceTileBase(tileIndex);
             const uint count = sunDepthBuf[tileBase];
             sourceQueryComplete = sourceFaceQueryComplete(count)
-                && (count <= kSourceFaceTileCapacity || sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))] <= kSourceFaceSpillCapacity);
-            const uint retainedFaces = sourceFaceRetainedRecords(sourceFaceCount);
-            const uint hierarchyLeaves = !sourceQueryComplete ? sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] : 0u;
+                && (count <= kSourceFaceTileCapacity || sunDepthBuf[sourceFaceSpillCounterIndex(capacity)] <= kSourceFaceSpillCapacity);
+            const uint retainedFaces = sourceFaceRetainedRecords(sourceFaceCount, capacity);
+            const uint hierarchyLeaves = !sourceQueryComplete ? sunDepthBuf[sourceFaceHierarchyReadyIndex(capacity)] : 0u;
             // A tile that lost records answers from the sampled layers: no retained-pool
             // miss can certify it, and a hit-only traversal can visit the whole pool per receiver.
             const bool queryHierarchy = !sourceQueryComplete && sourceFaceTileRetainsRecords(count) &&
@@ -154,7 +156,7 @@ float sampleCascadeShadow(
 #if IR_SUN_QUERY_STATS
                     sunQueryStats.counts[kSunQueryIndexed] += 1u;
 #endif
-                    if (sourceSunHierarchyBlocks(hierarchyLeaves, retainedFaces,
+                    if (sourceSunHierarchyBlocks(capacity, hierarchyLeaves, retainedFaces,
                                                  sunUV, sunZ, maxShadowThrow
 #if IR_SUN_QUERY_STATS
                         , sunQueryStats
@@ -165,7 +167,7 @@ float sampleCascadeShadow(
             // A complete small record pool is an exact reference for an incomplete tile.
             const bool queryAllFaces = IR_SUN_FACE_OVERFLOW_REFERENCE != 0
                 && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
-                && sourceFaceCount <= kSourceFaceCapacity;
+                && sourceFaceCount <= capacity;
             sourceQueryComplete = sourceQueryComplete || queryAllFaces;
 #if IR_SUN_QUERY_STATS
             if (!sourceQueryComplete) sunQueryStats.counts[kSunQueryIncomplete] += 1u;
@@ -176,7 +178,7 @@ float sampleCascadeShadow(
                 sunQueryStats.counts[kSunQueryIndexed] += 1u;
 #endif
                 uint spill = !queryAllFaces && count > kSourceFaceTileCapacity
-                    ? sunDepthBuf[kSourceFaceSpillHeadOffset + tileIndex] : 0xFFFFFFFFu;
+                    ? sunDepthBuf[sourceFaceSpillHeadIndex(capacity, tileIndex)] : 0xFFFFFFFFu;
                 for (uint candidate = 0; candidate < candidateCount; ++candidate) {
 #if IR_SUN_QUERY_STATS
                     sunQueryStats.counts[kSunQueryCandidates] += 1u;
@@ -187,7 +189,7 @@ float sampleCascadeShadow(
                     } else if (candidate < kSourceFaceTileCapacity) {
                         faceIndex = sunDepthBuf[tileBase + 1u + candidate];
                     } else {
-                        const uint node = kSourceFaceSpillNodeOffset + spill * kSourceFaceSpillNodeWords;
+                        const uint node = sourceFaceSpillNodeIndex(capacity, spill);
                         faceIndex = sunDepthBuf[node];
                         spill = sunDepthBuf[node + 1u];
                     }

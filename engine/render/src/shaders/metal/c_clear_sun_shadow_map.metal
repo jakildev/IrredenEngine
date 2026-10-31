@@ -18,13 +18,15 @@ kernel void c_clear_sun_shadow_map(
     if (linearIdx >= kTotalTexels) {
         return;
     }
+    const uint capacity = atomic_load_explicit(&sunDepthBuf[kSourceFaceCapacityOffset], memory_order_relaxed);
+    // The capacity word beside the header belongs to the allocator and survives the clear.
     if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 0u, memory_order_relaxed);
-    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceSpillCounterOffset], 0u, memory_order_relaxed);
-    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 0u, memory_order_relaxed);
-    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyReadyOffset], 0u, memory_order_relaxed);
+    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[sourceFaceSpillCounterIndex(capacity)], 0u, memory_order_relaxed);
+    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 0u, memory_order_relaxed);
+    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[sourceFaceHierarchyReadyIndex(capacity)], 0u, memory_order_relaxed);
     if (uint(linearIdx) < kSourceFaceTileCount) {
         atomic_store_explicit(&sunDepthBuf[sourceFaceTileBase(uint(linearIdx))], 0u, memory_order_relaxed);
-        atomic_store_explicit(&sunDepthBuf[kSourceFaceSpillHeadOffset + uint(linearIdx)], 0xFFFFFFFFu, memory_order_relaxed);
+        atomic_store_explicit(&sunDepthBuf[sourceFaceSpillHeadIndex(capacity, uint(linearIdx))], 0xFFFFFFFFu, memory_order_relaxed);
     }
     atomic_store_explicit(&sunDepthBuf[linearIdx + kSourceFaceFallbackOffset], 0xFFFFFFFFu, memory_order_relaxed);
     atomic_store_explicit(

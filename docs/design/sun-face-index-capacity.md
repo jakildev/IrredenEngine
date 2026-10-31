@@ -5,11 +5,14 @@ Two 1024×1024 sun cascades contain 32,768 tiles of 8×8 texels each. The first
 64 candidate IDs per tile are inline. Up to 192 additional IDs use a shared
 262,144-node spill pool; each node contains a record ID and the previous node
 index. The complete query ceiling is 256 candidates, independent of unrelated
-records elsewhere in the index. The record pool holds 65,536 ten-word records.
+records elsewhere in the index. The record pool starts at 65,536 ten-word
+records and grows between frames to the demand the previous frame measured
+([Record-pool exhaustion](#record-pool-exhaustion)).
 
 The appended spill counter, heads and nodes cost 2,228,228 bytes. An appended
-512 KiB hierarchy plus two metadata words brings the full sun buffer to
-30,670,864 bytes, including both depth layers, records and tile lists.
+512 KiB hierarchy plus two metadata words brings the default sun buffer to
+30,670,868 bytes, including both depth layers, the two header words, records
+and tile lists; each further record costs 48 bytes of geometry and hierarchy.
 It shares the existing buffer binding; hierarchy construction adds GPU passes. Ordinary inline queries do not
 read the spill counter or heads. Spill traversal has dependent reads and must
 be measured separately from the fixed-list path.
@@ -82,8 +85,8 @@ scaling remain required before claiming a throughput gain.
 
 ## Record-pool exhaustion
 
-Reservations past the 65,536th record publish no geometry, but every lower ID
-is a published record once the bake dispatches finish. The first failed
+Reservations past the allocated capacity publish no geometry, but every lower
+ID is a published record once the bake dispatches finish. The first failed
 reservation requests the hierarchy, which is then built over that retained
 prefix. Each tile overlapped by a failed reservation carries the lost-record
 bit:
@@ -101,23 +104,75 @@ bit:
 
 Complete inline tiles keep their local list. Every tile is therefore either
 exact or answered by the sampled layers; incomplete storage is never certified
-complete. Which records are lost still follows bake-dispatch order,
-so a tile's exact or sampled treatment depends on that order.
+complete. Within one frame, which records are lost still follows bake-dispatch
+order. Across frames the pool grows to the measured demand, so a scene whose
+demand fits the ceiling loses records only on the frames before the growth
+lands.
+
+### Frame-latent capacity growth
+
+The bake system copies the frame's requested-record count into a readback
+slot after the hierarchy build and reads it once its submission has completed
+(`GpuReadbackRing`; frame age proves nothing). Before the next clear, the
+largest completed sample picks the smallest power of two that holds it, never
+below the current capacity and never above the ceiling, and the buffer is
+reallocated behind the same `Buffer` (`Buffer::resize`): queued frames keep
+the old storage, every consumer rebinds through the object on its next
+dispatch, and the allocator writes the capacity into the header word before
+the first dispatch that reads it. GLSL recovers the capacity from the bound
+length, keeping the header index runtime-derived for NVIDIA's cold link; Metal
+reads the header word. Every word from the spill counter on is addressed
+through the `sourceFace*Index` helpers, and the hierarchy build dispatches as
+many cooperative passes as the leaf allocation needs (two up to 131,072
+records, three up to the 16,777,216-record dispatch limit), publishing
+readiness from the pass that roots the tree. The default allocation keeps its two-pass dispatch sequence
+and its frames stay byte-identical: the frozen-ceiling matrix matched the
+parent on all 41 captures.
+
+Growth is monotonic within a run; the first frame whose demand exceeds the
+pool loses records as before, the sample completes one frame later on Metal
+and the grown pool serves the frame after that (filler spawned at render
+frame 9, demand sampled at frame 10, applied at frame 11 in the transition
+fixture). At the ceiling the exhaustion is reported once (`SUN-RECORD-POOL
+exhausted at ceiling`) and the probe records the demand peak, the exhausted
+samples and the capacity changes; the lost-tile policy above then holds.
+
+The ceiling is chosen from measurement, not from a workload that might
+appear. `IRPerfGrid`'s 262,144-voxel grid requests 786,432 records at zoom 1
+and 4; letting the pool reach 1,048,576 records (77,856,788 bytes) recovers
+every record but costs 1.62x (zoom 1) and 2.82x (zoom 4) of the steady frame,
+because overflowed tiles then traverse an unsorted 786,432-record hierarchy
+(`computeSunShadow` 0.05 ms to 12.2 / 39.5 ms, `computeLightVolume` 2.6 / 6.1
+to 13.1 / 44.6 ms). That is the spatial-ordering and traversal cost the
+hierarchy's own follow-up owns, not a cost of growth; it stays a measured
+tradeoff for design review. The shipped ceiling is 131,072 records
+(`kSourceFaceCapacityCeiling`, 33,816,596 bytes), the largest pool whose
+IRPerfGrid cost stayed inside the 1.10x frame budget in the
+[native controls](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md#frame-latent-capacity-growth)
+(steady mean 1.058x and 0.989x at zoom 1 and 4; 262,144 reaches 1.35x at zoom 4);
+`IRPrefab::SunShadow::configureRecordPool` sets another capacity or ceiling
+for a creation or a diagnostic (`IRCanvasStress` / `IRPerfGrid`
+`--sun-record-capacity` / `--sun-record-ceiling`).
+
+### Candidates measured
+
+| Family | Correctness | Latency | Memory | Cost | Decision |
+|---|---|---|---|---|---|
+| Capacity growth from completed demand samples | Every exhausted CanvasStress case (three finite filler-first, the 280 straddle, three analytic, the moving filler-first track) matches its sufficient-capacity control with 0 missing and 0 excess pixels outside the 2 px band; frames without exhaustion byte-identical | One exhausted frame per demand step | 48 bytes per record above the default; 33,816,596 bytes at 131,072 | +4.3% steady frame on the exhausted CanvasStress cell, 1.000x on its control; IRPerfGrid at the ceiling per the table above | Adopted, with a measured ceiling |
+| Deterministic retention priority | Rejected by counting: the pool holds C records and a receiver domain in which more than C records are each the sole blocker of some receiver loses at least demand minus C blockers under every order (`test_render_sun_record_capacity.py` places capacity + 1 sole blockers; IRPerfGrid requests 786,432 against 65,536, so any priority drops 720,896). Ordering only chooses which receiver reads lit | n/a | n/a | n/a | Rejected |
+| Depth-slab extrema for lost records | Depth-only interval existence is exact with slabs no wider than the throw, but the finite query is per receiver position: [`slab_extrema_witness.py`](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/slab_extrema_witness.py) keeps a slab's minimum and maximum, both of which miss the receiver's footprint while the discarded middle face blocks it | n/a | 16 slabs of two words per texel: 268,435,456 bytes | n/a | Rejected |
 
 [Native Metal controls](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md)
 force exhaustion with a rigid filler plate created before or after the
-casters. With the receiver's records retained, crowded cardinal and oblique
-scenes, static or with the caster stack drifting across the receiver every
-frame, match their sufficient-capacity controls exactly, where the parent lost
-200–228 shadow pixels. When the lower caster's own records are lost, the hole
-remains unchanged: its depth survives only in the nearest-depth sampled layer,
-behind the distant casters. Analytic solids reach that limit regardless of
-creation order, because `SHAPES_TO_TRIXEL` bakes them after every voxel canvas
-and their records are the first lost. Recovering it needs either
-dispatch-order-independent retention of receiver-relevant records, or capacity
-that does not exhaust; neither a larger bias nor accepting partial lists
-supplies that information. Raster-only casters in the primary layer share the
-same nearest-depth loss, independent of pool capacity.
+casters, or at a chosen frame. Before growth, when the lower caster's own
+records were lost (filler first, the 280 straddle, or an analytic sphere baked
+after every canvas), the lower shadow's centre was missing: its depth survived
+only in the nearest-depth sampled layer, behind the distant casters. Analytic
+solids reached that limit regardless of creation order, because
+`SHAPES_TO_TRIXEL` bakes them after every voxel canvas and their records are
+the first lost. With growth these cases match their controls from the frame
+after the demand sample lands. Raster-only casters in the primary layer share
+the nearest-depth loss, independent of pool capacity.
 
 ## Evidence and limits
 
@@ -149,13 +204,14 @@ sample cannot answer an arbitrary bounded interval query: if receiver depth is
 replaces 2 with -120; the stored caster is then too distant. Complete finite-face
 queries still find the lower caster. The hierarchy now extends that guarantee
 to incomplete tiles whose records the pool retained, including during global
-record exhaustion. Records lost to exhaustion, unpublished hierarchy frames and
-raster-only casters can still lose it. Increasing bias, blending or accepting every retained partial-list
+record exhaustion, and the pool grows to the measured demand. Records lost past
+the ceiling or on the frame before a growth lands, unpublished hierarchy frames
+and raster-only casters can still lose it. Increasing bias, blending or accepting every retained partial-list
 hit does not restore the missing information.
 
 The hierarchy retains finite face bounds and depth intervals, so it can skip
 disjoint geometry without discarding a lower blocker. Remaining representation
-work includes records lost to an exhausted pool and raster-only sampled layers. It must preserve the finite
+work includes records lost past the ceiling and raster-only sampled layers. It must preserve the finite
 throw limit and allocation-order independence. The moving-block report also
 needs native Windows scene reproduction; this mechanism alone does not identify
 every visible speckle. [Sampler controls and scene evidence](../pr-screenshots/codex/overlapping-caster-shadow/README.md)
@@ -264,5 +320,6 @@ cardinal fixtures. Separate reference-free query timings include a complete
 key/range/sort/tree build measurement; the repeated coherent receiver grid is
 not a frame-rate benchmark. Preserve the complete-tile fast path when
 evaluating an overflow fallback. Production selection still needs mixed
-analytic/raster-only completeness, lost-record recovery, engine resource
-integration, native OpenGL parity and actual moving-scene qualification.
+analytic/raster-only completeness, traversal cost at the grown pool sizes a
+dense scene demands, engine resource integration, native OpenGL parity and
+actual moving-scene qualification.

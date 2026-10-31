@@ -1,0 +1,1227 @@
+{
+  "pairs": 3,
+  "budget": 1.1,
+  "builds": {
+    "baseline": {
+      "build": "/private/tmp/pool4-4798/baseline-build",
+      "extra": []
+    },
+    "frozen-65536": {
+      "build": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+      "extra": [
+        "--sun-record-ceiling",
+        "65536"
+      ]
+    }
+  },
+  "cells": {
+    "grid-zoom1": {
+      "target": "IRPerfGrid",
+      "args": [
+        "--auto-profile",
+        "60",
+        "--subdivision-mode",
+        "full",
+        "--base-subdivisions",
+        "1",
+        "--zoom",
+        "1"
+      ],
+      "order": "alternating",
+      "samples": {
+        "baseline": [
+          {
+            "frame_avg": 31.21,
+            "frame_p99": 655.87,
+            "steady_avg": 20.99,
+            "steady_p99": 22.88,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.451,
+              "commandBufferSpans": 4.451
+            },
+            "gpu_stages": {
+              "canvasClear": 0.064,
+              "voxelCompact": 0.305,
+              "voxelStage1": 0.526,
+              "voxelCardinalElect": 0.421,
+              "voxelStage2": 0.415,
+              "voxelSunFaces": 1.025,
+              "textToTrixel": 1.155,
+              "computeVoxelAO": 0.052,
+              "bakeSunShadowMap": 0.085,
+              "computeSunShadow": 0.067,
+              "computeLightVolume": 2.38,
+              "lightingToTrixel": 0.054,
+              "fogToTrixel": 0.031,
+              "trixelToFb": 1.202,
+              "fbToScreen": 0.111
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom1/baseline/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 32.38,
+            "frame_p99": 681.42,
+            "steady_avg": 21.39,
+            "steady_p99": 23.49,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.865,
+              "commandBufferSpans": 4.865
+            },
+            "gpu_stages": {
+              "canvasClear": 0.076,
+              "voxelCompact": 0.297,
+              "voxelStage1": 0.584,
+              "voxelCardinalElect": 0.471,
+              "voxelStage2": 0.468,
+              "voxelSunFaces": 1.097,
+              "textToTrixel": 1.238,
+              "computeVoxelAO": 0.058,
+              "bakeSunShadowMap": 0.093,
+              "computeSunShadow": 0.071,
+              "computeLightVolume": 2.664,
+              "lightingToTrixel": 0.06,
+              "fogToTrixel": 0.034,
+              "trixelToFb": 1.274,
+              "fbToScreen": 0.126
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom1/baseline/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          },
+          {
+            "frame_avg": 31.39,
+            "frame_p99": 663.39,
+            "steady_avg": 20.65,
+            "steady_p99": 23.07,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.911,
+              "commandBufferSpans": 4.911
+            },
+            "gpu_stages": {
+              "canvasClear": 0.06,
+              "voxelCompact": 0.324,
+              "voxelStage1": 0.584,
+              "voxelCardinalElect": 0.499,
+              "voxelStage2": 0.471,
+              "voxelSunFaces": 1.108,
+              "textToTrixel": 1.389,
+              "computeVoxelAO": 0.056,
+              "bakeSunShadowMap": 0.09,
+              "computeSunShadow": 0.073,
+              "computeLightVolume": 2.677,
+              "lightingToTrixel": 0.057,
+              "fogToTrixel": 0.033,
+              "trixelToFb": 1.329,
+              "fbToScreen": 0.124
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom1/baseline/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1"
+            ]
+          }
+        ],
+        "frozen-65536": [
+          {
+            "frame_avg": 32.33,
+            "frame_p99": 657.78,
+            "steady_avg": 21.64,
+            "steady_p99": 23.79,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 5.278,
+              "commandBufferSpans": 5.278
+            },
+            "gpu_stages": {
+              "canvasClear": 0.122,
+              "voxelCompact": 0.833,
+              "voxelStage1": 0.59,
+              "voxelCardinalElect": 0.47,
+              "voxelStage2": 0.469,
+              "voxelSunFaces": 1.143,
+              "textToTrixel": 1.658,
+              "computeVoxelAO": 0.057,
+              "bakeSunShadowMap": 0.1,
+              "computeSunShadow": 0.075,
+              "computeLightVolume": 2.754,
+              "lightingToTrixel": 0.061,
+              "fogToTrixel": 0.033,
+              "trixelToFb": 1.135,
+              "fbToScreen": 0.126
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom1/frozen-65536/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1",
+              "--sun-record-ceiling",
+              "65536"
+            ]
+          },
+          {
+            "frame_avg": 31.35,
+            "frame_p99": 666.08,
+            "steady_avg": 21.75,
+            "steady_p99": 23.58,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 4.706,
+              "commandBufferSpans": 4.706
+            },
+            "gpu_stages": {
+              "canvasClear": 0.107,
+              "voxelCompact": 0.745,
+              "voxelStage1": 0.522,
+              "voxelCardinalElect": 0.418,
+              "voxelStage2": 0.414,
+              "voxelSunFaces": 1.022,
+              "textToTrixel": 1.468,
+              "computeVoxelAO": 0.05,
+              "bakeSunShadowMap": 0.091,
+              "computeSunShadow": 0.065,
+              "computeLightVolume": 2.45,
+              "lightingToTrixel": 0.055,
+              "fogToTrixel": 0.03,
+              "trixelToFb": 0.986,
+              "fbToScreen": 0.113
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom1/frozen-65536/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1",
+              "--sun-record-ceiling",
+              "65536"
+            ]
+          },
+          {
+            "frame_avg": 31.77,
+            "frame_p99": 660.11,
+            "steady_avg": 20.79,
+            "steady_p99": 23.75,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 5.153,
+              "commandBufferSpans": 5.153
+            },
+            "gpu_stages": {
+              "canvasClear": 0.121,
+              "voxelCompact": 0.772,
+              "voxelStage1": 0.566,
+              "voxelCardinalElect": 0.469,
+              "voxelStage2": 0.465,
+              "voxelSunFaces": 1.119,
+              "textToTrixel": 1.588,
+              "computeVoxelAO": 0.056,
+              "bakeSunShadowMap": 0.097,
+              "computeSunShadow": 0.069,
+              "computeLightVolume": 2.717,
+              "lightingToTrixel": 0.058,
+              "fogToTrixel": 0.032,
+              "trixelToFb": 1.168,
+              "fbToScreen": 0.124
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom1/frozen-65536/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "1",
+              "--sun-record-ceiling",
+              "65536"
+            ]
+          }
+        ]
+      },
+      "summary": {
+        "frame_avg": {
+          "baseline": {
+            "mean": 31.66,
+            "min": 31.21,
+            "max": 32.38,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 31.816666666666666,
+            "min": 31.35,
+            "max": 32.33,
+            "n": 3
+          },
+          "ratio": 1.0049484101916193,
+          "within_budget": true
+        },
+        "frame_p99": {
+          "baseline": {
+            "mean": 666.8933333333333,
+            "min": 655.87,
+            "max": 681.42,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 661.3233333333334,
+            "min": 657.78,
+            "max": 666.08,
+            "n": 3
+          },
+          "ratio": 0.9916478397344903,
+          "within_budget": true
+        },
+        "steady_avg": {
+          "baseline": {
+            "mean": 21.009999999999998,
+            "min": 20.65,
+            "max": 21.39,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 21.393333333333334,
+            "min": 20.79,
+            "max": 21.75,
+            "n": 3
+          },
+          "ratio": 1.018245280025385,
+          "within_budget": true
+        },
+        "steady_p99": {
+          "baseline": {
+            "mean": 23.146666666666665,
+            "min": 22.88,
+            "max": 23.49,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 23.706666666666667,
+            "min": 23.58,
+            "max": 23.79,
+            "n": 3
+          },
+          "ratio": 1.024193548387097,
+          "within_budget": true
+        },
+        "gpu_stages": {
+          "bakeSunShadowMap": {
+            "baseline": {
+              "mean": 0.08933333333333333,
+              "min": 0.085,
+              "max": 0.093
+            },
+            "frozen-65536": {
+              "mean": 0.096,
+              "min": 0.091,
+              "max": 0.1
+            },
+            "delta_ms": 0.006666666666666668,
+            "baseline_spread_ms": 0.007999999999999993
+          },
+          "canvasClear": {
+            "baseline": {
+              "mean": 0.06666666666666667,
+              "min": 0.06,
+              "max": 0.076
+            },
+            "frozen-65536": {
+              "mean": 0.11666666666666667,
+              "min": 0.107,
+              "max": 0.122
+            },
+            "delta_ms": 0.05,
+            "baseline_spread_ms": 0.016
+          },
+          "computeLightVolume": {
+            "baseline": {
+              "mean": 2.5736666666666665,
+              "min": 2.38,
+              "max": 2.677
+            },
+            "frozen-65536": {
+              "mean": 2.6403333333333334,
+              "min": 2.45,
+              "max": 2.754
+            },
+            "delta_ms": 0.06666666666666687,
+            "baseline_spread_ms": 0.29700000000000015
+          },
+          "computeSunShadow": {
+            "baseline": {
+              "mean": 0.07033333333333333,
+              "min": 0.067,
+              "max": 0.073
+            },
+            "frozen-65536": {
+              "mean": 0.06966666666666667,
+              "min": 0.065,
+              "max": 0.075
+            },
+            "delta_ms": -0.0006666666666666626,
+            "baseline_spread_ms": 0.0059999999999999915
+          },
+          "computeVoxelAO": {
+            "baseline": {
+              "mean": 0.05533333333333333,
+              "min": 0.052,
+              "max": 0.058
+            },
+            "frozen-65536": {
+              "mean": 0.05433333333333334,
+              "min": 0.05,
+              "max": 0.057
+            },
+            "delta_ms": -0.000999999999999994,
+            "baseline_spread_ms": 0.006000000000000005
+          },
+          "fbToScreen": {
+            "baseline": {
+              "mean": 0.12033333333333333,
+              "min": 0.111,
+              "max": 0.126
+            },
+            "frozen-65536": {
+              "mean": 0.121,
+              "min": 0.113,
+              "max": 0.126
+            },
+            "delta_ms": 0.0006666666666666626,
+            "baseline_spread_ms": 0.015
+          },
+          "fogToTrixel": {
+            "baseline": {
+              "mean": 0.03266666666666667,
+              "min": 0.031,
+              "max": 0.034
+            },
+            "frozen-65536": {
+              "mean": 0.03166666666666667,
+              "min": 0.03,
+              "max": 0.033
+            },
+            "delta_ms": -0.0010000000000000009,
+            "baseline_spread_ms": 0.0030000000000000027
+          },
+          "lightingToTrixel": {
+            "baseline": {
+              "mean": 0.057,
+              "min": 0.054,
+              "max": 0.06
+            },
+            "frozen-65536": {
+              "mean": 0.058,
+              "min": 0.055,
+              "max": 0.061
+            },
+            "delta_ms": 0.0010000000000000009,
+            "baseline_spread_ms": 0.005999999999999998
+          },
+          "textToTrixel": {
+            "baseline": {
+              "mean": 1.2606666666666666,
+              "min": 1.155,
+              "max": 1.389
+            },
+            "frozen-65536": {
+              "mean": 1.5713333333333332,
+              "min": 1.468,
+              "max": 1.658
+            },
+            "delta_ms": 0.31066666666666665,
+            "baseline_spread_ms": 0.23399999999999999
+          },
+          "trixelToFb": {
+            "baseline": {
+              "mean": 1.2683333333333333,
+              "min": 1.202,
+              "max": 1.329
+            },
+            "frozen-65536": {
+              "mean": 1.0963333333333334,
+              "min": 0.986,
+              "max": 1.168
+            },
+            "delta_ms": -0.17199999999999993,
+            "baseline_spread_ms": 0.127
+          },
+          "voxelCardinalElect": {
+            "baseline": {
+              "mean": 0.46366666666666667,
+              "min": 0.421,
+              "max": 0.499
+            },
+            "frozen-65536": {
+              "mean": 0.4523333333333333,
+              "min": 0.418,
+              "max": 0.47
+            },
+            "delta_ms": -0.011333333333333362,
+            "baseline_spread_ms": 0.07800000000000001
+          },
+          "voxelCompact": {
+            "baseline": {
+              "mean": 0.30866666666666664,
+              "min": 0.297,
+              "max": 0.324
+            },
+            "frozen-65536": {
+              "mean": 0.7833333333333333,
+              "min": 0.745,
+              "max": 0.833
+            },
+            "delta_ms": 0.4746666666666667,
+            "baseline_spread_ms": 0.027000000000000024
+          },
+          "voxelStage1": {
+            "baseline": {
+              "mean": 0.5646666666666667,
+              "min": 0.526,
+              "max": 0.584
+            },
+            "frozen-65536": {
+              "mean": 0.5593333333333333,
+              "min": 0.522,
+              "max": 0.59
+            },
+            "delta_ms": -0.005333333333333301,
+            "baseline_spread_ms": 0.05799999999999994
+          },
+          "voxelStage2": {
+            "baseline": {
+              "mean": 0.4513333333333333,
+              "min": 0.415,
+              "max": 0.471
+            },
+            "frozen-65536": {
+              "mean": 0.4493333333333333,
+              "min": 0.414,
+              "max": 0.469
+            },
+            "delta_ms": -0.0020000000000000018,
+            "baseline_spread_ms": 0.055999999999999994
+          },
+          "voxelSunFaces": {
+            "baseline": {
+              "mean": 1.0766666666666667,
+              "min": 1.025,
+              "max": 1.108
+            },
+            "frozen-65536": {
+              "mean": 1.0946666666666667,
+              "min": 1.022,
+              "max": 1.143
+            },
+            "delta_ms": 0.018000000000000016,
+            "baseline_spread_ms": 0.08300000000000018
+          }
+        }
+      }
+    },
+    "grid-zoom4": {
+      "target": "IRPerfGrid",
+      "args": [
+        "--auto-profile",
+        "60",
+        "--subdivision-mode",
+        "full",
+        "--base-subdivisions",
+        "1",
+        "--zoom",
+        "4"
+      ],
+      "order": "alternating",
+      "samples": {
+        "baseline": [
+          {
+            "frame_avg": 34.42,
+            "frame_p99": 655.58,
+            "steady_avg": 23.97,
+            "steady_p99": 28.04,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.214,
+              "commandBufferSpans": 7.214
+            },
+            "gpu_stages": {
+              "canvasClear": 0.012,
+              "voxelCompact": 0.237,
+              "voxelStage1": 1.912,
+              "voxelCardinalElect": 1.779,
+              "voxelStage2": 1.75,
+              "voxelSunFaces": 0.962,
+              "textToTrixel": 0.698,
+              "computeVoxelAO": 0.051,
+              "bakeSunShadowMap": 0.036,
+              "computeSunShadow": 0.05,
+              "computeLightVolume": 5.846,
+              "lightingToTrixel": 0.04,
+              "fogToTrixel": 0.015,
+              "trixelToFb": 1.018,
+              "fbToScreen": 0.036
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom4/baseline/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 35.31,
+            "frame_p99": 676.3,
+            "steady_avg": 24.1,
+            "steady_p99": 28.28,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.336,
+              "commandBufferSpans": 7.336
+            },
+            "gpu_stages": {
+              "canvasClear": 0.013,
+              "voxelCompact": 0.176,
+              "voxelStage1": 1.911,
+              "voxelCardinalElect": 1.819,
+              "voxelStage2": 1.818,
+              "voxelSunFaces": 0.965,
+              "textToTrixel": 0.666,
+              "computeVoxelAO": 0.051,
+              "bakeSunShadowMap": 0.037,
+              "computeSunShadow": 0.051,
+              "computeLightVolume": 5.96,
+              "lightingToTrixel": 0.042,
+              "fogToTrixel": 0.016,
+              "trixelToFb": 1.04,
+              "fbToScreen": 0.036
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom4/baseline/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          },
+          {
+            "frame_avg": 34.91,
+            "frame_p99": 657.39,
+            "steady_avg": 24.37,
+            "steady_p99": 29.11,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.48,
+              "commandBufferSpans": 7.48
+            },
+            "gpu_stages": {
+              "canvasClear": 0.03,
+              "voxelCompact": 0.159,
+              "voxelStage1": 1.987,
+              "voxelCardinalElect": 1.825,
+              "voxelStage2": 1.807,
+              "voxelSunFaces": 0.997,
+              "textToTrixel": 0.594,
+              "computeVoxelAO": 0.053,
+              "bakeSunShadowMap": 0.037,
+              "computeSunShadow": 0.053,
+              "computeLightVolume": 6.047,
+              "lightingToTrixel": 0.041,
+              "fogToTrixel": 0.016,
+              "trixelToFb": 1.077,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom4/baseline/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4"
+            ]
+          }
+        ],
+        "frozen-65536": [
+          {
+            "frame_avg": 35.47,
+            "frame_p99": 677.73,
+            "steady_avg": 24.65,
+            "steady_p99": 27.86,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.424,
+              "commandBufferSpans": 7.424
+            },
+            "gpu_stages": {
+              "canvasClear": 0.046,
+              "voxelCompact": 0.712,
+              "voxelStage1": 1.927,
+              "voxelCardinalElect": 1.825,
+              "voxelStage2": 1.796,
+              "voxelSunFaces": 0.985,
+              "textToTrixel": 1.063,
+              "computeVoxelAO": 0.052,
+              "bakeSunShadowMap": 0.038,
+              "computeSunShadow": 0.052,
+              "computeLightVolume": 6.02,
+              "lightingToTrixel": 0.043,
+              "fogToTrixel": 0.016,
+              "trixelToFb": 0.749,
+              "fbToScreen": 0.037
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom4/frozen-65536/pair-0",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4",
+              "--sun-record-ceiling",
+              "65536"
+            ]
+          },
+          {
+            "frame_avg": 34.51,
+            "frame_p99": 662.18,
+            "steady_avg": 23.92,
+            "steady_p99": 27.49,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.078,
+              "commandBufferSpans": 7.078
+            },
+            "gpu_stages": {
+              "canvasClear": 0.047,
+              "voxelCompact": 0.717,
+              "voxelStage1": 1.87,
+              "voxelCardinalElect": 1.72,
+              "voxelStage2": 1.699,
+              "voxelSunFaces": 0.946,
+              "textToTrixel": 0.99,
+              "computeVoxelAO": 0.049,
+              "bakeSunShadowMap": 0.036,
+              "computeSunShadow": 0.049,
+              "computeLightVolume": 5.727,
+              "lightingToTrixel": 0.039,
+              "fogToTrixel": 0.015,
+              "trixelToFb": 0.774,
+              "fbToScreen": 0.035
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom4/frozen-65536/pair-1",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4",
+              "--sun-record-ceiling",
+              "65536"
+            ]
+          },
+          {
+            "frame_avg": 35.13,
+            "frame_p99": 675.43,
+            "steady_avg": 24.23,
+            "steady_p99": 29.29,
+            "steady_frames": 45,
+            "gpu_frame": {
+              "envelope": 7.385,
+              "commandBufferSpans": 7.385
+            },
+            "gpu_stages": {
+              "canvasClear": 0.051,
+              "voxelCompact": 0.684,
+              "voxelStage1": 1.935,
+              "voxelCardinalElect": 1.801,
+              "voxelStage2": 1.757,
+              "voxelSunFaces": 0.983,
+              "textToTrixel": 1.034,
+              "computeVoxelAO": 0.051,
+              "bakeSunShadowMap": 0.038,
+              "computeSunShadow": 0.051,
+              "computeLightVolume": 5.961,
+              "lightingToTrixel": 0.043,
+              "fogToTrixel": 0.015,
+              "trixelToFb": 0.711,
+              "fbToScreen": 0.036
+            },
+            "attempts": 1,
+            "command": [
+              "python3",
+              "scripts/perf/repeat_profile.py",
+              "--target",
+              "IRPerfGrid",
+              "--output",
+              "/private/tmp/pool4-4798/ab-grid-frozen/grid-zoom4/frozen-65536/pair-2",
+              "--repeats",
+              "1",
+              "--timeout",
+              "400",
+              "--",
+              "--auto-profile",
+              "60",
+              "--subdivision-mode",
+              "full",
+              "--base-subdivisions",
+              "1",
+              "--zoom",
+              "4",
+              "--sun-record-ceiling",
+              "65536"
+            ]
+          }
+        ]
+      },
+      "summary": {
+        "frame_avg": {
+          "baseline": {
+            "mean": 34.88,
+            "min": 34.42,
+            "max": 35.31,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 35.03666666666667,
+            "min": 34.51,
+            "max": 35.47,
+            "n": 3
+          },
+          "ratio": 1.0044915902140672,
+          "within_budget": true
+        },
+        "frame_p99": {
+          "baseline": {
+            "mean": 663.09,
+            "min": 655.58,
+            "max": 676.3,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 671.78,
+            "min": 662.18,
+            "max": 677.73,
+            "n": 3
+          },
+          "ratio": 1.013105309988086,
+          "within_budget": true
+        },
+        "steady_avg": {
+          "baseline": {
+            "mean": 24.14666666666667,
+            "min": 23.97,
+            "max": 24.37,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 24.266666666666666,
+            "min": 23.92,
+            "max": 24.65,
+            "n": 3
+          },
+          "ratio": 1.0049696300386526,
+          "within_budget": true
+        },
+        "steady_p99": {
+          "baseline": {
+            "mean": 28.476666666666667,
+            "min": 28.04,
+            "max": 29.11,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 28.21333333333333,
+            "min": 27.49,
+            "max": 29.29,
+            "n": 3
+          },
+          "ratio": 0.9907526629989465,
+          "within_budget": true
+        },
+        "gpu_stages": {
+          "bakeSunShadowMap": {
+            "baseline": {
+              "mean": 0.03666666666666667,
+              "min": 0.036,
+              "max": 0.037
+            },
+            "frozen-65536": {
+              "mean": 0.03733333333333333,
+              "min": 0.036,
+              "max": 0.038
+            },
+            "delta_ms": 0.0006666666666666626,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "canvasClear": {
+            "baseline": {
+              "mean": 0.018333333333333333,
+              "min": 0.012,
+              "max": 0.03
+            },
+            "frozen-65536": {
+              "mean": 0.048,
+              "min": 0.046,
+              "max": 0.051
+            },
+            "delta_ms": 0.029666666666666668,
+            "baseline_spread_ms": 0.018
+          },
+          "computeLightVolume": {
+            "baseline": {
+              "mean": 5.951,
+              "min": 5.846,
+              "max": 6.047
+            },
+            "frozen-65536": {
+              "mean": 5.902666666666667,
+              "min": 5.727,
+              "max": 6.02
+            },
+            "delta_ms": -0.048333333333332895,
+            "baseline_spread_ms": 0.20099999999999962
+          },
+          "computeSunShadow": {
+            "baseline": {
+              "mean": 0.051333333333333335,
+              "min": 0.05,
+              "max": 0.053
+            },
+            "frozen-65536": {
+              "mean": 0.050666666666666665,
+              "min": 0.049,
+              "max": 0.052
+            },
+            "delta_ms": -0.0006666666666666696,
+            "baseline_spread_ms": 0.0029999999999999957
+          },
+          "computeVoxelAO": {
+            "baseline": {
+              "mean": 0.051666666666666666,
+              "min": 0.051,
+              "max": 0.053
+            },
+            "frozen-65536": {
+              "mean": 0.050666666666666665,
+              "min": 0.049,
+              "max": 0.052
+            },
+            "delta_ms": -0.0010000000000000009,
+            "baseline_spread_ms": 0.0020000000000000018
+          },
+          "fbToScreen": {
+            "baseline": {
+              "mean": 0.03633333333333333,
+              "min": 0.036,
+              "max": 0.037
+            },
+            "frozen-65536": {
+              "mean": 0.036,
+              "min": 0.035,
+              "max": 0.037
+            },
+            "delta_ms": -0.0003333333333333313,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "fogToTrixel": {
+            "baseline": {
+              "mean": 0.015666666666666666,
+              "min": 0.015,
+              "max": 0.016
+            },
+            "frozen-65536": {
+              "mean": 0.015333333333333332,
+              "min": 0.015,
+              "max": 0.016
+            },
+            "delta_ms": -0.00033333333333333305,
+            "baseline_spread_ms": 0.0010000000000000009
+          },
+          "lightingToTrixel": {
+            "baseline": {
+              "mean": 0.041,
+              "min": 0.04,
+              "max": 0.042
+            },
+            "frozen-65536": {
+              "mean": 0.041666666666666664,
+              "min": 0.039,
+              "max": 0.043
+            },
+            "delta_ms": 0.0006666666666666626,
+            "baseline_spread_ms": 0.0020000000000000018
+          },
+          "textToTrixel": {
+            "baseline": {
+              "mean": 0.6526666666666666,
+              "min": 0.594,
+              "max": 0.698
+            },
+            "frozen-65536": {
+              "mean": 1.029,
+              "min": 0.99,
+              "max": 1.063
+            },
+            "delta_ms": 0.3763333333333333,
+            "baseline_spread_ms": 0.10399999999999998
+          },
+          "trixelToFb": {
+            "baseline": {
+              "mean": 1.045,
+              "min": 1.018,
+              "max": 1.077
+            },
+            "frozen-65536": {
+              "mean": 0.7446666666666667,
+              "min": 0.711,
+              "max": 0.774
+            },
+            "delta_ms": -0.30033333333333323,
+            "baseline_spread_ms": 0.05899999999999994
+          },
+          "voxelCardinalElect": {
+            "baseline": {
+              "mean": 1.8076666666666665,
+              "min": 1.779,
+              "max": 1.825
+            },
+            "frozen-65536": {
+              "mean": 1.782,
+              "min": 1.72,
+              "max": 1.825
+            },
+            "delta_ms": -0.025666666666666504,
+            "baseline_spread_ms": 0.04600000000000004
+          },
+          "voxelCompact": {
+            "baseline": {
+              "mean": 0.19066666666666665,
+              "min": 0.159,
+              "max": 0.237
+            },
+            "frozen-65536": {
+              "mean": 0.7043333333333334,
+              "min": 0.684,
+              "max": 0.717
+            },
+            "delta_ms": 0.5136666666666667,
+            "baseline_spread_ms": 0.07799999999999999
+          },
+          "voxelStage1": {
+            "baseline": {
+              "mean": 1.9366666666666668,
+              "min": 1.911,
+              "max": 1.987
+            },
+            "frozen-65536": {
+              "mean": 1.9106666666666667,
+              "min": 1.87,
+              "max": 1.935
+            },
+            "delta_ms": -0.026000000000000023,
+            "baseline_spread_ms": 0.07600000000000007
+          },
+          "voxelStage2": {
+            "baseline": {
+              "mean": 1.7916666666666667,
+              "min": 1.75,
+              "max": 1.818
+            },
+            "frozen-65536": {
+              "mean": 1.7506666666666666,
+              "min": 1.699,
+              "max": 1.796
+            },
+            "delta_ms": -0.04100000000000015,
+            "baseline_spread_ms": 0.06800000000000006
+          },
+          "voxelSunFaces": {
+            "baseline": {
+              "mean": 0.9746666666666667,
+              "min": 0.962,
+              "max": 0.997
+            },
+            "frozen-65536": {
+              "mean": 0.9713333333333333,
+              "min": 0.946,
+              "max": 0.985
+            },
+            "delta_ms": -0.0033333333333334103,
+            "baseline_spread_ms": 0.03500000000000003
+          }
+        }
+      }
+    }
+  }
+}

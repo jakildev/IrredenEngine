@@ -1,0 +1,2512 @@
+{
+  "head": "a6b9953c3eb8743a5c5b8c05889a3bdb9c7bb8ae",
+  "parent": "a6b9953c3eb8743a5c5b8c05889a3bdb9c7bb8ae",
+  "binary_sha256": "736106226edc7df5e210d8a7c90f369528521dd9dfff5c5679531e145508e201",
+  "crop": [
+    1100,
+    600,
+    1460,
+    840
+  ],
+  "band_px": 2,
+  "extra": [],
+  "variants": {
+    "head": {
+      "shader_sha256": {
+        "ir_sun_face_query_layout.metal": "f1c9b471bfe3328545c4886b98fb9d2dcff249cb1bc3e1d6a63ff98daaeaaec2",
+        "ir_sun_face_index.metal": "f9a9edb23c25870c26f6a2cc754467e48b923373351294982131f3006e3b497f",
+        "c_build_sun_hierarchy.metal": "5986b1cebe347f945326f7a5c2baf725a575f442ad96e2beca9ec157e9f93976",
+        "ir_sun_shadow_sample.metal": "8017ea3a61477fc3cd1070af936dac5067d1b02a359469581444c30c9d87b140"
+      },
+      "cases": {
+        "lower": {
+          "name": "lower",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 0,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": null,
+          "velocity": null,
+          "shots": 1,
+          "warmup": 10,
+          "settle": 10,
+          "filler_frame": 0,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/lower/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "8dfac42472a12fb9f726b486c93d90f82fc11bcd7a1c710bfff266f319a01949",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": null,
+          "index": {
+            "face_records_requested": 1708,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "spill_node_capacity": 262144,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 0,
+            "hierarchy_needed": 0,
+            "hierarchy_ready_leaves": 0
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 50
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 60
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128": {
+          "name": "far-128",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "warmup": 10,
+          "settle": 10,
+          "filler_frame": 0,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/far-128/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "7c865d0eefd246da12c52050ad18fdec76572b3dcb9fdcccc688141af0732900",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "spill_node_capacity": 262144,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1536,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-filler-last": {
+          "name": "far-128-filler-last",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": "last",
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "warmup": 10,
+          "settle": 10,
+          "filler_frame": 0,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/far-128-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 71470,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "spill_node_capacity": 262144,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-lower": {
+          "name": "analytic-lower",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 0,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "analytic-lower",
+          "analytic": true,
+          "offset": null,
+          "velocity": null,
+          "shots": 1,
+          "warmup": 10,
+          "settle": 10,
+          "filler_frame": 0,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/analytic-lower/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "c0a947b3944dbc70fa239bda9296482a37ffa8d9df1b5dbc908aa528c4636424",
+          "receiver": "receiver.png",
+          "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+          "pose": null,
+          "index": {
+            "face_records_requested": 1601,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "spill_node_capacity": 262144,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 0,
+            "hierarchy_needed": 0,
+            "hierarchy_ready_leaves": 0
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 26
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 37
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-far-128": {
+          "name": "analytic-far-128",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "analytic-lower",
+          "analytic": true,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "warmup": 10,
+          "settle": 10,
+          "filler_frame": 0,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/analytic-far-128/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "d3d85ce1dfdcb945c3af0302b8d6dc480a1cca49f0741be3b0eaf15142d1785a",
+          "receiver": "receiver.png",
+          "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5057,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "spill_node_capacity": 262144,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1536,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2586
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2719
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-far-128-filler-last": {
+          "name": "analytic-far-128-filler-last",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": "last",
+          "control": "analytic-lower",
+          "analytic": true,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "warmup": 10,
+          "settle": 10,
+          "filler_frame": 0,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/analytic-far-128-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+          "receiver": "receiver.png",
+          "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 71363,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "spill_node_capacity": 262144,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2586
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2719
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-filler-at-frame-9": {
+          "name": "far-128-filler-at-frame-9",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": null,
+          "control": null,
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "7c865d0eefd246da12c52050ad18fdec76572b3dcb9fdcccc688141af0732900",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 121,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 90,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": false,
+              "capacity_changes_before": 0,
+              "capacity_after_growth": null,
+              "control": "far-128",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000008.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-7.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "warmup": 6,
+          "settle": 1,
+          "filler_frame": 9,
+          "control_before": "far-128",
+          "control_after": "far-128-filler-last",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/far-128-filler-at-frame-9/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "6",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "8",
+            "1",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-frame",
+            "9"
+          ],
+          "result": "CLEAN",
+          "growth_log": [
+            [
+              "65536",
+              "131072",
+              "33816596",
+              "71470",
+              "10",
+              "11"
+            ]
+          ],
+          "spawn_log": [
+            "9"
+          ]
+        },
+        "far-128-filler-at-frame-10": {
+          "name": "far-128-filler-at-frame-10",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": null,
+          "control": null,
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "7c865d0eefd246da12c52050ad18fdec76572b3dcb9fdcccc688141af0732900",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 121,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 90,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": false,
+              "capacity_changes_before": 0,
+              "capacity_after_growth": null,
+              "control": "far-128",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 8192
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 469,
+                  "record_lost_tiles": 465,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 2997,
+                  "incomplete_tiles": 633,
+                  "record_lost_tiles": 629,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 0,
+              "capacity_after_growth": null,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000008.png",
+              "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+              "receiver": "receiver-7.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2610
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2744
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "warmup": 6,
+          "settle": 1,
+          "filler_frame": 10,
+          "control_before": "far-128",
+          "control_after": "far-128-filler-last",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/far-128-filler-at-frame-10/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "6",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "8",
+            "1",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-frame",
+            "10"
+          ],
+          "result": "CLEAN",
+          "growth_log": [
+            [
+              "65536",
+              "131072",
+              "33816596",
+              "71470",
+              "11",
+              "12"
+            ]
+          ],
+          "spawn_log": [
+            "10"
+          ]
+        },
+        "analytic-far-128-filler-at-frame-9": {
+          "name": "analytic-far-128-filler-at-frame-9",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": null,
+          "control": null,
+          "analytic": true,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "d3d85ce1dfdcb945c3af0302b8d6dc480a1cca49f0741be3b0eaf15142d1785a",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5057,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 121,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 90,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": false,
+              "capacity_changes_before": 0,
+              "capacity_after_growth": null,
+              "control": "analytic-far-128",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000008.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-7.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "warmup": 6,
+          "settle": 1,
+          "filler_frame": 9,
+          "control_before": "analytic-far-128",
+          "control_after": "analytic-far-128-filler-last",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/analytic-far-128-filler-at-frame-9/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "6",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "8",
+            "1",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-frame",
+            "9"
+          ],
+          "result": "CLEAN",
+          "growth_log": [
+            [
+              "65536",
+              "131072",
+              "33816596",
+              "71363",
+              "10",
+              "11"
+            ]
+          ],
+          "spawn_log": [
+            "9"
+          ]
+        },
+        "analytic-far-128-filler-at-frame-10": {
+          "name": "analytic-far-128-filler-at-frame-10",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": null,
+          "control": null,
+          "analytic": true,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "d3d85ce1dfdcb945c3af0302b8d6dc480a1cca49f0741be3b0eaf15142d1785a",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5057,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 121,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 90,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": false,
+              "capacity_changes_before": 0,
+              "capacity_after_growth": null,
+              "control": "analytic-far-128",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "6ef646aa4318bf7d2d58c69d4d7aa8effde77fffe030c9489943a7f60eeb42ca",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "f9f508ec3673b5507daccf1fa9c554de9df1ddcd337ab1ea1ccc9971fab858fe",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 8192
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2654,
+                  "incomplete_tiles": 425,
+                  "record_lost_tiles": 425,
+                  "max_counter": 2585
+                },
+                {
+                  "occupied_tiles": 2991,
+                  "incomplete_tiles": 627,
+                  "record_lost_tiles": 627,
+                  "max_counter": 2718
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 0,
+              "capacity_after_growth": null,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 404,
+                "changed_outside_band": 200,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 200
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000008.png",
+              "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+              "receiver": "receiver-7.png",
+              "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+              "pose": [
+                0.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71363,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "spill_node_capacity": 262144,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2586
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2719
+                }
+              ],
+              "filler_spawned": true,
+              "capacity_changes_before": 1,
+              "capacity_after_growth": 131072,
+              "control": "analytic-far-128-filler-last",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "warmup": 6,
+          "settle": 1,
+          "filler_frame": 10,
+          "control_before": "analytic-far-128",
+          "control_after": "analytic-far-128-filler-last",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-transition3/head/analytic-far-128-filler-at-frame-10/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "6",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "8",
+            "1",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-frame",
+            "10"
+          ],
+          "result": "CLEAN",
+          "growth_log": [
+            [
+              "65536",
+              "131072",
+              "33816596",
+              "71363",
+              "11",
+              "12"
+            ]
+          ],
+          "spawn_log": [
+            "10"
+          ]
+        }
+      }
+    }
+  }
+}

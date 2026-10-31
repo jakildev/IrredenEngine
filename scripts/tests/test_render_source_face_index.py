@@ -70,6 +70,7 @@ uint atomic_exchange_explicit(uint* p,uint n,int){return atomicExchange(*p,n);}
 uint atomic_fetch_add_explicit(uint* p,uint n,int){return atomicAdd(*p,n);}
 uint atomic_fetch_max_explicit(uint* p,uint n,int){return atomicMax(*p,n);}
 void atomic_store_explicit(uint* p,uint n,int){*p=n;}
+uint atomic_load_explicit(uint* p,int){return *p;}
 struct FrameDataSun {
     vec2 cascadeOriginUV_0{0,0},cascadeOriginUV_1{-8,-8};
     vec2 cascadeTexelSize_0{1,1},cascadeTexelSize_1{2,3};
@@ -97,6 +98,7 @@ void reset() {
     sunDepthBuf={actual.data()+guardWords,kSourceFaceBufferWords};
     std::fill(sunDepthBuf.data,sunDepthBuf.data+kSourceFaceBufferWords,unwritten);
     sunDepthBuf[kSourceFaceHeaderOffset]=0;
+    sunDepthBuf[kSourceFaceCapacityOffset]=kSourceFaceCapacity;
     sunDepthBuf[kSourceFaceSpillCounterOffset]=0;
     sunDepthBuf[kSourceFaceHierarchyNeededOffset]=0;
     sunDepthBuf[kSourceFaceHierarchyReadyOffset]=0;
@@ -410,11 +412,11 @@ class SourceFaceIndexTest(unittest.TestCase):
                 "record_loss_as_tile_overflow": indexer.replace(
                     "kSourceFaceTileRecordLost", "kSourceFaceTileQueryCapacity + 1u"),
                 "missing_record_hierarchy_request": indexer.replace(
-                    "faceIndex == kSourceFaceCapacity", "false"),
+                    "faceIndex == capacity", "false"),
                 "tile_list_overrun": indexer.replace(
                     "slot < kSourceFaceTileCapacity", "slot <= kSourceFaceTileCapacity"),
                 "record_overrun": indexer.replace(
-                    "faceIndex < kSourceFaceCapacity", "faceIndex <= kSourceFaceCapacity"),
+                    "faceIndex < capacity", "faceIndex <= capacity"),
                 "corrupt_record": indexer.replace("corner[axis]", "edgeU[axis]"),
                 "unculled_off_map": indexer.replace(
                     "if (first.x > last.x || first.y > last.y) continue;", ""),
@@ -439,7 +441,7 @@ class SourceFaceIndexTest(unittest.TestCase):
             layouts = dict.fromkeys(variants, layout)
             clears = dict.fromkeys(variants, clear)
             clears["stale_spill_heads"] = re.sub(
-                r"[^\n]*sunDepthBuf\[kSourceFaceSpillHeadOffset[^\n]*\n", "", clear)
+                r"[^\n]*(?:sourceFaceSpillHeadIndex|kSourceFaceSpillHeadOffset)[^\n]*\n", "", clear)
             clears["stale_spill_counter"] = re.sub(
                 r"[^\n]*(?:sourceFaceSpillCounterIndex|kSourceFaceSpillCounterOffset)[^\n]*\n",
                 "", clear)
@@ -450,13 +452,13 @@ class SourceFaceIndexTest(unittest.TestCase):
             if suffix == "glsl":
                 variants["header_index_off_by_one"] = indexer
                 layouts["header_index_off_by_one"] = layout.replace(
-                    "kSourceFaceBufferWords - kSourceFaceHeaderOffset)",
-                    "kSourceFaceBufferWords - kSourceFaceHeaderOffset - 1u)")
+                    "- sourceFaceCapacity(boundWords) * kSourceFaceWordsPerRecord;",
+                    "- sourceFaceCapacity(boundWords) * kSourceFaceWordsPerRecord - 1u;")
                 clears["header_index_off_by_one"] = clear
                 variants["spill_counter_index_off_by_one"] = indexer
                 layouts["spill_counter_index_off_by_one"] = layout.replace(
-                    "kSourceFaceBufferWords - kSourceFaceSpillCounterOffset)",
-                    "kSourceFaceBufferWords - kSourceFaceSpillCounterOffset - 1u)")
+                    "return kSourceFaceRecordOffset + capacity * kSourceFaceRecordWords;",
+                    "return kSourceFaceRecordOffset + capacity * kSourceFaceRecordWords + 1u;")
                 clears["spill_counter_index_off_by_one"] = clear
             call = ("indexSourceSunFace(corner,u,v);" if suffix == "glsl" else
                     "indexSourceSunFace(sunDepthBuf.data,corner,u,v,sunFrame);")
