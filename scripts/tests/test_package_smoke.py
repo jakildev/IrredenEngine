@@ -12,7 +12,8 @@ keeps the caller's environment, and the macOS sandbox prefix (a logging stub
 standing in for ``/usr/bin/sandbox-exec``) sits directly in front of it.
 
 No engine build, no GPU: ir-acquire runs against an isolated IR_LOCK_ROOT.
-The stubs are POSIX scripts, so the suite skips on native Windows.
+The stubs are POSIX scripts, so both layers skip on native Windows; the pure
+SystemRoot transform runs everywhere.
 """
 
 from __future__ import annotations
@@ -362,7 +363,7 @@ class HostOptionsTest(HarnessCase):
         rc, _, _ = self.smoke(host="Windows")
         self.assertEqual(rc, 0)
         self.assertEqual(self.stub_args()[:2],
-                         ["--child-env", r"PATH=C:\Windows\System32;C:\Windows"])
+                         ["--child-env", "PATH=/c/Windows/System32:/c/Windows"])
         self.assertIn(f"wrapper-path={os.environ['PATH']}", self.stub_log())
 
     def test_windows_without_systemroot_exits_2(self) -> None:
@@ -371,6 +372,18 @@ class HostOptionsTest(HarnessCase):
         rc, _, err = self.smoke(host="Windows")
         self.assertEqual(rc, 2)
         self.assertIn("SystemRoot is not set", err)
+        self.assertFalse(self.log.exists(), "nothing launches on a usage error")
+
+    def test_windows_malformed_systemroot_exits_2(self) -> None:
+        self.package(f"{TARGET}-windows-amd64.zip")
+        for sysroot in ("Windows", r"\\server\share\Windows", "/c/Windows", r"C:Windows"):
+            with self.subTest(sysroot=sysroot):
+                os.environ["SystemRoot"] = sysroot
+                rc, out, err = self.smoke(host="Windows")
+                self.assertEqual(rc, 2)
+                self.assertIn("is not a <drive>:\\<dir> path", err)
+                self.assertNotIn("RESULT=", out)
+                self.assertFalse(self.log.exists(), "nothing launches on a usage error")
 
     def test_macos_probe_applied_adds_the_sandbox_prefix_once(self) -> None:
         self.package(f"{TARGET}-macos-arm64.zip")
@@ -415,6 +428,39 @@ class HostOptionsTest(HarnessCase):
         self.assertEqual(rc, 1)
         self.assertEqual(out.count("ir-run: RESULT="), 1)
         self.assertIn("--child-prefix", self.stub_args())
+
+
+class WindowsSystemPathTest(unittest.TestCase):
+    """The pure SystemRoot transform; runs on every host, native Windows included."""
+
+    def test_posix_form_with_lowercase_drive(self) -> None:
+        cases = {
+            r"C:\Windows": "/c/Windows/System32:/c/Windows",
+            r"d:\WINNT": "/d/WINNT/System32:/d/WINNT",
+            "E:\\OS\\Windows\\": "/e/OS/Windows/System32:/e/OS/Windows",
+        }
+        for sysroot, expected in cases.items():
+            with self.subTest(sysroot=sysroot):
+                self.assertEqual(package_smoke.windows_system_path({"SystemRoot": sysroot}),
+                                 expected)
+
+    def test_systemroot_lookup_ignores_case(self) -> None:
+        for name in ("SYSTEMROOT", "systemroot", "SystemRoot"):
+            with self.subTest(name=name):
+                self.assertEqual(package_smoke.windows_system_path({name: r"C:\Windows"}),
+                                 "/c/Windows/System32:/c/Windows")
+
+    def test_live_environment_resolves_on_native_windows(self) -> None:
+        if os.name != "nt":
+            self.skipTest("native Windows environment")
+        self.assertRegex(package_smoke.windows_system_path(dict(os.environ)),
+                         r"^/[a-z]/.+/System32:/[a-z]/.+$")
+
+    def test_no_windows_separator_survives(self) -> None:
+        value = package_smoke.windows_system_path({"SystemRoot": r"C:\Windows"})
+        self.assertNotIn(";", value)
+        self.assertNotIn("\\", value)
+        self.assertEqual(value.split(":"), ["/c/Windows/System32", "/c/Windows"])
 
 
 class EndToEndTest(HarnessCase):

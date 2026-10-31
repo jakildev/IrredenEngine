@@ -44,8 +44,11 @@ clean-box restriction applied by `ir-run`'s child options (`--child-env` /
 `--child-unset` / `--child-prefix`) to the executable alone. Its macOS arm is
 measured (`IRShapeDebug` runs CLEAN under the Homebrew-denial `sandbox-exec`
 profile with `DYLD_*` unset; an archive missing `libglfw.3.dylib` fails with
-the dyld error); the Windows (#4774) and Linux (#4775) arms are approved and
-wait for a native run on their hosts, so row 2 stays open.
+the dyld error). Its Windows arm is measured (#4774): `IRShapeDebug` runs
+CLEAN with the executable's `PATH` reduced to `System32` + `SystemRoot`
+(passed in MSYS POSIX form, which arrives as exactly those two directories),
+and an archive missing `avcodec-62.dll` exits 127 through the loader. The
+Linux arm (#4775) is the only one left, so row 2 stays open.
 The Linux "expect breakage" caveat is gone (PR #3260): `BUILD.md` says a
 Linux-only break is fixed in a dedicated PR, and `engine-tests.yml` builds
 `linux-debug` demos on every PR, so row 3 verifies. Smoke labels are a
@@ -66,3 +69,4 @@ oldest from 2026-09-21 and 2026-08-21, so row 4 stays open.
 | 2026-10-27 | sweep; #4765 | re-verified against master `ee85797c0`; row 3 ticked; backlog depth measured (windows 36, oldest 2026-09-21; macos 12, oldest 2026-08-21); #4765 filed for the automated package smoke (row 2) |
 | 2026-10-27 | #4765 | `scripts/package-smoke.py` automates the clean-box smoke via new `ir-run` child options (`--child-env` / `--child-unset` / `--child-prefix`) that restrict only the packaged executable. macOS arm measured: `IRShapeDebug` runs CLEAN under the Homebrew-denial `sandbox-exec` profile with `DYLD_*` unset; an archive missing `libglfw.3.dylib` fails with the dyld error. The per-host smoke row stays open until the Windows (#4774) and Linux (#4775) arms land. |
 | 2026-10-28 | #4774, #4775 | Windows and Linux arms approved for their native runs (`fleet:agent-approved`, plan-residual of #4765; host-pinned) |
+| 2026-10-31 | #4774 | Windows arm measured natively: `scripts/package-smoke.py` passes on `IRShapeDebug` (`RESULT=CLEAN`), and an archive missing `avcodec-62.dll` fails (`exit=127`, `RESULT=FAIL`). The harness now passes the clean-box `PATH` in MSYS POSIX form, because the Windows form is split at the drive colons. It also reads `SystemRoot` case-insensitively, because native Python spells it `SYSTEMROOT`. Row 2 stays open for the Linux arm (#4775). |
