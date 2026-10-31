@@ -970,3 +970,38 @@ measured or read; none of them is a proposal.
   frames). With the spin rate zeroed in a copy of the manifest the zoom-1
   capture is byte-identical and the zoom-4 and zoom-16 captures differ, so the
   references hold the frames mid-turn.
+
+## Part 4 — recipe handles
+
+A module recipe may declare handles (`opts.handles`; the contract is the
+`editor_lua_host.hpp` header comment). APPLY on a part binds the part to the
+recipe and the values it was applied at; in transform mode the bound part's
+handles are drawn at `at(values, size)`, and a drag on one re-applies the
+recipe through its `drag`. `test_recipe_handle` drags the fixture's
+`test_column` tip on a 16x16x16 part at the session zoom. These are its
+measurements on macOS / Metal; none of them is a proposal.
+
+- **R-1 — the dragged point snaps exactly.** The drag reads the cursor on the
+  screen plane through the handle's undisplaced point (the exact canvas-frame
+  coordinate sum, not `canvasIsoDepthOfWorldPos`'s integer plane) and rounds
+  each set-local axis. Before any Builder modelling, a probe session aimed four
+  drags with `dragPartGizmo`, and the releases logged the raw set-local point
+  for targets (6, 8, 14), (11, 8, 11), (8, 6, 13) and (8, 9, 12):
+  (5.979, 7.979, 14.042), (10.979, 7.979, 11.042), (7.979, 5.979, 13.042) and
+  (7.979, 8.979, 12.042). Every axis is within 0.042 of its cell, far inside
+  the 0.5 that rounding tolerates. The session's own drags read the same
+  offsets, at (8.979, 7.979, 11.042), (4.979, 7.979, 14.042) and
+  (16.979, 7.979, 5.042).
+- **R-2 — a handle under the part's gizmo keeps four pixels.** At height 3 the
+  tip is 4.5 cells below the part's pivot on screen and owns 46 main-canvas
+  texels. At height 8 it is under the gizmo's rings and arrows and owns 4. The
+  part's gizmo owns the same 998 texels with that handle drawn as it did before
+  any handle existed: the editor clears the gizmo by more than the nearest
+  point a handle can reach. A control build that parents the handle under the
+  part, sharing the gizmo's clearance node, draws it on 42 texels and leaves
+  the gizmo 960, so the overlap is real.
+- **R-3 — a press reaches the handle only where the gizmo leaves it.** A press
+  goes to whatever owns the pixel under `at`. A probe session that pressed the
+  tip at height 8 and dragged it toward height 6 moved the part 2 cells along
+  -x (the gizmo's arrow took the press) and left the height at 8.
+  `test_recipe_handle` presses the tip only at heights 1, 3 and 4.

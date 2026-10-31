@@ -375,6 +375,12 @@ class Handle {
         }
         builder().applyRecipe(parsedName, parsedValues);
     }
+    void dragRecipeHandle(const sol::object &handle, const sol::object &target) {
+        builder().dragRecipeHandle(
+            stringArg(handle, "dragRecipeHandle", "handle"),
+            ivec3Arg(target, "dragRecipeHandle", "target")
+        );
+    }
     void attachComponent(const sol::object &name) {
         builder().attachComponent(stringArg(name, "attachComponent", "name"));
     }
@@ -584,6 +590,26 @@ class Handle {
     }
     void expectGizmoHandleTexelsUnchanged(const std::string &name) {
         builder().expectGizmoHandleTexelsUnchanged(name);
+    }
+    void expectRecipeValue(
+        int part, const sol::object &param, const sol::object &value, const std::string &name
+    ) {
+        builder().expectRecipeValue(
+            part,
+            stringArg(param, "expectRecipeValue", "param"),
+            numberArg(value, "expectRecipeValue", "value"),
+            name
+        );
+    }
+    void expectPartMatchesRecipe(int part, const std::string &name) {
+        builder().expectPartMatchesRecipe(part, name);
+    }
+    void expectRecipeHandleTexels(const sol::object &handle, bool drawn, const std::string &name) {
+        builder().expectRecipeHandleTexels(
+            stringArg(handle, "expectRecipeHandleTexels", "handle"),
+            drawn,
+            name
+        );
     }
     void expectSliderValue(
         const sol::object &target, float expected, float tolerance, const std::string &name
@@ -797,6 +823,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::dragGuiSlider,
         "applyRecipe",
         &Handle::applyRecipe,
+        "dragRecipeHandle",
+        &Handle::dragRecipeHandle,
         "attachComponent",
         &Handle::attachComponent,
         "setComponentField",
@@ -929,6 +957,12 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectGizmoHandleTexels,
         "expectGizmoHandleTexelsUnchanged",
         &Handle::expectGizmoHandleTexelsUnchanged,
+        "expectRecipeValue",
+        &Handle::expectRecipeValue,
+        "expectPartMatchesRecipe",
+        &Handle::expectPartMatchesRecipe,
+        "expectRecipeHandleTexels",
+        &Handle::expectRecipeHandleTexels,
         "expectSliderValue",
         &Handle::expectSliderValue,
         "expectPartGated",
