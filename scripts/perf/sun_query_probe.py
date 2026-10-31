@@ -26,6 +26,7 @@ kernel void initialize(device uint* buffer [[buffer(0)]],
     const uint count=config.x, kind=config.y;
     if(id==0){
         buffer[kSourceFaceHeaderOffset]=count;
+        buffer[kSourceFaceCapacityOffset]=kSourceFaceCapacity;
         buffer[sourceFaceTileBase(0)]=count;
         buffer[kSourceFaceSpillCounterOffset]=count>kSourceFaceTileCapacity
             ? count-kSourceFaceTileCapacity : 0u;

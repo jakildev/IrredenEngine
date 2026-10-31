@@ -55,6 +55,13 @@ VELOCITY, TRACK_SHOTS, TRACK_SETTLE = (120, 0, 0), 7, 8
 # A LOCK-FAILED run never started the exe, so retrying it cannot bias the capture.
 LOCK_ATTEMPTS = 6
 DRIFT_RE = re.compile(r"PROBE-DRIFT shot=(\d+) offset=\(([^,]+),([^,]+),([^)]+)\)")
+SHOT_RE = re.compile(r"sun-face-index-probe: shot=(\d+) ")
+SPAWN_RE = re.compile(r"RECORD-POOL-FILLER spawned at frame (\d+)")
+GROWN_RE = re.compile(r"SUN-RECORD-POOL grown (\d+) -> (\d+) records \((\d+) bytes\) "
+                      r"requested=(\d+) sampled_frame=(\d+) applied_frame=(\d+)")
+# Transition fixtures: the filler appears at this render frame after the warmup,
+# so one running scene crosses the pool's capacity between consecutive shots.
+TRANSITION_WARMUP, TRANSITION_SHOTS, TRANSITION_FILLER_FRAME = 6, 8, 9
 
 
 def case(name, sun, casters=0, height=-60, filler=0, order=None, control=None,
@@ -65,15 +72,29 @@ def case(name, sun, casters=0, height=-60, filler=0, order=None, control=None,
         offset = [18, 24, height] if sun == OBLIQUE else [0, 0, height]
     return {"name": name, "sun": sun, "casters": casters, "height": height,
             "filler": filler, "order": order, "control": control, "analytic": analytic,
-            "offset": offset, "velocity": None, "shots": 1}
+            "offset": offset, "velocity": None, "shots": 1, "warmup": 10, "settle": 10,
+            "filler_frame": 0}
 
 
-def track(name, sun, filler=0, order=None):
+def track(name, sun, filler=0, order=None, analytic=False):
     """Moving caster stack; each shot is graded against a static capture of its pose."""
     start = [-82, 24, -60] if sun == OBLIQUE else [-100, 0, -60]
-    spec = case(name, sun, 128, filler=filler, order=order, offset=start)
-    spec.update(control=None, velocity=VELOCITY, shots=TRACK_SHOTS,
-                poses=("oblique-" if sun == OBLIQUE else "") + "moving-128-pose")
+    spec = case(name, sun, 128, filler=filler, order=order, offset=start, analytic=analytic)
+    spec.update(control=None, velocity=VELOCITY, shots=TRACK_SHOTS, settle=TRACK_SETTLE,
+                poses=("oblique-" if sun == OBLIQUE else "") + "moving-128-pose"
+                + ("-analytic" if analytic else ""))
+    return spec
+
+
+def transition(name, sun, filler, analytic=False, filler_frame=TRANSITION_FILLER_FRAME):
+    """Static scene whose filler spawns mid-run; shots before it grade against the
+    filler-free control, shots after it against the sufficient-capacity control.
+    Two spawn frames of opposite parity put one shot on the exhausted frame."""
+    spec = case(name, sun, 128, filler=filler, analytic=analytic)
+    prefix = "analytic-" if analytic else ""
+    spec.update(control=None, shots=TRANSITION_SHOTS, warmup=TRANSITION_WARMUP, settle=1,
+                filler_frame=filler_frame, control_before=prefix + "far-128",
+                control_after=prefix + "far-128-filler-last")
     return spec
 
 
@@ -109,6 +130,16 @@ TRACKS = [
     track("moving-128-filler-first", DOWN, 300, "first"),
     track("oblique-moving-128", OBLIQUE),
     track("oblique-moving-128-filler-last", OBLIQUE, 340, "last"),
+    track("analytic-moving-128", DOWN, analytic=True),
+    track("analytic-moving-128-filler-last", DOWN, 300, "last", analytic=True),
+    track("analytic-moving-128-filler-first", DOWN, 300, "first", analytic=True),
+]
+# Demand crosses the pool's capacity inside one running scene.
+TRANSITIONS = [
+    transition("far-128-filler-at-frame-9", DOWN, 300),
+    transition("far-128-filler-at-frame-10", DOWN, 300, filler_frame=10),
+    transition("analytic-far-128-filler-at-frame-9", DOWN, 300, analytic=True),
+    transition("analytic-far-128-filler-at-frame-10", DOWN, 300, analytic=True, filler_frame=10),
 ]
 
 
@@ -151,7 +182,7 @@ def grade(actual, control, output):
                 "missing_shadow_outside_band": count(ImageChops.subtract(brighter, band))}
 
 
-def capture(binary, build, variant_dir, spec):
+def capture(binary, build, variant_dir, spec, extra=()):
     directory = variant_dir / spec["name"]
     directory.mkdir(parents=True)
     config = directory / "config.lua"
@@ -162,9 +193,9 @@ def capture(binary, build, variant_dir, spec):
     command = ["fleet-run", "--timeout", "180", "--build-dir", str(build), "IRCanvasStress",
                "--config-preset", str(config), *COMMON,
                "--subdivisions", "2" if spec["analytic"] else "1",
-               "--sweep-frames", str(spec["shots"]),
-               str(TRACK_SETTLE if spec["velocity"] else 10),
+               "--sweep-frames", str(spec["shots"]), str(spec["settle"]),
                "--sun-direction", *map(str, spec["sun"])]
+    command[command.index("--auto-screenshot") + 1] = str(spec["warmup"])
     if spec["analytic"]:
         command += ANALYTIC
     if spec["casters"]:
@@ -177,6 +208,9 @@ def capture(binary, build, variant_dir, spec):
         command += ["--probe-record-pool-filler", str(spec["filler"]), *FILLER]
         if spec["order"] == "last":
             command.append("--probe-record-pool-filler-last")
+        if spec["filler_frame"]:
+            command += ["--probe-record-pool-filler-frame", str(spec["filler_frame"])]
+    command += list(extra)
     count = spec["shots"]
     csv_paths = [binary.parent / f"sun-face-index-{shot}.csv" for shot in range(count)]
     for path in csv_paths:
@@ -197,6 +231,7 @@ def capture(binary, build, variant_dir, spec):
              for m in DRIFT_RE.finditer(log)}
     if spec["velocity"] and sorted(poses) != list(range(count)):
         raise RuntimeError(f"{spec['name']}: missing PROBE-DRIFT pose per shot")
+    timeline = transition_timeline(log, count) if spec["filler_frame"] else {}
     shots = []
     for shot, (frame, csv_path) in enumerate(zip(frames, csv_paths)):
         suffix = f"-{shot}" if count > 1 else ""
@@ -211,8 +246,11 @@ def capture(binary, build, variant_dir, spec):
                       "receiver": receiver.name, "receiver_sha256": sha256(receiver),
                       "pose": poses.get(shot),
                       "index": {key: summary[key] for key in summary if key != "cascades"},
-                      "cascades": summary["cascades"]})
+                      "cascades": summary["cascades"], **timeline.get(shot, {})})
     entry = {**spec, "command": command, "result": "CLEAN"}
+    if spec["filler_frame"]:
+        entry["growth_log"] = [m.groups() for m in GROWN_RE.finditer(log)]
+        entry["spawn_log"] = [m[1] for m in SPAWN_RE.finditer(log)]
     if count == 1:
         entry.update(shots[0])
     else:
@@ -220,13 +258,61 @@ def capture(binary, build, variant_dir, spec):
     return entry
 
 
+def transition_timeline(log, count):
+    """Per shot: whether the filler had spawned and the pool had grown when it was taken,
+    read from the order of the engine's log lines."""
+    events = sorted(
+        [(m.start(), "shot", int(m[1])) for m in SHOT_RE.finditer(log)]
+        + [(m.start(), "spawn", int(m[1])) for m in SPAWN_RE.finditer(log)]
+        + [(m.start(), "grown", int(m[2])) for m in GROWN_RE.finditer(log)])
+    spawned, capacity, grown_before = False, None, 0
+    timeline = {}
+    for _, kind, value in events:
+        if kind == "spawn":
+            spawned = True
+        elif kind == "grown":
+            capacity, grown_before = value, grown_before + 1
+        else:
+            timeline[value] = {"filler_spawned": spawned, "capacity_changes_before": grown_before,
+                               "capacity_after_growth": capacity,
+                               "control": None}
+    if len(timeline) != count:
+        raise RuntimeError("transition: missing probe line per shot")
+    return timeline
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--build-dir", type=Path, default=ROOT / "build")
+    parser.add_argument("--variants", default="parent,head",
+                        help="comma-separated subset of parent,head; a build whose layout "
+                             "differs from origin/master runs head only")
+    parser.add_argument("--cases", default="",
+                        help="comma-separated static case names (controls are added); "
+                             "default runs every case")
+    parser.add_argument("--tracks", default=None,
+                        help="comma-separated track names, 'none' to skip; default runs all")
+    parser.add_argument("--transitions", default=None,
+                        help="comma-separated transition names, 'none' to skip; default all")
+    parser.add_argument("--extra", action="append", default=[],
+                        help="extra IRCanvasStress argument appended to every run (repeatable; "
+                             "use --extra=--flag for dash values)")
     args = parser.parse_args()
     if os.environ.get("IR_ACQUIRE_HELD_VERB") not in {"gpu", "benchmark"}:
         parser.error("run under ir-acquire gpu -- to protect the shared capture file")
+    variants = [v for v in ("parent", "head") if v in args.variants.split(",")]
+    if not variants:
+        parser.error("--variants must name parent, head or both")
+    cases = select_cases(args.cases)
+    tracks = TRACKS if args.tracks is None else [
+        t for t in TRACKS if t["name"] in args.tracks.split(",")]
+    transitions = TRANSITIONS if args.transitions is None else [
+        t for t in TRANSITIONS if t["name"] in args.transitions.split(",")]
+    if transitions:
+        for spec in transitions:
+            cases = select_cases(",".join(
+                [c["name"] for c in cases] + [spec["control_before"], spec["control_after"]]))
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     build = args.build_dir.resolve()
@@ -237,55 +323,82 @@ def main():
               "parent": subprocess.check_output(["git", "rev-parse", "origin/master"],
                                                cwd=ROOT, text=True).strip(),
               "binary_sha256": sha256(binary), "crop": CROP, "band_px": BAND,
-              "variants": {}}
+              "extra": args.extra, "variants": {}}
     (output / "source.patch").write_bytes(
         subprocess.check_output(["git", "diff", "origin/master", "--", "engine", "creations"],
                                 cwd=ROOT))
-    for variant in ("parent", "head"):
+    for variant in variants:
         saved = stage_parent(shader_dir) if variant == "parent" else {}
         try:
             report["variants"][variant] = {
                 "shader_sha256": {name: sha256(shader_dir / name) for name in POLICY_SHADERS},
                 "cases": {}}
-            cases = report["variants"][variant]["cases"]
+            captured = report["variants"][variant]["cases"]
 
             def run(spec):
-                cases[spec["name"]] = capture(binary, build, output / variant, spec)
+                captured[spec["name"]] = capture(binary, build, output / variant, spec,
+                                                 args.extra)
                 (output / "captures.json").write_text(json.dumps(report, indent=2) + "\n")
                 print(f"{variant} {spec['name']}: clean", flush=True)
 
-            for spec in CASES:
+            for spec in cases:
                 run(spec)
-            for spec in TRACKS:
+            for spec in tracks:
                 run(spec)
-                poses = [shot["pose"] for shot in cases[spec["name"]]["shots"]]
+                poses = [shot["pose"] for shot in captured[spec["name"]]["shots"]]
                 pose_names = [f"{spec['poses']}-{shot}" for shot in range(len(poses))]
-                if pose_names[0] not in cases:
+                if pose_names[0] not in captured:
                     for name, pose in zip(pose_names, poses):
-                        run(case(name, spec["sun"], 128, offset=pose))
-                elif poses != [cases[name]["offset"] for name in pose_names]:
+                        run(case(name, spec["sun"], 128, offset=pose, analytic=spec["analytic"]))
+                elif poses != [captured[name]["offset"] for name in pose_names]:
                     raise RuntimeError(f"{spec['name']}: poses differ from its static controls")
+            for spec in transitions:
+                run(spec)
         finally:
             restore(shader_dir, saved)
     for variant, data in report["variants"].items():
-        other = report["variants"]["head" if variant == "parent" else "parent"]["cases"]
+        other = report["variants"].get("head" if variant == "parent" else "parent")
         for name, entry in data["cases"].items():
             directory = output / variant / name
-            if entry["velocity"] is None:
+            if not isinstance(entry["shots"], list):
                 control = output / variant / entry["control"] / "receiver.png"
                 entry["versus_control"] = grade(directory / "receiver.png", control,
                                                 directory / "outside-band.png")
-                entry["receiver_equals_other_variant"] = (
-                    entry["receiver_sha256"] == other[name]["receiver_sha256"])
+                if other is not None:
+                    entry["receiver_equals_other_variant"] = (
+                        entry["receiver_sha256"] == other["cases"][name]["receiver_sha256"])
                 continue
             for shot, result in enumerate(entry["shots"]):
-                control = output / variant / f"{entry['poses']}-{shot}" / "receiver.png"
-                result["control"] = f"{entry['poses']}-{shot}"
+                if entry["filler_frame"]:
+                    result["control"] = (entry["control_after"] if result["filler_spawned"]
+                                         else entry["control_before"])
+                else:
+                    result["control"] = f"{entry['poses']}-{shot}"
+                control = output / variant / result["control"] / "receiver.png"
                 result["versus_control"] = grade(directory / result["receiver"], control,
                                                  directory / f"outside-band-{shot}.png")
-                result["receiver_equals_other_variant"] = (
-                    result["receiver_sha256"] == other[name]["shots"][shot]["receiver_sha256"])
+                if other is not None:
+                    result["receiver_equals_other_variant"] = (
+                        result["receiver_sha256"] ==
+                        other["cases"][name]["shots"][shot]["receiver_sha256"])
     (output / "captures.json").write_text(json.dumps(report, indent=2) + "\n")
+
+
+def select_cases(names):
+    """Static cases by name, with each selected case's control, in matrix order."""
+    if not names:
+        return list(CASES)
+    by_name = {spec["name"]: spec for spec in CASES}
+    pending = names.split(",")
+    wanted = set()
+    while pending:
+        name = pending.pop()
+        if name not in by_name:
+            raise SystemExit(f"unknown case {name!r}; known: {', '.join(by_name)}")
+        if name not in wanted:
+            wanted.add(name)
+            pending.append(by_name[name]["control"])
+    return [spec for spec in CASES if spec["name"] in wanted]
 
 
 if __name__ == "__main__":

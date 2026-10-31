@@ -19,6 +19,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/profile/scope_timer.hpp>
 
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -34,6 +35,7 @@
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/sun_face_query_layout.hpp>
+#include <irreden/render/sun_record_demand.hpp>
 
 // World sun-shadow cast for opt-in world-placed detached re-voxelize solids.
 // The resolve-then-bake driver reuses the main-frame restore
@@ -44,6 +46,7 @@
 #include <irreden/render/voxel_dispatch_grid.hpp>
 
 #include <array>
+#include <chrono>
 #include <string>
 #include <utility>
 
@@ -165,7 +168,22 @@ static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match 
 
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *hierarchyProgram_ = nullptr;
-    std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyBuildPasses> hierarchyFrames_{};
+    std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyMaxBuildPasses>
+        hierarchyFrames_{};
+
+    // Record pool sizing. The pool starts at the default layout and grows
+    // between frames to the smallest power of two holding a completed demand
+    // sample, never past recordCapacityCeiling_ and never back down. A frame
+    // whose demand first exceeds the pool loses records as before; the next
+    // frame after the sample completes runs at the grown capacity.
+    IRPrefab::SunShadow::SourceFaceLayout recordLayout_{};
+    std::uint32_t recordCapacityCeiling_ = IRPrefab::SunShadow::kSourceFaceCapacityCeiling;
+    IRPrefab::SunShadow::SourceFaceDemandRing recordDemandRing_{};
+    std::uint64_t recordDemandSampledFrame_ = 0;
+    std::uint32_t recordDemandPeak_ = 0;
+    std::uint64_t recordExhaustedSamples_ = 0;
+    std::uint32_t recordCapacityChanges_ = 0;
+    bool recordCeilingWarned_ = false;
     bool voxelFaceCoverage_ = true;
     // Diagnostic for the raster-only route: the second-depth bake program keeps
     // each texel's second distinct depth in the otherwise empty indexed
@@ -743,8 +761,92 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     void endTick() {
         if (frameUsesFiniteCoverage_ && frameData_.shadowsEnabled_ != 0) {
             buildOverflowHierarchy();
+            sampleRecordDemand();
         }
         coverageFrameOpen_ = false;
+    }
+
+    // The allocator owns the capacity word; a fresh allocation is never encoded,
+    // so this write lands directly on both backends.
+    void writeRecordCapacityWord() {
+        const std::uint32_t capacity = recordLayout_.capacity_;
+        sunShadowDepthMap_->subData(
+            std::size_t(IRPrefab::SunShadow::kSourceFaceCapacityOffset) * sizeof(std::uint32_t),
+            sizeof(capacity),
+            &capacity
+        );
+    }
+
+    // Replaces the pool storage at @p capacity records. Queued frames keep
+    // the old storage; the next clear initializes the new one.
+    void resizeRecordPool(std::uint32_t capacity) {
+        IR_ASSERT(
+            IRPrefab::SunShadow::sourceFaceCapacityValid(capacity),
+            "Sun record capacity must be a power of two up to the dispatch limit"
+        );
+        recordLayout_.capacity_ = capacity;
+        sunShadowDepthMap_->resize(recordLayout_.bufferBytes());
+        writeRecordCapacityWord();
+    }
+
+    void sampleRecordDemand() {
+        IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
+        recordDemandRing_.sample(sunShadowDepthMap_, recordLayout_.capacity_);
+    }
+
+    // Drains completed demand samples and grows the pool before the frame's
+    // clear, so a resize never races the frame that measured the demand.
+    void applyRecordDemand() {
+        using namespace IRPrefab::SunShadow;
+        std::uint32_t demand = 0;
+        bool sampled = false;
+        recordDemandRing_.drainCompleted(
+            IRRender::device()->completedSubmissionSerial(),
+            [&](const SourceFaceDemandSample &sample) {
+                if (sample.exhausted()) {
+                    ++recordExhaustedSamples_;
+                }
+                recordDemandPeak_ = IRMath::max(recordDemandPeak_, sample.requested_);
+                recordDemandSampledFrame_ = IRMath::max(recordDemandSampledFrame_, sample.frame_);
+                demand = IRMath::max(demand, sample.requested_);
+                sampled = true;
+            }
+        );
+        if (!sampled) {
+            return;
+        }
+        const std::uint32_t grown =
+            grownSourceFaceCapacity(demand, recordLayout_.capacity_, recordCapacityCeiling_);
+        if (grown != recordLayout_.capacity_) {
+            const std::uint32_t previous = recordLayout_.capacity_;
+            const auto resizeStart = IRProfile::SteadyClock::now();
+            resizeRecordPool(grown);
+            const auto resizeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+                                                IRProfile::SteadyClock::now() - resizeStart
+            )
+                                                .count();
+            ++recordCapacityChanges_;
+            IR_LOG_INFO(
+                "SUN-RECORD-POOL grown {} -> {} records ({} bytes) requested={} sampled_frame={} "
+                "applied_frame={} resize_us={}",
+                previous,
+                grown,
+                recordLayout_.bufferBytes(),
+                demand,
+                recordDemandSampledFrame_,
+                recordDemandRing_.frames() + 1,
+                resizeMicroseconds
+            );
+        } else if (demand > recordLayout_.capacity_ && !recordCeilingWarned_) {
+            recordCeilingWarned_ = true;
+            IR_LOG_WARN(
+                "SUN-RECORD-POOL exhausted at ceiling {} records: requested={} sampled_frame={}; "
+                "receivers overlapped by the lost records answer from the sampled layers",
+                recordLayout_.capacity_,
+                demand,
+                recordDemandSampledFrame_
+            );
+        }
     }
 
     void buildOverflowHierarchy() {
@@ -752,12 +854,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         hierarchyProgram_->use();
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         // Immutable pass parameters avoid Metal subData orphaning between dispatches.
-        for (int pass = 0; pass < kSourceFaceHierarchyBuildPasses; ++pass) {
-            const auto groups = pass == 0 ? IRMath::divCeil(
-                                                kSourceFaceHierarchyMaxLeaves,
-                                                kSourceFaceHierarchyWorkgroupSize
-                                            )
-                                          : 1u;
+        const int passes = recordLayout_.buildPasses();
+        for (int pass = 0; pass < passes; ++pass) {
+            const auto groups = recordLayout_.buildGroups(pass);
             hierarchyFrames_[pass]->bindBase(
                 BufferTarget::UNIFORM,
                 kBufferIndex_RevoxelizeDetachedParams
@@ -981,6 +1080,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         updateSunFrameData();
         sunShadowFrameDataBuf_->subData(0, sizeof(frameData_), &frameData_);
         if (frameData_.shadowsEnabled_ != 0) {
+            applyRecordDemand();
             clearDepthMap();
         }
         return true;
@@ -1061,8 +1161,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         IRRender::createNamedResource<Buffer>(
             "SunShadowDepthMap",
             nullptr,
-            static_cast<std::size_t>(IRPrefab::SunShadow::kSourceFaceBufferWords) *
-                sizeof(std::uint32_t),
+            IRPrefab::SunShadow::kSourceFaceDefaultLayout.bufferBytes(),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_SunShadowDepthMap
@@ -1091,7 +1190,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 "SunHierarchyProgram",
                 std::vector{ShaderStage{IRRender::kFileCompBuildSunHierarchy, ShaderType::COMPUTE}}
             ).second;
-        for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyBuildPasses; ++pass) {
+        for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyMaxBuildPasses; ++pass) {
             const ivec4 params(pass, 0, 0, 0);
             p->hierarchyFrames_[pass] = IRRender::createNamedResource<Buffer>(
                                             "SunHierarchyFrameBuffer" + std::to_string(pass),
@@ -1148,6 +1247,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             IRRender::getNamedResource<ShaderProgram>("WorldPlacedDepthBlitProgram");
         p->worldPlacedCasters_.reserve(8);
         p->sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
+        p->writeRecordCapacityWord();
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         IRRender::tagGpuStage(systemId, "bakeSunShadowMap");
         return systemId;

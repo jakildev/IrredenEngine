@@ -69,4 +69,8 @@ void Buffer::unmap() {
     m_impl->unmap();
 }
 
+void Buffer::resize(std::size_t size) {
+    m_impl->resize(size);
+}
+
 } // namespace IRRender

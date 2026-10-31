@@ -222,6 +222,8 @@ TEST_F(GpuComputeDispatchTest, DeviceUnbindClearsIndexedStorageBinding) {
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/shader.hpp>
 #include <irreden/render/shapes_2d.hpp>
+#include <irreden/render/sun_face_query_layout.hpp>
+#include <irreden/render/sun_record_demand.hpp>
 #include <irreden/render/texture.hpp>
 #include <irreden/render/vao.hpp>
 
@@ -1453,6 +1455,105 @@ TEST_F(MetalGpuComputeDispatchTest, DrawBlendingFollowsDeviceToggle) {
     setActiveMetalPipeline(nullptr);
 }
 
+// The sun record pool's demand readback across a pool resize. A sample is
+// handed back only once its submission completes, reads the storage generation
+// its copy was encoded against, and is judged against that generation's
+// capacity. Each property has an arm that breaks it and must read wrong.
+TEST_F(MetalGpuComputeDispatchTest, SunRecordDemandReadsCompletedSamplesAcrossAPoolResize) {
+    using namespace IRRender;
+    using namespace IRPrefab::SunShadow;
+    constexpr std::uint32_t kExhaustingDemand = 71470;
+    constexpr std::uint32_t kGrownDemand = 90000;
+    constexpr std::size_t kWord = sizeof(std::uint32_t);
+    constexpr std::size_t kHeaderByte = std::size_t(kSourceFaceHeaderOffset) * kWord;
+    const SourceFaceLayout grown{
+        grownSourceFaceCapacity(kExhaustingDemand, kSourceFaceCapacity, kSourceFaceCapacityCeiling)
+    };
+    ASSERT_EQ(grown.capacity_, 131072u);
+    Buffer exhaustingDemand{&kExhaustingDemand, kWord, BUFFER_STORAGE_NONE};
+    Buffer grownDemand{&kGrownDemand, kWord, BUFFER_STORAGE_NONE};
+
+    // Two frames in one uncommitted command buffer with the resize between
+    // them, as applyRecordDemand grows the pool before the next frame's clear.
+    // GPU-timeline copies stand in for each frame's producers.
+    const auto recordTwoGenerations =
+        [&](Buffer &pool, SourceFaceDemandRing &ring, bool sampleFirstFrameAfterResize) {
+            device_->copyBufferSubData(&exhaustingDemand, 0, &pool, kHeaderByte, kWord);
+            if (!sampleFirstFrameAfterResize) {
+                ring.sample(&pool, kSourceFaceCapacity);
+            }
+            pool.resize(grown.bufferBytes());
+            const std::uint32_t capacityWord = grown.capacity_;
+            pool.subData(std::size_t(kSourceFaceCapacityOffset) * kWord, kWord, &capacityWord);
+            if (sampleFirstFrameAfterResize) {
+                ring.sample(&pool, kSourceFaceCapacity);
+            }
+            device_->copyBufferSubData(&grownDemand, 0, &pool, kHeaderByte, kWord);
+            ring.sample(&pool, grown.capacity_);
+        };
+    const auto drain = [&](SourceFaceDemandRing &ring, std::uint64_t completed) {
+        std::vector<SourceFaceDemandSample> samples;
+        ring.drainCompleted(completed, [&](const SourceFaceDemandSample &sample) {
+            samples.push_back(sample);
+        });
+        return samples;
+    };
+
+    {
+        Buffer pool{nullptr, kSourceFaceDefaultLayout.bufferBytes(), BUFFER_STORAGE_DYNAMIC};
+        SourceFaceDemandRing ring;
+        recordTwoGenerations(pool, ring, false);
+        EXPECT_TRUE(drain(ring, device_->completedSubmissionSerial()).empty())
+            << "samples of the recording submission stay pending";
+        device_->finish();
+        const auto samples = drain(ring, device_->completedSubmissionSerial());
+        ASSERT_EQ(samples.size(), 2u);
+        EXPECT_EQ(samples[0].frame_, 1u);
+        EXPECT_EQ(samples[0].requested_, kExhaustingDemand)
+            << "the copy queued before the resize reads the old storage";
+        EXPECT_EQ(samples[0].capacity_, kSourceFaceCapacity);
+        EXPECT_TRUE(samples[0].exhausted());
+        EXPECT_EQ(samples[1].frame_, 2u);
+        EXPECT_EQ(samples[1].requested_, kGrownDemand);
+        EXPECT_EQ(samples[1].capacity_, grown.capacity_);
+        EXPECT_FALSE(samples[1].exhausted());
+        // Judged against the live pool instead of its own generation, the
+        // exhausted frame would read as served.
+        EXPECT_LE(samples[0].requested_, grown.capacity_);
+        std::uint32_t capacityWord = 0;
+        pool.getSubData(std::size_t(kSourceFaceCapacityOffset) * kWord, kWord, &capacityWord);
+        EXPECT_EQ(capacityWord, grown.capacity_);
+        EXPECT_EQ(
+            static_cast<MTL::Buffer *>(pool.getNativeBuffer())->length(),
+            grown.bufferBytes()
+        );
+    }
+    {
+        // Early read: treating the recording submission as complete hands the
+        // slots over before the GPU has written them.
+        Buffer pool{nullptr, kSourceFaceDefaultLayout.bufferBytes(), BUFFER_STORAGE_DYNAMIC};
+        SourceFaceDemandRing ring;
+        recordTwoGenerations(pool, ring, false);
+        const auto early = drain(ring, device_->submissionSerial());
+        ASSERT_EQ(early.size(), 2u);
+        EXPECT_NE(early[0].requested_, kExhaustingDemand);
+        EXPECT_NE(early[1].requested_, kGrownDemand);
+        device_->finish();
+    }
+    {
+        // Wrong storage generation: the first frame's copy encoded against the
+        // replacement storage misses the demand its producers wrote.
+        Buffer pool{nullptr, kSourceFaceDefaultLayout.bufferBytes(), BUFFER_STORAGE_DYNAMIC};
+        SourceFaceDemandRing ring;
+        recordTwoGenerations(pool, ring, true);
+        device_->finish();
+        const auto samples = drain(ring, device_->completedSubmissionSerial());
+        ASSERT_EQ(samples.size(), 2u);
+        EXPECT_NE(samples[0].requested_, kExhaustingDemand);
+        EXPECT_EQ(samples[1].requested_, kGrownDemand);
+    }
+}
+
 } // namespace
 
 #else // other backend (e.g. Vulkan)
@@ -2433,6 +2534,8 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     SunProbeFixture probe;
     auto &bake = probe.registerBake();
     std::vector<std::uint32_t> seed(Shadow::kSourceFaceBufferWords, 0xDEADBEEFu);
+    // The allocator's capacity word addresses every tail offset on Metal.
+    seed[Shadow::kSourceFaceCapacityOffset] = Shadow::kSourceFaceCapacity;
     Buffer depth(seed.data(), seed.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
     FrameDataSun frame{};
     frame.sunBasisU_ = IRMath::vec4(0.125f, 0.25f, 0.5f, 0.0f);
@@ -2520,11 +2623,21 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     EXPECT_NE(captured.find("# face_records_requested=257\n"), std::string::npos);
     EXPECT_NE(captured.find("# basis_u=0.125,0.25,0.5\n"), std::string::npos);
     EXPECT_NE(captured.find("# basis_v=-0.5,0,0.25\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n0,0,0,256,1,-3,5,-1,9\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n0,127,127,0,1,251,513,253,517\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n1,0,0,0,1,11,-7,19,9\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n1,127,127,257,0,1027,2025,1035,2041\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n0,0,0,256,1,-3,5,-1,9,0\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n0,127,127,0,1,251,513,253,517,0\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n1,0,0,0,1,11,-7,19,9,0\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n1,127,127,257,0,1027,2025,1035,2041,0\n"), std::string::npos);
     EXPECT_EQ(captured.find("# geometry_version="), std::string::npos);
+
+    const std::uint32_t lostCount = completeCount | Shadow::kSourceFaceTileRecordLost;
+    depth.subData(
+        Shadow::kSourceFaceTileOffset * sizeof(std::uint32_t),
+        sizeof(lostCount),
+        &lostCount
+    );
+    ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string()));
+    const std::string lost = probe.contents();
+    EXPECT_NE(lost.find("\n0,0,0,256,0,-3,5,-1,9,1\n"), std::string::npos);
 
     const std::uint32_t recordCount = 1;
     const std::array<std::uint32_t, Shadow::kSourceFaceRecordWords> record{

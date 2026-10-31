@@ -22,18 +22,31 @@ class SourceFaceQueryTest(unittest.TestCase):
                             f"ir_projected_face.{suffix}").read_text()
                 shader = shader.replace(f'#include "ir_projected_face.{suffix}"', geometry)
                 shader = (shader.replace("constant uint", "const uint")
+                          .replace("device const uint*", "const uint*")
                           .replace("float2", "vec2").replace("float3", "vec3"))
                 names = re.findall(r"const uint (kSourceFace\w+) =", shader)
                 checks = "\n".join(f"static_assert({n} == IRPrefab::SunShadow::{n});"
                                    for n in names)
                 header_check = (
                     "if (sourceFaceHeaderIndex(kSourceFaceBufferWords) != kSourceFaceHeaderOffset)"
-                    " return 19; if (sourceFaceSpillCounterIndex(kSourceFaceBufferWords)"
+                    " return 19; if (sourceFaceCapacity(kSourceFaceBufferWords)"
+                    " != kSourceFaceCapacity)"
+                    " return 25;" if suffix == "glsl" else "") + (
+                    " if (sourceFaceSpillCounterIndex(kSourceFaceCapacity)"
                     " != kSourceFaceSpillCounterOffset) return 21;"
-                    " if (sourceFaceHierarchyNeededIndex(kSourceFaceBufferWords)"
+                    " if (sourceFaceSpillHeadIndex(kSourceFaceCapacity, 0u)"
+                    " != kSourceFaceSpillHeadOffset) return 26;"
+                    " if (sourceFaceSpillNodeIndex(kSourceFaceCapacity, 0u)"
+                    " != kSourceFaceSpillNodeOffset) return 27;"
+                    " if (sourceFaceHierarchyNeededIndex(kSourceFaceCapacity)"
                     " != kSourceFaceHierarchyNeededOffset) return 23;"
-                    " if (sourceFaceHierarchyReadyIndex(kSourceFaceBufferWords)"
-                    " != kSourceFaceHierarchyReadyOffset) return 24;" if suffix == "glsl" else "")
+                    " if (sourceFaceHierarchyReadyIndex(kSourceFaceCapacity)"
+                    " != kSourceFaceHierarchyReadyOffset) return 24;"
+                    " if (sourceFaceHierarchyNodeIndex(kSourceFaceCapacity, 0u)"
+                    " != kSourceFaceHierarchyOffset) return 28;"
+                    " if (sourceFaceSpillCounterIndex(2u * kSourceFaceCapacity)"
+                    " != kSourceFaceRecordOffset"
+                    " + 2u * kSourceFaceCapacity * kSourceFaceRecordWords) return 29;")
                 source = """#include <cstdint>
 #include <cmath>
 using std::abs;

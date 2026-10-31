@@ -393,6 +393,13 @@ struct PartAuthoredCountCheck {
     std::string name_;
 };
 
+struct PartClassMaskCheck {
+    int partIndex_ = 0;
+    IRMath::ivec3 local_ = IRMath::ivec3(0);
+    std::optional<std::string> expected_;
+    std::string name_;
+};
+
 struct PartEditableCheck {
     int partIndex_ = 0;
     bool expected_ = true;
@@ -634,6 +641,7 @@ struct Recipe {
     std::deque<PartCountCheck> partCountChecks_;
     std::deque<PartIdCheck> partIdChecks_;
     std::deque<PartAuthoredCountCheck> partAuthoredCountChecks_;
+    std::deque<PartClassMaskCheck> partClassMaskChecks_;
     std::deque<PartEditableCheck> partEditableChecks_;
     std::deque<CanvasCountCheck> canvasCountChecks_;
     std::deque<RotationModeCheck> rotationModeChecks_;
@@ -706,6 +714,7 @@ bool evaluatePartTransformCheck(const void *context, std::string &actual);
 bool evaluatePartCountCheck(const void *context, std::string &actual);
 bool evaluatePartIdCheck(const void *context, std::string &actual);
 bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual);
+bool evaluatePartClassMaskCheck(const void *context, std::string &actual);
 bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
@@ -1212,8 +1221,14 @@ class Builder {
         std::string error;
         const std::size_t recipeIndex =
             static_cast<std::size_t>(recipe - m_moduleView->recipes_.begin());
+        std::vector<RecipeClassMaskEntry> mask;
+        if (m_activePart >= 0 && m_activePart < static_cast<int>(m_partBindings.size()) &&
+            m_partBindings[static_cast<std::size_t>(m_activePart)] &&
+            m_partBindings[static_cast<std::size_t>(m_activePart)]->recipe_ == name) {
+            mask = m_partBindings[static_cast<std::size_t>(m_activePart)]->mask_;
+        }
         if (!m_moduleView->evaluate_ ||
-            !m_moduleView->evaluate_(recipeIndex, values, m_model.size(), cells, error)) {
+            !m_moduleView->evaluate_(recipeIndex, values, m_model.size(), mask, cells, error)) {
             recordError(
                 "applyRecipe: " + (error.empty() ? std::string("evaluation failed") : error)
             );
@@ -1237,6 +1252,98 @@ class Builder {
         clickGui(recipeApplyCenterGuiTrixel());
         for (const RecipeCell &cell : cells)
             m_model.set(cell.local_, true);
+        if (m_activePart >= 0) {
+            PartRecipeBinding binding;
+            binding.recipe_ = name;
+            binding.values_ = values;
+            binding.fallbackColor_ = kPaletteColors[0];
+            binding.mask_ = std::move(mask);
+            m_partBindings[static_cast<std::size_t>(m_activePart)] = std::move(binding);
+        }
+    }
+
+    void paintClass(IRMath::ivec3 local, const std::string &className) {
+        if (m_moduleView == nullptr || m_activePart < 0 ||
+            m_activePart >= static_cast<int>(m_partBindings.size()) ||
+            !m_partBindings[static_cast<std::size_t>(m_activePart)]) {
+            recordError("paintClass needs a recipe-bound selected part");
+            return;
+        }
+        PartRecipeBinding &binding = *m_partBindings[static_cast<std::size_t>(m_activePart)];
+        const auto recipe = std::find_if(
+            m_moduleView->recipes_.begin(),
+            m_moduleView->recipes_.end(),
+            [&](const ModuleRecipe &candidate) { return candidate.name_ == binding.recipe_; }
+        );
+        if (recipe == m_moduleView->recipes_.end()) {
+            recordError("paintClass: bound recipe is not registered");
+            return;
+        }
+        const auto declared =
+            std::find(recipe->classes_.begin(), recipe->classes_.end(), className);
+        if (declared == recipe->classes_.end()) {
+            recordError("paintClass: unknown class '" + className + "'");
+            return;
+        }
+        const std::size_t recipeIndex =
+            static_cast<std::size_t>(recipe - m_moduleView->recipes_.begin());
+        std::vector<RecipeCell> oldCells;
+        std::vector<RecipeCell> newCells;
+        std::string error;
+        if (!m_moduleView->evaluate_(
+                recipeIndex,
+                binding.values_,
+                m_model.size(),
+                binding.mask_,
+                oldCells,
+                error
+            )) {
+            recordError("paintClass: " + error);
+            return;
+        }
+        PartRecipeBinding updatedBinding = binding;
+        auto entry = std::find_if(
+            updatedBinding.mask_.begin(),
+            updatedBinding.mask_.end(),
+            [&](const auto &item) { return item.local_ == local; }
+        );
+        if (entry == updatedBinding.mask_.end())
+            updatedBinding.mask_.push_back({local, className});
+        else
+            entry->className_ = className;
+        if (!m_moduleView->evaluate_(
+                recipeIndex,
+                updatedBinding.values_,
+                m_model.size(),
+                updatedBinding.mask_,
+                newCells,
+                error
+            )) {
+            recordError("paintClass: " + error);
+            return;
+        }
+        const std::optional<IRMath::vec3> aim = m_model.aimAtVoxel(local);
+        if (!aim) {
+            recordUnreachable("paintClass", local);
+            return;
+        }
+        binding = std::move(updatedBinding);
+        for (const RecipeCell &cell : oldCells) {
+            const bool remains =
+                std::any_of(newCells.begin(), newCells.end(), [&](const auto &item) {
+                    return item.local_ == cell.local_;
+                });
+            if (!remains)
+                m_model.set(cell.local_, false);
+        }
+        for (const RecipeCell &cell : newCells)
+            m_model.set(cell.local_, true);
+        selectPaletteSwatch(static_cast<int>(declared - recipe->classes_.begin()));
+        if (!m_classPaintMode) {
+            tapKey(IRInput::kKeyButtonU);
+            m_classPaintMode = true;
+        }
+        emitClick(*aim);
     }
 
     void attachComponent(const std::string &name) {
@@ -1377,6 +1484,7 @@ class Builder {
         }
         OccupancyModel added(m_partSize, deriveSceneOrigin(m_partSize));
         m_partModels.push_back(added);
+        m_partBindings.emplace_back(std::nullopt);
         m_activePart = static_cast<int>(m_partModels.size()) - 1;
         m_model = std::move(added);
         reseatMirrors();
@@ -1494,6 +1602,10 @@ class Builder {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         const int index = m_removedPartModel->index_;
         m_partModels.insert(m_partModels.begin() + index, std::move(m_removedPartModel->model_));
+        m_partBindings.insert(
+            m_partBindings.begin() + index,
+            std::move(m_removedPartModel->binding_)
+        );
         m_activePart = index;
         m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
         m_removedPartModel.reset();
@@ -1502,6 +1614,7 @@ class Builder {
     void discardRemovedPart() {
         m_removedPartModel.reset();
         m_partModels.clear();
+        m_partBindings.clear();
         m_activePart = -1;
     }
 
@@ -1597,6 +1710,16 @@ class Builder {
     void
     expectPartOccupancy(int partIndex, IRMath::ivec3 local, bool expectOccupied, std::string name) {
         addOccupancyExpectation(partIndex, local, expectOccupied, std::move(name));
+    }
+
+    void expectPartCellClass(
+        int partIndex, IRMath::ivec3 local, std::optional<std::string> expected, std::string name
+    ) {
+        addPredicateCheck(
+            m_recipe.partClassMaskChecks_,
+            PartClassMaskCheck{partIndex, local, std::move(expected), std::move(name)},
+            &evaluatePartClassMaskCheck
+        );
     }
 
     void expectPartTransform(
@@ -1696,6 +1819,7 @@ class Builder {
             OccupancyModel copy = source;
             copy.setOrigin(source.origin() + offset.translation_);
             m_partModels.push_back(std::move(copy));
+            m_partBindings.push_back(m_partBindings[static_cast<std::size_t>(m_activePart)]);
         }
         m_activePart = static_cast<int>(m_partModels.size()) - 1;
         m_model = m_partModels.back();
@@ -2209,11 +2333,17 @@ class Builder {
     struct RemovedPartModel {
         OccupancyModel model_;
         int index_ = 0;
+        std::optional<PartRecipeBinding> binding_;
     };
 
     void recordSelectedPartRemoval() {
-        m_removedPartModel = RemovedPartModel{m_model, m_activePart};
+        m_removedPartModel = RemovedPartModel{
+            m_model,
+            m_activePart,
+            m_partBindings[static_cast<std::size_t>(m_activePart)]
+        };
         m_partModels.erase(m_partModels.begin() + m_activePart);
+        m_partBindings.erase(m_partBindings.begin() + m_activePart);
         if (m_partModels.empty()) {
             m_activePart = -1;
             return;
@@ -2461,6 +2591,7 @@ class Builder {
     IRComponents::C_WidgetList m_recipeList;
     IRComponents::C_WidgetList m_componentList;
     std::vector<OccupancyModel> m_partModels;
+    std::vector<std::optional<PartRecipeBinding>> m_partBindings;
     int m_activePart = -1;
     std::optional<RemovedPartModel> m_removedPartModel;
     // The animation's non-active frames, indexed as the editor indexes them
@@ -2476,6 +2607,7 @@ class Builder {
     IRMath::ivec2 m_lastDraggedSliderPos{-1};
     int m_lastSliderDragSegment = 0;
     bool m_eraseMode = false;
+    bool m_classPaintMode = false;
     SymmetryState m_symmetry;
     // The box a holdBox pressed and no releaseBox has released yet.
     std::optional<HeldBox> m_heldBox;

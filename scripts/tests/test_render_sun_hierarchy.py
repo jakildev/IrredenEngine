@@ -295,7 +295,8 @@ def source(suffix, directory, mutation=None):
     clear = (receiver.SHADERS / directory / f"c_clear_sun_shadow_map.{suffix}").read_text()
     clear = clear[clear.index("    if (linearIdx >= kTotalTexels)"):]
     builder = ("constexpr int memory_order_relaxed=0;\n"
-               "void atomic_store_explicit(uint* p,uint value,int){*p=value;}\n")
+               "void atomic_store_explicit(uint* p,uint value,int){*p=value;}\n"
+               "uint atomic_load_explicit(uint* p,int){return *p;}\n")
     builder += r"""
 SourceSunBounds hierarchyBounds[2u*kSourceFaceHierarchyWorkgroupSize];
 void hierarchyPhaseBoundary(){
@@ -330,9 +331,12 @@ void hierarchyPhaseBoundary(){
 def dispatch_source(mutation=None):
     root = receiver.SHADERS.parents[3]
     layout = (root / "engine/prefabs/irreden/render/sun_face_query_layout.hpp").read_text()
-    constants = "\n".join(re.findall(
-        r"constexpr (?:int|std::uint32_t) kSourceFace(?:Capacity|HierarchyLeafSize|"
-        r"HierarchyMaxLeaves|HierarchyBuildPasses|HierarchyWorkgroupSize) =\s*[^;]+;", layout))
+    # The whole layout header, with its cascade constants inlined: the dispatch
+    # derives pass and group counts from SourceFaceLayout.
+    constants = layout.replace(
+        "#include <irreden/render/sun_shadow_cascade.hpp>",
+        "namespace IRPrefab::SunShadow { constexpr std::uint32_t kSunShadowMapDim = 1024u;"
+        " constexpr std::uint32_t kSunShadowCascadeCount = 2u; }")
     system_path = root / "engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp"
     system = system_path.read_text()
     dispatch = extract_function(system, "buildOverflowHierarchy")
@@ -346,7 +350,7 @@ def dispatch_source(mutation=None):
 #include <vector>
 using uint=std::uint32_t;
 void require(bool ok,const char* message){if(!ok){std::cerr<<message<<"\n";std::exit(1);}}
-namespace IRPrefab::SunShadow { CONSTANTS }
+CONSTANTS
 namespace IRMath {uint divCeil(uint n,uint d){return (n+d-1)/d;}}
 enum class BufferTarget {SHADER_STORAGE,UNIFORM};
 enum class BarrierType {SHADER_STORAGE};
@@ -371,9 +375,10 @@ struct Device{
 };
 namespace IRRender {Device* device(){static Device value;return &value;}}
 struct Fixture{
-    Program program;Buffer depth{-2},restore{-1},pass0{0},pass1{1};
+    Program program;Buffer depth{-2},restore{-1},pass0{0},pass1{1},pass2{2};
     Program* hierarchyProgram_=&program;Buffer* sunShadowDepthMap_=&depth;
-    Buffer* hierarchyFrames_[2]={&pass0,&pass1};Buffer* revoxelizeParamsBuf_=&restore;
+    Buffer* hierarchyFrames_[3]={&pass0,&pass1,&pass2};Buffer* revoxelizeParamsBuf_=&restore;
+    IRPrefab::SunShadow::SourceFaceLayout recordLayout_{};
     DISPATCH
 };
 namespace MTL {struct Size{
@@ -390,6 +395,23 @@ int main(){
     const auto size=threadgroupSizeForFunctionName("c_build_sun_hierarchy");
     require(size.width==kSourceFaceHierarchyWorkgroupSize && size.height==1 && size.depth==1,
             "Metal hierarchy workgroup width agrees with the layout");
+    // A grown pool dispatches the passes and groups its leaf allocation needs.
+    for(uint capacity:{131072u,262144u,kSourceFaceCapacityCeiling}){
+        events.clear();groups.clear();
+        fixture.recordLayout_=SourceFaceLayout{capacity};
+        fixture.buildOverflowHierarchy();
+        const uint leaves=capacity/kSourceFaceHierarchyLeafSize;
+        std::vector<uint> expected;
+        for(uint level=leaves;;){
+            level=(level+kSourceFaceHierarchyWorkgroupSize-1)/kSourceFaceHierarchyWorkgroupSize;
+            expected.push_back(level<1?1:level);
+            if(level<=1)break;
+        }
+        if(expected.size()<2)expected.push_back(1);
+        require(groups==expected,"grown pool dispatches one group per subtree per pass");
+        require(fixture.recordLayout_.buildPasses()==int(expected.size()),
+                "pass count matches the dispatched groups");
+    }
 }
 """.replace("CONSTANTS", constants).replace("DISPATCH", dispatch).replace("MAPPING", mapping)
     if mutation:
@@ -410,8 +432,7 @@ class SunHierarchyTest(unittest.TestCase):
                 layout = (receiver.SHADERS / directory /
                           f"ir_sun_face_query_layout.{suffix}").read_text()
                 width = int(re.search(r"kSourceFaceHierarchyWorkgroupSize = (\d+)u;", layout)[1])
-                passes = int(re.search(r"kSourceFaceHierarchyBuildPasses = (\d+)u;", layout)[1])
-                self.assertEqual((width, passes), (128, 2))
+                self.assertEqual(width, 128)
                 marker = "void main()" if suffix == "glsl" else "kernel void c_build_sun_hierarchy("
                 kernel = compact(extract_block(shader, marker))
                 barrier = ("barrier();" if suffix == "glsl" else
@@ -420,7 +441,7 @@ class SunHierarchyTest(unittest.TestCase):
                 self.assertRegex(kernel, r"initializeSourceSunHierarchy\([^;]+; " +
                                  re.escape(barrier))
                 self.assertRegex(kernel, r"reduceSourceSunHierarchy\([^;]+; " + re.escape(barrier))
-                self.assertIn("if (pass == 1u && lane == 0u)", kernel)
+                self.assertIn("if (pass != 0u && subtrees == 1u && lane == 0u)", kernel)
                 self.assertNotRegex(kernel, r"if \([^)]*lane[^)]*\) return")
                 if suffix == "glsl":
                     self.assertIn(f"local_size_x = {width}", shader)
@@ -437,9 +458,9 @@ class SunHierarchyTest(unittest.TestCase):
                 "IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);", ""),
             "reuse_pass_zero_parameters": (
                 "hierarchyFrames_[pass]->bindBase", "hierarchyFrames_[0]->bindBase"),
-            "omit_second_pass": ("pass < kSourceFaceHierarchyBuildPasses", "pass < 1"),
-            "wrong_group_count": ("kSourceFaceHierarchyWorkgroupSize\n",
-                                  "2u * kSourceFaceHierarchyWorkgroupSize\n"),
+            "omit_second_pass": ("pass < passes", "pass < 1"),
+            "wrong_group_count": ("recordLayout_.buildGroups(pass);",
+                                  "recordLayout_.buildGroups(pass) / 2u;"),
             "wrong_metal_width": ("if (functionName == \"c_build_sun_hierarchy\") {\n"
                                   "        return MTL::Size(128, 1, 1);",
                                   "if (functionName == \"c_build_sun_hierarchy\") {\n"
@@ -476,17 +497,20 @@ class SunHierarchyTest(unittest.TestCase):
                 "!sourceQueryComplete && sourceFaceTileRetainsRecords(count) &&",
                 "!sourceQueryComplete &&"),
             "count_unpublished_records": (
-                "return requested < kSourceFaceCapacity ? requested : kSourceFaceCapacity;",
+                "return requested < capacity ? requested : capacity;",
                 "return requested;"),
             "reject_exhausted_build": ("if (records == 0u ||",
-                                       "if (records == 0u || records >= kSourceFaceCapacity ||"),
-            "publish_subtree_as_complete": ("pass == 1u && lane == 0u", "lane == 0u"),
-            "omit_top_root": ("level > 0u; level /= 2u", "level > 1u; level /= 2u"),
-            "alias_subtrees": ("subtrees + group : 1u", "subtrees : 1u"),
+                                       "if (records == 0u || records >= capacity ||"),
+            "publish_subtree_as_complete": ("pass != 0u && subtrees == 1u && lane == 0u",
+                                            "lane == 0u"),
+            "omit_top_root": ("stage > 0u; stage /= 2u", "stage > 1u; stage /= 2u"),
+            "alias_subtrees": ("const uint rootNode = subtrees + group;",
+                               "const uint rootNode = subtrees;"),
             "drop_reduction_lanes": ("rootNode * level + lane, bounds",
                                      "rootNode * level, bounds"),
-            "drop_upper_subtree_roots": ("subtreeLeaves : subtrees;",
-                                         "subtreeLeaves : max(1u, subtrees / 2u);"),
+            "drop_upper_subtree_roots": ("const uint subtrees = level / width;",
+                                         "const uint subtrees = max(1u, level / width / 2u);"),
+            "skip_pass_reduction": ("built < pass; ++built", "built < pass + 1u; ++built"),
         }
         harness = receiver.SourceFaceOverflowTest()
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):

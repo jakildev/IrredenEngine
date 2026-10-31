@@ -161,6 +161,7 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
     }
     const auto *buffer = bake->sunShadowDepthMap_;
     const auto *frameBuffer = bake->sunShadowFrameDataBuf_;
+    const SourceFaceLayout layout = bake->recordLayout_;
     std::vector<std::uint32_t> words(kSourceFaceRecordOffset - kSourceFaceHeaderOffset);
     IRRender::FrameDataSun frame{};
     IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
@@ -172,13 +173,13 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
     );
     std::uint32_t spillRequested = 0;
     buffer->getSubData(
-        std::size_t(kSourceFaceSpillCounterOffset) * sizeof(std::uint32_t),
+        std::size_t(layout.spillCounterOffset()) * sizeof(std::uint32_t),
         sizeof(spillRequested),
         &spillRequested
     );
     std::uint32_t hierarchy[2] = {};
     buffer->getSubData(
-        std::size_t(kSourceFaceHierarchyNeededOffset) * sizeof(std::uint32_t),
+        std::size_t(layout.hierarchyNeededOffset()) * sizeof(std::uint32_t),
         sizeof(hierarchy),
         hierarchy
     );
@@ -186,14 +187,19 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
     output << std::setprecision(9);
     output << "# active=1\n";
     output << "# face_records_requested=" << words[0] << "\n";
-    output << "# face_record_capacity=" << kSourceFaceCapacity << "\n";
+    output << "# face_record_capacity=" << layout.capacity_ << "\n";
+    output << "# face_record_capacity_word=" << words[1] << "\n";
+    output << "# face_record_ceiling=" << bake->recordCapacityCeiling_ << "\n";
+    output << "# record_capacity_changes=" << bake->recordCapacityChanges_ << "\n";
+    output << "# record_demand_peak=" << bake->recordDemandPeak_ << "\n";
+    output << "# record_demand_sampled_frame=" << bake->recordDemandSampledFrame_ << "\n";
+    output << "# record_exhausted_samples=" << bake->recordExhaustedSamples_ << "\n";
     output << "# spill_nodes_requested=" << spillRequested << "\n";
     output << "# spill_node_capacity=" << kSourceFaceSpillCapacity << "\n";
     output << "# hierarchy_needed=" << hierarchy[0] << "\n";
     output << "# hierarchy_ready_leaves=" << hierarchy[1] << "\n";
     output << "# tile_inline_capacity=" << kSourceFaceTileCapacity << "\n";
-    output << "# buffer_bytes=" << std::size_t(kSourceFaceBufferWords) * sizeof(std::uint32_t)
-           << "\n";
+    output << "# buffer_bytes=" << layout.bufferBytes() << "\n";
     output << "# tile_capacity=" << kSourceFaceTileQueryCapacity << "\n";
     output << "# tiles_per_axis=" << kSourceFaceTilesPerAxis << "\n";
     output << "# cascade_count=" << kSourceFaceCascadeCount << "\n";
@@ -202,7 +208,7 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
     output << "# basis_v=" << frame.sunBasisV_.x << ',' << frame.sunBasisV_.y << ','
            << frame.sunBasisV_.z << "\n";
     if (includeGeometry) {
-        const auto captured = IRMath::min(words[0], kSourceFaceCapacity);
+        const auto captured = IRMath::min(words[0], layout.capacity_);
         std::vector<std::uint32_t> records(std::size_t(captured) * kSourceFaceRecordWords);
         if (!records.empty()) {
             buffer->getSubData(

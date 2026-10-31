@@ -17,6 +17,7 @@ IR_SESSION_PREDICATE_STUB(evaluatePartTransformCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartCountCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartIdCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartAuthoredCountCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartClassMaskCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartEditableCheck)
 IR_SESSION_PREDICATE_STUB(evaluateCanvasCountCheck)
 IR_SESSION_PREDICATE_STUB(evaluateRotationModeCheck)
@@ -167,9 +168,12 @@ class LuaEditorSessionBindingsTest : public testing::Test {
             })
             IREditor.registerRecipe("matrix_recipe", {
                 { name = "count", type = IREditor.ParamType.INT, default = 1, min = 0, max = 28 },
-            }, function(values, size)
+            }, function(values, size, mask)
+                if mask.at(1, 1, 1) == "hole" then
+                    return {}
+                end
                 return { { 1, 1, 1 } }
-            end)
+            end, { classes = { "hole" } })
             IREditor.registerRecipe("interior_float", {
                 { name = "value", type = IREditor.ParamType.FLOAT, default = 0, min = -1, max = 1 },
             }, function(values, size)
@@ -260,6 +264,8 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:reload()
         s:setPartSize({8, 8, 8})
         s:addVoxelPart()
+        s:applyRecipe("matrix_recipe", { count = 2 })
+        s:paintClass({1, 1, 1}, "hole")
         s:dragPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})
         s:holdPartGizmo({1, 0, 0}, {0, 0, 0}, {-1, 0, 0})
         s:releasePartGizmo()
@@ -288,6 +294,7 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
 
         s:expectOccupancy({8, 8, 14}, true, "occupancy")
         s:expectPartOccupancy(0, {4, 4, 2}, true, "part_occupancy")
+        s:expectPartCellClass(0, {1, 1, 1}, "hole", "part_cell_class")
         s:expectPartTransform(0, {0, 0, 0}, 1, false, "part_transform")
         s:expectPartCount(1, "part_count")
         s:expectPartId(0, "part_1", "part_id")
@@ -470,6 +477,8 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:applyRecipe({}, {})",
         "session:applyRecipe('matrix_recipe', 1)",
         "session:applyRecipe('matrix_recipe', { count = 'bad' })",
+        "session:paintClass({1,2}, 'hole')",
+        "session:expectPartCellClass(0, {1,2,3}, {}, 'bad')",
         "session:attachComponent({})",
         "session:setComponentField('MatrixComponent', {}, '1')",
         "session:setComponentOverrides('EngineComponent', {})",
@@ -657,7 +666,7 @@ TEST_F(LuaEditorSessionBindingsTest, ApplyRecipeRejectsUnprovableSliderValues) {
     auto evaluate = [&view, &recipeIndex](const std::string &name, std::vector<float> values) {
         std::vector<IRVoxelEditor::RecipeCell> cells;
         std::string error;
-        EXPECT_TRUE(view.evaluate_(recipeIndex(name), values, IRMath::ivec3(16), cells, error));
+        EXPECT_TRUE(view.evaluate_(recipeIndex(name), values, IRMath::ivec3(16), {}, cells, error));
         return cells;
     };
 
@@ -810,6 +819,7 @@ TEST_F(LuaEditorSessionBindingsTest, NamedListOperationsScrollTheirLists) {
     view.evaluate_ = [](std::size_t,
                         const std::vector<float> &,
                         IRMath::ivec3,
+                        const std::vector<IRVoxelEditor::RecipeClassMaskEntry> &,
                         std::vector<IRVoxelEditor::RecipeCell> &cells,
                         std::string &) {
         cells.push_back(IRVoxelEditor::RecipeCell{IRMath::ivec3(1)});

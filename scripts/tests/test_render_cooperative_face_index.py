@@ -39,6 +39,7 @@ int main(){
   const bool exhausted=fixture==5||fixture==9;
   const bool rectangle=fixture>=7&&fixture<10;
   if(exhausted)sunDepthBuf[kSourceFaceHeaderOffset]=65536;
+  sunDepthBuf[kSourceFaceCapacityOffset]=kSourceFaceCapacity;
   const bool poolFailure=fixture==13||fixture==14;
   const uint poolStart=fixture==13?262143:fixture==14?262144:0;
   sunDepthBuf[kSourceFaceSpillCounterOffset]=poolStart;
@@ -175,7 +176,7 @@ class CooperativeFaceIndexTest(unittest.TestCase):
                     "kSourceFaceTileQueryCapacity + 1u", "0u"),
                 "unmarked_record_loss": source.replace("kSourceFaceTileRecordLost", "0u"),
                 "missing_record_hierarchy_request": source.replace(
-                    "faceIndex == kSourceFaceCapacity", "false"),
+                    "faceIndex == capacity", "false"),
             }
             call = ("indexSourceSunFace(indexedCorner,u,v);" if suffix == "glsl" else
                     "indexSourceSunFace(sunDepthBuf.data,indexedCorner,u,v,sunFrame,"

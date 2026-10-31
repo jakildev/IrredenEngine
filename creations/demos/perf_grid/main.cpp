@@ -22,6 +22,8 @@
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/sun_record_pool.hpp>
+#include <irreden/render/sun_shadow_probe.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -980,6 +982,21 @@ void registerCliArgs() {
     args.string("--subdivision-mode", "Trixel subdivision: none | position_only | full", "full");
     args.integer("--base-subdivisions", "Base trixel subdivision count", 1);
     args.string("--depth-probe", "Per-frame composite-depth readback at framebuffer pixel X,Y", "");
+    args.flag(
+        "--sun-face-index-probe",
+        "Dump sun face tile counters and record demand on the final auto-profile frame (stalls GPU)"
+    );
+    args.integer(
+        "--sun-record-capacity",
+        "Initial sun face record pool capacity, a power of two (0 keeps the engine default)",
+        0
+    );
+    args.integer(
+        "--sun-record-ceiling",
+        "Largest sun face record pool growth may reach; equal to the capacity freezes it (0 "
+        "default)",
+        0
+    );
     args.enumValue(
         "--debug-overlay",
         "Lighting/composite debug overlay",
@@ -1829,6 +1846,15 @@ int main(int argc, char **argv) {
         IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
             ->voxelFaceCoverage_ = false;
     }
+    // Outside the assert: a release build strips the asserted expression.
+    const bool recordPoolConfigured = IRPrefab::SunShadow::configureRecordPoolFromRequest(
+        IREngine::args().getInt("--sun-record-capacity"),
+        IREngine::args().getInt("--sun-record-ceiling")
+    );
+    IR_ASSERT(
+        recordPoolConfigured,
+        "--sun-record-capacity / --sun-record-ceiling need powers of two up to the dispatch limit"
+    );
 
     // Called after initSystems(), so VOXEL_TO_TRIXEL_STAGE_1 exists for the
     // setter's IRSystem::findSystem resolution (before that there is nothing to
@@ -2038,6 +2064,14 @@ void initSystems() {
                 }
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
+                    if (IREngine::args().getFlag("--sun-face-index-probe")) {
+                        const std::string path = "sun-face-index-profile.csv";
+                        IR_LOG_INFO(
+                            "sun-face-index-probe: path={} written={}",
+                            path,
+                            IRPrefab::SunShadow::writeSourceFaceIndexProbe(path)
+                        );
+                    }
                     if (g_fogWorldPan || g_fogTeleport) {
                         logFogWorldPanTotals();
                     }

@@ -7,9 +7,8 @@ layout(std140, binding = 16) uniform SunHierarchyFrame { ivec4 hierarchyDispatch
 
 shared SourceSunBounds hierarchyBounds[2u * kSourceFaceHierarchyWorkgroupSize];
 
-void writeSourceSunBounds(uint node, SourceSunBounds bounds) {
-    const uint offset = uint(sunDepthBuf.length()) -
-        (kSourceFaceBufferWords - kSourceFaceHierarchyOffset) + node * kSourceFaceHierarchyNodeWords;
+void writeSourceSunBounds(uint capacity, uint node, SourceSunBounds bounds) {
+    const uint offset = sourceFaceHierarchyNodeIndex(capacity, node);
     for (uint axis = 0u; axis < 4u; ++axis) {
         sunDepthBuf[offset + axis] = floatBitsToUint(bounds.low[axis]);
         sunDepthBuf[offset + 4u + axis] = floatBitsToUint(bounds.high[axis]);
@@ -24,52 +23,57 @@ SourceSunBounds sourceSunLeafBounds(uint leaf, uint records) {
     return bounds;
 }
 
-void initializeSourceSunHierarchy(uint lane, uint pass, uint rootNode, uint width,
+void initializeSourceSunHierarchy(uint capacity, uint lane, uint pass, uint rootNode, uint width,
     uint leaves, uint records) {
     if (lane >= width) return;
     const uint node = rootNode * width + lane;
     SourceSunBounds bounds;
     if (pass == 0u) {
         bounds = sourceSunLeafBounds(node - leaves, records);
-        writeSourceSunBounds(node, bounds);
+        writeSourceSunBounds(capacity, node, bounds);
     } else {
-        bounds = readSourceSunBounds(node);
+        bounds = readSourceSunBounds(capacity, node);
     }
     hierarchyBounds[width + lane] = bounds;
 }
 
-void reduceSourceSunHierarchy(uint lane, uint level, uint rootNode) {
+void reduceSourceSunHierarchy(uint capacity, uint lane, uint level, uint rootNode) {
     if (lane >= level) return;
     const uint node = level + lane;
     const SourceSunBounds bounds = sourceSunMergeBounds(
         hierarchyBounds[node * 2u], hierarchyBounds[node * 2u + 1u]);
     hierarchyBounds[node] = bounds;
-    writeSourceSunBounds(rootNode * level + lane, bounds);
+    writeSourceSunBounds(capacity, rootNode * level + lane, bounds);
 }
 
 void main() {
     const uint lane = gl_LocalInvocationID.x;
     const uint group = gl_WorkGroupID.x;
-    const uint records = sourceFaceRetainedRecords(sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))]);
+    const uint boundWords = uint(sunDepthBuf.length());
+    const uint capacity = sourceFaceCapacity(boundWords);
+    const uint records = sourceFaceRetainedRecords(sunDepthBuf[sourceFaceHeaderIndex(boundWords)], capacity);
     if (records == 0u ||
-        sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))] == 0u) return;
+        sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)] == 0u) return;
     const uint leaves = sourceSunHierarchyLeafCount(records);
     const uint pass = uint(hierarchyDispatch.x);
-    const uint subtreeLeaves = min(leaves, kSourceFaceHierarchyWorkgroupSize);
-    const uint subtrees = leaves / subtreeLeaves;
-    // Every kernel return is group-uniform; inactive lanes still reach each barrier.
-    if (pass >= kSourceFaceHierarchyBuildPasses ||
-        (pass == 0u ? group >= subtrees : group != 0u)) return;
-    const uint width = pass == 0u ? subtreeLeaves : subtrees;
-    const uint rootNode = pass == 0u ? subtrees + group : 1u;
+    // Pass p reduces the nodes its predecessors rooted: one workgroup-wide
+    // subtree per group, until a single subtree reaches the root. Later passes
+    // re-read the finished root, so every dispatched pass is group-uniform.
+    uint level = leaves;
+    for (uint built = 0u; built < pass; ++built) level /= min(level, kSourceFaceHierarchyWorkgroupSize);
+    const uint width = min(level, kSourceFaceHierarchyWorkgroupSize);
+    const uint subtrees = level / width;
+    if (group >= subtrees) return;
+    const uint rootNode = subtrees + group;
     // At local width W, lane i owns global node rootNode * W + i.
-    initializeSourceSunHierarchy(lane, pass, rootNode, width, leaves, records);
+    initializeSourceSunHierarchy(capacity, lane, pass, rootNode, width, leaves, records);
     barrier();
-    for (uint level = width / 2u; level > 0u; level /= 2u) {
-        reduceSourceSunHierarchy(lane, level, rootNode);
+    for (uint stage = width / 2u; stage > 0u; stage /= 2u) {
+        reduceSourceSunHierarchy(capacity, lane, stage, rootNode);
         barrier();
     }
-    // Both passes and consumers are separated by dispatch storage barriers.
-    if (pass == 1u && lane == 0u)
-        sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] = leaves;
+    // Passes and consumers are separated by dispatch storage barriers; the
+    // first pass only roots subtrees, so only a later pass publishes.
+    if (pass != 0u && subtrees == 1u && lane == 0u)
+        sunDepthBuf[sourceFaceHierarchyReadyIndex(capacity)] = leaves;
 }

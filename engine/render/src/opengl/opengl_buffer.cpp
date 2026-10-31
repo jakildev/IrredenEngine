@@ -8,7 +8,8 @@ namespace IRRender {
 
 class OpenGLBufferImpl final : public BufferImpl {
   public:
-    OpenGLBufferImpl(const void *data, std::size_t size, std::uint32_t flags) {
+    OpenGLBufferImpl(const void *data, std::size_t size, std::uint32_t flags)
+        : m_flags(flags) {
         ENG_API->glCreateBuffers(1, &m_handle);
         ENG_API->glNamedBufferStorage(m_handle, static_cast<GLsizeiptr>(size), data, toGLBufferStorageFlags(flags));
         IRE_LOG_INFO("Created GL buffer: {}", m_handle);
@@ -106,7 +107,23 @@ class OpenGLBufferImpl final : public BufferImpl {
         m_mappedPtr = nullptr;
     }
 
+    // Immutable storage cannot grow in place: a new name takes the old one's
+    // place behind this object, and GL keeps the deleted storage alive for
+    // queued commands and detaches it from every binding point.
+    void resize(std::size_t size) override {
+        unmap();
+        ENG_API->glDeleteBuffers(1, &m_handle);
+        ENG_API->glCreateBuffers(1, &m_handle);
+        ENG_API->glNamedBufferStorage(
+            m_handle,
+            static_cast<GLsizeiptr>(size),
+            nullptr,
+            toGLBufferStorageFlags(m_flags)
+        );
+    }
+
   private:
+    std::uint32_t m_flags = 0;
     GLuint m_handle = 0;
     void *m_mappedPtr = nullptr;
     std::ptrdiff_t m_mappedOffset = 0;

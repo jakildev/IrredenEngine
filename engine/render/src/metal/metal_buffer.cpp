@@ -133,10 +133,7 @@ class MetalBufferImpl final : public BufferImpl {
             markMetalBufferEncoded(newBuffer);
         }
 
-        MTL::Buffer *oldBuffer = m_buffer;
-        m_buffer = newBuffer;
-        replaceMetalBufferInBindings(oldBuffer, m_buffer);
-        deferReleaseMetalBuffer(oldBuffer);
+        adoptBacking(newBuffer);
     }
 
     void getSubData(std::ptrdiff_t offset, std::size_t size, void *data) const override {
@@ -169,7 +166,25 @@ class MetalBufferImpl final : public BufferImpl {
 
     void unmap() override {}
 
+    void resize(std::size_t size) override {
+        m_size = size == 0 ? 1 : size;
+        auto *newBuffer = metalDevice()->newBuffer(
+            static_cast<NS::UInteger>(m_size),
+            MTL::ResourceStorageModeShared
+        );
+        IR_ASSERT(newBuffer != nullptr, "Failed to resize Metal buffer");
+        adoptBacking(newBuffer);
+    }
+
   private:
+    // Queued encoders keep the old allocation until the GPU has drained it.
+    void adoptBacking(MTL::Buffer *newBuffer) const {
+        MTL::Buffer *oldBuffer = m_buffer;
+        m_buffer = newBuffer;
+        replaceMetalBufferInBindings(oldBuffer, m_buffer);
+        deferReleaseMetalBuffer(oldBuffer);
+    }
+
     static void writeRanges(MTL::Buffer *buffer, std::span<const BufferUploadRange> ranges) {
         auto *dst = static_cast<std::uint8_t *>(buffer->contents());
         for (const BufferUploadRange &range : ranges) {
