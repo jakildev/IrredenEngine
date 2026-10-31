@@ -3796,11 +3796,11 @@ void initEntities() {
                 canvas
             );
         }
-        if (!rayCastersFirst) {
-            spawnRayCasters();
-        }
         if (fillerSide > 0 && fillerLast) {
             spawnRecordPoolFiller();
+        }
+        if (!rayCastersFirst) {
+            spawnRayCasters();
         }
     }
 

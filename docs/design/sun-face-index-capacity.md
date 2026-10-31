@@ -155,8 +155,7 @@ hit does not restore the missing information.
 
 The hierarchy retains finite face bounds and depth intervals, so it can skip
 disjoint geometry without discarding a lower blocker. Remaining representation
-work includes records lost to an exhausted pool; the raster-only sampled layer's
-candidates are measured in [Raster-only primary layer](#raster-only-primary-layer-measured-decision). It must preserve the finite
+work includes records lost to an exhausted pool and raster-only sampled layers. It must preserve the finite
 throw limit and allocation-order independence. The moving-block report also
 needs native Windows scene reproduction; this mechanism alone does not identify
 every visible speckle. [Sampler controls and scene evidence](../pr-screenshots/codex/overlapping-caster-shadow/README.md)
