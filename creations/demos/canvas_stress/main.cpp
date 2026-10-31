@@ -26,6 +26,7 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_light_source.hpp>
+#include <irreden/render/components/component_stateless_particle_emitters.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
@@ -53,6 +54,7 @@
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/render/systems/system_propagate_canvas_parts.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
+#include <irreden/render/systems/system_render_stateless_particles_to_trixel.hpp>
 #include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
@@ -461,6 +463,15 @@ EntityId g_hoverCanary = IREntity::kNullEntity;
 // frames log its offset in --probe-overlapping-source-offset units.
 EntityId g_probeDriftLead = IREntity::kNullEntity;
 vec3 g_probeDriftOrigin{};
+// Raster-only sun-depth fixture: the shadowbox ray the primary probe reads and
+// the GRID casters whose canvas pixels the capture census counts.
+vec3 g_sunPrimaryProbeWorld{};
+EntityId g_lowerRayCaster = IREntity::kNullEntity;
+std::vector<EntityId> g_rayCasters;
+// One static stateless emitter beside the floor; registering the particle pass
+// is what selects the raster-only sun bake.
+constexpr vec3 kParticleRasterOrigin{-40.0f, 40.0f, 0.0f};
+constexpr std::uint32_t kParticleRasterCount = 16u;
 constexpr vec3 kHoverCanaryWorldPos{0.0f, 0.0f, -48.0f};
 IRSystem::SystemId g_hoverDetectSystem = IRSystem::kNullSystemId;
 IRVideo::GuiInputEvent g_hoverCanaryMove{0, IRVideo::GuiInputEvent::Type::MOVE, ivec2(0)};
@@ -2252,7 +2263,7 @@ void registerArgs() {
     );
     args.integer(
         "--probe-floor-span",
-        "Comparison floor width, clamped to 8..40 (0 uses mode default)",
+        "Comparison floor width, clamped to 8..120 (0 uses mode default)",
         0
     );
     args.flag(
@@ -2265,7 +2276,28 @@ void registerArgs() {
         "Coincident source casters for tile pressure, 1..256",
         1
     );
-    args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
+    args.flag("--probe-hidden-box", "Hide the shadowbox and its cast shadow");
+    args.flag(
+        "--probe-particle-raster",
+        "Register the stateless particle pass with one static emitter beside the floor, "
+        "selecting the raster-only sun bake"
+    );
+    args.numbers(
+        "--probe-ray-casters",
+        "GRID casters on the shadowbox sun ray: <count> <distance> <step> toward the sun",
+        3
+    );
+    args.flag("--probe-ray-casters-first", "Create the ray casters before the shadowbox");
+    args.numbers("--probe-ray-casters-velocity", "Ray caster velocity <x> <y> <z>, units/s", 3);
+    args.flag(
+        "--sun-second-depth",
+        "Retain each sun texel's second distinct raster depth (diagnostic)"
+    );
+    args.flag(
+        "--sun-primary-probe",
+        "Log the shadowbox ray's primary sun texels and the caster pixel census on "
+        "auto-screenshot frames (stalls GPU)"
+    );
     args.integer(
         "--probe-record-pool-filler",
         "Side of a flat rigid source plate that fills the sun face record pool, 0..512 (0 off)",
@@ -2538,6 +2570,118 @@ void applyArgs() {
 
 } // namespace
 
+// Capture-only: the shadowbox ray's primary sun words per cascade and how many
+// main-canvas pixels each fixture caster rasterized, so a lost depth is
+// attributed to the sun map rather than to a culled caster. Stalls the GPU.
+void logSunPrimaryProbe(int shotIndex) {
+    const auto probe = IRPrefab::SunShadow::readPrimaryDepthProbe(g_sunPrimaryProbeWorld);
+    // The floor receiver on the probe ray selects its cascade by iso depth
+    // against the split; log both so a capture witnesses which cascade it read.
+    const vec3 toSun = IRRender::getSunDirection();
+    const float floorTop = kFloorZ - kFloorThickness * 0.5f;
+    const vec3 floorReceiver =
+        g_sunPrimaryProbeWorld - toSun * ((floorTop - g_sunPrimaryProbeWorld.z) / -toSun.z);
+    IR_LOG_INFO(
+        "SUN-PRIMARY-PROBE shot={} active={} route={} face_records={} second_depth={} "
+        "world=({},{},{}) sun_uvz=({:.6g},{:.6g},{:.6g}) receiver=({:.6g},{:.6g},{:.6g}) "
+        "receiver_iso_depth={:.6g} cascade_split={:.6g}",
+        shotIndex,
+        probe.active_,
+        probe.finiteCoverage_ ? "finite" : "raster",
+        probe.faceRecords_,
+        probe.secondDepth_,
+        g_sunPrimaryProbeWorld.x,
+        g_sunPrimaryProbeWorld.y,
+        g_sunPrimaryProbeWorld.z,
+        probe.sunUVZ_.x,
+        probe.sunUVZ_.y,
+        probe.sunUVZ_.z,
+        floorReceiver.x,
+        floorReceiver.y,
+        floorReceiver.z,
+        floorReceiver.x + floorReceiver.y + floorReceiver.z,
+        IRPrefab::SunShadow::kCascadeSplitDepth
+    );
+    const auto depth = [](std::uint32_t word) {
+        return word == 0xFFFFFFFFu ? std::string("empty")
+                                   : std::to_string(IRPrefab::SunShadow::unpackSunDepth(word));
+    };
+    for (int cascade = 0; cascade < IRPrefab::SunShadow::kSunShadowCascadeCount; ++cascade) {
+        const auto &texel = probe.cascades_[cascade];
+        IR_LOG_INFO(
+            "SUN-PRIMARY-TEXEL shot={} cascade={} texel=({},{}) nearest={:#010x} "
+            "nearest_depth={} second={:#010x} second_depth={}",
+            shotIndex,
+            cascade,
+            texel.texel_.x,
+            texel.texel_.y,
+            texel.nearest_,
+            depth(texel.nearest_),
+            texel.second_,
+            depth(texel.second_)
+        );
+    }
+    const EntityId mainCanvas = IRRender::getCanvas("main");
+    const auto canvasOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
+    if (!canvasOpt.has_value()) {
+        return;
+    }
+    const C_TriangleCanvasTextures &canvas = **canvasOpt;
+    const ivec2 size = canvas.size_;
+    const std::size_t texels = std::size_t(size.x) * std::size_t(size.y);
+    std::vector<std::int32_t> distances(texels);
+    std::vector<std::uint32_t> ids(texels * 2);
+    canvas.getTextureDistances()->getSubImage2D(
+        0,
+        0,
+        size.x,
+        size.y,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        distances.data()
+    );
+    canvas.getTextureEntityIds()->getSubImage2D(
+        0,
+        0,
+        size.x,
+        size.y,
+        IRRender::PixelDataFormat::RG_INTEGER,
+        IRRender::PixelDataType::UINT32,
+        ids.data()
+    );
+    std::size_t occupied = 0;
+    std::size_t lower = 0;
+    std::vector<std::size_t> ray(g_rayCasters.size(), 0);
+    for (std::size_t i = 0; i < texels; ++i) {
+        if (distances[i] >= IRConstants::kTrixelDistanceMaxDistance) {
+            continue;
+        }
+        ++occupied;
+        const auto id = IRRender::decodeCarrierEntityId(uvec2(ids[2 * i], ids[2 * i + 1]));
+        if (id == g_lowerRayCaster) {
+            ++lower;
+        }
+        for (std::size_t caster = 0; caster < g_rayCasters.size(); ++caster) {
+            if (id == g_rayCasters[caster]) {
+                ++ray[caster];
+            }
+        }
+    }
+    std::string rayCounts;
+    for (std::size_t caster = 0; caster < ray.size(); ++caster) {
+        rayCounts += (caster == 0 ? "" : ",") + std::to_string(ray[caster]);
+    }
+    IR_LOG_INFO(
+        "SUN-CASTER-CENSUS shot={} canvas=({},{}) occupied={} lower={} ray=[{}]",
+        shotIndex,
+        size.x,
+        size.y,
+        occupied,
+        lower,
+        rayCounts
+    );
+}
+
 void initSystems();
 void initCommands();
 void initEntities();
@@ -2659,7 +2803,8 @@ void initSystems() {
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>());
     // Auto-capture runs one fixed UPDATE tick per render frame, so a moving
     // caster's captured pose depends only on the frame index.
-    if (IREngine::args().wasProvided("--probe-overlapping-source-velocity")) {
+    if (IREngine::args().wasProvided("--probe-overlapping-source-velocity") ||
+        IREngine::args().wasProvided("--probe-ray-casters-velocity")) {
         updatePipeline.push_back(IRSystem::createSystem<IRSystem::VELOCITY_3D>());
     }
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>());
@@ -2762,6 +2907,11 @@ void initSystems() {
         // shadow passes so the floor is in `trixelDistances` when BAKE_SUN_SHADOW_MAP
         // projects the GRID casters' shadows onto it.
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>());
+        if (IREngine::args().getFlag("--probe-particle-raster")) {
+            renderPipeline.push_back(
+                IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>()
+            );
+        }
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>());
         // Collapses the per-axis voxel canvases into the cardinal-layout
         // resolve texture BAKE_SUN_SHADOW_MAP casts. Without it the
@@ -2770,8 +2920,10 @@ void initSystems() {
         // most of this demo's runtime under the default --auto-rotate.
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
         const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
-        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
-            ->voxelFaceCoverage_ = !IREngine::args().getFlag("--legacy-depth-shadows");
+        auto *bakeParams =
+            IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun);
+        bakeParams->voxelFaceCoverage_ = !IREngine::args().getFlag("--legacy-depth-shadows");
+        bakeParams->retainSecondPrimaryDepth_ = IREngine::args().getFlag("--sun-second-depth");
         renderPipeline.push_back(bakeSun);
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
@@ -3095,6 +3247,9 @@ void initSystems() {
                     written
                 );
             }
+            if (IREngine::args().getFlag("--sun-primary-probe")) {
+                logSunPrimaryProbe(shotIndex);
+            }
             if (IREngine::args().getFlag("--cardinal-receiver-probe")) {
                 const std::string prefix = "cardinal-receiver-" + std::to_string(shotIndex);
                 IR_LOG_INFO(
@@ -3294,7 +3449,7 @@ void initEntities() {
             const int requestedSpan = IREngine::args().getInt("--probe-floor-span");
             const float floorSpan = IREngine::args().getFlag("--probe-single-voxel") ? 12.0f
                                     : requestedSpan != 0
-                                        ? float(IRMath::clamp(requestedSpan, 8, 40))
+                                        ? float(IRMath::clamp(requestedSpan, 8, 120))
                                     : floorMode == "sdf" ? kFloorSpan
                                                          : 32.0f;
             if (floorMode == "sdf") {
@@ -3339,6 +3494,25 @@ void initEntities() {
                 }
             }
         }
+    }
+
+    if (IREngine::args().getFlag("--probe-particle-raster")) {
+        IREntity::setComponent(mainCanvas, C_StatelessParticleEmitters{});
+        auto &emitters = IREntity::getComponent<C_StatelessParticleEmitters>(mainCanvas);
+        GpuParticleEmitter emitter{};
+        emitter.origin_ = kParticleRasterOrigin;
+        emitter.baseLifetimeSeconds_ = 1.0f;
+        emitter.spawnRate_ = static_cast<float>(kParticleRasterCount);
+        emitter.baseColorPacked_ = Color{255, 120, 40, 255}.toPackedRGBA();
+        emitter.particlesPerEmitter_ = kParticleRasterCount;
+        emitters.addEmitter(emitter);
+        IR_LOG_INFO(
+            "PARTICLE-RASTER origin=({},{},{}) particles={}",
+            kParticleRasterOrigin.x,
+            kParticleRasterOrigin.y,
+            kParticleRasterOrigin.z,
+            kParticleRasterCount
+        );
     }
 
     if ((g_settings.onlyGroups_ & kGroupShadowOcclusion) != 0u) {
@@ -3437,6 +3611,47 @@ void initEntities() {
             vec3(0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f) +
             (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
         const Color color{80, 120, 240, 255};
+        g_sunPrimaryProbeWorld = position;
+        const auto rayCasterValues = IREngine::args().getFloats("--probe-ray-casters");
+        const bool rayCastersFirst = IREngine::args().getFlag("--probe-ray-casters-first");
+        const auto spawnRayCasters = [&]() {
+            if (rayCasterValues.empty()) {
+                return;
+            }
+            const int count = IRMath::clamp(static_cast<int>(rayCasterValues[0]), 1, 8);
+            const auto velocity = IREngine::args().getFloats("--probe-ray-casters-velocity");
+            const vec3 toSun = IRRender::getSunDirection();
+            for (int index = 0; index < count; ++index) {
+                const float distance = rayCasterValues[1] + float(index) * rayCasterValues[2];
+                const vec3 casterPosition = position + toSun * distance;
+                const EntityId caster = IREntity::createEntity(
+                    C_LocalTransform{casterPosition},
+                    C_VoxelSetNew{size, Color{230, 170, 60, 255}, true, mainCanvas}
+                );
+                if (!velocity.empty()) {
+                    IREntity::setComponent(
+                        caster,
+                        C_Velocity3D{velocity[0], velocity[1], velocity[2]}
+                    );
+                    if (index == 0) {
+                        g_probeDriftLead = caster;
+                        g_probeDriftOrigin = casterPosition;
+                    }
+                }
+                g_rayCasters.push_back(caster);
+                IR_LOG_INFO(
+                    "RAY-CASTER index={} distance={} position=({},{},{})",
+                    index,
+                    distance,
+                    casterPosition.x,
+                    casterPosition.y,
+                    casterPosition.z
+                );
+            }
+        };
+        if (rayCastersFirst) {
+            spawnRayCasters();
+        }
         // Bake dispatches allocate records in creation order, so the filler's
         // position in that order decides whether the shadowbox casters keep theirs.
         const int fillerSide =
@@ -3586,10 +3801,12 @@ void initEntities() {
                 );
             }
         } else if (IREngine::args().getFlag("--probe-grid")) {
-            IREntity::createEntity(
-                C_LocalTransform{position},
-                C_VoxelSetNew{size, color, true, mainCanvas}
-            );
+            if (!IREngine::args().getFlag("--probe-hidden-box")) {
+                g_lowerRayCaster = IREntity::createEntity(
+                    C_LocalTransform{position},
+                    C_VoxelSetNew{size, color, true, mainCanvas}
+                );
+            }
         } else {
             const int canvasSize =
                 IRMath::clamp(IREngine::args().getInt("--probe-box-canvas-size"), 128, 1024);
@@ -3619,6 +3836,9 @@ void initEntities() {
                 },
                 canvas
             );
+        }
+        if (!rayCastersFirst) {
+            spawnRayCasters();
         }
         if (fillerSide > 0 && fillerLast) {
             spawnRecordPoolFiller();

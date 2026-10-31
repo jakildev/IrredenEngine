@@ -1,0 +1,986 @@
+diff --git a/creations/demos/canvas_stress/main.cpp b/creations/demos/canvas_stress/main.cpp
+index 1899bf832..bc76b4892 100644
+--- a/creations/demos/canvas_stress/main.cpp
++++ b/creations/demos/canvas_stress/main.cpp
+@@ -26,6 +26,7 @@
+ #include <irreden/render/components/component_entity_canvas.hpp>
+ #include <irreden/render/components/component_light_blocker.hpp>
+ #include <irreden/render/components/component_light_source.hpp>
++#include <irreden/render/components/component_stateless_particle_emitters.hpp>
+ #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+ #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+ #include <irreden/input/components/component_hitbox_2d.hpp>
+@@ -53,6 +54,7 @@
+ #include <irreden/render/systems/system_lod_update.hpp>
+ #include <irreden/render/systems/system_propagate_canvas_parts.hpp>
+ #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
++#include <irreden/render/systems/system_render_stateless_particles_to_trixel.hpp>
+ #include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
+ #include <irreden/render/systems/system_shapes_to_trixel.hpp>
+ #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+@@ -461,6 +463,15 @@ EntityId g_hoverCanary = IREntity::kNullEntity;
+ // frames log its offset in --probe-overlapping-source-offset units.
+ EntityId g_probeDriftLead = IREntity::kNullEntity;
+ vec3 g_probeDriftOrigin{};
++// Raster-only sun-depth fixture: the shadowbox ray the primary probe reads and
++// the GRID casters whose canvas pixels the capture census counts.
++vec3 g_sunPrimaryProbeWorld{};
++EntityId g_lowerRayCaster = IREntity::kNullEntity;
++std::vector<EntityId> g_rayCasters;
++// One static stateless emitter beside the floor; registering the particle pass
++// is what selects the raster-only sun bake.
++constexpr vec3 kParticleRasterOrigin{-40.0f, 40.0f, 0.0f};
++constexpr std::uint32_t kParticleRasterCount = 16u;
+ constexpr vec3 kHoverCanaryWorldPos{0.0f, 0.0f, -48.0f};
+ IRSystem::SystemId g_hoverDetectSystem = IRSystem::kNullSystemId;
+ IRVideo::GuiInputEvent g_hoverCanaryMove{0, IRVideo::GuiInputEvent::Type::MOVE, ivec2(0)};
+@@ -2252,7 +2263,7 @@ void registerArgs() {
+     );
+     args.integer(
+         "--probe-floor-span",
+-        "Comparison floor width, clamped to 8..40 (0 uses mode default)",
++        "Comparison floor width, clamped to 8..120 (0 uses mode default)",
+         0
+     );
+     args.flag(
+@@ -2265,7 +2276,28 @@ void registerArgs() {
+         "Coincident source casters for tile pressure, 1..256",
+         1
+     );
+-    args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
++    args.flag("--probe-hidden-box", "Hide the shadowbox and its cast shadow");
++    args.flag(
++        "--probe-particle-raster",
++        "Register the stateless particle pass with one static emitter beside the floor, "
++        "selecting the raster-only sun bake"
++    );
++    args.numbers(
++        "--probe-ray-casters",
++        "GRID casters on the shadowbox sun ray: <count> <distance> <step> toward the sun",
++        3
++    );
++    args.flag("--probe-ray-casters-first", "Create the ray casters before the shadowbox");
++    args.numbers("--probe-ray-casters-velocity", "Ray caster velocity <x> <y> <z>, units/s", 3);
++    args.flag(
++        "--sun-second-depth",
++        "Retain each sun texel's second distinct raster depth (diagnostic)"
++    );
++    args.flag(
++        "--sun-primary-probe",
++        "Log the shadowbox ray's primary sun texels and the caster pixel census on "
++        "auto-screenshot frames (stalls GPU)"
++    );
+     args.integer(
+         "--probe-record-pool-filler",
+         "Side of a flat rigid source plate that fills the sun face record pool, 0..512 (0 off)",
+@@ -2538,6 +2570,118 @@ void applyArgs() {
+ 
+ } // namespace
+ 
++// Capture-only: the shadowbox ray's primary sun words per cascade and how many
++// main-canvas pixels each fixture caster rasterized, so a lost depth is
++// attributed to the sun map rather than to a culled caster. Stalls the GPU.
++void logSunPrimaryProbe(int shotIndex) {
++    const auto probe = IRPrefab::SunShadow::readPrimaryDepthProbe(g_sunPrimaryProbeWorld);
++    // The floor receiver on the probe ray selects its cascade by iso depth
++    // against the split; log both so a capture witnesses which cascade it read.
++    const vec3 toSun = IRRender::getSunDirection();
++    const float floorTop = kFloorZ - kFloorThickness * 0.5f;
++    const vec3 floorReceiver =
++        g_sunPrimaryProbeWorld - toSun * ((floorTop - g_sunPrimaryProbeWorld.z) / -toSun.z);
++    IR_LOG_INFO(
++        "SUN-PRIMARY-PROBE shot={} active={} route={} face_records={} second_depth={} "
++        "world=({},{},{}) sun_uvz=({:.6g},{:.6g},{:.6g}) receiver=({:.6g},{:.6g},{:.6g}) "
++        "receiver_iso_depth={:.6g} cascade_split={:.6g}",
++        shotIndex,
++        probe.active_,
++        probe.finiteCoverage_ ? "finite" : "raster",
++        probe.faceRecords_,
++        probe.secondDepth_,
++        g_sunPrimaryProbeWorld.x,
++        g_sunPrimaryProbeWorld.y,
++        g_sunPrimaryProbeWorld.z,
++        probe.sunUVZ_.x,
++        probe.sunUVZ_.y,
++        probe.sunUVZ_.z,
++        floorReceiver.x,
++        floorReceiver.y,
++        floorReceiver.z,
++        floorReceiver.x + floorReceiver.y + floorReceiver.z,
++        IRPrefab::SunShadow::kCascadeSplitDepth
++    );
++    const auto depth = [](std::uint32_t word) {
++        return word == 0xFFFFFFFFu ? std::string("empty")
++                                   : std::to_string(IRPrefab::SunShadow::unpackSunDepth(word));
++    };
++    for (int cascade = 0; cascade < IRPrefab::SunShadow::kSunShadowCascadeCount; ++cascade) {
++        const auto &texel = probe.cascades_[cascade];
++        IR_LOG_INFO(
++            "SUN-PRIMARY-TEXEL shot={} cascade={} texel=({},{}) nearest={:#010x} "
++            "nearest_depth={} second={:#010x} second_depth={}",
++            shotIndex,
++            cascade,
++            texel.texel_.x,
++            texel.texel_.y,
++            texel.nearest_,
++            depth(texel.nearest_),
++            texel.second_,
++            depth(texel.second_)
++        );
++    }
++    const EntityId mainCanvas = IRRender::getCanvas("main");
++    const auto canvasOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
++    if (!canvasOpt.has_value()) {
++        return;
++    }
++    const C_TriangleCanvasTextures &canvas = **canvasOpt;
++    const ivec2 size = canvas.size_;
++    const std::size_t texels = std::size_t(size.x) * std::size_t(size.y);
++    std::vector<std::int32_t> distances(texels);
++    std::vector<std::uint32_t> ids(texels * 2);
++    canvas.getTextureDistances()->getSubImage2D(
++        0,
++        0,
++        size.x,
++        size.y,
++        IRRender::PixelDataFormat::RED_INTEGER,
++        IRRender::PixelDataType::INT32,
++        distances.data()
++    );
++    canvas.getTextureEntityIds()->getSubImage2D(
++        0,
++        0,
++        size.x,
++        size.y,
++        IRRender::PixelDataFormat::RG_INTEGER,
++        IRRender::PixelDataType::UINT32,
++        ids.data()
++    );
++    std::size_t occupied = 0;
++    std::size_t lower = 0;
++    std::vector<std::size_t> ray(g_rayCasters.size(), 0);
++    for (std::size_t i = 0; i < texels; ++i) {
++        if (distances[i] >= IRConstants::kTrixelDistanceMaxDistance) {
++            continue;
++        }
++        ++occupied;
++        const auto id = IRRender::decodeCarrierEntityId(uvec2(ids[2 * i], ids[2 * i + 1]));
++        if (id == g_lowerRayCaster) {
++            ++lower;
++        }
++        for (std::size_t caster = 0; caster < g_rayCasters.size(); ++caster) {
++            if (id == g_rayCasters[caster]) {
++                ++ray[caster];
++            }
++        }
++    }
++    std::string rayCounts;
++    for (std::size_t caster = 0; caster < ray.size(); ++caster) {
++        rayCounts += (caster == 0 ? "" : ",") + std::to_string(ray[caster]);
++    }
++    IR_LOG_INFO(
++        "SUN-CASTER-CENSUS shot={} canvas=({},{}) occupied={} lower={} ray=[{}]",
++        shotIndex,
++        size.x,
++        size.y,
++        occupied,
++        lower,
++        rayCounts
++    );
++}
++
+ void initSystems();
+ void initCommands();
+ void initEntities();
+@@ -2659,7 +2803,8 @@ void initSystems() {
+     updatePipeline.push_back(IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>());
+     // Auto-capture runs one fixed UPDATE tick per render frame, so a moving
+     // caster's captured pose depends only on the frame index.
+-    if (IREngine::args().wasProvided("--probe-overlapping-source-velocity")) {
++    if (IREngine::args().wasProvided("--probe-overlapping-source-velocity") ||
++        IREngine::args().wasProvided("--probe-ray-casters-velocity")) {
+         updatePipeline.push_back(IRSystem::createSystem<IRSystem::VELOCITY_3D>());
+     }
+     updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>());
+@@ -2762,6 +2907,11 @@ void initSystems() {
+         // shadow passes so the floor is in `trixelDistances` when BAKE_SUN_SHADOW_MAP
+         // projects the GRID casters' shadows onto it.
+         renderPipeline.push_back(IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>());
++        if (IREngine::args().getFlag("--probe-particle-raster")) {
++            renderPipeline.push_back(
++                IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>()
++            );
++        }
+         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>());
+         // Collapses the per-axis voxel canvases into the cardinal-layout
+         // resolve texture BAKE_SUN_SHADOW_MAP casts. Without it the
+@@ -2770,8 +2920,10 @@ void initSystems() {
+         // most of this demo's runtime under the default --auto-rotate.
+         renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
+         const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
+-        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun)
+-            ->voxelFaceCoverage_ = !IREngine::args().getFlag("--legacy-depth-shadows");
++        auto *bakeParams =
++            IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(bakeSun);
++        bakeParams->voxelFaceCoverage_ = !IREngine::args().getFlag("--legacy-depth-shadows");
++        bakeParams->retainSecondPrimaryDepth_ = IREngine::args().getFlag("--sun-second-depth");
+         renderPipeline.push_back(bakeSun);
+         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
+         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
+@@ -3095,6 +3247,9 @@ void initSystems() {
+                     written
+                 );
+             }
++            if (IREngine::args().getFlag("--sun-primary-probe")) {
++                logSunPrimaryProbe(shotIndex);
++            }
+             if (IREngine::args().getFlag("--cardinal-receiver-probe")) {
+                 const std::string prefix = "cardinal-receiver-" + std::to_string(shotIndex);
+                 IR_LOG_INFO(
+@@ -3294,7 +3449,7 @@ void initEntities() {
+             const int requestedSpan = IREngine::args().getInt("--probe-floor-span");
+             const float floorSpan = IREngine::args().getFlag("--probe-single-voxel") ? 12.0f
+                                     : requestedSpan != 0
+-                                        ? float(IRMath::clamp(requestedSpan, 8, 40))
++                                        ? float(IRMath::clamp(requestedSpan, 8, 120))
+                                     : floorMode == "sdf" ? kFloorSpan
+                                                          : 32.0f;
+             if (floorMode == "sdf") {
+@@ -3341,6 +3496,25 @@ void initEntities() {
+         }
+     }
+ 
++    if (IREngine::args().getFlag("--probe-particle-raster")) {
++        IREntity::setComponent(mainCanvas, C_StatelessParticleEmitters{});
++        auto &emitters = IREntity::getComponent<C_StatelessParticleEmitters>(mainCanvas);
++        GpuParticleEmitter emitter{};
++        emitter.origin_ = kParticleRasterOrigin;
++        emitter.baseLifetimeSeconds_ = 1.0f;
++        emitter.spawnRate_ = static_cast<float>(kParticleRasterCount);
++        emitter.baseColorPacked_ = Color{255, 120, 40, 255}.toPackedRGBA();
++        emitter.particlesPerEmitter_ = kParticleRasterCount;
++        emitters.addEmitter(emitter);
++        IR_LOG_INFO(
++            "PARTICLE-RASTER origin=({},{},{}) particles={}",
++            kParticleRasterOrigin.x,
++            kParticleRasterOrigin.y,
++            kParticleRasterOrigin.z,
++            kParticleRasterCount
++        );
++    }
++
+     if ((g_settings.onlyGroups_ & kGroupShadowOcclusion) != 0u) {
+         const bool blocked = !IREngine::args().getFlag("--probe-unblocked");
+         const bool external = IREngine::args().getFlag("--probe-external-blocker");
+@@ -3437,6 +3611,47 @@ void initEntities() {
+             vec3(0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f) +
+             (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
+         const Color color{80, 120, 240, 255};
++        g_sunPrimaryProbeWorld = position;
++        const auto rayCasterValues = IREngine::args().getFloats("--probe-ray-casters");
++        const bool rayCastersFirst = IREngine::args().getFlag("--probe-ray-casters-first");
++        const auto spawnRayCasters = [&]() {
++            if (rayCasterValues.empty()) {
++                return;
++            }
++            const int count = IRMath::clamp(static_cast<int>(rayCasterValues[0]), 1, 8);
++            const auto velocity = IREngine::args().getFloats("--probe-ray-casters-velocity");
++            const vec3 toSun = IRRender::getSunDirection();
++            for (int index = 0; index < count; ++index) {
++                const float distance = rayCasterValues[1] + float(index) * rayCasterValues[2];
++                const vec3 casterPosition = position + toSun * distance;
++                const EntityId caster = IREntity::createEntity(
++                    C_LocalTransform{casterPosition},
++                    C_VoxelSetNew{size, Color{230, 170, 60, 255}, true, mainCanvas}
++                );
++                if (!velocity.empty()) {
++                    IREntity::setComponent(
++                        caster,
++                        C_Velocity3D{velocity[0], velocity[1], velocity[2]}
++                    );
++                    if (index == 0) {
++                        g_probeDriftLead = caster;
++                        g_probeDriftOrigin = casterPosition;
++                    }
++                }
++                g_rayCasters.push_back(caster);
++                IR_LOG_INFO(
++                    "RAY-CASTER index={} distance={} position=({},{},{})",
++                    index,
++                    distance,
++                    casterPosition.x,
++                    casterPosition.y,
++                    casterPosition.z
++                );
++            }
++        };
++        if (rayCastersFirst) {
++            spawnRayCasters();
++        }
+         // Bake dispatches allocate records in creation order, so the filler's
+         // position in that order decides whether the shadowbox casters keep theirs.
+         const int fillerSide =
+@@ -3586,10 +3801,12 @@ void initEntities() {
+                 );
+             }
+         } else if (IREngine::args().getFlag("--probe-grid")) {
+-            IREntity::createEntity(
+-                C_LocalTransform{position},
+-                C_VoxelSetNew{size, color, true, mainCanvas}
+-            );
++            if (!IREngine::args().getFlag("--probe-hidden-box")) {
++                g_lowerRayCaster = IREntity::createEntity(
++                    C_LocalTransform{position},
++                    C_VoxelSetNew{size, color, true, mainCanvas}
++                );
++            }
+         } else {
+             const int canvasSize =
+                 IRMath::clamp(IREngine::args().getInt("--probe-box-canvas-size"), 128, 1024);
+@@ -3620,6 +3837,9 @@ void initEntities() {
+                 canvas
+             );
+         }
++        if (!rayCastersFirst) {
++            spawnRayCasters();
++        }
+         if (fillerSide > 0 && fillerLast) {
+             spawnRecordPoolFiller();
+         }
+diff --git a/engine/prefabs/irreden/render/sun_shadow_probe.hpp b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
+index 5dd115271..89f8cb194 100644
+--- a/engine/prefabs/irreden/render/sun_shadow_probe.hpp
++++ b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
+@@ -13,6 +13,82 @@
+ 
+ namespace IRPrefab::SunShadow {
+ 
++// CPU twin of unpackSunDepth in ir_sun_projection.{glsl,metal}: quantized
++// depth in the high 24 bits over a 1024-per-unit scale, offset 512.
++inline float unpackSunDepth(std::uint32_t packedDepth) {
++    return float(packedDepth >> 8) / 1024.0f - 512.0f;
++}
++
++struct PrimaryDepthTexel {
++    IRMath::ivec2 texel_{-1, -1};
++    std::uint32_t nearest_ = 0xFFFFFFFFu;
++    std::uint32_t second_ = 0xFFFFFFFFu;
++};
++
++struct PrimaryDepthProbe {
++    bool active_ = false;
++    bool finiteCoverage_ = false;
++    bool secondDepth_ = false;
++    std::uint32_t faceRecords_ = 0;
++    IRMath::vec3 sunUVZ_{};
++    PrimaryDepthTexel cascades_[kSunShadowCascadeCount];
++};
++
++// Capture only after shadow baking: the primary and fallback words of the sun
++// texel a world point projects to, per cascade. Synchronizes the GPU; never
++// use in timing runs.
++inline PrimaryDepthProbe readPrimaryDepthProbe(const IRMath::vec3 &world) {
++    PrimaryDepthProbe probe;
++    const auto system = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
++    if (system == IRSystem::kNullSystemId) {
++        return probe;
++    }
++    const auto *bake =
++        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(system);
++    const IRRender::FrameDataSun &frame = bake->frameData_;
++    if (frame.shadowsEnabled_ == 0) {
++        return probe;
++    }
++    probe.active_ = true;
++    probe.finiteCoverage_ = bake->frameUsesFiniteCoverage_;
++    probe.secondDepth_ = frame.sunBasisV_.w != 0.0f;
++    probe.sunUVZ_ = IRMath::sunSpaceProject(
++        world,
++        IRMath::vec3(frame.sunBasisU_),
++        IRMath::vec3(frame.sunBasisV_),
++        IRMath::vec3(frame.sunDirection_)
++    );
++    const auto *buffer = bake->sunShadowDepthMap_;
++    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
++    IRRender::device()->finish();
++    buffer->getSubData(
++        std::size_t(kSourceFaceHeaderOffset) * sizeof(std::uint32_t),
++        sizeof(probe.faceRecords_),
++        &probe.faceRecords_
++    );
++    constexpr std::uint32_t kCascadeWords = kSourceFaceMapDimension * kSourceFaceMapDimension;
++    for (int cascade = 0; cascade < kSunShadowCascadeCount; ++cascade) {
++        const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
++        const auto size = cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_;
++        const IRMath::ivec2 texel(IRMath::floor((IRMath::vec2(probe.sunUVZ_) - origin) / size));
++        PrimaryDepthTexel &out = probe.cascades_[cascade];
++        if (texel.x < 0 || texel.y < 0 || texel.x >= kSunShadowMapDim ||
++            texel.y >= kSunShadowMapDim) {
++            continue;
++        }
++        out.texel_ = texel;
++        const std::size_t word = std::size_t(cascade) * kCascadeWords +
++                                 std::size_t(texel.y) * kSunShadowMapDim + std::size_t(texel.x);
++        buffer->getSubData(word * sizeof(std::uint32_t), sizeof(out.nearest_), &out.nearest_);
++        buffer->getSubData(
++            (word + kSourceFaceFallbackOffset) * sizeof(std::uint32_t),
++            sizeof(out.second_),
++            &out.second_
++        );
++    }
++    return probe;
++}
++
+ // Capture only after shadow baking. Synchronizes the GPU; never use in timing runs.
+ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeometry = false) {
+     std::ofstream output(path);
+diff --git a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+index 4d87ceed0..7abe5ef5c 100644
+--- a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
++++ b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+@@ -167,6 +167,14 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+     ShaderProgram *hierarchyProgram_ = nullptr;
+     std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyBuildPasses> hierarchyFrames_{};
+     bool voxelFaceCoverage_ = true;
++    // Diagnostic for the raster-only route: the second-depth bake program keeps
++    // each texel's second distinct depth in the otherwise empty indexed
++    // fallback layer and the receiver tests it as an independent layer. A
++    // compile-time variant, so the production bake carries no switch. Two
++    // distinct distant depths still hide a lower caster
++    // (docs/design/sun-face-index-capacity.md).
++    bool retainSecondPrimaryDepth_ = false;
++    ShaderProgram *bakeSecondDepthProgram_ = nullptr;
+     bool coverageFrameOpen_ = false;
+     bool frameUsesFiniteCoverage_ = false;
+     Buffer *analyticCasterFrameBuf_ = nullptr;
+@@ -484,7 +492,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+         clearDepthMap();
+ 
+         // Bake: each pixel projects into both cascades in one pass.
+-        bakeProgram_->use();
++        ShaderProgram *const rasterBakeProgram =
++            retainSecondPrimaryDepth_ ? bakeSecondDepthProgram_ : bakeProgram_;
++        rasterBakeProgram->use();
+         canvasTextures.getTextureDistances()
+             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+         canvasTextures.getTextureEntityIds()
+@@ -656,7 +666,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+             // the unchanged cardinal recovery (the per-axis resolveDepth_ bake
+             // above is the in-file precedent). Re-bind the bake's full set: the
+             // scratch aliased slot 28 and the UBO was orphaned by the subData.
+-            bakeProgram_->use();
++            rasterBakeProgram->use();
+             sunShadowDepthMap_->bindBase(
+                 BufferTarget::SHADER_STORAGE,
+                 kBufferIndex_SunShadowDepthMap
+@@ -762,6 +772,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+     }
+ 
+     void beginTick() {
++        // The diagnostic program compiles only once a creation opts in, so the
++        // default startup links one bake program.
++        if (retainSecondPrimaryDepth_ && bakeSecondDepthProgram_ == nullptr) {
++            bakeSecondDepthProgram_ = IRRender::createNamedResource<ShaderProgram>(
++                                          "BakeSunShadowMapSecondDepthProgram",
++                                          std::vector{ShaderStage{
++                                              IRRender::kFileCompBakeSunShadowMapSecondDepth,
++                                              ShaderType::COMPUTE
++                                          }}
++            ).second;
++        }
+         beginVoxelFaceCoverage();
+         if (sunShadowFrameDataBuf_ == nullptr) {
+             sunShadowFrameDataBuf_ =
+@@ -838,7 +859,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+         vec3 uHat, vHat;
+         IRMath::buildOrthonormalBasis(sunDir, uHat, vHat);
+         frameData_.sunBasisU_ = vec4(uHat, frameData_.sunBasisU_.w);
+-        frameData_.sunBasisV_ = vec4(vHat, 0.0f);
++        frameData_.sunBasisV_ =
++            vec4(vHat, retainSecondPrimaryDepth_ && !frameUsesFiniteCoverage_ ? 1.0f : 0.0f);
+ 
+         const auto &cull = IRRender::getCullViewport();
+         const ivec2 canvasSize = cull.canvasSize_;
+diff --git a/engine/render/include/irreden/render/ir_render_types.hpp b/engine/render/include/irreden/render/ir_render_types.hpp
+index 81f75eccd..18c78b5a6 100644
+--- a/engine/render/include/irreden/render/ir_render_types.hpp
++++ b/engine/render/include/irreden/render/ir_render_types.hpp
+@@ -1295,7 +1295,9 @@ struct FrameDataSun {
+     // FrameDataSun.
+     int aoEnabled_ = 1;
+     // Orthonormal sun-space basis perpendicular to sunDirection_.
+-    // U.w is 1 for finite caster coverage, otherwise 0; V.w is padding.
++    // U.w is 1 for finite caster coverage, otherwise 0. V.w is 1 while the
++    // raster-only bake retains a second distinct depth per texel in the
++    // indexed fallback layer (BAKE_SUN_SHADOW_MAP::retainSecondPrimaryDepth_).
+     vec4 sunBasisU_ = vec4(0.0f);
+     vec4 sunBasisV_ = vec4(0.0f);
+     // sunPx = floor((dot(p, uHat/vHat) - origin) / texelSize).
+diff --git a/engine/render/include/irreden/render/shader_names.hpp b/engine/render/include/irreden/render/shader_names.hpp
+index 4f30f1561..be72923fe 100644
+--- a/engine/render/include/irreden/render/shader_names.hpp
++++ b/engine/render/include/irreden/render/shader_names.hpp
+@@ -159,6 +159,8 @@ const char *const kFileCompBuildSunHierarchy = "shaders/c_build_sun_hierarchy.gl
+ const char *const kFileCompBakeVoxelSunFaces = "shaders/c_bake_voxel_sun_faces.glsl";
+ const char *const kFileCompBakeBoxSunShadow = "shaders/c_bake_box_sun_shadow.glsl";
+ const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.glsl";
++const char *const kFileCompBakeSunShadowMapSecondDepth =
++    "shaders/c_bake_sun_shadow_map_second_depth.glsl";
+ const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
+ const char *const kFileCompComputeSunShadowShapes = "shaders/c_compute_sun_shadow_shapes.glsl";
+ const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_compact.glsl";
+diff --git a/engine/render/src/metal/metal_pipeline.cpp b/engine/render/src/metal/metal_pipeline.cpp
+index 95a051527..ec3f82789 100644
+--- a/engine/render/src/metal/metal_pipeline.cpp
++++ b/engine/render/src/metal/metal_pipeline.cpp
+@@ -104,6 +104,7 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+         return MTL::Size(64, 1, 1);
+     }
+     if (functionName == "c_bake_sun_shadow_map" ||
++        functionName == "c_bake_sun_shadow_map_second_depth" ||
+         functionName == "c_clear_sun_shadow_map") {
+         return MTL::Size(16, 16, 1);
+     }
+diff --git a/engine/render/src/shaders/c_bake_sun_shadow_map.glsl b/engine/render/src/shaders/c_bake_sun_shadow_map.glsl
+index 4516841e5..1e0581202 100644
+--- a/engine/render/src/shaders/c_bake_sun_shadow_map.glsl
++++ b/engine/render/src/shaders/c_bake_sun_shadow_map.glsl
+@@ -1,168 +1,3 @@
+ #version 450 core
+-
+-// Reconstructs pos3D for each rasterized iso pixel and atomicMin's its
+-// packed sun-space depth into both cascade regions of the sun shadow
+-// depth SSBO. Companion to c_compute_sun_shadow.glsl's screen-space
+-// lookup branch.
+-
+-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+-
+-#include "ir_iso_common.glsl"
+-layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
+-#include "ir_fog_shadow_caster.glsl"
+-// Shared caster/receiver sun-space projection + depth pack.
+-#include "ir_sun_projection.glsl"
+-
+-const int kEmptyDistanceEncoded = 65535;
+-
+-layout(std430, binding = 28) restrict buffer SunShadowDepthMap {
+-    uint sunDepthBuf[];
+-};
+-
+-layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
+-    uniform vec2 frameCanvasOffset;
+-    uniform ivec2 trixelCanvasOffsetZ1;
+-    uniform ivec2 voxelRenderOptions;
+-    uniform ivec2 voxelDispatchGrid;
+-    uniform int voxelCount;
+-    // Shared frame ABI; this pass consumes only single-canvas depth.
+-    uniform int perAxisRoute;
+-    uniform ivec2 canvasSizePixels;
+-    uniform ivec2 cullIsoMin;
+-    uniform ivec2 cullIsoMax;
+-    uniform float visualYaw;
+-    uniform float rasterYaw;
+-    uniform float residualYaw;
+-    uniform float _yawPadding;            // isDetachedCanvas in the full UBO
+-    uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
+-    uniform ivec4 visibleFaceIds;
+-    uniform vec4 _voxelDepthAxisPadding;
+-    uniform vec4 _detachedWorldReceivePadding;
+-    uniform ivec4 _visibleIsoBoundsPadding;
+-    uniform ivec4 _resolveFeederPadding;
+-    uniform ivec4 _overflowScratchLayoutPadding;
+-    uniform ivec4 _overflowSortStepPadding;
+-    uniform vec4 _detachedViewToWorldPadding;
+-    uniform ivec4 perAxisStoreFrame;
+-};
+-
+-layout(std140, binding = 29) uniform FrameDataSun {
+-    uniform vec4 sunDirection;
+-    uniform float sunIntensity;
+-    uniform float sunAmbient;
+-    uniform int shadowsEnabled;
+-    uniform int aoEnabled;
+-    uniform vec4 sunBasisU;
+-    uniform vec4 sunBasisV;
+-    uniform vec2 sunBufferOriginUV;
+-    uniform vec2 sunBufferTexelSize;
+-    uniform vec2 cascadeOriginUV_0;
+-    uniform vec2 cascadeTexelSize_0;
+-    uniform vec2 cascadeOriginUV_1;
+-    uniform vec2 cascadeTexelSize_1;
+-    uniform float cascadeSplitDepth;
+-    uniform int cascadeCount;
+-    // Coverage-splat radius (sun texels), doubling as the kill switch —
+-    // 0 ⇒ the exact single-write path. Mirrors FrameDataSun in ir_render_types.hpp;
+-    // see docs/design/sun-shadow-bake-coverage.md.
+-    uniform float sunSplatMaxTexels;
+-    uniform float sunMaxShadowThrow;  // unused here (receiver-only)
+-    uniform vec4 sunCasterViewToWorld;  // unused here; places fogCeilingEnabled at 144
+-    uniform ivec4 fogCeilingEnabled;
+-};
+-
+-layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
+-layout(rg32ui, binding = 3) readonly uniform uimage2D trixelEntityIds;
+-
+-// atomicMin the packed sun depth into one texel of a cascade, if in bounds.
+-// The bounds check is a buffer-bounds guard, not a culling decision: a
+-// caster outside THIS cascade's UV range is unreadable here by any receiver the
+-// sample side accepts — sunCascadeKernelInterior (ir_sun_projection.glsl) routes
+-// receivers near the map edge to the covering cascade, whose wider AABB holds
+-// this caster's write. Every caster is projected into BOTH cascades, so this
+-// early-out never drops a caster from the pipeline.
+-void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
+-    if (px.x < 0 || px.x >= kSunShadowMapDim ||
+-        px.y < 0 || px.y >= kSunShadowMapDim) {
+-        return;
+-    }
+-    atomicMin(sunDepthBuf[cascadeOffset + px.y * kSunShadowMapDim + px.x], packedDepth);
+-}
+-
+-// Coverage splat. Writes the caster's own texel (the exact single write when
+-// radius == 0), then atomicMin's the SAME depth into a (2·radius+1)² box around
+-// it, filling the sun texels a grazing / point-scattered caster footprint leaves
+-// empty (the moth-eaten cast-shadow holes). atomicMin is what keeps a dense bake
+-// unchanged: where nearer real geometry already covers a box texel, the farther
+-// splat is a no-op — so a host whose bake is already dense sees no change, and
+-// the fill concentrates on the genuinely-empty hole texels. The uniform box
+-// (rather than a per-pixel oriented walk) is deliberate: the holes are 2D
+-// point-scatter, not a 1D silhouette line, so a directional walk under-covers
+-// (docs/design/sun-shadow-bake-coverage.md).
+-void bakeCascadeBox(vec3 sp, vec2 origin, vec2 texelSz, int cascadeOffset, int radius) {
+-    ivec2 base = ivec2(floor((sp.xy - origin) / texelSz));
+-    for (int dy = -radius; dy <= radius; ++dy) {
+-        for (int dx = -radius; dx <= radius; ++dx) {
+-            // Splat provenance: store the DISPLACEMENT VECTOR (dx, dy) of this box
+-            // texel from the caster's own (0,0) texel, so the receiver can
+-            // reconstruct the write's true origin (px - (dx,dy)) and reject a
+-            // same-plane self-occluder while keeping a genuine cast at the base
+-            // bias (ir_sun_shadow_sample same-plane test). radius 0 ⇒ only (0,0) ⇒
+-            // a direct write.
+-            writeSunTexel(cascadeOffset, base + ivec2(dx, dy),
+-                          packSunDepth(sp.z, ivec2(dx, dy)));
+-        }
+-    }
+-}
+-
+-void main() {
+-    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+-    ivec2 size = imageSize(trixelDistances);
+-    if (pixel.x >= size.x || pixel.y >= size.y) {
+-        return;
+-    }
+-
+-    int encoded = imageLoad(trixelDistances, pixel).x;
+-    if (encoded >= kEmptyDistanceEncoded) {
+-        return;
+-    }
+-    // Face/flip bits do not change a caster's plane position.
+-    int rawDepth = decodeDepthSingle(encoded);
+-
+-    // Main SDF/text depth follows visual yaw. Per-axis and detached resolves
+-    // have cardinal-layout depth; their dispatches supply zero residual yaw.
+-    vec3 pos3D;
+-    if (residualYaw != 0.0) {
+-        pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+-            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
+-        );
+-    } else {
+-        pos3D = trixelCanvasPixelToWorld3D(
+-            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+-        );
+-    }
+-
+-    const bool fogBodyOrPrecut =
+-        fogCeilingEnabled.y != 0 || decodeFogBody(imageLoad(trixelEntityIds, pixel).xy);
+-    if (!(fogBodyOrPrecut) && fogCeilingEnabled.x != 0 && fogShadowVisionCircleCount > 0 &&
+-        !fogFieldCastsSunShadow(pos3D, false, fogCeilingEnabled.x,
+-            fogShadowCell(pos3D))) return;
+-
+-    // Shared caster/receiver projection — the receiver lookup
+-    // (ir_sun_shadow_sample.glsl worldSunShadowFactor) derives its sun UV +
+-    // depth from this same function, so cast and receive cannot drift.
+-    vec3 sunProj = sunSpaceProject(
+-        pos3D, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz
+-    );
+-
+-    // Only cardinal-layout depth uses coverage splats. The driver suppresses
+-    // them for the dense per-axis resolve, but keeps them for detached point
+-    // scatter (docs/design/sun-shadow-bake-coverage.md).
+-    int radius = 0;
+-    if (residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
+-        radius = int(sunSplatMaxTexels);
+-    }
+-
+-    bakeCascadeBox(sunProj, cascadeOriginUV_0, cascadeTexelSize_0, 0, radius);
+-    bakeCascadeBox(sunProj, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, radius);
+-}
++#define IR_SUN_SECOND_DEPTH 0
++#include "c_bake_sun_shadow_map_body.glsl"
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 68a52328f..454dcf69c 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -31,7 +31,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
+     uniform int shadowsEnabled;
+     uniform int aoEnabled;
+     uniform vec4 sunBasisU; // xyz: sun basis; w: finite caster coverage
+-    uniform vec4 sunBasisV;
++    uniform vec4 sunBasisV; // xyz: sun basis; w: second raster depth retained
+     uniform vec2 sunBufferOriginUV;
+     uniform vec2 sunBufferTexelSize;
+     uniform vec2 cascadeOriginUV_0;
+@@ -121,8 +121,8 @@ bool sourceSunHierarchyBlocks(uint leaves, uint records,
+ 
+ float sampleCascadeShadow(
+     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
+-    vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver, vec4 casterViewToWorld,
+-    vec3 pcfOffset
++    vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver,
++    bool secondPrimaryDepth, vec4 casterViewToWorld, vec3 pcfOffset
+ #if IR_SUN_QUERY_STATS
+     , inout SunQueryStats sunQueryStats
+ #endif
+@@ -283,8 +283,11 @@ float sampleCascadeShadow(
+             float weight = mix(1.0 - frac.x, frac.x, float(dx))
+                          * mix(1.0 - frac.y, frac.y, float(dy));
+             // Range and plane rejection are per layer; a nearer invalid tap
+-            // cannot erase a valid blocker retained in the other layer.
+-            const int layerCount = !surfaceReceiver && hasSourceFaces ? 2 : 1;
++            // cannot erase a valid blocker retained in the other layer. The
++            // fallback layer holds indexed casters or, without an index, the
++            // bake's retained second raster depth.
++            const int layerCount =
++                !surfaceReceiver && (hasSourceFaces || secondPrimaryDepth) ? 2 : 1;
+             for (int layer = 0; layer < layerCount; ++layer) {
+                 uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x
+                     + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
+@@ -382,8 +385,8 @@ float worldSunShadowFactorImpl(vec3 pos3D, vec3 normal, float isoDepth, bool sur
+         }
+         const float shadow = sampleCascadeShadow(
+             sunUV, sunZ, normal, sunDir, uHat, vHat,
+-            origin, texelSize, cascade * kCascadeTexelCount, sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
+-            pcfOffset
++            origin, texelSize, cascade * kCascadeTexelCount, sunMaxShadowThrow, surfaceReceiver,
++            sunBasisV.w != 0.0, casterViewToWorld, pcfOffset
+ #if IR_SUN_QUERY_STATS
+             , sunQueryStats
+ #endif
+diff --git a/engine/render/src/shaders/metal/c_bake_sun_shadow_map.metal b/engine/render/src/shaders/metal/c_bake_sun_shadow_map.metal
+index ddd46052f..7657b6d60 100644
+--- a/engine/render/src/shaders/metal/c_bake_sun_shadow_map.metal
++++ b/engine/render/src/shaders/metal/c_bake_sun_shadow_map.metal
+@@ -1,163 +1,3 @@
+-#include "ir_iso_common.metal"
+-#include "ir_fog_shadow_caster.metal"
+-// Shared caster/receiver sun-space projection + depth pack.
+-#include "ir_sun_projection.metal"
+-#include <metal_atomic>
+-
+-// Mirrors shaders/c_bake_sun_shadow_map.glsl.
+-
+-constant int kEmptyDistanceEncoded = 65535;
+-
+-struct FrameDataSun {
+-    float4 sunDirection;
+-    float sunIntensity;
+-    float sunAmbient;
+-    int shadowsEnabled;
+-    int aoEnabled;
+-    float4 sunBasisU;
+-    float4 sunBasisV;
+-    float2 sunBufferOriginUV;
+-    float2 sunBufferTexelSize;
+-    float2 cascadeOriginUV_0;
+-    float2 cascadeTexelSize_0;
+-    float2 cascadeOriginUV_1;
+-    float2 cascadeTexelSize_1;
+-    float cascadeSplitDepth;
+-    int cascadeCount;
+-    // Coverage-splat radius (sun texels), doubling as the kill switch —
+-    // 0 => the exact single-write path. Mirrors FrameDataSun in ir_render_types.hpp.
+-    float sunSplatMaxTexels;
+-    float sunMaxShadowThrow;  // unused here (receiver-only)
+-    float4 sunCasterViewToWorld;  // unused here; places fogCeilingEnabled at 144
+-    int4 fogCeilingEnabled;
+-};
+-
+-// The bounds check is a buffer-bounds guard, not a culling decision:
+-// sunCascadeKernelInterior (ir_sun_projection.metal) routes receivers
+-// near the map edge to the covering cascade whose wider AABB holds this
+-// caster's write, and every caster is projected into BOTH cascades, so this
+-// never drops a caster. Mirrors GLSL.
+-inline void writeSunTexel(
+-    device atomic_uint *sunDepthBuf, int cascadeOffset, int2 px, uint packedDepth
+-) {
+-    if (px.x < 0 || px.x >= kSunShadowMapDim ||
+-        px.y < 0 || px.y >= kSunShadowMapDim) {
+-        return;
+-    }
+-    atomic_fetch_min_explicit(
+-        &sunDepthBuf[cascadeOffset + px.y * kSunShadowMapDim + px.x],
+-        packedDepth,
+-        memory_order_relaxed
+-    );
+-}
+-
+-// Coverage splat: radius 0 is the exact single write. atomic_fetch_min keeps a
+-// dense bake unchanged: where nearer real geometry already covers a box texel,
+-// the farther splat is a no-op, so the fill concentrates on the genuinely-empty
+-// hole texels a grazing / point-scattered caster footprint leaves (the
+-// moth-eaten cast-shadow holes). The uniform box (rather than a
+-// per-pixel oriented walk) is deliberate: the holes are 2D point-scatter, not a 1D
+-// silhouette line, so a directional walk under-covers
+-// (docs/design/sun-shadow-bake-coverage.md). Mirrors GLSL.
+-inline void bakeCascadeBox(
+-    device atomic_uint *sunDepthBuf, float3 sp,
+-    float2 origin, float2 texelSz, int cascadeOffset, int radius
+-) {
+-    int2 base = int2(floor((sp.xy - origin) / texelSz));
+-    for (int dy = -radius; dy <= radius; ++dy) {
+-        for (int dx = -radius; dx <= radius; ++dx) {
+-            // Splat provenance: store the DISPLACEMENT VECTOR (dx, dy) of this box
+-            // texel from the caster's own (0,0) texel, so the receiver can
+-            // reconstruct the write's true origin (px - (dx,dy)) and reject a
+-            // same-plane self-occluder while keeping a genuine cast at the base
+-            // bias (ir_sun_shadow_sample same-plane test). radius 0 ⇒ only (0,0) ⇒
+-            // a direct write. Mirrors GLSL.
+-            writeSunTexel(sunDepthBuf, cascadeOffset, base + int2(dx, dy),
+-                          packSunDepth(sp.z, int2(dx, dy)));
+-        }
+-    }
+-}
+-
+-kernel void c_bake_sun_shadow_map(
+-    constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
+-    constant FrameDataSun &sunFrameData [[buffer(29)]],
+-    device atomic_uint *sunDepthBuf [[buffer(28)]],
+-    texture2d<int, access::read> trixelDistances [[texture(0)]],
+-    texture2d<uint, access::read> trixelEntityIds [[texture(3)]],
+-    constant FogShadowObserverData& fogObservers [[buffer(27)]],
+-    texture2d<uint, access::read> fogShadowWindow [[texture(4)]],
+-    uint3 globalId [[thread_position_in_grid]]
+-) {
+-    int2 pixel = int2(globalId.xy);
+-    int2 size = int2(
+-        int(trixelDistances.get_width()),
+-        int(trixelDistances.get_height())
+-    );
+-    if (pixel.x >= size.x || pixel.y >= size.y) {
+-        return;
+-    }
+-
+-    int encoded = trixelDistances.read(uint2(pixel)).x;
+-    if (encoded >= kEmptyDistanceEncoded) {
+-        return;
+-    }
+-    // Face/flip bits do not change a caster's plane position.
+-    int rawDepth = decodeDepthSingle(encoded);
+-
+-    // Main SDF/text depth follows visual yaw. Per-axis and detached resolves
+-    // have cardinal-layout depth; their dispatches supply zero residual yaw.
+-    float3 pos3D;
+-    if (frameData.residualYaw != 0.0) {
+-        pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+-            pixel,
+-            rawDepth,
+-            frameData.trixelCanvasOffsetZ1,
+-            frameData.frameCanvasOffset,
+-            frameData.voxelRenderOptions,
+-            frameData.visualYaw
+-        );
+-    } else {
+-        pos3D = trixelCanvasPixelToWorld3D(
+-            pixel,
+-            rawDepth,
+-            frameData.trixelCanvasOffsetZ1,
+-            frameData.frameCanvasOffset,
+-            frameData.voxelRenderOptions,
+-            frameData.rasterYaw
+-        );
+-    }
+-
+-    const bool fogBodyOrPrecut = sunFrameData.fogCeilingEnabled.y != 0 ||
+-        decodeFogBody(trixelEntityIds.read(uint2(pixel)).xy);
+-    if (!(fogBodyOrPrecut) && sunFrameData.fogCeilingEnabled.x != 0 && fogObservers.visionCircleCount > 0 &&
+-        !fogFieldCastsSunShadow(pos3D, false, sunFrameData.fogCeilingEnabled.x,
+-            fogShadowCell(pos3D, fogObservers, fogShadowWindow), fogObservers)) return;
+-
+-    // Shared caster/receiver projection — the receiver lookup
+-    // (ir_sun_shadow_sample.metal worldSunShadowFactor) derives its sun UV +
+-    // depth from this same function, so cast and receive cannot drift.
+-    float3 sunProj = sunSpaceProject(
+-        pos3D,
+-        sunFrameData.sunBasisU.xyz,
+-        sunFrameData.sunBasisV.xyz,
+-        sunFrameData.sunDirection.xyz
+-    );
+-
+-    // Only cardinal-layout depth uses coverage splats. The driver suppresses
+-    // them for the dense per-axis resolve, but keeps them for detached point
+-    // scatter (docs/design/sun-shadow-bake-coverage.md).
+-    int radius = 0;
+-    if (frameData.residualYaw == 0.0 &&
+-        sunFrameData.sunSplatMaxTexels > 0.0) {
+-        radius = int(sunFrameData.sunSplatMaxTexels);
+-    }
+-
+-    bakeCascadeBox(
+-        sunDepthBuf, sunProj,
+-        sunFrameData.cascadeOriginUV_0, sunFrameData.cascadeTexelSize_0, 0, radius
+-    );
+-    bakeCascadeBox(
+-        sunDepthBuf, sunProj,
+-        sunFrameData.cascadeOriginUV_1, sunFrameData.cascadeTexelSize_1, kCascadeTexelCount, radius
+-    );
+-}
++#define IR_SUN_SECOND_DEPTH 0
++#define IR_SUN_BAKE_KERNEL_NAME c_bake_sun_shadow_map
++#include "c_bake_sun_shadow_map_body.metal"
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index 7c7e9cecc..fbc52ee9f 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -33,7 +33,7 @@ struct FrameDataSun {
+     int shadowsEnabled;
+     int aoEnabled;
+     float4 sunBasisU; // xyz: sun basis; w: finite caster coverage
+-    float4 sunBasisV;
++    float4 sunBasisV; // xyz: sun basis; w: second raster depth retained
+     float2 sunBufferOriginUV;
+     float2 sunBufferTexelSize;
+     float2 cascadeOriginUV_0;
+@@ -120,8 +120,8 @@ inline bool sourceSunHierarchyBlocks(device const uint* sunDepthBuf, uint leaves
+ inline float sampleCascadeShadow(
+     float2 sunUV, float sunZ, float3 normal, float3 sunDir, float3 uHat, float3 vHat,
+     float2 origin, float2 texelSz, int bufferOffset,
+-    device const uint *sunDepthBuf, float maxShadowThrow, bool surfaceReceiver, float4 casterViewToWorld,
+-    float3 pcfOffset
++    device const uint *sunDepthBuf, float maxShadowThrow, bool surfaceReceiver,
++    bool secondPrimaryDepth, float4 casterViewToWorld, float3 pcfOffset
+ #if IR_SUN_QUERY_STATS
+     , thread SunQueryStats &sunQueryStats
+ #endif
+@@ -279,8 +279,11 @@ inline float sampleCascadeShadow(
+             float weight = mix(1.0f - frac.x, frac.x, float(dx))
+                          * mix(1.0f - frac.y, frac.y, float(dy));
+             // Range and plane rejection are per layer; a nearer invalid tap
+-            // cannot erase a valid blocker retained in the other layer.
+-            const int layerCount = !surfaceReceiver && hasSourceFaces ? 2 : 1;
++            // cannot erase a valid blocker retained in the other layer. The
++            // fallback layer holds indexed casters or, without an index, the
++            // bake's retained second raster depth. Mirrors GLSL.
++            const int layerCount =
++                !surfaceReceiver && (hasSourceFaces || secondPrimaryDepth) ? 2 : 1;
+             for (int layer = 0; layer < layerCount; ++layer) {
+                 uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x
+                     + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
+@@ -377,7 +380,8 @@ inline float worldSunShadowFactorImpl(
+         }
+         const float shadow = sampleCascadeShadow(
+             sunUV, sunZ, normal, sunDir, uHat, vHat,
+-            origin, texelSize, cascade * kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
++            origin, texelSize, cascade * kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver,
++            sun.sunBasisV.w != 0.0, casterViewToWorld,
+             pcfOffset
+ #if IR_SUN_QUERY_STATS
+             , sunQueryStats

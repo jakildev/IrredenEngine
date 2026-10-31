@@ -57,7 +57,7 @@ kernel void probe(device const uint* buffer [[buffer(0)]],
     SunQueryStats stats={};
 #endif
     const float shadow=sampleCascadeShadow(point,2.0,float3(0,0,1),float3(0,0,1),
-        float3(1,0,0),float3(0,1,0),float2(0),float2(1),0,buffer,128.0,true,
+        float3(1,0,0),float3(0,1,0),float2(0),float2(1),0,buffer,128.0,true,false,
         float4(0,0,0,1),float3(0)
 #if IR_SUN_QUERY_STATS
         ,stats

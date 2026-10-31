@@ -13,6 +13,82 @@
 
 namespace IRPrefab::SunShadow {
 
+// CPU twin of unpackSunDepth in ir_sun_projection.{glsl,metal}: quantized
+// depth in the high 24 bits over a 1024-per-unit scale, offset 512.
+inline float unpackSunDepth(std::uint32_t packedDepth) {
+    return float(packedDepth >> 8) / 1024.0f - 512.0f;
+}
+
+struct PrimaryDepthTexel {
+    IRMath::ivec2 texel_{-1, -1};
+    std::uint32_t nearest_ = 0xFFFFFFFFu;
+    std::uint32_t second_ = 0xFFFFFFFFu;
+};
+
+struct PrimaryDepthProbe {
+    bool active_ = false;
+    bool finiteCoverage_ = false;
+    bool secondDepth_ = false;
+    std::uint32_t faceRecords_ = 0;
+    IRMath::vec3 sunUVZ_{};
+    PrimaryDepthTexel cascades_[kSunShadowCascadeCount];
+};
+
+// Capture only after shadow baking: the primary and fallback words of the sun
+// texel a world point projects to, per cascade. Synchronizes the GPU; never
+// use in timing runs.
+inline PrimaryDepthProbe readPrimaryDepthProbe(const IRMath::vec3 &world) {
+    PrimaryDepthProbe probe;
+    const auto system = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
+    if (system == IRSystem::kNullSystemId) {
+        return probe;
+    }
+    const auto *bake =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(system);
+    const IRRender::FrameDataSun &frame = bake->frameData_;
+    if (frame.shadowsEnabled_ == 0) {
+        return probe;
+    }
+    probe.active_ = true;
+    probe.finiteCoverage_ = bake->frameUsesFiniteCoverage_;
+    probe.secondDepth_ = frame.sunBasisV_.w != 0.0f;
+    probe.sunUVZ_ = IRMath::sunSpaceProject(
+        world,
+        IRMath::vec3(frame.sunBasisU_),
+        IRMath::vec3(frame.sunBasisV_),
+        IRMath::vec3(frame.sunDirection_)
+    );
+    const auto *buffer = bake->sunShadowDepthMap_;
+    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    IRRender::device()->finish();
+    buffer->getSubData(
+        std::size_t(kSourceFaceHeaderOffset) * sizeof(std::uint32_t),
+        sizeof(probe.faceRecords_),
+        &probe.faceRecords_
+    );
+    constexpr std::uint32_t kCascadeWords = kSourceFaceMapDimension * kSourceFaceMapDimension;
+    for (int cascade = 0; cascade < kSunShadowCascadeCount; ++cascade) {
+        const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
+        const auto size = cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_;
+        const IRMath::ivec2 texel(IRMath::floor((IRMath::vec2(probe.sunUVZ_) - origin) / size));
+        PrimaryDepthTexel &out = probe.cascades_[cascade];
+        if (texel.x < 0 || texel.y < 0 || texel.x >= kSunShadowMapDim ||
+            texel.y >= kSunShadowMapDim) {
+            continue;
+        }
+        out.texel_ = texel;
+        const std::size_t word = std::size_t(cascade) * kCascadeWords +
+                                 std::size_t(texel.y) * kSunShadowMapDim + std::size_t(texel.x);
+        buffer->getSubData(word * sizeof(std::uint32_t), sizeof(out.nearest_), &out.nearest_);
+        buffer->getSubData(
+            (word + kSourceFaceFallbackOffset) * sizeof(std::uint32_t),
+            sizeof(out.second_),
+            &out.second_
+        );
+    }
+    return probe;
+}
+
 // Capture only after shadow baking. Synchronizes the GPU; never use in timing runs.
 inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeometry = false) {
     std::ofstream output(path);

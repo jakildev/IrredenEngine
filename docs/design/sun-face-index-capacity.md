@@ -155,7 +155,8 @@ hit does not restore the missing information.
 
 The hierarchy retains finite face bounds and depth intervals, so it can skip
 disjoint geometry without discarding a lower blocker. Remaining representation
-work includes records lost to an exhausted pool and raster-only sampled layers. It must preserve the finite
+work includes records lost to an exhausted pool; the raster-only sampled layer's
+candidates are measured in [Raster-only primary layer](#raster-only-primary-layer-measured-decision). It must preserve the finite
 throw limit and allocation-order independence. The moving-block report also
 needs native Windows scene reproduction; this mechanism alone does not identify
 every visible speckle. [Sampler controls and scene evidence](../pr-screenshots/codex/overlapping-caster-shadow/README.md)
@@ -182,22 +183,42 @@ The fixture is deliberately a known-failing diagnostic, not a blessed image.
    invariance, exact throw boundaries, oblique light, mixed source/GRID/revoxelized
    modes, both cascades and pool exhaustion. Then sweep height in a running scene.
 
-A bounded depth-slab prototype is worth evaluating for **depth-only** samples:
-partition depth into slabs no wider than the query interval. A query's lower
-boundary slab needs its maximum, its upper boundary slab its minimum, and fully
-contained slabs need occupancy. Both endpoints cannot lie strictly inside one
-slab, so these extrema answer interval existence without retaining every point.
-Atomic min/max are independent of insertion order. Endpoint equality still needs
-strict-boundary tests. A dense layout over the full encoded depth range can be
-too expensive; include storage and clear bandwidth in the comparison.
+### Raster-only primary layer: measured decision
 
-That proof does not cover payload-dependent splat rejection, reconstructed plane
-tests or a finite footprint away from the stored tap. Keeping only extrema may
-still discard the valid candidate after another rejection. It is not a complete
-fallback design. A spatial/depth hierarchy retaining finite geometry is the
-alternative to evaluate; another nearest-K cache, an enlarged unconditional
-scan, or accepting whichever partial records won allocation does not establish
-the required invariant.
+The raster-only route runs whenever a particle raster pass is registered:
+`beginVoxelFaceCoverage` then publishes no finite index, every visible canvas
+pixel is a primary caster, and raster receivers take the independent-layer
+PCF path. The [native fixture](../pr-screenshots/claude/4799-raster-sun-depth-preservation/README.md)
+(`IRCanvasStress --probe-particle-raster --probe-ray-casters … --sun-primary-probe`)
+stacks GRID boxes on the shadowbox sun ray over a GRID floor: lower-only,
+distant-only, stacked, reversed creation order, duplicate and three-depth
+stacks, unlit pairs, cardinal and oblique light, both cascades, and a caster
+climbing through the throw boundary. Its capture-frame probe reads the floor
+ray's primary and fallback words per cascade with zero finite records, and
+counts each caster's canvas pixels so a culled caster is never mistaken for a
+collision. Stacking a caster 72 units up the ray replaces the lower box's
+nearest word (depth −15) with the distant top (−87) in both cascades and
+erases the whole floor shadow (4,939 cardinal, 5,408 oblique and 4,308
+cascade-0 missing pixels outside a 2-pixel band) while both casters keep their
+600 canvas pixels; distant-only stays lit and unlit pairs are identical.
+
+| Family | Evidence | Outcome |
+|---|---|---|
+| Second retained depth (nearest two distinct quantized depths; the loser of the nearest slot's atomic min lands in the otherwise empty fallback layer; the opt-in `retainSecondPrimaryDepth_` selects the `c_bake_sun_shadow_map_second_depth` compile-time variant, so the production bake carries no switch) | native fixture, two-slot write adapter and receiver controls in both shader dialects | **Rejected.** Zero recovered pixels in every stacked case: a flat raster top already yields three quantized depths per texel (−15, −14.667, −14.333 from the trixel lattice), so the second slot always holds the distant caster's own neighbour. No extra storage, no extra clear, one extra atomic per write, one extra read per tap; the default path is byte-identical to the parent in all 46 captures. Arbitrary nearest-K inherits the failure with K words per texel. |
+| Depth-slab extrema | `test_render_sun_depth_slab.py`: 3.9 million exhaustive interval queries | Depth-only existence is exact when a slab is no wider than the query window and fails when wider (6,968 counterexamples), but the production predicate rejects extrema that are coplanar splats while an interior direct write blocks, in both dialects. **Proof-rejected** as a representation of the full query; sixteen min/max slabs over the encoded range cost 256 MiB, four frame-adaptive slabs 64 MiB, against the 8 MiB primary layer. |
+| Finite-index routing | canvas pixel census | **Rejected.** Every visible pixel is a caster: the three-object fixture occupies 31,320 of 463,524 canvas pixels (48 % of the 65,536-record pool), the default scene 34,376, and a covered canvas 7.1 pools. Routing points as faces also contradicts the index's authored-face semantics. |
+
+No bounded candidate meets the adoption gate, so the primary layer keeps one
+nearest depth per texel and the diagnostic stays opt-in. The receiver-relative
+predecessor query cannot be answered from a receiver-independent summary of
+one texel: a receiver needs the nearest write in `(receiver − throw, receiver −
+bias)`, which the nearest or any fixed-K nearest writes do not carry. A
+two-pass bake that anchors a second slot to each texel's farthest write
+(`min{z : z > max − throw}`) would answer the floor receiver exactly at one
+extra 8 MiB layer, a second bake dispatch per producer and three atomics per
+write; it still loses an elevated receiver with two casters more than the
+throw minus its elevation above it, so it is a redesign to escalate, not a
+bounded repair.
 
 ### Captured finite-quad hierarchy experiment
 
