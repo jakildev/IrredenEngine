@@ -3615,10 +3615,11 @@ void initEntities() {
         const auto rayCasterValues = IREngine::args().getFloats("--probe-ray-casters");
         const bool rayCastersFirst = IREngine::args().getFlag("--probe-ray-casters-first");
         const auto spawnRayCasters = [&]() {
-            if (rayCasterValues.empty()) {
+            if (!IREngine::args().wasProvided("--probe-ray-casters")) {
                 return;
             }
             const int count = IRMath::clamp(static_cast<int>(rayCasterValues[0]), 1, 8);
+            const bool moving = IREngine::args().wasProvided("--probe-ray-casters-velocity");
             const auto velocity = IREngine::args().getFloats("--probe-ray-casters-velocity");
             const vec3 toSun = IRRender::getSunDirection();
             for (int index = 0; index < count; ++index) {
@@ -3628,7 +3629,7 @@ void initEntities() {
                     C_LocalTransform{casterPosition},
                     C_VoxelSetNew{size, Color{230, 170, 60, 255}, true, mainCanvas}
                 );
-                if (!velocity.empty()) {
+                if (moving) {
                     IREntity::setComponent(
                         caster,
                         C_Velocity3D{velocity[0], velocity[1], velocity[2]}
