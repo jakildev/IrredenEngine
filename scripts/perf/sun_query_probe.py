@@ -217,7 +217,7 @@ def buffer_bytes(source):
             return operations[type(node.op)](number(node.left), number(node.right))
         raise ValueError("unsupported layout constant")
 
-    for name, expression in re.findall(r"constant uint (kSourceFace\w+) = ([^;]+);", source):
+    for name, expression in re.findall(r"constant uint (kSourceFace\w+|kSunDepthSlab\w+) = ([^;]+);", source):
         expression = re.sub(r"(\d+)u\b", r"\1", expression)
         constants[name] = number(ast.parse(expression, mode="eval").body)
     return constants["kSourceFaceBufferWords"] * 4

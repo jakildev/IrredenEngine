@@ -2,6 +2,8 @@
 #include "ir_fog_shadow_caster.metal"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.metal"
+#include "ir_sun_face_query_layout.metal"
+#include "ir_sun_depth_slab_write.metal"
 #include <metal_atomic>
 
 // Mirrors shaders/c_bake_sun_shadow_map.glsl.
@@ -44,11 +46,7 @@ inline void writeSunTexel(
         px.y < 0 || px.y >= kSunShadowMapDim) {
         return;
     }
-    atomic_fetch_min_explicit(
-        &sunDepthBuf[cascadeOffset + px.y * kSunShadowMapDim + px.x],
-        packedDepth,
-        memory_order_relaxed
-    );
+    writeSunPrimaryDepth(sunDepthBuf, cascadeOffset + px.y * kSunShadowMapDim + px.x, packedDepth);
 }
 
 // Coverage splat: radius 0 is the exact single write. atomic_fetch_min keeps a

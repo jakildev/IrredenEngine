@@ -87,6 +87,7 @@ vec2 floor(vec2 a){return {std::floor(a.x),std::floor(a.y)};}
 vec2 abs(vec2 a){return {std::abs(a.x),std::abs(a.y)};}
 float min(float a,float b){return std::min(a,b);}
 float max(float a,float b){return std::max(a,b);}
+float clamp(float a,float lo,float hi){return std::min(std::max(a,lo),hi);}
 vec3 min(vec3 a,vec3 b){return {min(a.x,b.x),min(a.y,b.y),min(a.z,b.z)};}
 vec3 max(vec3 a,vec3 b){return {max(a.x,b.x),max(a.y,b.y),max(a.z,b.z)};}
 bool greaterThanEqual(vec2 a,vec2 b){return a.x>=b.x && a.y>=b.y;}
@@ -394,6 +395,7 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
         "sunWriteIsSurface", "sunVoxelFaceId", "sunVoxelFaceViewAligned", "unpackSunDepth"))
     if include_pcf:
         helpers += extract_function(projection, "sunWriteIsDirect")
+        helpers += extract_function(projection, "packSunDepth")
         offset_type = "int2" if suffix == "metal" else "ivec2"
         helpers += extract_block(projection, f"{offset_type} unpackSunSplatOffset(")
         helpers += "\n".join(re.findall(
@@ -407,6 +409,9 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
         body = body[:body.index("    float slope =")] + "    return 0.0;\n}\n"
     body = "\n".join(extract_function(sampler, name) for name in (
         "sourceSunGeometrySeparation", "sourceSunHierarchyBlocks")) + body
+    if include_pcf:
+        body = "\n".join(extract_function(sampler, name) for name in (
+            "sunStoredTapBlocks", "sunStoredTapBeyondThrow", "sunDepthSlabBlocks")) + body
     if mutation:
         old, new = mutation
         if old not in body:

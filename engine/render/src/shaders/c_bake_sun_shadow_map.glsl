@@ -12,12 +12,14 @@ layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
 #include "ir_fog_shadow_caster.glsl"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.glsl"
+#include "ir_sun_face_query_layout.glsl"
 
 const int kEmptyDistanceEncoded = 65535;
 
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap {
     uint sunDepthBuf[];
 };
+#include "ir_sun_depth_slab_write.glsl"
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
@@ -86,7 +88,7 @@ void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
         px.y < 0 || px.y >= kSunShadowMapDim) {
         return;
     }
-    atomicMin(sunDepthBuf[cascadeOffset + px.y * kSunShadowMapDim + px.x], packedDepth);
+    writeSunPrimaryDepth(cascadeOffset + px.y * kSunShadowMapDim + px.x, packedDepth);
 }
 
 // Coverage splat. Writes the caster's own texel (the exact single write when

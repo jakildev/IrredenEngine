@@ -327,6 +327,10 @@ int main() {
     const auto stale=actual;
     for(uint index=0;index<kSourceFaceFallbackOffset+17;++index) clearIndex(index);
     for(uint i=0;i<kSourceFaceFallbackOffset*2;++i) oracle[i]=0xffffffffu;
+    for(uint texel=0;texel<kSourceFaceFallbackOffset;++texel)for(uint slot=0;slot<kSunDepthSlabSlots;++slot){
+        oracle[sunDepthSlabMinIndex(int(texel),slot)]=0xffffffffu;
+        oracle[sunDepthSlabMaxIndex(int(texel),slot)]=0u;
+    }
     oracle[kSourceFaceHeaderOffset]=oracle[kSourceFaceSpillCounterOffset]=0;
     oracle[kSourceFaceHierarchyNeededOffset]=oracle[kSourceFaceHierarchyReadyOffset]=0;
     for(uint tile=0;tile<32768;++tile) {

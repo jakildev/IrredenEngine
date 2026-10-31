@@ -1,11 +1,13 @@
 #ifndef SUN_SHADOW_PROBE_H
 #define SUN_SHADOW_PROBE_H
 
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/render/sun_face_query_layout.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <string>
@@ -124,6 +126,135 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
                    (count <= kSourceFaceTileCapacity || spillRequested <= kSourceFaceSpillCapacity))
                << ',' << low.x << ',' << low.y << ',' << high.x << ',' << high.y << ','
                << recordsLost << "\n";
+    }
+    output.close();
+    return !output.fail();
+}
+
+// Primary-layer words (nearest plus slab extrema) for the sun texels a
+// world-space XY rectangle at height @p worldZ projects to, both cascades.
+// Works on every bake route; the index probe above needs finite coverage.
+// Synchronizes the GPU; never use in timing runs.
+inline bool writeSunPrimaryDepthProbe(
+    const std::string &path, IRMath::vec2 worldMin, IRMath::vec2 worldMax, float worldZ
+) {
+    std::ofstream output(path);
+    if (!output) {
+        return false;
+    }
+    const auto system = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
+    if (system == IRSystem::kNullSystemId) {
+        output << "# active=0\n";
+        return false;
+    }
+    const auto *bake =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(system);
+    if (bake->frameData_.shadowsEnabled_ == 0) {
+        output << "# active=0\n";
+        return false;
+    }
+    const IRRender::FrameDataSun &frame = bake->frameData_;
+    const auto *buffer = bake->sunShadowDepthMap_;
+    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    IRRender::device()->finish();
+    output << std::setprecision(9);
+    output << "# active=1\n";
+    output << "# finite_coverage=" << (bake->frameUsesFiniteCoverage_ ? 1 : 0) << "\n";
+    output << "# max_shadow_throw=" << frame.sunMaxShadowThrow_ << "\n";
+    output << "# slab_width=" << kSunDepthSlabWidthUnits << "\n";
+    output << "# slab_slots=" << kSunDepthSlabSlots << "\n";
+    output << "# sun_direction=" << frame.sunDirection_.x << ',' << frame.sunDirection_.y << ','
+           << frame.sunDirection_.z << "\n";
+    output << "# basis_u=" << frame.sunBasisU_.x << ',' << frame.sunBasisU_.y << ','
+           << frame.sunBasisU_.z << "\n";
+    output << "# basis_v=" << frame.sunBasisV_.x << ',' << frame.sunBasisV_.y << ','
+           << frame.sunBasisV_.z << "\n";
+    output << "# world_rect=" << worldMin.x << ',' << worldMin.y << ',' << worldMax.x << ','
+           << worldMax.y << ',' << worldZ << "\n";
+    // Whole-map census: texels any primary write reached, and texels whose
+    // nearest word is a caster's own-texel write (the splat byte is zero),
+    // a lower bound on rasterized caster pixels per cascade.
+    {
+        std::vector<std::uint32_t> layer(kSourceFaceFallbackOffset);
+        buffer->getSubData(0, layer.size() * sizeof(std::uint32_t), layer.data());
+        std::size_t written[kSourceFaceCascadeCount] = {};
+        std::size_t direct[kSourceFaceCascadeCount] = {};
+        const std::size_t perCascade = kSourceFaceFallbackOffset / kSourceFaceCascadeCount;
+        for (std::size_t i = 0; i < layer.size(); ++i) {
+            if (layer[i] == 0xFFFFFFFFu)
+                continue;
+            ++written[i / perCascade];
+            if ((layer[i] & 0xFFu) == 0u)
+                ++direct[i / perCascade];
+        }
+        output << "# primary_texels_written=" << written[0] << ',' << written[1] << "\n";
+        output << "# primary_direct_texels=" << direct[0] << ',' << direct[1] << "\n";
+    }
+    const IRMath::vec3 basisU(frame.sunBasisU_);
+    const IRMath::vec3 basisV(frame.sunBasisV_);
+    IRMath::vec2 uvMin(1e30f);
+    IRMath::vec2 uvMax(-1e30f);
+    for (const IRMath::vec3 corner :
+         {IRMath::vec3(worldMin.x, worldMin.y, worldZ), IRMath::vec3(worldMax.x, worldMin.y, worldZ),
+          IRMath::vec3(worldMin.x, worldMax.y, worldZ), IRMath::vec3(worldMax.x, worldMax.y, worldZ)}) {
+        const IRMath::vec2 uv(IRMath::dot(corner, basisU), IRMath::dot(corner, basisV));
+        uvMin = IRMath::min(uvMin, uv);
+        uvMax = IRMath::max(uvMax, uv);
+    }
+    output << "cascade,x,y,nearest";
+    for (std::uint32_t slot = 0; slot < kSunDepthSlabSlots; ++slot) {
+        output << ",slab" << slot << "_min,slab" << slot << "_max";
+    }
+    output << ",overflow\n";
+    std::vector<std::uint32_t> nearest;
+    std::vector<std::uint32_t> slabs;
+    for (std::uint32_t cascade = 0; cascade < kSourceFaceCascadeCount; ++cascade) {
+        const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
+        const auto texel = cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_;
+        const IRMath::ivec2 first = IRMath::max(
+            IRMath::ivec2(IRMath::floor((uvMin - origin) / texel)), IRMath::ivec2(0)
+        );
+        const IRMath::ivec2 last = IRMath::min(
+            IRMath::ivec2(IRMath::floor((uvMax - origin) / texel)),
+            IRMath::ivec2(int(kSunShadowMapDim) - 1)
+        );
+        output << "# cascade_" << cascade << "_texels=" << first.x << ',' << first.y << ','
+               << last.x << ',' << last.y << "\n";
+        if (first.x > last.x || first.y > last.y) {
+            continue;
+        }
+        const std::size_t width = std::size_t(last.x - first.x + 1);
+        nearest.resize(width);
+        slabs.resize(width * kSunDepthSlabTexelWords);
+        for (int y = first.y; y <= last.y; ++y) {
+            const std::size_t texelIndex =
+                std::size_t(cascade) * kSourceFaceFallbackOffset / kSourceFaceCascadeCount +
+                std::size_t(y) * kSunShadowMapDim + std::size_t(first.x);
+            buffer->getSubData(
+                texelIndex * sizeof(std::uint32_t), width * sizeof(std::uint32_t), nearest.data()
+            );
+            // Planar slab words: one contiguous run per (slot, min / max) plane.
+            for (std::uint32_t plane = 0; plane < kSunDepthSlabTexelWords; ++plane) {
+                buffer->getSubData(
+                    (std::size_t(kSunDepthSlabOffset) +
+                     std::size_t(plane) * kSourceFaceFallbackOffset + texelIndex) *
+                        sizeof(std::uint32_t),
+                    width * sizeof(std::uint32_t),
+                    slabs.data() + std::size_t(plane) * width
+                );
+            }
+            for (std::size_t i = 0; i < width; ++i) {
+                output << cascade << ',' << first.x + int(i) << ',' << y << ',' << nearest[i];
+                for (std::uint32_t slot = 0; slot < kSunDepthSlabSlots; ++slot) {
+                    output << ',' << slabs[std::size_t(slot * kSunDepthSlabWords) * width + i] << ','
+                           << (slabs[std::size_t(slot * kSunDepthSlabWords + 1) * width + i] &
+                               ~kSunDepthSlabOverflow);
+                }
+                const bool overflow = kSunDepthSlabSlots != 0u &&
+                                      (slabs[width + i] & kSunDepthSlabOverflow) != 0u;
+                output << ',' << (overflow ? 1 : 0) << "\n";
+            }
+        }
     }
     output.close();
     return !output.fail();

@@ -171,8 +171,10 @@ only in the nearest-depth sampled layer, behind the distant casters. Analytic
 solids reached that limit regardless of creation order, because
 `SHAPES_TO_TRIXEL` bakes them after every voxel canvas and their records are
 the first lost. With growth these cases match their controls from the frame
-after the demand sample lands. Raster-only casters in the primary layer share
-the nearest-depth loss, independent of pool capacity.
+after the demand sample lands. Raster-only casters in the primary layer had the
+same nearest-depth loss, independent of pool capacity; the
+[depth-slab extrema](#raster-only-primary-layer-depth-slab-extrema) now retain
+them behind a nearest word beyond the throw.
 
 ## Evidence and limits
 
@@ -233,7 +235,9 @@ The fixture is deliberately a known-failing diagnostic, not a blessed image.
 2. Prototype a depth-preserving query representation against the complete finite
    geometry oracle. Depth-only interval existence and finite face/plane coverage
    are distinct requirements; preserve both. Measure bytes cleared, append work,
-   candidate reads and GPU query time before selecting a layout.
+   candidate reads and GPU query time before selecting a layout. The primary
+   layer's depth-slab extrema below are that prototype for raster-only casters;
+   finite geometry still needs its own retention.
 3. Cover nearby and distant overlapping casters, duplicate/insertion-order
    invariance, exact throw boundaries, oblique light, mixed source/GRID/revoxelized
    modes, both cascades and pool exhaustion. Then sweep height in a running scene.
@@ -254,6 +258,95 @@ fallback design. A spatial/depth hierarchy retaining finite geometry is the
 alternative to evaluate; another nearest-K cache, an enlarged unconditional
 scan, or accepting whichever partial records won allocation does not establish
 the required invariant.
+
+### Raster-only primary layer: depth-slab extrema
+
+The primary layer keeps, beside each texel's nearest word, three slots of
+(min, max) packed words. A slot owns one slab of 64 depth units, the receiver's
+shadow throw, so the slab of a packed word is its quantized depth divided by
+65,536. The first writer of a slab claims the first empty slot with a
+compare-swap; later writers of that slab atomically minimize and maximize the
+pair. A slot's slab never changes once claimed, so a stale load that sees a
+claimed slot is final and a stale empty load is corrected by the swap's return.
+A texel that receives a fourth distinct slab sets a sticky overflow bit on
+slot 0's max word. The clear resets every min to the empty sentinel and every
+max to zero. Every primary producer writes through one helper
+(`ir_sun_depth_slab_write`): the canvas-depth bake, its world-placed and
+per-axis resolves, and the ceiling-cut surface writes of the box bake. The
+indexed fallback layer stays nearest-only; its casters have exact records.
+
+The receiver consults the slabs in exactly one case: the nearest word was
+rejected as beyond the throw. A near or same-plane rejection leaves nothing
+valid behind the nearest word, and that keeps every other frame byte-identical.
+The window `(sunZ - bias - throw, sunZ - bias)` is one slab wide, so the slab
+holding its far end and the next slab are the only slabs that can hold a
+passing write; the far slab's max and the near slab's min decide existence
+exactly for depth-decided (direct and surface) words, and the other two extrema
+recover a splat whose plane test rejected its neighbour. Every candidate runs
+the unchanged per-word predicate, so provenance rejects as before and no
+candidate adds a shadow no write supports. An overflowed texel, or a throw that
+differs from the slab width, answers from the nearest word alone.
+
+What the representation does not do: an interior write of a window slab is
+unseen when both of its slab's extrema are splats the receiver plane rejects.
+The executable harness (`scripts/tests/test_render_sun_depth_slab.py`) sweeps
+61,750 write sets per dialect through every permutation up to 24: 18,440 of
+them recover a blocker behind a nearest word beyond the throw, 200 overflow and
+keep the nearest-only answer, and 48 are that splat-extrema residual, all with
+coverage-splat markers inside the window and none with direct or surface
+words. The same sweep holds the nearest-two counterexample (writes at -120,
+-110 and 2 for a receiver at 10) that rejects a second retained depth as a
+general repair. Routing raster casters through the finite index was rejected
+by counting before any prototype: one record per rasterized caster pixel, 225
+splat texels each, against a 65,536-record pool.
+
+Native Metal controls on the particle-registered legacy bake
+([evidence](../pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md))
+grade the GRID floor under a lower GRID caster and a distant GRID stack beyond
+the throw. The parent loses 2,347 shadow pixels under eight or 128 coincident
+casters, under reversed creation order, at 84 and 114 units, and 2,428 under an
+oblique sun; the slab build matches the lower-only control exactly in every
+such case, in both receiver modes, through a seven-shot track that crosses the
+throw boundary, and for re-voxelized casters. Scenes without a hidden blocker
+are byte-identical to the parent, including the distant-only, in-window and
+unlit controls. Two distant bands plus the lower caster and the receiver
+overflow three slots on the texels they share and keep the parent's hole;
+that is the documented capacity limit, chosen by the cost below.
+
+Three slots grow the sun buffer from 30,670,864 to 81,002,512 bytes: 48 MiB
+of slab words in six texel-indexed planes, cleared every frame. The planes
+measured faster than per-texel (min, max) pairs for both the clear and the
+bake; prefetching a splat row's words before deciding spilled registers and
+measured slower; issuing the extrema atomics only when a plain load shows the
+write moves an extremum (both only move one way, so the skip is exact) did not
+move the bake, because the cost is the two loads per splat write against
+master's single atomic, not atomic contention. A staged ablation on one binary
+attributes the raster-route cost to the layout (buffer and clear) and the
+writer; the receiver's slab lookup is free.
+
+Five interleaved pairs per cell, three slots over master (Apple M4 Max, Metal):
+
+| Cell | Frame mean | Frame p99 | GPU envelope |
+|---|---|---|---|
+| IRCanvasStress raster route, lower caster | 1.285x | 1.416x | 1.601x |
+| IRCanvasStress raster route, 128 distant casters | 1.340x | 2.220x | 1.846x |
+| IRCanvasStress default scene, raster route | 1.004x | 0.954x | 1.006x |
+| IRPerfGrid zoom 1 | 1.035x | 1.036x | 1.091x |
+| IRPerfGrid zoom 4 | 0.994x | 0.989x | 0.999x |
+
+
+The shipped layout therefore compiles the layer out (`kSunDepthSlabSlots = 0`:
+master's buffer layout, byte-identical bake and receiver) and a creation that
+needs raster casters retained behind a distant one opts in with three or more
+slots in the three layout twins. Two paths could bring the layer inside the
+budget and are not attempted here: a workgroup-cooperative splat that reduces
+the 16x16 canvas tile's box footprint in shared memory and writes each texel's
+extrema once instead of once per caster pixel, and a generation-stamped slab
+plane that retires the per-frame clear. Nearest-two is rejected by the
+harness's three-depth counterexample; routing raster casters through the
+finite index is rejected by counting against the record pool with the census
+the probe prints (`primary_direct_texels`, a lower bound on caster pixels, each
+of which also splats 225 texels).
 
 ### Captured finite-quad hierarchy experiment
 

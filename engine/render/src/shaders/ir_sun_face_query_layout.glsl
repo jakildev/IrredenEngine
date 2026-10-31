@@ -19,7 +19,24 @@ const uint kSourceFaceSpillNodeWords = 2u;
 const uint kSourceFaceCapacity = 65536u;
 const uint kSourceFaceRecordWords = 10u;
 const uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
-const uint kSourceFaceHeaderOffset = 2u * kSourceFaceFallbackOffset;
+// Per-texel depth-slab extrema of the primary layer: kSunDepthSlabSlots slots
+// of (min, max) packed words, each slot owning one slab of kSunDepthSlabWidthUnits
+// depth units. The slab width equals the receiver's shadow throw, so a
+// throw-wide window (a, a + width) is answered exactly by the max of the slab
+// holding a and the min of the next slab. Slot 0's max word carries the
+// sticky overflow bit once a texel saw more distinct slabs than it has slots.
+// Zero compiles the layer out; opt in with the CPU twin (sun_face_query_layout.hpp).
+const uint kSunDepthSlabSlots = 0u;
+const uint kSunDepthSlabWords = 2u;
+const uint kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+const uint kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
+const uint kSunDepthSlabLayerWords = kSourceFaceFallbackOffset * kSunDepthSlabTexelWords;
+const uint kSunDepthSlabWidthUnits = 64u;
+// The slab width in packed depth units (width x kSunDepthScale); a literal
+// because wrappers include this layout without ir_sun_projection.
+const uint kSunDepthSlabQuantized = 65536u;
+const uint kSunDepthSlabOverflow = 0x80000000u;
+const uint kSourceFaceHeaderOffset = kSunDepthSlabOffset + kSunDepthSlabLayerWords;
 const uint kSourceFaceCapacityOffset = kSourceFaceHeaderOffset + 1u;
 const uint kSourceFaceHeaderWords = 2u;
 const uint kSourceFaceTileOffset = kSourceFaceHeaderOffset + kSourceFaceHeaderWords;
@@ -81,6 +98,22 @@ uint sourceFaceHierarchyReadyIndex(uint capacity) {
 
 uint sourceFaceHierarchyNodeIndex(uint capacity, uint node) {
     return sourceFaceHierarchyReadyIndex(capacity) + 1u + node * kSourceFaceHierarchyNodeWords;
+}
+
+// Slab of a packed primary word; depth-major, so the splat byte never moves it.
+uint sunDepthSlab(uint packedDepth) {
+    return (packedDepth >> 8) / kSunDepthSlabQuantized;
+}
+
+// Planar storage: every slot's min words form one texel-indexed plane, then
+// its max words, so a clear or a splat box touches consecutive words. Measured
+// against per-texel pairs: the planes clear and bake faster.
+uint sunDepthSlabMinIndex(int texelIndex, uint slot) {
+    return kSunDepthSlabOffset + slot * kSunDepthSlabWords * kSourceFaceFallbackOffset + uint(texelIndex);
+}
+
+uint sunDepthSlabMaxIndex(int texelIndex, uint slot) {
+    return sunDepthSlabMinIndex(texelIndex, slot) + kSourceFaceFallbackOffset;
 }
 
 uint sourceFaceTileBase(uint tileIndex) {

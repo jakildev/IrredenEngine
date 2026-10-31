@@ -85,6 +85,10 @@ constexpr int kBakeSunShadowGroupSize = 16;
 // those references deliberately, never reflexively.
 constexpr int kSunSplatMaxTexels = 7;
 static_assert(kSunSplatMaxTexels < 8, "Splat offsets must reserve -8 for finite surface writes");
+static_assert(
+    float(IRPrefab::SunShadow::kSunDepthSlabWidthUnits) == kSunShadowMaxDistance,
+    "Depth-slab extrema answer a throw-wide window only when the slab is one throw wide"
+);
 
 namespace detail {
 

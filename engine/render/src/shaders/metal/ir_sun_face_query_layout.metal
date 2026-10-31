@@ -19,7 +19,19 @@ constant uint kSourceFaceSpillNodeWords = 2u;
 constant uint kSourceFaceCapacity = 65536u;
 constant uint kSourceFaceRecordWords = 10u;
 constant uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
-constant uint kSourceFaceHeaderOffset = 2u * kSourceFaceFallbackOffset;
+// Per-texel depth-slab extrema of the primary layer; mirrors GLSL.
+// Zero compiles the layer out; opt in with the CPU twin (sun_face_query_layout.hpp).
+constant uint kSunDepthSlabSlots = 0u;
+constant uint kSunDepthSlabWords = 2u;
+constant uint kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+constant uint kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
+constant uint kSunDepthSlabLayerWords = kSourceFaceFallbackOffset * kSunDepthSlabTexelWords;
+constant uint kSunDepthSlabWidthUnits = 64u;
+// The slab width in packed depth units (width x kSunDepthScale); a literal
+// because wrappers include this layout without ir_sun_projection.
+constant uint kSunDepthSlabQuantized = 65536u;
+constant uint kSunDepthSlabOverflow = 0x80000000u;
+constant uint kSourceFaceHeaderOffset = kSunDepthSlabOffset + kSunDepthSlabLayerWords;
 constant uint kSourceFaceCapacityOffset = kSourceFaceHeaderOffset + 1u;
 constant uint kSourceFaceHeaderWords = 2u;
 constant uint kSourceFaceTileOffset = kSourceFaceHeaderOffset + kSourceFaceHeaderWords;
@@ -68,6 +80,22 @@ inline uint sourceFaceHierarchyReadyIndex(uint capacity) {
 
 inline uint sourceFaceHierarchyNodeIndex(uint capacity, uint node) {
     return sourceFaceHierarchyReadyIndex(capacity) + 1u + node * kSourceFaceHierarchyNodeWords;
+}
+
+// Slab of a packed primary word; depth-major, so the splat byte never moves it.
+inline uint sunDepthSlab(uint packedDepth) {
+    return (packedDepth >> 8) / kSunDepthSlabQuantized;
+}
+
+// Planar storage: every slot's min words form one texel-indexed plane, then
+// its max words, so a clear or a splat box touches consecutive words. Measured
+// against per-texel pairs: the planes clear and bake faster.
+inline uint sunDepthSlabMinIndex(int texelIndex, uint slot) {
+    return kSunDepthSlabOffset + slot * kSunDepthSlabWords * kSourceFaceFallbackOffset + uint(texelIndex);
+}
+
+inline uint sunDepthSlabMaxIndex(int texelIndex, uint slot) {
+    return sunDepthSlabMinIndex(texelIndex, slot) + kSourceFaceFallbackOffset;
 }
 
 inline uint sourceFaceTileBase(uint tileIndex) {

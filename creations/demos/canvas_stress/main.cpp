@@ -23,6 +23,7 @@
 #include <irreden/render/components/component_canvas_residency.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/sun_record_pool.hpp>
+#include <irreden/render/components/component_stateless_particle_emitters.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
@@ -52,6 +53,7 @@
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
+#include <irreden/render/systems/system_render_stateless_particles_to_trixel.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/render/systems/system_propagate_canvas_parts.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
@@ -2272,7 +2274,38 @@ void registerArgs() {
         "Coincident source casters for tile pressure, 1..256",
         1
     );
-    args.flag("--probe-hidden-box", "Hide the detached shadowbox and its cast shadow");
+    args.enumValue(
+        "--probe-overlapping-source-mode",
+        "Overlapping caster route: rigid source canvases, re-voxelized detached canvases, or "
+        "shared GRID voxel sets",
+        {"source", "revoxelize", "grid"},
+        "source"
+    );
+    args.flag(
+        "--probe-overlapping-source-last",
+        "Create the overlapping source casters after the shadowbox instead of before it"
+    );
+    args.integer(
+        "--probe-overlapping-source-layers",
+        "Repeat the overlapping source stack this many times along the sun ray, 1..8",
+        1
+    );
+    args.number(
+        "--probe-overlapping-source-layer-step",
+        "Sun-ray spacing between overlapping source layers, world units",
+        0.0f
+    );
+    args.flag(
+        "--probe-raster-sun-route",
+        "Register the stateless particle pass, so every caster bakes through the canvas-depth sun map"
+    );
+    args.numbers(
+        "--sun-primary-probe",
+        "Each capture frame, write the primary sun-map words under the world rectangle "
+        "<x0> <y0> <x1> <y1> at the floor top to sun-primary-<shot>.csv",
+        4
+    );
+    args.flag("--probe-hidden-box", "Omit the shadowbox caster and its cast shadow");
     args.integer(
         "--probe-record-pool-filler",
         "Side of a flat rigid source plate that fills the sun face record pool, 0..512 (0 off)",
@@ -2799,6 +2832,13 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>());
+        // A registered particle pass routes every caster through the legacy
+        // canvas-depth bake (BAKE_SUN_SHADOW_MAP::beginVoxelFaceCoverage).
+        if (IREngine::args().getFlag("--probe-raster-sun-route")) {
+            renderPipeline.push_back(
+                IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>()
+            );
+        }
         if (IREngine::args().getFloat("--fog-reveal") > 0.0f) {
             renderPipeline.push_back(IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>());
         }
@@ -3118,6 +3158,38 @@ void initSystems() {
                     written
                 );
             }
+            if (IREngine::args().wasProvided("--sun-primary-probe")) {
+                const std::vector<float> &rect = IREngine::args().getFloats("--sun-primary-probe");
+                const std::string path = "sun-primary-" + std::to_string(shotIndex) + ".csv";
+                const bool written = IRPrefab::SunShadow::writeSunPrimaryDepthProbe(
+                    path,
+                    vec2(rect[0], rect[1]),
+                    vec2(rect[2], rect[3]),
+                    kFloorZ - kFloorThickness * 0.5f
+                );
+                IR_LOG_INFO(
+                    "sun-primary-probe: shot={} path={} written={}",
+                    shotIndex,
+                    path,
+                    written
+                );
+            }
+            if (const auto bakeSystem = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
+                bakeSystem != IRSystem::kNullSystemId) {
+                const auto *bake =
+                    IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(
+                        bakeSystem
+                    );
+                IR_LOG_INFO(
+                    "SUN-ROUTE shot={} finite_coverage={} particle_pass={}",
+                    shotIndex,
+                    bake->frameUsesFiniteCoverage_ ? 1 : 0,
+                    IRSystem::findSystem(IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL) !=
+                            IRSystem::kNullSystemId
+                        ? 1
+                        : 0
+                );
+            }
             if (IREngine::args().getFlag("--cardinal-receiver-probe")) {
                 const std::string prefix = "cardinal-receiver-" + std::to_string(shotIndex);
                 IR_LOG_INFO(
@@ -3236,6 +3308,21 @@ std::optional<C_ShapeDescriptor> analyticProbeDescriptor(Color color) {
 void initEntities() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
+    if (IREngine::args().getFlag("--probe-raster-sun-route")) {
+        // One live emitter far from the shadowbox receiver: the route witness
+        // renders particles without touching the graded crop.
+        IREntity::setComponent(mainCanvas, C_StatelessParticleEmitters{});
+        auto &emitters = IREntity::getComponent<C_StatelessParticleEmitters>(mainCanvas);
+        IRRender::GpuParticleEmitter emitter{};
+        emitter.origin_ = vec3(-120.0f, 120.0f, -10.0f);
+        emitter.baseVelocity_ = vec3(0.0f, 0.0f, -6.0f);
+        emitter.gravity_ = vec3(0.0f, 0.0f, 4.0f);
+        emitter.baseLifetimeSeconds_ = 2.0f;
+        emitter.spawnRate_ = 8.0f;
+        emitter.baseColorPacked_ = Color{255, 200, 80, 255}.toPackedRGBA();
+        emitter.particlesPerEmitter_ = 16u;
+        emitters.addEmitter(emitter);
+    }
     const float fogRevealRadius = IREngine::args().getFloat("--fog-reveal");
     if (fogRevealRadius > 0.0f) {
         IRPrefab::Fog::attachToCanvas(mainCanvas);
@@ -3535,7 +3622,10 @@ void initEntities() {
         } else if (fillerSide > 0 && !fillerLast) {
             spawnRecordPoolFiller();
         }
-        if (IREngine::args().getFlag("--probe-overlapping-source")) {
+        const bool overlappingSources = IREngine::args().getFlag("--probe-overlapping-source");
+        const bool overlappingSourcesLast =
+            IREngine::args().getFlag("--probe-overlapping-source-last");
+        const auto spawnOverlappingSources = [&]() {
             const auto sourceOffsetValues =
                 IREngine::args().getFloats("--probe-overlapping-source-offset");
             const vec3 sourceOffset =
@@ -3553,25 +3643,44 @@ void initEntities() {
             const auto velocityValues =
                 IREngine::args().getFloats("--probe-overlapping-source-velocity");
             const vec3 sourceOrigin = position + IRRender::getSunDirection() * 12.0f;
-            for (int index = 0; index < sourceCount; ++index) {
-                auto overlap = IRPrefab::EntityCanvas::createWithVoxelPool(
-                    "overlapping_source_caster",
-                    ivec2(64),
-                    ivec3(8),
-                    false
-                );
-                IREntity::createEntity(
-                    C_LocalTransform{vec3(0.0f)},
-                    C_VoxelSetNew{ivec3(3), Color{230, 170, 60, 255}, true, overlap.canvasEntity_}
-                );
-                const EntityId caster = IREntity::createEntity(
-                    C_LocalTransform{
-                        sourceOrigin + sourceOffset,
-                        IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f)), 0.47f)
-                    },
-                    C_RotationMode{RotationMode::DETACHED},
-                    overlap
-                );
+            // Layers repeat the stack along the sun ray, one layer per depth band.
+            const int layers =
+                IRMath::clamp(IREngine::args().getInt("--probe-overlapping-source-layers"), 1, 8);
+            const float layerStep = IREngine::args().getFloat("--probe-overlapping-source-layer-step");
+            const auto mode = IREngine::args().getEnum("--probe-overlapping-source-mode");
+            const Color casterColor{230, 170, 60, 255};
+            const auto casterRotation = IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f)), 0.47f);
+            for (int index = 0; index < sourceCount * layers; ++index) {
+                const vec3 layerOffset =
+                    IRRender::getSunDirection() * (layerStep * float(index / sourceCount));
+                const C_LocalTransform casterTransform{
+                    sourceOrigin + sourceOffset + layerOffset, casterRotation
+                };
+                EntityId caster;
+                if (mode == "grid") {
+                    caster = IREntity::createEntity(
+                        casterTransform, C_VoxelSetNew{ivec3(3), casterColor, true, mainCanvas}
+                    );
+                } else {
+                    auto overlap = IRPrefab::EntityCanvas::createWithVoxelPool(
+                        "overlapping_source_caster",
+                        ivec2(64),
+                        ivec3(8),
+                        false
+                    );
+                    IREntity::createEntity(
+                        C_LocalTransform{vec3(0.0f)},
+                        C_VoxelSetNew{ivec3(3), casterColor, true, overlap.canvasEntity_}
+                    );
+                    caster = IREntity::createEntity(
+                        casterTransform,
+                        C_RotationMode{
+                            mode == "revoxelize" ? RotationMode::DETACHED_REVOXELIZE
+                                                 : RotationMode::DETACHED
+                        },
+                        overlap
+                    );
+                }
                 if (!velocityValues.empty()) {
                     IREntity::setComponent(
                         caster,
@@ -3583,6 +3692,9 @@ void initEntities() {
                     }
                 }
             }
+        };
+        if (overlappingSources && !overlappingSourcesLast) {
+            spawnOverlappingSources();
         }
         if (auto descriptor = analyticProbeDescriptor(color)) {
             const float tilt = IREngine::args().getFloat("--analytic-shape-tilt");
@@ -3642,10 +3754,12 @@ void initEntities() {
                 );
             }
         } else if (IREngine::args().getFlag("--probe-grid")) {
-            IREntity::createEntity(
-                C_LocalTransform{position},
-                C_VoxelSetNew{size, color, true, mainCanvas}
-            );
+            if (!IREngine::args().getFlag("--probe-hidden-box")) {
+                IREntity::createEntity(
+                    C_LocalTransform{position},
+                    C_VoxelSetNew{size, color, true, mainCanvas}
+                );
+            }
         } else {
             const int canvasSize =
                 IRMath::clamp(IREngine::args().getInt("--probe-box-canvas-size"), 128, 1024);
@@ -3678,6 +3792,9 @@ void initEntities() {
         }
         if (fillerSide > 0 && fillerLast && g_recordPoolFillerFrame == 0) {
             spawnRecordPoolFiller();
+        }
+        if (overlappingSources && overlappingSourcesLast) {
+            spawnOverlappingSources();
         }
     }
 

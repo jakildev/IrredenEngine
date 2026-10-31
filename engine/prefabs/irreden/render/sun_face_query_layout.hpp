@@ -38,7 +38,30 @@ constexpr std::uint32_t kSourceFaceCapacityDispatchLimit = 16777216u;
 constexpr std::uint32_t kSourceFaceRecordWords = 10u;
 constexpr std::uint32_t kSourceFaceFallbackOffset =
     kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
-constexpr std::uint32_t kSourceFaceHeaderOffset = 2u * kSourceFaceFallbackOffset;
+// Per-texel depth-slab extrema of the primary layer: kSunDepthSlabSlots slots
+// of (min, max) packed words, each slot owning one slab of kSunDepthSlabWidthUnits
+// depth units. The slab width equals the receiver's shadow throw, so a
+// throw-wide window is answered exactly by the max of the slab holding its far
+// end and the min of the next slab. Slot 0's max word carries the sticky
+// overflow bit once a texel saw more distinct slabs than it has slots; the
+// receiver then answers from the nearest word alone.
+//
+// Zero slots compiles the layer out: no words, and every primary write and
+// receiver tap byte-identical to the nearest-only bake. A creation that needs
+// raster casters retained behind a distant one opts in with at least three
+// slots (a far caster, a lower blocker and the receiver's own surface each
+// take one), in this constant and both shader twins; the cost that keeps the
+// default at zero is in docs/design/sun-face-index-capacity.md.
+constexpr std::uint32_t kSunDepthSlabSlots = 0u;
+constexpr std::uint32_t kSunDepthSlabWords = 2u;
+constexpr std::uint32_t kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+constexpr std::uint32_t kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
+constexpr std::uint32_t kSunDepthSlabLayerWords =
+    kSourceFaceFallbackOffset * kSunDepthSlabTexelWords;
+constexpr std::uint32_t kSunDepthSlabWidthUnits = 64u;
+constexpr std::uint32_t kSunDepthSlabQuantized = 65536u;
+constexpr std::uint32_t kSunDepthSlabOverflow = 0x80000000u;
+constexpr std::uint32_t kSourceFaceHeaderOffset = kSunDepthSlabOffset + kSunDepthSlabLayerWords;
 // Header words: requested record count, then the allocated record capacity.
 constexpr std::uint32_t kSourceFaceCapacityOffset = kSourceFaceHeaderOffset + 1u;
 constexpr std::uint32_t kSourceFaceHeaderWords = 2u;
@@ -194,6 +217,20 @@ static_assert(
     kSourceFaceHierarchyMaxLeaves == (1u << (kSourceFaceHierarchyLevels - 1)),
     "Hierarchy levels must reduce a power-of-two leaf allocation to one root"
 );
+static_assert(
+    kSunDepthSlabQuantized == kSunDepthSlabWidthUnits * 1024u,
+    "The slab quantum is the slab width in packed sun-depth units"
+);
+static_assert(
+    kSunDepthSlabOverflow > ((1u << 20) << 8 | 0xFFu),
+    "The overflow bit must sit above every packed depth word"
+);
+static_assert(
+    kSunDepthSlabOffset == 2u * kSourceFaceFallbackOffset &&
+        kSourceFaceHeaderOffset == kSunDepthSlabOffset + kSunDepthSlabLayerWords,
+    "Slab extrema sit between the sampled layers and the index header"
+);
+
 static_assert(
     kSourceFaceTileQueryCapacity > kSourceFaceTileCapacity,
     "Spill queries must extend the inline tile capacity"
