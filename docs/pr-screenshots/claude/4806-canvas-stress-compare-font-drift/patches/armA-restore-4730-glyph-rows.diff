@@ -4,7 +4,7 @@ index 7c9306a5f..d110eb384 100644
 +++ b/engine/render/include/irreden/render/trixel_font.hpp
 @@ -60,7 +60,7 @@ constexpr Glyph kGlyph_A = makeGlyph(
  );
- 
+
  constexpr Glyph kGlyph_B = makeGlyph(
 -    "XXXX.."
 +    "XXXXX."
@@ -20,11 +20,11 @@ index 7c9306a5f..d110eb384 100644
 +    "XXXXX."
 +    "XXXXX."
  );
- 
+
  constexpr Glyph kGlyph_C = makeGlyph(
 @@ -256,7 +256,7 @@ constexpr Glyph kGlyph_O = makeGlyph(
  );
- 
+
  constexpr Glyph kGlyph_P = makeGlyph(
 -    "XXXX.."
 +    "XXXXX."
@@ -33,7 +33,7 @@ index 7c9306a5f..d110eb384 100644
      "XX..XX"
 @@ -284,7 +284,7 @@ constexpr Glyph kGlyph_Q = makeGlyph(
  );
- 
+
  constexpr Glyph kGlyph_R = makeGlyph(
 -    "XXXX.."
 +    "XXXXX."
