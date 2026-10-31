@@ -10,6 +10,17 @@
 | frame_p99 | 82.664 (76.680–94.290) | 76.814 (75.980–78.520) | 0.929 | within |
 | steady_avg | 72.474 (71.560–72.840) | 72.500 (72.310–72.800) | 1.000 | within |
 | steady_p99 | 80.326 (75.780–94.290) | 75.926 (75.710–76.210) | 0.945 | within |
+| gpu_frame (envelope) | 43.760 (42.925–44.284) | 43.744 (43.509–43.934) | 1.000 | baseline spread 1.359 ms |
+
+| Variant | Profiles | Steady frames per profile | Completed steady samples | Retried profiles |
+|---|---:|---:|---:|---:|
+| baseline | 5 | 270 | 1350 | 0 |
+| growth | 5 | 270 | 1350 | 1 |
+
+| Variant | Final capacity | Allocated bytes | Cleared bytes per frame | Resizes per profile | Resize CPU µs (min–max, n) |
+|---|---:|---:|---:|---:|---:|
+| baseline | 65,536 | 30,670,864 | 17,039,376 | 0 | — |
+| growth | 65,536 | 30,670,868 | 17,039,376 | 0 | — |
 
 | GPU stage | Baseline mean ms (min–max) | growth mean ms (min–max) | Delta ms | Baseline spread ms |
 |---|---:|---:|---:|---:|
@@ -37,6 +48,17 @@
 | frame_p99 | 134.628 (132.130–136.830) | 137.252 (135.340–139.490) | 1.019 | within |
 | steady_avg | 100.518 (98.760–102.040) | 104.814 (103.900–105.390) | 1.043 | within |
 | steady_p99 | 134.118 (131.190–136.330) | 136.780 (133.290–139.710) | 1.020 | within |
+| gpu_frame (envelope) | 53.188 (51.605–54.539) | 56.523 (56.041–57.009) | 1.063 | baseline spread 2.934 ms |
+
+| Variant | Profiles | Steady frames per profile | Completed steady samples | Retried profiles |
+|---|---:|---:|---:|---:|
+| baseline | 5 | 270 | 1350 | 0 |
+| growth | 5 | 270 | 1350 | 1 |
+
+| Variant | Final capacity | Allocated bytes | Cleared bytes per frame | Resizes per profile | Resize CPU µs (min–max, n) |
+|---|---:|---:|---:|---:|---:|
+| baseline | 65,536 | 30,670,864 | 17,039,376 | 0 | — |
+| growth | 131,072 | 33,816,596 | 17,039,376 | 1 | — |
 
 | GPU stage | Baseline mean ms (min–max) | growth mean ms (min–max) | Delta ms | Baseline spread ms |
 |---|---:|---:|---:|---:|
@@ -64,6 +86,17 @@
 | frame_p99 | 670.904 (665.530–678.120) | 663.596 (660.580–667.450) | 0.989 | within |
 | steady_avg | 21.318 (21.060–21.410) | 34.562 (34.380–34.880) | 1.621 | EXCEEDS |
 | steady_p99 | 23.494 (23.130–23.780) | 38.738 (37.950–39.910) | 1.649 | EXCEEDS |
+| gpu_frame (envelope) | 4.774 (4.384–4.882) | 14.222 (14.120–14.330) | 2.979 | baseline spread 0.498 ms |
+
+| Variant | Profiles | Steady frames per profile | Completed steady samples | Retried profiles |
+|---|---:|---:|---:|---:|
+| baseline | 5 | 45 | 225 | 0 |
+| growth | 5 | 45 | 225 | 0 |
+
+| Variant | Final capacity | Allocated bytes | Cleared bytes per frame | Resizes per profile | Resize CPU µs (min–max, n) |
+|---|---:|---:|---:|---:|---:|
+| baseline | 65,536 | 30,670,864 | 17,039,376 | 0 | — |
+| growth | 1,048,576 | 77,856,788 | 17,039,376 | 1 | — |
 
 | GPU stage | Baseline mean ms (min–max) | growth mean ms (min–max) | Delta ms | Baseline spread ms |
 |---|---:|---:|---:|---:|
@@ -91,6 +124,17 @@
 | frame_p99 | 674.124 (669.060–682.420) | 672.426 (666.500–681.720) | 0.997 | within |
 | steady_avg | 24.474 (24.200–24.780) | 69.102 (68.700–69.570) | 2.823 | EXCEEDS |
 | steady_p99 | 28.388 (28.170–28.490) | 99.164 (89.760–107.740) | 3.493 | EXCEEDS |
+| gpu_frame (envelope) | 7.464 (7.241–7.703) | 45.918 (45.512–46.306) | 6.152 | baseline spread 0.462 ms |
+
+| Variant | Profiles | Steady frames per profile | Completed steady samples | Retried profiles |
+|---|---:|---:|---:|---:|
+| baseline | 5 | 45 | 225 | 0 |
+| growth | 5 | 45 | 225 | 0 |
+
+| Variant | Final capacity | Allocated bytes | Cleared bytes per frame | Resizes per profile | Resize CPU µs (min–max, n) |
+|---|---:|---:|---:|---:|---:|
+| baseline | 65,536 | 30,670,864 | 17,039,376 | 0 | — |
+| growth | 1,048,576 | 77,856,788 | 17,039,376 | 1 | — |
 
 | GPU stage | Baseline mean ms (min–max) | growth mean ms (min–max) | Delta ms | Baseline spread ms |
 |---|---:|---:|---:|---:|
@@ -109,4 +153,3 @@
 | voxelStage1 | 1.955 (1.897–1.993) | 1.641 (1.582–1.697) | -0.313 | 0.096 |
 | voxelStage2 | 1.821 (1.762–1.904) | 1.483 (1.466–1.509) | -0.338 | 0.142 |
 | voxelSunFaces | 0.991 (0.960–1.034) | 1.138 (1.127–1.153) | +0.148 | 0.074 |
-

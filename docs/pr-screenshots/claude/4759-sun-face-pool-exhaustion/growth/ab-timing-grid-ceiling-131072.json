@@ -78,7 +78,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 31.6,
@@ -128,7 +133,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 31.68,
@@ -178,7 +188,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 31.12,
@@ -228,7 +243,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 31.01,
@@ -278,7 +298,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "ceiling-131072": [
@@ -332,7 +357,18 @@
               "1",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 31.57,
@@ -384,7 +420,18 @@
               "1",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 32.75,
@@ -436,7 +483,18 @@
               "1",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 31.99,
@@ -488,7 +546,18 @@
               "1",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 32.87,
@@ -540,7 +609,18 @@
               "1",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           }
         ]
       },
@@ -608,6 +688,72 @@
           },
           "ratio": 1.0485200937418626,
           "within_budget": true
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 4.7252,
+            "min": 4.444,
+            "max": 4.836,
+            "n": 5
+          },
+          "ceiling-131072": {
+            "mean": 5.3304,
+            "min": 4.942,
+            "max": 5.457,
+            "n": 5
+          },
+          "ratio": 1.1280792347413866,
+          "baseline_spread_ms": 0.39200000000000035
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 5,
+            "steady_frames": [
+              45,
+              45,
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          },
+          "ceiling-131072": {
+            "profiles": 5,
+            "steady_frames": [
+              45,
+              45,
+              45,
+              45,
+              45
+            ],
+            "retried": 1
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "ceiling-131072": {
+            "capacity": [
+              131072
+            ],
+            "bytes": [
+              33816596
+            ],
+            "resizes_per_profile": [
+              1
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {
@@ -886,7 +1032,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 34.77,
@@ -936,7 +1087,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 35.65,
@@ -986,7 +1142,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 35.06,
@@ -1036,7 +1197,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 34.66,
@@ -1086,7 +1252,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "ceiling-131072": [
@@ -1140,7 +1311,18 @@
               "4",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 34.63,
@@ -1192,7 +1374,18 @@
               "4",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 35.29,
@@ -1244,7 +1437,18 @@
               "4",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 35.08,
@@ -1296,7 +1500,18 @@
               "4",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 35.46,
@@ -1348,7 +1563,18 @@
               "4",
               "--sun-record-ceiling",
               "131072"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           }
         ]
       },
@@ -1416,6 +1642,72 @@
           },
           "ratio": 1.0562647079797476,
           "within_budget": true
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 7.3644,
+            "min": 7.148,
+            "max": 7.723,
+            "n": 5
+          },
+          "ceiling-131072": {
+            "mean": 7.345,
+            "min": 7.02,
+            "max": 7.517,
+            "n": 5
+          },
+          "ratio": 0.997365705284884,
+          "baseline_spread_ms": 0.5750000000000002
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 5,
+            "steady_frames": [
+              45,
+              45,
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          },
+          "ceiling-131072": {
+            "profiles": 5,
+            "steady_frames": [
+              45,
+              45,
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "ceiling-131072": {
+            "capacity": [
+              131072
+            ],
+            "bytes": [
+              33816596
+            ],
+            "resizes_per_profile": [
+              1
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {

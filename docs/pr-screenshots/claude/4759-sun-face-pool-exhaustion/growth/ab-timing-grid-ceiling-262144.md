@@ -10,6 +10,17 @@
 | frame_p99 | 662.603 (660.130–667.310) | 658.663 (654.670–662.400) | 0.994 | within |
 | steady_avg | 20.650 (19.720–21.290) | 22.107 (21.540–22.460) | 1.071 | within |
 | steady_p99 | 23.080 (22.360–23.660) | 30.313 (29.810–31.070) | 1.313 | EXCEEDS |
+| gpu_frame (envelope) | 4.664 (4.402–4.860) | 5.493 (5.264–5.805) | 1.178 | baseline spread 0.458 ms |
+
+| Variant | Profiles | Steady frames per profile | Completed steady samples | Retried profiles |
+|---|---:|---:|---:|---:|
+| baseline | 3 | 45 | 135 | 0 |
+| ceiling-262144 | 3 | 45 | 135 | 0 |
+
+| Variant | Final capacity | Allocated bytes | Cleared bytes per frame | Resizes per profile | Resize CPU µs (min–max, n) |
+|---|---:|---:|---:|---:|---:|
+| baseline | 65,536 | 30,670,864 | 17,039,376 | 0 | — |
+| ceiling-262144 | 262,144 | 40,108,052 | 17,039,376 | 1 | — |
 
 | GPU stage | Baseline mean ms (min–max) | ceiling-262144 mean ms (min–max) | Delta ms | Baseline spread ms |
 |---|---:|---:|---:|---:|
@@ -37,6 +48,17 @@
 | frame_p99 | 670.580 (662.570–676.640) | 691.017 (674.810–719.640) | 1.030 | within |
 | steady_avg | 24.127 (23.720–24.410) | 32.623 (32.000–33.540) | 1.352 | EXCEEDS |
 | steady_p99 | 28.503 (28.180–28.810) | 36.837 (34.800–38.380) | 1.292 | EXCEEDS |
+| gpu_frame (envelope) | 7.458 (7.101–7.786) | 14.299 (14.077–14.640) | 1.917 | baseline spread 0.685 ms |
+
+| Variant | Profiles | Steady frames per profile | Completed steady samples | Retried profiles |
+|---|---:|---:|---:|---:|
+| baseline | 3 | 45 | 135 | 0 |
+| ceiling-262144 | 3 | 45 | 135 | 0 |
+
+| Variant | Final capacity | Allocated bytes | Cleared bytes per frame | Resizes per profile | Resize CPU µs (min–max, n) |
+|---|---:|---:|---:|---:|---:|
+| baseline | 65,536 | 30,670,864 | 17,039,376 | 0 | — |
+| ceiling-262144 | 262,144 | 40,108,052 | 17,039,376 | 1 | — |
 
 | GPU stage | Baseline mean ms (min–max) | ceiling-262144 mean ms (min–max) | Delta ms | Baseline spread ms |
 |---|---:|---:|---:|---:|
@@ -55,4 +77,3 @@
 | voxelStage1 | 1.955 (1.862–2.035) | 1.645 (1.639–1.649) | -0.310 | 0.173 |
 | voxelStage2 | 1.811 (1.700–1.916) | 1.500 (1.493–1.507) | -0.312 | 0.216 |
 | voxelSunFaces | 0.994 (0.954–1.041) | 0.948 (0.947–0.949) | -0.047 | 0.087 |
-

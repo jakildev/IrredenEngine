@@ -78,7 +78,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 31.31,
@@ -128,7 +133,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 30.68,
@@ -178,7 +188,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "ceiling-262144": [
@@ -232,7 +247,18 @@
               "1",
               "--sun-record-ceiling",
               "262144"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 262144,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 262144,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 40108052
+            }
           },
           {
             "frame_avg": 32.62,
@@ -284,7 +310,18 @@
               "1",
               "--sun-record-ceiling",
               "262144"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 262144,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 262144,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 40108052
+            }
           },
           {
             "frame_avg": 32.99,
@@ -336,7 +373,18 @@
               "1",
               "--sun-record-ceiling",
               "262144"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 262144,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 262144,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 40108052
+            }
           }
         ]
       },
@@ -404,6 +452,68 @@
           },
           "ratio": 1.3134026574234547,
           "within_budget": false
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 4.664333333333333,
+            "min": 4.402,
+            "max": 4.86,
+            "n": 3
+          },
+          "ceiling-262144": {
+            "mean": 5.492666666666667,
+            "min": 5.264,
+            "max": 5.805,
+            "n": 3
+          },
+          "ratio": 1.1775887943971985,
+          "baseline_spread_ms": 0.4580000000000002
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 3,
+            "steady_frames": [
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          },
+          "ceiling-262144": {
+            "profiles": 3,
+            "steady_frames": [
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "ceiling-262144": {
+            "capacity": [
+              262144
+            ],
+            "bytes": [
+              40108052
+            ],
+            "resizes_per_profile": [
+              1
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {
@@ -682,7 +792,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 34.91,
@@ -732,7 +847,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 35.19,
@@ -782,7 +902,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "ceiling-262144": [
@@ -836,7 +961,18 @@
               "4",
               "--sun-record-ceiling",
               "262144"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 262144,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 262144,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 40108052
+            }
           },
           {
             "frame_avg": 43.32,
@@ -888,7 +1024,18 @@
               "4",
               "--sun-record-ceiling",
               "262144"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 262144,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 262144,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 40108052
+            }
           },
           {
             "frame_avg": 43.77,
@@ -940,7 +1087,18 @@
               "4",
               "--sun-record-ceiling",
               "262144"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 262144,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 262144,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 40108052
+            }
           }
         ]
       },
@@ -1008,6 +1166,68 @@
           },
           "ratio": 1.292363466261256,
           "within_budget": false
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 7.457666666666666,
+            "min": 7.101,
+            "max": 7.786,
+            "n": 3
+          },
+          "ceiling-262144": {
+            "mean": 14.298666666666668,
+            "min": 14.077,
+            "max": 14.64,
+            "n": 3
+          },
+          "ratio": 1.9173110445626427,
+          "baseline_spread_ms": 0.6849999999999996
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 3,
+            "steady_frames": [
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          },
+          "ceiling-262144": {
+            "profiles": 3,
+            "steady_frames": [
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "ceiling-262144": {
+            "capacity": [
+              262144
+            ],
+            "bytes": [
+              40108052
+            ],
+            "resizes_per_profile": [
+              1
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {

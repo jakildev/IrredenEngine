@@ -260,6 +260,28 @@ IRPerfGrid cost stayed inside the budget in the rows above: steady mean
 Demand past the ceiling is reported once per run and in the probe, and those
 tiles keep the lost-tile policy.
 
+Every retained report (`growth/ab-timing-*.md`) carries, per cell, the
+measurements the cost criterion names:
+
+| Measurement | Where |
+|---|---|
+| CPU frame mean / p99 (whole run and steady state) | `frame_*`, `steady_*` rows, graded against the 1.10x budget |
+| Total GPU frame | `gpu_frame (envelope)` row with its baseline spread |
+| Composite, `voxelSunFaces`, `computeSunShadow`, `computeLightVolume` | GPU stage rows (`entityCanvasToFb` / `cardinalSurfaceFb` / `trixelToFb` are the composite), each with its baseline spread |
+| Hierarchy bake | `bakeSunShadowMap`: the hierarchy build is encoded in the bake system's `endTick`, inside its stage bracket |
+| Shape casting | `shapeCast*` rows of the two analytic-sphere cells ([`ab-timing-analytic.md`](growth/ab-timing-analytic.md)); the finite cells cast no shapes |
+| Completed sample counts | samples table: profiles, steady frames per profile, completed steady samples, retried profiles |
+| Bytes allocated / cleared | record-pool table: final capacity and allocation parsed from each run log, checked against the layout; the clear writes 17,039,376 bytes per frame at every capacity (both sampled layers, the tile counts and spill heads, four tail words), since records and hierarchy nodes are written by their producers |
+| Readback cost | the frozen-65,536 A/B pays the per-frame demand copy and completion-gated read with no growth: `bakeSunShadowMap`, whose bracket encodes the copy, moves +0.007 / +0.001 ms against baseline spreads of 0.008 / 0.001 ms, and the whole frame 1.005x / 1.004x (p99 0.992x / 1.013x) at zoom 1 / 4 |
+| Resize cost | `resize_us` in the record-pool table: CPU time of `Buffer::resize` plus the capacity-word write, 27–55 µs over the five analytic growth runs (one resize each). The replacement storage adds no GPU work: its first clear writes the same bytes |
+
+The analytic cells match the finite ones: no exhaustion 0.996x (steady
+mean) and GPU frame 0.996x with every shape row inside its spread; under
+exhaustion 0.990x mean / 1.012x p99, GPU frame 1.000x, with the exact
+queries moving `entityCanvasToFb` by +1.48 ms and the shape-casting rows
+unchanged. The 262,144 and frozen-ceiling explorations ran three pairs and
+are not adoption evidence.
+
 ## Replay and limits
 
 ```bash

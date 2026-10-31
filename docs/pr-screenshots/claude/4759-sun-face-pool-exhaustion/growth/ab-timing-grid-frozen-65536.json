@@ -78,7 +78,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 32.38,
@@ -128,7 +133,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 31.39,
@@ -178,7 +188,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "frozen-65536": [
@@ -232,7 +247,12 @@
               "1",
               "--sun-record-ceiling",
               "65536"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           },
           {
             "frame_avg": 31.35,
@@ -284,7 +304,12 @@
               "1",
               "--sun-record-ceiling",
               "65536"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           },
           {
             "frame_avg": 31.77,
@@ -336,7 +361,12 @@
               "1",
               "--sun-record-ceiling",
               "65536"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           }
         ]
       },
@@ -404,6 +434,68 @@
           },
           "ratio": 1.024193548387097,
           "within_budget": true
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 4.742333333333333,
+            "min": 4.451,
+            "max": 4.911,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 5.0456666666666665,
+            "min": 4.706,
+            "max": 5.278,
+            "n": 3
+          },
+          "ratio": 1.0639628874674916,
+          "baseline_spread_ms": 0.45999999999999996
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 3,
+            "steady_frames": [
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          },
+          "frozen-65536": {
+            "profiles": 3,
+            "steady_frames": [
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "frozen-65536": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670868
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {
@@ -682,7 +774,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 35.31,
@@ -732,7 +829,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 34.91,
@@ -782,7 +884,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "frozen-65536": [
@@ -836,7 +943,12 @@
               "4",
               "--sun-record-ceiling",
               "65536"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           },
           {
             "frame_avg": 34.51,
@@ -888,7 +1000,12 @@
               "4",
               "--sun-record-ceiling",
               "65536"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           },
           {
             "frame_avg": 35.13,
@@ -940,7 +1057,12 @@
               "4",
               "--sun-record-ceiling",
               "65536"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           }
         ]
       },
@@ -1008,6 +1130,68 @@
           },
           "ratio": 0.9907526629989465,
           "within_budget": true
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 7.343333333333334,
+            "min": 7.214,
+            "max": 7.48,
+            "n": 3
+          },
+          "frozen-65536": {
+            "mean": 7.2956666666666665,
+            "min": 7.078,
+            "max": 7.424,
+            "n": 3
+          },
+          "ratio": 0.9935088515660462,
+          "baseline_spread_ms": 0.266
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 3,
+            "steady_frames": [
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          },
+          "frozen-65536": {
+            "profiles": 3,
+            "steady_frames": [
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "frozen-65536": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670868
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {

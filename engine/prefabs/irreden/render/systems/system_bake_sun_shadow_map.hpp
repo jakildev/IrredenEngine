@@ -19,6 +19,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/profile/scope_timer.hpp>
 
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -31,10 +32,10 @@
 #include <irreden/render/canvas_coverage.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
-#include <irreden/render/gpu_readback_ring.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/sun_face_query_layout.hpp>
+#include <irreden/render/sun_record_demand.hpp>
 
 // World sun-shadow cast for opt-in world-placed detached re-voxelize solids.
 // The resolve-then-bake driver reuses the main-frame restore
@@ -45,6 +46,7 @@
 #include <irreden/render/voxel_dispatch_grid.hpp>
 
 #include <array>
+#include <chrono>
 #include <string>
 #include <utility>
 
@@ -176,14 +178,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     // frame after the sample completes runs at the grown capacity.
     IRPrefab::SunShadow::SourceFaceLayout recordLayout_{};
     std::uint32_t recordCapacityCeiling_ = IRPrefab::SunShadow::kSourceFaceCapacityCeiling;
-    struct RecordDemandProducer {
-        std::uint64_t frame_ = 0;
-        std::uint32_t capacity_ = 0;
-    };
-    static constexpr int kRecordDemandSlots = 4;
-    IRRender::detail::GpuReadbackRing<RecordDemandProducer, kRecordDemandSlots> recordDemandRing_{};
-    std::vector<std::pair<ResourceId, Buffer *>> recordDemandBuffers_;
-    std::uint64_t recordDemandFrames_ = 0;
+    IRPrefab::SunShadow::SourceFaceDemandRing recordDemandRing_{};
     std::uint64_t recordDemandSampledFrame_ = 0;
     std::uint32_t recordDemandPeak_ = 0;
     std::uint64_t recordExhaustedSamples_ = 0;
@@ -784,30 +779,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         writeRecordCapacityWord();
     }
 
-    // Copies this frame's requested-record count into a readback slot. Read
-    // once its submission completes, never by frame age.
     void sampleRecordDemand() {
         IRRender::device()->memoryBarrier(BarrierType::BUFFER_UPDATE);
-        const int slot = recordDemandRing_.write(
-            IRRender::device()->submissionSerial(),
-            {++recordDemandFrames_, recordLayout_.capacity_}
-        );
-        if (slot == static_cast<int>(recordDemandBuffers_.size())) {
-            recordDemandBuffers_.push_back(
-                IRRender::createResource<Buffer>(
-                    nullptr,
-                    sizeof(std::uint32_t),
-                    BUFFER_STORAGE_DYNAMIC
-                )
-            );
-        }
-        IRRender::device()->copyBufferSubData(
-            sunShadowDepthMap_,
-            std::size_t(IRPrefab::SunShadow::kSourceFaceHeaderOffset) * sizeof(std::uint32_t),
-            recordDemandBuffers_[static_cast<std::size_t>(slot)].second,
-            0,
-            sizeof(std::uint32_t)
-        );
+        recordDemandRing_.sample(sunShadowDepthMap_, recordLayout_.capacity_);
     }
 
     // Drains completed demand samples and grows the pool before the frame's
@@ -818,16 +792,13 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         bool sampled = false;
         recordDemandRing_.drainCompleted(
             IRRender::device()->completedSubmissionSerial(),
-            [&](int slot, const RecordDemandProducer &producer) {
-                std::uint32_t requested = 0;
-                recordDemandBuffers_[static_cast<std::size_t>(slot)]
-                    .second->getSubData(0, sizeof(requested), &requested);
-                if (requested > producer.capacity_) {
+            [&](const SourceFaceDemandSample &sample) {
+                if (sample.exhausted()) {
                     ++recordExhaustedSamples_;
                 }
-                recordDemandPeak_ = IRMath::max(recordDemandPeak_, requested);
-                recordDemandSampledFrame_ = IRMath::max(recordDemandSampledFrame_, producer.frame_);
-                demand = IRMath::max(demand, requested);
+                recordDemandPeak_ = IRMath::max(recordDemandPeak_, sample.requested_);
+                recordDemandSampledFrame_ = IRMath::max(recordDemandSampledFrame_, sample.frame_);
+                demand = IRMath::max(demand, sample.requested_);
                 sampled = true;
             }
         );
@@ -838,17 +809,23 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             grownSourceFaceCapacity(demand, recordLayout_.capacity_, recordCapacityCeiling_);
         if (grown != recordLayout_.capacity_) {
             const std::uint32_t previous = recordLayout_.capacity_;
+            const auto resizeStart = IRProfile::SteadyClock::now();
             resizeRecordPool(grown);
+            const auto resizeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+                                                IRProfile::SteadyClock::now() - resizeStart
+            )
+                                                .count();
             ++recordCapacityChanges_;
             IR_LOG_INFO(
                 "SUN-RECORD-POOL grown {} -> {} records ({} bytes) requested={} sampled_frame={} "
-                "applied_frame={}",
+                "applied_frame={} resize_us={}",
                 previous,
                 grown,
                 recordLayout_.bufferBytes(),
                 demand,
                 recordDemandSampledFrame_,
-                recordDemandFrames_ + 1
+                recordDemandRing_.frames() + 1,
+                resizeMicroseconds
             );
         } else if (demand > recordLayout_.capacity_ && !recordCeilingWarned_) {
             recordCeilingWarned_ = true;
@@ -1249,7 +1226,6 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         p->worldPlacedCasters_.reserve(8);
         p->sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
         p->writeRecordCapacityWord();
-        p->recordDemandBuffers_.reserve(kRecordDemandSlots);
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         IRRender::tagGpuStage(systemId, "bakeSunShadowMap");
         return systemId;

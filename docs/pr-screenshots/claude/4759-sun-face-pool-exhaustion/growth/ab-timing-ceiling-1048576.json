@@ -125,7 +125,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 72.87,
@@ -200,7 +205,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 73.44,
@@ -275,7 +285,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 72.69,
@@ -350,7 +365,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 73.2,
@@ -425,7 +445,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "growth": [
@@ -502,7 +527,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           },
           {
             "frame_avg": 72.7,
@@ -577,7 +607,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           },
           {
             "frame_avg": 72.86,
@@ -652,7 +687,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           },
           {
             "frame_avg": 72.99,
@@ -727,7 +767,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           },
           {
             "frame_avg": 72.63,
@@ -802,7 +847,12 @@
               "0",
               "0",
               "-60"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670868
+            }
           }
         ]
       },
@@ -870,6 +920,72 @@
           },
           "ratio": 0.9452232153972563,
           "within_budget": true
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 43.7598,
+            "min": 42.925,
+            "max": 44.284,
+            "n": 5
+          },
+          "growth": {
+            "mean": 43.7444,
+            "min": 43.509,
+            "max": 43.934,
+            "n": 5
+          },
+          "ratio": 0.999648078830342,
+          "baseline_spread_ms": 1.3590000000000018
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 5,
+            "steady_frames": [
+              270,
+              270,
+              270,
+              270,
+              270
+            ],
+            "retried": 0
+          },
+          "growth": {
+            "profiles": 5,
+            "steady_frames": [
+              270,
+              270,
+              270,
+              270,
+              270
+            ],
+            "retried": 1
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "growth": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670868
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {
@@ -1210,7 +1326,12 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 101.28,
@@ -1291,7 +1412,12 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 98.81,
@@ -1372,7 +1498,12 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 98.54,
@@ -1453,7 +1584,12 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 101.91,
@@ -1534,7 +1670,12 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "growth": [
@@ -1617,7 +1758,18 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 104.79,
@@ -1698,7 +1850,18 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 104.17,
@@ -1779,7 +1942,18 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 105.35,
@@ -1860,7 +2034,18 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           },
           {
             "frame_avg": 105.01,
@@ -1941,7 +2126,18 @@
               "200",
               "-200",
               "0"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 131072,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 131072,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 33816596
+            }
           }
         ]
       },
@@ -2009,6 +2205,72 @@
           },
           "ratio": 1.0198481933819472,
           "within_budget": true
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 53.187599999999996,
+            "min": 51.605,
+            "max": 54.539,
+            "n": 5
+          },
+          "growth": {
+            "mean": 56.5234,
+            "min": 56.041,
+            "max": 57.009,
+            "n": 5
+          },
+          "ratio": 1.0627176259128068,
+          "baseline_spread_ms": 2.9340000000000046
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 5,
+            "steady_frames": [
+              270,
+              270,
+              270,
+              270,
+              270
+            ],
+            "retried": 0
+          },
+          "growth": {
+            "profiles": 5,
+            "steady_frames": [
+              270,
+              270,
+              270,
+              270,
+              270
+            ],
+            "retried": 1
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "growth": {
+            "capacity": [
+              131072
+            ],
+            "bytes": [
+              33816596
+            ],
+            "resizes_per_profile": [
+              1
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {
@@ -2287,7 +2549,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 32.18,
@@ -2337,7 +2604,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 29.73,
@@ -2387,7 +2659,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 32.57,
@@ -2437,7 +2714,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 32.16,
@@ -2487,7 +2769,12 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "growth": [
@@ -2539,7 +2826,18 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           },
           {
             "frame_avg": 43.81,
@@ -2589,7 +2887,18 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           },
           {
             "frame_avg": 43.38,
@@ -2639,7 +2948,18 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           },
           {
             "frame_avg": 43.92,
@@ -2689,7 +3009,18 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           },
           {
             "frame_avg": 43.5,
@@ -2739,7 +3070,18 @@
               "1",
               "--zoom",
               "1"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           }
         ]
       },
@@ -2807,6 +3149,72 @@
           },
           "ratio": 1.6488465140035753,
           "within_budget": false
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 4.7742,
+            "min": 4.384,
+            "max": 4.882,
+            "n": 5
+          },
+          "growth": {
+            "mean": 14.2224,
+            "min": 14.12,
+            "max": 14.33,
+            "n": 5
+          },
+          "ratio": 2.9790121905240667,
+          "baseline_spread_ms": 0.49799999999999933
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 5,
+            "steady_frames": [
+              45,
+              45,
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          },
+          "growth": {
+            "profiles": 5,
+            "steady_frames": [
+              45,
+              45,
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "growth": {
+            "capacity": [
+              1048576
+            ],
+            "bytes": [
+              77856788
+            ],
+            "resizes_per_profile": [
+              1
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {
@@ -3085,7 +3493,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 35.52,
@@ -3135,7 +3548,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 35.02,
@@ -3185,7 +3603,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 35.5,
@@ -3235,7 +3658,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           },
           {
             "frame_avg": 34.97,
@@ -3285,7 +3713,12 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 65536,
+              "resizes": [],
+              "bytes": 30670864
+            }
           }
         ],
         "growth": [
@@ -3337,7 +3770,18 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           },
           {
             "frame_avg": 78.04,
@@ -3387,7 +3831,18 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           },
           {
             "frame_avg": 77.53,
@@ -3437,7 +3892,18 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           },
           {
             "frame_avg": 76.51,
@@ -3487,7 +3953,18 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           },
           {
             "frame_avg": 76.94,
@@ -3537,7 +4014,18 @@
               "1",
               "--zoom",
               "4"
-            ]
+            ],
+            "record_pool": {
+              "capacity": 1048576,
+              "resizes": [
+                {
+                  "from": 65536,
+                  "to": 1048576,
+                  "resize_us": null
+                }
+              ],
+              "bytes": 77856788
+            }
           }
         ]
       },
@@ -3605,6 +4093,72 @@
           },
           "ratio": 3.4931661265323375,
           "within_budget": false
+        },
+        "gpu_frame": {
+          "baseline": {
+            "mean": 7.4636,
+            "min": 7.241,
+            "max": 7.703,
+            "n": 5
+          },
+          "growth": {
+            "mean": 45.9178,
+            "min": 45.512,
+            "max": 46.306,
+            "n": 5
+          },
+          "ratio": 6.152232166782786,
+          "baseline_spread_ms": 0.46200000000000063
+        },
+        "samples": {
+          "baseline": {
+            "profiles": 5,
+            "steady_frames": [
+              45,
+              45,
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          },
+          "growth": {
+            "profiles": 5,
+            "steady_frames": [
+              45,
+              45,
+              45,
+              45,
+              45
+            ],
+            "retried": 0
+          }
+        },
+        "record_pool": {
+          "baseline": {
+            "capacity": [
+              65536
+            ],
+            "bytes": [
+              30670864
+            ],
+            "resizes_per_profile": [
+              0
+            ],
+            "resize_us": null
+          },
+          "growth": {
+            "capacity": [
+              1048576
+            ],
+            "bytes": [
+              77856788
+            ],
+            "resizes_per_profile": [
+              1
+            ],
+            "resize_us": null
+          }
         },
         "gpu_stages": {
           "bakeSunShadowMap": {
