@@ -1,0 +1,89 @@
+diff --git a/engine/render/include/irreden/render/trixel_font.hpp b/engine/render/include/irreden/render/trixel_font.hpp
+index 7c9306a5f..d110eb384 100644
+--- a/engine/render/include/irreden/render/trixel_font.hpp
++++ b/engine/render/include/irreden/render/trixel_font.hpp
+@@ -60,7 +60,7 @@ constexpr Glyph kGlyph_A = makeGlyph(
+ );
+ 
+ constexpr Glyph kGlyph_B = makeGlyph(
+-    "XXXX.."
++    "XXXXX."
+     "XXXXX."
+     "XX..XX"
+     "XX..XX"
+@@ -69,8 +69,8 @@ constexpr Glyph kGlyph_B = makeGlyph(
+     "XX..XX"
+     "XX..XX"
+     "XX..XX"
+-    "XXXXXX"
+-    "XXXXXX"
++    "XXXXX."
++    "XXXXX."
+ );
+ 
+ constexpr Glyph kGlyph_C = makeGlyph(
+@@ -256,7 +256,7 @@ constexpr Glyph kGlyph_O = makeGlyph(
+ );
+ 
+ constexpr Glyph kGlyph_P = makeGlyph(
+-    "XXXX.."
++    "XXXXX."
+     "XXXXX."
+     "XX..XX"
+     "XX..XX"
+@@ -284,7 +284,7 @@ constexpr Glyph kGlyph_Q = makeGlyph(
+ );
+ 
+ constexpr Glyph kGlyph_R = makeGlyph(
+-    "XXXX.."
++    "XXXXX."
+     "XXXXX."
+     "XX..XX"
+     "XX..XX"
+@@ -302,7 +302,7 @@ constexpr Glyph kGlyph_S = makeGlyph(
+     ".XXXX."
+     "XX..XX"
+     "XX...."
+-    "XXXX.."
++    "XXXXX."
+     ".XXXX."
+     "....XX"
+     "....XX"
+@@ -475,7 +475,7 @@ constexpr Glyph kGlyph_4 = makeGlyph(
+     ".XX.XX"
+     ".XX.XX"
+     "XXXXXX"
+-    ".XXXXX"
++    "XXXXXX"
+     "....XX"
+     "....XX"
+     "....XX"
+@@ -486,8 +486,8 @@ constexpr Glyph kGlyph_5 = makeGlyph(
+     "XXXXXX"
+     "XX...."
+     "XX...."
+-    "XXXX.."
+-    ".XXXX."
++    "XXXXX."
++    "XXXXX."
+     "....XX"
+     "....XX"
+     "XX..XX"
+@@ -500,7 +500,7 @@ constexpr Glyph kGlyph_6 = makeGlyph(
+     ".XXXX."
+     "XX..XX"
+     "XX...."
+-    "XXXX.."
++    "XXXXX."
+     "XXXXX."
+     "XX..XX"
+     "XX..XX"
+@@ -544,7 +544,7 @@ constexpr Glyph kGlyph_9 = makeGlyph(
+     "XX..XX"
+     "XX..XX"
+     ".XXXXX"
+-    "..XXXX"
++    ".XXXXX"
+     "....XX"
+     "XX..XX"
+     ".XXXX."
