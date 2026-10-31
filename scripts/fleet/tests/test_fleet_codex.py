@@ -239,6 +239,8 @@ class Transport(unittest.TestCase):
             text = policy.rules(root, "sonnet-reviewer")
             for pattern in (["python3", "scripts/render-verify.py"],
                             ["python3", str(root / "scripts/perf/repeat_profile.py")],
+                            ["python3", "scripts/perf/sdf_controls.py"],
+                            ["python3", str(root / "scripts/perf/sdf_controls.py")],
                             ["python3", "scripts/package-smoke.py"],
                             ["python3", str(root / "scripts/package-smoke.py")],
                             ["bash", "scripts/perf/perf_grid_matrix.sh"],
@@ -369,6 +371,8 @@ class Transport(unittest.TestCase):
             if all(re.search(pattern, text, re.M) for pattern in launches[path.suffix]):
                 drivers.add(rel)
         self.assertTrue(drivers)
+        # This matrix reaches fleet-run through profile_matrix.run_rounds.
+        drivers.add("scripts/perf/sdf_controls.py")
         self.assertEqual(drivers, set(policy.DISPLAY_VALIDATORS))
 
     def test_stderr_quota_and_stdout_notice(self):

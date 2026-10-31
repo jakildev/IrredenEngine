@@ -18,6 +18,7 @@ DISPLAY_VALIDATORS = (
     "scripts/occlusion-fire-verify.py", "scripts/package-smoke.py", "scripts/pivot-verify.py",
     "scripts/render-continuous-zoom-metric.py", "scripts/render-verify.py",
     "scripts/perf/grid_capacity_controls.py", "scripts/perf/repeat_profile.py",
+    "scripts/perf/sdf_controls.py",
     "scripts/perf/perf_grid_matrix.sh")
 # The fleet-jobs profiles that run a DISPLAY_VALIDATORS script detached;
 # fleet-jobs' DISPLAY_PROFILES names the same set.
@@ -126,6 +127,7 @@ def check(path, role):
                "--auto-screenshot", "10"], "allow"),
              (["python3", "scripts/render-verify.py", "--target", "IRShapeDebug"], "allow"),
              (["python3", "scripts/perf/repeat_profile.py", "--target", "IRPerfGrid"], "allow"),
+             (["python3", "scripts/perf/sdf_controls.py", "--release"], "allow"),
              (["python3", "scripts/package-smoke.py", "--target", "IRShapeDebug"], "allow"),
              (["python3", "-c", "print(1)"], None),
              (["fleet-jobs", "start", "render-verify", "--", "--target", "IRShapeDebug"], "allow"),

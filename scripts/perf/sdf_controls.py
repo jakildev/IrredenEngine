@@ -77,6 +77,10 @@ def verify_configurations(output: Path) -> None:
                 raise ValueError(f"{path}: configuration changed between cases: {name}")
 
 
+def runner_options(release: bool) -> tuple[str, ...]:
+    return ("--target", "IRShapeDebug", *(("--release",) if release else ()))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -85,6 +89,8 @@ def main() -> int:
     parser.add_argument("--zoom", type=int, choices=(1, 2, 4, 8, 16), default=4)
     parser.add_argument("--suite", choices=("qualification", "baseline"),
                         default="qualification")
+    parser.add_argument("--release", action="store_true",
+                        help="Profile the worktree's build-release tree")
     parser.add_argument("--case", action="append", dest="case_names")
     args = parser.parse_args()
     if args.rounds < 1 or args.frames < 2:
@@ -113,7 +119,7 @@ def main() -> int:
         ))
 
     run_rounds(output, selected, common, args.rounds, after_round,
-               runner_options=("--target", "IRShapeDebug"))
+               runner_options=runner_options(args.release))
     return 0
 
 
