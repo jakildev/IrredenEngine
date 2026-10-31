@@ -1335,8 +1335,8 @@ class Builder {
             recipeListRowCenterGuiTrixel(0),
             static_cast<int>(recipeIndex)
         )));
-        const int pageCount = recipeParamPageCount(static_cast<int>(recipe->params_.size()));
-        for (int i = 1; i < pageCount; ++i)
+        const int lastPage = recipeParamPageCount(static_cast<int>(recipe->params_.size())) - 1;
+        for (int page = 0; page < lastPage; ++page)
             clickGui(recipePageButtonCenterGuiTrixel(kRecipePagePrevPos));
         int page = 0;
         for (std::size_t i = 0; i < recipe->params_.size(); ++i) {
