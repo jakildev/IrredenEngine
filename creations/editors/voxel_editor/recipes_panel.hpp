@@ -16,9 +16,8 @@
 
 namespace IRVoxelEditor {
 
-// The panel builds this many parameter sliders; a recipe declaring more is a
-// load error.
-constexpr int kMaxRecipeParams = 3;
+constexpr int kRecipeParamRowsPerPage = 3;
+constexpr int kMaxRecipeParams = 16;
 
 constexpr IRMath::ivec2 kRecipesPanelPos{682, 240};
 constexpr IRMath::ivec2 kRecipesPanelSize{120, 150};
@@ -31,10 +30,17 @@ constexpr int kRecipeSliderTop = kRecipesPanelPos.y + 74;
 constexpr int kRecipeSliderPitch = 18;
 constexpr IRMath::ivec2 kRecipeSliderSize{112, 14};
 
-constexpr IRMath::ivec2 kRecipeApplyPos{
-    kRecipesPanelPos.x + 4, kRecipeSliderTop + kMaxRecipeParams *kRecipeSliderPitch
-};
-constexpr IRMath::ivec2 kRecipeApplySize{112, 14};
+constexpr int kRecipeControlsY = kRecipeSliderTop + kRecipeParamRowsPerPage * kRecipeSliderPitch;
+constexpr IRMath::ivec2 kRecipeApplyPos{kRecipesPanelPos.x + 4, kRecipeControlsY};
+constexpr IRMath::ivec2 kRecipeApplySize{40, 14};
+constexpr IRMath::ivec2 kRecipePagePrevPos{kRecipeApplyPos.x + 42, kRecipeControlsY};
+constexpr IRMath::ivec2 kRecipePageLabelPos{kRecipeApplyPos.x + 66, kRecipeControlsY};
+constexpr IRMath::ivec2 kRecipePageNextPos{kRecipeApplyPos.x + 90, kRecipeControlsY};
+constexpr IRMath::ivec2 kRecipePageButtonSize{22, 14};
+
+constexpr int recipeParamPageCount(int paramCount) {
+    return IRMath::max(1, IRMath::divCeil(paramCount, kRecipeParamRowsPerPage));
+}
 
 constexpr IRMath::ivec2 kModulePanelSize{120, 48};
 constexpr int kModulePanelGap = 6;
@@ -87,6 +93,13 @@ constexpr IRMath::vec2 recipeApplyCenterGuiTrixel() {
     return IRMath::vec2(
         static_cast<float>(kRecipeApplyPos.x) + static_cast<float>(kRecipeApplySize.x) / 2.0f,
         static_cast<float>(kRecipeApplyPos.y) + static_cast<float>(kRecipeApplySize.y) / 2.0f
+    );
+}
+
+constexpr IRMath::vec2 recipePageButtonCenterGuiTrixel(IRMath::ivec2 pos) {
+    return IRMath::vec2(
+        static_cast<float>(pos.x) + static_cast<float>(kRecipePageButtonSize.x) / 2.0f,
+        static_cast<float>(pos.y) + static_cast<float>(kRecipePageButtonSize.y) / 2.0f
     );
 }
 

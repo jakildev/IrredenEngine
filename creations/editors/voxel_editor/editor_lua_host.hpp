@@ -460,8 +460,8 @@ class ModuleHost {
         const std::size_t count = params.size();
         if (count > static_cast<std::size_t>(kMaxRecipeParams)) {
             throw sol::error{
-                "IREditor.registerRecipe('" + name + "'): at most " +
-                std::to_string(kMaxRecipeParams) + " params"
+                "IREditor.registerRecipe('" + name + "'): declares " + std::to_string(count) +
+                " params; at most " + std::to_string(kMaxRecipeParams) + " allowed"
             };
         }
         for (std::size_t i = 1; i <= count; ++i)

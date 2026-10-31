@@ -284,9 +284,14 @@ std::vector<DockedModulePanel> g_dockedModulePanels;
 IREntity::EntityId g_recipesPanel = IREntity::kNullEntity;
 IREntity::EntityId g_recipeList = IREntity::kNullEntity;
 IREntity::EntityId g_recipeApplyBtn = IREntity::kNullEntity;
-std::array<IREntity::EntityId, kMaxRecipeParams> g_recipeSliders{};
+std::array<IREntity::EntityId, kRecipeParamRowsPerPage> g_recipeSliders{};
+IREntity::EntityId g_recipePagePrevBtn = IREntity::kNullEntity;
+IREntity::EntityId g_recipePageNextBtn = IREntity::kNullEntity;
+IREntity::EntityId g_recipePageLabel = IREntity::kNullEntity;
 // Recipe the parameter sliders currently describe; -1 before the first sync.
 int g_slidersRecipe = -1;
+int g_recipeParamPage = 0;
+std::vector<float> g_recipeParamValues;
 
 // The COMPONENTS panel (initComponentsUi). Not built when the process has no
 // component to offer: no module component and no engine prefab factory.
@@ -2387,24 +2392,36 @@ void seedDemoSkeleton() {
     }
 }
 
-// Points the parameter sliders at recipe @p recipeIndex: one per declared
-// param, at its range and default; the rest disabled. -1 disables all.
-void configureRecipeSliders(int recipeIndex) {
-    g_slidersRecipe = recipeIndex;
+void destroyRecipePager() {
+    for (IREntity::EntityId *pager : {
+             &g_recipePagePrevBtn,
+             &g_recipePageNextBtn,
+             &g_recipePageLabel,
+         }) {
+        if (*pager != IREntity::kNullEntity)
+            IREntity::destroyEntity(*pager);
+        *pager = IREntity::kNullEntity;
+    }
+}
+
+void bindRecipeSliders() {
     const std::vector<ModuleRecipe> &recipes = g_moduleHost.recipes();
-    const bool valid = recipeIndex >= 0 && recipeIndex < static_cast<int>(recipes.size());
-    for (int i = 0; i < kMaxRecipeParams; ++i) {
+    const bool valid = g_slidersRecipe >= 0 && g_slidersRecipe < static_cast<int>(recipes.size());
+    const int first = g_recipeParamPage * kRecipeParamRowsPerPage;
+    for (int i = 0; i < kRecipeParamRowsPerPage; ++i) {
         auto &slider = IREntity::getComponent<C_WidgetSlider>(g_recipeSliders[i]);
         const bool used =
             valid &&
-            i < static_cast<int>(recipes[static_cast<std::size_t>(recipeIndex)].params_.size());
+            first + i <
+                static_cast<int>(recipes[static_cast<std::size_t>(g_slidersRecipe)].params_.size());
         if (used) {
             const RecipeParam &param =
-                recipes[static_cast<std::size_t>(recipeIndex)].params_[static_cast<std::size_t>(i)];
+                recipes[static_cast<std::size_t>(g_slidersRecipe)]
+                    .params_[static_cast<std::size_t>(first + i)];
             slider.label_ = param.name_;
             slider.minValue_ = param.min_;
             slider.maxValue_ = param.max_;
-            slider.currentValue_ = param.default_;
+            slider.currentValue_ = g_recipeParamValues[static_cast<std::size_t>(first + i)];
         } else {
             slider.label_.clear();
             slider.minValue_ = 0.0f;
@@ -2413,6 +2430,47 @@ void configureRecipeSliders(int recipeIndex) {
         }
         IRPrefab::Widget::setDisabled(g_recipeSliders[i], !used);
     }
+}
+
+void syncVisibleRecipeSliderValues() {
+    if (g_slidersRecipe < 0)
+        return;
+    const int first = g_recipeParamPage * kRecipeParamRowsPerPage;
+    for (int i = 0;
+         i < kRecipeParamRowsPerPage &&
+         first + i < static_cast<int>(g_recipeParamValues.size());
+         ++i) {
+        g_recipeParamValues[static_cast<std::size_t>(first + i)] =
+            IRPrefab::Widget::sliderValue(g_recipeSliders[i]);
+    }
+}
+
+// Points the parameter sliders at recipe @p recipeIndex and seeds its complete
+// value vector from the recipe defaults. -1 disables all rows.
+void configureRecipeSliders(int recipeIndex) {
+    destroyRecipePager();
+    g_slidersRecipe = recipeIndex;
+    g_recipeParamPage = 0;
+    g_recipeParamValues.clear();
+    const std::vector<ModuleRecipe> &recipes = g_moduleHost.recipes();
+    if (recipeIndex >= 0 && recipeIndex < static_cast<int>(recipes.size())) {
+        const ModuleRecipe &recipe = recipes[static_cast<std::size_t>(recipeIndex)];
+        for (const RecipeParam &param : recipe.params_)
+            g_recipeParamValues.push_back(param.default_);
+        const int pageCount = recipeParamPageCount(static_cast<int>(recipe.params_.size()));
+        if (pageCount > 1) {
+            g_recipePagePrevBtn =
+                IRPrefab::Widget::makeButton(kRecipePagePrevPos, kRecipePageButtonSize, "<");
+            g_recipePageNextBtn =
+                IRPrefab::Widget::makeButton(kRecipePageNextPos, kRecipePageButtonSize, ">");
+            g_recipePageLabel = IRPrefab::Widget::makeLabel(
+                kRecipePageLabelPos,
+                "1/" + std::to_string(pageCount)
+            );
+            IRPrefab::Widget::setDisabled(g_recipePagePrevBtn, true);
+        }
+    }
+    bindRecipeSliders();
 }
 
 // The registered recipe @p binding names, with its index, or null.
@@ -2444,10 +2502,8 @@ void syncRecipeSliders(const PartRecipeBinding &binding, RecipeSliderSync sync) 
     IRPrefab::Widget::setListSelectedIndex(g_recipeList, recipe);
     if (g_slidersRecipe != recipe)
         configureRecipeSliders(recipe);
-    const std::size_t count =
-        IRMath::min(binding.values_.size(), static_cast<std::size_t>(kMaxRecipeParams));
-    for (std::size_t i = 0; i < count; ++i)
-        IRPrefab::Widget::setSliderValue(g_recipeSliders[i], binding.values_[i]);
+    g_recipeParamValues = binding.values_;
+    bindRecipeSliders();
 }
 
 // Sets the binding of the part whose id is @p partId, if it still exists, and
@@ -2833,15 +2889,11 @@ void applyRecipe(int recipeIndex) {
     if (g_sceneVoxelSetEntity == IREntity::kNullEntity)
         return;
     const ModuleRecipe &recipe = g_moduleHost.recipes()[static_cast<std::size_t>(recipeIndex)];
-    std::vector<float> values;
-    values.reserve(recipe.params_.size());
+    syncVisibleRecipeSliderValues();
+    std::vector<float> values = g_recipeParamValues;
     for (std::size_t i = 0; i < recipe.params_.size(); ++i) {
-        const float value = IRPrefab::Widget::sliderValue(g_recipeSliders[i]);
-        values.push_back(
-            recipe.params_[i].type_ == RecipeParamType::INT
-                ? static_cast<float>(IRMath::roundHalfUp(value))
-                : value
-        );
+        if (recipe.params_[i].type_ == RecipeParamType::INT)
+            values[i] = static_cast<float>(IRMath::roundHalfUp(values[i]));
     }
     auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
     EditorPart *part = g_entitySceneMode ? g_entityScene.selectedPart() : nullptr;
@@ -3008,6 +3060,27 @@ void updateRecipesPanel() {
     const int selected = IRPrefab::Widget::listSelectedIndex(g_recipeList);
     if (selected != g_slidersRecipe)
         configureRecipeSliders(selected);
+    if (g_recipePageNextBtn != IREntity::kNullEntity) {
+        syncVisibleRecipeSliderValues();
+        const int pageCount = recipeParamPageCount(static_cast<int>(g_recipeParamValues.size()));
+        const int page = IRMath::clamp(
+            g_recipeParamPage +
+                (IRPrefab::Widget::wasClicked(g_recipePageNextBtn) ? 1 : 0) -
+                (IRPrefab::Widget::wasClicked(g_recipePagePrevBtn) ? 1 : 0),
+            0,
+            pageCount - 1
+        );
+        if (page != g_recipeParamPage) {
+            g_recipeParamPage = page;
+            bindRecipeSliders();
+            IRPrefab::Widget::setLabelText(
+                g_recipePageLabel,
+                std::to_string(page + 1) + "/" + std::to_string(pageCount)
+            );
+            IRPrefab::Widget::setDisabled(g_recipePagePrevBtn, page == 0);
+            IRPrefab::Widget::setDisabled(g_recipePageNextBtn, page == pageCount - 1);
+        }
+    }
     if (selected >= 0 && IRPrefab::Widget::wasClicked(g_recipeApplyBtn))
         applyRecipe(selected);
 }
@@ -3380,7 +3453,7 @@ bool initModuleUi() {
         initialRecipe,
         kRecipeListItemHeight
     );
-    for (int i = 0; i < kMaxRecipeParams; ++i) {
+    for (int i = 0; i < kRecipeParamRowsPerPage; ++i) {
         const SliderGeometry geom = recipeParamSliderGeometry(i);
         g_recipeSliders[i] =
             IRPrefab::Widget::makeSlider(geom.pos_, geom.size_, "", 0.0f, 1.0f, 0.0f);
@@ -4249,6 +4322,13 @@ bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     });
     actual = "labels=" + std::to_string(labels) + " texts=[" + texts + "]";
     return found;
+}
+
+bool evaluateRecipePagerCheck(const void *context, std::string &actual) {
+    const RecipePagerCheck &check = *static_cast<const RecipePagerCheck *>(context);
+    const bool present = g_recipePageNextBtn != IREntity::kNullEntity;
+    actual = std::string("recipe pager ") + (present ? "present" : "absent");
+    return present == check.present_;
 }
 
 // Reads the component's field straight from the target's live entity row, so
