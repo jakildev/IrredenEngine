@@ -152,10 +152,15 @@ rm -f "$IR_BREACH_STARTED" "$IR_BREACH_RELEASE"
 "$IR_RUN" --build-dir "$FAKE_BUILD" breach-hold --auto-profile 5 \
     >"$FAKE_BUILD/breach.log" 2>&1 &
 breach_pid=$!
-for _attempt in $(seq 1 100); do
-    [[ -f "$IR_BREACH_STARTED" ]] && break
+# The lease must land after the run is admitted, or ir-acquire refuses it
+# (exit 75) instead of reporting a breach. Native Windows takes seconds to
+# get through ir-acquire to the exe, so the wait is a deadline, not a count.
+breach_deadline=$((SECONDS + 60))
+until [[ -f "$IR_BREACH_STARTED" ]] || (( SECONDS >= breach_deadline )); do
     sleep .02
 done
+assert_eq "$([[ -f "$IR_BREACH_STARTED" ]] && echo started)" "started" \
+    "breach-hold is running before the late lease"
 sleep 30 &
 HOLDER_PID=$!
 "$IR_ACQUIRE" --quiet-lease late-session create "$HOLDER_PID"
