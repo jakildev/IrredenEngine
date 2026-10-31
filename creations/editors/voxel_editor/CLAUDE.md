@@ -36,8 +36,8 @@ Design log, findings and the authoring-session history:
   after a dimmed / transform-mode idle pair on the same gizmo texels.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
-  `test/module` registers `test_parts`, `test_recipe_attach`, `test_radius`,
-  `test_list_scroll`, `test_single`, and the deliberately failing
+  `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
+  `test_radius`, `test_list_scroll`, `test_single`, and the deliberately failing
   `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
@@ -164,6 +164,7 @@ render, because the aim and the pick share one screen mapping.
   panel coordinates. `applyRecipe` accepts only INT params with whole targets
   and at least four slider trixels per unit; other recipes keep using the raw
   GUI gestures without occupancy-model updates.
+- Recipe-bound parts use `paintClass(cell, class)` and `expectPartCellClass(part, cell, class | nil, name)` for persistent class masks.
 - Each of those names its list row. The Builder wheels a row below the
   RECIPES or COMPONENTS view into it with the live list's least movement, and
   shadows both lists' scroll offsets with `C_WidgetList`'s own clamp;
@@ -182,8 +183,7 @@ render, because the aim and the pick share one screen mapping.
   against the live scene size and origin. Its session handle is valid only
   during that function call; retaining it for a later panel callback is an
   error.
-- A recipe is a pure function of `(values, size)`. APPLY writes its cells
-  through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
+- A recipe is a pure function of `(values, size, mask)`. APPLY writes its cells through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
 - A module may call `IRSystem.registerSystem`, but the editor places no module
   system in a pipeline yet.
 - COMPONENTS attaches a module component (fields edited by type, listed by

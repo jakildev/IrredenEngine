@@ -8,6 +8,7 @@
 #include "recipes_panel.hpp"
 #include "lua_session_bindings.hpp"
 #include "module_session_view.hpp"
+#include "palette.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -21,12 +22,14 @@
 // the editor's world owns. A module registers components
 // (`IRComponent.register`), recipes and panels through the `IREditor` table:
 //
-//   IREditor.registerRecipe(name, params, fn)
+//   IREditor.registerRecipe(name, params, fn, options?)
 //     params: list of { name, type = IREditor.ParamType.INT | FLOAT,
 //                       default, min, max }
-//     fn(values, size) -> { {x, y, z, color?}, ... }
+//     options.classes: up to 16 unique class names, mapped to palette slots
+//     fn(values, size, mask) -> { {x, y, z, color?}, ... }
 //       values: param name -> value (INT params arrive as integers)
 //       size:   { x, y, z } of the target voxel set
+//       mask:   list of {x, y, z, class}; mask.at(x, y, z) returns class or nil
 //       cells are set-local; color is a Color or {r, g, b, a?}, and a cell
 //       without one takes the active palette colour.
 //   IREditor.registerPanel(name, buildFn)
@@ -68,10 +71,12 @@ class ModuleHost {
 #undef IR_BIND_RECIPE_PARAM_TYPE
         editor["ParamType"] = paramType;
 
-        editor["registerRecipe"] =
-            [this](const std::string &name, sol::table params, sol::protected_function fn) {
-                registerRecipe(name, params, std::move(fn));
-            };
+        editor["registerRecipe"] = [this](
+                                       const std::string &name,
+                                       sol::table params,
+                                       sol::protected_function fn,
+                                       sol::optional<sol::table> options
+                                   ) { registerRecipe(name, params, std::move(fn), options); };
         editor["registerPanel"] = [this](const std::string &name, sol::protected_function build) {
             registerPanel(name, std::move(build));
         };
@@ -121,6 +126,7 @@ class ModuleHost {
         std::size_t recipeIndex,
         const std::vector<float> &values,
         IRMath::ivec3 setSize,
+        const std::vector<RecipeClassMaskEntry> &mask,
         std::vector<RecipeCell> &out,
         std::string &error
     ) const {
@@ -137,9 +143,31 @@ class ModuleHost {
         }
         sol::table sizeTable =
             lua.create_table_with("x", setSize.x, "y", setSize.y, "z", setSize.z);
+        sol::table maskTable = lua.create_table();
+        for (std::size_t i = 0; i < mask.size(); ++i) {
+            const RecipeClassMaskEntry &entry = mask[i];
+            maskTable[static_cast<lua_Integer>(i + 1)] = lua.create_table_with(
+                1,
+                entry.local_.x,
+                2,
+                entry.local_.y,
+                3,
+                entry.local_.z,
+                4,
+                entry.className_
+            );
+        }
+        maskTable.set_function("at", [&mask](int x, int y, int z) -> sol::optional<std::string> {
+            const auto found = std::find_if(mask.begin(), mask.end(), [&](const auto &entry) {
+                return entry.local_ == IRMath::ivec3(x, y, z);
+            });
+            if (found == mask.end())
+                return sol::nullopt;
+            return found->className_;
+        });
         const sol::protected_function fn =
             lua["IREditor"]["_recipeFns"][static_cast<lua_Integer>(recipeIndex + 1)];
-        sol::protected_function_result result = fn(valueTable, sizeTable);
+        sol::protected_function_result result = fn(valueTable, sizeTable, maskTable);
         if (!result.valid()) {
             const sol::error err = result;
             error = "recipe '" + recipe.name_ + "' raised: " + err.what();
@@ -275,14 +303,20 @@ class ModuleHost {
                              std::size_t recipe,
                              const std::vector<float> &values,
                              IRMath::ivec3 size,
+                             const std::vector<RecipeClassMaskEntry> &mask,
                              std::vector<RecipeCell> &cells,
                              std::string &error
-                         ) { return evaluate(recipe, values, size, cells, error); };
+                         ) { return evaluate(recipe, values, size, mask, cells, error); };
         return view;
     }
 
   private:
-    void registerRecipe(const std::string &name, sol::table params, sol::protected_function fn) {
+    void registerRecipe(
+        const std::string &name,
+        sol::table params,
+        sol::protected_function fn,
+        const sol::optional<sol::table> &options
+    ) {
         for (const ModuleRecipe &existing : m_recipes) {
             if (existing.name_ == name)
                 throw sol::error{"IREditor.registerRecipe: '" + name + "' is already registered"};
@@ -300,6 +334,44 @@ class ModuleHost {
         }
         for (std::size_t i = 1; i <= count; ++i)
             recipe.params_.push_back(parseParam(name, params[i]));
+        if (options) {
+            for (const auto &entry : *options) {
+                const sol::optional<std::string> key = entry.first.as<sol::optional<std::string>>();
+                if (!key || *key != "classes")
+                    throw sol::error{
+                        "IREditor.registerRecipe('" + name + "'): unknown option '" +
+                        (key ? *key : std::string("<non-string>")) + "'"
+                    };
+            }
+            const sol::object classesObject = (*options)["classes"];
+            if (classesObject.valid() && classesObject.get_type() != sol::type::lua_nil) {
+                if (classesObject.get_type() != sol::type::table)
+                    throw sol::error{
+                        "IREditor.registerRecipe('" + name + "'): classes must be a list"
+                    };
+                const sol::table classes = classesObject.as<sol::table>();
+                if (classes.size() > static_cast<std::size_t>(kPaletteCount))
+                    throw sol::error{
+                        "IREditor.registerRecipe('" + name + "'): at most " +
+                        std::to_string(kPaletteCount) + " classes"
+                    };
+                for (std::size_t i = 1; i <= classes.size(); ++i) {
+                    const sol::optional<std::string> className = classes[i];
+                    if (!className || !LuaSession::validName(*className))
+                        throw sol::error{
+                            "IREditor.registerRecipe('" + name +
+                            "'): class names must match [a-z][a-z0-9_]*"
+                        };
+                    if (std::find(recipe.classes_.begin(), recipe.classes_.end(), *className) !=
+                        recipe.classes_.end())
+                        throw sol::error{
+                            "IREditor.registerRecipe('" + name + "'): duplicate class '" +
+                            *className + "'"
+                        };
+                    recipe.classes_.push_back(*className);
+                }
+            }
+        }
         m_recipes.push_back(std::move(recipe));
         sol::table fns = m_script->lua()["IREditor"]["_recipeFns"];
         fns[static_cast<lua_Integer>(m_recipes.size())] = std::move(fn);

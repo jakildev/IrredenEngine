@@ -43,15 +43,22 @@ IREditor.registerRecipe(
     {
         { name = "height", type = IREditor.ParamType.INT, default = 5, min = 1, max = 8 },
     },
-    function(values, size)
+    function(values, size, mask)
         local cx = math.floor(size.x / 2)
         local cy = math.floor(size.y / 2)
         local cells = {}
         for i = 1, values.height do
-            cells[#cells + 1] = { cx, cy, size.z - 1 - i, { r = 220, g = 140, b = 60 } }
+            local z = size.z - 1 - i
+            local class = mask.at(cx, cy, z)
+            if class ~= "hole" then
+                local color = class == "glow" and { r = 80, g = 220, b = 240 }
+                    or { r = 220, g = 140, b = 60 }
+                cells[#cells + 1] = { cx, cy, z, color }
+            end
         end
         return cells
-    end
+    end,
+    { classes = { "glow", "hole" } }
 )
 
 -- A one-cell-thick square frame on the set's centre layer, around its centre
@@ -186,6 +193,73 @@ IREditor.registerSession("test_recipe_attach", function(session)
     session:expectComponentValue(0, "TestModuleTag", "weight", 7, true, "field_survives_reload")
     session:expectComponentValue(
         0, "TestModuleTag", "weight", 1, false, "field_is_not_default_after_reload")
+end)
+
+IREditor.registerSession("test_class_paint", function(session)
+    local size = session:sceneSize()
+    local x = math.floor(size.x / 2)
+    local y = math.floor(size.y / 2)
+    local first = { x, y, size.z - 2 }
+    local second = { x, y, size.z - 3 }
+    local height_five = { x, y, size.z - 6 }
+    local height_seven = { x, y, size.z - 8 }
+
+    session:segment("paint")
+    session:addVoxelPart()
+    session:applyRecipe("test_column", { height = 3 })
+    session:paintClass(first, "hole")
+    session:paintClass(second, "hole")
+    session:expectPartCellClass(0, first, "hole", "first_hole_recorded")
+    session:expectPartCellClass(0, second, "hole", "second_hole_recorded")
+    session:expectPartOccupancy(0, first, false, "first_hole_empty")
+    session:expectPartOccupancy(0, second, false, "second_hole_empty")
+
+    session:segment("reapply")
+    session:applyRecipe("test_column", { height = 5 })
+    session:expectPartOccupancy(0, first, false, "first_hole_survives_reapply")
+    session:expectPartOccupancy(0, second, false, "second_hole_survives_reapply")
+    session:expectPartOccupancy(0, height_five, true, "part_zero_reapply_reaches_height_five")
+
+    session:segment("array_copy")
+    session:applyRadialArray(2)
+    session:expectPartCellClass(2, first, "hole", "array_copy_inherits_first_hole")
+    session:paintClass(height_five, "hole")
+    session:expectPartCellClass(2, height_five, "hole", "array_copy_records_new_hole")
+    session:expectPartOccupancy(2, height_five, false, "array_copy_new_hole_empty")
+
+    session:segment("control")
+    session:addVoxelPart()
+    session:applyRecipe("test_column", { height = 5 })
+    session:expectPartOccupancy(3, first, true, "unmasked_control_first_filled")
+    session:expectPartOccupancy(3, second, true, "unmasked_control_second_filled")
+
+    session:segment("undo")
+    session:paintClass(first, "hole")
+    session:expectPartOccupancy(3, first, false, "control_hole_empty")
+    session:segment("undo_fire")
+    session:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.Z)
+    session:expectPartOccupancy(3, first, true, "undo_restores_cell")
+    session:expectPartCellClass(3, first, nil, "undo_clears_class")
+
+    session:segment("unclassed")
+    session:addVoxelPart()
+    session:applyRecipe("test_dot", {})
+    local below_center = { x, y, math.floor(size.z / 2) - 1 }
+    session:click(below_center)
+    session:expectPartOccupancy(4, below_center, true, "unclassed_part_paints_normally")
+
+    session:segment("save")
+    session:save()
+    session:segment("clear")
+    session:clearEntityScene()
+    session:segment("reload")
+    session:reload()
+    session:applyRecipe("test_column", { height = 7 })
+    session:expectPartCellClass(0, first, "hole", "first_hole_roundtrips")
+    session:expectPartCellClass(0, second, "hole", "second_hole_roundtrips")
+    session:expectPartOccupancy(0, first, false, "first_hole_empty_after_reload")
+    session:expectPartOccupancy(0, second, false, "second_hole_empty_after_reload")
+    session:expectPartOccupancy(0, height_seven, true, "part_zero_reapply_reaches_height_seven")
 end)
 
 -- Reaches rows below both list views by name alone: the last recipe, the last
