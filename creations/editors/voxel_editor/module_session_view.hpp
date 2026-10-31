@@ -28,9 +28,24 @@ struct RecipeCell {
     std::optional<IRMath::Color> color_;
 };
 
+// A control point a recipe declares: placed by its `at` function, moved by its
+// `drag` function, which may write only the params it names. `params_` indexes
+// the recipe's params_.
+struct RecipeHandle {
+    std::string name_;
+    std::vector<std::size_t> params_;
+};
+
 struct ModuleRecipe {
     std::string name_;
     std::vector<RecipeParam> params_;
+    std::vector<RecipeHandle> handles_;
+};
+
+// The recipe, and its values in declaration order, that last authored a part.
+struct RecipeBinding {
+    std::size_t recipe_ = 0;
+    std::vector<float> values_;
 };
 
 struct ModuleSessionView {
@@ -42,9 +57,32 @@ struct ModuleSessionView {
         std::string &
     )>;
 
+    // (recipe, handle, values, size) -> the handle's set-local point.
+    using HandleAt = std::function<bool(
+        std::size_t,
+        std::size_t,
+        const std::vector<float> &,
+        IRMath::ivec3,
+        IRMath::vec3 &,
+        std::string &
+    )>;
+    // (recipe, handle, values, size, dragged cell) -> values with the handle's
+    // params replaced by its drag result, rounded and clamped to their ranges.
+    using HandleDrag = std::function<bool(
+        std::size_t,
+        std::size_t,
+        const std::vector<float> &,
+        IRMath::ivec3,
+        IRMath::ivec3,
+        std::vector<float> &,
+        std::string &
+    )>;
+
     std::vector<ModuleRecipe> recipes_;
     std::vector<ComponentRecord> components_;
     Evaluate evaluate_;
+    HandleAt handleAt_;
+    HandleDrag handleDrag_;
 };
 
 } // namespace IRVoxelEditor
