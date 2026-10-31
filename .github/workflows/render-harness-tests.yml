@@ -188,5 +188,8 @@ jobs:
       - name: Assert the sun hierarchy contract executed
         run: grep -a -E '^PASS  test_render_sun_hierarchy\.py \([1-9][0-9]* tests\)$' run_all.log
 
+      - name: Assert the sun record capacity contract executed
+        run: grep -a -E '^PASS  test_render_sun_record_capacity\.py \([1-9][0-9]* tests\)$' run_all.log
+
       - name: Assert the source-face early-depth contract executed
         run: grep -a -E '^PASS  test_render_source_face_early_depth\.py \([1-9][0-9]* tests\)$' run_all.log

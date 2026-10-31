@@ -132,6 +132,7 @@ void reset(uint count,uint tileCount,uint cascade=0) {
     sunDepthBuf.spillCounterOffset=kSourceFaceSpillCounterOffset;
     sunDepthBuf.spillCounterReads=0;
     sunDepthBuf.words[kSourceFaceHeaderOffset]=count;
+    sunDepthBuf.words[kSourceFaceCapacityOffset]=kSourceFaceCapacity;
     sunDepthBuf.words[kSourceFaceSpillCounterOffset]=0;
     sunDepthBuf.words[kSourceFaceHierarchyNeededOffset]=0;
     sunDepthBuf.words[kSourceFaceHierarchyReadyOffset]=0;

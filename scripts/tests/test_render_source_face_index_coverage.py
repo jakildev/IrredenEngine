@@ -21,6 +21,7 @@ uint nearDegenerateAccepted=0,negativeAccepted=0,zeroAccepted=0;
 void reset(bool exhausted){
     sunDepthBuf={storage.data(),kSourceFaceBufferWords};
     sunDepthBuf[kSourceFaceHeaderOffset]=exhausted?kSourceFaceCapacity:0;
+    sunDepthBuf[kSourceFaceCapacityOffset]=kSourceFaceCapacity;
     sunDepthBuf[kSourceFaceSpillCounterOffset]=0;
     for(uint tile=0;tile<kSourceFaceTileCount;++tile){
         sunDepthBuf[sourceFaceTileBase(tile)]=0;

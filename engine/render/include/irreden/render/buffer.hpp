@@ -32,6 +32,7 @@ class BufferImpl {
     virtual void bindBase(BufferTarget target, std::uint32_t index) = 0;
     virtual void *mapRange(std::ptrdiff_t offset, std::size_t length, std::uint32_t accessFlags) = 0;
     virtual void unmap() = 0;
+    virtual void resize(std::size_t size) = 0;
 };
 
 class Buffer {
@@ -63,6 +64,11 @@ class Buffer {
     void bindBase(BufferTarget target, std::uint32_t index);
     void *mapRange(std::ptrdiff_t offset, std::size_t length, std::uint32_t accessFlags);
     void unmap();
+    // Replaces the storage with @p size undefined bytes behind the same Buffer.
+    // Queued GPU work keeps the old storage until it completes; consumers that
+    // bind through this object see the new storage on their next bind, and
+    // the caller initializes it before the first dispatch that reads it.
+    void resize(std::size_t size);
 
   private:
     std::unique_ptr<BufferImpl> m_impl;

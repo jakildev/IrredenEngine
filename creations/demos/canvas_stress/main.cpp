@@ -1,4 +1,5 @@
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
@@ -21,6 +22,7 @@
 #include <irreden/render/components/component_canvas_part.hpp>
 #include <irreden/render/components/component_canvas_residency.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/sun_record_pool.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
@@ -455,6 +457,11 @@ static_assert(
 
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
+// Record-pool filler deferred to a render frame, so one running scene crosses
+// the pool's capacity after its sufficient-capacity frames were captured.
+std::function<void()> g_spawnRecordPoolFiller;
+int g_recordPoolFillerFrame = 0;
+int g_recordPoolFillerFramesSeen = 0;
 int g_autoRecordFrames = 0; // 0 = --auto-record not requested
 EntityId g_hoverCanary = IREntity::kNullEntity;
 // First moving overlapping-source caster and its undisplaced spawn point; capture
@@ -2280,6 +2287,22 @@ void registerArgs() {
         "--probe-record-pool-filler-last",
         "Create the record-pool filler after the shadowbox casters instead of before them"
     );
+    args.integer(
+        "--probe-record-pool-filler-frame",
+        "Create the record-pool filler at this render frame instead of at startup (0 off)",
+        0
+    );
+    args.integer(
+        "--sun-record-capacity",
+        "Initial sun face record pool capacity, a power of two (0 keeps the engine default)",
+        0
+    );
+    args.integer(
+        "--sun-record-ceiling",
+        "Largest sun face record pool growth may reach; equal to the capacity freezes it (0 "
+        "default)",
+        0
+    );
     args.numbers("--probe-box-offset", "Shadowbox translation offset <x> <y> <z>", 3);
     args.flag("--probe-analytic-box", "Use an analytic box for shadowbox");
     args.flag(
@@ -3145,7 +3168,37 @@ void initSystems() {
     }
     IRVideo::appendAutoRecordIfRequested(renderPipeline, g_autoRecordFrames);
 
+    g_recordPoolFillerFrame = IREngine::args().getInt("--probe-record-pool-filler-frame");
+    if (g_recordPoolFillerFrame > 0) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "RecordPoolFillerSpawn",
+                [](C_Camera &) {},
+                []() {
+                    if (++g_recordPoolFillerFramesSeen == g_recordPoolFillerFrame &&
+                        g_spawnRecordPoolFiller) {
+                        g_spawnRecordPoolFiller();
+                        IR_LOG_INFO(
+                            "RECORD-POOL-FILLER spawned at frame {}",
+                            g_recordPoolFillerFrame
+                        );
+                    }
+                }
+            )
+        );
+    }
+
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
+
+    // Outside the assert: a release build strips the asserted expression.
+    const bool recordPoolConfigured = IRPrefab::SunShadow::configureRecordPoolFromRequest(
+        IREngine::args().getInt("--sun-record-capacity"),
+        IREngine::args().getInt("--sun-record-ceiling")
+    );
+    IR_ASSERT(
+        recordPoolConfigured,
+        "--sun-record-capacity / --sun-record-ceiling need powers of two up to the dispatch limit"
+    );
 }
 
 void initCommands() {
@@ -3442,7 +3495,8 @@ void initEntities() {
         const int fillerSide =
             IRMath::clamp(IREngine::args().getInt("--probe-record-pool-filler"), 0, 512);
         const bool fillerLast = IREngine::args().getFlag("--probe-record-pool-filler-last");
-        const auto spawnRecordPoolFiller = [&]() {
+        // By value: the deferred spawn outlives this scope.
+        const auto spawnRecordPoolFiller = [=]() {
             const auto offsetValues =
                 IREngine::args().getFloats("--probe-record-pool-filler-offset");
             const vec3 offset = offsetValues.empty()
@@ -3476,7 +3530,9 @@ void initEntities() {
                 offset.z
             );
         };
-        if (fillerSide > 0 && !fillerLast) {
+        if (fillerSide > 0 && g_recordPoolFillerFrame > 0) {
+            g_spawnRecordPoolFiller = spawnRecordPoolFiller;
+        } else if (fillerSide > 0 && !fillerLast) {
             spawnRecordPoolFiller();
         }
         if (IREngine::args().getFlag("--probe-overlapping-source")) {
@@ -3620,7 +3676,7 @@ void initEntities() {
                 canvas
             );
         }
-        if (fillerSide > 0 && fillerLast) {
+        if (fillerSide > 0 && fillerLast && g_recordPoolFillerFrame == 0) {
             spawnRecordPoolFiller();
         }
     }

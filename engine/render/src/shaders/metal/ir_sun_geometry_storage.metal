@@ -12,8 +12,8 @@ inline SourceSunGeometry readSourceSunGeometry(device const uint* sunDepthBuf, u
 }
 
 // Word loads avoid imposing vector alignment on the appended SSBO range.
-inline SourceSunBounds readSourceSunBounds(device const uint* sunDepthBuf, uint node) {
-    const uint offset = kSourceFaceHierarchyOffset + node * kSourceFaceHierarchyNodeWords;
+inline SourceSunBounds readSourceSunBounds(device const uint* sunDepthBuf, uint capacity, uint node) {
+    const uint offset = sourceFaceHierarchyNodeIndex(capacity, node);
     SourceSunBounds bounds;
     for (uint axis = 0u; axis < 4u; ++axis) {
         bounds.low[axis] = as_type<float>(sunDepthBuf[offset + axis]);
