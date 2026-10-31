@@ -867,6 +867,50 @@ TEST_F(LuaEditorSessionBindingsTest, DragRecipeHandleKeepsTheClassMask) {
     EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
 }
 
+TEST_F(LuaEditorSessionBindingsTest, DragRecipeHandleReadsThePlaneOfTheTurnedPart) {
+    const IRMath::ivec3 size(8);
+    const auto turnedCopy = [&](Builder &builder) {
+        builder.addVoxelPart();
+        builder.applyRecipe("matrix_column", {{"height", 4.0f}});
+        builder.applyRadialArray(2, IRVoxelEditor::kArrayDefaultRadius, 90);
+        builder.toggleTransformMode();
+    };
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+
+    // A turned GRID part re-voxelizes its span, so the editor draws no handle.
+    Builder grid("turned_handle", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+    turnedCopy(grid);
+    grid.dragRecipeHandle("tip", IRMath::ivec3(6, 4, 2));
+    const Recipe gridRefused = grid.finish();
+    ASSERT_EQ(gridRefused.errors_.size(), 1u);
+    EXPECT_NE(gridRefused.errors_.front().find("turned GRID part"), std::string::npos)
+        << gridRefused.errors_.front();
+
+    const auto detachedCopy = [&](Builder &builder) {
+        turnedCopy(builder);
+        builder.selectPartMode(IRComponents::RotationMode::DETACHED_REVOXELIZE);
+    };
+
+    // at (4, 4, 4). A quarter turn about Z carries local +X to world +Y, so
+    // (+2, 0, -2) keeps the world coordinate sum and (0, +2, -2) does not,
+    // though both keep the set-local one.
+    Builder turned("turned_handle", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+    detachedCopy(turned);
+    turned.dragRecipeHandle("tip", IRMath::ivec3(6, 4, 2));
+    EXPECT_TRUE(turned.model().occupied(IRMath::ivec3(4, 4, 2)));
+    const Recipe accepted = turned.finish();
+    EXPECT_TRUE(accepted.ok()) << (accepted.errors_.empty() ? "" : accepted.errors_.front());
+
+    Builder offPlane("turned_handle", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+    detachedCopy(offPlane);
+    offPlane.dragRecipeHandle("tip", IRMath::ivec3(4, 6, 2));
+    EXPECT_FALSE(offPlane.model().occupied(IRMath::ivec3(4, 4, 2)));
+    const Recipe refused = offPlane.finish();
+    ASSERT_EQ(refused.errors_.size(), 1u);
+    EXPECT_NE(refused.errors_.front().find("off the plane"), std::string::npos)
+        << refused.errors_.front();
+}
+
 TEST_F(LuaEditorSessionBindingsTest, DragRecipeHandleRejectsEveryUnsupportedRequest) {
     const sol::protected_function_result registered = m_lua.lua().safe_script(R"lua(
         IREditor.registerRecipe("matrix_bad_drag", {
@@ -963,6 +1007,57 @@ TEST_F(LuaEditorSessionBindingsTest, DragRecipeHandleRejectsEveryUnsupportedRequ
         IRMath::ivec3(2, 1, 0),
         "does not bind"
     );
+}
+
+TEST_F(LuaEditorSessionBindingsTest, HandleAtRejectsNonFinitePoints) {
+    const sol::protected_function_result registered = m_lua.lua().safe_script(R"lua(
+        local function handle(name, point)
+            return { name = name, params = { "n" },
+                     at = function(values, size) return point end,
+                     drag = function(values, size, point) return {} end }
+        end
+        IREditor.registerRecipe("matrix_bad_at", {
+            { name = "n", type = IREditor.ParamType.INT, default = 1, min = 0, max = 4 },
+        }, function(values, size) return {} end, {
+            handles = {
+                handle("inf", { math.huge, 1, 1 }),
+                handle("negative_inf", { 1, -math.huge, 1 }),
+                handle("nan", { 1, 1, 0 / 0 }),
+                handle("keyed_nan", { x = 1, y = 0 / 0, z = 1 }),
+            },
+        })
+    )lua");
+    ASSERT_TRUE(registered.valid()) << sol::error(registered).what();
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    const std::size_t recipeIndex = m_host.recipes().size() - 1;
+    const std::vector<std::string> handles{"inf", "negative_inf", "nan", "keyed_nan"};
+    for (std::size_t i = 0; i < handles.size(); ++i) {
+        IRMath::vec3 point(7.0f);
+        std::string error;
+        EXPECT_FALSE(view.handleAt_(recipeIndex, i, {1.0f}, IRMath::ivec3(8), point, error))
+            << handles[i];
+        EXPECT_NE(error.find("finite numbers"), std::string::npos) << error;
+        EXPECT_EQ(point, IRMath::vec3(7.0f)) << handles[i];
+    }
+
+    const IRMath::ivec3 size(8);
+    const auto bound = [&](Builder &builder) {
+        builder.addVoxelPart();
+        builder.applyRecipe("matrix_bad_at", {});
+        builder.toggleTransformMode();
+    };
+    Builder reference("bad_at", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+    bound(reference);
+    for (const std::string &handle : handles) {
+        Builder builder("bad_at", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+        bound(builder);
+        builder.dragRecipeHandle(handle, IRMath::ivec3(1));
+        const Recipe recipe = builder.finish();
+        ASSERT_EQ(recipe.errors_.size(), 1u) << handle;
+        EXPECT_NE(recipe.errors_.front().find("finite numbers"), std::string::npos)
+            << recipe.errors_.front();
+        EXPECT_EQ(eventCount(recipe), eventCount(Builder(reference).finish())) << handle;
+    }
 }
 
 TEST_F(LuaEditorSessionBindingsTest, RegisterRecipeRejectsMalformedHandles) {

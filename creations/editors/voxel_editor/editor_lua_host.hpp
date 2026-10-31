@@ -36,7 +36,9 @@
 //       a part this recipe was APPLYed to while transform mode is on:
 //       name   unique within the recipe
 //       params non-empty list of the recipe's param names the handle writes
-//       at(values, size) -> {x, y, z}: the handle's set-local point
+//       at(values, size) -> {x, y, z}: the handle's set-local point, which
+//         turns and scales with the part; anything but three finite numbers,
+//         or a raise, is logged and the handle is not drawn
 //       drag(values, size, point) -> { <bound param> = number, ... }
 //         point: { x, y, z }, the whole set-local cell the cursor is dragged
 //         to on the screen plane through `at`; values are the ones the drag
@@ -215,7 +217,7 @@ class ModuleHost {
     }
 
     // Calls handle @p handleIndex's `at`. Returns false with @p error set when
-    // it raises or returns something other than three numbers.
+    // it raises or returns something other than three finite numbers.
     bool evaluateHandleAt(
         std::size_t recipeIndex,
         std::size_t handleIndex,
@@ -246,12 +248,13 @@ class ModuleHost {
             const sol::optional<float> x = component("x", 1).as<sol::optional<float>>();
             const sol::optional<float> y = component("y", 2).as<sol::optional<float>>();
             const sol::optional<float> z = component("z", 3).as<sol::optional<float>>();
-            if (x && y && z) {
+            if (x && y && z && IRMath::isFinite(*x) && IRMath::isFinite(*y) &&
+                IRMath::isFinite(*z)) {
                 out = IRMath::vec3(*x, *y, *z);
                 return true;
             }
         }
-        error = where + " at must return {x, y, z} numbers";
+        error = where + " at must return {x, y, z} finite numbers";
         return false;
     }
 

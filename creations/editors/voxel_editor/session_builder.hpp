@@ -112,6 +112,10 @@ inline constexpr float kSessionZoom = 4.0f;
 // lands within a pixel of `at`, an eighth of a cell at the session zoom.
 inline constexpr float kRecipeHandlePressSlack = 0.25f;
 
+// How far a dragRecipeHandle target's world coordinate sum may sit from its
+// `at`'s: float error from turning both with the part.
+inline constexpr float kRecipeHandlePlaneSlack = 1e-3f;
+
 // Keep this above the live candidate count so the command-owned Tab walk proves
 // that editor commands do not hand focus to a widget.
 inline constexpr int kTabWalkPresses = 80;
@@ -188,6 +192,37 @@ class OccupancyModel {
 
     void setOrigin(IRMath::vec3 origin) {
         m_origin = origin;
+    }
+
+    // The turn about the part's pivot (the middle of its box) that a radial
+    // array's COPY YAW gave it, and the render mode selectPartMode chose. Only
+    // recipe-handle drags read them; the edit pick models an unturned part.
+    IRMath::vec4 rotation() const {
+        return m_rotation;
+    }
+
+    void setRotation(IRMath::vec4 rotation) {
+        m_rotation = rotation;
+    }
+
+    void setMode(IRComponents::RotationMode mode) {
+        m_mode = mode;
+    }
+
+    // Whether the editor can rewrite this part's cells in place, so draws its
+    // recipe handles: a turned GRID part re-voxelizes its span.
+    bool cellsEditableInPlace() const {
+        return m_mode != IRComponents::RotationMode::GRID ||
+               m_rotation == IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    }
+
+    // Where the editor draws set-local point @p local of an unscaled part:
+    // turned with the part about its pivot.
+    IRMath::vec3 worldPoint(IRMath::vec3 local) const {
+        const IRMath::vec3 pivotToOrigin =
+            IRComponents::anchorOffset(IRComponents::EntityAnchor::CENTER, m_size);
+        return m_origin - pivotToOrigin +
+               IRMath::rotateVectorByQuat(pivotToOrigin + local, m_rotation);
     }
 
     bool sameOccupancy(const OccupancyModel &other) const {
@@ -326,6 +361,8 @@ class OccupancyModel {
 
     IRMath::ivec3 m_size;
     IRMath::vec3 m_origin;
+    IRMath::vec4 m_rotation = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    IRComponents::RotationMode m_mode = IRComponents::RotationMode::GRID;
     std::vector<bool> m_occupied;
 };
 
@@ -1412,15 +1449,17 @@ class Builder {
 
     // Drag the selected part's recipe handle @p handle to set-local cell
     // @p target: press on the handle's `at` point, move to @p target, release.
-    // The target must lie on the screen plane through `at` (the same
-    // coordinate sum), which is the plane the editor reads the drag on. The
+    // The target must lie on the screen plane through `at` (the same world
+    // coordinate sum once both turn with the part, which on an unturned part
+    // is the same set-local sum), the plane the editor reads the drag on. The
     // model takes the handle's `drag` result at the press cell and then at
     // @p target, replacing the recipe's cells as the editor does, and the
     // RECIPES scroll shadow follows the list's re-pointing. A recipe error,
     // with nothing emitted: outside transform mode, with the camera turned in
-    // this segment, with no binding on the selected part (or one an undo,
-    // redo, clear or reload may have changed), an unknown handle, or `at` /
-    // `drag` raising.
+    // this segment, on a turned GRID part (the model knows a turn from an
+    // array's COPY YAW and a mode from selectPartMode), with no binding on
+    // the selected part (or one an undo, redo, clear or reload may have
+    // changed), an unknown handle, or `at` / `drag` raising.
     // A handle press lands on whatever owns the pixel under `at`: start from
     // a handle the part's gizmo leaves uncovered.
     void dragRecipeHandle(const std::string &handle, IRMath::ivec3 target) {
@@ -1443,6 +1482,10 @@ class Builder {
         }
         if (m_activePart < 0) {
             recordError(op + " needs an entity-scene part");
+            return;
+        }
+        if (!m_model.cellsEditableInPlace()) {
+            recordError(op + " on a turned GRID part, which draws no recipe handle");
             return;
         }
         PartBinding &shadow = m_partBindings[static_cast<std::size_t>(m_activePart)];
@@ -1492,10 +1535,14 @@ class Builder {
             recordError(op + ": " + error);
             return;
         }
-        if (at.x + at.y + at.z != static_cast<float>(target.x + target.y + target.z)) {
+        const IRMath::vec3 worldAt = m_model.worldPoint(at);
+        const IRMath::vec3 worldTarget = m_model.worldPoint(IRMath::vec3(target));
+        if (IRMath::abs(
+                worldAt.x + worldAt.y + worldAt.z - (worldTarget.x + worldTarget.y + worldTarget.z)
+            ) > kRecipeHandlePlaneSlack) {
             recordError(
-                op + ": the target's coordinate sum differs from at's, so it is off the plane "
-                     "the drag is read on"
+                op + ": the target's world coordinate sum differs from at's, so it is off the "
+                     "plane the drag is read on"
             );
             return;
         }
@@ -1528,9 +1575,9 @@ class Builder {
             }
             values = std::move(dragged);
         }
-        emitMove(m_model.origin() + at);
+        emitMove(worldAt);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
-        emitMove(m_model.origin() + IRMath::vec3(target));
+        emitMove(worldTarget);
         // One idle frame so the drag reads the moved cursor before the release.
         m_frame += kFramesPerClickStep;
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
@@ -1896,6 +1943,7 @@ class Builder {
         clickGui(IRVoxelEditor::partModeDropdownHeaderCenterGuiTrixel());
         m_frame += kFramesPerClickStep;
         clickGui(IRVoxelEditor::partModeDropdownRowCenterGuiTrixel(mode));
+        m_model.setMode(mode);
     }
 
     // Assert the live editable set's occupancy at `local` when this segment
@@ -2011,11 +2059,13 @@ class Builder {
         const auto offsets = IRPrefab::Arrays::radial(
             count,
             IRMath::vec3(0.0f, 0.0f, 1.0f),
-            static_cast<float>(radius)
+            static_cast<float>(radius),
+            static_cast<float>(copyYawDegrees) * IRMath::kPi / 180.0f
         );
         for (const auto &offset : offsets) {
             OccupancyModel copy = source;
             copy.setOrigin(source.origin() + offset.translation_);
+            copy.setRotation(IRMath::quatMul(offset.rotation_, source.rotation()));
             m_partModels.push_back(std::move(copy));
             m_partBindings.push_back(m_partBindings[static_cast<std::size_t>(m_activePart)]);
         }

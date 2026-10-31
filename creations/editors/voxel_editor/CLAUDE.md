@@ -37,8 +37,8 @@ Design log, findings and the authoring-session history:
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
-  `test_recipe_handle`, `test_radius`, `test_list_scroll`, `test_single`, and
-  the deliberately failing `test_unreachable` fixture.
+  `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`,
+  `test_list_scroll`, `test_single`, and the failing `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `--module test/module --module-session test_bake_radius_guard` must exit 1
@@ -159,11 +159,11 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   shadows both lists' scroll offsets with `C_WidgetList`'s own clamp;
   `wheelGui` over either list moves its shadow too.
 - `dragRecipeHandle(handle, target)` drags the selected part's recipe handle
-  to a set-local cell with `at`'s coordinate sum (the screen plane the drag is
-  read on), in transform mode at the baseline yaw, and models the re-apply.
-  After an undo, redo, clear or reload it and `paintClass` need a fresh APPLY.
-  `expectRecipeValue`, `expectPartMatchesRecipe` and `expectRecipeHandleTexels`
-  read the live binding and handle; the gizmo-handle census skips recipe handles.
+  to a set-local cell whose world coordinate sum is `at`'s (the drag's screen
+  plane) at the baseline yaw, in transform mode and never on a turned GRID part,
+  and models the re-apply. After an undo, redo, clear or reload it and `paintClass`
+  need a fresh APPLY. `expectRecipeValue`, `expectPartMatchesRecipe` and
+  `expectRecipeHandleTexels` read the live binding; the gizmo census skips handles.
 
 ## Creation modules (`--module <dir>`)
 
@@ -181,9 +181,9 @@ readback on every editable texel; an aim and a pick share one screen mapping.
 - A recipe is a pure function of `(values, size, mask)`. APPLY writes its cells
   as one undo record and binds the part to it (`EditorPart::recipeBinding_`).
 - `opts.handles` (header contract): in transform mode the bound part's handles
-  draw in front of its content and behind its gizmo. Each drag frame replaces
-  the cells of the old values with those of the new; release commits one undo
-  record that also restores the binding (and the sliders showing it).
+  draw in front of its content and behind its gizmo, turned with it (none on a
+  turned GRID part). A drag frame replaces the old values' cells with the new;
+  release commits one undo record restoring the binding and its sliders.
 - A module may call `IRSystem.registerSystem`, but the editor places no module
   system in a pipeline yet.
 - COMPONENTS attaches a module component (fields edited by type, listed by

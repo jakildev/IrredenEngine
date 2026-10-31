@@ -1825,6 +1825,34 @@ ivec3 voxelSetCellOrigin(const C_VoxelSetNew &set, const C_WorldTransform &world
     return IRMath::roundVec3HalfUp(worldTransform.translation_ + voxelSetLocalOrigin(set));
 }
 
+// World point of set-local point @p local under the part's whole world
+// transform: the point REBUILD_GRID_VOXELS carries cell @p local to, scaled
+// and turned about the translation. At identity it is the cell origin plus
+// @p local.
+vec3 voxelSetLocalToWorld(
+    const C_VoxelSetNew &set, const C_WorldTransform &worldTransform, vec3 local
+) {
+    const vec3 fromPivot =
+        vec3(voxelSetCellOrigin(set, worldTransform)) - worldTransform.translation_ + local;
+    return worldTransform.translation_ +
+           IRMath::rotateVectorByQuat(worldTransform.scale_ * fromPivot, worldTransform.rotation_);
+}
+
+// Inverse of voxelSetLocalToWorld; none for a set scaled to zero on an axis.
+std::optional<vec3>
+voxelSetWorldToLocal(const C_VoxelSetNew &set, const C_WorldTransform &worldTransform, vec3 world) {
+    const vec3 scale = worldTransform.scale_;
+    if (scale.x == 0.0f || scale.y == 0.0f || scale.z == 0.0f)
+        return std::nullopt;
+    const vec3 fromPivot = IRMath::rotateVectorByQuat(
+                               world - worldTransform.translation_,
+                               IRMath::quatInverse(worldTransform.rotation_)
+                           ) /
+                           scale;
+    return fromPivot -
+           (vec3(voxelSetCellOrigin(set, worldTransform)) - worldTransform.translation_);
+}
+
 // Computes the local index inside `set` for a world voxel position.
 // Returns true and writes `outLocal`/`outFlat` if the target lies in
 // the set's bounds; false otherwise.
@@ -2605,14 +2633,33 @@ IREntity::EntityId spawnRecipeHandle(int index) {
     return handle;
 }
 
+// True when @p part's set holds its authored cells, so a re-apply can rewrite
+// them in place. A GRID part re-voxelizes its span under any turn or scale;
+// the DETACHED modes turn the part's canvas instead.
+bool partCellsEditableInPlace(const EditorPart &part) {
+    return part.mode_ != RotationMode::GRID ||
+           IRPrefab::GridRotation::isIdentityTransform(
+               IREntity::getComponent<C_WorldTransform>(part.entity_)
+           );
+}
+
+// The recipe whose handles the selected part shows, with its index, or null:
+// in transform mode, on a recipe-bound voxel part whose cells a drag can
+// rewrite in place.
+const ModuleRecipe *shownHandleRecipe(const EditorPart *&part, std::size_t &recipeIndex) {
+    part = g_entitySceneMode ? g_entityScene.selectedPart() : nullptr;
+    if (!g_transformMode || part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET ||
+        !partCellsEditableInPlace(*part))
+        return nullptr;
+    const ModuleRecipe *recipe = boundRecipe(*part, recipeIndex);
+    return recipe != nullptr && !recipe->handles_.empty() ? recipe : nullptr;
+}
+
 void refreshRecipeHandles() {
-    const EditorPart *part = g_entitySceneMode ? g_entityScene.selectedPart() : nullptr;
+    const EditorPart *part = nullptr;
     std::size_t recipeIndex = 0;
-    const ModuleRecipe *bound =
-        g_transformMode && part != nullptr && part->kind_ == EditorPartKind::VOXEL_SET
-            ? boundRecipe(*part, recipeIndex)
-            : nullptr;
-    if (bound == nullptr || bound->handles_.empty()) {
+    const ModuleRecipe *bound = shownHandleRecipe(part, recipeIndex);
+    if (bound == nullptr) {
         destroyRecipeHandles();
         return;
     }
@@ -2663,7 +2710,6 @@ void placeRecipeHandles() {
         return;
     const auto &set = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
     const auto &world = IREntity::getComponent<C_WorldTransform>(part->entity_);
-    const vec3 cellOrigin = vec3(voxelSetCellOrigin(set, world));
     const float partClearance = g_entityScene.partViewClearance(*part);
     const float zoom = IRMath::max(IRRender::getCameraZoom().x, 1e-3f);
     const float step = IRMath::sqrt(3.0f);
@@ -2672,7 +2718,7 @@ void placeRecipeHandles() {
         const IREntity::EntityId entity = g_recipeHandles.entities_[i];
         if (entity == IREntity::kNullEntity)
             continue;
-        const vec3 point = cellOrigin + g_recipeHandles.points_[i];
+        const vec3 point = voxelSetLocalToWorld(set, world, g_recipeHandles.points_[i]);
         const float reach = IRMath::length(point - world.translation_);
         IREntity::getComponent<C_LocalTransform>(entity).translation_ = point;
         auto &handle = IREntity::getComponent<C_GizmoHandle>(entity);
@@ -2690,9 +2736,11 @@ void beginRecipeHandleDrag(int handle) {
         return;
     RecipeHandleState &state = g_recipeHandles;
     const auto &set = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
-    const vec3 point =
-        vec3(voxelSetCellOrigin(set, IREntity::getComponent<C_WorldTransform>(part->entity_))) +
-        state.points_[static_cast<std::size_t>(handle)];
+    const vec3 point = voxelSetLocalToWorld(
+        set,
+        IREntity::getComponent<C_WorldTransform>(part->entity_),
+        state.points_[static_cast<std::size_t>(handle)]
+    );
     const vec3 canvasPoint = IRMath::rotateCardinalZ(
         point,
         IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw())
@@ -2703,9 +2751,10 @@ void beginRecipeHandleDrag(int handle) {
     state.dragPlaneDepth_ = canvasPoint.x + canvasPoint.y + canvasPoint.z;
 }
 
-// One drag frame: the cursor's point on the press plane, snapped to the cell
-// lattice, goes to the handle's `drag` with the values the drag started from;
-// a change of the clamped result re-applies the recipe and moves the sliders.
+// One drag frame: the cursor's point on the press plane, taken into the
+// part's set frame and snapped to the cell lattice, goes to the handle's
+// `drag` with the values the drag started from; a change of the clamped
+// result re-applies the recipe and moves the sliders.
 void applyRecipeHandleDrag() {
     RecipeHandleState &state = g_recipeHandles;
     EditorPart *part = g_entityScene.findPart(state.dragPartId_);
@@ -2716,10 +2765,14 @@ void applyRecipeHandleDrag() {
         return;
     PartRecipeBinding binding = *part->recipeBinding_;
     const auto &set = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
-    const vec3 cellOrigin =
-        vec3(voxelSetCellOrigin(set, IREntity::getComponent<C_WorldTransform>(part->entity_)));
-    state.dragRawPoint_ =
-        IRRender::mouseWorldPos3DAtIsoDepthExact(state.dragPlaneDepth_) - cellOrigin;
+    const std::optional<vec3> local = voxelSetWorldToLocal(
+        set,
+        IREntity::getComponent<C_WorldTransform>(part->entity_),
+        IRRender::mouseWorldPos3DAtIsoDepthExact(state.dragPlaneDepth_)
+    );
+    if (!local)
+        return;
+    state.dragRawPoint_ = *local;
     std::vector<float> values;
     std::string error;
     if (!g_moduleHost.evaluateHandleDrag(
@@ -2744,6 +2797,13 @@ void applyRecipeHandleDrag() {
 // transform mode starts a drag, which lasts while the button is held.
 void updateRecipeHandleDrag() {
     RecipeHandleState &state = g_recipeHandles;
+    // A turn, a scale or a mode switch can start or stop the selected part's
+    // handles with no selection or binding change to refresh them.
+    const EditorPart *shownPart = nullptr;
+    std::size_t shownRecipe = 0;
+    if ((shownHandleRecipe(shownPart, shownRecipe) != nullptr) !=
+        (state.part_ != IREntity::kNullEntity))
+        refreshRecipeHandles();
     const bool pressed = IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
     const bool down =
         pressed || IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD);
@@ -3823,7 +3883,12 @@ bool evaluatePartRecipeMatchCheck(const void *context, std::string &actual) {
         actual = "recipe evaluation failed";
         return false;
     }
-    std::vector<bool> expected(set.voxels_.size(), false);
+    // A turned GRID part's span holds this frame's re-voxelized cells.
+    const std::span<const C_Voxel> records = set.authoredRecords();
+    std::vector<bool> expected(
+        static_cast<std::size_t>(set.size_.x * set.size_.y * set.size_.z),
+        false
+    );
     for (const RecipeCell &cell : cells)
         expected[static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell.local_, set.size_))] = true;
     int filled = 0;
@@ -3831,7 +3896,7 @@ bool evaluatePartRecipeMatchCheck(const void *context, std::string &actual) {
     IRMath::iterateAABB(ivec3(0), set.size_ - ivec3(1), [&](int x, int y, int z) {
         const std::size_t flat =
             static_cast<std::size_t>(IRMath::index3DtoIndex1D(ivec3(x, y, z), set.size_));
-        const bool occupied = set.voxels_[flat].color_.alpha_ != 0;
+        const bool occupied = flat < records.size() && records[flat].color_.alpha_ != 0;
         filled += occupied ? 1 : 0;
         if (occupied != expected[flat] && !differing)
             differing = ivec3(x, y, z);

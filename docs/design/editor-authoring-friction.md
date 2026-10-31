@@ -1005,3 +1005,14 @@ measurements on macOS / Metal; none of them is a proposal.
   tip at height 8 and dragged it toward height 6 moved the part 2 cells along
   -x (the gizmo's arrow took the press) and left the height at 8.
   `test_recipe_handle` presses the tip only at heights 1, 3 and 4.
+- **R-4 — a handle turns with its part, and a turned GRID part has none.** A
+  turned or scaled GRID part's span holds that frame's re-voxelized cells, not
+  its authored ones, so a re-apply cannot rewrite them in place; the editor
+  draws its handles only on a GRID part at identity or a part in a DETACHED
+  mode, whose canvas carries the turn. `test_recipe_handle_turned` binds the
+  fixture's `test_arm` and arrays it with a 90 degree COPY YAW. On the turned
+  GRID copy the handle owns 0 texels (a build without that gate draws it on 46).
+  In DETACHED REVOX it owns 46 at the turned point, and the drag to (12, 8, 3)
+  releases at the set-local (11.979, 8.021, 3.042), read through the part's
+  inverse turn. A control build that maps the handle by the part's translation
+  alone leaves the length at 2 and the new end cell empty.
