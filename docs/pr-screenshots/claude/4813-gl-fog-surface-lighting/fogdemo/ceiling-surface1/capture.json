@@ -1,0 +1,32 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "900",
+    "IRFogDemo",
+    "--ceiling-treatment",
+    "--reveal-treatment",
+    "--auto-screenshot",
+    "30"
+  ],
+  "env": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "lock_failed_retries": 0,
+  "routes": [
+    "cardinal=1 perAxis=0 fog=compose fogComposed=1",
+    "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "gl_error_lines": [],
+  "frames": [
+    "screenshot_000001.png",
+    "screenshot_000002.png"
+  ],
+  "sha256": [
+    "dcceee5b3320797756b68cdaaa9a0259b3bf65e91bd94fd33060407e0fe89718",
+    "e6c9841782cd823c0471faa6c463cbced9e7f2a632ef3551c2675ea2526bb594"
+  ],
+  "seconds": 6
+}

@@ -1,0 +1,44 @@
+"""audit.py <poly>: list capture folders that are missing, invalid, or inconsistent with their files."""
+import glob, hashlib, json, sys
+from pathlib import Path
+sys.path.insert(0, r"C:/msys64/tmp/p4813")
+import matrix_defs as d
+out = Path(sys.argv[1])
+bad, good = [], 0
+for variant, _ in d.VARIANTS:
+    for label, camera, yaw in d.PLACEMENTS:
+        if variant != 'default' and not label.startswith('origin'):
+            continue
+        for surface in ('1', '0'):
+            folder = out / variant / f'{label}-fog16-surface{surface}'
+            why = None
+            try:
+                rec = json.loads((folder / 'capture.json').read_text())
+            except (OSError, ValueError):
+                rec = None
+                why = 'no/invalid capture.json'
+            if rec is not None:
+                shots = sorted(glob.glob(str(folder / 'screenshot_*.png')))
+                log = (folder / 'run.log').read_text(encoding='utf-8', errors='replace')
+                routes = [l.split('SURFACE-ROUTE ')[1] for l in log.splitlines() if 'SURFACE-ROUTE' in l]
+                if rec.get('result') != 'CLEAN':
+                    why = f'result {rec.get("result")}'
+                elif len(shots) != 1 or len(rec['frames']) != 1:
+                    why = f'{len(shots)} shots on disk, {len(rec["frames"])} recorded'
+                elif hashlib.sha256(Path(shots[0]).read_bytes()).hexdigest() != rec['sha256'][0]:
+                    why = 'frame hash differs from record'
+                elif not routes or routes != rec['routes']:
+                    why = f'log routes {routes} vs record {rec["routes"]}'
+                elif 'RESULT=CLEAN' not in log:
+                    why = 'log lacks RESULT=CLEAN'
+                elif ('--yaw', yaw) != tuple(rec['command'][rec['command'].index('--yaw'):][:2]):
+                    why = 'yaw mismatch'
+            if why:
+                bad.append((folder, why))
+            else:
+                good += 1
+for folder, why in bad:
+    print('BAD', folder.parent.name + '/' + folder.name, why)
+    if '--requeue' in sys.argv and (folder / 'capture.json').exists():
+        (folder / 'capture.json').unlink()
+print(f'good={good} bad={len(bad)}')
