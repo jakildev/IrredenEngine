@@ -260,15 +260,24 @@ cascade-0 missing pixels outside a 2-pixel band) while both casters keep their
 | Family | Evidence | Outcome |
 |---|---|---|
 | Second retained depth (nearest two distinct quantized depths; the loser of the nearest slot's atomic min lands in the otherwise empty fallback layer; the opt-in `retainSecondPrimaryDepth_` selects the `c_bake_sun_shadow_map_second_depth` compile-time variant, so the production bake carries no switch) | native fixture, two-slot write adapter and receiver controls in both shader dialects | **Rejected.** Zero recovered pixels in every stacked case: a flat raster top already yields three quantized depths per texel (−15, −14.667, −14.333 from the trixel lattice), so the second slot always holds the distant caster's own neighbour. No extra storage, no extra clear, one extra atomic per write and one extra read per tap, measured at +0.40 ms (+12 %) on `bakeSunShadowMap` and +9 % on the raster scene's GPU frame; the default path is byte-identical to the parent in all 165 captures and within noise in timing (bake 1.017×, GPU frame 1.011×). Arbitrary nearest-K inherits the failure with K words per texel. |
-| Depth-slab extrema | `test_render_sun_depth_slab.py`: 3.9 million exhaustive interval queries | Depth-only existence is exact when a slab is no wider than the query window and fails when wider (6,968 counterexamples), but the production predicate rejects extrema that are coplanar splats while an interior direct write blocks, in both dialects. **Proof-rejected** as a representation of the full query; sixteen min/max slabs over the encoded range cost 256 MiB, four frame-adaptive slabs 64 MiB, against the 8 MiB primary layer. |
+| Depth-slab extrema | `test_render_sun_depth_slab.py`: 3.9 million exhaustive interval queries; the native sparse three-slot prototype ([branch evidence](https://github.com/jakildev/IrredenEngine/blob/ece131393858f732df072d2aea6deed72b18eea0/docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md), [guarded current-tree cost](../pr-screenshots/claude/4799-raster-sun-depth-preservation/slab-timing/README.md)) | Dense slabs are proof-rejected: depth-only existence is exact only when a slab is no wider than the query window (6,968 counterexamples when wider), and sixteen min/max slabs over the encoded range cost 256 MiB. The sparse layout keeps three (min, max) slots per texel, each owning one slab one throw (64 units) deep, claimed by compare-swap with a sticky overflow bit; the receiver reads them only when the nearest word is rejected as beyond the throw, and every candidate runs the unchanged per-word predicate. Natively it repairs every beyond-throw stack with at most three distinct slabs per texel to the lower-only control exactly (the parent loses 2,347 cardinal and 2,428 oblique pixels), through reversed creation order, 128 duplicates, re-voxelized casters and receiver, both receiver modes and a seven-shot track across the throw, and leaves the distant-only, in-window, unlit and overflowed scenes byte-identical. Residuals: a fourth distinct slab on a texel sets the overflow bit and keeps the nearest-only hole (the cardinal three- and four-band stacks keep all 2,347 missing pixels, the oblique two-band stack 2,344 of 2,436), and 48 of the 61,750 write sets per dialect in that branch's harness hide an interior write because both extrema of its slab are splats the receiver plane rejects (none with direct or surface words). The sun buffer grows from 30,670,864 to 81,002,512 bytes, 48 MiB cleared every frame. Under `ir-acquire benchmark` on the current tree the two small raster cells run 1.45× and 1.63× frame mean, 1.56× and 1.68× GPU envelope, with `bakeSunShadowMap` about 2×; the default raster scene and both IRPerfGrid zooms stay inside 1.10×. **Measured rejection (over budget)**; the branch ships the layer compiled out (`kSunDepthSlabSlots = 0`). |
 | Finite-index routing | canvas pixel census | **Rejected.** Every visible pixel is a caster: the three-object fixture occupies 31,320 of 463,524 canvas pixels (48 % of the 65,536-record pool), the default scene 34,376, and a covered canvas 7.1 pools. Routing points as faces also contradicts the index's authored-face semantics. |
 
-No bounded candidate meets the adoption gate, so the primary layer keeps one
-nearest depth per texel and the diagnostic stays opt-in. The receiver-relative
-predecessor query cannot be answered from a receiver-independent summary of
-one texel: a receiver needs the nearest write in `(receiver − throw, receiver −
-bias)`, which the nearest or any fixed-K nearest writes do not carry. A
-two-pass bake that anchors a second slot to each texel's farthest write
+No candidate meets the adoption gate, so the primary layer keeps one nearest
+depth per texel and both prototypes stay opt-in: the second retained depth
+behind `retainSecondPrimaryDepth_` here, the slab layer behind
+`kSunDepthSlabSlots` on its branch. A receiver needs the nearest write in
+`(receiver − throw, receiver − bias)`. The nearest or any fixed-K nearest
+writes do not carry it; slab extrema one throw deep do, up to their slot
+capacity and the splat-extrema residual, so the slab family fails on cost, not
+on coverage. That branch's staged ablation splits the raster-route cost
+between the layout and its clear and the writer, whose two covering loads per
+splat write replace one atomic; the receiver's slab lookup measures free.
+Bringing the layer inside the budget is the follow-up's scope: a
+workgroup-cooperative splat that writes each texel's extrema once per 16×16
+canvas tile instead of once per caster pixel, and a generation-stamped slab
+plane or a vectorised clear that retires the per-frame 48 MiB clear. Adoption
+is decided after that measurement, against the same gate. A two-pass bake that anchors a second slot to each texel's farthest write
 (`min{z : z > max − throw}`) would answer the floor receiver exactly at one
 extra 8 MiB layer, a second bake dispatch per producer and three atomics per
 write; it still loses an elevated receiver with two casters more than the
