@@ -32,7 +32,8 @@ void atomic_store_explicit(uint* x,uint v,memory_order_t){*x=v;}
 uint atomic_fetch_min_explicit(uint* x,uint v,memory_order_t){uint o=*x;*x=std::min(o,v);return o;}
 uint atomic_fetch_max_explicit(uint* x,uint v,memory_order_t){uint o=*x;*x=std::max(o,v);return o;}
 uint atomic_fetch_or_explicit(uint* x,uint v,memory_order_t){uint o=*x;*x=o|v;return o;}
-bool atomic_compare_exchange_weak_explicit(uint* x,uint* expected,uint v,memory_order_t,memory_order_t){
+bool atomic_compare_exchange_weak_explicit(uint* x,uint* expected,uint v,
+                                           memory_order_t,memory_order_t){
     if(*x==*expected){*x=v;return true;}*expected=*x;return false;}
 """,
 }
@@ -75,7 +76,8 @@ std::vector<uint> slabWords(uint cascade,int x,int y){
     return out;
 }
 bool overflowed(uint cascade,int x,int y){
-    return (sunDepthBuf.words[sunDepthSlabMaxIndex(texelOf(cascade,x,y),0u)]&kSunDepthSlabOverflow)!=0u;
+    const uint flag=sunDepthBuf.words[sunDepthSlabMaxIndex(texelOf(cascade,x,y),0u)];
+    return (flag&kSunDepthSlabOverflow)!=0u;
 }
 uint distinctSlabs(const std::vector<uint>& writes){
     std::vector<uint> slabs;for(uint w:writes)slabs.push_back((w>>8)/65536u);
@@ -108,11 +110,13 @@ void check(uint cascade,const std::vector<uint>& writes,const Receiver& r){
     do{
         clearOne(cascade,2,3);
         for(uint w:order)WRITE_PRIMARY(texelOf(cascade,2,3),w);
-        require(sunDepthBuf.words[texelOf(cascade,2,3)]==nearest,"nearest word is the minimum write");
+        require(sunDepthBuf.words[texelOf(cascade,2,3)]==nearest,
+                "nearest word is the minimum write");
         require(overflowed(cascade,2,3)==expectOverflow,"overflow bit follows distinct slab count");
         const float got=sample(uv,r.z,cascade,r.surface,r.normal,64);
         auto report=[&](const char* label){
-            std::cerr<<"receiver z="<<r.z<<" surface="<<r.surface<<" normal.x="<<r.normal.x<<" writes:";
+            std::cerr<<"receiver z="<<r.z<<" surface="<<r.surface
+                     <<" normal.x="<<r.normal.x<<" writes:";
             for(uint w:writes)std::cerr<<' '<<depthOf(w)<<"/0x"<<std::hex<<(w&0xffu)<<std::dec;
             std::cerr<<" got "<<got<<" legacy "<<legacy<<" oracle "<<any<<"\n";
             require(false,label);
@@ -120,7 +124,8 @@ void check(uint cascade,const std::vector<uint>& writes,const Receiver& r){
         if(got!=0&&got!=1)report("slab receiver returns a fractional single-tap answer");
         if(legacy&&got!=1)report("slab receiver removed the nearest word's shadow");
         if(got==1&&!any)report("slab receiver added a shadow no write supports");
-        if(!legacy&&(expectOverflow||!beyond)&&got!=0)report("overflow or near nearest must keep the nearest-only answer");
+        if(!legacy&&(expectOverflow||!beyond)&&got!=0)
+            report("overflow or near nearest must keep the nearest-only answer");
         if(!legacy&&!expectOverflow&&beyond&&!splatInWindow&&got!=float(any))
             report("slab receiver disagrees with the per-write oracle");
         if(permutation==0)firstGot=got;
@@ -146,7 +151,12 @@ int main(){
     sunDepthBuf.words.assign(kSourceFaceBufferWords,0xDEADBEEFu);
     sunDepthBuf.recordOffset=kSourceFaceRecordOffset;sunDepthBuf.recordEnd=kSourceFaceSpillCounterOffset;
     sunDepthBuf.spillCounterOffset=kSourceFaceSpillCounterOffset;
+    // The allocator writes the capacity word before the first dispatch; the
+    // production clear preserves it.
+    sunDepthBuf.words[kSourceFaceCapacityOffset]=kSourceFaceCapacity;
     clearEverything();
+    require(sunDepthBuf.words[kSourceFaceCapacityOffset]==kSourceFaceCapacity,
+            "clear preserves the capacity word");
     require(sunDepthBuf.words[kSourceFaceHeaderOffset]==0u,"clear resets the record count");
     for(uint cascade:{0u,1u}){
         require(sunDepthBuf.words[texelOf(cascade,2,3)]==EMPTY,"clear empties the nearest word");
@@ -160,21 +170,27 @@ int main(){
     // Nearest-two loses the third distinct depth behind two distant samples.
     {
         const std::vector<uint> three{word(-120,0),word(-110,0),word(2,0)};
-        bool nearestTwo=false;std::vector<uint> sorted(three);std::sort(sorted.begin(),sorted.end());
-        for(uint i=0;i<2;++i)nearestTwo=nearestTwo||oracleWord(sorted[i],flat.z,flat.bias,false,{2,3},flat.gradUV,{2.5f,3.5f});
+        bool nearestTwo=false;std::vector<uint> sorted(three);
+        std::sort(sorted.begin(),sorted.end());
+        for(uint i=0;i<2;++i)
+            nearestTwo=nearestTwo||oracleWord(sorted[i],flat.z,flat.bias,false,{2,3},
+                                              flat.gradUV,{2.5f,3.5f});
         require(!nearestTwo&&oracleWord(three[2],flat.z,flat.bias,false,{2,3},flat.gradUV,{2.5f,3.5f}),
                 "three-distinct-depth counterexample for nearest-two");
         clearOne(0,2,3);for(uint w:three)WRITE_PRIMARY(texelOf(0,2,3),w);
         require(sample({2.5f,3.5f},10,0,false,{0,0,1},64)==1,"slabs retain the third depth");
-        std::cout<<"nearest-two witness: writes -120,-110,2 receiver 10 -> nearest-two lit, slabs blocked\n";
+        std::cout<<"nearest-two witness: writes -120,-110,2 receiver 10 -> "
+                 <<"nearest-two lit, slabs blocked\n";
     }
     const float q=1.0f/1024.0f;
-    for(uint cascade:{0u,1u})for(bool surface:{false,true})for(vec3 normal:{vec3{0,0,1},vec3{.6f,0,.8f}}){
+    for(uint cascade:{0u,1u})for(bool surface:{false,true})
+    for(vec3 normal:{vec3{0,0,1},vec3{.6f,0,.8f}}){
         for(float z:{10.0f,2.00390625f,-30.0f,66.0f,200.0f,-200.0f}){
             const Receiver r=receiver(z,surface,normal);
             const float a=z-r.bias-64.0f,b=z-r.bias;
-            std::vector<float> depths{a-q,a,a+q,b-q,b,b+q,z-32.0f,z-63.0f,z-65.0f,z-100.0f,z-130.0f,z-200.0f,
-                                      z+5.0f,-64.0f,-64.0f+q,0.0f,-q};
+            std::vector<float> depths{a-q,a,a+q,b-q,b,b+q,z-32.0f,z-63.0f,z-65.0f,
+                                      z-100.0f,z-130.0f,z-200.0f,z+5.0f,-64.0f,
+                                      -64.0f+q,0.0f,-q};
             std::vector<uint> markers{0u,0x11u,0xf1u,0x77u};
             if(!surface)markers.push_back(0x85u);
             std::vector<uint> pool;
@@ -184,8 +200,10 @@ int main(){
             }
             std::sort(pool.begin(),pool.end());pool.erase(std::unique(pool.begin(),pool.end()),pool.end());
             for(uint w:pool)check(cascade,{w},r);
-            for(uint i=0;i<pool.size();++i)for(uint j=i+1;j<pool.size();j+=3)check(cascade,{pool[i],pool[j]},r);
-            for(uint i=0;i<pool.size();i+=5)for(uint j=i+1;j<pool.size();j+=7)for(uint k=j+1;k<pool.size();k+=11)
+            for(uint i=0;i<pool.size();++i)for(uint j=i+1;j<pool.size();j+=3)
+                check(cascade,{pool[i],pool[j]},r);
+            for(uint i=0;i<pool.size();i+=5)for(uint j=i+1;j<pool.size();j+=7)
+            for(uint k=j+1;k<pool.size();k+=11)
                 check(cascade,{pool[i],pool[j],pool[k]},r);
             for(uint i=0;i<pool.size();i+=9)for(uint j=i+1;j<pool.size();j+=13)
                 check(cascade,{pool[i],pool[j],pool[(i*7+j*3)%pool.size()],pool[(i*11+5)%pool.size()]},r);
@@ -203,7 +221,8 @@ int main(){
         clearOne(cascade,2,3);
         WRITE_PRIMARY(texelOf(cascade,2,3),word(-120,0));WRITE_PRIMARY(texelOf(cascade,2,3),word(2,0));
         sunDepthBuf.words[kSourceFaceFallbackOffset+texelOf(cascade,2,3)]=word(1,0x89u);
-        require(sample({2.5f,3.5f},10,cascade,false,{0,0,1},64)==1,"primary slab and indexed layer union once");
+        require(sample({2.5f,3.5f},10,cascade,false,{0,0,1},64)==1,
+                "primary slab and indexed layer union once");
         sunDepthBuf.words[kSourceFaceFallbackOffset+texelOf(cascade,2,3)]=EMPTY;
         sunDepthBuf.words[kSourceFaceHeaderOffset]=0u;
     }
@@ -211,10 +230,12 @@ int main(){
     for(uint cascade:{0u,1u}){
         clearOne(cascade,2,3);
         WRITE_PRIMARY(texelOf(cascade,2,3),word(-120,0));WRITE_PRIMARY(texelOf(cascade,2,3),word(2,0));
-        require(sample({2.5f,3.5f},10,cascade,false,{0,0,1},64)==1,"stacked texel blocks before clear");
+        require(sample({2.5f,3.5f},10,cascade,false,{0,0,1},64)==1,
+                "stacked texel blocks before clear");
         clearOne(cascade,2,3);
         WRITE_PRIMARY(texelOf(cascade,2,3),word(-120,0));
-        require(sample({2.5f,3.5f},10,cascade,false,{0,0,1},64)==0,"no stale slab survives the clear");
+        require(sample({2.5f,3.5f},10,cascade,false,{0,0,1},64)==0,
+                "no stale slab survives the clear");
     }
     // A throw that differs from the slab width keeps the nearest-only answer,
     // even where a retained slab holds a blocker inside that foreign window.
@@ -230,7 +251,7 @@ int main(){
 def writer_source(suffix, directory):
     source = (SHADERS / directory / f"ir_sun_depth_slab_write.{suffix}").read_text()
     source = "\n".join(line for line in source.splitlines()
-                       if not line.startswith("#include") and not line.startswith("using namespace"))
+                       if not line.startswith(("#include", "using namespace")))
     return source.replace("device atomic_uint *sunDepthBuf", "BoundBuffer& sunDepthBuf") + "\n"
 
 
@@ -241,7 +262,8 @@ def clear_source(suffix, directory):
     body = kernel[kernel.index("{") + 1:-1]
     body = re.sub(r"ivec2 gid = ivec2\(gl_GlobalInvocationID.xy\);|int2 gid = int2\(globalId.xy\);",
                   "ivec2 gid = ivec2(gx, gy);", body)
-    return constant.replace("constant", "const") + "\nvoid clearTexel(int gx,int gy){" + body + "}\n"
+    return (constant.replace("constant", "const")
+            + "\nvoid clearTexel(int gx,int gy){" + body + "}\n")
 
 
 def host_source(suffix, directory, sampler_mutation=None, writer_mutation=None,
@@ -291,23 +313,28 @@ class SunDepthSlabTest(unittest.TestCase):
                 ("!sunStoredTapBeyondThrow(stored, sunZ, bias, maxShadowThrow) ||", "true ||"),
                 "slabs retain the third depth"),
             "drop_slab_max_candidate": (
-                ("        if (sunStoredTapBlocks(high, sunZ, bias, maxShadowThrow, surfaceReceiver,\n"
-                 "                               px, origin, texelSz, gradUV, sunUV)) return true;\n", ""),
+                ("        if (sunStoredTapBlocks(high, sunZ, bias, maxShadowThrow, "
+                 "surfaceReceiver,\n"
+                 "                               px, origin, texelSz, gradUV, sunUV)) "
+                 "return true;\n", ""),
                 oracle),
             "ignore_overflow": (
-                ("if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;", ""),
+                ("if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & "
+                 "kSunDepthSlabOverflow) != 0u) return false;", ""),
                 "overflow or near nearest must keep the nearest-only answer"),
             "unbounded_candidates": (
                 ("if (depthDiff - bias >= maxShadowThrow) return false;", ""),
                 "slab receiver added a shadow no write supports"),
             "foreign_throw_consults_slabs": (
-                ("if (kSunDepthSlabSlots == 0u || maxShadowThrow != float(kSunDepthSlabWidthUnits)) return false;", ""),
+                ("if (kSunDepthSlabSlots == 0u || "
+                 "maxShadowThrow != float(kSunDepthSlabWidthUnits)) return false;", ""),
                 "foreign throw skips slabs"),
         }
         writer = {
             "glsl": {
                 "drop_same_slab_max": (
-                    ("            if (packedDepth > (sunDepthBuf[high] & ~kSunDepthSlabOverflow)) {\n"
+                    ("            if (packedDepth > (sunDepthBuf[high] & "
+                     "~kSunDepthSlabOverflow)) {\n"
                      "                atomicMax(sunDepthBuf[high], packedDepth);\n"
                      "            }\n", ""),
                     "slab extrema depend on write order"),
@@ -315,7 +342,8 @@ class SunDepthSlabTest(unittest.TestCase):
                     ("        atomicOr(sunDepthBuf[flagWord], kSunDepthSlabOverflow);\n", ""),
                     "overflow bit follows distinct slab count"),
                 "stale_covering_skip": (
-                    ("if (packedDepth < resident) atomicMin", "if (packedDepth > resident) atomicMin"),
+                    ("if (packedDepth < resident) atomicMin",
+                     "if (packedDepth > resident) atomicMin"),
                     "slab extrema depend on write order"),
                 "wrong_slab_match": (
                     ("if (sunDepthSlab(resident) == slab) {", "if (true) {"),
@@ -324,11 +352,13 @@ class SunDepthSlabTest(unittest.TestCase):
             "metal": {
                 "drop_same_slab_max": (
                     ("            if (packedDepth > (high & ~kSunDepthSlabOverflow)) {\n"
-                     "                atomic_fetch_max_explicit(&sunDepthBuf[highIndex], packedDepth, memory_order_relaxed);\n"
+                     "                atomic_fetch_max_explicit(&sunDepthBuf[highIndex], "
+                     "packedDepth, memory_order_relaxed);\n"
                      "            }\n", ""),
                     "slab extrema depend on write order"),
                 "no_overflow_flag": (
-                    ("        atomic_fetch_or_explicit(&sunDepthBuf[flagWord], kSunDepthSlabOverflow, memory_order_relaxed);\n", ""),
+                    ("        atomic_fetch_or_explicit(&sunDepthBuf[flagWord], "
+                     "kSunDepthSlabOverflow, memory_order_relaxed);\n", ""),
                     "overflow bit follows distinct slab count"),
                 "stale_covering_skip": (
                     ("if (packedDepth < resident) {", "if (packedDepth > resident) {"),
@@ -344,8 +374,10 @@ class SunDepthSlabTest(unittest.TestCase):
                      "        sunDepthBuf[sunDepthSlabMaxIndex(linearIdx, slot)] = 0u;\n"
                      "    }", ""),
             "metal": ("    for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {\n"
-                      "        atomic_store_explicit(&sunDepthBuf[sunDepthSlabMinIndex(linearIdx, slot)], 0xFFFFFFFFu, memory_order_relaxed);\n"
-                      "        atomic_store_explicit(&sunDepthBuf[sunDepthSlabMaxIndex(linearIdx, slot)], 0u, memory_order_relaxed);\n"
+                      "        atomic_store_explicit(&sunDepthBuf[sunDepthSlabMinIndex(linearIdx, "
+                      "slot)], 0xFFFFFFFFu, memory_order_relaxed);\n"
+                      "        atomic_store_explicit(&sunDepthBuf[sunDepthSlabMaxIndex(linearIdx, "
+                      "slot)], 0u, memory_order_relaxed);\n"
                       "    }", ""),
         }
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):

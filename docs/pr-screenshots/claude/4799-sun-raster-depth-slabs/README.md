@@ -22,10 +22,14 @@ summaries.
 
 The slab build is `kSunDepthSlabSlots = 3` in the three layout twins
 (`sun_face_query_layout.hpp`, `ir_sun_face_query_layout.glsl`,
-`ir_sun_face_query_layout.metal`); the shipped default is 0 (see Cost). The
-baseline binary is `origin/master` plus this branch's CanvasStress fixture
-flags and a slab-free probe twin, built in a separate worktree, so both arms
-take the same argv.
+`ir_sun_face_query_layout.metal`); the shipped default is 0 (see Cost). Both
+arms were built on master `a6b9953c3`, before the record-pool growth
+(`d72f88820`) merged; that change touches the finite route only, and the
+shipped default rebased onto it reproduces the baseline receiver hashes
+exactly (`captures-default.json`: `lower`, `stacked-8-h60`, `oblique-lower`,
+`oblique-stacked-8-h60`). The baseline binary is that master plus this
+branch's CanvasStress fixture flags and a slab-free probe twin, built in a
+separate worktree, so both arms take the same argv.
 
 | Baseline: lower caster under eight casters at -84 | Slab build |
 |---|---|
@@ -117,7 +121,7 @@ recoveries behind a nearest word beyond the throw, 200 overflow cases that
 keep the nearest-only answer, 48 splat-extrema residuals (an interior write
 hidden because both extrema of its slab are splats the receiver plane
 rejects; none with direct or surface words), poisoned storage cleared, mixed
-primary / indexed layers counted once, and twelve mutation controls.
+primary / indexed layers counted once, and ten mutation controls per dialect.
 
 ## Cost
 
@@ -156,11 +160,14 @@ the plan's 1.10x budget on frame mean and p99 and the `bakeSunShadowMap` row
 beyond its baseline spread; the default raster scene and both IRPerfGrid
 cells stay inside it (the perf-grid cells pay only the clear, since their
 finite route bakes no canvas depth). The staged ablation
-([stage_ablation.py](stage_ablation.py), [stage-ablation.json](stage-ablation.json))
-on the slab binary attributes the raster-route envelope delta to the layout
-(buffer and clear) and to the writer; master's receiver shaders over the slab
-layout and the slab receiver over master's bake measure the same, so the
-receiver's slab lookup is free. Within the writer, atomic contention is not
+([stage_ablation.py](stage_ablation.py); [stage-ablation-planar.json](stage-ablation-planar.json)
+for the planar layout, [stage-ablation-interleaved.json](stage-ablation-interleaved.json)
+for the earlier per-texel pairs, both taken while `origin/master` still held
+the pre-growth shaders the script stages) on the slab binary attributes the
+raster-route envelope delta to the layout (buffer and clear: 2.2 → 2.7 ms on
+the lower-caster cell) and to the writer (2.7 → 4.0 ms); master's receiver
+shaders over the slab layout and the slab receiver over master's bake measure
+the same, so the receiver's slab lookup is free. Within the writer, atomic contention is not
 the cost: issuing the extrema atomics only when a plain load shows the write
 moves an extremum did not move the bake, planar slab planes beat per-texel
 pairs, and prefetching a splat row's words before deciding spilled registers

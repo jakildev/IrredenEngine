@@ -92,7 +92,8 @@ int main() {
     if (sourceFaceRaySeparation(uv, 3, {0, 0, 2}, {1, 0, 0}, {0, 1, 0}) != 1)
         return 14;
     if (kSunDepthSlabOffset != 2u * kSourceFaceFallbackOffset ||
-        kSunDepthSlabLayerWords != kSourceFaceFallbackOffset * kSunDepthSlabSlots * kSunDepthSlabWords ||
+        kSunDepthSlabLayerWords !=
+            kSourceFaceFallbackOffset * kSunDepthSlabSlots * kSunDepthSlabWords ||
         kSourceFaceHeaderOffset != kSunDepthSlabOffset + kSunDepthSlabLayerWords ||
         kSunDepthSlabQuantized != kSunDepthSlabWidthUnits * 1024u) return 15;
     const float positions[] = {-0.01f, 0.0f, .25f, 1.0f, 1.01f};

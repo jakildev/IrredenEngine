@@ -172,8 +172,8 @@ solids reached that limit regardless of creation order, because
 `SHAPES_TO_TRIXEL` bakes them after every voxel canvas and their records are
 the first lost. With growth these cases match their controls from the frame
 after the demand sample lands. Raster-only casters in the primary layer had the
-same nearest-depth loss, independent of pool capacity; the
-[depth-slab extrema](#raster-only-primary-layer-depth-slab-extrema) now retain
+same nearest-depth loss, independent of pool capacity; the opt-in
+[depth-slab extrema](#raster-only-primary-layer-depth-slab-extrema) retain
 them behind a nearest word beyond the throw.
 
 ## Evidence and limits
@@ -261,15 +261,16 @@ the required invariant.
 
 ### Raster-only primary layer: depth-slab extrema
 
-The primary layer keeps, beside each texel's nearest word, three slots of
-(min, max) packed words. A slot owns one slab of 64 depth units, the receiver's
+With `kSunDepthSlabSlots` set (three is the smallest useful value; the shipped
+layout is zero), the primary layer keeps, beside each texel's nearest word, that
+many slots of (min, max) packed words. A slot owns one slab of 64 depth units, the receiver's
 shadow throw, so the slab of a packed word is its quantized depth divided by
 65,536. The first writer of a slab claims the first empty slot with a
 compare-swap; later writers of that slab atomically minimize and maximize the
 pair. A slot's slab never changes once claimed, so a stale load that sees a
 claimed slot is final and a stale empty load is corrected by the swap's return.
-A texel that receives a fourth distinct slab sets a sticky overflow bit on
-slot 0's max word. The clear resets every min to the empty sentinel and every
+A texel that receives more distinct slabs than slots sets a sticky overflow
+bit on slot 0's max word. The clear resets every min to the empty sentinel and every
 max to zero. Every primary producer writes through one helper
 (`ir_sun_depth_slab_write`): the canvas-depth bake, its world-placed and
 per-axis resolves, and the ceiling-cut surface writes of the box bake. The
@@ -324,7 +325,8 @@ master's single atomic, not atomic contention. A staged ablation on one binary
 attributes the raster-route cost to the layout (buffer and clear) and the
 writer; the receiver's slab lookup is free.
 
-Five interleaved pairs per cell, three slots over master (Apple M4 Max, Metal):
+Five interleaved pairs per cell, three slots over master `a6b9953c3` (Apple M4 Max,
+Metal; the record-pool growth that merged afterwards touches the finite route only):
 
 | Cell | Frame mean | Frame p99 | GPU envelope |
 |---|---|---|---|
@@ -345,8 +347,10 @@ extrema once instead of once per caster pixel, and a generation-stamped slab
 plane that retires the per-frame clear. Nearest-two is rejected by the
 harness's three-depth counterexample; routing raster casters through the
 finite index is rejected by counting against the record pool with the census
-the probe prints (`primary_direct_texels`, a lower bound on caster pixels, each
-of which also splats 225 texels).
+the probe prints: the default CanvasStress scene on the raster route touches
+69,431 and 66,136 primary texels in its two cascades, above the 65,536-record
+pool at one record per texel, before a record per caster pixel and its
+225-texel splat footprint.
 
 ### Captured finite-quad hierarchy experiment
 

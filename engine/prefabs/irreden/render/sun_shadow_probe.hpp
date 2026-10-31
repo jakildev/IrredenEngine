@@ -15,21 +15,36 @@
 
 namespace IRPrefab::SunShadow {
 
+// The bake system a probe reads after this frame's shadow work, with the GPU
+// drained; null, after the inactive marker, when there is nothing to read:
+// no system, shadows off, or finite coverage required but inactive.
+inline const IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP> *
+probeBakeSystem(std::ofstream &output, bool requireFiniteCoverage) {
+    const auto system = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
+    if (system == IRSystem::kNullSystemId) {
+        output << "# active=0\n";
+        return nullptr;
+    }
+    const auto *bake =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(system);
+    if ((requireFiniteCoverage && !bake->frameUsesFiniteCoverage_) ||
+        bake->frameData_.shadowsEnabled_ == 0) {
+        output << "# active=0\n";
+        return nullptr;
+    }
+    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    IRRender::device()->finish();
+    return bake;
+}
+
 // Capture only after shadow baking. Synchronizes the GPU; never use in timing runs.
 inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeometry = false) {
     std::ofstream output(path);
     if (!output) {
         return false;
     }
-    const auto system = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
-    if (system == IRSystem::kNullSystemId) {
-        output << "# active=0\n";
-        return false;
-    }
-    const auto *bake =
-        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(system);
-    if (!bake->frameUsesFiniteCoverage_ || bake->frameData_.shadowsEnabled_ == 0) {
-        output << "# active=0\n";
+    const auto *bake = probeBakeSystem(output, true);
+    if (bake == nullptr) {
         return false;
     }
     const auto *buffer = bake->sunShadowDepthMap_;
@@ -37,8 +52,6 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
     const SourceFaceLayout layout = bake->recordLayout_;
     std::vector<std::uint32_t> words(kSourceFaceRecordOffset - kSourceFaceHeaderOffset);
     IRRender::FrameDataSun frame{};
-    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
-    IRRender::device()->finish();
     buffer->getSubData(
         std::size_t(kSourceFaceHeaderOffset) * sizeof(std::uint32_t),
         words.size() * sizeof(std::uint32_t),
@@ -142,21 +155,12 @@ inline bool writeSunPrimaryDepthProbe(
     if (!output) {
         return false;
     }
-    const auto system = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
-    if (system == IRSystem::kNullSystemId) {
-        output << "# active=0\n";
-        return false;
-    }
-    const auto *bake =
-        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(system);
-    if (bake->frameData_.shadowsEnabled_ == 0) {
-        output << "# active=0\n";
+    const auto *bake = probeBakeSystem(output, false);
+    if (bake == nullptr) {
         return false;
     }
     const IRRender::FrameDataSun &frame = bake->frameData_;
     const auto *buffer = bake->sunShadowDepthMap_;
-    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
-    IRRender::device()->finish();
     output << std::setprecision(9);
     output << "# active=1\n";
     output << "# finite_coverage=" << (bake->frameUsesFiniteCoverage_ ? 1 : 0) << "\n";
@@ -195,8 +199,10 @@ inline bool writeSunPrimaryDepthProbe(
     IRMath::vec2 uvMin(1e30f);
     IRMath::vec2 uvMax(-1e30f);
     for (const IRMath::vec3 corner :
-         {IRMath::vec3(worldMin.x, worldMin.y, worldZ), IRMath::vec3(worldMax.x, worldMin.y, worldZ),
-          IRMath::vec3(worldMin.x, worldMax.y, worldZ), IRMath::vec3(worldMax.x, worldMax.y, worldZ)}) {
+         {IRMath::vec3(worldMin.x, worldMin.y, worldZ),
+          IRMath::vec3(worldMax.x, worldMin.y, worldZ),
+          IRMath::vec3(worldMin.x, worldMax.y, worldZ),
+          IRMath::vec3(worldMax.x, worldMax.y, worldZ)}) {
         const IRMath::vec2 uv(IRMath::dot(corner, basisU), IRMath::dot(corner, basisV));
         uvMin = IRMath::min(uvMin, uv);
         uvMax = IRMath::max(uvMax, uv);
@@ -211,9 +217,8 @@ inline bool writeSunPrimaryDepthProbe(
     for (std::uint32_t cascade = 0; cascade < kSourceFaceCascadeCount; ++cascade) {
         const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
         const auto texel = cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_;
-        const IRMath::ivec2 first = IRMath::max(
-            IRMath::ivec2(IRMath::floor((uvMin - origin) / texel)), IRMath::ivec2(0)
-        );
+        const IRMath::ivec2 first =
+            IRMath::max(IRMath::ivec2(IRMath::floor((uvMin - origin) / texel)), IRMath::ivec2(0));
         const IRMath::ivec2 last = IRMath::min(
             IRMath::ivec2(IRMath::floor((uvMax - origin) / texel)),
             IRMath::ivec2(int(kSunShadowMapDim) - 1)
@@ -231,7 +236,9 @@ inline bool writeSunPrimaryDepthProbe(
                 std::size_t(cascade) * kSourceFaceFallbackOffset / kSourceFaceCascadeCount +
                 std::size_t(y) * kSunShadowMapDim + std::size_t(first.x);
             buffer->getSubData(
-                texelIndex * sizeof(std::uint32_t), width * sizeof(std::uint32_t), nearest.data()
+                texelIndex * sizeof(std::uint32_t),
+                width * sizeof(std::uint32_t),
+                nearest.data()
             );
             // Planar slab words: one contiguous run per (slot, min / max) plane.
             for (std::uint32_t plane = 0; plane < kSunDepthSlabTexelWords; ++plane) {
@@ -246,12 +253,13 @@ inline bool writeSunPrimaryDepthProbe(
             for (std::size_t i = 0; i < width; ++i) {
                 output << cascade << ',' << first.x + int(i) << ',' << y << ',' << nearest[i];
                 for (std::uint32_t slot = 0; slot < kSunDepthSlabSlots; ++slot) {
-                    output << ',' << slabs[std::size_t(slot * kSunDepthSlabWords) * width + i] << ','
+                    output << ',' << slabs[std::size_t(slot * kSunDepthSlabWords) * width + i]
+                           << ','
                            << (slabs[std::size_t(slot * kSunDepthSlabWords + 1) * width + i] &
                                ~kSunDepthSlabOverflow);
                 }
-                const bool overflow = kSunDepthSlabSlots != 0u &&
-                                      (slabs[width + i] & kSunDepthSlabOverflow) != 0u;
+                const bool overflow =
+                    kSunDepthSlabSlots != 0u && (slabs[width + i] & kSunDepthSlabOverflow) != 0u;
                 output << ',' << (overflow ? 1 : 0) << "\n";
             }
         }

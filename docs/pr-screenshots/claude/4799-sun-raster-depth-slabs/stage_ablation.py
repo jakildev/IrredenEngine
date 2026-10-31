@@ -14,7 +14,6 @@ include, which both binaries share by value.
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -23,29 +22,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "docs/pr-screenshots/claude/4759-sun-face-pool-exhaustion"))
+from ab_timing import CELLS, parse_sample  # noqa: E402
+from capture import SUBDIR, SUFFIX, restore, stage_parent  # noqa: E402
 from verify_common import find_exe  # noqa: E402
-from ab_timing import CELLS, parse_report  # noqa: E402
 
-SUFFIX, SUBDIR = ("metal", "metal/") if sys.platform == "darwin" else ("glsl", "")
-WRITERS = ("c_bake_sun_shadow_map", "c_bake_box_sun_shadow")
-READERS = ("ir_sun_shadow_sample",)
+WRITERS = tuple(f"{name}.{SUFFIX}" for name in ("c_bake_sun_shadow_map", "c_bake_box_sun_shadow"))
+READERS = (f"ir_sun_shadow_sample.{SUFFIX}",)
 VARIANTS = {
     "head": (),
     "layout": WRITERS + READERS,
     "writer": READERS,
     "reader": WRITERS,
 }
-
-
-def stage(shader_dir, names):
-    saved = {}
-    for name in names:
-        path = shader_dir / f"{name}.{SUFFIX}"
-        saved[path] = path.read_bytes()
-        path.write_bytes(subprocess.check_output(
-            ["git", "show", f"origin/master:engine/render/src/shaders/{SUBDIR}{name}.{SUFFIX}"],
-            cwd=ROOT))
-    return saved
 
 
 def main():
@@ -58,13 +47,14 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     target, demo_args = CELLS[args.cell]
-    binary = find_exe(args.build_dir.resolve(), target, "canvas_stress" if target == "IRCanvasStress" else "perf_grid")
+    demo = "canvas_stress" if target == "IRCanvasStress" else "perf_grid"
+    binary = find_exe(args.build_dir.resolve(), target, demo)
     shader_dir = binary.parent / "shaders" / SUBDIR
     results = {"cell": args.cell, "rounds": {}}
     for round_index in range(args.rounds):
         order = list(VARIANTS) if round_index % 2 == 0 else list(reversed(VARIANTS))
         for variant in order:
-            saved = stage(shader_dir, VARIANTS[variant])
+            saved = stage_parent(shader_dir, VARIANTS[variant])
             try:
                 run_dir = output / f"round-{round_index}" / variant
                 env = dict(os.environ, IRREDEN_BUILD_DIR=str(args.build_dir.resolve()))
@@ -80,16 +70,14 @@ def main():
                 reports = sorted(run_dir.glob("run-*.txt"))
                 if not reports:
                     raise RuntimeError(f"{run_dir}: no clean profile after three attempts")
-                report = reports[-1].read_text()
-                sample = parse_report(report)
+                sample = parse_sample(reports[-1])
                 results["rounds"].setdefault(variant, []).append(sample)
-                print(variant, round_index, {k: v for k, v in sample.items()
-                                             if k in ("steady_mean_ms", "gpu_envelope_ms",
-                                                      "gpu:bakeSunShadowMap", "gpu:cardinalSurfaceFb",
-                                                      "gpu:trixelToFb")}, flush=True)
+                shown = ("steady_mean_ms", "gpu_envelope_ms", "gpu:bakeSunShadowMap",
+                         "gpu:cardinalSurfaceFb", "gpu:trixelToFb")
+                print(variant, round_index,
+                      {k: v for k, v in sample.items() if k in shown}, flush=True)
             finally:
-                for path, data in saved.items():
-                    path.write_bytes(data)
+                restore(shader_dir, saved)
         (output / "stage-ablation.json").write_text(json.dumps(results, indent=2) + "\n")
 
 

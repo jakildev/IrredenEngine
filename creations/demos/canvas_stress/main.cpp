@@ -2297,7 +2297,8 @@ void registerArgs() {
     );
     args.flag(
         "--probe-raster-sun-route",
-        "Register the stateless particle pass, so every caster bakes through the canvas-depth sun map"
+        "Register the stateless particle pass, so every caster bakes through the canvas-depth sun "
+        "map"
     );
     args.numbers(
         "--sun-primary-probe",
@@ -3646,20 +3647,25 @@ void initEntities() {
             // Layers repeat the stack along the sun ray, one layer per depth band.
             const int layers =
                 IRMath::clamp(IREngine::args().getInt("--probe-overlapping-source-layers"), 1, 8);
-            const float layerStep = IREngine::args().getFloat("--probe-overlapping-source-layer-step");
+            const float layerStep =
+                IREngine::args().getFloat("--probe-overlapping-source-layer-step");
             const auto mode = IREngine::args().getEnum("--probe-overlapping-source-mode");
+            const bool gridCasters = mode == "grid";
+            const bool revoxelizedCasters = mode == "revoxelize";
             const Color casterColor{230, 170, 60, 255};
             const auto casterRotation = IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f)), 0.47f);
             for (int index = 0; index < sourceCount * layers; ++index) {
                 const vec3 layerOffset =
                     IRRender::getSunDirection() * (layerStep * float(index / sourceCount));
                 const C_LocalTransform casterTransform{
-                    sourceOrigin + sourceOffset + layerOffset, casterRotation
+                    sourceOrigin + sourceOffset + layerOffset,
+                    casterRotation
                 };
                 EntityId caster;
-                if (mode == "grid") {
+                if (gridCasters) {
                     caster = IREntity::createEntity(
-                        casterTransform, C_VoxelSetNew{ivec3(3), casterColor, true, mainCanvas}
+                        casterTransform,
+                        C_VoxelSetNew{ivec3(3), casterColor, true, mainCanvas}
                     );
                 } else {
                     auto overlap = IRPrefab::EntityCanvas::createWithVoxelPool(
@@ -3675,8 +3681,8 @@ void initEntities() {
                     caster = IREntity::createEntity(
                         casterTransform,
                         C_RotationMode{
-                            mode == "revoxelize" ? RotationMode::DETACHED_REVOXELIZE
-                                                 : RotationMode::DETACHED
+                            revoxelizedCasters ? RotationMode::DETACHED_REVOXELIZE
+                                               : RotationMode::DETACHED
                         },
                         overlap
                     );

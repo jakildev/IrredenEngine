@@ -147,9 +147,9 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def stage_parent(shader_dir):
+def stage_parent(shader_dir, names=POLICY_SHADERS):
     saved = {}
-    for name in POLICY_SHADERS:
+    for name in names:
         path = shader_dir / name
         saved[name] = path.read_bytes()
         source = subprocess.check_output(

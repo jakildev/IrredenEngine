@@ -106,8 +106,7 @@ uint sunDepthSlab(uint packedDepth) {
 }
 
 // Planar storage: every slot's min words form one texel-indexed plane, then
-// its max words, so a clear or a splat box touches consecutive words. Measured
-// against per-texel pairs: the planes clear and bake faster.
+// its max words, so a clear or a splat box touches consecutive words.
 uint sunDepthSlabMinIndex(int texelIndex, uint slot) {
     return kSunDepthSlabOffset + slot * kSunDepthSlabWords * kSourceFaceFallbackOffset + uint(texelIndex);
 }

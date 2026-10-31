@@ -16,7 +16,6 @@ canvas-depth bake. --route picks that for a head binary too.
 import argparse
 import collections
 import csv
-import hashlib
 import json
 import os
 import re
@@ -25,10 +24,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageFilter
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "docs/pr-screenshots/claude/4759-sun-face-pool-exhaustion"))
+# The receiver grade and hash are the record-pool fixture's; the band is its 2 px.
+from capture import BAND, grade, sha256  # noqa: E402
 from verify_common import (  # noqa: E402
     collect_full_frames,
     find_exe,
@@ -37,7 +39,6 @@ from verify_common import (  # noqa: E402
 )
 
 CROP = (1100, 600, 1460, 840)
-BAND = 2
 DOWN, OBLIQUE = (0, 0, -1), (0.3, 0.4, -1)
 PROBE_RECT = ["-12", "-6", "12", "6"]
 COMMON = ["--only", "shadowbox,floor", "--probe-floor-mode", "grid", "--probe-floor-span", "40",
@@ -59,7 +60,9 @@ def case(name, sun, casters=0, height=-60, mode="grid", floor="grid", lower=True
     # Toward the sun: the oblique direction (0.3, 0.4, -1) scaled by -height.
     along = [-0.3 * height, -0.4 * height, height] if sun == OBLIQUE else [0, 0, height]
     if control is None and lit:
-        control = f"{'oblique-' if sun == OBLIQUE else ''}lower{'' if floor == 'grid' else '-' + floor}"
+        control = f"{'oblique-' if sun == OBLIQUE else ''}lower"
+        if floor != "grid":
+            control += f"-{floor}"
         if mode != "grid":
             control += f"-{mode}"
     return {"name": name, "sun": sun, "casters": casters, "height": height, "mode": mode,
@@ -104,30 +107,6 @@ def matrix():
     return cases, tracks
 
 
-def sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
-def grade(actual, control, output):
-    """Changed receiver pixels, split by direction, outside a band around control edges."""
-    with Image.open(actual) as a, Image.open(control) as c:
-        a, c = a.convert("L"), c.convert("L")
-        edges = c.filter(ImageFilter.FIND_EDGES).point(lambda v: 255 if v else 0)
-        band = edges.filter(ImageFilter.MaxFilter(2 * BAND + 1))
-        diff = ImageChops.difference(a, c).point(lambda v: 255 if v else 0)
-        darker = ImageChops.subtract(c, a).point(lambda v: 255 if v else 0)
-        brighter = ImageChops.subtract(a, c).point(lambda v: 255 if v else 0)
-        outside = ImageChops.subtract(diff, band)
-        if outside.getbbox():
-            outside.save(output)
-
-        def count(image):
-            return sum(1 for v in image.tobytes() if v)
-        return {"changed": count(diff), "changed_outside_band": count(outside),
-                "excess_shadow_outside_band": count(ImageChops.subtract(darker, band)),
-                "missing_shadow_outside_band": count(ImageChops.subtract(brighter, band))}
-
-
 def depth_of(word):
     return (word >> 8) / 1024.0 - 512.0
 
@@ -162,7 +141,8 @@ def summarize_probe(path):
                 if low == EMPTY:
                     continue
                 slabs += 1
-                entry["slab_extrema"][f"{(low >> 8) // 65536}:{round(depth_of(low))}..{round(depth_of(high))}"] += 1
+                band = f"{(low >> 8) // 65536}:{round(depth_of(low))}..{round(depth_of(high))}"
+                entry["slab_extrema"][band] += 1
             entry["slab_count_histogram"][slabs] += 1
     summary = {"header": header, "cascades": {}}
     for cascade, entry in sorted(per_cascade.items()):

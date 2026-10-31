@@ -21,6 +21,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "scripts" / "perf"))
+from compare_perf_runs import parse_report  # noqa: E402
+
 CANVAS = ["--only", "shadowbox,floor", "--probe-grid", "--probe-floor-mode", "grid",
           "--probe-floor-span", "40", "--sun-direction", "0", "0", "-1", "--no-spin",
           "--no-auto-rotate", "--pivot-origin", "--no-ao", "--yaw", "0", "--zoom", "1",
@@ -41,35 +44,24 @@ CELLS = {
     "perf-grid-zoom4": ("IRPerfGrid", ["--auto-profile", "60", "--zoom", "4",
                                        "--subdivision-mode", "full", "--base-subdivisions", "1"]),
 }
-STEADY_RE = re.compile(r"Steady frame time.*?avg=([\d.]+)ms.*?p99=([\d.]+)ms")
-FRAME_RE = re.compile(r"^Frame time:\s+avg=([\d.]+)ms.*?p99=([\d.]+)ms", re.M)
 SUN_SYSTEMS = ("BakeSunShadowMap", "ComputeSunShadow", "LightingToTrixel", "CanvasToFramebuffer",
                "SingleVoxelToCanvasFirst")
 
 
-def parse_report(text):
-    out = {}
-    steady = STEADY_RE.search(text)
-    frame = FRAME_RE.search(text)
-    if steady:
-        out["steady_mean_ms"], out["steady_p99_ms"] = float(steady[1]), float(steady[2])
-    elif frame:
-        out["steady_mean_ms"], out["steady_p99_ms"] = float(frame[1]), float(frame[2])
-    envelope = re.search(r"^envelope ([\d.]+) ", text, re.M)
+def parse_sample(path):
+    """Flatten one repeat_profile report into the metrics this comparison grades,
+    through the perf gate's own parser."""
+    report = parse_report(path, path.stem)
+    frame = report.steady_frame or report.frame
+    out = {"steady_mean_ms": frame.avg, "steady_p99_ms": frame.p99}
+    envelope = re.search(r"^envelope ([\d.]+) ", report.raw, re.M)
     if envelope:
         out["gpu_envelope_ms"] = float(envelope[1])
-    section = text.split("--- GPU stage timing ---")
-    if len(section) > 1:
-        for line in section[1].splitlines()[2:]:
-            if not line.strip():
-                break
-            parts = line.split()
-            if len(parts) >= 5 and re.match(r"[A-Za-z]\w*$", parts[0]) and re.match(r"[\d.]+$", parts[1]):
-                out[f"gpu:{parts[0]}"] = float(parts[1])
-    for name in SUN_SYSTEMS:
-        row = re.search(rf"^RENDER\s+{name}\s+[\d.]+\s+([\d.]+)", text, re.M)
-        if row:
-            out[f"cpu:{name}"] = float(row[1])
+    for stage in report.gpu_stages:
+        out[f"gpu:{stage.name}"] = stage.avg_ms
+    for system in report.systems:
+        if system.pipeline == "RENDER" and system.name in SUN_SYSTEMS:
+            out[f"cpu:{system.name}"] = system.avg_ms
     return out
 
 
@@ -87,7 +79,7 @@ def profile(tree, target, demo_args, output, timeout):
     reports = sorted(output.glob("run-*.txt"))
     if not reports:
         raise RuntimeError(f"{output}: repeat_profile left no profile report")
-    return parse_report(reports[-1].read_text()), command
+    return parse_sample(reports[-1]), command
 
 
 def summarize(samples):
@@ -136,12 +128,13 @@ def main():
         results["cells"][name] = {"target": target, "commands": commands, "samples": samples,
                                   "summary": summary, "head_over_baseline": ratios}
         (output / "ab-timing.json").write_text(json.dumps(results, indent=2) + "\n")
-    lines = ["| cell | metric | baseline mean (min..max) | head mean (min..max) | head / baseline |",
-             "|---|---|---|---|---|"]
+    lines = ["| cell | metric | baseline mean (min..max) | head mean (min..max) "
+             "| head / baseline |", "|---|---|---|---|---|"]
     for name, cell in results["cells"].items():
         for key in sorted(cell["head_over_baseline"]):
             base, head = cell["summary"]["baseline"][key], cell["summary"]["head"][key]
-            lines.append(f"| {name} | {key} | {base['mean']:.3f} ({base['min']:.3f}..{base['max']:.3f})"
+            lines.append(f"| {name} | {key} | {base['mean']:.3f} "
+                         f"({base['min']:.3f}..{base['max']:.3f})"
                          f" | {head['mean']:.3f} ({head['min']:.3f}..{head['max']:.3f})"
                          f" | {cell['head_over_baseline'][key]:.3f}x |")
     (output / "ab-timing.md").write_text("\n".join(lines) + "\n")
