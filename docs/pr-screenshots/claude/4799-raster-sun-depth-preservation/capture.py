@@ -16,7 +16,6 @@ census) are retained per shot.
 
 import argparse
 import gzip
-import hashlib
 import json
 import os
 import re
@@ -25,10 +24,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageFilter
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "scripts"))
+from pr_capture_common import grade_crops, restore_shaders, sha256, stage_shaders  # noqa: E402
 from verify_common import (  # noqa: E402
     collect_full_frames,
     find_exe,
@@ -105,43 +105,16 @@ def track(sun):
 TRACKS = [track(DOWN), track(OBLIQUE)]
 
 
-def sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
 def stage_parent(shader_dir):
-    saved = {}
-    for name in POLICY_SHADERS:
-        path = shader_dir / name
-        saved[name] = path.read_bytes()
-        path.write_bytes(subprocess.check_output(
-            ["git", "show", f"origin/master:engine/render/src/shaders/{SUBDIR}{name}"], cwd=ROOT))
-    return saved
+    return stage_shaders(shader_dir, POLICY_SHADERS, SUBDIR, root=ROOT)
 
 
 def restore(shader_dir, saved):
-    for name, data in saved.items():
-        (shader_dir / name).write_bytes(data)
+    restore_shaders(shader_dir, saved)
 
 
 def grade(actual, control, output):
-    """Changed receiver pixels, split by direction, outside a band around control edges."""
-    with Image.open(actual) as a, Image.open(control) as c:
-        a, c = a.convert("L"), c.convert("L")
-        edges = c.filter(ImageFilter.FIND_EDGES).point(lambda v: 255 if v else 0)
-        band = edges.filter(ImageFilter.MaxFilter(2 * BAND + 1))
-        diff = ImageChops.difference(a, c).point(lambda v: 255 if v else 0)
-        darker = ImageChops.subtract(c, a).point(lambda v: 255 if v else 0)
-        brighter = ImageChops.subtract(a, c).point(lambda v: 255 if v else 0)
-        outside = ImageChops.subtract(diff, band)
-        if outside.getbbox():
-            outside.save(output)
-
-        def count(image):
-            return sum(1 for v in image.tobytes() if v)
-        return {"changed": count(diff), "changed_outside_band": count(outside),
-                "excess_shadow_outside_band": count(ImageChops.subtract(darker, band)),
-                "missing_shadow_outside_band": count(ImageChops.subtract(brighter, band))}
+    return grade_crops(actual, control, output, BAND)
 
 
 def command_for(build, config, spec, second):
@@ -196,8 +169,9 @@ def capture(build, variant_dir, spec, second):
              for m in DRIFT_RE.finditer(log)}
     if spec["velocity"] and sorted(poses) != list(range(count)):
         raise RuntimeError(f"{spec['name']}: missing PROBE-DRIFT pose per shot")
-    with gzip.open(directory / "run.log.gz", "wb") as dest, (directory / "run.log").open("rb") as src:
-        shutil.copyfileobj(src, dest)
+    with gzip.open(directory / "run.log.gz", "wb") as dest:
+        with (directory / "run.log").open("rb") as src:
+            shutil.copyfileobj(src, dest)
     (directory / "run.log").unlink()
     shots = []
     for shot, frame in enumerate(frames):
@@ -293,7 +267,8 @@ def grade_report(report, output, keep_frames):
     for variant, data in report["variants"].items():
         for name, entry in data["cases"].items():
             directory = output / variant / name
-            others = {v: d["cases"].get(name) for v, d in report["variants"].items() if v != variant}
+            others = {v: d["cases"].get(name)
+                      for v, d in report["variants"].items() if v != variant}
             if entry["velocity"] is None:
                 if entry["control"]:
                     control = output / variant / entry["control"] / "receiver.png"

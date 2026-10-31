@@ -99,13 +99,34 @@ pool exhaustion rather than removing it.
 ## Timing
 
 [timing/timing.md](timing/timing.md) pools five interleaved pairs per scene
-(parent/head/second order alternating per pair, one `repeat_profile.py` run
-each) under `ir-acquire benchmark`; `timing/<scene>/<variant>/pair-N/`
-retains each summary and manifest. The production bake is a compile-time
-wrapper over a shared body, so the default path carries no second-depth
-instruction: an earlier measurement with a runtime switch inside the kernel
-cost the raster scene's `bakeSunShadowMap` row +10 % (2.81 → 3.10 ms in all
-five pairs), the predication tax the GPU stage timing cost model predicts.
+(parent/head/second order alternating per pair, one 360-frame or 60-frame
+`repeat_profile.py` run each) under `ir-acquire benchmark`, which parked the
+other four fleet panes for the window; `timing/<scene>/<variant>/pair-N/`
+retains each summary and manifest. Means over the five pairs, ms:
+
+| Scene / row | parent | head | second | head / parent | second / head |
+|---|---:|---:|---:|---:|---:|
+| raster-stacked steady frame avg | 18.60 (15.59–21.53) | 19.42 (18.18–22.33) | 22.30 (19.88–23.35) | 1.044 | 1.149 |
+| raster-stacked steady frame p99 | 29.13 | 29.68 | 30.04 | 1.019 | 1.012 |
+| raster-stacked GPU frame envelope | 3.831 | 3.845 | 4.306 | 1.004 | 1.120 |
+| raster-stacked GPU bakeSunShadowMap | 2.816 (2.758–2.878) | 2.809 (2.694–2.875) | 3.270 (3.193–3.368) | 0.998 | 1.164 |
+| raster-stacked GPU computeSunShadow | 0.053 | 0.055 | 0.065 | 1.042 | 1.174 |
+| raster-stacked GPU canvasClear | 0.030 | 0.031 | 0.031 | 1.007 | 1.007 |
+| perf-grid zoom 1 steady frame avg | 22.95 | 22.36 | — | 0.974 | — |
+| perf-grid zoom 1 GPU frame envelope | 5.048 | 4.890 | — | 0.969 | — |
+| perf-grid zoom 4 steady frame avg | 25.52 | 26.05 | — | 1.021 | — |
+| perf-grid zoom 4 GPU frame envelope | 7.665 | 7.441 | — | 0.971 | — |
+
+The production bake is a compile-time wrapper over a shared body, so the
+default path carries no second-depth instruction: head's bake row sits inside
+the parent spread in every pair and the GPU frame envelope within 0.4 %. The
+opt-in second-depth program adds one atomic per splat write and one read per
+raster tap: +0.45 ms on the bake (every pair above the parent maximum),
++0.01 ms on `computeSunShadow`, +12 % on the GPU frame envelope. It allocates
+nothing and clears nothing extra (the fallback layer is already cleared), and
+adds no dispatch. An earlier runtime switch inside the kernel had cost the
+default path's bake +10 % (2.81 → 3.10 ms in all five pairs), the
+predication tax the GPU stage timing cost model predicts.
 
 ## Replay
 

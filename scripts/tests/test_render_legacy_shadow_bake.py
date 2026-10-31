@@ -125,7 +125,8 @@ struct Adapter {
  Texture2D analyticTexture{13};std::pair<int,Texture2D*> analyticCasterDepth_{0,&analyticTexture};
  FrameDataVoxelToCanvas analyticCasterFrame_;bool analyticCasterReady_=false;
  ShaderProgram bake{1},scatter{2},blit{3};
- ShaderProgram *bakeProgram_=&bake,*bakeSecondDepthProgram_=&bake,*worldPlacedScatterProgram_=&scatter;
+ ShaderProgram *bakeProgram_=&bake,*bakeSecondDepthProgram_=&bake;
+ ShaderProgram *worldPlacedScatterProgram_=&scatter;
  bool retainSecondPrimaryDepth_=false;
  ShaderProgram *worldPlacedBlitProgram_=&blit;
  Texture2D resolved{12};std::pair<int,Texture2D*> worldPlacedResolveDepth_{0,&resolved};
@@ -339,7 +340,9 @@ struct ivec2 {int x,y;};
 constexpr int kSunShadowMapDim=1024;
 constexpr uint kSourceFaceFallbackOffset=2u*1024u*1024u;
 std::vector<uint> sunDepthBuf(kSourceFaceFallbackOffset+2u*1024u*1024u,0xffffffffu);
-uint atomicMin(uint& word,uint value){const uint previous=word;word=min(word,value);return previous;}
+uint atomicMin(uint& word,uint value){
+ const uint previous=word;word=min(word,value);return previous;
+}
 using atomic_uint=uint;
 constexpr int memory_order_relaxed=0;
 uint atomic_fetch_min_explicit(uint* word,uint value,int){return atomicMin(*word,value);}
@@ -372,8 +375,10 @@ int main(){
     for(uint w:set)writeSunTexel(cascadeOffset,px,w);
     if(sunDepthBuf[index]!=nearest){std::cerr<<"nearest slot lost the minimum\n";return 1;}
     const uint stored=sunDepthBuf[kSourceFaceFallbackOffset+index];
-    if(!second&&stored!=empty){std::cerr<<"disabled diagnostic wrote the fallback layer\n";return 1;}
-    if(second&&stored!=expectedSecond){std::cerr<<"second slot is not the nearest distinct loser\n";return 1;}
+    if(!second&&stored!=empty){
+     std::cerr<<"disabled diagnostic wrote the fallback layer\n";return 1;}
+    if(second&&stored!=expectedSecond){
+     std::cerr<<"second slot is not the nearest distinct loser\n";return 1;}
     for(int d:{-1,1}){
      if(sunDepthBuf[index+d]!=empty||sunDepthBuf[kSourceFaceFallbackOffset+index+d]!=empty){
       std::cerr<<"neighbour texel written\n";return 1;}

@@ -118,9 +118,11 @@ int main(){
             const bool inRange=blocks(10,packed(distant,0));
             secondDepthLayer=false;
             tap(cascade,2,3,packed(distant,0),empty);
-            require(query(10,cascade)==(inRange?1:0),"nearest-only answer follows the throw window");
+            require(query(10,cascade)==(inRange?1:0),
+                    "nearest-only answer follows the throw window");
             tap(cascade,2,3,packed(distant,0),packed(2,0));
-            require(query(10,cascade)==(inRange?1:0),"default receiver ignores the diagnostic layer");
+            require(query(10,cascade)==(inRange?1:0),
+                    "default receiver ignores the diagnostic layer");
             secondDepthLayer=true;
             require(query(10,cascade)==1,"second retained depth blocks the receiver");
             ++comparisons;
@@ -153,7 +155,8 @@ int main(){
             }
         }
     }
-    std::cout<<comparisons<<" second-depth comparisons plus duplicate, residual, surface and union controls\n";
+    std::cout<<comparisons
+             <<" second-depth comparisons plus duplicate, residual, surface and union controls\n";
 }
 """
 

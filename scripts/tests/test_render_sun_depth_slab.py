@@ -28,7 +28,9 @@ SLAB_PROOF = r"""
 struct Slabs {
     int width; std::vector<int> lo, hi;
     explicit Slabs(int w, int count) : width(w), lo(count, 1 << 30), hi(count, -(1 << 30)) {}
-    void insert(int z) { const int s = z / width; lo[s] = std::min(lo[s], z); hi[s] = std::max(hi[s], z); }
+    void insert(int z) {
+        const int s = z / width; lo[s] = std::min(lo[s], z); hi[s] = std::max(hi[s], z);
+    }
     bool occupied(int s) const { return lo[s] <= hi[s]; }
     bool blocks(int low, int high) const {
         const int first = low / width, last = high / width;

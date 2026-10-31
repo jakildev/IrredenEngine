@@ -32,6 +32,8 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[2]
 
 PILLOW_EXCEPTIONS = frozenset({
+    "scripts/pr_capture_common.py",
+    "scripts/tests/test_pr_capture_common.py",
     "scripts/render-detached-face-metric.py",
     "scripts/render-detached-lighting-metric.py",
     "scripts/render-local-voxel-metric.py",

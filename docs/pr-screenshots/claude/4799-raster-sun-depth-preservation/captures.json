@@ -1,7 +1,7 @@
 {
-  "head": "a6b9953c3eb8743a5c5b8c05889a3bdb9c7bb8ae",
+  "head": "580105d80491d7c6fc5a1b5ef04e65c0de2c6b08",
   "parent": "a6b9953c3eb8743a5c5b8c05889a3bdb9c7bb8ae",
-  "binary_sha256": "f5d31699b7668a5ce940006b866122bdceec93210187671dcf2b39069ec00f1d",
+  "binary_sha256": "c3c7aef7c3147bddb862039661e5b560fcfcda66515b971928fdf995f987c4a0",
   "crops": {
     "near": [
       1100,
@@ -49,7 +49,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/lower/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -88,16 +88,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "8cb76914f75c47df388287fc7bfcc562d4fb4ba27d4be21d2c66feab732b46b9",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07c40000 nearest_depth=-15.000000 second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(513,512) nearest=0x07c40000 nearest_depth=-15.000000 second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "head": true,
@@ -131,7 +127,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -171,16 +167,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "head": true,
@@ -216,7 +208,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -260,11 +252,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -311,7 +299,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/distant/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -355,11 +343,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9e2b1297b0ab59ae1b7347a229e363459a5fa60969b94b20df0f3387f09c8cd7",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -406,7 +390,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/inside/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -449,11 +433,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07240000 nearest_depth=-55.000000 second=0xffffffff second_depth=empty",
@@ -500,7 +480,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -543,11 +523,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -594,7 +570,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -638,11 +614,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -690,7 +662,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -733,11 +705,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -785,7 +753,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -828,11 +796,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06540000 nearest_depth=-107.000000 second=0xffffffff second_depth=empty",
@@ -877,7 +841,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -916,16 +880,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f42865c2c11c5733aecf0f1901f7165bd2c0433b960d2932461db599ddbe0e52",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x07c07e95 nearest_depth=-15.876953 second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(507,520) nearest=0x07c07ea4 nearest_depth=-15.876953 second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "head": true,
@@ -959,7 +919,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -999,16 +959,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "561ebaa2a9dbecca9a3b7819db8b4a9019eaca72834e5977e10a9385b6ebaa8e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "head": true,
@@ -1044,7 +1000,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1088,11 +1044,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "561ebaa2a9dbecca9a3b7819db8b4a9019eaca72834e5977e10a9385b6ebaa8e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -1139,7 +1091,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-distant/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1183,11 +1135,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "e7d610a9bf37a36722b22de2a69a7eb95accee06c20904229f3222efdf82fe39",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0xffffffff second_depth=empty",
@@ -1234,7 +1182,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-inside/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1277,11 +1225,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "70af29ff0d8dd10b869283827242b9de9bd8b0b5e850a1fae05f872a91ffae05",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0720eeb4 nearest_depth=-55.767578 second=0xffffffff second_depth=empty",
@@ -1328,7 +1272,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1371,11 +1315,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0xffffffff second_depth=empty",
@@ -1422,7 +1362,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1466,11 +1406,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0xffffffff second_depth=empty",
@@ -1518,7 +1454,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1561,11 +1497,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0xffffffff second_depth=empty",
@@ -1613,7 +1545,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1656,11 +1588,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "39343c2d69fa356388e76ba854d86827f9b65d23e6ef1410c3832053dc8b28be",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x064ffdb3 nearest_depth=-108.002930 second=0xffffffff second_depth=empty",
@@ -1705,7 +1633,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1748,16 +1676,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "b5b496cf69d547d82627fe0bc9c6652aa03e98dbfe65a07b8118076abce8c32e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x07c40000 nearest_depth=-15.000000 second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(446,579) nearest=0x07c40000 nearest_depth=-15.000000 second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "head": true,
@@ -1791,7 +1715,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1835,16 +1759,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(0,0,0) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "head": true,
@@ -1880,7 +1800,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -1928,11 +1848,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(0,0,0) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -1979,7 +1895,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-distant/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2027,11 +1943,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "c618d57647436f116f8b05741289b9bb3ea361e02989d3bf877d7a1f0dcc4c43",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -2078,7 +1990,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-inside/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2125,11 +2037,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "ff2f24a3521b70da044c2fa87bcaa359584df2e59dc659525f3159fe2c5444d1",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x07240000 nearest_depth=-55.000000 second=0xffffffff second_depth=empty",
@@ -2176,7 +2084,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2223,11 +2131,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -2274,7 +2178,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2322,11 +2226,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -2374,7 +2274,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2421,11 +2321,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -2473,7 +2369,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/far-stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/far-stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2520,11 +2416,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06540000 nearest_depth=-107.000000 second=0xffffffff second_depth=empty",
@@ -2772,7 +2664,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/moving/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/moving/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2837,7 +2729,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/moving-pose-0/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/moving-pose-0/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2880,11 +2772,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07500000 nearest_depth=-44.000000 second=0xffffffff second_depth=empty",
@@ -2931,7 +2819,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/moving-pose-1/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/moving-pose-1/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -2974,11 +2862,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07280000 nearest_depth=-54.000000 second=0xffffffff second_depth=empty",
@@ -3025,7 +2909,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/moving-pose-2/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/moving-pose-2/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3068,11 +2952,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f011f94d7c2d6abbbfd3de6c98fb952c47b6db1ecd74794618563782ab94165e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07000000 nearest_depth=-64.000000 second=0xffffffff second_depth=empty",
@@ -3119,7 +2999,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/moving-pose-3/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/moving-pose-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3162,11 +3042,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f011f94d7c2d6abbbfd3de6c98fb952c47b6db1ecd74794618563782ab94165e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06d80000 nearest_depth=-74.000000 second=0xffffffff second_depth=empty",
@@ -3213,7 +3089,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/moving-pose-4/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/moving-pose-4/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3256,11 +3132,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06b00000 nearest_depth=-84.000000 second=0xffffffff second_depth=empty",
@@ -3307,7 +3179,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/moving-pose-5/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/moving-pose-5/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3350,11 +3222,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06880000 nearest_depth=-94.000000 second=0xffffffff second_depth=empty",
@@ -3401,7 +3269,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/moving-pose-6/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/moving-pose-6/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3444,11 +3312,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06600000 nearest_depth=-104.000000 second=0xffffffff second_depth=empty",
@@ -3696,7 +3560,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-moving/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-moving/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3761,7 +3625,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-moving-pose-0/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-moving-pose-0/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3804,11 +3668,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "70af29ff0d8dd10b869283827242b9de9bd8b0b5e850a1fae05f872a91ffae05",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x074da6b4 nearest_depth=-44.587891 second=0xffffffff second_depth=empty",
@@ -3855,7 +3715,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-moving-pose-1/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-moving-pose-1/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3898,11 +3758,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "4eef57ba69b8f0fdb80e16bf2b18e61c331989f4b944d8313fa6f2a8ce0db917",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0725f0a3 nearest_depth=-54.515625 second=0xffffffff second_depth=empty",
@@ -3949,7 +3805,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-moving-pose-2/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-moving-pose-2/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -3992,11 +3848,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "c1c6418726bfde01f1a58df6d0db4f708661d59764c3289a66560ca610310e02",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06fccb94 nearest_depth=-64.801758 second=0xffffffff second_depth=empty",
@@ -4043,7 +3895,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-moving-pose-3/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-moving-pose-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4086,11 +3938,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "b1d70bad6f4990eefc2eae76498fd77a10b7ced96329bdc6f4a2285e14a9ea41",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06d3a695 nearest_depth=-75.087891 second=0xffffffff second_depth=empty",
@@ -4137,7 +3985,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-moving-pose-4/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-moving-pose-4/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4180,11 +4028,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "ef8a2325730f3a182f65e275ae7a27e3bc229b065904a4c8ee871d1fa2e1901f",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06ad03a3 nearest_depth=-84.747070 second=0xffffffff second_depth=empty",
@@ -4231,7 +4075,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-moving-pose-5/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-moving-pose-5/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4274,11 +4118,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "595ca07e2f20ab92cf4edff4cd8a070eb8ff7c29de4b91d4b04f57703326561f",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0683de94 nearest_depth=-95.033203 second=0xffffffff second_depth=empty",
@@ -4325,7 +4165,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/parent/oblique-moving-pose-6/config.lua",
+            "/private/tmp/pool5-4799-final2/parent/oblique-moving-pose-6/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4368,11 +4208,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "3fcff818163355376f7267d9a5e6c8ad4d59f90cefbbc874f9824167586a65a8",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x065c2793 nearest_depth=-104.961914 second=0xffffffff second_depth=empty",
@@ -4427,7 +4263,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/lower/config.lua",
+            "/private/tmp/pool5-4799-final2/head/lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4466,16 +4302,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "8cb76914f75c47df388287fc7bfcc562d4fb4ba27d4be21d2c66feab732b46b9",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07c40000 nearest_depth=-15.000000 second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(513,512) nearest=0x07c40000 nearest_depth=-15.000000 second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -4509,7 +4341,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/head/unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4549,16 +4381,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -4594,7 +4422,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/head/unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4638,11 +4466,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -4689,7 +4513,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/distant/config.lua",
+            "/private/tmp/pool5-4799-final2/head/distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4733,11 +4557,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9e2b1297b0ab59ae1b7347a229e363459a5fa60969b94b20df0f3387f09c8cd7",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -4784,7 +4604,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/inside/config.lua",
+            "/private/tmp/pool5-4799-final2/head/inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4827,11 +4647,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07240000 nearest_depth=-55.000000 second=0xffffffff second_depth=empty",
@@ -4878,7 +4694,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/head/stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -4921,11 +4737,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -4972,7 +4784,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/head/stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5016,11 +4828,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -5068,7 +4876,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/head/stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5111,11 +4919,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -5163,7 +4967,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/head/stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5206,11 +5010,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06540000 nearest_depth=-107.000000 second=0xffffffff second_depth=empty",
@@ -5255,7 +5055,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5294,16 +5094,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f42865c2c11c5733aecf0f1901f7165bd2c0433b960d2932461db599ddbe0e52",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x07c07e95 nearest_depth=-15.876953 second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(507,520) nearest=0x07c07ea4 nearest_depth=-15.876953 second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -5337,7 +5133,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5377,16 +5173,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "561ebaa2a9dbecca9a3b7819db8b4a9019eaca72834e5977e10a9385b6ebaa8e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -5422,7 +5214,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5466,11 +5258,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "561ebaa2a9dbecca9a3b7819db8b4a9019eaca72834e5977e10a9385b6ebaa8e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -5517,7 +5305,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-distant/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5561,11 +5349,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "e7d610a9bf37a36722b22de2a69a7eb95accee06c20904229f3222efdf82fe39",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0xffffffff second_depth=empty",
@@ -5612,7 +5396,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-inside/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5655,11 +5439,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "70af29ff0d8dd10b869283827242b9de9bd8b0b5e850a1fae05f872a91ffae05",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0720eeb4 nearest_depth=-55.767578 second=0xffffffff second_depth=empty",
@@ -5706,7 +5486,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5749,11 +5529,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0xffffffff second_depth=empty",
@@ -5800,7 +5576,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5844,11 +5620,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0xffffffff second_depth=empty",
@@ -5896,7 +5668,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -5939,11 +5711,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0xffffffff second_depth=empty",
@@ -5991,7 +5759,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6034,11 +5802,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "39343c2d69fa356388e76ba854d86827f9b65d23e6ef1410c3832053dc8b28be",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x064ffdb3 nearest_depth=-108.002930 second=0xffffffff second_depth=empty",
@@ -6083,7 +5847,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6126,16 +5890,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "b5b496cf69d547d82627fe0bc9c6652aa03e98dbfe65a07b8118076abce8c32e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x07c40000 nearest_depth=-15.000000 second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(446,579) nearest=0x07c40000 nearest_depth=-15.000000 second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -6169,7 +5929,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6213,16 +5973,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(0,0,0) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -6258,7 +6014,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6306,11 +6062,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(0,0,0) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -6357,7 +6109,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-distant/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6405,11 +6157,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "c618d57647436f116f8b05741289b9bb3ea361e02989d3bf877d7a1f0dcc4c43",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -6456,7 +6204,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-inside/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6503,11 +6251,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "ff2f24a3521b70da044c2fa87bcaa359584df2e59dc659525f3159fe2c5444d1",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x07240000 nearest_depth=-55.000000 second=0xffffffff second_depth=empty",
@@ -6554,7 +6298,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6601,11 +6345,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -6652,7 +6392,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6700,11 +6440,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -6752,7 +6488,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6799,11 +6535,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0xffffffff second_depth=empty",
@@ -6851,7 +6583,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/far-stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/head/far-stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -6898,11 +6630,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06540000 nearest_depth=-107.000000 second=0xffffffff second_depth=empty",
@@ -7150,7 +6878,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/moving/config.lua",
+            "/private/tmp/pool5-4799-final2/head/moving/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -7215,7 +6943,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/moving-pose-0/config.lua",
+            "/private/tmp/pool5-4799-final2/head/moving-pose-0/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -7258,11 +6986,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07500000 nearest_depth=-44.000000 second=0xffffffff second_depth=empty",
@@ -7309,7 +7033,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/moving-pose-1/config.lua",
+            "/private/tmp/pool5-4799-final2/head/moving-pose-1/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -7352,11 +7076,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07280000 nearest_depth=-54.000000 second=0xffffffff second_depth=empty",
@@ -7403,7 +7123,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/moving-pose-2/config.lua",
+            "/private/tmp/pool5-4799-final2/head/moving-pose-2/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -7446,11 +7166,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f011f94d7c2d6abbbfd3de6c98fb952c47b6db1ecd74794618563782ab94165e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07000000 nearest_depth=-64.000000 second=0xffffffff second_depth=empty",
@@ -7497,7 +7213,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/moving-pose-3/config.lua",
+            "/private/tmp/pool5-4799-final2/head/moving-pose-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -7540,11 +7256,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f011f94d7c2d6abbbfd3de6c98fb952c47b6db1ecd74794618563782ab94165e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06d80000 nearest_depth=-74.000000 second=0xffffffff second_depth=empty",
@@ -7591,7 +7303,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/moving-pose-4/config.lua",
+            "/private/tmp/pool5-4799-final2/head/moving-pose-4/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -7634,11 +7346,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06b00000 nearest_depth=-84.000000 second=0xffffffff second_depth=empty",
@@ -7685,7 +7393,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/moving-pose-5/config.lua",
+            "/private/tmp/pool5-4799-final2/head/moving-pose-5/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -7728,11 +7436,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06880000 nearest_depth=-94.000000 second=0xffffffff second_depth=empty",
@@ -7779,7 +7483,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/moving-pose-6/config.lua",
+            "/private/tmp/pool5-4799-final2/head/moving-pose-6/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -7822,11 +7526,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06600000 nearest_depth=-104.000000 second=0xffffffff second_depth=empty",
@@ -8074,7 +7774,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-moving/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-moving/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8139,7 +7839,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-moving-pose-0/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-moving-pose-0/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8182,11 +7882,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "70af29ff0d8dd10b869283827242b9de9bd8b0b5e850a1fae05f872a91ffae05",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x074da6b4 nearest_depth=-44.587891 second=0xffffffff second_depth=empty",
@@ -8233,7 +7929,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-moving-pose-1/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-moving-pose-1/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8276,11 +7972,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "4eef57ba69b8f0fdb80e16bf2b18e61c331989f4b944d8313fa6f2a8ce0db917",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0725f0a3 nearest_depth=-54.515625 second=0xffffffff second_depth=empty",
@@ -8327,7 +8019,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-moving-pose-2/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-moving-pose-2/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8370,11 +8062,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "c1c6418726bfde01f1a58df6d0db4f708661d59764c3289a66560ca610310e02",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06fccb94 nearest_depth=-64.801758 second=0xffffffff second_depth=empty",
@@ -8421,7 +8109,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-moving-pose-3/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-moving-pose-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8464,11 +8152,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "b1d70bad6f4990eefc2eae76498fd77a10b7ced96329bdc6f4a2285e14a9ea41",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06d3a695 nearest_depth=-75.087891 second=0xffffffff second_depth=empty",
@@ -8515,7 +8199,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-moving-pose-4/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-moving-pose-4/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8558,11 +8242,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "ef8a2325730f3a182f65e275ae7a27e3bc229b065904a4c8ee871d1fa2e1901f",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06ad03a3 nearest_depth=-84.747070 second=0xffffffff second_depth=empty",
@@ -8609,7 +8289,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-moving-pose-5/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-moving-pose-5/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8652,11 +8332,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "595ca07e2f20ab92cf4edff4cd8a070eb8ff7c29de4b91d4b04f57703326561f",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0683de94 nearest_depth=-95.033203 second=0xffffffff second_depth=empty",
@@ -8703,7 +8379,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/head/oblique-moving-pose-6/config.lua",
+            "/private/tmp/pool5-4799-final2/head/oblique-moving-pose-6/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8746,11 +8422,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "3fcff818163355376f7267d9a5e6c8ad4d59f90cefbbc874f9824167586a65a8",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x065c2793 nearest_depth=-104.961914 second=0xffffffff second_depth=empty",
@@ -8805,7 +8477,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/lower/config.lua",
+            "/private/tmp/pool5-4799-final2/second/lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8845,16 +8517,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "8cb76914f75c47df388287fc7bfcc562d4fb4ba27d4be21d2c66feab732b46b9",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07c40000 nearest_depth=-15.000000 second=0x07c5550c second_depth=-14.666992",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(513,512) nearest=0x07c40000 nearest_depth=-15.000000 second=0x07c5550c second_depth=-14.666992",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -8888,7 +8556,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/second/unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -8929,16 +8597,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -8974,7 +8638,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/second/unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9019,11 +8683,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -9070,7 +8730,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/distant/config.lua",
+            "/private/tmp/pool5-4799-final2/second/distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9115,11 +8775,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9e2b1297b0ab59ae1b7347a229e363459a5fa60969b94b20df0f3387f09c8cd7",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0x06a5550c second_depth=-86.666992",
@@ -9166,7 +8822,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/inside/config.lua",
+            "/private/tmp/pool5-4799-final2/second/inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9210,11 +8866,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07240000 nearest_depth=-55.000000 second=0x0725550c second_depth=-54.666992",
@@ -9261,7 +8913,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/second/stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9305,11 +8957,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0x06a5550c second_depth=-86.666992",
@@ -9356,7 +9004,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/second/stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9401,11 +9049,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0x06a5550c second_depth=-86.666992",
@@ -9453,7 +9097,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/second/stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9497,11 +9141,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06a40000 nearest_depth=-87.000000 second=0x06a5550c second_depth=-86.666992",
@@ -9549,7 +9189,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/second/stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9593,11 +9233,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06540000 nearest_depth=-107.000000 second=0x0655550c second_depth=-106.666992",
@@ -9642,7 +9278,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9682,16 +9318,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f42865c2c11c5733aecf0f1901f7165bd2c0433b960d2932461db599ddbe0e52",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x07c07e95 nearest_depth=-15.876953 second=0x07c191b5 second_depth=-15.608398",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(507,520) nearest=0x07c07ea4 nearest_depth=-15.876953 second=0x07c0ac93 second_depth=-15.832031",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -9725,7 +9357,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9766,16 +9398,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "561ebaa2a9dbecca9a3b7819db8b4a9019eaca72834e5977e10a9385b6ebaa8e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -9811,7 +9439,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9856,11 +9484,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "561ebaa2a9dbecca9a3b7819db8b4a9019eaca72834e5977e10a9385b6ebaa8e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(0,0,-12) sun_uvz=(0,0,0) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -9907,7 +9531,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-distant/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -9952,11 +9576,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "e7d610a9bf37a36722b22de2a69a7eb95accee06c20904229f3222efdf82fe39",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0x069ff492 second_depth=-88.011719",
@@ -10003,7 +9623,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-inside/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10047,11 +9667,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "70af29ff0d8dd10b869283827242b9de9bd8b0b5e850a1fae05f872a91ffae05",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0720eeb4 nearest_depth=-55.767578 second=0x07211b93 second_depth=-55.723633",
@@ -10098,7 +9714,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10142,11 +9758,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0x069ff492 second_depth=-88.011719",
@@ -10193,7 +9805,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10238,11 +9850,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0x069ff492 second_depth=-88.011719",
@@ -10290,7 +9898,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10334,11 +9942,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "9a03ad21cf14de2a98e572f31ab1973d9aaf003eb16804a9eb3a7a6c460edd7b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x069fc6a3 nearest_depth=-88.056641 second=0x069ff492 second_depth=-88.011719",
@@ -10386,7 +9990,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10430,11 +10034,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "39343c2d69fa356388e76ba854d86827f9b65d23e6ef1410c3832053dc8b28be",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x064ffdb3 nearest_depth=-108.002930 second=0x06502ba1 second_depth=-107.958008",
@@ -10479,7 +10079,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10523,16 +10123,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "b5b496cf69d547d82627fe0bc9c6652aa03e98dbfe65a07b8118076abce8c32e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x07c40000 nearest_depth=-15.000000 second=0x07c5550c second_depth=-14.666992",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(446,579) nearest=0x07c40000 nearest_depth=-15.000000 second=0x07c5550d second_depth=-14.666992",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -10566,7 +10162,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-unlit-lower/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-unlit-lower/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10611,16 +10207,12 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(0,0,0) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
             "SUN-PRIMARY-TEXEL cascade=1 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
-            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[0]"
+            "SUN-CASTER-CENSUS canvas=(642,722) occupied=30720 lower=600 ray=[]"
           ],
           "receiver_equals": {
             "parent": true,
@@ -10656,7 +10248,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-unlit-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-unlit-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10705,11 +10297,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=false route=raster face_records=0 second_depth=false world=(-40,-40,-12) sun_uvz=(0,0,0) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(-1,-1) nearest=0xffffffff nearest_depth=empty second=0xffffffff second_depth=empty",
@@ -10756,7 +10344,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-distant/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-distant/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10805,11 +10393,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "c618d57647436f116f8b05741289b9bb3ea361e02989d3bf877d7a1f0dcc4c43",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0x06a5550c second_depth=-86.666992",
@@ -10856,7 +10440,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-inside/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-inside/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -10904,11 +10488,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "ff2f24a3521b70da044c2fa87bcaa359584df2e59dc659525f3159fe2c5444d1",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x07240000 nearest_depth=-55.000000 second=0x0725550c second_depth=-54.666992",
@@ -10955,7 +10535,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-stacked/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-stacked/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11003,11 +10583,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0x06a5550c second_depth=-86.666992",
@@ -11054,7 +10630,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-stacked-first/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-stacked-first/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11103,11 +10679,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0x06a5550c second_depth=-86.666992",
@@ -11155,7 +10727,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-stacked-dup/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-stacked-dup/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11203,11 +10775,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06a40000 nearest_depth=-87.000000 second=0x06a5550c second_depth=-86.666992",
@@ -11255,7 +10823,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/far-stacked-3/config.lua",
+            "/private/tmp/pool5-4799-final2/second/far-stacked-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11303,11 +10871,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "cff39472c484a5e55cbaacbff91d5aa6e7443fee92475b0ad762e4e93fb9447b",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(-40,-40,-12) sun_uvz=(-40,40,-12) receiver=(-40,-40,2) receiver_iso_depth=-78 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(535,490) nearest=0x06540000 nearest_depth=-107.000000 second=0x0655550c second_depth=-106.666992",
@@ -11555,7 +11119,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/moving/config.lua",
+            "/private/tmp/pool5-4799-final2/second/moving/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11621,7 +11185,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/moving-pose-0/config.lua",
+            "/private/tmp/pool5-4799-final2/second/moving-pose-0/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11665,11 +11229,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07500000 nearest_depth=-44.000000 second=0x0751550c second_depth=-43.666992",
@@ -11716,7 +11276,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/moving-pose-1/config.lua",
+            "/private/tmp/pool5-4799-final2/second/moving-pose-1/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11760,11 +11320,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "d94fd9773eeb996ff4473445290356e983e0db8279aa8d854edac9cbad2a0207",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07280000 nearest_depth=-54.000000 second=0x0729550c second_depth=-53.666992",
@@ -11811,7 +11367,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/moving-pose-2/config.lua",
+            "/private/tmp/pool5-4799-final2/second/moving-pose-2/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11855,11 +11411,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f011f94d7c2d6abbbfd3de6c98fb952c47b6db1ecd74794618563782ab94165e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x07000000 nearest_depth=-64.000000 second=0x0701550c second_depth=-63.666992",
@@ -11906,7 +11458,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/moving-pose-3/config.lua",
+            "/private/tmp/pool5-4799-final2/second/moving-pose-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -11950,11 +11502,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "f011f94d7c2d6abbbfd3de6c98fb952c47b6db1ecd74794618563782ab94165e",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06d80000 nearest_depth=-74.000000 second=0x06d9550c second_depth=-73.666992",
@@ -12001,7 +11549,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/moving-pose-4/config.lua",
+            "/private/tmp/pool5-4799-final2/second/moving-pose-4/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12045,11 +11593,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06b00000 nearest_depth=-84.000000 second=0x06b1550c second_depth=-83.666992",
@@ -12096,7 +11640,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/moving-pose-5/config.lua",
+            "/private/tmp/pool5-4799-final2/second/moving-pose-5/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12140,11 +11684,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06880000 nearest_depth=-94.000000 second=0x0689550c second_depth=-93.666992",
@@ -12191,7 +11731,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/moving-pose-6/config.lua",
+            "/private/tmp/pool5-4799-final2/second/moving-pose-6/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12235,11 +11775,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "138a07b8a9d28d445e7979b3f67fe12269a287eaf5af691c072c8c6b3fc9f0b3",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(0,0,-12) receiver=(0,0,2) receiver_iso_depth=2 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(615,410) nearest=0x06600000 nearest_depth=-104.000000 second=0x0661550c second_depth=-103.666992",
@@ -12487,7 +12023,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-moving/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-moving/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12553,7 +12089,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-moving-pose-0/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-moving-pose-0/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12597,11 +12133,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "70af29ff0d8dd10b869283827242b9de9bd8b0b5e850a1fae05f872a91ffae05",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x074da6b4 nearest_depth=-44.587891 second=0x074dd493 second_depth=-44.542969",
@@ -12648,7 +12180,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-moving-pose-1/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-moving-pose-1/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12692,11 +12224,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "4eef57ba69b8f0fdb80e16bf2b18e61c331989f4b944d8313fa6f2a8ce0db917",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0725f0a3 nearest_depth=-54.515625 second=0x07261e92 second_depth=-54.470703",
@@ -12743,7 +12271,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-moving-pose-2/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-moving-pose-2/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12787,11 +12315,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "c1c6418726bfde01f1a58df6d0db4f708661d59764c3289a66560ca610310e02",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06fccb94 nearest_depth=-64.801758 second=0x06fddeb4 second_depth=-64.533203",
@@ -12838,7 +12362,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-moving-pose-3/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-moving-pose-3/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12882,11 +12406,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "b1d70bad6f4990eefc2eae76498fd77a10b7ced96329bdc6f4a2285e14a9ea41",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06d3a695 nearest_depth=-75.087891 second=0x06d4b9b5 second_depth=-74.819336",
@@ -12933,7 +12453,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-moving-pose-4/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-moving-pose-4/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -12977,11 +12497,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "ef8a2325730f3a182f65e275ae7a27e3bc229b065904a4c8ee871d1fa2e1901f",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x06ad03a3 nearest_depth=-84.747070 second=0x06ad3092 second_depth=-84.703125",
@@ -13028,7 +12544,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-moving-pose-5/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-moving-pose-5/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -13072,11 +12588,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "595ca07e2f20ab92cf4edff4cd8a070eb8ff7c29de4b91d4b04f57703326561f",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x0683de94 nearest_depth=-95.033203 second=0x0684f1c4 second_depth=-94.764648",
@@ -13123,7 +12635,7 @@
             "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build",
             "IRCanvasStress",
             "--config-preset",
-            "/private/tmp/pool5-4799-final/second/oblique-moving-pose-6/config.lua",
+            "/private/tmp/pool5-4799-final2/second/oblique-moving-pose-6/config.lua",
             "--only",
             "shadowbox,floor",
             "--probe-grid",
@@ -13167,11 +12679,7 @@
           ],
           "receiver": "receiver.png",
           "receiver_sha256": "3fcff818163355376f7267d9a5e6c8ad4d59f90cefbbc874f9824167586a65a8",
-          "pose": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "pose": null,
           "probe": [
             "SUN-PRIMARY-PROBE active=true route=raster face_records=0 second_depth=true world=(0,0,-12) sun_uvz=(-3.21994,4.29325,-10.7331) receiver=(-4.2,-5.6,2) receiver_iso_depth=-7.8 cascade_split=-51.2",
             "SUN-PRIMARY-TEXEL cascade=0 texel=(642,370) nearest=0x065c2793 nearest_depth=-104.961914 second=0x065d3ab3 second_depth=-104.693359",

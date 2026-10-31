@@ -1552,6 +1552,17 @@ sunSpaceProject(const vec3 pos3D, const vec3 uHat, const vec3 vHat, const vec3 s
     return vec3(glm::dot(pos3D, uHat), glm::dot(pos3D, vHat), -glm::dot(pos3D, sunDir));
 }
 
+/// Sun-map depth quantization: a packed word carries `(sunZ + kSunDepthOffset)
+/// * kSunDepthScale` in its high 24 bits above an 8-bit provenance byte.
+/// GPU mirrors: `kSunDepthScale` / `kSunDepthOffset` / `unpackSunDepth` in
+/// shaders/ir_sun_projection.glsl / .metal.
+constexpr float kSunDepthScale = 1024.0f;
+constexpr float kSunDepthOffset = 512.0f;
+
+constexpr float unpackSunDepth(std::uint32_t packedDepth) {
+    return static_cast<float>(packedDepth >> 8) / kSunDepthScale - kSunDepthOffset;
+}
+
 /// Sun-UV bounds of an integer iso rectangle extruded over [depthMin, depthMax]
 /// and swept by a world-space vector. Iso corners are in the cardinal view
 /// frame; the basis and sweep are in world space.

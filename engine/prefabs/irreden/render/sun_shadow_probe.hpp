@@ -13,12 +13,6 @@
 
 namespace IRPrefab::SunShadow {
 
-// CPU twin of unpackSunDepth in ir_sun_projection.{glsl,metal}: quantized
-// depth in the high 24 bits over a 1024-per-unit scale, offset 512.
-inline float unpackSunDepth(std::uint32_t packedDepth) {
-    return float(packedDepth >> 8) / 1024.0f - 512.0f;
-}
-
 struct PrimaryDepthTexel {
     IRMath::ivec2 texel_{-1, -1};
     std::uint32_t nearest_ = 0xFFFFFFFFu;
@@ -87,6 +81,65 @@ inline PrimaryDepthProbe readPrimaryDepthProbe(const IRMath::vec3 &world) {
         );
     }
     return probe;
+}
+
+struct CasterPixelCensus {
+    IRMath::ivec2 canvas_{};
+    std::size_t occupied_ = 0;
+    std::vector<std::size_t> counts_;
+};
+
+// Capture only: how many main-canvas pixels each tracked entity rasterized this
+// frame, with the occupied total, so a caster missing from the sun map can be
+// told apart from one the raster culled. Synchronizes the GPU; never use in
+// timing runs.
+inline CasterPixelCensus readCasterPixelCensus(const std::vector<IREntity::EntityId> &entities) {
+    CasterPixelCensus census;
+    census.counts_.assign(entities.size(), 0);
+    const auto mainCanvas = IRRender::getCanvas("main");
+    const auto canvasOpt =
+        IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(mainCanvas);
+    if (!canvasOpt.has_value()) {
+        return census;
+    }
+    const auto &canvas = **canvasOpt;
+    census.canvas_ = canvas.size_;
+    const std::size_t texels = std::size_t(canvas.size_.x) * std::size_t(canvas.size_.y);
+    std::vector<std::int32_t> distances(texels);
+    std::vector<std::uint32_t> ids(texels * 2);
+    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    IRRender::device()->finish();
+    canvas.getTextureDistances()->getSubImage2D(
+        0,
+        0,
+        canvas.size_.x,
+        canvas.size_.y,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        distances.data()
+    );
+    canvas.getTextureEntityIds()->getSubImage2D(
+        0,
+        0,
+        canvas.size_.x,
+        canvas.size_.y,
+        IRRender::PixelDataFormat::RG_INTEGER,
+        IRRender::PixelDataType::UINT32,
+        ids.data()
+    );
+    for (std::size_t i = 0; i < texels; ++i) {
+        if (distances[i] >= IRConstants::kTrixelDistanceMaxDistance) {
+            continue;
+        }
+        ++census.occupied_;
+        const auto id = IRRender::decodeCarrierEntityId(IRMath::uvec2(ids[2 * i], ids[2 * i + 1]));
+        for (std::size_t entity = 0; entity < entities.size(); ++entity) {
+            if (id == entities[entity]) {
+                ++census.counts_[entity];
+            }
+        }
+    }
+    return census;
 }
 
 // Capture only after shadow baking. Synchronizes the GPU; never use in timing runs.

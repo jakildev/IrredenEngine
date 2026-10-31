@@ -2604,7 +2604,7 @@ void logSunPrimaryProbe(int shotIndex) {
     );
     const auto depth = [](std::uint32_t word) {
         return word == 0xFFFFFFFFu ? std::string("empty")
-                                   : std::to_string(IRPrefab::SunShadow::unpackSunDepth(word));
+                                   : std::to_string(IRMath::unpackSunDepth(word));
     };
     for (int cascade = 0; cascade < IRPrefab::SunShadow::kSunShadowCascadeCount; ++cascade) {
         const auto &texel = probe.cascades_[cascade];
@@ -2621,63 +2621,20 @@ void logSunPrimaryProbe(int shotIndex) {
             depth(texel.second_)
         );
     }
-    const EntityId mainCanvas = IRRender::getCanvas("main");
-    const auto canvasOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
-    if (!canvasOpt.has_value()) {
-        return;
-    }
-    const C_TriangleCanvasTextures &canvas = **canvasOpt;
-    const ivec2 size = canvas.size_;
-    const std::size_t texels = std::size_t(size.x) * std::size_t(size.y);
-    std::vector<std::int32_t> distances(texels);
-    std::vector<std::uint32_t> ids(texels * 2);
-    canvas.getTextureDistances()->getSubImage2D(
-        0,
-        0,
-        size.x,
-        size.y,
-        IRRender::PixelDataFormat::RED_INTEGER,
-        IRRender::PixelDataType::INT32,
-        distances.data()
-    );
-    canvas.getTextureEntityIds()->getSubImage2D(
-        0,
-        0,
-        size.x,
-        size.y,
-        IRRender::PixelDataFormat::RG_INTEGER,
-        IRRender::PixelDataType::UINT32,
-        ids.data()
-    );
-    std::size_t occupied = 0;
-    std::size_t lower = 0;
-    std::vector<std::size_t> ray(g_rayCasters.size(), 0);
-    for (std::size_t i = 0; i < texels; ++i) {
-        if (distances[i] >= IRConstants::kTrixelDistanceMaxDistance) {
-            continue;
-        }
-        ++occupied;
-        const auto id = IRRender::decodeCarrierEntityId(uvec2(ids[2 * i], ids[2 * i + 1]));
-        if (id == g_lowerRayCaster) {
-            ++lower;
-        }
-        for (std::size_t caster = 0; caster < g_rayCasters.size(); ++caster) {
-            if (id == g_rayCasters[caster]) {
-                ++ray[caster];
-            }
-        }
-    }
+    std::vector<EntityId> tracked{g_lowerRayCaster};
+    tracked.insert(tracked.end(), g_rayCasters.begin(), g_rayCasters.end());
+    const auto census = IRPrefab::SunShadow::readCasterPixelCensus(tracked);
     std::string rayCounts;
-    for (std::size_t caster = 0; caster < ray.size(); ++caster) {
-        rayCounts += (caster == 0 ? "" : ",") + std::to_string(ray[caster]);
+    for (std::size_t caster = 1; caster < census.counts_.size(); ++caster) {
+        rayCounts += (caster == 1 ? "" : ",") + std::to_string(census.counts_[caster]);
     }
     IR_LOG_INFO(
         "SUN-CASTER-CENSUS shot={} canvas=({},{}) occupied={} lower={} ray=[{}]",
         shotIndex,
-        size.x,
-        size.y,
-        occupied,
-        lower,
+        census.canvas_.x,
+        census.canvas_.y,
+        census.occupied_,
+        census.counts_[0],
         rayCounts
     );
 }
@@ -3619,6 +3576,7 @@ void initEntities() {
                 return;
             }
             const int count = IRMath::clamp(static_cast<int>(rayCasterValues[0]), 1, 8);
+            g_rayCasters.reserve(static_cast<std::size_t>(count));
             const bool moving = IREngine::args().wasProvided("--probe-ray-casters-velocity");
             const auto velocity = IREngine::args().getFloats("--probe-ray-casters-velocity");
             const vec3 toSun = IRRender::getSunDirection();
