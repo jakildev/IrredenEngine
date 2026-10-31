@@ -2,10 +2,11 @@
 """Capture sun record-pool exhaustion controls for parent and head shaders.
 
 Run under ir-acquire gpu from a checkout whose build contains IRCanvasStress
-with --probe-record-pool-filler. The parent pass stages origin/master's four
-sun-index shaders (Metal on macOS, GLSL elsewhere) into the build's runtime
-shader directory and restores the head copies afterwards; the C++ binary is
-shared because the policy lives in those shaders.
+with --probe-record-pool-filler. The parent pass stages --parent-ref's
+(default origin/master) four sun-index shaders (Metal on macOS, GLSL
+elsewhere) into the build's runtime shader directory and restores the head
+copies afterwards; the C++ binary is shared because the policy lives in
+those shaders.
 
 Static cases grade one receiver crop against a control scene. Tracks move the
 caster stack every frame and grade each shot against a static capture of the
@@ -40,7 +41,8 @@ SUFFIX, SUBDIR = ("metal", "metal/") if sys.platform == "darwin" else ("glsl", "
 POLICY_SHADERS = tuple(f"{name}.{SUFFIX}" for name in (
     "ir_sun_face_query_layout", "ir_sun_face_index", "c_build_sun_hierarchy",
     "ir_sun_shadow_sample"))
-CROP = (1100, 600, 1460, 840)
+# Receiver rectangle in a 2560-wide (2x) framebuffer; 1x hosts capture 1280-wide frames.
+CROP, CROP_FRAME_WIDTH = (1100, 600, 1460, 840), 2560
 BAND = 2
 DOWN, OBLIQUE = (0, 0, -1), (0.3, 0.4, -1)
 FILLER = ["--probe-record-pool-filler-offset", "200", "-200", "0"]
@@ -147,13 +149,19 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def stage_parent(shader_dir):
+def scaled_crop(frame_width):
+    if CROP_FRAME_WIDTH % frame_width:
+        raise RuntimeError(f"frame width {frame_width} does not divide {CROP_FRAME_WIDTH}")
+    return tuple(v * frame_width // CROP_FRAME_WIDTH for v in CROP)
+
+
+def stage_parent(shader_dir, ref):
     saved = {}
     for name in POLICY_SHADERS:
         path = shader_dir / name
         saved[name] = path.read_bytes()
         source = subprocess.check_output(
-            ["git", "show", f"origin/master:engine/render/src/shaders/{SUBDIR}{name}"], cwd=ROOT)
+            ["git", "show", f"{ref}:engine/render/src/shaders/{SUBDIR}{name}"], cwd=ROOT)
         path.write_bytes(source)
     return saved
 
@@ -237,12 +245,13 @@ def capture(binary, build, variant_dir, spec, extra=()):
         suffix = f"-{shot}" if count > 1 else ""
         receiver = directory / f"receiver{suffix}.png"
         with Image.open(frame) as image:
-            image.crop(CROP).save(receiver)
+            crop = scaled_crop(image.width)
+            image.crop(crop).save(receiver)
         index = directory / f"index{suffix}.csv.gz"
         with csv_path.open("rb") as source, gzip.open(index, "wb") as dest:
             shutil.copyfileobj(source, dest)
         summary = summarize(index)
-        shots.append({"frame": frame.name, "frame_sha256": sha256(frame),
+        shots.append({"frame": frame.name, "frame_sha256": sha256(frame), "crop": crop,
                       "receiver": receiver.name, "receiver_sha256": sha256(receiver),
                       "pose": poses.get(shot),
                       "index": {key: summary[key] for key in summary if key != "cascades"},
@@ -285,9 +294,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--build-dir", type=Path, default=ROOT / "build")
+    parser.add_argument("--parent-ref", default="origin/master",
+                        help="ref whose sun-index shaders the parent variant stages")
     parser.add_argument("--variants", default="parent,head",
                         help="comma-separated subset of parent,head; a build whose layout "
-                             "differs from origin/master runs head only")
+                             "differs from --parent-ref runs head only")
     parser.add_argument("--cases", default="",
                         help="comma-separated static case names (controls are added); "
                              "default runs every case")
@@ -320,7 +331,7 @@ def main():
     shader_dir = binary.parent / "shaders" / SUBDIR
     report = {"head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT,
                                              text=True).strip(),
-              "parent": subprocess.check_output(["git", "rev-parse", "origin/master"],
+              "parent": subprocess.check_output(["git", "rev-parse", args.parent_ref],
                                                cwd=ROOT, text=True).strip(),
               "binary_sha256": sha256(binary), "crop": CROP, "band_px": BAND,
               "extra": args.extra, "variants": {}}
@@ -328,7 +339,7 @@ def main():
         subprocess.check_output(["git", "diff", "origin/master", "--", "engine", "creations"],
                                 cwd=ROOT))
     for variant in variants:
-        saved = stage_parent(shader_dir) if variant == "parent" else {}
+        saved = stage_parent(shader_dir, args.parent_ref) if variant == "parent" else {}
         try:
             report["variants"][variant] = {
                 "shader_sha256": {name: sha256(shader_dir / name) for name in POLICY_SHADERS},
