@@ -375,6 +375,12 @@ class Handle {
         }
         builder().applyRecipe(parsedName, parsedValues);
     }
+    void paintClass(const sol::object &local, const sol::object &className) {
+        builder().paintClass(
+            ivec3Arg(local, "paintClass", "local"),
+            stringArg(className, "paintClass", "className")
+        );
+    }
     void attachComponent(const sol::object &name) {
         builder().attachComponent(stringArg(name, "attachComponent", "name"));
     }
@@ -440,6 +446,19 @@ class Handle {
             part,
             ivec3Arg(local, "expectPartOccupancy", "local"),
             occupied,
+            name
+        );
+    }
+    void expectPartCellClass(
+        int part, const sol::object &local, const sol::object &className, const std::string &name
+    ) {
+        std::optional<std::string> expected;
+        if (className.valid() && className.get_type() != sol::type::lua_nil)
+            expected = stringArg(className, "expectPartCellClass", "className");
+        builder().expectPartCellClass(
+            part,
+            ivec3Arg(local, "expectPartCellClass", "local"),
+            std::move(expected),
             name
         );
     }
@@ -797,6 +816,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::dragGuiSlider,
         "applyRecipe",
         &Handle::applyRecipe,
+        "paintClass",
+        &Handle::paintClass,
         "attachComponent",
         &Handle::attachComponent,
         "setComponentField",
@@ -879,6 +900,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectOccupancy,
         "expectPartOccupancy",
         &Handle::expectPartOccupancy,
+        "expectPartCellClass",
+        &Handle::expectPartCellClass,
         "expectPartTransform",
         &Handle::expectPartTransform,
         "expectPartCount",

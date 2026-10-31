@@ -28,9 +28,22 @@ struct RecipeCell {
     std::optional<IRMath::Color> color_;
 };
 
+struct RecipeClassMaskEntry {
+    IRMath::ivec3 local_ = IRMath::ivec3(0);
+    std::string className_;
+};
+
+struct PartRecipeBinding {
+    std::string recipe_;
+    std::vector<float> values_;
+    IRMath::Color fallbackColor_{};
+    std::vector<RecipeClassMaskEntry> mask_;
+};
+
 struct ModuleRecipe {
     std::string name_;
     std::vector<RecipeParam> params_;
+    std::vector<std::string> classes_;
 };
 
 struct ModuleSessionView {
@@ -38,6 +51,7 @@ struct ModuleSessionView {
         std::size_t,
         const std::vector<float> &,
         IRMath::ivec3,
+        const std::vector<RecipeClassMaskEntry> &,
         std::vector<RecipeCell> &,
         std::string &
     )>;
