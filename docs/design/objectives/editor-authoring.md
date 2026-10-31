@@ -36,13 +36,15 @@ is the standing bet.
 
 ## Current state
 The editor builds clean on macOS/Metal and runs green headless through the
-GUI-test harness: the standing shot table is 22 assertions (including the
-load-bearing `PICKS_VOXEL` over the real picking/ray path), and beside it
-`--gui-session` names 29 scripted sessions (`drag_probe` through
-`composite_proof`), the fixture module registers six more, and
-`composite_proof` alone evaluates 79 assertions. Every authoring feature
-since the entity creator landed with its own session (`voxel_editor/CLAUDE.md`
-§Validators). Editor scenes have a committed render-verify reference set
+GUI-test harness: the standing shot table holds 22 assertions over 21 shots
+(including the load-bearing `PICKS_VOXEL` over the real picking/ray path)
+and passes `--gui-layout-check` (PR #4640); `--gui-session` names 30
+scripted sessions (`drag_probe` through `composite_proof`, plus
+`undo_history` from PR #4689), the fixture module registers eight more
+(`creations/editors/voxel_editor/test/module/init.lua`), and `composite_proof` alone evaluates 79
+assertions. Every authoring feature since the entity creator landed with its
+own session (`voxel_editor/CLAUDE.md` §Validators). Editor scenes have a
+committed render-verify reference set
 (`creations/editors/voxel_editor/test/references/macos-debug/`, the
 `mode_preview_grid` / `mode_preview_revox` pair from
 `--gui-session mode_preview_shots`), so Done-means row 4 verifies.
@@ -60,18 +62,22 @@ owner of the world-to-window-pixel projection and agrees with
 `GuiInputEvent.screenPx_`. The uncalled `screenToWorld` inverse, which
 projected through the viewport centre alone, is removed.
 
-The entity-creator epic (#3974) closed on 2026-10-13 and its post-merge
-follow-ups have landed: remove part (#4181), PARTS list scroll (#4222), linear
-array offset (#4221), CENTER-anchored parts (#4245), gizmo drawn in front of
-its part (#4348), per-axis rotate rings (#4410), the fill ghost (#4418), and
-module-safe `Session::Builder` operations with Lua bindings (#4250, #4353,
-#4376, #4379 RADIUS, #4406 named list scroll). Still open from that audit:
-the COPY YAW binding (#4402) and the bake-radius model (#4396), the panel
-overlap (#4220), and the product call on a selected part's gizmo owning a
-small part's paint pixels at zoom 4 (#4420). Every change since the owner's
-2026-09-30 review has been validated by scripted sessions only; the owner's
-hands-on pass is the next input, to land as `editor-authoring-friction.md`
-Part 4 and the next decomposition.
+The entity-creator epic (#3974) closed on 2026-10-13 and its audit list is
+drained: remove part (#4181), PARTS list scroll (#4222), linear array offset
+(#4221), CENTER-anchored parts (#4245), gizmo drawn in front of its part
+(#4348), per-axis rotate rings (#4410), the fill ghost (#4418), module-safe
+`Session::Builder` operations with Lua bindings (#4250, #4353, #4376, #4379
+RADIUS, #4406 named list scroll), the bake-radius model (#4396, PR #4401),
+the panel overlap (#4220, PR #4487), the gizmo-owns-paint-pixels call
+resolved by the owner's decision that handles take clicks only in a G
+transform mode (#4420, PR #4492; now `voxel_editor/CLAUDE.md` §Picking
+contract), and the COPY YAW binding (#4402, PR #4694). Two master breaks
+were fixed forward (#4467 by PR #4468, #4642 by PR #4687). Open: #4753
+makes the module paths `author-entity.py` writes into
+`composite_proof/author.json` portable. Every change since the owner's
+2026-09-30 review has been validated by scripted sessions only; no hands-on
+pass has landed and the friction doc still ends at Part 3, so the owner's
+pass remains the next input and the next decomposition.
 
 The entity creator (#3974) landed its reference proof: the `composite_proof`
 session authors nine parts (a stem and a frame from the fixture module's
@@ -96,3 +102,9 @@ objective-linked decomposition for the entity creator.
 | 2026-09-30 | #3974 (proposal), #3982 | friction-report review done; non-goals narrowed to phases 3, 4, 7, 8; composite-entity Done-means row added |
 | 2026-10-13 | #3974 / #3992 | composite proof authored through the harness from the fixture module, committed, and spawned by `Prefab.spawn`; Done-means row 5 verifies |
 | 2026-10-15 | sweep | Current state re-verified against master `741d3f0ab`; Done-means row 4 verifies (29 sessions plus the `mode_preview` render-verify set); row 3 confirmed open; entity-creator follow-ups recorded; owner's hands-on pass is the next input |
+| 2026-10-16 | #4396 / PR #4401 | the bake slider's held radius is what `bakeSphere` models; `test_bake_radius_guard` fixture |
+| 2026-10-17 | #4220 / PR #4487; #4420 / PR #4492; #4467 / PR #4468 | panel overlap fixed; gizmo handles take clicks only in a G transform mode (owner decision); `test_radius` re-pinned |
+| 2026-10-20 | PR #4640 | `--gui-layout-check` gates the editor shot table |
+| 2026-10-23 | #4402 / PR #4694; PR #4689 | COPY YAW bound to sessions (`test_yaw`); shared undo service and the `undo_history` session (30 sessions, 8 fixture) |
+| 2026-10-27 | sweep | re-verified against master `ee85797c0`; audit list drained; row 3 reframed (`worldToScreen` is a dead helper); no Part 4 yet |
+| 2026-10-29 | #4767 / PR #4791 | debug-overlay `worldToScreen` delegates to `worldPos3DToMouseScreenPx`; dead `screenToWorld` removed; Done-means row 3 verifies |
