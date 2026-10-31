@@ -1,1 +1,1 @@
-config = {window_mode="offscreen", profiling_enabled=false, gpu_stage_timing=false, init_window_width=1280, init_window_height=720, game_resolution_width=1280, game_resolution_height=720, screenshot_output_dir="/private/tmp/pool5-4799-final2/parent/moving-pose-3"}
+config = {window_mode="offscreen", profiling_enabled=false, gpu_stage_timing=false, init_window_width=1280, init_window_height=720, game_resolution_width=1280, game_resolution_height=720, screenshot_output_dir="/private/tmp/raster-depth-4830m/parent/moving-pose-3"}

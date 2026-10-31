@@ -106,27 +106,31 @@ retains each summary and manifest. Means over the five pairs, ms:
 
 | Scene / row | parent | head | second | head / parent | second / head |
 |---|---:|---:|---:|---:|---:|
-| raster-stacked steady frame avg | 18.60 (15.59–21.53) | 19.42 (18.18–22.33) | 22.30 (19.88–23.35) | 1.044 | 1.149 |
-| raster-stacked steady frame p99 | 29.13 | 29.68 | 30.04 | 1.019 | 1.012 |
-| raster-stacked GPU frame envelope | 3.831 | 3.845 | 4.306 | 1.004 | 1.120 |
-| raster-stacked GPU bakeSunShadowMap | 2.816 (2.758–2.878) | 2.809 (2.694–2.875) | 3.270 (3.193–3.368) | 0.998 | 1.164 |
-| raster-stacked GPU computeSunShadow | 0.053 | 0.055 | 0.065 | 1.042 | 1.174 |
-| raster-stacked GPU canvasClear | 0.030 | 0.031 | 0.031 | 1.007 | 1.007 |
-| perf-grid zoom 1 steady frame avg | 22.95 | 22.36 | — | 0.974 | — |
-| perf-grid zoom 1 GPU frame envelope | 5.048 | 4.890 | — | 0.969 | — |
-| perf-grid zoom 4 steady frame avg | 25.52 | 26.05 | — | 1.021 | — |
-| perf-grid zoom 4 GPU frame envelope | 7.665 | 7.441 | — | 0.971 | — |
+| raster-stacked steady frame avg | 18.97 (17.69–20.63) | 17.85 (16.05–20.76) | 18.37 (15.72–19.27) | 0.941 | 1.029 |
+| raster-stacked steady frame p99 | 24.81 | 25.04 | 24.75 | 1.009 | 0.988 |
+| raster-stacked GPU frame envelope | 4.249 | 4.297 | 4.702 | 1.011 | 1.094 |
+| raster-stacked GPU bakeSunShadowMap | 3.223 (3.119–3.297) | 3.277 (3.238–3.299) | 3.679 (3.487–3.757) | 1.017 | 1.123 |
+| raster-stacked GPU computeSunShadow | 0.056 | 0.057 | 0.068 | 1.018 | 1.188 |
+| raster-stacked GPU canvasClear | 0.030 | 0.030 | 0.030 | 1.000 | 0.993 |
+| perf-grid zoom 1 steady frame avg | 21.85 | 21.85 | — | 1.000 | — |
+| perf-grid zoom 1 GPU frame envelope | 5.445 | 5.575 | — | 1.024 | — |
+| perf-grid zoom 4 steady frame avg | 24.35 | 24.30 | — | 0.998 | — |
+| perf-grid zoom 4 GPU frame envelope | 7.640 | 7.429 | — | 0.972 | — |
 
 The production bake is a compile-time wrapper over a shared body, so the
-default path carries no second-depth instruction: head's bake row sits inside
-the parent spread in every pair and the GPU frame envelope within 0.4 %. The
-opt-in second-depth program adds one atomic per splat write and one read per
-raster tap: +0.45 ms on the bake (every pair above the parent maximum),
-+0.01 ms on `computeSunShadow`, +12 % on the GPU frame envelope. It allocates
-nothing and clears nothing extra (the fallback layer is already cleared), and
-adds no dispatch. An earlier runtime switch inside the kernel had cost the
-default path's bake +10 % (2.81 → 3.10 ms in all five pairs), the
-predication tax the GPU stage timing cost model predicts.
+default path carries no second-depth instruction: head's bake (3.238–3.299)
+stays within 0.002 ms of the parent's range (3.119–3.297) in every pair, and
+the GPU frame envelope is within 1.1 %. The opt-in second-depth program adds
+one atomic per splat write and one read per raster tap: +0.40 ms on the bake
+(every pair above the parent maximum), +0.01 ms on `computeSunShadow`, +9 % on
+the GPU frame envelope. It allocates nothing and clears nothing extra (the
+fallback layer is already cleared), and adds no dispatch. The second-depth
+runs also read lower `computeLightVolume` and `trixelToFb` rows (see
+[timing/timing.md](timing/timing.md)) while the envelope still rises; the
+envelope is the adoption metric and those two rows were not investigated. An
+earlier runtime switch inside the kernel had cost the default path's bake
++10 % (2.81 → 3.10 ms in all five pairs, before the record-pool growth
+merged), the predication tax the GPU stage timing cost model predicts.
 
 ## Replay
 
@@ -136,7 +140,9 @@ ir-acquire benchmark -- python3 docs/pr-screenshots/claude/4799-raster-sun-depth
 ```
 
 The drivers stage GLSL instead of Metal off macOS, so the same commands run
-on Windows/OpenGL. Captured on Apple M4 Max, macOS, Metal Debug.
+on Windows/OpenGL. Captured on Apple M4 Max, macOS, Metal Debug, at merge head
+`ae0366517` (`captures.json` and every timing `manifest.json` record the
+commit and the binary hash).
 **Windows/OpenGL captures were not run on this host**; the CPU shader
 adapters in `scripts/tests/` execute both dialects' sources, not the OpenGL
 driver. Capture frames synchronize the GPU and are not timing evidence.

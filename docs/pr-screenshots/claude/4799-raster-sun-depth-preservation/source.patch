@@ -1,8 +1,8 @@
 diff --git a/creations/demos/canvas_stress/main.cpp b/creations/demos/canvas_stress/main.cpp
-index 1899bf832..63f343f1f 100644
+index 873849a79..f82021878 100644
 --- a/creations/demos/canvas_stress/main.cpp
 +++ b/creations/demos/canvas_stress/main.cpp
-@@ -26,6 +26,7 @@
+@@ -28,6 +28,7 @@
  #include <irreden/render/components/component_entity_canvas.hpp>
  #include <irreden/render/components/component_light_blocker.hpp>
  #include <irreden/render/components/component_light_source.hpp>
@@ -10,7 +10,7 @@ index 1899bf832..63f343f1f 100644
  #include <irreden/render/components/component_triangle_canvas_textures.hpp>
  #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
  #include <irreden/input/components/component_hitbox_2d.hpp>
-@@ -53,6 +54,7 @@
+@@ -55,6 +56,7 @@
  #include <irreden/render/systems/system_lod_update.hpp>
  #include <irreden/render/systems/system_propagate_canvas_parts.hpp>
  #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
@@ -18,7 +18,7 @@ index 1899bf832..63f343f1f 100644
  #include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
  #include <irreden/render/systems/system_shapes_to_trixel.hpp>
  #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
-@@ -461,6 +463,15 @@ EntityId g_hoverCanary = IREntity::kNullEntity;
+@@ -468,6 +470,15 @@ EntityId g_hoverCanary = IREntity::kNullEntity;
  // frames log its offset in --probe-overlapping-source-offset units.
  EntityId g_probeDriftLead = IREntity::kNullEntity;
  vec3 g_probeDriftOrigin{};
@@ -34,7 +34,7 @@ index 1899bf832..63f343f1f 100644
  constexpr vec3 kHoverCanaryWorldPos{0.0f, 0.0f, -48.0f};
  IRSystem::SystemId g_hoverDetectSystem = IRSystem::kNullSystemId;
  IRVideo::GuiInputEvent g_hoverCanaryMove{0, IRVideo::GuiInputEvent::Type::MOVE, ivec2(0)};
-@@ -2252,7 +2263,7 @@ void registerArgs() {
+@@ -2259,7 +2270,7 @@ void registerArgs() {
      );
      args.integer(
          "--probe-floor-span",
@@ -43,7 +43,7 @@ index 1899bf832..63f343f1f 100644
          0
      );
      args.flag(
-@@ -2265,7 +2276,28 @@ void registerArgs() {
+@@ -2272,7 +2283,28 @@ void registerArgs() {
          "Coincident source casters for tile pressure, 1..256",
          1
      );
@@ -73,7 +73,7 @@ index 1899bf832..63f343f1f 100644
      args.integer(
          "--probe-record-pool-filler",
          "Side of a flat rigid source plate that fills the sun face record pool, 0..512 (0 off)",
-@@ -2538,6 +2570,118 @@ void applyArgs() {
+@@ -2561,6 +2593,75 @@ void applyArgs() {
  
  } // namespace
  
@@ -111,7 +111,7 @@ index 1899bf832..63f343f1f 100644
 +    );
 +    const auto depth = [](std::uint32_t word) {
 +        return word == 0xFFFFFFFFu ? std::string("empty")
-+                                   : std::to_string(IRPrefab::SunShadow::unpackSunDepth(word));
++                                   : std::to_string(IRMath::unpackSunDepth(word));
 +    };
 +    for (int cascade = 0; cascade < IRPrefab::SunShadow::kSunShadowCascadeCount; ++cascade) {
 +        const auto &texel = probe.cascades_[cascade];
@@ -128,63 +128,20 @@ index 1899bf832..63f343f1f 100644
 +            depth(texel.second_)
 +        );
 +    }
-+    const EntityId mainCanvas = IRRender::getCanvas("main");
-+    const auto canvasOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
-+    if (!canvasOpt.has_value()) {
-+        return;
-+    }
-+    const C_TriangleCanvasTextures &canvas = **canvasOpt;
-+    const ivec2 size = canvas.size_;
-+    const std::size_t texels = std::size_t(size.x) * std::size_t(size.y);
-+    std::vector<std::int32_t> distances(texels);
-+    std::vector<std::uint32_t> ids(texels * 2);
-+    canvas.getTextureDistances()->getSubImage2D(
-+        0,
-+        0,
-+        size.x,
-+        size.y,
-+        IRRender::PixelDataFormat::RED_INTEGER,
-+        IRRender::PixelDataType::INT32,
-+        distances.data()
-+    );
-+    canvas.getTextureEntityIds()->getSubImage2D(
-+        0,
-+        0,
-+        size.x,
-+        size.y,
-+        IRRender::PixelDataFormat::RG_INTEGER,
-+        IRRender::PixelDataType::UINT32,
-+        ids.data()
-+    );
-+    std::size_t occupied = 0;
-+    std::size_t lower = 0;
-+    std::vector<std::size_t> ray(g_rayCasters.size(), 0);
-+    for (std::size_t i = 0; i < texels; ++i) {
-+        if (distances[i] >= IRConstants::kTrixelDistanceMaxDistance) {
-+            continue;
-+        }
-+        ++occupied;
-+        const auto id = IRRender::decodeCarrierEntityId(uvec2(ids[2 * i], ids[2 * i + 1]));
-+        if (id == g_lowerRayCaster) {
-+            ++lower;
-+        }
-+        for (std::size_t caster = 0; caster < g_rayCasters.size(); ++caster) {
-+            if (id == g_rayCasters[caster]) {
-+                ++ray[caster];
-+            }
-+        }
-+    }
++    std::vector<EntityId> tracked{g_lowerRayCaster};
++    tracked.insert(tracked.end(), g_rayCasters.begin(), g_rayCasters.end());
++    const auto census = IRPrefab::SunShadow::readCasterPixelCensus(tracked);
 +    std::string rayCounts;
-+    for (std::size_t caster = 0; caster < ray.size(); ++caster) {
-+        rayCounts += (caster == 0 ? "" : ",") + std::to_string(ray[caster]);
++    for (std::size_t caster = 1; caster < census.counts_.size(); ++caster) {
++        rayCounts += (caster == 1 ? "" : ",") + std::to_string(census.counts_[caster]);
 +    }
 +    IR_LOG_INFO(
 +        "SUN-CASTER-CENSUS shot={} canvas=({},{}) occupied={} lower={} ray=[{}]",
 +        shotIndex,
-+        size.x,
-+        size.y,
-+        occupied,
-+        lower,
++        census.canvas_.x,
++        census.canvas_.y,
++        census.occupied_,
++        census.counts_[0],
 +        rayCounts
 +    );
 +}
@@ -192,7 +149,7 @@ index 1899bf832..63f343f1f 100644
  void initSystems();
  void initCommands();
  void initEntities();
-@@ -2659,7 +2803,8 @@ void initSystems() {
+@@ -2682,7 +2783,8 @@ void initSystems() {
      updatePipeline.push_back(IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>());
      // Auto-capture runs one fixed UPDATE tick per render frame, so a moving
      // caster's captured pose depends only on the frame index.
@@ -202,7 +159,7 @@ index 1899bf832..63f343f1f 100644
          updatePipeline.push_back(IRSystem::createSystem<IRSystem::VELOCITY_3D>());
      }
      updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>());
-@@ -2762,6 +2907,11 @@ void initSystems() {
+@@ -2785,6 +2887,11 @@ void initSystems() {
          // shadow passes so the floor is in `trixelDistances` when BAKE_SUN_SHADOW_MAP
          // projects the GRID casters' shadows onto it.
          renderPipeline.push_back(IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>());
@@ -214,7 +171,7 @@ index 1899bf832..63f343f1f 100644
          renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>());
          // Collapses the per-axis voxel canvases into the cardinal-layout
          // resolve texture BAKE_SUN_SHADOW_MAP casts. Without it the
-@@ -2770,8 +2920,10 @@ void initSystems() {
+@@ -2793,8 +2900,10 @@ void initSystems() {
          // most of this demo's runtime under the default --auto-rotate.
          renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
          const auto bakeSun = IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>();
@@ -227,7 +184,7 @@ index 1899bf832..63f343f1f 100644
          renderPipeline.push_back(bakeSun);
          renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
          renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
-@@ -3095,6 +3247,9 @@ void initSystems() {
+@@ -3118,6 +3227,9 @@ void initSystems() {
                      written
                  );
              }
@@ -237,7 +194,7 @@ index 1899bf832..63f343f1f 100644
              if (IREngine::args().getFlag("--cardinal-receiver-probe")) {
                  const std::string prefix = "cardinal-receiver-" + std::to_string(shotIndex);
                  IR_LOG_INFO(
-@@ -3294,7 +3449,7 @@ void initEntities() {
+@@ -3347,7 +3459,7 @@ void initEntities() {
              const int requestedSpan = IREngine::args().getInt("--probe-floor-span");
              const float floorSpan = IREngine::args().getFlag("--probe-single-voxel") ? 12.0f
                                      : requestedSpan != 0
@@ -246,7 +203,7 @@ index 1899bf832..63f343f1f 100644
                                      : floorMode == "sdf" ? kFloorSpan
                                                           : 32.0f;
              if (floorMode == "sdf") {
-@@ -3341,6 +3496,25 @@ void initEntities() {
+@@ -3394,6 +3506,25 @@ void initEntities() {
          }
      }
  
@@ -272,7 +229,7 @@ index 1899bf832..63f343f1f 100644
      if ((g_settings.onlyGroups_ & kGroupShadowOcclusion) != 0u) {
          const bool blocked = !IREngine::args().getFlag("--probe-unblocked");
          const bool external = IREngine::args().getFlag("--probe-external-blocker");
-@@ -3437,6 +3611,48 @@ void initEntities() {
+@@ -3490,6 +3621,49 @@ void initEntities() {
              vec3(0.0f, 0.0f, singleVoxel ? -2.0f : -12.0f) +
              (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
          const Color color{80, 120, 240, 255};
@@ -284,6 +241,7 @@ index 1899bf832..63f343f1f 100644
 +                return;
 +            }
 +            const int count = IRMath::clamp(static_cast<int>(rayCasterValues[0]), 1, 8);
++            g_rayCasters.reserve(static_cast<std::size_t>(count));
 +            const bool moving = IREngine::args().wasProvided("--probe-ray-casters-velocity");
 +            const auto velocity = IREngine::args().getFloats("--probe-ray-casters-velocity");
 +            const vec3 toSun = IRRender::getSunDirection();
@@ -321,7 +279,7 @@ index 1899bf832..63f343f1f 100644
          // Bake dispatches allocate records in creation order, so the filler's
          // position in that order decides whether the shadowbox casters keep theirs.
          const int fillerSide =
-@@ -3586,10 +3802,12 @@ void initEntities() {
+@@ -3642,10 +3816,12 @@ void initEntities() {
                  );
              }
          } else if (IREngine::args().getFlag("--probe-grid")) {
@@ -338,30 +296,46 @@ index 1899bf832..63f343f1f 100644
          } else {
              const int canvasSize =
                  IRMath::clamp(IREngine::args().getInt("--probe-box-canvas-size"), 128, 1024);
-@@ -3620,6 +3838,9 @@ void initEntities() {
-                 canvas
-             );
+@@ -3679,6 +3855,9 @@ void initEntities() {
+         if (fillerSide > 0 && fillerLast && g_recordPoolFillerFrame == 0) {
+             spawnRecordPoolFiller();
          }
 +        if (!rayCastersFirst) {
 +            spawnRayCasters();
 +        }
-         if (fillerSide > 0 && fillerLast) {
-             spawnRecordPoolFiller();
-         }
+     }
+ 
+     // Per-trixel priority interpenetration demo — OPT-IN only
+diff --git a/engine/math/include/irreden/ir_math.hpp b/engine/math/include/irreden/ir_math.hpp
+index bf7b87328..af69ca544 100644
+--- a/engine/math/include/irreden/ir_math.hpp
++++ b/engine/math/include/irreden/ir_math.hpp
+@@ -1552,6 +1552,17 @@ sunSpaceProject(const vec3 pos3D, const vec3 uHat, const vec3 vHat, const vec3 s
+     return vec3(glm::dot(pos3D, uHat), glm::dot(pos3D, vHat), -glm::dot(pos3D, sunDir));
+ }
+ 
++/// Sun-map depth quantization: a packed word carries `(sunZ + kSunDepthOffset)
++/// * kSunDepthScale` in its high 24 bits above an 8-bit provenance byte.
++/// GPU mirrors: `kSunDepthScale` / `kSunDepthOffset` / `unpackSunDepth` in
++/// shaders/ir_sun_projection.glsl / .metal.
++constexpr float kSunDepthScale = 1024.0f;
++constexpr float kSunDepthOffset = 512.0f;
++
++constexpr float unpackSunDepth(std::uint32_t packedDepth) {
++    return static_cast<float>(packedDepth >> 8) / kSunDepthScale - kSunDepthOffset;
++}
++
+ /// Sun-UV bounds of an integer iso rectangle extruded over [depthMin, depthMax]
+ /// and swept by a world-space vector. Iso corners are in the cardinal view
+ /// frame; the basis and sweep are in world space.
 diff --git a/engine/prefabs/irreden/render/sun_shadow_probe.hpp b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
-index 5dd115271..89f8cb194 100644
+index 1b2fae6a7..b59b40636 100644
 --- a/engine/prefabs/irreden/render/sun_shadow_probe.hpp
 +++ b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
-@@ -13,6 +13,82 @@
+@@ -13,6 +13,135 @@
  
  namespace IRPrefab::SunShadow {
  
-+// CPU twin of unpackSunDepth in ir_sun_projection.{glsl,metal}: quantized
-+// depth in the high 24 bits over a 1024-per-unit scale, offset 512.
-+inline float unpackSunDepth(std::uint32_t packedDepth) {
-+    return float(packedDepth >> 8) / 1024.0f - 512.0f;
-+}
-+
 +struct PrimaryDepthTexel {
 +    IRMath::ivec2 texel_{-1, -1};
 +    std::uint32_t nearest_ = 0xFFFFFFFFu;
@@ -432,16 +406,75 @@ index 5dd115271..89f8cb194 100644
 +    return probe;
 +}
 +
++struct CasterPixelCensus {
++    IRMath::ivec2 canvas_{};
++    std::size_t occupied_ = 0;
++    std::vector<std::size_t> counts_;
++};
++
++// Capture only: how many main-canvas pixels each tracked entity rasterized this
++// frame, with the occupied total, so a caster missing from the sun map can be
++// told apart from one the raster culled. Synchronizes the GPU; never use in
++// timing runs.
++inline CasterPixelCensus readCasterPixelCensus(const std::vector<IREntity::EntityId> &entities) {
++    CasterPixelCensus census;
++    census.counts_.assign(entities.size(), 0);
++    const auto mainCanvas = IRRender::getCanvas("main");
++    const auto canvasOpt =
++        IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(mainCanvas);
++    if (!canvasOpt.has_value()) {
++        return census;
++    }
++    const auto &canvas = **canvasOpt;
++    census.canvas_ = canvas.size_;
++    const std::size_t texels = std::size_t(canvas.size_.x) * std::size_t(canvas.size_.y);
++    std::vector<std::int32_t> distances(texels);
++    std::vector<std::uint32_t> ids(texels * 2);
++    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
++    IRRender::device()->finish();
++    canvas.getTextureDistances()->getSubImage2D(
++        0,
++        0,
++        canvas.size_.x,
++        canvas.size_.y,
++        IRRender::PixelDataFormat::RED_INTEGER,
++        IRRender::PixelDataType::INT32,
++        distances.data()
++    );
++    canvas.getTextureEntityIds()->getSubImage2D(
++        0,
++        0,
++        canvas.size_.x,
++        canvas.size_.y,
++        IRRender::PixelDataFormat::RG_INTEGER,
++        IRRender::PixelDataType::UINT32,
++        ids.data()
++    );
++    for (std::size_t i = 0; i < texels; ++i) {
++        if (distances[i] >= IRConstants::kTrixelDistanceMaxDistance) {
++            continue;
++        }
++        ++census.occupied_;
++        const auto id = IRRender::decodeCarrierEntityId(IRMath::uvec2(ids[2 * i], ids[2 * i + 1]));
++        for (std::size_t entity = 0; entity < entities.size(); ++entity) {
++            if (id == entities[entity]) {
++                ++census.counts_[entity];
++            }
++        }
++    }
++    return census;
++}
++
  // Capture only after shadow baking. Synchronizes the GPU; never use in timing runs.
  inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeometry = false) {
      std::ofstream output(path);
 diff --git a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
-index 4d87ceed0..7abe5ef5c 100644
+index b8cb79f35..debd1ef45 100644
 --- a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
 +++ b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
-@@ -167,6 +167,14 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
-     ShaderProgram *hierarchyProgram_ = nullptr;
-     std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyBuildPasses> hierarchyFrames_{};
+@@ -185,6 +185,14 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+     std::uint32_t recordCapacityChanges_ = 0;
+     bool recordCeilingWarned_ = false;
      bool voxelFaceCoverage_ = true;
 +    // Diagnostic for the raster-only route: the second-depth bake program keeps
 +    // each texel's second distinct depth in the otherwise empty indexed
@@ -454,7 +487,7 @@ index 4d87ceed0..7abe5ef5c 100644
      bool coverageFrameOpen_ = false;
      bool frameUsesFiniteCoverage_ = false;
      Buffer *analyticCasterFrameBuf_ = nullptr;
-@@ -484,7 +492,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+@@ -502,7 +510,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
          clearDepthMap();
  
          // Bake: each pixel projects into both cascades in one pass.
@@ -465,7 +498,7 @@ index 4d87ceed0..7abe5ef5c 100644
          canvasTextures.getTextureDistances()
              ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
          canvasTextures.getTextureEntityIds()
-@@ -656,7 +666,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+@@ -674,7 +684,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
              // the unchanged cardinal recovery (the per-axis resolveDepth_ bake
              // above is the in-file precedent). Re-bind the bake's full set: the
              // scratch aliased slot 28 and the UBO was orphaned by the subData.
@@ -474,7 +507,7 @@ index 4d87ceed0..7abe5ef5c 100644
              sunShadowDepthMap_->bindBase(
                  BufferTarget::SHADER_STORAGE,
                  kBufferIndex_SunShadowDepthMap
-@@ -762,6 +772,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+@@ -861,6 +871,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
      }
  
      void beginTick() {
@@ -492,7 +525,7 @@ index 4d87ceed0..7abe5ef5c 100644
          beginVoxelFaceCoverage();
          if (sunShadowFrameDataBuf_ == nullptr) {
              sunShadowFrameDataBuf_ =
-@@ -838,7 +859,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+@@ -937,7 +958,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
          vec3 uHat, vHat;
          IRMath::buildOrthonormalBasis(sunDir, uHat, vHat);
          frameData_.sunBasisU_ = vec4(uHat, frameData_.sunBasisU_.w);
@@ -926,7 +959,7 @@ index 000000000..d6ae2fcab
 +#define IR_SUN_SECOND_DEPTH 1
 +#include "c_bake_sun_shadow_map_body.glsl"
 diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
-index 68a52328f..454dcf69c 100644
+index 149d86dd8..e5800ff37 100644
 --- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
 +++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
 @@ -31,7 +31,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
@@ -938,7 +971,7 @@ index 68a52328f..454dcf69c 100644
      uniform vec2 sunBufferOriginUV;
      uniform vec2 sunBufferTexelSize;
      uniform vec2 cascadeOriginUV_0;
-@@ -121,8 +121,8 @@ bool sourceSunHierarchyBlocks(uint leaves, uint records,
+@@ -121,8 +121,8 @@ bool sourceSunHierarchyBlocks(uint capacity, uint leaves, uint records,
  
  float sampleCascadeShadow(
      vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
@@ -949,7 +982,7 @@ index 68a52328f..454dcf69c 100644
  #if IR_SUN_QUERY_STATS
      , inout SunQueryStats sunQueryStats
  #endif
-@@ -283,8 +283,11 @@ float sampleCascadeShadow(
+@@ -285,8 +285,11 @@ float sampleCascadeShadow(
              float weight = mix(1.0 - frac.x, frac.x, float(dx))
                           * mix(1.0 - frac.y, frac.y, float(dy));
              // Range and plane rejection are per layer; a nearer invalid tap
@@ -963,7 +996,7 @@ index 68a52328f..454dcf69c 100644
              for (int layer = 0; layer < layerCount; ++layer) {
                  uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x
                      + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
-@@ -382,8 +385,8 @@ float worldSunShadowFactorImpl(vec3 pos3D, vec3 normal, float isoDepth, bool sur
+@@ -384,8 +387,8 @@ float worldSunShadowFactorImpl(vec3 pos3D, vec3 normal, float isoDepth, bool sur
          }
          const float shadow = sampleCascadeShadow(
              sunUV, sunZ, normal, sunDir, uHat, vHat,
@@ -1355,7 +1388,7 @@ index 000000000..a153dbe94
 +#define IR_SUN_BAKE_KERNEL_NAME c_bake_sun_shadow_map_second_depth
 +#include "c_bake_sun_shadow_map_body.metal"
 diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
-index 7c7e9cecc..fbc52ee9f 100644
+index 398f00dc4..b5c766ec0 100644
 --- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
 +++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
 @@ -33,7 +33,7 @@ struct FrameDataSun {
@@ -1367,7 +1400,7 @@ index 7c7e9cecc..fbc52ee9f 100644
      float2 sunBufferOriginUV;
      float2 sunBufferTexelSize;
      float2 cascadeOriginUV_0;
-@@ -120,8 +120,8 @@ inline bool sourceSunHierarchyBlocks(device const uint* sunDepthBuf, uint leaves
+@@ -120,8 +120,8 @@ inline bool sourceSunHierarchyBlocks(device const uint* sunDepthBuf, uint capaci
  inline float sampleCascadeShadow(
      float2 sunUV, float sunZ, float3 normal, float3 sunDir, float3 uHat, float3 vHat,
      float2 origin, float2 texelSz, int bufferOffset,
@@ -1378,7 +1411,7 @@ index 7c7e9cecc..fbc52ee9f 100644
  #if IR_SUN_QUERY_STATS
      , thread SunQueryStats &sunQueryStats
  #endif
-@@ -279,8 +279,11 @@ inline float sampleCascadeShadow(
+@@ -280,8 +280,11 @@ inline float sampleCascadeShadow(
              float weight = mix(1.0f - frac.x, frac.x, float(dx))
                           * mix(1.0f - frac.y, frac.y, float(dy));
              // Range and plane rejection are per layer; a nearer invalid tap
@@ -1392,7 +1425,7 @@ index 7c7e9cecc..fbc52ee9f 100644
              for (int layer = 0; layer < layerCount; ++layer) {
                  uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x
                      + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
-@@ -377,7 +380,8 @@ inline float worldSunShadowFactorImpl(
+@@ -378,7 +381,8 @@ inline float worldSunShadowFactorImpl(
          }
          const float shadow = sampleCascadeShadow(
              sunUV, sunZ, normal, sunDir, uHat, vHat,

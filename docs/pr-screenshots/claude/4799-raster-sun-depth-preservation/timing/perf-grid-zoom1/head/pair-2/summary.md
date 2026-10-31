@@ -1,32 +1,32 @@
 | Measurement | Mean ms | Run min–max ms | One-sided 95% upper bound ms |
 |---|---:|---:|---:|
-| frame avg | 33.570 | 33.570–33.570 | n/a |
-| frame p95 | 28.250 | 28.250–28.250 | n/a |
-| frame p99 | 726.450 | 726.450–726.450 | n/a |
-| steady frame avg | 22.400 | 22.400–22.400 | n/a |
-| steady frame p95 | 25.010 | 25.010–25.010 | n/a |
-| steady frame p99 | 28.250 | 28.250–28.250 | n/a |
-| GPU frame commandBufferSpans | 5.830 | 5.830–5.830 | n/a |
-| GPU frame envelope | 5.830 | 5.830–5.830 | n/a |
-| GPU bakeSunShadowMap | 0.091 | 0.091–0.091 | n/a |
-| GPU canvasClear | 0.079 | 0.079–0.079 | n/a |
-| GPU computeLightVolume | 2.686 | 2.686–2.686 | n/a |
-| GPU computeSunShadow | 0.068 | 0.068–0.068 | n/a |
-| GPU computeVoxelAO | 0.058 | 0.058–0.058 | n/a |
-| GPU fbToScreen | 0.123 | 0.123–0.123 | n/a |
-| GPU fogToTrixel | 0.032 | 0.032–0.032 | n/a |
-| GPU lightingToTrixel | 0.057 | 0.057–0.057 | n/a |
-| GPU textToTrixel | 1.201 | 1.201–1.201 | n/a |
-| GPU trixelToFb | 1.154 | 1.154–1.154 | n/a |
-| GPU voxelCardinalElect | 0.467 | 0.467–0.467 | n/a |
-| GPU voxelCompact | 0.294 | 0.294–0.294 | n/a |
-| GPU voxelStage1 | 0.578 | 0.578–0.578 | n/a |
-| GPU voxelStage2 | 0.465 | 0.465–0.465 | n/a |
-| GPU voxelSunFaces | 1.088 | 1.088–1.088 | n/a |
+| frame avg | 32.230 | 32.230–32.230 | n/a |
+| frame p95 | 24.050 | 24.050–24.050 | n/a |
+| frame p99 | 640.680 | 640.680–640.680 | n/a |
+| steady frame avg | 21.780 | 21.780–21.780 | n/a |
+| steady frame p95 | 23.970 | 23.970–23.970 | n/a |
+| steady frame p99 | 24.050 | 24.050–24.050 | n/a |
+| GPU frame commandBufferSpans | 5.439 | 5.439–5.439 | n/a |
+| GPU frame envelope | 5.439 | 5.439–5.439 | n/a |
+| GPU bakeSunShadowMap | 0.121 | 0.121–0.121 | n/a |
+| GPU canvasClear | 0.128 | 0.128–0.128 | n/a |
+| GPU computeLightVolume | 2.796 | 2.796–2.796 | n/a |
+| GPU computeSunShadow | 0.131 | 0.131–0.131 | n/a |
+| GPU computeVoxelAO | 0.056 | 0.056–0.056 | n/a |
+| GPU fbToScreen | 0.125 | 0.125–0.125 | n/a |
+| GPU fogToTrixel | 0.033 | 0.033–0.033 | n/a |
+| GPU lightingToTrixel | 0.059 | 0.059–0.059 | n/a |
+| GPU textToTrixel | 1.690 | 1.690–1.690 | n/a |
+| GPU trixelToFb | 1.201 | 1.201–1.201 | n/a |
+| GPU voxelCardinalElect | 0.470 | 0.470–0.470 | n/a |
+| GPU voxelCompact | 0.880 | 0.880–0.880 | n/a |
+| GPU voxelStage1 | 0.584 | 0.584–0.584 | n/a |
+| GPU voxelStage2 | 0.466 | 0.466–0.466 | n/a |
+| GPU voxelSunFaces | 1.254 | 1.254–1.254 | n/a |
 
 | Steady frames pooled over runs | Frames | Mean ms | p95 ms | p99 ms | Max ms |
 |---|---:|---:|---:|---:|---:|
-| first 15 of each run excluded | 45 | 22.402 | 25.009 | 28.252 | 28.252 |
+| first 15 of each run excluded | 45 | 21.780 | 23.970 | 24.050 | 24.050 |
 
 | Fixed updates per rendered frame | Mean | Run min–max | Max in a frame |
 |---|---:|---:|---:|
