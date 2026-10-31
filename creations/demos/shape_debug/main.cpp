@@ -3,6 +3,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_render.hpp>
@@ -278,6 +279,7 @@ bool g_skinSmoke = false;
 bool g_shadowFootprintProbe = false;
 int g_autoProfileFrames = 0; // 0 = disabled
 int g_autoProfileCount = 0;
+std::optional<IRShapeDebug::SdfVoxelScene::MemoryWitness> g_sdfVoxelMemory;
 float g_initialZoom = 0.0f; // 0 = use engine default
 float g_initialYawRadians = 0.0f;
 float g_initialYaw = 0.0f;
@@ -4028,6 +4030,23 @@ void initSystems() {
             []() {
                 ++g_autoProfileCount;
                 if (g_autoProfileCount >= g_autoProfileFrames) {
+                    if (g_sdfVoxelMemory.has_value()) {
+                        const auto process = IRProfile::processMemoryStats();
+                        const auto gpu = IRRender::device()->gpuMemoryStats();
+                        std::printf(
+                            "SDF-RESIDENCY process_after_scene_bytes=%zu "
+                            "process_final_bytes=%zu process_peak_bytes=%zu "
+                            "gpu_process_allocated_bytes=%zu gpu_device_capacity_bytes=%zu "
+                            "gpu_device_available_bytes=%zu\n",
+                            g_sdfVoxelMemory->processAfterScene_.residentBytes_,
+                            process.residentBytes_,
+                            process.peakResidentBytes_,
+                            gpu.processAllocatedBytes_,
+                            gpu.deviceCapacityBytes_,
+                            gpu.deviceAvailableBytes_
+                        );
+                        std::fflush(stdout);
+                    }
                     IRShapeDebug::GlitchFixture::logProbe("profile-end", false);
                     g_glitchSubject.logSystemLine("profile-end");
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
@@ -5454,7 +5473,7 @@ void initEntities() {
     if (sdfVoxelMode != "off") {
         using Pose = IRShapeDebug::SdfVoxelScene::Pose;
         const auto &pose = IREngine::args().getEnum("--sdf-voxel-pose");
-        IRShapeDebug::SdfVoxelScene::initialize(
+        g_sdfVoxelMemory = IRShapeDebug::SdfVoxelScene::initialize(
             sdfVoxelMode == "baked",
             IREngine::args().getFlag("--sdf-voxel-blockers"),
             pose == "root"       ? Pose::ROOT

@@ -12,6 +12,12 @@ namespace IRRender {
 class Buffer;
 class Texture2D;
 
+struct GpuMemoryStats {
+    std::size_t processAllocatedBytes_ = 0;
+    std::size_t deviceCapacityBytes_ = 0;
+    std::size_t deviceAvailableBytes_ = 0;
+};
+
 using GpuTimestampHandle = std::uint32_t;
 constexpr GpuTimestampHandle kInvalidGpuTimestampHandle = 0;
 
@@ -35,6 +41,9 @@ class RenderDevice {
     }
     const GpuFrameTimingStats &gpuFrameTimingStats() const {
         return m_gpuFrameTiming.stats();
+    }
+    virtual GpuMemoryStats gpuMemoryStats() const {
+        return {};
     }
 
     virtual void beginFrame() = 0;

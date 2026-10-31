@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from repeat_profile import shape_profile_arguments
-from sdf_controls import cases, runner_options, verify_configurations
+from sdf_controls import cases, runner_options, summarize_memory, verify_configurations
 
 
 class SdfControlsTest(unittest.TestCase):
@@ -43,7 +43,8 @@ class SdfControlsTest(unittest.TestCase):
                 path.mkdir(parents=True)
                 (path / "manifest.json").write_text(json.dumps({
                     "configuration_sha256": {"scripts/config.lua": "base",
-                                             "configs/perf/sdf-on.lua": "on"},
+                                             "configs/perf/sdf-on.lua": "on",
+                                             "--sdf-voxel-pose": f"pose-{index}"},
                 }))
             verify_configurations(output)
             manifest = output / "arm/round-2/manifest.json"
@@ -61,6 +62,34 @@ class SdfControlsTest(unittest.TestCase):
         self.assertEqual(
             ("--target", "IRShapeDebug", "--release"), runner_options(True)
         )
+
+    def test_memory_summary_distinguishes_process_and_driver_measurements(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            path = output / "density-baked-2-timing-off/round-1"
+            path.mkdir(parents=True)
+            (path / "manifest.json").write_text(json.dumps({"runs": [{
+                "sdf_occupancy": {
+                    "bake_us": 42,
+                    "asset_bytes": 300,
+                    "bake_scratch_peak_bytes": 100,
+                    "bake_payload_peak_bytes": 400,
+                    "process_before_bytes": 1000,
+                    "process_after_bake_bytes": 1400,
+                },
+                "sdf_residency": {
+                    "process_final_bytes": 1700,
+                    "process_peak_bytes": 1800,
+                    "gpu_process_allocated_bytes": 1900,
+                    "gpu_device_capacity_bytes": 10000,
+                    "gpu_device_available_bytes": 7000,
+                },
+            }]}))
+            selected = {"density-baked-2-timing-off": []}
+            summarize_memory(output, selected)
+            summary = (output / "memory-summary.md").read_text()
+            self.assertIn("| 400.0 | 700.0 | 800.0 | 1900.0 | 3000.0 |", summary)
+            self.assertIn("not process residency", summary)
 
 
 if __name__ == "__main__":

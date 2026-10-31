@@ -2,6 +2,7 @@ add_library(IrredenEngineProfile STATIC
     src/cpu_profiler.cpp
     src/logger_spd.cpp
     src/ir_profile.cpp
+    src/process_memory.cpp
     src/profile_report.cpp
 )
 
@@ -56,6 +57,9 @@ add_subdirectory(
 )
 
 target_link_libraries(IrredenEngineProfile PUBLIC spdlog)
+if(WIN32)
+    target_link_libraries(IrredenEngineProfile PUBLIC psapi)
+endif()
 target_include_directories(IrredenEngineProfile PRIVATE
     ${spdlog_SOURCE_DIR}/include
 )

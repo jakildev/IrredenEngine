@@ -10,6 +10,12 @@ builds.
 class to instantiate on the caller side; the underlying `LoggerSpd` and
 `CPUProfiler` are singletons.
 
+`IRProfile::processMemoryStats()` is the portable process-memory observation
+surface. It returns current resident and peak resident bytes using PSAPI on
+Windows, Mach task/resource APIs on macOS and `/proc` plus `getrusage` on Linux.
+Peak RSS is an operating-system high-water mark, not a delta attributable to a
+single engine resource.
+
 ## Logging macros
 
 Four loggers over one console sink:

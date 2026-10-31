@@ -183,8 +183,10 @@ def shape_configuration(binary: Path, values: dict[str, str]) -> dict[str, str]:
     return fingerprint
 
 
-def sdf_occupancy_witness(log_text: str) -> dict[str, int | str] | None:
-    matches = re.findall(r"^SDF-OCCUPANCY (.+)$", log_text, flags=re.MULTILINE)
+def structured_log_witness(
+    log_text: str, label: str, string_fields: tuple[str, ...] = (),
+) -> dict[str, int | str] | None:
+    matches = re.findall(rf"^{re.escape(label)} (.+)$", log_text, flags=re.MULTILINE)
     if len(matches) != 1:
         return None
     witness: dict[str, int | str] = {}
@@ -195,10 +197,18 @@ def sdf_occupancy_witness(log_text: str) -> dict[str, int | str] | None:
         if not name or not value:
             return None
         try:
-            witness[name] = value if name == "representation" else int(value)
+            witness[name] = value if name in string_fields else int(value)
         except ValueError:
             return None
     return witness
+
+
+def sdf_occupancy_witness(log_text: str) -> dict[str, int | str] | None:
+    return structured_log_witness(log_text, "SDF-OCCUPANCY", ("representation",))
+
+
+def sdf_residency_witness(log_text: str) -> dict[str, int | str] | None:
+    return structured_log_witness(log_text, "SDF-RESIDENCY")
 
 
 def shape_pose_mismatch(demo_args: list[str], witness: RunWitness) -> str | None:
@@ -916,6 +926,7 @@ def main() -> int:
         }
         if shape_args is not None:
             run["sdf_occupancy"] = sdf_occupancy_witness(log_text)
+            run["sdf_residency"] = sdf_residency_witness(log_text)
             run["configuration_unchanged"] = (
                 shape_configuration(binary, shape_args) == manifest["configuration_sha256"]
             )
@@ -942,7 +953,7 @@ def main() -> int:
             or run.get("measurement_failure") is not None
             or (shape_args is not None and (
                 run["quiet"] != "guarded" or not run["configuration_unchanged"]
-                or run["sdf_occupancy"] is None
+                or run["sdf_occupancy"] is None or run["sdf_residency"] is None
             ))
             or run["yaw_pose_mismatch"] is not None
             or run["pivot_mismatch"] is not None
@@ -962,6 +973,8 @@ def main() -> int:
                     reasons.append("runtime configuration changed during measurement")
                 if run["sdf_occupancy"] is None:
                     reasons.append("missing SDF occupancy/startup witness")
+                if run["sdf_residency"] is None:
+                    reasons.append("missing SDF process/GPU residency witness")
             print(
                 f"run {index}: failed or missing requested measurements"
                 f"{''.join(f'; {reason}' for reason in reasons if reason)}; inspect {log_path}",

@@ -14,6 +14,7 @@ from compare_perf_runs import CellReport, FrameTiming, GpuFrameTiming, GpuStage
 from repeat_profile import (
     main,
     sdf_occupancy_witness,
+    sdf_residency_witness,
     shape_configuration,
     shape_measurement_failure,
     shape_profile_arguments,
@@ -49,12 +50,21 @@ class ShapeProfileArgumentsTest(unittest.TestCase):
         witness = sdf_occupancy_witness(
             "SDF-OCCUPANCY representation=baked presentation=2 density=2 copies=16 "
             "overlap=1 moving=1 bake_us=42 allocated_slots=100 occupied_cells=25 "
-            "record_bytes=1200\n"
+            "record_bytes=1200 asset_bytes=300 bake_scratch_peak_bytes=100 "
+            "bake_payload_peak_bytes=400 process_before_bytes=1000 "
+            "process_after_bake_bytes=1400 process_bake_peak_bytes=1500\n"
         )
         self.assertEqual(witness["bake_us"], 42)
         self.assertIsNone(sdf_occupancy_witness("SDF-OCCUPANCY representation=baked copies=\n"))
         self.assertIsNone(sdf_occupancy_witness("SDF-OCCUPANCY representation=baked copies\n"))
         self.assertEqual(witness["representation"], "baked")
+        residency = sdf_residency_witness(
+            "SDF-RESIDENCY process_after_scene_bytes=1600 process_final_bytes=1700 "
+            "process_peak_bytes=1800 gpu_process_allocated_bytes=1900 "
+            "gpu_device_capacity_bytes=0 gpu_device_available_bytes=0\n"
+        )
+        self.assertEqual(residency["gpu_process_allocated_bytes"], 1900)
+        self.assertIsNone(sdf_residency_witness("SDF-RESIDENCY process_peak_bytes=bad\n"))
 
     def test_ambiguous_or_scene_changing_flags_are_rejected(self):
         for extra in (["--auto-screenshot", "5"], ["--auto-record", "30"],
@@ -196,7 +206,10 @@ class ShapeProfileWitnessTest(unittest.TestCase):
 
     def test_runner_refuses_unqualified_reports_and_preserves_evidence(self):
         launched_ns = 1_700_000_000_000_000_000
-        for failure in (None, "quiet", "stale", "unclean", "config", "pose", "gpu", "frames"):
+        for failure in (
+            None, "quiet", "stale", "unclean", "config", "pose", "gpu", "frames",
+            "occupancy", "residency",
+        ):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 demo = root / "build/creations/demos/shape_debug"
@@ -214,11 +227,25 @@ class ShapeProfileWitnessTest(unittest.TestCase):
                     self.assertEqual(command[-2:], ["--window-mode", "offscreen"])
                     quiet = "unguarded" if failure == "quiet" else "guarded"
                     result = "ERROR" if failure == "unclean" else "CLEAN"
-                    log.write_text(
-                        f"ir-run: QUIET={quiet}\n"
+                    occupancy = (
+                        "" if failure == "occupancy" else
                         "SDF-OCCUPANCY representation=baked presentation=0 density=1 "
                         "copies=1 overlap=0 moving=0 bake_us=42 allocated_slots=100 "
-                        "occupied_cells=25 record_bytes=1200\n"
+                        "occupied_cells=25 record_bytes=1200 asset_bytes=300 "
+                        "bake_scratch_peak_bytes=100 bake_payload_peak_bytes=400 "
+                        "process_before_bytes=1000 process_after_bake_bytes=1400 "
+                        "process_bake_peak_bytes=1500\n"
+                    )
+                    residency = (
+                        "" if failure == "residency" else
+                        "SDF-RESIDENCY process_after_scene_bytes=1600 "
+                        "process_final_bytes=1700 process_peak_bytes=1800 "
+                        "gpu_process_allocated_bytes=1900 gpu_device_capacity_bytes=0 "
+                        "gpu_device_available_bytes=0\n"
+                    )
+                    log.write_text(
+                        f"ir-run: QUIET={quiet}\n"
+                        f"{occupancy}{residency}"
                         f"RESULT={result}\n"
                     )
                     text = WITNESSED_REPORT.replace("-135.000", "45.000")
