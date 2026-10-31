@@ -104,6 +104,7 @@ TEST(SdfBake, BudgetIncludesOutputAndScratchWithInclusiveByteBoundary) {
     constexpr std::size_t cells = 2 * 3 * 4;
     constexpr std::size_t outputBytes = cells * sizeof(IRAsset::VoxelRecord);
     constexpr std::size_t workingBytes = outputBytes + cells * sizeof(float);
+    static_assert(IRPrefab::Voxel::sdfBakeScratchBytes(cells) == workingBytes - outputBytes);
     for (const auto budget : {std::size_t(0), outputBytes, workingBytes - 1}) {
         const auto rejected = bakeSdfGrid(ivec3(2, 3, 4), ShapeType::BOX, vec4(4), kColor, budget);
         EXPECT_TRUE(rejected.voxels_.empty());

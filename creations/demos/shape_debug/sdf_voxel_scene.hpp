@@ -3,6 +3,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_video.hpp>
+#include <irreden/profile/process_memory.hpp>
 #include <irreden/common/components/component_auto_spin.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/rotation_mode.hpp>
@@ -98,7 +99,7 @@ struct SdfVoxelScene {
                 const std::size_t recordBytes =
                     denseSubjects[index].voxels_.size() * sizeof(IRAsset::VoxelRecord);
                 const std::size_t scratchBytes =
-                    denseSubjects[index].voxels_.size() * sizeof(float);
+                    IRPrefab::Voxel::sdfBakeScratchBytes(denseSubjects[index].voxels_.size());
                 if (scratchBytes > memory.bakeScratchPeakBytes_) {
                     memory.bakeScratchPeakBytes_ = scratchBytes;
                 }
@@ -231,7 +232,7 @@ struct SdfVoxelScene {
             "SDF-OCCUPANCY representation=%s presentation=%d density=%d copies=%d overlap=%d "
             "moving=%d bake_us=%lld allocated_slots=%zu occupied_cells=%zu record_bytes=%zu "
             "asset_bytes=%zu bake_scratch_peak_bytes=%zu bake_payload_peak_bytes=%zu "
-            "process_before_bytes=%zu process_after_bake_bytes=%zu process_bake_peak_bytes=%zu\n",
+            "process_before_bytes=%zu process_after_bake_bytes=%zu\n",
             baked ? "baked" : "direct",
             static_cast<int>(presentation),
             density,
@@ -248,8 +249,7 @@ struct SdfVoxelScene {
             memory.bakeScratchPeakBytes_,
             memory.bakePayloadPeakBytes_,
             memory.processBefore_.residentBytes_,
-            memory.processAfterBake_.residentBytes_,
-            memory.processAfterBake_.peakResidentBytes_
+            memory.processAfterBake_.residentBytes_
         );
         std::fflush(stdout);
         memory.processAfterScene_ = IRProfile::processMemoryStats();

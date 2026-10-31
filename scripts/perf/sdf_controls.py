@@ -74,6 +74,8 @@ def verify_configurations(output: Path) -> None:
         if not hashes:
             raise ValueError(f"{path}: no configuration fingerprint")
         for name, digest in hashes.items():
+            # `--*` entries echo the case's own selector arguments, which differ
+            # between cases by design; file hashes are the cross-case drift check.
             if name.startswith("--"):
                 continue
             if configurations.setdefault(name, digest) != digest:

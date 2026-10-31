@@ -8,6 +8,12 @@
 
 namespace IRPrefab::Voxel {
 
+// Distance scratch forEachSdfGridCell holds alongside the output records while
+// bakeSdfGrid runs over @p cells grid cells. It is freed before the bake returns.
+constexpr std::size_t sdfBakeScratchBytes(std::size_t cells) {
+    return cells * sizeof(float);
+}
+
 // Author-time conversion to an ordinary, opaque DENSE asset. Params use the
 // descriptor convention (BOX full dimensions); fillSdf instead takes
 // evaluation parameters. The explicit grid clips the solid and fixes its phase:
@@ -44,8 +50,7 @@ inline IRAsset::DenseVoxelSet bakeSdfGrid(
             return {};
         }
     }
-    // forEachSdfGridCell holds one float per cell alongside the output records.
-    constexpr std::size_t bytesPerCell = sizeof(IRAsset::VoxelRecord) + sizeof(float);
+    constexpr std::size_t bytesPerCell = sizeof(IRAsset::VoxelRecord) + sdfBakeScratchBytes(1);
     const auto maxCells =
         min(maxWorkingBytes / bytesPerCell,
             static_cast<std::size_t>(std::numeric_limits<int>::max()));

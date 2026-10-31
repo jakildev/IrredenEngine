@@ -52,7 +52,7 @@ class ShapeProfileArgumentsTest(unittest.TestCase):
             "overlap=1 moving=1 bake_us=42 allocated_slots=100 occupied_cells=25 "
             "record_bytes=1200 asset_bytes=300 bake_scratch_peak_bytes=100 "
             "bake_payload_peak_bytes=400 process_before_bytes=1000 "
-            "process_after_bake_bytes=1400 process_bake_peak_bytes=1500\n"
+            "process_after_bake_bytes=1400\n"
         )
         self.assertEqual(witness["bake_us"], 42)
         self.assertIsNone(sdf_occupancy_witness("SDF-OCCUPANCY representation=baked copies=\n"))
@@ -233,8 +233,7 @@ class ShapeProfileWitnessTest(unittest.TestCase):
                         "copies=1 overlap=0 moving=0 bake_us=42 allocated_slots=100 "
                         "occupied_cells=25 record_bytes=1200 asset_bytes=300 "
                         "bake_scratch_peak_bytes=100 bake_payload_peak_bytes=400 "
-                        "process_before_bytes=1000 process_after_bake_bytes=1400 "
-                        "process_bake_peak_bytes=1500\n"
+                        "process_before_bytes=1000 process_after_bake_bytes=1400\n"
                     )
                     residency = (
                         "" if failure == "residency" else

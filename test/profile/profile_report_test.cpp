@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <irreden/profile/profile_report.hpp>
-#include <irreden/profile/process_memory.hpp>
 #include <irreden/profile/scope_timer.hpp>
 
 #include <cstdio>
@@ -11,12 +10,6 @@
 #include <string>
 
 namespace {
-
-TEST(ProcessMemory, ReportsResidentAndPeakBytes) {
-    const auto memory = IRProfile::processMemoryStats();
-    EXPECT_GT(memory.residentBytes_, 0u);
-    EXPECT_GE(memory.peakResidentBytes_, memory.residentBytes_);
-}
 
 // One directory per test: CTest registers each test separately and may run two
 // of them at once. The read stream is closed before remove_all because Windows

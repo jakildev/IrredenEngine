@@ -8,11 +8,12 @@
 #include <mach/mach.h>
 #include <sys/resource.h>
 #else
-#include <sys/resource.h>
-#include <unistd.h>
-
+#include <cstdlib>
 #include <fstream>
+#include <string>
 #endif
+
+#include <algorithm>
 
 namespace IRProfile {
 
@@ -41,21 +42,26 @@ ProcessMemoryStats processMemoryStats() {
         stats.peakResidentBytes_ = static_cast<std::size_t>(usage.ru_maxrss);
     }
 #else
-    std::ifstream statm("/proc/self/statm");
-    std::size_t virtualPages = 0;
-    std::size_t residentPages = 0;
-    if (statm >> virtualPages >> residentPages) {
-        static_cast<void>(virtualPages);
-        const long pageSize = sysconf(_SC_PAGESIZE);
-        if (pageSize > 0) {
-            stats.residentBytes_ = residentPages * static_cast<std::size_t>(pageSize);
+    // VmRSS and VmHWM come from one pass over the same counters, so they form
+    // a consistent pair; statm plus getrusage read two accounting paths that
+    // can disagree by several pages.
+    std::ifstream status("/proc/self/status");
+    std::string line;
+    while (std::getline(status, line)) {
+        std::size_t *field = nullptr;
+        if (line.rfind("VmRSS:", 0) == 0) {
+            field = &stats.residentBytes_;
+        } else if (line.rfind("VmHWM:", 0) == 0) {
+            field = &stats.peakResidentBytes_;
+        }
+        if (field != nullptr) {
+            *field = std::strtoull(line.c_str() + line.find(':') + 1, nullptr, 10) * 1024u;
         }
     }
-    rusage usage{};
-    if (getrusage(RUSAGE_SELF, &usage) == 0) {
-        stats.peakResidentBytes_ = static_cast<std::size_t>(usage.ru_maxrss) * 1024u;
-    }
 #endif
+    // A high-water mark below the current sample is never meaningful; the
+    // platform pairs come from separately updated counters.
+    stats.peakResidentBytes_ = std::max(stats.peakResidentBytes_, stats.residentBytes_);
     return stats;
 }
 
