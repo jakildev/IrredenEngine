@@ -1,0 +1,32 @@
+"""Capture matrix: placements x fog x opt-in x {ambient 0.15, ambient 0.55, local light + lit/dark refs}."""
+import subprocess, sys
+from pathlib import Path
+out = Path(sys.argv[1])
+H = 1.57079632679
+PLACEMENTS = [(f'origin-yaw{y}', [], y) for y in ('0', '1.57079632679', '3.14159265359', '4.71238898038',
+                                                  '0.6', '2.17079632679', '3.74159265359', '5.31238898038')]
+PLACEMENTS += [(f'near-yaw{y}', ['--camera-iso', '-0.375', '0.625'], y)
+               for y in ('0.002', '1.57279632679', '3.14359265359', '4.71438898038')]
+PLACEMENTS += [(f'mid-yaw{y}', ['--camera-iso', '-1.375', '-0.625'], y)
+               for y in ('0.6', '2.17079632679', '3.74159265359', '5.31238898038')]
+PLACEMENTS += [('subpos-yaw0.6', ['--camera-iso', '0.1', '-0.2'], '0.6'),
+               ('subneg-yaw0.6', ['--camera-iso', '-0.1', '0.2'], '0.6')]
+LIGHT = ['--probe-local-light', '8', '0', '-20']
+VARIANTS = [('ambient0.15', ['--sun-ambient', '0.15']),
+            ('ambient0.55', ['--sun-ambient', '0.55']),
+            ('local', LIGHT),
+            ('local-lit', [*LIGHT, '--no-shadows']),
+            ('local-dark', [*LIGHT, '--sun-direction', '1', '0', '0',
+                            '--probe-overlapping-source-offset', '-12', '0', '-12'])]
+only = sys.argv[2].split(',') if len(sys.argv) > 2 else None
+for variant, flags in VARIANTS:
+    if only and variant not in only:
+        continue
+    for label, camera, yaw in PLACEMENTS:
+        for fog in ('0', '16'):
+            for surface in ('0', '1'):
+                folder = out / variant / f'{label}-fog{fog}-surface{surface}'
+                if (folder / 'capture.json').exists():
+                    continue
+                subprocess.run([sys.executable, '/tmp/pool-1-4757/cap.py', str(folder), yaw, fog, surface,
+                                *camera, *flags], check=False)

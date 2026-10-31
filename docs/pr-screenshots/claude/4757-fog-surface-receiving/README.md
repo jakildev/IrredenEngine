@@ -85,9 +85,8 @@ The fog is visible in these frames (yaw 0, fog off and on):
 
 ![](polygon/yaw0-fog-off-on.png)
 
-**Not covered:** ambient-strength and local-light variants of this matrix. The
-oracle's palette is fixed to one sun and ambient configuration, and IRCanvasStress
-has no local-light control. The residual is recorded on the issue.
+Ambient-strength and local-light variants of this matrix pass in
+[receiver-shadow-ambient-local-light](../4757-receiver-shadow-ambient-local-light/README.md).
 
 ## Cost
 

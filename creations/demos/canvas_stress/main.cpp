@@ -25,6 +25,7 @@
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
+#include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
@@ -413,6 +414,8 @@ inline vec3 compareCellWorld(int index) {
 constexpr vec3 kSunDirection = vec3(-0.42f, -0.60f, -0.55f); // setSunDirection normalizes
 constexpr float kSunIntensity = 1.0f;
 constexpr float kSunAmbient = 0.30f;
+constexpr Color kProbeLocalLightColor{255, 128, 0, 255};
+constexpr uint8_t kProbeLocalLightRadius = 24;
 
 // Shadow floor: a thin SDF box just below the center GRID spin-cube cluster so
 // those casters drop visible sun shadows onto a surface. SDF (free at any size)
@@ -2205,6 +2208,13 @@ void registerArgs() {
         0.0f
     );
     args.flag("--probe-sky", "Isolate HDR sky lighting with a white sky and zero sun intensity");
+    args.number("--sun-ambient", "Sun ambient floor, 0..1", kSunAmbient);
+    args.numbers(
+        "--probe-local-light",
+        "Add an orange POINT light (no blue component) at world <x> <y> <z>",
+        3
+    );
+    args.number("--probe-local-light-intensity", "Intensity of --probe-local-light", 1.0f);
     args.numbers(
         "--sun-direction",
         "World-to-sun vector <x> <y> <z>; nonzero, z <= 0 (+Z is down)",
@@ -3229,17 +3239,40 @@ void initEntities() {
             }
         }
         IRRender::setSunDirection(sunDirection);
+        IRRender::setSunIntensity(kSunIntensity);
+        IRRender::setSunAmbient(IREngine::args().getFloat("--sun-ambient"));
         const vec3 normalizedSun = IRRender::getSunDirection();
         IR_LOG_INFO(
-            "LIGHTING-PROBE sun=({},{},{}) shadows={} ao={}",
+            "LIGHTING-PROBE sun=({},{},{}) ambient={} shadows={} ao={}",
             normalizedSun.x,
             normalizedSun.y,
             normalizedSun.z,
+            IRRender::getSunAmbient(),
             !IREngine::args().getFlag("--no-shadows"),
             !IREngine::args().getFlag("--no-ao")
         );
-        IRRender::setSunIntensity(kSunIntensity);
-        IRRender::setSunAmbient(kSunAmbient);
+        if (IREngine::args().wasProvided("--probe-local-light")) {
+            const auto &values = IREngine::args().getFloats("--probe-local-light");
+            const vec3 lightPosition(values[0], values[1], values[2]);
+            const float intensity = IREngine::args().getFloat("--probe-local-light-intensity");
+            IREntity::createEntity(
+                C_LocalTransform{lightPosition},
+                C_LightSource{
+                    LightType::POINT,
+                    kProbeLocalLightColor,
+                    intensity,
+                    kProbeLocalLightRadius
+                }
+            );
+            IR_LOG_INFO(
+                "LOCAL-LIGHT-PROBE position=({},{},{}) intensity={} radius={}",
+                lightPosition.x,
+                lightPosition.y,
+                lightPosition.z,
+                intensity,
+                kProbeLocalLightRadius
+            );
+        }
         IRRender::setSunShadowsEnabled(!IREngine::args().getFlag("--no-shadows"));
         IRRender::setAOEnabled(!IREngine::args().getFlag("--no-ao"));
         if (IREngine::args().getFlag("--probe-sky")) {

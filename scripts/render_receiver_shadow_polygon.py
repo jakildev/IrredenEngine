@@ -3,6 +3,9 @@
 Requires the fixed Metal snapped-camera capture arguments documented in
 receiver-shadow-polygon/README.md.
 Geometry comes from authored dimensions, never from image fitting or GPU records.
+The lit/shadow palette is analytic for a given sun ambient. Under a local light
+it comes per pixel from a shadows-off lit reference and a dark reference whose
+sun leaves the receiver unlit; both are validated against the analytic sun term.
 """
 
 import argparse
@@ -19,7 +22,11 @@ from render_probe_geometry import convex_hull
 IMAGE_SIZE = (2560, 1440)
 LIT_COLOR = (80, 120, 240)
 SHADOW_COLOR = (24, 36, 72)
+DEFAULT_AMBIENT = 0.30
 EDGE_TOLERANCE = 1.0
+# Each reference rounds its own linear color to RGB8, so their difference is
+# within one count of the analytic sun term. Graded pixels still match exactly.
+SUN_TERM_TOLERANCE = 1.0
 RECEIVER_INSET = 3.0
 DEFAULT_SUN = (0.0, 0.0, -1.0)
 RECEIVER_BOUNDS = ((-9, 9), (-3, 3), (-16, -8))
@@ -63,17 +70,64 @@ def sun_direction(values):
     return normalized
 
 
-def receiver_lit_color(sun, face="top"):
+def sun_ambient(value):
+    message = "sun ambient must be a finite float in [0, 1)"
+    try:
+        ambient = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(message) from error
+    if not math.isfinite(ambient) or not 0 <= ambient < 1:
+        raise ValueError(message)
+    return ambient
+
+
+def rgb8(linear, label):
+    color = []
+    for channel in linear:
+        # The GPU's unorm rounding of a near-tie is not reproducible here.
+        if abs(channel - math.floor(channel) - 0.5) < 1e-3:
+            raise ValueError(f"{label} puts an RGB8 channel on a rounding tie")
+        color.append(math.floor(channel + 0.5))
+    return tuple(color)
+
+
+def receiver_lambert(sun, face="top"):
     axis, _, sign = receiver_face(face)
     lambert = sign * sun[axis]
     if lambert <= 0:
         raise ValueError("selected receiver face must be sunlit")
-    # Fixed fixture: ambient 0.30, intensity 1, no HDR/AO.
-    factor = 0.30 + 0.70 * lambert
-    color = tuple(math.floor(channel * factor + 0.5) for channel in LIT_COLOR)
-    if color == SHADOW_COLOR:
+    return lambert
+
+
+def receiver_shadow_color(ambient=DEFAULT_AMBIENT):
+    ambient = sun_ambient(ambient)
+    return rgb8((channel * ambient for channel in LIT_COLOR), "sun ambient")
+
+
+def receiver_lit_color(sun, face="top", ambient=DEFAULT_AMBIENT):
+    ambient = sun_ambient(ambient)
+    # Fixed fixture: intensity 1, no HDR/AO; sun visibility scales only the direct term.
+    factor = ambient + (1 - ambient) * receiver_lambert(sun, face)
+    color = rgb8((channel * factor for channel in LIT_COLOR), "fixture sunlight")
+    if color == receiver_shadow_color(ambient):
         raise ValueError("fixture sunlight must distinguish lit and shadowed RGB8 colors")
     return color
+
+
+def sun_term(sun, face="top", ambient=DEFAULT_AMBIENT):
+    """Linear RGB8 the sun's direct term adds to an unshadowed receiver pixel."""
+    scale = (1 - sun_ambient(ambient)) * receiver_lambert(sun, face)
+    return tuple(channel * scale for channel in LIT_COLOR)
+
+
+def reference_palette(lit, shadow, direct):
+    """Validated (lit, shadow) RGB8 pair from one pixel of each reference, else None."""
+    if lit[3] != 255 or shadow[3] != 255 or lit[:3] == shadow[:3]:
+        return None
+    if any(abs(a - b - term) > SUN_TERM_TOLERANCE
+           for a, b, term in zip(lit[:3], shadow[:3], direct, strict=True)):
+        return None
+    return lit[:3], shadow[:3]
 
 
 def source_offset(values):
@@ -205,37 +259,61 @@ def receiver_samples(polygons):
 
 
 def check_image(image, yaw, camera_iso=(0.0, 0.0), sun=DEFAULT_SUN,
-                caster_offset=(0.0, 0.0, 0.0), face="top"):
-    if image.size != IMAGE_SIZE:
-        raise ValueError(f"fixture requires {IMAGE_SIZE}, got {image.size}")
+                caster_offset=(0.0, 0.0, 0.0), face="top", ambient=DEFAULT_AMBIENT,
+                references=None):
+    """Grade one capture; ``references`` is an optional (lit, dark) image pair."""
+    images = [image, *(references or ())]
+    if references is not None and len(images) != 3:
+        raise ValueError("references must be a (lit, dark) image pair")
+    for candidate in images:
+        if candidate.size != IMAGE_SIZE:
+            raise ValueError(f"fixture requires {IMAGE_SIZE}, got {candidate.size}")
     camera_iso = camera_position(camera_iso)
     sun = sun_direction(sun)
-    lit_color = receiver_lit_color(sun, face)
+    ambient = sun_ambient(ambient)
+    lit_color = receiver_lit_color(sun, face, ambient)
+    shadow_color = receiver_shadow_color(ambient)
+    direct = sun_term(sun, face, ambient)
     caster_offset = source_offset(caster_offset)
     polygons = fixture_polygons(yaw, camera_iso, sun, caster_offset, face)
-    pixels = image.convert("RGBA").load()
+    pixels, *reference_pixels = (candidate.convert("RGBA").load() for candidate in images)
     counts = dict(eligible=0, valid=0, unknown=0, inside=0, outside=0,
                   boundary=0, missing=0, excess=0)
+    if references is not None:
+        counts.update(reference_invalid=0, local_light=0)
     for x, y, margin in receiver_samples(polygons):
         counts["eligible"] += 1
+        lit, shadow = lit_color, shadow_color
+        if references is not None:
+            palette = reference_palette(*(source[x, y] for source in reference_pixels), direct)
+            if palette is None:
+                counts["reference_invalid"] += 1
+                continue
+            lit, shadow = palette
+            counts["local_light"] += shadow != shadow_color
         pixel = pixels[x, y]
         color = pixel[:3]
-        known = pixel[3] == 255 and color in (lit_color, SHADOW_COLOR)
+        known = pixel[3] == 255 and color in (lit, shadow)
         counts["valid"] += known
         counts["unknown"] += not known
         if margin > EDGE_TOLERANCE:
             counts["inside"] += 1
-            counts["missing"] += not known or color != SHADOW_COLOR
+            counts["missing"] += not known or color != shadow
         elif margin < -EDGE_TOLERANCE:
             counts["outside"] += 1
-            counts["excess"] += color == SHADOW_COLOR
+            counts["excess"] += color == shadow
         else:
             counts["boundary"] += 1
+    if references is not None and counts["reference_invalid"]:
+        raise ValueError(f"references fail the sun-term contract at "
+                         f"{counts['reference_invalid']} receiver samples")
     requirements = coverage_requirements(polygons, face)
     coverage = all(counts[key] >= minimum for key, minimum in requirements.items())
     passed = coverage and not any(counts[key] for key in ("unknown", "missing", "excess"))
     return dict(passed=passed, coverage_valid=coverage, yaw=yaw, camera_iso=list(camera_iso),
-                sun_direction=list(sun), lit_color=list(lit_color),
+                sun_direction=list(sun), sun_ambient=ambient, lit_color=list(lit_color),
+                shadow_color=list(shadow_color),
+                palette="analytic" if references is None else "reference",
                 source_offset=list(caster_offset), face=face,
                 coverage_requirements=requirements,
                 camera_shift_pixels=list(camera_screen_offset(camera_iso)),
@@ -254,12 +332,25 @@ def main():
                         metavar=("X", "Y", "Z"), help="World direction toward the sun")
     parser.add_argument("--source-offset", nargs=3, type=float, default=(0.0, 0.0, 0.0),
                         metavar=("X", "Y", "Z"), help="CanvasStress overlapping-source offset")
+    parser.add_argument("--sun-ambient", type=float, default=DEFAULT_AMBIENT,
+                        help="CanvasStress --sun-ambient of the capture")
+    parser.add_argument("--lit-reference", type=Path,
+                        help="Same capture with --no-shadows (requires --dark-reference)")
+    parser.add_argument("--dark-reference", type=Path,
+                        help="Same capture with a sun that leaves the receiver face unlit")
     args = parser.parse_args()
+    if (args.lit_reference is None) != (args.dark_reference is None):
+        parser.error("--lit-reference and --dark-reference go together")
     try:
         camera_iso = camera_position(args.camera_iso)
+        references = None
+        if args.lit_reference is not None:
+            references = tuple(Image.open(path).convert("RGBA")
+                               for path in (args.lit_reference, args.dark_reference))
         with Image.open(args.image) as image:
             result = check_image(
-                image, args.yaw, camera_iso, args.sun_direction, args.source_offset, args.face
+                image, args.yaw, camera_iso, args.sun_direction, args.source_offset, args.face,
+                args.sun_ambient, references
             )
     except ValueError as error:
         parser.error(str(error))
