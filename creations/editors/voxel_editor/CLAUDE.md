@@ -37,13 +37,12 @@ Design log, findings and the authoring-session history:
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
-  `test_radius`, `test_list_scroll`, `test_single`, and the deliberately failing
-  `test_unreachable` fixture.
+  `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`,
+  `test_list_scroll`, `test_single`, and the failing `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
-- `--module test/module --module-session test_bake_radius_guard` is a second
-  deliberately failing fixture: it exits 1 before any replay, on a recipe
-  error that names `bakeSphere` and radius 2.095.
+- `--module test/module --module-session test_bake_radius_guard` must exit 1
+  before any replay, on a recipe error naming `bakeSphere` and radius 2.095.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
@@ -54,9 +53,8 @@ Design log, findings and the authoring-session history:
 - `python3 scripts/author-entity.py --prefab composite_proof` — the same
   two-run gate over an entity scene (manifest, parts, sidecars), committed to
   `assets/voxel/entities/composite_proof/` with each `voxel_ref` rewritten to
-  that staged path. The `--module` and `--part-names` it was authored with are
-  read from that directory's `author.json`; module records are prefab-relative
-  and a new prefab passes them once.
+  that path; its `--module` and `--part-names` are read from that directory's
+  `author.json` (prefab-relative; a new prefab passes them once).
   `python3 scripts/render-verify.py --target IRShapeDebug` then spawns it for
   the `composite_proof_z*` shots.
 
@@ -82,11 +80,9 @@ from an edit path.
 - A voxel's underside is never visible from the iso camera; Alt places on the
   far side of the picked face. That is a fact of the view, not of the pick.
 
-The executor for "the face drawn under the cursor" is the
-`*_pick_matches_render` assertion in `face_pick`: it compares the pick against
-the main canvas's own face readback on every texel that shows the editable
-set. An aim-based assertion alone cannot catch a pick that is offset from the
-render, because the aim and the pick share one screen mapping.
+The executor for "the face drawn under the cursor" is `face_pick`'s
+`*_pick_matches_render`, which compares the pick with the main canvas's face
+readback on every editable texel; an aim and a pick share one screen mapping.
 
 ## Authoring sessions
 
@@ -113,33 +109,26 @@ render, because the aim and the pick share one screen mapping.
   rebuild of a part's set (array copy, Ctrl+M twin, load, undo of a removal)
   passes the source's anchor to `DenseVoxel::toComponent`. A world-to-cell
   conversion goes through `voxelSetCellOrigin`, never the translation alone.
-- A part enters DETACHED REVOX only when `voxelSetIsCentered` holds, which a
-  loaded manifest with no `anchor` (CORNER) usually fails: `M` and the twin
-  skip the mode, the dropdown refuses it, and `load` rejects a manifest that
-  asks for it.
+- A part enters DETACHED REVOX only when `voxelSetIsCentered` holds (a loaded
+  CORNER part usually fails it): `M`, the twin, the dropdown and `load` refuse.
 - A selected part's gizmo is drawn on its pivot's pixels, in front of the part's
   own content (`EntityScene::partViewClearance`); other content can occlude it.
 - `EntityScene` owns one root and its ordered part records. Only the selected
   voxel part receives paint; other voxel parts carry `C_EditorReference`.
-- A part's LOD band (`EditorPart::lodMax_` fine .. `lodMin_` coarse) is
-  mirrored onto its own `C_VoxelSetNew` / `C_ShapeDescriptor`, so the engine's
-  LOD gate previews which parts exist at a tier. Parts stay resident; the
-  editor never runs `PREFAB_LOD_PARTS`. The LOD panel's TIER slider and `,` /
-  `.` pin `C_LodTierOverride` on the root and every part; FOLLOW ZOOM removes
-  it. Neither touches the camera zoom.
+- A part's LOD band (`lodMax_` fine .. `lodMin_` coarse) is mirrored onto its
+  set / shape so the engine's LOD gate previews it; parts stay resident (no
+  `PREFAB_LOD_PARTS`). TIER and `,` / `.` pin `C_LodTierOverride` on the root
+  and every part, FOLLOW ZOOM removes it; neither touches the camera zoom.
 - Radial and linear arrays create independently editable parts. Module sessions
   set radial RADIUS/X and COPY YAW through `applyRadialArray`; linear X stays
   continuous. One array is one undo record; rotational symmetry replays a
   stroke across the radial copy group through the same stroke buffer. The
   selected source stays outside the copy group: radial copies start at the
   radius, and linear copies start one step out.
-- Delete and the PARTS-panel REMOVE button remove the selected part as one undo
-  record. Undo restores its authored payload at the same ordered index, and
-  redo removes the restored entity. Records resolve stable part ids instead of
-  retaining transient entity ids. Removing a rotational group member preserves
-  the group's identity; symmetry remains inactive until the group again matches
-  its rotational order.
-
+- Delete and PARTS REMOVE remove the selected part as one undo record; undo
+  restores its payload at the same index, redo removes it again. Records name
+  stable part ids, never entity ids. A removed rotational group member keeps the
+  group's identity; symmetry stays off until the group matches its order again.
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same
   `castGridRay` the live pick runs. Change the pick and the model follows; do
@@ -169,6 +158,12 @@ render, because the aim and the pick share one screen mapping.
   RECIPES or COMPONENTS view into it with the live list's least movement, and
   shadows both lists' scroll offsets with `C_WidgetList`'s own clamp;
   `wheelGui` over either list moves its shadow too.
+- `dragRecipeHandle(handle, target)` drags the selected part's recipe handle
+  to a set-local cell whose world coordinate sum is `at`'s (the drag's screen
+  plane) at the baseline yaw, in transform mode and never on a turned GRID part,
+  and models the re-apply. After an undo, redo, clear or reload it and `paintClass`
+  need a fresh APPLY. `expectRecipeValue`, `expectPartMatchesRecipe` and
+  `expectRecipeHandleTexels` read the live binding; the gizmo census skips handles.
 
 ## Creation modules (`--module <dir>`)
 
@@ -183,7 +178,12 @@ render, because the aim and the pick share one screen mapping.
   against the live scene size and origin. Its session handle is valid only
   during that function call; retaining it for a later panel callback is an
   error.
-- A recipe is a pure function of `(values, size, mask)`. APPLY writes its cells through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
+- A recipe is a pure function of `(values, size, mask)`. APPLY writes its cells
+  as one undo record and binds the part to it (`EditorPart::recipeBinding_`).
+- `opts.handles` (header contract): in transform mode the bound part's handles
+  draw in front of its content and behind its gizmo, turned with it (none on a
+  turned GRID part). A drag frame replaces the old values' cells with the new;
+  release commits one undo record restoring the binding and its sliders.
 - A module may call `IRSystem.registerSystem`, but the editor places no module
   system in a pipeline yet.
 - COMPONENTS attaches a module component (fields edited by type, listed by

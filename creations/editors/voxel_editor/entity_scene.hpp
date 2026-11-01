@@ -51,6 +51,8 @@ struct EditorPart {
     int groupId_ = 0;
     IRMath::vec3 groupAxis_ = IRMath::vec3(0.0f, 0.0f, 1.0f);
     int rotationalOrder_ = 0;
+    // The module recipe APPLY last wrote into this part, which its handles
+    // drag and its class mask keeps.
     std::optional<PartRecipeBinding> recipeBinding_;
 };
 
@@ -170,6 +172,13 @@ class EntityScene {
         return m_selected >= 0 && m_selected < static_cast<int>(m_parts.size())
                    ? &m_parts[static_cast<std::size_t>(m_selected)]
                    : nullptr;
+    }
+
+    EditorPart *findPart(const std::string &id) {
+        const auto found = std::find_if(m_parts.begin(), m_parts.end(), [&id](const auto &part) {
+            return part.id_ == id;
+        });
+        return found == m_parts.end() ? nullptr : &*found;
     }
 
     const EditorPart *selectedPart() const {

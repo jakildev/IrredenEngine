@@ -1,4 +1,4 @@
--- Neutral fixture for IRVoxelEditor --module: five components, five recipes
+-- Neutral fixture for IRVoxelEditor --module: five components, six recipes
 -- and one panel, so every registration path the editor hosts is exercised and
 -- both the COMPONENTS and RECIPES lists hold more rows than they show.
 
@@ -37,7 +37,8 @@ IRComponent.register("TestModuleBelow", {
 })
 
 -- A 1x1 column standing on the seeded ground plane (local z == size.z - 1)
--- at the set's centre; it grows toward -z, the editor's "up".
+-- at the set's centre; it grows toward -z, the editor's "up". Its `tip`
+-- handle sits on the top cell and sets the height from the dragged cell's z.
 IREditor.registerRecipe(
     "test_column",
     {
@@ -58,7 +59,25 @@ IREditor.registerRecipe(
         end
         return cells
     end,
-    { classes = { "glow", "hole" } }
+    {
+        classes = { "glow", "hole" },
+        handles = {
+            {
+                name = "tip",
+                params = { "height" },
+                at = function(values, size)
+                    return {
+                        math.floor(size.x / 2),
+                        math.floor(size.y / 2),
+                        size.z - 1 - values.height,
+                    }
+                end,
+                drag = function(values, size, point)
+                    return { height = size.z - 1 - point.z }
+                end,
+            },
+        },
+    }
 )
 
 -- A one-cell-thick square frame on the set's centre layer, around its centre
@@ -97,8 +116,47 @@ IREditor.registerRecipe("test_post", {}, function(values, size)
     return { { x, y, size.z - 2 }, { x, y, size.z - 3 } }
 end)
 
+-- A bar from the set's centre column toward +X, three cells above the centre
+-- layer, `length` cells past that column. Its `end` handle sits on the last
+-- cell, off every axis through the part's pivot, so a turn of the part moves
+-- it; the length is read from the dragged cell's X.
+IREditor.registerRecipe(
+    "test_arm",
+    {
+        { name = "length", type = IREditor.ParamType.INT, default = 1, min = 1, max = 4 },
+    },
+    function(values, size)
+        local cx = math.floor(size.x / 2)
+        local cy = math.floor(size.y / 2)
+        local z = math.floor(size.z / 2) - 3
+        local cells = {}
+        for i = 0, values.length do
+            cells[#cells + 1] = { cx + i, cy, z, { r = 200, g = 120, b = 220 } }
+        end
+        return cells
+    end,
+    {
+        handles = {
+            {
+                name = "end",
+                params = { "length" },
+                at = function(values, size)
+                    return {
+                        math.floor(size.x / 2) + values.length,
+                        math.floor(size.y / 2),
+                        math.floor(size.z / 2) - 3,
+                    }
+                end,
+                drag = function(values, size, point)
+                    return { length = point.x - math.floor(size.x / 2) }
+                end,
+            },
+        },
+    }
+)
+
 -- A 1x1 column two cells off the centre in -X and +Y, `depth` cells tall; the
--- fifth recipe, so it lies below the RECIPES view.
+-- last recipe, so it lies below the RECIPES view.
 IREditor.registerRecipe(
     "test_below",
     {
@@ -260,6 +318,129 @@ IREditor.registerSession("test_class_paint", function(session)
     session:expectPartOccupancy(0, first, false, "first_hole_empty_after_reload")
     session:expectPartOccupancy(0, second, false, "second_hole_empty_after_reload")
     session:expectPartOccupancy(0, height_seven, true, "part_zero_reapply_reaches_height_seven")
+end)
+
+-- Drags test_column's tip handle on a part: it lengthens the column, shortens
+-- it (clearing a cell the lengthening made and one APPLY made, which an
+-- additive re-apply would keep), clamps a drag past max with a class hole
+-- painted on the tip (the re-apply keeps it), and undoes and redoes that drag. The handle exists only in transform mode, and at height 8 it
+-- sits under the part's gizmo, which still owns every pixel it had before the
+-- handle existed.
+IREditor.registerSession("test_recipe_handle", function(session)
+    local size = session:sceneSize()
+    local x = math.floor(size.x / 2)
+    local y = math.floor(size.y / 2)
+    local function top(height)
+        return { x, y, size.z - 1 - height }
+    end
+    -- A target keeps the coordinate sum of the handle's point, so it lies on
+    -- the screen plane the drag is read on: each cell it moves in z it moves
+    -- back in x.
+    local function onPlane(height, newHeight)
+        local from = top(height)
+        local dz = height - newHeight
+        return { from[1] - dz, from[2], from[3] + dz }
+    end
+
+    session:segment("gizmo_baseline")
+    session:addVoxelPart()
+    session:toggleTransformMode()
+    session:expectGizmoHandleTexels("part_gizmo_before_any_handle")
+
+    session:segment("apply")
+    session:toggleTransformMode()
+    session:applyRecipe("test_column", { height = 3 })
+    session:expectRecipeValue(0, "height", 3, "applied_height")
+    session:expectPartMatchesRecipe(0, "applied_cells_match")
+    session:expectRecipeHandleTexels("tip", false, "no_handle_outside_transform_mode")
+
+    session:segment("handle_drawn")
+    session:toggleTransformMode()
+    session:expectRecipeHandleTexels("tip", true, "handle_drawn_in_transform_mode")
+    session:expectPartOccupancy(0, top(4), false, "cell_above_tip_empty_before_drag")
+
+    session:segment("lengthen")
+    session:dragRecipeHandle("tip", onPlane(3, 4))
+    session:expectRecipeValue(0, "height", 4, "lengthened_height")
+    session:expectPartMatchesRecipe(0, "lengthened_cells_match")
+    session:expectPartOccupancy(0, top(4), true, "cell_above_old_tip_filled")
+
+    session:segment("shorten")
+    session:dragRecipeHandle("tip", onPlane(4, 1))
+    session:expectRecipeValue(0, "height", 1, "shortened_height")
+    session:expectPartMatchesRecipe(0, "shortened_cells_match")
+    session:expectPartOccupancy(0, top(4), false, "cell_the_drag_filled_cleared")
+    session:expectPartOccupancy(0, top(3), false, "cell_apply_filled_cleared")
+
+    session:segment("hole")
+    session:toggleTransformMode()
+    session:paintClass(top(1), "hole")
+    session:expectPartOccupancy(0, top(1), false, "tip_hole_carved")
+
+    session:segment("past_max")
+    session:toggleTransformMode()
+    session:dragRecipeHandle("tip", onPlane(1, 10))
+    session:expectRecipeValue(0, "height", 8, "height_clamped_to_max")
+    session:expectPartMatchesRecipe(0, "clamped_cells_match")
+    session:expectPartOccupancy(0, top(1), false, "drag_keeps_the_hole")
+    session:expectRecipeHandleTexels("tip", true, "handle_drawn_under_the_gizmo")
+    session:expectGizmoHandleTexelsUnchanged("handle_steals_no_gizmo_pixel")
+
+    session:segment("undo")
+    session:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.Z)
+    session:expectRecipeValue(0, "height", 1, "undo_restores_height")
+    session:expectPartMatchesRecipe(0, "undo_restores_cells")
+    session:expectPartOccupancy(0, top(5), false, "undo_clears_dragged_cell")
+
+    session:segment("redo")
+    session:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.Y)
+    session:expectRecipeValue(0, "height", 8, "redo_restores_height")
+    session:expectPartMatchesRecipe(0, "redo_restores_cells")
+    session:expectPartOccupancy(0, top(5), true, "redo_refills_dragged_cell")
+end)
+
+-- A recipe handle on a turned part: a radial array's COPY YAW turns the
+-- selected copy a quarter turn about Z, so the bar its `end` handle sits on
+-- runs along world +Y. A turned GRID part re-voxelizes its span and draws no
+-- handle; in DETACHED REVOX the handle is drawn and read through the turn.
+IREditor.registerSession("test_recipe_handle_turned", function(session)
+    local size = session:sceneSize()
+    local x = math.floor(size.x / 2)
+    local y = math.floor(size.y / 2)
+    local z = math.floor(size.z / 2) - 3
+    local copy = 2
+
+    session:segment("apply")
+    session:addVoxelPart()
+    session:applyRecipe("test_arm", { length = 2 })
+    session:expectRecipeValue(0, "length", 2, "applied_length")
+
+    session:segment("array")
+    session:applyRadialArray(2, 4, 90)
+    session:expectPartCount(3, "two_copies_plus_source")
+    session:expectPartYaw(copy, 90, 0.01, "selected_copy_quarter_turned")
+    session:expectRecipeValue(copy, "length", 2, "copy_inherits_the_binding")
+
+    session:segment("grid_turned")
+    session:toggleTransformMode()
+    session:expectRecipeHandleTexels("end", false, "turned_grid_copy_draws_no_handle")
+
+    session:segment("detach")
+    session:selectPartMode(IRComponent.RotationMode.DETACHED_REVOXELIZE)
+    session:expectRotationMode(
+        copy, IRComponent.RotationMode.DETACHED_REVOXELIZE, "copy_detached_revox")
+
+    session:segment("handle_drawn")
+    session:expectRecipeHandleTexels("end", true, "turned_detached_handle_drawn")
+
+    -- Two cells further out in local X and two up: on a quarter-turned part
+    -- that is +2 in world Y and -2 in Z, the same world coordinate sum.
+    session:segment("lengthen")
+    session:dragRecipeHandle("end", { x + 4, y, z - 2 })
+    session:expectRecipeValue(copy, "length", 4, "turned_copy_lengthened")
+    session:expectPartMatchesRecipe(copy, "turned_copy_cells_match")
+    session:expectPartOccupancy(copy, { x + 4, y, z }, true, "turned_copy_new_end_filled")
+    session:expectRecipeValue(0, "length", 2, "source_keeps_its_length")
 end)
 
 -- Reaches rows below both list views by name alone: the last recipe, the last

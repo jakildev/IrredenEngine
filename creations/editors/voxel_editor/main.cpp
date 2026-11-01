@@ -323,6 +323,8 @@ namespace {
 
 constexpr float kRotationSensitivity = 0.004f;
 
+void refreshRecipeHandles();
+
 SymmetryState g_symmetry;
 
 // Erase-fill mode. When ON, the left-click place / box / line /
@@ -350,6 +352,7 @@ void setTransformMode(bool on) {
     g_transformMode = on;
     IRSystem::getSystemParams<System<IRSystem::GIZMO_HOVER>>(g_gizmoHoverSystem)->enabled_ = on;
     IRSystem::getSystemParams<System<IRSystem::GIZMO_DRAG>>(g_gizmoDragSystem)->enabled_ = on;
+    refreshRecipeHandles();
 }
 
 struct RotateParams {
@@ -1269,6 +1272,7 @@ void selectEditorPart(int index, bool createGizmos = true) {
     syncPartModeDropdown();
     reseatEditorMirrorAxes();
     syncPartSizeReadout();
+    refreshRecipeHandles();
 }
 
 void selectRelativeEditorPart(int offset) {
@@ -1299,6 +1303,7 @@ void addEditorVoxelPart() {
 void clearEntitySceneForLoad() {
     clearUndoHistory();
     g_entityScene.clear();
+    refreshRecipeHandles();
     g_editor.editableVoxelSet_ = IREntity::kNullEntity;
     g_sceneVoxelSetEntity = IREntity::kNullEntity;
     if (g_partsList != IREntity::kNullEntity) {
@@ -1703,11 +1708,23 @@ void applyEdit(
     }
 }
 
+// How a binding change reaches the RECIPES sliders. IF_SHOWN writes them only
+// while they already describe the bound recipe; REPOINT first points the list
+// and the sliders at it.
+enum class RecipeSliderSync { NONE, IF_SHOWN, REPOINT };
+
 struct RecipeBindingChange {
     std::string partId_;
     std::optional<PartRecipeBinding> before_;
     std::optional<PartRecipeBinding> after_;
+    RecipeSliderSync sliderSync_ = RecipeSliderSync::NONE;
 };
+
+void setPartBinding(
+    const std::string &partId,
+    const std::optional<PartRecipeBinding> &binding,
+    RecipeSliderSync sync
+);
 
 void commitStroke(
     bool derivedStateAlreadySynced = false,
@@ -1780,12 +1797,11 @@ void commitStroke(
             IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
         }
         if (bindingChange) {
-            for (EditorPart &part : g_entityScene.parts()) {
-                if (part.id_ == bindingChange->partId_) {
-                    part.recipeBinding_ = redo ? bindingChange->after_ : bindingChange->before_;
-                    break;
-                }
-            }
+            setPartBinding(
+                bindingChange->partId_,
+                redo ? bindingChange->after_ : bindingChange->before_,
+                bindingChange->sliderSync_
+            );
         }
     };
     IRPrefab::Undo::push({
@@ -1807,6 +1823,34 @@ void commitStroke(
 // its minimum corner, so every world-to-cell conversion goes through here.
 ivec3 voxelSetCellOrigin(const C_VoxelSetNew &set, const C_WorldTransform &worldTransform) {
     return IRMath::roundVec3HalfUp(worldTransform.translation_ + voxelSetLocalOrigin(set));
+}
+
+// World point of set-local point @p local under the part's whole world
+// transform: the point REBUILD_GRID_VOXELS carries cell @p local to, scaled
+// and turned about the translation. At identity it is the cell origin plus
+// @p local.
+vec3 voxelSetLocalToWorld(
+    const C_VoxelSetNew &set, const C_WorldTransform &worldTransform, vec3 local
+) {
+    const vec3 fromPivot =
+        vec3(voxelSetCellOrigin(set, worldTransform)) - worldTransform.translation_ + local;
+    return worldTransform.translation_ +
+           IRMath::rotateVectorByQuat(worldTransform.scale_ * fromPivot, worldTransform.rotation_);
+}
+
+// Inverse of voxelSetLocalToWorld; none for a set scaled to zero on an axis.
+std::optional<vec3>
+voxelSetWorldToLocal(const C_VoxelSetNew &set, const C_WorldTransform &worldTransform, vec3 world) {
+    const vec3 scale = worldTransform.scale_;
+    if (scale.x == 0.0f || scale.y == 0.0f || scale.z == 0.0f)
+        return std::nullopt;
+    const vec3 fromPivot = IRMath::rotateVectorByQuat(
+                               world - worldTransform.translation_,
+                               IRMath::quatInverse(worldTransform.rotation_)
+                           ) /
+                           scale;
+    return fromPivot -
+           (vec3(voxelSetCellOrigin(set, worldTransform)) - worldTransform.translation_);
 }
 
 // Computes the local index inside `set` for a world voxel position.
@@ -2371,17 +2415,434 @@ void configureRecipeSliders(int recipeIndex) {
     }
 }
 
+// The registered recipe @p binding names, with its index, or null.
+const ModuleRecipe *bindingRecipe(const PartRecipeBinding &binding, std::size_t &index) {
+    const auto &recipes = g_moduleHost.recipes();
+    const auto found = std::find_if(recipes.begin(), recipes.end(), [&](const auto &recipe) {
+        return recipe.name_ == binding.recipe_;
+    });
+    if (found == recipes.end())
+        return nullptr;
+    index = static_cast<std::size_t>(found - recipes.begin());
+    return &*found;
+}
+
+const ModuleRecipe *boundRecipe(const EditorPart &part, std::size_t &index) {
+    return part.recipeBinding_ ? bindingRecipe(*part.recipeBinding_, index) : nullptr;
+}
+
+void syncRecipeSliders(const PartRecipeBinding &binding, RecipeSliderSync sync) {
+    std::size_t recipeIndex = 0;
+    if (sync == RecipeSliderSync::NONE || g_recipesPanel == IREntity::kNullEntity ||
+        bindingRecipe(binding, recipeIndex) == nullptr)
+        return;
+    const int recipe = static_cast<int>(recipeIndex);
+    if (sync == RecipeSliderSync::IF_SHOWN && g_slidersRecipe != recipe)
+        return;
+    // updateRecipesPanel resets the sliders whenever the list selection and
+    // g_slidersRecipe differ, so both move together.
+    IRPrefab::Widget::setListSelectedIndex(g_recipeList, recipe);
+    if (g_slidersRecipe != recipe)
+        configureRecipeSliders(recipe);
+    const std::size_t count =
+        IRMath::min(binding.values_.size(), static_cast<std::size_t>(kMaxRecipeParams));
+    for (std::size_t i = 0; i < count; ++i)
+        IRPrefab::Widget::setSliderValue(g_recipeSliders[i], binding.values_[i]);
+}
+
+// Sets the binding of the part whose id is @p partId, if it still exists, and
+// re-places the handles. The sliders follow only for the selected part.
+void setPartBinding(
+    const std::string &partId,
+    const std::optional<PartRecipeBinding> &binding,
+    RecipeSliderSync sync
+) {
+    EditorPart *part = g_entityScene.findPart(partId);
+    if (part == nullptr)
+        return;
+    part->recipeBinding_ = binding;
+    if (binding && part == g_entityScene.selectedPart())
+        syncRecipeSliders(*binding, sync);
+    refreshRecipeHandles();
+}
+
+// Recipe @p recipeIndex's in-bounds cells in @p set at @p values under
+// @p mask, or false with the failure logged.
+bool evaluateRecipeCells(
+    std::size_t recipeIndex,
+    const std::vector<float> &values,
+    const std::vector<RecipeClassMaskEntry> &mask,
+    const C_VoxelSetNew &set,
+    std::vector<RecipeCell> &cells
+) {
+    std::string error;
+    if (!g_moduleHost.evaluate(recipeIndex, values, set.size_, mask, cells, error)) {
+        IR_LOG_ERROR("Recipe evaluation failed: {}", error);
+        return false;
+    }
+    std::erase_if(cells, [&set](const RecipeCell &cell) {
+        const ivec3 local = cell.local_;
+        return local.x < 0 || local.x >= set.size_.x || local.y < 0 || local.y >= set.size_.y ||
+               local.z < 0 || local.z >= set.size_.z;
+    });
+    return true;
+}
+
+// Replaces the cells @p binding's recipe makes at its values with the ones it
+// makes at @p newValues, in the pending stroke: a cell only the old values
+// made is cleared, and every new cell is written with the colour rule of the
+// APPLY that bound it. Resyncs the set, so a held drag shows each frame's shape.
+bool reapplyRecipe(
+    IREntity::EntityId voxelSetEntity,
+    std::size_t recipeIndex,
+    const PartRecipeBinding &binding,
+    const std::vector<float> &newValues
+) {
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(voxelSetEntity);
+    std::vector<RecipeCell> oldCells;
+    std::vector<RecipeCell> newCells;
+    if (!evaluateRecipeCells(recipeIndex, binding.values_, binding.mask_, set, oldCells) ||
+        !evaluateRecipeCells(recipeIndex, newValues, binding.mask_, set, newCells))
+        return false;
+    const auto flatOf = [&set](const RecipeCell &cell) {
+        return static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell.local_, set.size_));
+    };
+    std::vector<std::size_t> newFlats;
+    newFlats.reserve(newCells.size());
+    for (const RecipeCell &cell : newCells)
+        newFlats.push_back(flatOf(cell));
+    std::sort(newFlats.begin(), newFlats.end());
+    const Color fallbackColor = binding.fallbackColor_;
+    for (const RecipeCell &cell : oldCells) {
+        const std::size_t flat = flatOf(cell);
+        if (!std::binary_search(newFlats.begin(), newFlats.end(), flat))
+            applyEditRaw(voxelSetEntity, set, cell.local_, flat, false, fallbackColor, 0);
+    }
+    for (const RecipeCell &cell : newCells) {
+        applyEditRaw(
+            voxelSetEntity,
+            set,
+            cell.local_,
+            flatOf(cell),
+            true,
+            cell.color_.value_or(fallbackColor),
+            0
+        );
+    }
+    set.resyncAfterRawEdits();
+    return true;
+}
+
+// Recipe handles: drawn for the selected part's binding while transform mode
+// is on. A handle is a gizmo handle GIZMO_DRAG never drags (null anchor);
+// GIZMO_HOVER flags it from the entity-id readback and updateRecipeHandleDrag
+// runs the gesture.
+constexpr Color kRecipeHandleColor{235, 90, 200, 255};
+
+struct RecipeHandleState {
+    IREntity::EntityId part_ = IREntity::kNullEntity;
+    std::size_t recipe_ = 0;
+    // Per handle: its entity (null while its `at` raises) and set-local point.
+    std::vector<IREntity::EntityId> entities_;
+    std::vector<vec3> points_;
+    // The drag in progress, -1 when none: the handle, its part, the values it
+    // started from, and the canvas-frame iso depth of the plane through the
+    // handle's undisplaced point at press.
+    int dragHandle_ = -1;
+    std::string dragPartId_;
+    std::vector<float> pressValues_;
+    float dragPlaneDepth_ = 0.0f;
+    vec3 dragRawPoint_ = vec3(0.0f);
+};
+RecipeHandleState g_recipeHandles;
+
+void setPartGizmoClearance(IREntity::EntityId part, float clearance) {
+    IREntity::forEachComponent<C_GizmoHandle>([&](IREntity::EntityId, C_GizmoHandle &handle) {
+        if (handle.anchorEntity_ == part)
+            handle.viewClearance_ = clearance;
+    });
+}
+
+const EditorPart *recipeHandlePart() {
+    for (const EditorPart &part : g_entityScene.parts()) {
+        if (part.entity_ == g_recipeHandles.part_)
+            return &part;
+    }
+    return nullptr;
+}
+
+// Ends the drag in progress, committing what it changed as one undo record.
+void endRecipeHandleDrag() {
+    RecipeHandleState &state = g_recipeHandles;
+    if (state.dragHandle_ < 0)
+        return;
+    const int handle = state.dragHandle_;
+    state.dragHandle_ = -1;
+    const EditorPart *part = g_entityScene.findPart(state.dragPartId_);
+    if (part == nullptr || !part->recipeBinding_) {
+        g_editor.pendingStroke_.clear();
+        return;
+    }
+    const PartRecipeBinding after = *part->recipeBinding_;
+    std::size_t recipeIndex = 0;
+    const ModuleRecipe *recipe = bindingRecipe(after, recipeIndex);
+    if (recipe == nullptr || recipeIndex != state.recipe_) {
+        g_editor.pendingStroke_.clear();
+        return;
+    }
+    const RecipeHandle &declared = recipe->handles_[static_cast<std::size_t>(handle)];
+    IR_LOG_INFO(
+        "recipe_handle_released handle={} raw=({:.3f},{:.3f},{:.3f})",
+        declared.name_,
+        state.dragRawPoint_.x,
+        state.dragRawPoint_.y,
+        state.dragRawPoint_.z
+    );
+    if (after.values_ == state.pressValues_ && g_editor.pendingStroke_.empty())
+        return;
+    PartRecipeBinding before = after;
+    before.values_ = state.pressValues_;
+    commitStroke(
+        true,
+        RecipeBindingChange{state.dragPartId_, std::move(before), after, RecipeSliderSync::IF_SHOWN}
+    );
+}
+
+void destroyRecipeHandles() {
+    endRecipeHandleDrag();
+    for (IREntity::EntityId entity : g_recipeHandles.entities_) {
+        if (entity != IREntity::kNullEntity)
+            IREntity::destroyEntity(entity);
+    }
+    if (const EditorPart *part = recipeHandlePart())
+        setPartGizmoClearance(part->entity_, g_entityScene.partViewClearance(*part));
+    g_recipeHandles.entities_.clear();
+    g_recipeHandles.points_.clear();
+    g_recipeHandles.part_ = IREntity::kNullEntity;
+}
+
+IREntity::EntityId spawnRecipeHandle(int index) {
+    const IREntity::EntityId handle = IRPrefab::Gizmo::createJointMarker();
+    auto &gizmo = IREntity::getComponent<C_GizmoHandle>(handle);
+    gizmo.baseColor_ = kRecipeHandleColor;
+    IREntity::getComponent<C_ShapeDescriptor>(handle).color_ = kRecipeHandleColor;
+    // placeRecipeHandles writes the clearance every frame; the modifier
+    // carries its displacement.
+    IREntity::setComponent(handle, C_Modifiers{});
+    IREntity::setComponent(handle, C_EditorRecipeHandle{index});
+    return handle;
+}
+
+// True when @p part's set holds its authored cells, so a re-apply can rewrite
+// them in place. A GRID part re-voxelizes its span under any turn or scale;
+// the DETACHED modes turn the part's canvas instead.
+bool partCellsEditableInPlace(const EditorPart &part) {
+    return part.mode_ != RotationMode::GRID ||
+           IRPrefab::GridRotation::isIdentityTransform(
+               IREntity::getComponent<C_WorldTransform>(part.entity_)
+           );
+}
+
+// The recipe whose handles the selected part shows, with its index, or null:
+// in transform mode, on a recipe-bound voxel part whose cells a drag can
+// rewrite in place.
+const ModuleRecipe *shownHandleRecipe(const EditorPart *&part, std::size_t &recipeIndex) {
+    part = g_entitySceneMode ? g_entityScene.selectedPart() : nullptr;
+    if (!g_transformMode || part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET ||
+        !partCellsEditableInPlace(*part))
+        return nullptr;
+    const ModuleRecipe *recipe = boundRecipe(*part, recipeIndex);
+    return recipe != nullptr && !recipe->handles_.empty() ? recipe : nullptr;
+}
+
+void refreshRecipeHandles() {
+    const EditorPart *part = nullptr;
+    std::size_t recipeIndex = 0;
+    const ModuleRecipe *bound = shownHandleRecipe(part, recipeIndex);
+    if (bound == nullptr) {
+        destroyRecipeHandles();
+        return;
+    }
+    const PartRecipeBinding &binding = *part->recipeBinding_;
+    const ModuleRecipe &recipe = *bound;
+    if (g_recipeHandles.part_ != part->entity_ || g_recipeHandles.recipe_ != recipeIndex) {
+        destroyRecipeHandles();
+        g_recipeHandles.part_ = part->entity_;
+        g_recipeHandles.recipe_ = recipeIndex;
+        g_recipeHandles.entities_.assign(recipe.handles_.size(), IREntity::kNullEntity);
+        g_recipeHandles.points_.assign(recipe.handles_.size(), vec3(0.0f));
+    }
+    const ivec3 size = IREntity::getComponent<C_VoxelSetNew>(part->entity_).size_;
+    for (std::size_t i = 0; i < recipe.handles_.size(); ++i) {
+        IREntity::EntityId &entity = g_recipeHandles.entities_[i];
+        std::string error;
+        if (!g_moduleHost.evaluateHandleAt(
+                recipeIndex,
+                i,
+                binding.values_,
+                size,
+                g_recipeHandles.points_[i],
+                error
+            )) {
+            IR_LOG_ERROR("Recipe handle not placed: {}", error);
+            if (entity != IREntity::kNullEntity)
+                IREntity::destroyEntity(entity);
+            entity = IREntity::kNullEntity;
+            continue;
+        }
+        if (entity == IREntity::kNullEntity)
+            entity = spawnRecipeHandle(static_cast<int>(i));
+    }
+}
+
+// Seats each handle on its point and sets the view clearances that order the
+// drawing: every handle in front of all of its part's content, and the part's
+// own gizmo in front of every handle on any pixel they share.
+//
+// With C the part's clearance and d a handle's distance from the part's
+// pivot, a handle cleared by d + C has no point behind the pivot's depth + C.
+// GIZMO_SCREEN_SPACE_SIZE rounds a clearance plus the handle's radius r up to
+// whole view-diagonal steps s, so no point of the handle is nearer than
+// 2d + C + 2r + s; a gizmo cleared by more than that is in front of it.
+void placeRecipeHandles() {
+    const EditorPart *part = recipeHandlePart();
+    if (part == nullptr)
+        return;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
+    const auto &world = IREntity::getComponent<C_WorldTransform>(part->entity_);
+    const float partClearance = g_entityScene.partViewClearance(*part);
+    const float zoom = IRMath::max(IRRender::getCameraZoom().x, 1e-3f);
+    const float step = IRMath::sqrt(3.0f);
+    float gizmoClearance = partClearance;
+    for (std::size_t i = 0; i < g_recipeHandles.entities_.size(); ++i) {
+        const IREntity::EntityId entity = g_recipeHandles.entities_[i];
+        if (entity == IREntity::kNullEntity)
+            continue;
+        const vec3 point = voxelSetLocalToWorld(set, world, g_recipeHandles.points_[i]);
+        const float reach = IRMath::length(point - world.translation_);
+        IREntity::getComponent<C_LocalTransform>(entity).translation_ = point;
+        auto &handle = IREntity::getComponent<C_GizmoHandle>(entity);
+        handle.viewClearance_ = reach + partClearance;
+        const float radius = handle.referenceParams_.x / zoom;
+        gizmoClearance =
+            IRMath::max(gizmoClearance, 2.0f * reach + partClearance + 2.0f * radius + step + 1.0f);
+    }
+    setPartGizmoClearance(part->entity_, gizmoClearance);
+}
+
+void beginRecipeHandleDrag(int handle) {
+    const EditorPart *part = recipeHandlePart();
+    if (part == nullptr || !part->recipeBinding_)
+        return;
+    RecipeHandleState &state = g_recipeHandles;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
+    const vec3 point = voxelSetLocalToWorld(
+        set,
+        IREntity::getComponent<C_WorldTransform>(part->entity_),
+        state.points_[static_cast<std::size_t>(handle)]
+    );
+    const vec3 canvasPoint = IRMath::rotateCardinalZ(
+        point,
+        IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw())
+    );
+    state.dragHandle_ = handle;
+    state.dragPartId_ = part->id_;
+    state.pressValues_ = part->recipeBinding_->values_;
+    state.dragPlaneDepth_ = canvasPoint.x + canvasPoint.y + canvasPoint.z;
+}
+
+// One drag frame: the cursor's point on the press plane, taken into the
+// part's set frame and snapped to the cell lattice, goes to the handle's
+// `drag` with the values the drag started from; a change of the clamped
+// result re-applies the recipe and moves the sliders.
+void applyRecipeHandleDrag() {
+    RecipeHandleState &state = g_recipeHandles;
+    EditorPart *part = g_entityScene.findPart(state.dragPartId_);
+    if (part == nullptr || !part->recipeBinding_)
+        return;
+    std::size_t recipeIndex = 0;
+    if (boundRecipe(*part, recipeIndex) == nullptr || recipeIndex != state.recipe_)
+        return;
+    PartRecipeBinding binding = *part->recipeBinding_;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
+    const std::optional<vec3> local = voxelSetWorldToLocal(
+        set,
+        IREntity::getComponent<C_WorldTransform>(part->entity_),
+        IRRender::mouseWorldPos3DAtIsoDepthExact(state.dragPlaneDepth_)
+    );
+    if (!local)
+        return;
+    state.dragRawPoint_ = *local;
+    std::vector<float> values;
+    std::string error;
+    if (!g_moduleHost.evaluateHandleDrag(
+            recipeIndex,
+            static_cast<std::size_t>(state.dragHandle_),
+            state.pressValues_,
+            set.size_,
+            IRMath::roundVec3HalfUp(state.dragRawPoint_),
+            values,
+            error
+        )) {
+        IR_LOG_ERROR("Recipe handle drag ignored: {}", error);
+        return;
+    }
+    if (values == binding.values_ || !reapplyRecipe(part->entity_, recipeIndex, binding, values))
+        return;
+    binding.values_ = std::move(values);
+    setPartBinding(state.dragPartId_, binding, RecipeSliderSync::REPOINT);
+}
+
+// Runs every frame after GIZMO_HOVER: a press on a hovered recipe handle in
+// transform mode starts a drag, which lasts while the button is held.
+void updateRecipeHandleDrag() {
+    RecipeHandleState &state = g_recipeHandles;
+    // A turn, a scale or a mode switch can start or stop the selected part's
+    // handles with no selection or binding change to refresh them.
+    const EditorPart *shownPart = nullptr;
+    std::size_t shownRecipe = 0;
+    if ((shownHandleRecipe(shownPart, shownRecipe) != nullptr) !=
+        (state.part_ != IREntity::kNullEntity))
+        refreshRecipeHandles();
+    const bool pressed = IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
+    const bool down =
+        pressed || IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD);
+    if (state.dragHandle_ >= 0 && !down)
+        endRecipeHandleDrag();
+    if (state.dragHandle_ < 0 && pressed && g_transformMode) {
+        for (std::size_t i = 0; i < state.entities_.size(); ++i) {
+            const IREntity::EntityId entity = state.entities_[i];
+            if (entity != IREntity::kNullEntity &&
+                IREntity::getComponent<C_GizmoHandle>(entity).hover_) {
+                beginRecipeHandleDrag(static_cast<int>(i));
+                break;
+            }
+        }
+    }
+    if (state.dragHandle_ >= 0)
+        applyRecipeHandleDrag();
+    placeRecipeHandles();
+}
+
 // Evaluates recipe @p recipeIndex at the slider values and writes its cells
 // into the editable set as one stroke, so one Ctrl+Z removes them all. Cells
-// outside the set are skipped and counted.
+// outside the set are skipped and counted. On an entity-scene part the APPLY
+// also binds the part to the recipe at those values, and the undo record
+// restores the binding it replaced.
 void applyRecipe(int recipeIndex) {
     if (g_sceneVoxelSetEntity == IREntity::kNullEntity)
         return;
     const ModuleRecipe &recipe = g_moduleHost.recipes()[static_cast<std::size_t>(recipeIndex)];
     std::vector<float> values;
     values.reserve(recipe.params_.size());
-    for (std::size_t i = 0; i < recipe.params_.size(); ++i)
-        values.push_back(IRPrefab::Widget::sliderValue(g_recipeSliders[i]));
+    for (std::size_t i = 0; i < recipe.params_.size(); ++i) {
+        const float value = IRPrefab::Widget::sliderValue(g_recipeSliders[i]);
+        values.push_back(
+            recipe.params_[i].type_ == RecipeParamType::INT
+                ? static_cast<float>(IRMath::roundHalfUp(value))
+                : value
+        );
+    }
     auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
     EditorPart *part = g_entitySceneMode ? g_entityScene.selectedPart() : nullptr;
     const std::optional<PartRecipeBinding> beforeBinding =
@@ -2433,8 +2894,9 @@ void applyRecipe(int recipeIndex) {
         ++written;
     }
     if (part != nullptr && afterBinding) {
-        part->recipeBinding_ = *afterBinding;
-        commitStroke(false, RecipeBindingChange{part->id_, beforeBinding, std::move(afterBinding)});
+        const std::string partId = part->id_;
+        commitStroke(false, RecipeBindingChange{partId, beforeBinding, afterBinding});
+        setPartBinding(partId, afterBinding, RecipeSliderSync::NONE);
     } else {
         commitStroke();
     }
@@ -2449,19 +2911,6 @@ void applyRecipe(int recipeIndex) {
         written,
         skipped
     );
-}
-
-const ModuleRecipe *boundRecipe(const EditorPart &part, std::size_t &index) {
-    if (!part.recipeBinding_)
-        return nullptr;
-    const auto &recipes = g_moduleHost.recipes();
-    const auto found = std::find_if(recipes.begin(), recipes.end(), [&](const auto &recipe) {
-        return recipe.name_ == part.recipeBinding_->recipe_;
-    });
-    if (found == recipes.end())
-        return nullptr;
-    index = static_cast<std::size_t>(found - recipes.begin());
-    return &*found;
 }
 
 bool classPaintAppliesTo(IREntity::EntityId entity) {
@@ -3369,7 +3818,8 @@ bool evaluateGizmoTexelCheck(const void *context, std::string &actual) {
             const auto [it, inserted] = isHandle.try_emplace(id, false);
             if (inserted)
                 it->second =
-                    IREntity::getComponentOptional<IRComponents::C_GizmoHandle>(id).has_value();
+                    IREntity::getComponentOptional<IRComponents::C_GizmoHandle>(id).has_value() &&
+                    !IREntity::getComponentOptional<C_EditorRecipeHandle>(id).has_value();
             return it->second;
         },
         [&check](IRMath::ivec2, std::size_t flat) { check.texels_.push_back(flat); }
@@ -3379,6 +3829,112 @@ bool evaluateGizmoTexelCheck(const void *context, std::string &actual) {
         return !check.texels_.empty();
     actual += " baseline=" + std::to_string(check.baseline_->texels_.size());
     return !check.texels_.empty() && check.texels_ == check.baseline_->texels_;
+}
+
+// The binding of part @p partIndex and its recipe's index, or null with
+// @p actual saying why.
+const PartRecipeBinding *
+partBindingFor(int partIndex, std::size_t &recipeIndex, std::string &actual) {
+    if (partIndex < 0 || partIndex >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return nullptr;
+    }
+    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(partIndex)];
+    if (!part.recipeBinding_) {
+        actual = "part has no recipe binding";
+        return nullptr;
+    }
+    if (boundRecipe(part, recipeIndex) == nullptr) {
+        actual = "bound recipe '" + part.recipeBinding_->recipe_ + "' is not registered";
+        return nullptr;
+    }
+    return &*part.recipeBinding_;
+}
+
+bool evaluateRecipeValueCheck(const void *context, std::string &actual) {
+    const RecipeValueCheck &check = *static_cast<const RecipeValueCheck *>(context);
+    std::size_t recipeIndex = 0;
+    const PartRecipeBinding *binding = partBindingFor(check.partIndex_, recipeIndex, actual);
+    if (binding == nullptr)
+        return false;
+    const ModuleRecipe &recipe = g_moduleHost.recipes()[recipeIndex];
+    for (std::size_t i = 0; i < recipe.params_.size(); ++i) {
+        if (recipe.params_[i].name_ != check.param_)
+            continue;
+        actual = recipe.name_ + "." + check.param_ + "=" + std::to_string(binding->values_[i]) +
+                 " want=" + std::to_string(check.expected_);
+        return IRMath::abs(binding->values_[i] - check.expected_) <= 1e-5f;
+    }
+    actual = "recipe '" + recipe.name_ + "' has no param '" + check.param_ + "'";
+    return false;
+}
+
+bool evaluatePartRecipeMatchCheck(const void *context, std::string &actual) {
+    const PartRecipeMatchCheck &check = *static_cast<const PartRecipeMatchCheck *>(context);
+    std::size_t recipeIndex = 0;
+    const PartRecipeBinding *binding = partBindingFor(check.partIndex_, recipeIndex, actual);
+    if (binding == nullptr)
+        return false;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_
+    );
+    std::vector<RecipeCell> cells;
+    if (!evaluateRecipeCells(recipeIndex, binding->values_, binding->mask_, set, cells)) {
+        actual = "recipe evaluation failed";
+        return false;
+    }
+    // A turned GRID part's span holds this frame's re-voxelized cells.
+    const std::span<const C_Voxel> records = set.authoredRecords();
+    std::vector<bool> expected(
+        static_cast<std::size_t>(set.size_.x * set.size_.y * set.size_.z),
+        false
+    );
+    for (const RecipeCell &cell : cells)
+        expected[static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell.local_, set.size_))] = true;
+    int filled = 0;
+    std::optional<ivec3> differing;
+    IRMath::iterateAABB(ivec3(0), set.size_ - ivec3(1), [&](int x, int y, int z) {
+        const std::size_t flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(ivec3(x, y, z), set.size_));
+        const bool occupied = flat < records.size() && records[flat].color_.alpha_ != 0;
+        filled += occupied ? 1 : 0;
+        if (occupied != expected[flat] && !differing)
+            differing = ivec3(x, y, z);
+    });
+    if (differing) {
+        const ivec3 cell = *differing;
+        const std::size_t flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell, set.size_));
+        actual = "cell=(" + std::to_string(cell.x) + "," + std::to_string(cell.y) + "," +
+                 std::to_string(cell.z) + ") recipe=" + (expected[flat] ? "yes" : "no");
+        return false;
+    }
+    actual = "cells=" + std::to_string(filled);
+    return true;
+}
+
+bool evaluateRecipeHandleTexelCheck(const void *context, std::string &actual) {
+    const RecipeHandleTexelCheck &check = *static_cast<const RecipeHandleTexelCheck *>(context);
+    IREntity::EntityId handle = IREntity::kNullEntity;
+    std::size_t recipeIndex = 0;
+    const EditorPart *part = recipeHandlePart();
+    if (const ModuleRecipe *recipe = part != nullptr ? boundRecipe(*part, recipeIndex) : nullptr) {
+        for (std::size_t i = 0; i < recipe->handles_.size(); ++i) {
+            if (recipe->handles_[i].name_ == check.handle_ && i < g_recipeHandles.entities_.size())
+                handle = g_recipeHandles.entities_[i];
+        }
+    }
+    int texels = 0;
+    if (handle != IREntity::kNullEntity) {
+        forEachTexelOwnedBy(
+            IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity()),
+            handle,
+            [&texels](IRMath::ivec2, std::size_t) { ++texels; }
+        );
+    }
+    actual =
+        "texels=" + std::to_string(texels) + " want=" + (check.expectDrawn_ ? "drawn" : "none");
+    return check.expectDrawn_ ? texels > 0 : texels == 0;
 }
 
 bool evaluatePartTurnAxisCheck(const void *context, std::string &actual) {
@@ -5182,6 +5738,13 @@ void initSystems() {
     IRVoxelEditor::g_gizmoHoverSystem = gizmoHoverId;
     IRVoxelEditor::g_gizmoDragSystem = gizmoDragId;
     IRVoxelEditor::setTransformMode(false);
+    // Recipe handles: runs after GIZMO_HOVER, whose hover flag starts a drag.
+    auto recipeHandleSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorRecipeHandles",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() { IRVoxelEditor::updateRecipeHandleDrag(); }
+    );
     auto jointBindSyncSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorJointBindSync",
         [](const C_GuiElement &) {},
@@ -5341,6 +5904,7 @@ void initSystems() {
          IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          gizmoHoverId,
          gizmoDragId,
+         recipeHandleSystem,
          jointBindSyncSystem,
          jointTreeSyncSystem}
     );

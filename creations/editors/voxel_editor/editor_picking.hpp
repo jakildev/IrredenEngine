@@ -22,6 +22,13 @@ namespace IRComponents {
 // pick leaves shapes out wholesale.
 struct C_EditorReference {};
 
+// Marks a gizmo handle the editor drives itself: a recipe handle, which
+// GIZMO_DRAG never drags. index_ is the handle's place in its recipe's list.
+// The gizmo-handle census leaves these out.
+struct C_EditorRecipeHandle {
+    int index_ = 0;
+};
+
 } // namespace IRComponents
 
 namespace IRVoxelEditor {
