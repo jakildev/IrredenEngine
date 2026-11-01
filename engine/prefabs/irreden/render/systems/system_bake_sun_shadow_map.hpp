@@ -865,9 +865,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     }
 
     // Immutable pass parameters avoid Metal subData orphaning between dispatches.
+    // Record and leaf-subtree counts outgrow the per-axis group cap at grown
+    // capacities, so every pass folds into the shared 2D grid the kernel flattens.
     void dispatchHierarchyPass(Buffer *frame, std::uint32_t groups) {
         frame->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
-        IRRender::device()->dispatchCompute(groups, 1, 1);
+        const ivec2 grid = voxelDispatchGridForCount(static_cast<int>(groups));
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 

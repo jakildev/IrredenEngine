@@ -125,10 +125,11 @@ inline void reduceSourceSunHierarchy(device uint* sunDepthBuf,
 
 kernel void c_build_sun_hierarchy(device uint* sunDepthBuf [[buffer(28)]],
     constant SunHierarchyFrame& params [[buffer(16)]],
-    uint lane [[thread_index_in_threadgroup]], uint3 groupId [[threadgroup_position_in_grid]]) {
+    uint lane [[thread_index_in_threadgroup]], uint3 groupId [[threadgroup_position_in_grid]],
+    uint3 groupCount [[threadgroups_per_grid]]) {
     threadgroup SourceSunBounds hierarchyBounds[2u * kSourceFaceHierarchyWorkgroupSize];
     threadgroup uint orderRunStarts[kSourceFaceHierarchyWorkgroupSize];
-    const uint group = groupId.x;
+    const uint group = groupId.x + groupId.y * groupCount.x;
     const uint capacity = sunDepthBuf[kSourceFaceCapacityOffset];
     const uint records = sourceFaceRetainedRecords(sunDepthBuf[kSourceFaceHeaderOffset], capacity);
     if (records == 0u ||

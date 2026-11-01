@@ -122,7 +122,7 @@ void reduceSourceSunHierarchy(uint capacity, uint lane, uint level, uint rootNod
 
 void main() {
     const uint lane = gl_LocalInvocationID.x;
-    const uint group = gl_WorkGroupID.x;
+    const uint group = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
     const uint boundWords = uint(sunDepthBuf.length());
     const uint capacity = sourceFaceCapacity(boundWords);
     const uint records = sourceFaceRetainedRecords(sunDepthBuf[sourceFaceHeaderIndex(boundWords)], capacity);

@@ -340,7 +340,7 @@ def source(suffix, directory, mutation=None):
     marker = "void main()" if suffix == "glsl" else "kernel void c_build_sun_hierarchy("
     kernel = extract_block(shader, marker)
     kernel = kernel[kernel.index("{") + 1:-1]
-    kernel = re.sub(r"    const uint (?:lane|group|pass) = [^;]+;\n", "", kernel)
+    kernel = re.sub(r"    const uint (?:lane|pass) = [^;]+;\n", "", kernel)
     kernel = re.sub(r"    threadgroup (?:SourceSunBounds|uint) \w+\[[^;]+;\n", "", kernel)
     kernel = kernel.replace("params.hierarchyDispatch", "hierarchyDispatch")
     for helper in ("sumSourceSunOrderRun", "prefixSourceSunOrderRuns", "startSourceSunOrderRun",
@@ -380,7 +380,17 @@ void hierarchyPhaseBoundary(){
     builder += helpers
     builder += ("uint orderBucketOf(uint record){return sourceSunOrderBucket(" +
                 ("sunDepthBuf," if suffix == "metal" else "") + "kSourceFaceCapacity,record);}\n")
-    builder += "\nvoid buildInvocation(uint group,uint pass){\nconst uint lane=0;\n"
+    # The kernel flattens its own 2D group ID: each linear group runs folded into
+    # rows of three, so a kernel that drops the row reads the wrong group.
+    builder += r"""
+struct HarnessGroupId {uint x,y,z;};
+HarnessGroupId gl_WorkGroupID{},gl_NumWorkGroups{},groupId{},groupCount{};
+constexpr uint kHarnessGroupsX=3;
+void buildInvocation(uint linearGroup,uint pass){
+const uint lane=0;
+gl_WorkGroupID=groupId={linearGroup%kHarnessGroupsX,linearGroup/kHarnessGroupsX,0};
+gl_NumWorkGroups=groupCount={kHarnessGroupsX,1,1};
+"""
     builder += ("for(auto& bounds:hierarchyBounds)"
                 "bounds=SourceSunBounds(vec4(12345.0f),vec4(-12345.0f));\n")
     builder += kernel + "}\n"
@@ -417,6 +427,8 @@ def dispatch_source(mutation=None):
     system = system_path.read_text()
     dispatch = "\n".join(extract_function(system, name) for name in (
         "buildOverflowHierarchy", "dispatchHierarchyPass", "buildHierarchyLevels"))
+    grid = (root / "engine/prefabs/irreden/render/voxel_dispatch_grid.hpp").read_text()
+    fold = extract_block(grid, "inline IRMath::ivec2 voxelDispatchGridForCount(")
     pipeline = (root / "engine/render/src/metal/metal_pipeline.cpp").read_text()
     mapping = extract_block(pipeline, "MTL::Size threadgroupSizeForFunctionName(")
     code = r"""
@@ -428,11 +440,25 @@ def dispatch_source(mutation=None):
 using uint=std::uint32_t;
 void require(bool ok,const char* message){if(!ok){std::cerr<<message<<"\n";std::exit(1);}}
 CONSTANTS
-namespace IRMath {uint divCeil(uint n,uint d){return (n+d-1)/d;}}
+#define IR_ASSERT(condition,message) require(condition,message)
+namespace IRMath {
+uint divCeil(uint n,uint d){return (n+d-1)/d;}
+int min(int a,int b){return a<b?a:b;}
+struct ivec2{int x,y;ivec2(int a,int b):x(a),y(b){}};
+}
+using IRMath::ivec2;
+FOLD
 enum class BufferTarget {SHADER_STORAGE,UNIFORM};
 enum class BarrierType {SHADER_STORAGE};
 constexpr int kBufferIndex_SunShadowDepthMap=28,kBufferIndex_RevoxelizeDetachedParams=16;
-std::vector<int> events;std::vector<uint> groups;
+struct Grid{
+    uint x,y;
+    bool operator==(const Grid& other)const{return x==other.x && y==other.y;}
+};
+std::vector<int> events;std::vector<Grid> groups;
+// The renderer's X cap, and OpenGL's guaranteed per-axis minimum for Y.
+constexpr uint kMaxGroupsX=1024,kMaxGroupsY=65535;
+Grid folded(uint count){const uint x=count<kMaxGroupsX?count:kMaxGroupsX;return {x,(count+x-1)/x};}
 struct Buffer{
     int id;
     void bindBase(BufferTarget target,int slot){
@@ -445,8 +471,9 @@ struct Buffer{
 struct Program{void use(){events.push_back(1);}};
 struct Device{
     void dispatchCompute(uint x,uint y,uint z){
-        require(y==1 && z==1,"hierarchy dispatch remains one-dimensional");
-        groups.push_back(x);events.push_back(20);
+        require(x>=1 && x<=kMaxGroupsX && y>=1 && y<=kMaxGroupsY && z==1,
+                "hierarchy dispatch stays within the per-axis group limits");
+        groups.push_back({x,y});events.push_back(20);
     }
     void memoryBarrier(BarrierType){events.push_back(30);}
 };
@@ -470,7 +497,7 @@ int main(){
     using namespace IRPrefab::SunShadow;
     static_assert(kSourceFaceHierarchyBuildPasses==2 && kSourceFaceHierarchyWorkgroupSize==128);
     Fixture fixture;fixture.buildOverflowHierarchy();
-    require(groups==std::vector<uint>({64,1,512,1,512,64,1}),
+    require(groups==std::vector<Grid>({{64,1},{1,1},{512,1},{1,1},{512,1},{64,1},{1,1}}),
             "CPU dispatch builds unordered, counts, scans, scatters, then builds ordered");
     require(events==std::vector<int>({1,8,10,20,30,11,20,30,16,20,30,17,20,30,18,20,30,
                                       13,20,30,14,20,30,9}),
@@ -479,7 +506,10 @@ int main(){
     require(size.width==kSourceFaceHierarchyWorkgroupSize && size.height==1 && size.depth==1,
             "Metal hierarchy workgroup width agrees with the layout");
     // A grown pool dispatches the passes and groups its leaf allocation needs.
-    for(uint capacity:{131072u,262144u,kSourceFaceCapacityCeiling}){
+    // Above 131072 records the record passes outgrow one row; above 1048576 the
+    // first build pass does too.
+    for(uint capacity:{131072u,262144u,kSourceFaceCapacityCeiling,2097152u,
+                       kSourceFaceCapacityDispatchLimit}){
         events.clear();groups.clear();
         fixture.recordLayout_=SourceFaceLayout{capacity};
         fixture.buildOverflowHierarchy();
@@ -493,14 +523,19 @@ int main(){
         if(build.size()<2)build.push_back(1);
         require(fixture.recordLayout_.buildPasses()==int(build.size()),
                 "pass count matches the dispatched groups");
-        std::vector<uint> expected=build;
-        const uint recordGroups=capacity/kSourceFaceHierarchyWorkgroupSize;
-        expected.insert(expected.end(),{recordGroups,1,recordGroups});
-        expected.insert(expected.end(),build.begin(),build.end());
+        std::vector<Grid> expected;
+        for(uint count:build)expected.push_back(folded(count));
+        const Grid records=folded(capacity/kSourceFaceHierarchyWorkgroupSize);
+        expected.insert(expected.end(),{records,{1,1},records});
+        for(uint count:build)expected.push_back(folded(count));
         require(groups==expected,"grown pool dispatches one group per subtree or record per pass");
     }
+    // The dispatch limit's three build passes precede its count, scan and scatter.
+    require(groups.size()==9 && groups[0]==Grid({1024,16}) && groups[3]==Grid({1024,128}),
+            "the largest pool folds its first build and record passes into rows");
 }
 """.replace("CONSTANTS", constants).replace("DISPATCH", dispatch).replace("MAPPING", mapping)
+    code = code.replace("FOLD", fold)
     if mutation:
         before, after = mutation
         if code.count(before) != 1:
@@ -535,9 +570,14 @@ class SunHierarchyTest(unittest.TestCase):
                 self.assertNotRegex(kernel, r"if \([^)]*lane[^)]*\) return")
                 if suffix == "glsl":
                     self.assertIn(f"local_size_x = {width}", shader)
+                    self.assertIn("const uint group = gl_WorkGroupID.x + gl_WorkGroupID.y * "
+                                  "gl_NumWorkGroups.x;", kernel)
                 else:
                     self.assertIn("lane [[thread_index_in_threadgroup]]", shader)
                     self.assertIn("groupId [[threadgroup_position_in_grid]]", shader)
+                    self.assertIn("groupCount [[threadgroups_per_grid]]", shader)
+                    self.assertIn("const uint group = groupId.x + groupId.y * groupCount.x;",
+                                  kernel)
 
     def test_cpu_dispatch_and_metal_width_with_mutations(self):
         harness = receiver.SourceFaceOverflowTest()
@@ -549,6 +589,8 @@ class SunHierarchyTest(unittest.TestCase):
             "reuse_pass_zero_parameters": (
                 "hierarchyFrames_[ordered ? 1 : 0][pass]", "hierarchyFrames_[ordered ? 1 : 0][0]"),
             "omit_second_pass": ("pass < passes", "pass < 1"),
+            "one_dimensional_dispatch": ("dispatchCompute(grid.x, grid.y, 1)",
+                                         "dispatchCompute(grid.x * grid.y, 1, 1)"),
             "wrong_group_count": ("recordLayout_.buildGroups(pass)\n",
                                   "recordLayout_.buildGroups(pass) / 2u\n"),
             "query_unordered_build": ("buildHierarchyLevels(true);",
@@ -623,10 +665,17 @@ class SunHierarchyTest(unittest.TestCase):
                 "for (uint run = 0u; run + 1u < kSourceFaceHierarchyWorkgroupSize; ++run)"),
             "clear_keeps_buckets": ("uint(linearIdx) < kSourceFaceHierarchyOrderBuckets",
                                     "uint(linearIdx) < 0u"),
+            "ignore_group_rows": {
+                "glsl": ("gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x",
+                         "gl_WorkGroupID.x"),
+                "metal": ("groupId.x + groupId.y * groupCount.x", "groupId.x"),
+            },
         }
         harness = receiver.SourceFaceOverflowTest()
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             for name, mutation in mutations.items():
+                if isinstance(mutation, dict):
+                    mutation = mutation[suffix]
                 with self.subTest(backend=suffix, mutation=name):
                     run = harness.compile_and_run(source(suffix, directory, mutation))
                     self.assertNotEqual(run.returncode, 0, "mutation escaped hierarchy controls")

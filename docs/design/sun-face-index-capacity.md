@@ -151,7 +151,11 @@ reads the header word. Every word from the spill counter on is addressed
 through the `sourceFace*Index` helpers, and the hierarchy build dispatches as
 many cooperative passes as the leaf allocation needs (two up to 131,072
 records, three up to the 16,777,216-record dispatch limit), publishing
-readiness from the pass that roots the tree. The default allocation keeps its two-pass dispatch sequence
+readiness from the pass that roots the tree. Every pass, the per-record order
+passes included, folds its workgroup count into the shared 2D dispatch grid
+(X capped at 1,024, the rest in Y) and the kernel flattens both axes, so the
+dispatch limit needs 1,024 × 128 record groups rather than 131,072 in one axis.
+The default allocation keeps its two-pass dispatch sequence
 and its frames stay byte-identical: the frozen-ceiling matrix matched the
 parent on all 41 captures.
 
