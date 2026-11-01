@@ -28,10 +28,30 @@ REQUIRED_RECORD_FIELDS = frozenset(
 )
 # A hung table read freezes covered_through, which reads as an uncovered lease.
 MSYS_PS_TIMEOUT_SECONDS = 5.0
+REPLACE_ATTEMPTS = 20
+REPLACE_BACKOFF_SECONDS = 0.025
 
 
 def now() -> float:
     return float(os.environ.get("IR_QUIET_NOW", time.time()))
+
+
+def replace_retrying_sharing_violation(source: str, destination: Path) -> None:
+    """os.replace that outlasts a concurrent reader of the destination.
+
+    Windows refuses the replace with ERROR_ACCESS_DENIED while any process
+    holds the destination open without FILE_SHARE_DELETE, which Python's
+    open() never passes. Readers hold it for microseconds, so a short bounded
+    retry always lands; POSIX rename has no such window.
+    """
+    for attempt in range(REPLACE_ATTEMPTS):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if attempt == REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(REPLACE_BACKOFF_SECONDS)
 
 
 def atomic_json(path: Path, value: dict) -> None:
@@ -41,7 +61,7 @@ def atomic_json(path: Path, value: dict) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(value, handle, sort_keys=True)
             handle.write("\n")
-        os.replace(temp_name, path)
+        replace_retrying_sharing_violation(temp_name, path)
     finally:
         try:
             os.unlink(temp_name)

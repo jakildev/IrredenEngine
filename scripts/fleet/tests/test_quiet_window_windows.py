@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -399,6 +400,60 @@ class ReapedChildTest(unittest.TestCase):
 
     def test_reaped_child_is_not_subtracted_on_windows(self):
         self.assertEqual(self.sample("Windows"), 2.0)
+
+
+class AtomicJsonSharingViolationTest(unittest.TestCase):
+    """atomic_json rides out a reader holding the destination open."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.dir = Path(temp.name)
+        self.helper = load_helper(self.dir)
+        self.target = self.dir / "parkers" / "44792.json"
+        self.helper.atomic_json(self.target, {"state": "old"})
+
+    def leftover_temp_files(self):
+        return [entry for entry in self.target.parent.iterdir() if entry.name.startswith(".")]
+
+    def test_replace_retries_through_transient_permission_errors(self):
+        real_replace = os.replace
+        outcomes = [PermissionError(5, "Access is denied"), PermissionError(5, "Access is denied")]
+
+        def flaky(source, destination):
+            if outcomes:
+                raise outcomes.pop(0)
+            real_replace(source, destination)
+
+        with mock.patch.object(self.helper.os, "replace", side_effect=flaky) as replace, \
+                mock.patch.object(self.helper.time, "sleep") as sleep:
+            self.helper.atomic_json(self.target, {"state": "new"})
+        self.assertEqual(replace.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(self.helper.read_json(self.target), {"state": "new"})
+        self.assertEqual(self.leftover_temp_files(), [])
+
+    def test_persistent_permission_error_raises_and_cleans_the_temp_file(self):
+        with mock.patch.object(
+            self.helper.os, "replace", side_effect=PermissionError(5, "Access is denied")
+        ) as replace, mock.patch.object(self.helper.time, "sleep"):
+            with self.assertRaises(PermissionError):
+                self.helper.atomic_json(self.target, {"state": "new"})
+        self.assertEqual(replace.call_count, self.helper.REPLACE_ATTEMPTS)
+        self.assertEqual(self.helper.read_json(self.target), {"state": "old"})
+        self.assertEqual(self.leftover_temp_files(), [])
+
+    @unittest.skipUnless(os.name == "nt", "requires native Windows file sharing")
+    def test_replace_succeeds_after_a_real_reader_releases_the_file(self):
+        reader = open(self.target, encoding="utf-8")
+        timer = threading.Timer(0.1, reader.close)
+        timer.start()
+        try:
+            self.helper.atomic_json(self.target, {"state": "new"})
+        finally:
+            timer.join()
+            reader.close()
+        self.assertEqual(self.helper.read_json(self.target), {"state": "new"})
 
 
 @unittest.skipUnless(os.name == "nt", "requires native Windows Python")
