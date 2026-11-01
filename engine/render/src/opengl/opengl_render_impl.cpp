@@ -8,6 +8,8 @@
 #include <irreden/render/opengl/opengl_types.hpp>
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <unordered_map>
 #include <vector>
@@ -45,6 +47,7 @@ class OpenGLRenderDevice final : public RenderDevice {
     // the overlays, and the screenshot readback never touch a surface the GL
     // spec leaves undefined for an unmapped window.
     void initOffscreenTarget(int width, int height) {
+        exitIfBeyondTargetLimits(width, height);
         releaseOffscreenTarget();
         ENG_API->glCreateTextures(GL_TEXTURE_2D, 1, &m_offscreenColor);
         ENG_API->glTextureStorage2D(m_offscreenColor, 1, GL_RGBA8, width, height);
@@ -62,6 +65,56 @@ class OpenGLRenderDevice final : public RenderDevice {
         const GLenum status =
             ENG_API->glCheckNamedFramebufferStatus(m_offscreenFbo, GL_FRAMEBUFFER);
         IR_ASSERT(status == GL_FRAMEBUFFER_COMPLETE, "Offscreen screen target is incomplete");
+    }
+
+    // The offscreen target exists so a capture is the size it asked for; a
+    // size the driver cannot allocate, attach or rasterize must end the run
+    // rather than hand back a smaller or incomplete frame. An explicit branch,
+    // not IR_ASSERT, because IR_RELEASE drops the assert's condition. Exits
+    // without unwinding: a resize can arrive with the world alive, and
+    // static-destruction teardown of a live world is unsupported.
+    static void exitIfBeyondTargetLimits(int width, int height) {
+        GLint maxTextureSize = 0;
+        GLint maxFramebufferWidth = 0;
+        GLint maxFramebufferHeight = 0;
+        GLint maxViewportDims[2] = {0, 0};
+        ENG_API->glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+        ENG_API->glGetIntegerv(GL_MAX_FRAMEBUFFER_WIDTH, &maxFramebufferWidth);
+        ENG_API->glGetIntegerv(GL_MAX_FRAMEBUFFER_HEIGHT, &maxFramebufferHeight);
+        ENG_API->glGetIntegerv(GL_MAX_VIEWPORT_DIMS, maxViewportDims);
+        const int limitWidth =
+            IRMath::min(maxTextureSize, IRMath::min(maxFramebufferWidth, maxViewportDims[0]));
+        const int limitHeight =
+            IRMath::min(maxTextureSize, IRMath::min(maxFramebufferHeight, maxViewportDims[1]));
+        if (width > 0 && height > 0 && width <= limitWidth && height <= limitHeight) {
+            return;
+        }
+        // One formatted block on stdout, the engine logger's stream, so the
+        // line lands whole in the run log in every build type (the logger
+        // macros compile out under IR_RELEASE).
+        char message[512];
+        const int length = std::snprintf(
+            message,
+            sizeof(message),
+            "FATAL: OpenGL offscreen screen target %dx%d exceeds the GL limit %dx%d "
+            "(GL_MAX_TEXTURE_SIZE %d, GL_MAX_FRAMEBUFFER_WIDTH/HEIGHT %dx%d, "
+            "GL_MAX_VIEWPORT_DIMS %dx%d). Request a smaller window; the engine will not "
+            "render a smaller frame than requested.\n",
+            width,
+            height,
+            limitWidth,
+            limitHeight,
+            maxTextureSize,
+            maxFramebufferWidth,
+            maxFramebufferHeight,
+            maxViewportDims[0],
+            maxViewportDims[1]
+        );
+        const int printable = IRMath::min(length, static_cast<int>(sizeof(message)) - 1);
+        std::fflush(stdout);
+        std::fwrite(message, 1, static_cast<std::size_t>(IRMath::max(printable, 0)), stdout);
+        std::fflush(nullptr);
+        std::_Exit(EXIT_FAILURE);
     }
 
     void releaseOffscreenTarget() {

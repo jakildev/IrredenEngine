@@ -44,9 +44,11 @@ struct IRGLFWJoystickInfo {
 ///     composite renders into a framebuffer the render backend allocates at
 ///     the window's framebuffer size, screenshots read that back, and nothing
 ///     is ever presented: no swapchain, no drawable, no dependence on how the
-///     OS schedules an unmapped surface. Metal paces frames to the primary
-///     display's refresh so per-second cost matches a presented run. The
-///     launcher's default for capture runs.
+///     OS schedules an unmapped surface. The engine, not the OS, owns that
+///     size: it is the requested window extent times the backing scale, even
+///     when the OS clamps the hidden window to the desktop work area. Metal
+///     paces frames to the primary display's refresh so per-second cost
+///     matches a presented run. The launcher's default for capture runs.
 /// Minimizing is deliberately not a mode: a minimized window reports a 0x0
 /// framebuffer on Windows, which skips every screenshot. Resolved as
 /// `config.window_mode` < `IR_WINDOW_MODE` env var < `--window-mode`; the
@@ -63,6 +65,16 @@ const char *windowModeName(WindowMode mode);
 /// Parses a `--window-mode` / `config.window_mode` spelling (exact, lower
 /// case); `std::nullopt` for anything outside the accepted set.
 std::optional<WindowMode> parseWindowMode(std::string_view name);
+
+/// Framebuffer pixels per window point on each axis, measured from a created
+/// window's sizes: 2 on a macOS retina display, 1 on Windows and X11, where
+/// the framebuffer equals the window in pixels whatever the DPI scale (so
+/// `glfwGetWindowContentScale` is the wrong source). An axis with a
+/// non-positive measurement reads 1.
+vec2 measureFramebufferScale(ivec2 windowSize, ivec2 framebufferSize);
+/// The framebuffer size, in pixels, of a surface @p extentPoints window
+/// points across at @p framebufferScale (round half up per axis).
+ivec2 framebufferSizeForExtent(ivec2 extentPoints, vec2 framebufferScale);
 
 /// GLFW window hints for Metal / Vulkan backends (no GL context).
 inline constexpr std::pair<int, int> kNoApiWindowHints[] = {
@@ -119,9 +131,19 @@ class IRGLFWWindow {
     WindowMode getWindowMode() const;
 
     /// Logical window size in screen coordinates (may differ from framebuffer under HiDPI).
+    /// In OFFSCREEN this is the engine-owned extent, never the OS window's.
     void getWindowSize(int &width, int &height);
     /// Physical framebuffer size in pixels — use this for viewport and render-target sizing.
+    /// In OFFSCREEN this is the engine-owned extent times the backing scale.
     void getFramebufferSize(int &width, int &height);
+    /// Resizes the surface to @p sizePoints window points. Outside OFFSCREEN
+    /// this is `glfwSetWindowSize`: the OS applies it (and may clamp it) and
+    /// the framebuffer-size callback fires from the event pump. In OFFSCREEN
+    /// it sets the engine-owned extent and invokes the registered
+    /// framebuffer-size callback before returning, so the screen target has
+    /// the new size on return. A raw `glfwSetWindowSize` on @ref getRawWindow
+    /// does not resize an OFFSCREEN surface.
+    void setWindowSize(ivec2 sizePoints);
     /// Raw GLFW cursor position in window-space pixels.
     void getCursorPosition(double &posX, double &posY);
     /// Raw GLFW key status (`GLFW_PRESS`, `GLFW_RELEASE`, `GLFW_REPEAT`).
@@ -155,6 +177,9 @@ class IRGLFWWindow {
     /// @name GLFW callback registration (called during engine init)
     /// @{
     void setCallbackError(GLFWerrorfun callbackFunction);
+    /// In OFFSCREEN the callback is held by the window and fired only by
+    /// @ref setWindowSize; the hidden OS window's framebuffer events never
+    /// reach it.
     void setCallbackFramebufferSize(GLFWframebuffersizefun callbackFunction);
     void setCallbackKey(GLFWkeyfun callbackFunction);
     void setCallbackMouseButton(GLFWmousebuttonfun callbackFunction);
@@ -191,6 +216,10 @@ class IRGLFWWindow {
     /// @}
 
   private:
+    // Records the framebuffer scale and reports an OS clamp of the request.
+    // Runs once, after creation and monitor placement.
+    void measureSurface();
+
     GLFWwindow *m_window;
     std::vector<GLFWmonitor *> m_monitors;
     ivec2 m_initWindowSize;
@@ -198,6 +227,11 @@ class IRGLFWWindow {
     int m_monitorIndex;
     std::string m_monitorName;
     WindowMode m_windowMode;
+    // OFFSCREEN only: the surface extent in window points and the measured
+    // framebuffer scale that turns it into the screen target's pixel size.
+    ivec2 m_offscreenExtentPoints;
+    vec2 m_framebufferScale{1.0f};
+    GLFWframebuffersizefun m_framebufferSizeCallback = nullptr;
     std::queue<int> m_keysPressedToProcess;
     std::queue<int> m_keysReleasedToProcess;
     std::queue<int> m_mouseButtonsPressedToProcess;

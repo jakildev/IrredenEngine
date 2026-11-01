@@ -22,6 +22,10 @@ void getWindowSize(IRMath::ivec2 &size);
 /// Writes the framebuffer dimensions in physical pixels to @p size.
 /// Under HiDPI / scaling this is larger than the logical window size.
 void getFramebufferSize(IRMath::ivec2 &size);
+/// Resizes the window to @p sizePoints logical pixels, the inverse of
+/// @ref getWindowSize. In `offscreen` mode the screen target is resized before
+/// this returns and no OS clamp applies; see `IRGLFWWindow::setWindowSize`.
+void setWindowSize(IRMath::ivec2 sizePoints);
 /// Writes the raw GLFW cursor position in window-space pixels to @p pos.
 void getCursorPosition(IRMath::dvec2 &pos);
 

@@ -36,6 +36,24 @@ std::optional<WindowMode> parseWindowMode(std::string_view name) {
     return std::nullopt;
 }
 
+vec2 measureFramebufferScale(ivec2 windowSize, ivec2 framebufferSize) {
+    const auto axisScale = [](int window, int framebuffer) {
+        if (window <= 0 || framebuffer <= 0) {
+            return 1.0f;
+        }
+        return static_cast<float>(framebuffer) / static_cast<float>(window);
+    };
+    return vec2(
+        axisScale(windowSize.x, framebufferSize.x),
+        axisScale(windowSize.y, framebufferSize.y)
+    );
+}
+
+ivec2 framebufferSizeForExtent(ivec2 extentPoints, vec2 framebufferScale) {
+    const vec2 pixels = vec2(extentPoints) * framebufferScale;
+    return ivec2(IRMath::roundHalfUp(pixels.x), IRMath::roundHalfUp(pixels.y));
+}
+
 namespace {
 // GLFW's defaults focus a new window at creation (GLFW_FOCUSED) and again
 // whenever it is shown (GLFW_FOCUS_ON_SHOW). Each platform's focus path is
@@ -127,7 +145,8 @@ IRGLFWWindow::IRGLFWWindow(
     , m_isFullscreen{fullscreen}
     , m_monitorIndex{monitorIndex}
     , m_monitorName{std::move(monitorName)}
-    , m_windowMode{mode} {
+    , m_windowMode{mode}
+    , m_offscreenExtentPoints{windowSize} {
     setCallbackError(irglfwCallback_error);
 
     int status = glfwInit();
@@ -176,6 +195,7 @@ IRGLFWWindow::IRGLFWWindow(
     }
 
     setWindowMonitor();
+    measureSurface();
 
     if constexpr (IRPlatform::kIsOpenGL) {
         glfwSwapInterval(0); // Remove for vsync?
@@ -248,6 +268,41 @@ void IRGLFWWindow::setWindowMonitor() {
     glfwSetWindowSize(m_window, m_initWindowSize.x, m_initWindowSize.y);
 }
 
+void IRGLFWWindow::measureSurface() {
+    ivec2 osWindowSize{0};
+    ivec2 osFramebufferSize{0};
+    glfwGetWindowSize(m_window, &osWindowSize.x, &osWindowSize.y);
+    glfwGetFramebufferSize(m_window, &osFramebufferSize.x, &osFramebufferSize.y);
+    m_framebufferScale = measureFramebufferScale(osWindowSize, osFramebufferSize);
+
+    // A fullscreen window replaces the request with the monitor's mode.
+    const bool osClamped = !m_isFullscreen && (osWindowSize.x < m_initWindowSize.x ||
+                                               osWindowSize.y < m_initWindowSize.y);
+    if (!osClamped) {
+        return;
+    }
+    if (m_windowMode == WindowMode::OFFSCREEN) {
+        IRE_LOG_INFO(
+            "The OS clamped the hidden window to {}x{}; the offscreen surface keeps the "
+            "requested {}x{}.",
+            osWindowSize.x,
+            osWindowSize.y,
+            m_initWindowSize.x,
+            m_initWindowSize.y
+        );
+        return;
+    }
+    IRE_LOG_WARN(
+        "Requested a {}x{} window but the OS gave {}x{}; the framebuffer and every capture "
+        "are the smaller size. Use --window-mode offscreen for a capture at the requested "
+        "size.",
+        m_initWindowSize.x,
+        m_initWindowSize.y,
+        osWindowSize.x,
+        osWindowSize.y
+    );
+}
+
 void IRGLFWWindow::setWindowUserPointer(void *pointer) {
     glfwSetWindowUserPointer(m_window, pointer);
 }
@@ -269,11 +324,40 @@ void IRGLFWWindow::pollEvents() {
 }
 
 void IRGLFWWindow::getWindowSize(int &width, int &height) {
+    if (m_windowMode == WindowMode::OFFSCREEN) {
+        width = m_offscreenExtentPoints.x;
+        height = m_offscreenExtentPoints.y;
+        return;
+    }
     glfwGetWindowSize(m_window, &width, &height);
 }
 
 void IRGLFWWindow::getFramebufferSize(int &width, int &height) {
+    if (m_windowMode == WindowMode::OFFSCREEN) {
+        const ivec2 size = framebufferSizeForExtent(m_offscreenExtentPoints, m_framebufferScale);
+        width = size.x;
+        height = size.y;
+        return;
+    }
     glfwGetFramebufferSize(m_window, &width, &height);
+}
+
+void IRGLFWWindow::setWindowSize(ivec2 sizePoints) {
+    IR_ASSERT(
+        sizePoints.x > 0 && sizePoints.y > 0,
+        "Window size must be positive, got {}x{}",
+        sizePoints.x,
+        sizePoints.y
+    );
+    if (m_windowMode != WindowMode::OFFSCREEN) {
+        glfwSetWindowSize(m_window, sizePoints.x, sizePoints.y);
+        return;
+    }
+    m_offscreenExtentPoints = sizePoints;
+    if (m_framebufferSizeCallback != nullptr) {
+        const ivec2 size = framebufferSizeForExtent(m_offscreenExtentPoints, m_framebufferScale);
+        m_framebufferSizeCallback(m_window, size.x, size.y);
+    }
 }
 
 void IRGLFWWindow::getCursorPosition(double &posX, double &posY) {
@@ -339,7 +423,10 @@ void IRGLFWWindow::setCallbackError(GLFWerrorfun callbackFunction) {
 void IRGLFWWindow::setCallbackFramebufferSize(
     GLFWframebuffersizefun framebufferSizeCallbackFunction
 ) {
-    glfwSetFramebufferSizeCallback(m_window, framebufferSizeCallbackFunction);
+    m_framebufferSizeCallback = framebufferSizeCallbackFunction;
+    if (m_windowMode != WindowMode::OFFSCREEN) {
+        glfwSetFramebufferSizeCallback(m_window, framebufferSizeCallbackFunction);
+    }
 }
 
 void IRGLFWWindow::setCallbackKey(GLFWkeyfun keyCallbackFunction) {

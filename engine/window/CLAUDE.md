@@ -65,7 +65,24 @@ instead: `bindDefaultFramebuffer` / `clearDefaultFramebuffer` /
 device never calls `nextDrawable` (`engine/render/CLAUDE.md` Gotchas). The
 target has the swapchain's shape (BGRA8, no depth on Metal; RGBA8 + 24/8
 depth-stencil on GL) at the window's framebuffer size, so pipeline states,
-clears and screenshots are the ones a presented frame produces. Pacing
+clears and screenshots are the ones a presented frame produces.
+
+In `offscreen` the window, not the OS, owns that size. `IRGLFWWindow` keeps
+the requested extent in window points and the framebuffer/window ratio it
+measured once at creation (`measureFramebufferScale`: 2 on a retina Mac, 1 on
+Windows and X11 whatever the DPI scale — never `glfwGetWindowContentScale`).
+`getWindowSize` returns the extent, `getFramebufferSize` the extent × ratio,
+so a request the OS clamps (Windows caps a window to the desktop work area)
+still captures at the requested size. `IRWindow::setWindowSize` is the only resize: in `offscreen`
+it fires the backend's framebuffer-size callback before returning, and the
+hidden OS window's own framebuffer events never reach that callback. A raw
+`glfwSetWindowSize` on `getRawWindow()` resizes nothing. GL ends the run with
+a non-zero exit when the size exceeds `GL_MAX_TEXTURE_SIZE`,
+`GL_MAX_FRAMEBUFFER_WIDTH/HEIGHT` or `GL_MAX_VIEWPORT_DIMS`. The presented
+modes keep the OS surface and log a WARN naming both sizes when the OS gave
+less than the request (fullscreen exempt).
+
+Pacing
 matches each backend's visible run: Metal sleeps to the primary display's
 refresh interval (what `presentDrawable` gated), GL stays unthrottled
 (`swapInterval 0`).
@@ -87,7 +104,9 @@ shot. Fullscreen is ignored (with a log line) outside `normal`.
 Under HiDPI / scaling, the framebuffer is larger than the window. Use
 `getFramebufferSize()` when you need the actual render target dimensions
 and `getWindowSize()` when you need "logical" pixels. `RenderManager`
-calls `getFramebufferSize()` internally.
+calls `getFramebufferSize()` internally. Resize through
+`IRWindow::setWindowSize(points)` — both sizes move together in every mode;
+moving only one skews `windowPointsToFramebufferPx` and synthetic GUI input.
 
 ## Gotchas
 

@@ -28,6 +28,10 @@ void getFramebufferSize(IRMath::ivec2 &size) {
     getWindow().getFramebufferSize(size.x, size.y);
 }
 
+void setWindowSize(IRMath::ivec2 sizePoints) {
+    getWindow().setWindowSize(sizePoints);
+}
+
 void getCursorPosition(IRMath::dvec2 &pos) {
     getWindow().getCursorPosition(pos.x, pos.y);
 }

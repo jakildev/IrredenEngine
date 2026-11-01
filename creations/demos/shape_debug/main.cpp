@@ -1903,11 +1903,7 @@ bool resizeWindowForFramebuffer(ivec2 requestedSize) {
                 )
             ),
         };
-        glfwSetWindowSize(
-            IRWindow::getWindow().getRawWindow(),
-            correctedWindowSize.x,
-            correctedWindowSize.y
-        );
+        IRWindow::setWindowSize(correctedWindowSize);
         IRWindow::getWindow().pollEvents();
     }
 
