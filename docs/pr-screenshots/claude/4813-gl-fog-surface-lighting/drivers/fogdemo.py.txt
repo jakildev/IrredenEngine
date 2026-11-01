@@ -1,0 +1,63 @@
+"""IRFogDemo route witnesses, opt-in off and on: fogdemo.py <out> [case,...] (resumable)."""
+import hashlib, importlib.util, json, os, shutil, subprocess, sys, time
+from pathlib import Path
+ROOT = Path(r"C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4")
+sys.path.insert(0, str(ROOT / "scripts"))
+from verify_common import collect_full_frames, platform_launch_argv, run_result
+SHOTS = ROOT / "build/creations/demos/fog_demo/save_files/screenshots"
+CASES = {
+    'default': [],
+    'body': ['--entity-reveal-soft-edge'],
+    'zcost': ['--edge-zcost'],
+    'moving': ['--moving-observer'],
+    'ceiling': ['--ceiling-treatment', '--reveal-treatment'],
+    'overflow': ['--peraxis-overflow'],
+    'los': ['--occlusion=high-ground', '--los-softness=1'],
+    'memory': ['--explored-decay'],
+}
+out = Path(sys.argv[1])
+only = sys.argv[2].split(',') if len(sys.argv) > 2 else None
+aside = out / '_preexisting_shots'
+for case, flags in CASES.items():
+    if only and case not in only:
+        continue
+    for surface in ('0', '1'):
+        folder = out / f'{case}-surface{surface}'
+        done = folder / 'capture.json'
+        if done.exists() and json.loads(done.read_text()).get('result') not in (None, 'LOCK-FAILED'):
+            continue
+        folder.mkdir(parents=True, exist_ok=True)
+        if SHOTS.exists():
+            for p in SHOTS.iterdir():
+                aside.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(p), str(aside / f'{time.time_ns()}-{p.name}'))
+        command = ['fleet-run', '--timeout', '900', 'IRFogDemo', *flags, '--auto-screenshot', '30']
+        env = {**os.environ, 'IR_PERAXIS_SURFACE_LIGHTING': surface}
+        t = time.time()
+        retries = 0
+        while True:
+            with (folder / 'run.log').open('w', encoding='utf-8') as stream:
+                r = subprocess.run(platform_launch_argv(command), cwd=ROOT, env=env, stdout=stream,
+                                   stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+            log = (folder / 'run.log').read_text(encoding='utf-8', errors='replace')
+            if run_result(log) != 'LOCK-FAILED' or retries >= 5:
+                break
+            retries += 1
+            (folder / f'lock-failed-{retries}.log').write_text(log, encoding='utf-8')
+        if SHOTS.exists():
+            for p in SHOTS.iterdir():
+                shutil.move(str(p), str(folder / p.name))
+        lines = log.splitlines()
+        shots = collect_full_frames(folder)
+        rec = {'command': command, 'env': {'IR_PERAXIS_SURFACE_LIGHTING': surface},
+               'returncode': r.returncode, 'result': run_result(log), 'lock_failed_retries': retries,
+               'routes': [l.split('SURFACE-ROUTE ')[1] for l in lines if 'SURFACE-ROUTE' in l],
+               'gl_error_lines': [l for l in lines if any(k in l.lower() for k in
+                                  ('[critical]', '[error]', 'compilation failed', 'linking failed',
+                                   'error c', 'error: 0:'))][:20],
+               'frames': [s.name for s in shots],
+               'sha256': [hashlib.sha256(s.read_bytes()).hexdigest() for s in shots],
+               'seconds': round(time.time() - t)}
+        (folder / 'capture.json').write_text(json.dumps(rec, indent=2) + '\n', newline='\n')
+        print(f'{folder.name} rc={r.returncode} {rec["result"]} {rec["routes"]} frames={len(shots)} '
+              f'glerr={len(rec["gl_error_lines"])} {rec["seconds"]}s', flush=True)

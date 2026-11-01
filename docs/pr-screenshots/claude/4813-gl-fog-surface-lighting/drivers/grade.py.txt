@@ -1,0 +1,133 @@
+"""grade.py <out>: grade every capture with the polygon oracle and compare against the Metal results."""
+import glob, json, sys
+from collections import defaultdict
+from pathlib import Path
+WT = Path(r"C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4")
+sys.path.insert(0, r"C:/msys64/tmp/p4813/pylib")
+sys.path.insert(0, str(WT / "scripts"))
+import render_receiver_shadow_polygon as oracle
+from PIL import Image
+
+EV = WT / "docs/pr-screenshots/claude"
+METAL_DEFAULT = json.loads((EV / "4757-fog-surface-receiving/polygon/results.json").read_text())
+METAL_VARIANT = json.loads((EV / "4757-receiver-shadow-ambient-local-light/results.json").read_text())
+out = Path(sys.argv[1])
+
+
+def arg(command, flag, n):
+    if flag not in command:
+        return None
+    i = command.index(flag)
+    return [float(v) for v in command[i + 1:i + 1 + n]]
+
+
+def upscale2x(image):
+    """Nearest 2x: the game-to-framebuffer step Metal's retina target performs."""
+    w, h = image.size
+    src = image._rgba
+    out = bytearray(w * h * 16)
+    row = w * 8
+    for y in range(h):
+        line = bytearray(row)
+        s = src[y * w * 4:(y + 1) * w * 4]
+        for c in range(4):
+            line[c::8] = s[c::4]
+            line[4 + c::8] = s[c::4]
+        out[(2 * y) * row:(2 * y + 1) * row] = line
+        out[(2 * y + 1) * row:(2 * y + 2) * row] = line
+    return type(image)(2 * w, 2 * h, bytes(out))
+
+
+def frame(folder):
+    image = Image.open(sorted(glob.glob(str(folder / 'screenshot_*.png')))[-1])
+    return upscale2x(image) if image.size == (1280, 720) else image
+
+
+def metal_row(variant, name):
+    if variant == 'default':
+        place, rest = name.split('-yaw', 1)
+        group = {'origin': 'quadrants'}.get(place, place)
+        return METAL_DEFAULT.get(f'{group}/yaw{rest}')
+    return METAL_VARIANT.get(f'{variant}/{name}')
+
+
+results = {}
+for variant in ('default', 'ambient0.15', 'ambient0.55', 'local'):
+    vdir = out / variant
+    if not vdir.exists():
+        continue
+    for folder in sorted(vdir.iterdir()):
+        if not (folder / 'capture.json').exists():
+            continue
+        cap = json.loads((folder / 'capture.json').read_text())
+        command = cap['command']
+        yaw = arg(command, '--yaw', 1)[0]
+        camera = arg(command, '--camera-iso', 2) or [0.0, 0.0]
+        ambient = (arg(command, '--sun-ambient', 1) or [oracle.DEFAULT_AMBIENT])[0]
+        row = {'command': command, 'env': cap['env'], 'returncode': cap['returncode'],
+               'result': cap['result'], 'routes': cap['routes'], 'probes': cap['probes'],
+               'gl_error_lines': cap['gl_error_lines'], 'frame_sha256': cap['sha256']}
+        references = None
+        if variant == 'local':
+            refs = {}
+            missing_ref = False
+            for kind in ('lit', 'dark'):
+                ref = out / f'local-{kind}' / folder.name
+                if not (ref / 'capture.json').exists():
+                    missing_ref = True
+                    break
+                rc = json.loads((ref / 'capture.json').read_text())
+                refs[kind] = {'command': rc['command'], 'returncode': rc['returncode'], 'result': rc['result'],
+                              'routes': rc['routes'], 'probes': rc['probes'],
+                              'gl_error_lines': rc['gl_error_lines'], 'frame_sha256': rc['sha256']}
+            if missing_ref:
+                continue
+            row['references'] = refs
+            references = (frame(out / 'local-lit' / folder.name), frame(out / 'local-dark' / folder.name))
+        if camera != [0.0, 0.0]:
+            row.update(passed=None, graded=False,
+                       not_graded='1x GL frame: the camera residual parity differs from the 2x oracle')
+        else:
+            try:
+                graded = oracle.check_image(frame(folder), yaw, camera, ambient=ambient,
+                                            references=references)
+                row.update(graded=True, upscaled_2x=True, passed=graded['passed'],
+                           coverage_valid=graded['coverage_valid'], counts=graded['counts'],
+                           shadow_color=graded['shadow_color'], sun_ambient=ambient,
+                           palette=graded['palette'])
+            except (ValueError, IndexError) as error:
+                row.update(passed=False, error=str(error))
+        metal = metal_row(variant, folder.name)
+        if metal is not None:
+            row['metal'] = {'passed': metal.get('passed'), 'counts': metal.get('counts'),
+                            'routes': metal.get('routes'), 'frame_sha256': metal.get('frame_sha256')}
+            row['matches_metal_counts'] = row.get('counts') == metal.get('counts')
+            row['matches_metal_routes'] = row['routes'] == metal.get('routes')
+            row['matches_metal_frame'] = row['frame_sha256'] == metal.get('frame_sha256')
+        row.update(yaw=yaw, camera_iso=camera)
+        results[f'{variant}/{folder.name}'] = row
+(out / 'results.json').write_text(json.dumps(results, indent=1) + '\n', newline='\n')
+
+table = defaultdict(list)
+for key, row in results.items():
+    variant, name = key.split('/')
+    table[(variant, name.split('-fog')[1])].append(row)
+for (variant, arm), rows in sorted(table.items()):
+    c = [r.get('counts', {}) for r in rows]
+    fails = sorted({(x.get('missing'), x.get('excess'), x.get('unknown'))
+                    for r, x in zip(rows, c) if r['passed'] is False})
+    print(f'{variant:12} fog{arm:12} n={len(rows)} graded={sum(bool(r.get("graded")) for r in rows)} '
+          f'pass={sum(bool(r["passed"]) for r in rows)} '
+          f'clean={sum(r["result"] == "CLEAN" for r in rows)} '
+          f'routes={sorted({tuple(r["routes"]) for r in rows})} '
+          f'metal_counts={sum(bool(r.get("matches_metal_counts")) for r in rows)} '
+          f'metal_routes={sum(bool(r.get("matches_metal_routes")) for r in rows)} '
+          f'metal_frame={sum(bool(r.get("matches_metal_frame")) for r in rows)} '
+          f'min_eligible={min((x.get("eligible") or 0) for x in c)} '
+          f'min_local={min((x.get("local_light") or 0) for x in c) if variant == "local" else "-"} '
+          f'glerr={sum(len(r["gl_error_lines"]) for r in rows)} '
+          f'fails(m/e/u)={fails} errors={[r["error"] for r in rows if "error" in r][:2]}')
+    for r, x in zip(rows, c):
+        if r.get('graded') and not r.get('matches_metal_counts'):
+            print('   counts differ from Metal:', r['command'][r['command'].index('--yaw') + 1], r['camera_iso'],
+                  x, '!= metal', r.get('metal', {}).get('counts'))

@@ -1,0 +1,5 @@
+code a6b9953c3eb8743a5c5b8c05889a3bdb9c7bb8ae (origin/master, includes #4810 and #4814)
+host Windows 10 Pro 19045, NVIDIA GeForce RTX 3060 Ti, driver 581.80 (32.0.15.8180), MSYS2 mingw64 gcc, windows-debug
+6f7581a9082f7cc21f8ad12e32fe2cf626bd598cc0da331dd6b43892bf1f05ad  build/creations/demos/canvas_stress/IRCanvasStress.exe
+b83cb8495dbd3302cdd235338d8f65194bdd3b5c7d308a7dc5fe6c1669369cdd  build/creations/demos/fog_demo/IRFogDemo.exe
+2cc3b47beeee31253ff5b434b197217ccc192776cf3bacedc060ed1f26679978  build/IrredenEngineTest.exe

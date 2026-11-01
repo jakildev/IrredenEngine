@@ -1,0 +1,38 @@
+"""fogsummary.py <fogdemo-out>: per-case routes, results, and off/on changed-pixel census -> summary.json."""
+import json, sys
+from pathlib import Path
+sys.path.insert(0, r"C:/msys64/tmp/p4813/pylib")
+from PIL import Image
+WT = Path(r"C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4")
+METAL = json.loads((WT / "docs/pr-screenshots/claude/4757-fog-surface-receiving/fogdemo/summary.json").read_text())
+out = Path(sys.argv[1])
+summary = {}
+for case in ('default', 'body', 'zcost', 'moving', 'ceiling', 'overflow', 'los', 'memory'):
+    off = json.loads((out / f'{case}-surface0' / 'capture.json').read_text())
+    on = json.loads((out / f'{case}-surface1' / 'capture.json').read_text())
+    shots = []
+    for a, b in zip(off['frames'], on['frames']):
+        ia = Image.open(out / f'{case}-surface0' / a)
+        ib = Image.open(out / f'{case}-surface1' / b)
+        pa, pb = ia._rgba, ib._rgba
+        changed = 0
+        maxd = 0
+        small = 0
+        for i in range(0, len(pa), 4):
+            if pa[i:i + 4] != pb[i:i + 4]:
+                changed += 1
+                d = max(abs(pa[i + c] - pb[i + c]) for c in range(4))
+                maxd = max(maxd, d)
+                small += d <= 2
+        shots.append([b, ia.size, changed, small, maxd])
+    m = METAL[case]
+    summary[case] = {'command_on': on['command'], 'routes_off': off['routes'], 'routes_on': on['routes'],
+                     'result_off': off['result'], 'result_on': on['result'],
+                     'gl_error_lines': off['gl_error_lines'] + on['gl_error_lines'],
+                     'shots_off_on_changed_px_le2lsb_maxdelta': shots,
+                     'sha256_on': on['sha256'],
+                     'metal_routes_on': m['routes'], 'metal_shots': m['shots'],
+                     'routes_match_metal': on['routes'] == m['routes'], 'shot_count_match': len(shots) == len(m['shots'])}
+    print(case, on['result'], off['result'], on['routes'], 'match' if summary[case]['routes_match_metal'] else 'ROUTE MISMATCH',
+          [(s[2], s[3], s[4]) for s in shots], 'metal', [(s[1], s[2]) for s in m['shots']], flush=True)
+(out / 'summary.json').write_text(json.dumps(summary, indent=1) + '\n', newline='\n')

@@ -1,0 +1,55 @@
+"""Image.open(png) -> object with .size, .convert('RGBA'), .load()[x, y] -> RGBA tuple.
+
+Decodes with scripts/render-compare.py's read_png (8-bit RGB/RGBA, non-interlaced).
+"""
+import importlib.util
+from pathlib import Path
+
+_RC = Path(r"C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4/scripts/render-compare.py")
+_spec = importlib.util.spec_from_file_location("render_compare", _RC)
+_rc = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_rc)
+
+
+class _Access:
+    def __init__(self, image):
+        self._w = image.size[0]
+        self._px = image._rgba
+
+    def __getitem__(self, xy):
+        x, y = xy
+        i = (y * self._w + x) * 4
+        p = self._px
+        return (p[i], p[i + 1], p[i + 2], p[i + 3])
+
+
+class _Image:
+    def __init__(self, width, height, rgba):
+        self.size = (width, height)
+        self._rgba = rgba
+
+    def convert(self, mode):
+        if mode != "RGBA":
+            raise ValueError(mode)
+        return self
+
+    def load(self):
+        return _Access(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def open(path):
+    width, height, bpp, pixels = _rc.read_png(str(path))
+    if bpp == 3:
+        out = bytearray(width * height * 4)
+        out[0::4] = pixels[0::3]
+        out[1::4] = pixels[1::3]
+        out[2::4] = pixels[2::3]
+        out[3::4] = b"\xff" * (width * height)
+        pixels = bytes(out)
+    return _Image(width, height, pixels)

@@ -1,0 +1,17 @@
+"""The Metal matrices' 18 placements and 5 capture variants (4757 drivers), plus the default palette."""
+PLACEMENTS = [(f'origin-yaw{y}', [], y) for y in ('0', '1.57079632679', '3.14159265359', '4.71238898038',
+                                                  '0.6', '2.17079632679', '3.74159265359', '5.31238898038')]
+PLACEMENTS += [(f'near-yaw{y}', ['--camera-iso', '-0.375', '0.625'], y)
+               for y in ('0.002', '1.57279632679', '3.14359265359', '4.71438898038')]
+PLACEMENTS += [(f'mid-yaw{y}', ['--camera-iso', '-1.375', '-0.625'], y)
+               for y in ('0.6', '2.17079632679', '3.74159265359', '5.31238898038')]
+PLACEMENTS += [('subpos-yaw0.6', ['--camera-iso', '0.1', '-0.2'], '0.6'),
+               ('subneg-yaw0.6', ['--camera-iso', '-0.1', '0.2'], '0.6')]
+LIGHT = ['--probe-local-light', '8', '0', '-20']
+VARIANTS = [('default', []),
+            ('ambient0.15', ['--sun-ambient', '0.15']),
+            ('ambient0.55', ['--sun-ambient', '0.55']),
+            ('local', LIGHT),
+            ('local-lit', [*LIGHT, '--no-shadows']),
+            ('local-dark', [*LIGHT, '--sun-direction', '1', '0', '0',
+                            '--probe-overlapping-source-offset', '-12', '0', '-12'])]

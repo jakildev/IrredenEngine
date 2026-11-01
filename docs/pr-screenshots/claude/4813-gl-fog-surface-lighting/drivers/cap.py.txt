@@ -1,0 +1,63 @@
+"""One IRCanvasStress shadowbox,floor capture: capture(folder, yaw, fog, surface, extra) -> record.
+
+Same argv as the Metal drivers (4757-receiver-shadow-ambient-local-light/cap.py.txt).
+"""
+import hashlib, json, os, subprocess, sys
+from pathlib import Path
+ROOT = Path(r"C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4")
+sys.path.insert(0, str(ROOT / "scripts"))
+from verify_common import collect_full_frames, platform_launch_argv, run_result
+
+# Same config as the Metal drivers. Metal's 1280x720-point window is a 2560x1440
+# retina framebuffer; GL renders it 1:1 (a 2560x1440 window is clamped to 1421 rows
+# on this host), so grade.py upscales origin-placement frames 2x nearest.
+WINDOW = ('1280', '720')
+
+COMMON = ['--only', 'shadowbox,floor', '--probe-grid', '--probe-floor-mode', 'grid',
+          '--probe-floor-span', '40', '--no-spin',
+          '--no-auto-rotate', '--pivot-origin', '--zoom', '4', '--subdivisions', '1', '--no-ao',
+          '--auto-screenshot', '10', '--sweep-frames', '1', '10', '--probe-overlapping-source']
+
+
+def capture(folder, yaw, fog, surface, extra):
+    folder = Path(folder).resolve()
+    folder.mkdir(parents=True, exist_ok=True)
+    for stale in folder.glob('screenshot_*.png'):
+        stale.unlink()
+    common = list(COMMON)
+    if '--sun-direction' not in extra:
+        common += ['--sun-direction', '0', '0', '-1']
+    config = folder / 'config.lua'
+    config.write_text('config={window_mode="offscreen",profiling_enabled=false,gpu_stage_timing=false,'
+                      'init_window_width=' + WINDOW[0] + ',init_window_height=' + WINDOW[1] +
+                      ',game_resolution_width=1280,'
+                      'game_resolution_height=720,screenshot_output_dir='
+                      + json.dumps(folder.as_posix()) + '}\n', newline='\n')
+    command = ['fleet-run', '--timeout', '240', 'IRCanvasStress', '--config-preset', config.as_posix(),
+               *common, '--yaw', yaw, '--fog-reveal', fog, *extra]
+    env = {**os.environ, 'IR_PERAXIS_SURFACE_LIGHTING': surface}
+    lock_failures = 0
+    while True:
+        with (folder / 'run.log').open('w', encoding='utf-8') as stream:
+            r = subprocess.run(platform_launch_argv(command), cwd=ROOT, env=env, stdout=stream,
+                               stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        log = (folder / 'run.log').read_text(encoding='utf-8', errors='replace')
+        if run_result(log) != 'LOCK-FAILED' or lock_failures >= 5:
+            break
+        lock_failures += 1
+        (folder / f'lock-failed-{lock_failures}.log').write_text(log, encoding='utf-8')
+    shots = collect_full_frames(folder)
+    lines = log.splitlines()
+    routes = [l.split('SURFACE-ROUTE ')[1] for l in lines if 'SURFACE-ROUTE' in l]
+    probes = [l.split('] ', 1)[-1] for l in lines if 'LIGHTING-PROBE' in l or 'LOCAL-LIGHT-PROBE' in l]
+    gl_errors = [l for l in lines if any(t in l.lower() for t in
+                 ('[critical]', '[error]', 'compilation failed', 'linking failed',
+                  'error c', 'error: 0:'))]
+    record = {'command': command, 'env': {'IR_PERAXIS_SURFACE_LIGHTING': surface},
+              'returncode': r.returncode, 'result': run_result(log), 'lock_failed_retries': lock_failures,
+              'routes': routes, 'probes': probes,
+              'gl_error_lines': gl_errors[:20],
+              'frames': [s.name for s in shots],
+              'sha256': [hashlib.sha256(s.read_bytes()).hexdigest() for s in shots]}
+    (folder / 'capture.json').write_text(json.dumps(record, indent=2) + '\n', newline='\n')
+    return record
