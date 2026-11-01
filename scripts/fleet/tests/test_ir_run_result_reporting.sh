@@ -152,10 +152,15 @@ rm -f "$IR_BREACH_STARTED" "$IR_BREACH_RELEASE"
 "$IR_RUN" --build-dir "$FAKE_BUILD" breach-hold --auto-profile 5 \
     >"$FAKE_BUILD/breach.log" 2>&1 &
 breach_pid=$!
-for _attempt in $(seq 1 100); do
-    [[ -f "$IR_BREACH_STARTED" ]] && break
+# The lease must land after the run is admitted, or ir-acquire refuses it
+# (exit 75) instead of reporting a breach. Native Windows takes seconds to
+# get through ir-acquire to the exe, so the wait is a deadline, not a count.
+breach_deadline=$((SECONDS + 60))
+until [[ -f "$IR_BREACH_STARTED" ]] || (( SECONDS >= breach_deadline )); do
     sleep .02
 done
+assert_eq "$([[ -f "$IR_BREACH_STARTED" ]] && echo started)" "started" \
+    "breach-hold is running before the late lease"
 sleep 30 &
 HOLDER_PID=$!
 "$IR_ACQUIRE" --quiet-lease late-session create "$HOLDER_PID"
@@ -340,5 +345,22 @@ assert_eq "${QUERIES[0]#1 }" "${QUERIES[1]#2 }" "every attempt queries the same 
 assert_eq "${QUERIES[0]#1 }" "$P127 $HC_NATIVE_PID $HC_FILETIME 1790337607.500000 1790337611.500000" \
     "bounds are [max(start, exit - 3), exit + 1]"
 set_events ""
+
+# The capturer polls /proc/<pid>/winexename and winpid; the exe can exit
+# between its `-r` test and the read. Run the shipped read lines against a
+# pid with no /proc entry (the post-race state) and require a silent stderr.
+echo "identity capturer: a /proc read that loses the race stays silent:"
+RACE_PID=999999999
+mapfile -t PROC_READS < <(grep -F '/proc/$msys/win' "$IR_RUN" | grep -F "tr -d" | grep -v '^[[:space:]]*#')
+assert_eq "${#PROC_READS[@]}" "2" "ir-run has the winexename and winpid reads"
+RACE_ERR="$(msys=$RACE_PID bash -c '
+    ir_lower() { printf "%s" "$1" | tr "[:upper:]" "[:lower:]"; }
+    run_line() { eval "$1"; }
+    for line in "$@"; do run_line "$line"; done
+' _ "${PROC_READS[@]}" 2>&1 >/dev/null)"
+assert_eq "$RACE_ERR" "" "a vanished /proc entry leaks no redirection error"
+OLD_READ='exe="$(tr -d "\0" < "/proc/$msys/winexename" 2>/dev/null || true)"'
+OLD_ERR="$(msys=$RACE_PID bash -c "$OLD_READ" 2>&1 >/dev/null)"
+assert_contains "$OLD_ERR" "No such file or directory" "control: the ungrouped form leaks the error"
 
 summarize "ir-run result-reporting tests"

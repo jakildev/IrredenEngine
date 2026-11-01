@@ -44,6 +44,20 @@ export IR_TEST_DROP=present
 
 CHILD_PATH="/usr/bin:/bin"
 WRAPPER_PATH="$SHIM_BIN:$PATH"
+WRAPPER_SEEN_PATH="$WRAPPER_PATH"
+# On native Windows ir-run prepends the MSYS2 mingw64 runtime dir to its own
+# PATH and wraps every verb-less run in the gpu lock. Pin the runtime dir to a
+# synthetic one and opt out of the lock so the plain cases take the exec path
+# on every host; the capture cases still go through ir-acquire.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        mkdir -p "$TMP/mingw64-bin"
+        export IR_MSYS2_MINGW
+        IR_MSYS2_MINGW="$(cygpath -w "$TMP/mingw64-bin")"
+        WRAPPER_SEEN_PATH="$(cygpath -u "$IR_MSYS2_MINGW"):$WRAPPER_PATH"
+        export IR_RUN_GL_EXCLUSIVE=0
+        ;;
+esac
 PREFIX_LOG="$TMP/prefix.log"
 ENV_LOG="$TMP/env.log"
 
@@ -113,7 +127,7 @@ prefix-arg=two words" "$shape: prefix sees the child env and receives exact argv
     assert_contains "$OUT" "exe-set=a b=c" "$shape: executable sees the set value intact"
     assert_contains "$OUT" "exe-arg=--child-env" "$shape: a program arg spelled like an option is untouched"
     assert_contains "$OUT" "exe-arg=two words" "$shape: a program arg with spaces is intact"
-    assert_eq "$ENV_OUT" "env-path=$WRAPPER_PATH" "$shape: wrapper keeps its original PATH"
+    assert_eq "$ENV_OUT" "env-path=$WRAPPER_SEEN_PATH" "$shape: wrapper keeps its original PATH"
 }
 
 echo "plain exec:"

@@ -737,13 +737,16 @@ ir_capture_launch_identity() {
         local want exe=""
         want="$(ir_lower "$EXE_RUN")"
         while [[ -r "/proc/$msys/winexename" ]]; do
-            exe="$(ir_lower "$(tr -d '\0' < "/proc/$msys/winexename" 2>/dev/null || true)")"
+            # Group the read: a redirection failure is reported before an
+            # inline `2>/dev/null` takes effect, so the exe exiting between
+            # the `-r` test and here would leak the error to stderr.
+            exe="$(ir_lower "$({ tr -d '\0' < "/proc/$msys/winexename"; } 2>/dev/null || true)")"
             [[ "${exe##*\\}" == "$want" ]] && break
             [[ -e "$d/done" ]] && return 0
             sleep 0.1
         done
         [[ "${exe##*\\}" == "$want" ]] || return 0
-        native="$(<"/proc/$msys/winpid")" 2>/dev/null || return 0
+        native="$({ tr -d '\0' < "/proc/$msys/winpid"; } 2>/dev/null)" || return 0
         [[ "$native" =~ ^[0-9]+$ ]] || return 0
         ft="$(timeout 30 powershell.exe -NoProfile -NonInteractive -Command \
             "(Get-Process -Id $native).StartTime.ToFileTimeUtc()" 2>/dev/null \
