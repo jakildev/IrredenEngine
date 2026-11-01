@@ -269,3 +269,128 @@ adding it would raise the yaw baseline and should ride its own change.)
 
 Lever implementation is a **separate task** behind the design gate, per the
 Phase-2 plan.
+
+## Small dense scene (GL, #4722)
+
+The two scenes above are large. This one is small: the cost of a rotating
+frame is the lighting of per-axis and overflow faces, not raster fan-out.
+
+**Fixture.** `creations/demos/perf_grid/configs/perf/small_dense_yaw.lua`: a
+540×960 window and canvas at zoom 2, `voxel_set` with grid 24 (13,824 voxels),
+spacing 1, the per-cell wave at amplitude 5, profiling and GPU stage timing
+on. Rotating arm: `--yaw 0.0017453293 --yaw-step 0.0017453293` (one quadrant
+over 900 frames). Cardinal arm: `--yaw 0`. Both arms:
+`--auto-profile 900 --no-overlay`, through `fleet-run`, so every run holds the
+quiet-window benchmark lease; every quoted run reported `RESULT=CLEAN`.
+
+**Host.** Windows 10 native, MSYS2 mingw64 Debug build (`windows-debug`),
+OpenGL on an NVIDIA GeForce RTX 3060 Ti (driver 32.0.15.8180). Master is
+`d72f88820`. Frame figures are the report's steady average (first 225 frames
+excluded); stage rows are the `--- GPU stage timing ---` averages over the
+run. Arms were interleaved and alternated in order per round; spread is the
+maximum minus the minimum of the per-run averages.
+
+### Attribution (master, 6 runs per arm)
+
+| row | rotating | spread | cardinal | spread |
+|---|---:|---:|---:|---:|
+| steady frame avg | 11.63 | 0.29 | 2.46 | 0.20 |
+| `computeSunShadow` | 2.533 | 0.027 | 1.038 | 0.011 |
+| `lightingOverflow` | 4.859 | 0.285 | — (0 samples) | |
+| `voxelPerAxisFinalize` | 0.714 | 0.019 | — (0 samples) | |
+| `voxelPerAxisOverflow` | 0.576 | 0.023 | — (0 samples) | |
+| `voxelPerAxisStore` | 0.349 | 0.003 | — (0 samples) | |
+| `buildLightOcclusionGrid` | 0.192 | 0.002 | 0.165 | 0.002 |
+| `bakeSunShadowMap` | 0.046 | 0.001 | 0.035 | 0.001 |
+
+Cull stats on both arms: visible 13,824 of 13,824; axis entries 41,472
+rotating, 0 cardinal. A separate `IR_OVERFLOW_COUNT_LOG=1` rotating run (its
+timings not used) logged 344 frames of overflow entries: 34,635 to 37,680,
+median 35,907, about 3.7 times the motivating scene's 10.2k. The two sun-query
+rows hold 7.39 ms of the 11.63 ms rotating frame; the cardinal frame is not
+GPU-bound (removing 0.9 ms of `computeSunShadow` moves it by 0.27 ms).
+
+### Disarm probes (master, rotating arm, one run each)
+
+Staged probes edit `ir_sun_shadow_sample.glsl` in the run's own staged
+`shaders/` directory and restore it from the pristine copy afterwards (md5
+`938c26eb…` before and after).
+
+| probe | steady frame avg | `computeSunShadow` | `lightingOverflow` |
+|---|---:|---:|---:|
+| master (6-run mean) | 11.63 | 2.533 | 4.859 |
+| `--no-sun-shadows` | 3.71 | 0.036 | 0.015 |
+| staged `hasSourceFaces = false` | 3.44 | 0.031 | 0.016 |
+| staged `queryHierarchy = false` | 3.68 | 0.193 | 0.172 |
+| `IR_OVERFLOW_LIGHTING_DISABLE=1` | 5.97 | 2.358 | — |
+| cardinal, staged `queryHierarchy = false` | 2.19 | 0.140 | — |
+
+Without the hierarchy query the two rows sum to 0.365 ms, 4.9% of master's
+7.39 ms: the crowded-tile hierarchy recovery is about 95% of both rows and
+86% of the cardinal `computeSunShadow`. Leaves held eight records in
+reservation order, which follows bake dispatch and atomics, so every leaf's
+bounds spanned the scene and a receiver with no blocker tested every record.
+
+### Lever: spatial leaf order
+
+The hierarchy now orders its leaves by Morton cell (16×16×16 cells of the
+record extent in sun-U, sun-V and sun-depth) with a GPU counting sort: an
+unordered build for the extent, then count, scan and scatter passes, then the
+queryable build ([leaf order](sun-face-index-capacity.md#leaf-order)). Six
+interleaved base/head pairs per arm:
+
+| row | rotating base | rotating head | paired Δ (ub95) | cardinal base | cardinal head | paired Δ (lb95..ub95) |
+|---|---:|---:|---:|---:|---:|---:|
+| steady frame avg | 11.63 | 4.82 | −6.81 (−6.70) | 2.457 | 2.395 | −0.062 (−0.206..+0.083) |
+| frame avg | 10.92 | 4.87 | −6.05 (−5.90) | 2.628 | 2.603 | −0.025 (−0.154..+0.104) |
+| `computeSunShadow` | 2.533 | 0.456 | −2.078 | 1.038 | 0.264 | −0.774 |
+| `lightingOverflow` | 4.859 | 0.846 | −4.013 | — | — | |
+| `bakeSunShadowMap` | 0.046 | 0.110 | +0.065 | 0.035 | 0.105 | +0.070 |
+| `voxelSunFaces` | 0.084 | 0.083 | −0.000 | 0.090 | 0.090 | −0.000 |
+| `buildLightOcclusionGrid` | 0.192 | 0.183 | −0.010 | 0.165 | 0.164 | −0.001 |
+
+The rotating frame drops 59%: the two sun-query rows fall from 7.39 to
+1.30 ms, against 0.065 ms of extra build. The cardinal frame's head mean is
+0.975 of base. The bake system's CPU tick rises by about 0.02 ms (three more
+dispatches). A first version sorted full 30-bit Morton keys through the
+per-axis overflow sorter: its rows fell slightly further (0.437 and 0.785 ms)
+but `bakeSunShadowMap` rose 0.35 ms, and its fourteen extra dispatches added
+0.11 ms of CPU per frame, enough to put the CPU-bound cardinal frame at 1.037
+of base.
+
+**Exactness.** Leaf membership changes cost, never answers. The live wave is
+not byte-identical run to run, so the capture fixture is static. With
+`--wave-freeze`, master with `queryHierarchy = false` captured the same bytes
+as master at yaw 0.3 and 0.6, so that fixture never reaches the hierarchy in
+the captured frame. The fixture used is
+`configs/perf/small_dense_lattice.lua` (the same scene on a spacing-2 lattice,
+wave off), captured at frame 60 (`--capture-frame 60 --exit-after-frames 75
+--no-overlay`) at yaw 0.3, 0.6, 0.9, 1.2 and 0. Two master runs matched byte for byte at
+every pose; the `queryHierarchy = false` ablation changed yaw 0.9
+(`render-compare --per-pixel-tol 0`: max delta 51); the head matched master at
+every pose (max delta 0). The frozen-wave captures also matched master on the
+head.
+
+**Standard matrix.** `scripts/perf/perf_grid_matrix.sh` (12 cells, the
+262,144-voxel grid, yaw 0) against master: no cell's frame average regressed
+past the comparator's 10% gate (−37.1% to +4.4%, eight cells beyond −5%), and
+`compare_perf_runs.py` exits 0. On that grid the pool grows to its 131,072-record
+ceiling; `computeSunShadow` falls from 5.2 to 0.65 ms at zoom 1 and from 20.4 to
+1.65 ms at zoom 8, and `bakeSunShadowMap` rises 0.12 ms. `buildLightOcclusionGrid`,
+which runs before the bake, also read about 0.2 ms higher in nine of twelve
+head cells than in either master run; its cause is unattributed.
+
+### Metal planning reading (M4 Max, vsync-quantized)
+
+Planner probe on master `f9e76bdfa`, before the record-pool growth. Metal
+frames are quantized at 8.33 ms and its stage rows overlap (cost-model §1), so
+these rank movers and do not give GL magnitudes.
+
+| arm | steady frame avg | `computeSunShadow` | `lightingOverflow` |
+|---|---:|---:|---:|
+| rotating, master (two runs) | 20.08 / 19.06 | 2.67 / 2.66 | 5.46 / 5.50 |
+| `--no-sun-shadows` | 8.33 | 0.05 | 0.66 |
+| staged `hasSourceFaces = false` | 12.67 | 0.08 | 0.99 |
+| staged `queryHierarchy = false` | 16.23 | 0.41 | 1.32 |
+| `IR_OVERFLOW_LIGHTING_DISABLE=1` | 15.58 | 3.13 | — |
+| cardinal (`--yaw 0`) | 8.35 | 1.66 | — |

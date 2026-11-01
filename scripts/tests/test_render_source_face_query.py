@@ -44,6 +44,10 @@ class SourceFaceQueryTest(unittest.TestCase):
                     " != kSourceFaceHierarchyReadyOffset) return 24;"
                     " if (sourceFaceHierarchyNodeIndex(kSourceFaceCapacity, 0u)"
                     " != kSourceFaceHierarchyOffset) return 28;"
+                    " if (sourceFaceHierarchyOrderIndex(kSourceFaceCapacity)"
+                    " != kSourceFaceHierarchyOrderOffset) return 30;"
+                    " if (sourceFaceHierarchyOrderEntriesIndex(kSourceFaceCapacity)"
+                    " != kSourceFaceHierarchyOrderEntriesOffset) return 31;"
                     " if (sourceFaceSpillCounterIndex(2u * kSourceFaceCapacity)"
                     " != kSourceFaceRecordOffset"
                     " + 2u * kSourceFaceCapacity * kSourceFaceRecordWords) return 29;")
@@ -75,8 +79,12 @@ int main() {
             kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords ||
         kSourceFaceHierarchyReadyOffset != kSourceFaceHierarchyNeededOffset + 1u ||
         kSourceFaceHierarchyOffset != kSourceFaceHierarchyReadyOffset + 1u ||
-        kSourceFaceBufferWords != kSourceFaceHierarchyOffset +
-            2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords) return 20;
+        kSourceFaceHierarchyOrderOffset != kSourceFaceHierarchyOffset +
+            2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords ||
+        kSourceFaceHierarchyOrderEntriesOffset != kSourceFaceHierarchyOrderOffset +
+            kSourceFaceHierarchyOrderBuckets ||
+        kSourceFaceBufferWords != kSourceFaceHierarchyOrderEntriesOffset + kSourceFaceCapacity)
+        return 20;
     if (kSourceFaceHierarchyLeafSize * kSourceFaceHierarchyMaxLeaves !=
         kSourceFaceCapacity) return 22;
     const vec2 uv{0.5f, 0.5f};

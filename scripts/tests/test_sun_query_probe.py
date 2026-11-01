@@ -45,7 +45,7 @@ class SunQueryProbeAssemblyTest(unittest.TestCase):
             "envelope_miss", "footprint_miss", "behind", "first_blocker", "last_blocker"))
 
     def test_actual_layout_allocation_and_supported_integer_arithmetic(self):
-        self.assertEqual(PROBE.buffer_bytes(PROBE.shader_source(False)), 30670868)
+        self.assertEqual(PROBE.buffer_bytes(PROBE.shader_source(False)), 30949396)
         self.assertEqual(PROBE.buffer_bytes(
             "constant uint kSourceFaceFirst = 19u / 4u;\n"
             "constant uint kSourceFaceBufferWords = (kSourceFaceFirst + 2u) * 3u;"), 72)

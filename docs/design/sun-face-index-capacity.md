@@ -10,9 +10,10 @@ records and grows between frames to the demand the previous frame measured
 ([Record-pool exhaustion](#record-pool-exhaustion)).
 
 The appended spill counter, heads and nodes cost 2,228,228 bytes. An appended
-512 KiB hierarchy plus two metadata words brings the default sun buffer to
-30,670,868 bytes, including both depth layers, the two header words, records
-and tile lists; each further record costs 48 bytes of geometry and hierarchy.
+512 KiB hierarchy plus two metadata words, 16 KiB of leaf-order buckets and a
+256 KiB leaf order bring the default sun buffer to 30,949,396 bytes, including
+both depth layers, the two header words, records and tile lists; each further
+record costs 52 bytes of geometry, hierarchy and leaf order.
 It shares the existing buffer binding; hierarchy construction adds GPU passes. Ordinary inline queries do not
 read the spill counter or heads. Spill traversal has dependent reads and must
 be measured separately from the fixed-list path.
@@ -48,8 +49,8 @@ retain their existing behavior.
 
 ## Overflow hierarchy
 
-The first production route uses unsorted groups of eight records in a complete
-binary heap. Every node stores conservative sun-U, sun-V and sun-depth bounds
+Leaves are groups of eight records in a complete binary heap, taken in a
+spatial leaf order rather than record order. Every node stores conservative sun-U, sun-V and sun-depth bounds
 in eight uint words. Empty leaves and unbounded nodes have explicit state;
 unsupported arithmetic and analytical records propagate unbounded state, and
 analytical leaves still use their existing shape predicate. Finite leaves use
@@ -65,10 +66,36 @@ workgroup joins their roots. Every used node keeps its global binary-heap index.
 Local reductions synchronize every level; no group polls another group. Kernels
 skip work when neither overflow nor record loss occurred, or the pool is empty.
 After record exhaustion they build over the retained prefix of 65,536 records.
-Each pass binds an immutable parameter buffer; no per-frame CPU readback,
-sorting, or parameter allocation is needed. Only the second pass publishes the
+Each pass binds an immutable parameter buffer; no per-frame CPU readback or
+parameter allocation is needed. Only the second pass publishes the
 dynamic power-of-two leaf count, after the root is complete. Old nodes remain
 unreachable after clear or pool shrinkage.
+
+### Leaf order
+
+Records arrive in reservation order, which follows bake dispatch and atomics,
+so eight consecutive records span the whole scene and every leaf overlaps
+every query: a lit receiver tests the entire pool. The bake therefore builds
+the tree twice. A first build in record order publishes nothing; its root only
+supplies the extent of the record bounds. Three passes then counting-sort the
+record IDs into a leaf order: each record's bounds centre maps to one of
+16×16×16 cells of that extent, in sun-U, sun-V and sun-depth, numbered in
+XYZ Morton order. A count pass adds every record to its cell's bucket (the
+frame clear zeroes the 4,096 buckets), one 128-thread workgroup turns counts
+into start offsets, and a scatter pass claims a slot per record. The second,
+queryable build and the receiver traversal read leaf slot *i* as record
+`order[i]`.
+
+The order only moves records between leaves. A query is a boolean over every
+record whose bounds overlap the point, so any permutation, including the
+arbitrary order of atomics within a cell, returns the same answer; only the
+traversal cost changes. An unbounded record and a NaN or out-of-extent
+position fall into an edge cell. The first build costs its passes again, and
+the order adds three dispatches; a full sort (Morton keys through the per-axis
+overflow sorter) ordered more finely but cost 0.35 ms of GPU and 0.11 ms of
+CPU submission per frame on the Windows GL host, against 0.07 ms and 0.02 ms
+for the cell sort, and saved only 0.08 ms of query time. Measurements:
+[per-axis yaw attribution, small dense scene](per-axis-yaw-gpu-attribution.md#small-dense-scene-gl-4722).
 
 Only incomplete, in-bounds surface tiles can use the ready hierarchy. Complete
 tiles keep their local index, including when unrelated faces exhaust the global
@@ -78,10 +105,9 @@ existing quantization bias are unchanged. Stackless traversal has no arbitrary
 visit limit and short-circuits only on a valid blocker.
 
 The [guarded prototype timings](../perf/sun-hierarchy-throughput/README.md)
-support starting without spatial sorting. Those timings do **not** measure this
-engine schedule: even empty builds still incur two dispatch submissions.
-Full-scene parent/head measurements, native Windows execution and global-pool
-scaling remain required before claiming a throughput gain.
+measured synthetic receivers against unsorted and sorted pools; they do **not**
+measure this engine schedule. The leaf order above is graded on a full scene on
+the Windows GL host instead.
 
 ## Record-pool exhaustion
 
@@ -125,7 +151,11 @@ reads the header word. Every word from the spill counter on is addressed
 through the `sourceFace*Index` helpers, and the hierarchy build dispatches as
 many cooperative passes as the leaf allocation needs (two up to 131,072
 records, three up to the 16,777,216-record dispatch limit), publishing
-readiness from the pass that roots the tree. The default allocation keeps its two-pass dispatch sequence
+readiness from the pass that roots the tree. Every pass, the per-record order
+passes included, folds its workgroup count into the shared 2D dispatch grid
+(X capped at 1,024, the rest in Y) and the kernel flattens both axes, so the
+dispatch limit needs 1,024 × 128 record groups rather than 131,072 in one axis.
+The default allocation keeps its two-pass dispatch sequence
 and its frames stay byte-identical: the frozen-ceiling matrix matched the
 parent on all 41 captures.
 
@@ -139,14 +169,15 @@ samples and the capacity changes; the lost-tile policy above then holds.
 
 The ceiling is chosen from measurement, not from a workload that might
 appear. `IRPerfGrid`'s 262,144-voxel grid requests 786,432 records at zoom 1
-and 4; letting the pool reach 1,048,576 records (77,856,788 bytes) recovers
-every record but costs 1.62x (zoom 1) and 2.82x (zoom 4) of the steady frame,
-because overflowed tiles then traverse an unsorted 786,432-record hierarchy
+and 4; letting the pool reach 1,048,576 records (77,856,788 bytes before the
+leaf order, 82,067,476 with it) recovers
+every record but cost 1.62x (zoom 1) and 2.82x (zoom 4) of the steady frame,
+because overflowed tiles then traversed an unsorted 786,432-record hierarchy
 (`computeSunShadow` 0.05 ms to 12.2 / 39.5 ms, `computeLightVolume` 2.6 / 6.1
-to 13.1 / 44.6 ms). That is the spatial-ordering and traversal cost the
-hierarchy's own follow-up owns, not a cost of growth; it stays a measured
-tradeoff for design review. The shipped ceiling is 131,072 records
-(`kSourceFaceCapacityCeiling`, 33,816,596 bytes), the largest pool whose
+to 13.1 / 44.6 ms). That is the traversal cost the leaf order targets, not a
+cost of growth; those ceiling measurements predate the leaf order and have not
+been repeated with it. The shipped ceiling is 131,072 records
+(`kSourceFaceCapacityCeiling`, 34,357,268 bytes with the leaf order), the largest pool whose
 IRPerfGrid cost stayed inside the 1.10x frame budget in the
 [native controls](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md#frame-latent-capacity-growth)
 (steady mean 1.058x and 0.989x at zoom 1 and 4; 262,144 reaches 1.35x at zoom 4);

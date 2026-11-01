@@ -232,7 +232,9 @@ exploratory or quiet-window-rejected. The subsequent
 [guarded AC distinct-grid timings](../perf/sun-hierarchy-throughput/README.md)
 support an unsorted first overflow integration: spatial ordering improves
 oblique query cost but its build cost prevents a consistent captured-order
-total win. Overflow-only query routing is implemented with GPU-gated construction,
+total win. Production leaves now follow a Morton-cell counting sort, a cheaper
+build than the full sort, graded on a full rotating scene on the Windows GL host
+([leaf order](sun-face-index-capacity.md#leaf-order)). Overflow-only query routing is implemented with GPU-gated construction,
 immutable level parameters and the complete-tile path retained. CPU controls cover
 readiness, record-pool exhaustion and preservation of the independent raster
 layer; eleven native Metal captures verify the finite-pool visual reproduction.

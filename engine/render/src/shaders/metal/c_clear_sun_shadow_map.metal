@@ -24,6 +24,8 @@ kernel void c_clear_sun_shadow_map(
     if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[sourceFaceSpillCounterIndex(capacity)], 0u, memory_order_relaxed);
     if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)], 0u, memory_order_relaxed);
     if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[sourceFaceHierarchyReadyIndex(capacity)], 0u, memory_order_relaxed);
+    if (uint(linearIdx) < kSourceFaceHierarchyOrderBuckets)
+        atomic_store_explicit(&sunDepthBuf[sourceFaceHierarchyOrderIndex(capacity) + uint(linearIdx)], 0u, memory_order_relaxed);
     if (uint(linearIdx) < kSourceFaceTileCount) {
         atomic_store_explicit(&sunDepthBuf[sourceFaceTileBase(uint(linearIdx))], 0u, memory_order_relaxed);
         atomic_store_explicit(&sunDepthBuf[sourceFaceSpillHeadIndex(capacity, uint(linearIdx))], 0xFFFFFFFFu, memory_order_relaxed);

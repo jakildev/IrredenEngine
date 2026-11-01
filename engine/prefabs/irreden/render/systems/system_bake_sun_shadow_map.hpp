@@ -168,8 +168,12 @@ static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match 
 
 template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *hierarchyProgram_ = nullptr;
-    std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyMaxBuildPasses>
+    // Indexed [ordered][pass]: the unordered build supplies the root extent the
+    // leaf-order cells divide; only the ordered build is queryable.
+    std::array<std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyMaxBuildPasses>, 2>
         hierarchyFrames_{};
+    // Count, scan and scatter passes of the leaf order, in dispatch order.
+    std::array<Buffer *, 3> hierarchyOrderFrames_{};
 
     // Record pool sizing. The pool starts at the default layout and grows
     // between frames to the smallest power of two holding a completed demand
@@ -849,25 +853,45 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
     }
 
+    // Leaves group records by Morton cell of their bounds centres. The unordered
+    // build supplies the root extent the cells divide, a counting sort orders
+    // record IDs by cell, and the queryable build reads records through that
+    // order. Leaf membership changes traversal cost, never answers.
     void buildOverflowHierarchy() {
         using namespace IRPrefab::SunShadow;
         hierarchyProgram_->use();
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
-        // Immutable pass parameters avoid Metal subData orphaning between dispatches.
-        const int passes = recordLayout_.buildPasses();
-        for (int pass = 0; pass < passes; ++pass) {
-            const auto groups = recordLayout_.buildGroups(pass);
-            hierarchyFrames_[pass]->bindBase(
-                BufferTarget::UNIFORM,
-                kBufferIndex_RevoxelizeDetachedParams
-            );
-            IRRender::device()->dispatchCompute(groups, 1, 1);
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-        }
+        buildHierarchyLevels(false);
+        const std::uint32_t recordGroups =
+            IRMath::divCeil(recordLayout_.capacity_, kSourceFaceHierarchyWorkgroupSize);
+        dispatchHierarchyPass(hierarchyOrderFrames_[0], recordGroups);
+        dispatchHierarchyPass(hierarchyOrderFrames_[1], 1u);
+        dispatchHierarchyPass(hierarchyOrderFrames_[2], recordGroups);
+        buildHierarchyLevels(true);
         revoxelizeParamsBuf_->bindBase(
             BufferTarget::UNIFORM,
             kBufferIndex_RevoxelizeDetachedParams
         );
+    }
+
+    // Immutable pass parameters avoid Metal subData orphaning between dispatches.
+    // Record and leaf-subtree counts outgrow the per-axis group cap at grown
+    // capacities, so every pass folds into the shared 2D grid the kernel flattens.
+    void dispatchHierarchyPass(Buffer *frame, std::uint32_t groups) {
+        frame->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+        const ivec2 grid = voxelDispatchGridForCount(static_cast<int>(groups));
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+    }
+
+    void buildHierarchyLevels(bool ordered) {
+        const int passes = recordLayout_.buildPasses();
+        for (int pass = 0; pass < passes; ++pass) {
+            dispatchHierarchyPass(
+                hierarchyFrames_[ordered ? 1 : 0][pass],
+                recordLayout_.buildGroups(pass)
+            );
+        }
     }
 
     void beginTick() {
@@ -1190,17 +1214,36 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 "SunHierarchyProgram",
                 std::vector{ShaderStage{IRRender::kFileCompBuildSunHierarchy, ShaderType::COMPUTE}}
             ).second;
-        for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyMaxBuildPasses; ++pass) {
-            const ivec4 params(pass, 0, 0, 0);
-            p->hierarchyFrames_[pass] = IRRender::createNamedResource<Buffer>(
-                                            "SunHierarchyFrameBuffer" + std::to_string(pass),
-                                            &params,
-                                            sizeof(params),
-                                            BUFFER_STORAGE_DYNAMIC,
-                                            BufferTarget::UNIFORM,
-                                            kBufferIndex_RevoxelizeDetachedParams
+        auto hierarchyFrame = [](const std::string &name, ivec4 params) {
+            return IRRender::createNamedResource<Buffer>(
+                       name,
+                       &params,
+                       sizeof(params),
+                       BUFFER_STORAGE_DYNAMIC,
+                       BufferTarget::UNIFORM,
+                       kBufferIndex_RevoxelizeDetachedParams
             )
-                                            .second;
+                .second;
+        };
+        for (int ordered = 0; ordered < 2; ++ordered) {
+            for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyMaxBuildPasses;
+                 ++pass) {
+                p->hierarchyFrames_[ordered][pass] = hierarchyFrame(
+                    "SunHierarchyFrameBuffer" + std::to_string(ordered) + std::to_string(pass),
+                    ivec4(pass, ordered, 0, 0)
+                );
+            }
+        }
+        const std::array<int, 3> orderPasses{
+            IRPrefab::SunShadow::kSourceFaceHierarchyOrderCount,
+            IRPrefab::SunShadow::kSourceFaceHierarchyOrderScan,
+            IRPrefab::SunShadow::kSourceFaceHierarchyOrderScatter
+        };
+        for (std::size_t i = 0; i < orderPasses.size(); ++i) {
+            p->hierarchyOrderFrames_[i] = hierarchyFrame(
+                "SunHierarchyOrderFrameBuffer" + std::to_string(orderPasses[i]),
+                ivec4(0, 0, orderPasses[i], 0)
+            );
         }
         p->voxelFaceProgram_ =
             IRRender::createNamedResource<ShaderProgram>(
