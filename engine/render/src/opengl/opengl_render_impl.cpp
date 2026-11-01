@@ -24,6 +24,36 @@ struct OpenGLTimestampPair {
 
 class OpenGLRenderDevice final : public RenderDevice {
   public:
+    GpuMemoryStats gpuMemoryStats() const override {
+        constexpr GLenum kDedicatedVideoMemory = 0x9047;
+        constexpr GLenum kCurrentAvailableVideoMemory = 0x9049;
+        if (!m_checkedNvxMemoryInfo) {
+            GLint extensionCount = 0;
+            ENG_API->glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+            for (GLint index = 0; index < extensionCount; ++index) {
+                const auto *extension = reinterpret_cast<const char *>(
+                    ENG_API->glGetStringi(GL_EXTENSIONS, static_cast<GLuint>(index))
+                );
+                if (extension != nullptr && std::strcmp(extension, "GL_NVX_gpu_memory_info") == 0) {
+                    m_hasNvxMemoryInfo = true;
+                    break;
+                }
+            }
+            m_checkedNvxMemoryInfo = true;
+        }
+        if (!m_hasNvxMemoryInfo) {
+            return {};
+        }
+        GLint capacityKiB = 0;
+        GLint availableKiB = 0;
+        ENG_API->glGetIntegerv(kDedicatedVideoMemory, &capacityKiB);
+        ENG_API->glGetIntegerv(kCurrentAvailableVideoMemory, &availableKiB);
+        return {
+            .deviceCapacityBytes_ = static_cast<std::size_t>(capacityKiB) * 1024u,
+            .deviceAvailableBytes_ = static_cast<std::size_t>(availableKiB) * 1024u,
+        };
+    }
+
     void beginFrame() override {}
 
     void present() override {
@@ -425,6 +455,8 @@ class OpenGLRenderDevice final : public RenderDevice {
     detail::GpuSubmissionFences<GLuint> m_submissions;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::unordered_map<GpuTimestampHandle, OpenGLTimestampPair> m_timestamps;
+    mutable bool m_checkedNvxMemoryInfo = false;
+    mutable bool m_hasNvxMemoryInfo = false;
     // 0 = the window's default framebuffer (every mode but OFFSCREEN).
     GLuint m_offscreenFbo = 0;
     GLuint m_offscreenColor = 0;

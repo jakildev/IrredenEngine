@@ -379,6 +379,11 @@ class MetalRenderDevice final : public RenderDevice {
         m_gpuFrameTiming.reset(enabled, true);
     }
 
+    GpuMemoryStats gpuMemoryStats() const override {
+        auto *gpu = metalDevice();
+        return {.processAllocatedBytes_ = gpu == nullptr ? 0 : gpu->currentAllocatedSize()};
+    }
+
     void recordCompletedFrameBuffer(MTL::CommandBuffer *commandBuffer) {
         m_gpuFrameTiming.addCompletedBuffer(
             commandBuffer->GPUStartTime(),

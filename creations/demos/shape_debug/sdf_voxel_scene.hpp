@@ -3,6 +3,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_video.hpp>
+#include <irreden/profile/process_memory.hpp>
 #include <irreden/common/components/component_auto_spin.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/rotation_mode.hpp>
@@ -25,6 +26,15 @@ struct SdfVoxelScene {
     enum class Pose { REST, ROOT, PARENTED };
     enum class Presentation { GRID, DETACHED_SOURCE, DETACHED_REVOXELIZED };
 
+    struct MemoryWitness {
+        std::size_t bakeScratchPeakBytes_ = 0;
+        std::size_t bakePayloadPeakBytes_ = 0;
+        std::size_t assetBytes_ = 0;
+        IRProfile::ProcessMemoryStats processBefore_;
+        IRProfile::ProcessMemoryStats processAfterBake_;
+        IRProfile::ProcessMemoryStats processAfterScene_;
+    };
+
     static constexpr IRVideo::AutoScreenshotShot shots_[] = {
         {4.0f, IRMath::vec2(0), 0.0f, "sdf_voxel_yaw0"},
         {4.0f, IRMath::vec2(0), IRMath::kQuarterPi, "sdf_voxel_yaw45"},
@@ -43,7 +53,7 @@ struct SdfVoxelScene {
         {2.0f, IRMath::vec2(0), IRMath::kQuarterPi, "sdf_voxel_pose_zoom2"},
     };
 
-    static void initialize(
+    static MemoryWitness initialize(
         bool baked,
         bool blockers,
         Pose pose = Pose::REST,
@@ -56,6 +66,8 @@ struct SdfVoxelScene {
     ) {
         using namespace IRComponents;
         using namespace IRMath;
+        MemoryWitness memory;
+        memory.processBefore_ = IRProfile::processMemoryStats();
         struct Subject {
             SDF::ShapeType type_;
             vec4 params_;
@@ -84,11 +96,24 @@ struct SdfVoxelScene {
                     subjects[index].color_
                 );
                 bakeTime += std::chrono::steady_clock::now() - started;
+                const std::size_t recordBytes =
+                    denseSubjects[index].voxels_.size() * sizeof(IRAsset::VoxelRecord);
+                const std::size_t scratchBytes =
+                    IRPrefab::Voxel::sdfBakeScratchBytes(denseSubjects[index].voxels_.size());
+                if (scratchBytes > memory.bakeScratchPeakBytes_) {
+                    memory.bakeScratchPeakBytes_ = scratchBytes;
+                }
+                const std::size_t payloadPeak = memory.assetBytes_ + recordBytes + scratchBytes;
+                if (payloadPeak > memory.bakePayloadPeakBytes_) {
+                    memory.bakePayloadPeakBytes_ = payloadPeak;
+                }
+                memory.assetBytes_ += recordBytes;
                 for (const auto &voxel : denseSubjects[index].voxels_) {
                     occupiedPerSubject[index] += voxel.color_.alpha_ != 0;
                 }
             }
         }
+        memory.processAfterBake_ = IRProfile::processMemoryStats();
         const vec3 parentPosition(2.5f, -3.5f, -1.5f);
         const vec4 localRotation = quatAxisAngle(normalize(vec3(1, 2, 0.5f)), kPi / 5.0f);
         // Independent half-turn composition: Rz(pi) * (x,y,z,w) = (-y,x,w,-z).
@@ -205,7 +230,9 @@ struct SdfVoxelScene {
         );
         std::printf(
             "SDF-OCCUPANCY representation=%s presentation=%d density=%d copies=%d overlap=%d "
-            "moving=%d bake_us=%lld allocated_slots=%zu occupied_cells=%zu record_bytes=%zu\n",
+            "moving=%d bake_us=%lld allocated_slots=%zu occupied_cells=%zu record_bytes=%zu "
+            "asset_bytes=%zu bake_scratch_peak_bytes=%zu bake_payload_peak_bytes=%zu "
+            "process_before_bytes=%zu process_after_bake_bytes=%zu\n",
             baked ? "baked" : "direct",
             static_cast<int>(presentation),
             density,
@@ -217,9 +244,16 @@ struct SdfVoxelScene {
             ),
             allocated,
             occupied,
-            allocated * sizeof(C_Voxel)
+            allocated * sizeof(C_Voxel),
+            memory.assetBytes_,
+            memory.bakeScratchPeakBytes_,
+            memory.bakePayloadPeakBytes_,
+            memory.processBefore_.residentBytes_,
+            memory.processAfterBake_.residentBytes_
         );
         std::fflush(stdout);
+        memory.processAfterScene_ = IRProfile::processMemoryStats();
+        return memory;
     }
 };
 

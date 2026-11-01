@@ -105,10 +105,15 @@ disabled; their full-light arms retain only dark silhouettes or projected-shadow
 evidence. Treat detached baked occupancy as unqualified for lit game geometry
 until that presentation-lighting failure is resolved.
 
-Every run prints one `SDF-OCCUPANCY` witness even in Release. It records startup
-bake wall time, dense slots, occupied cells and dense-record payload. These are
-not process RSS or driver residency; the profile manifest retains them beside
-the frame/GPU evidence so those quantities cannot be confused. The qualification
+Every run prints one `SDF-OCCUPANCY` and one post-profile `SDF-RESIDENCY`
+witness even in Release. The first records startup bake wall time, dense slots,
+occupied cells, dense-record payload, exact scratch and process samples. The
+second records final/peak process RSS and backend GPU observations. Metal exposes
+process-owned current allocation; OpenGL's optional NVX counters expose only
+device-wide capacity and availability. The profile manifest and memory summary
+retain those distinct semantics beside the frame/GPU evidence. The
+[AC Release memory qualification](../perf/sdf-voxel-profile/ac-release-memory/README.md)
+uses them across density, population and motion controls. The qualification
 matrix in `scripts/perf/sdf_controls.py` crosses each workload arm with stage
 timing on/off. `--suite baseline` preserves the original 16-case reproduction;
 `--case` supports bounded smoke and cross-host slices.

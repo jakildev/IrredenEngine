@@ -104,6 +104,11 @@ Changes without a visual effect need no captures.
 
 ## GPU resource contracts
 
+- `RenderDevice::gpuMemoryStats()` is an observational, backend-dependent
+  surface. Metal's `processAllocatedBytes_` is the current allocation owned by
+  this process. OpenGL's optional NVX values are device-wide dedicated capacity
+  and current availability; they must not be labelled process residency. A zero
+  field means that counter is unavailable, not that the allocation is zero.
 - `getNamedResource` asserts on a miss; use `getNamedResourceOrNull` only
   when absence is a supported pipeline configuration.
 - `ResourceId`s are pooled and reused FIFO: never cache one past its owner's destroy hook.

@@ -37,8 +37,13 @@ spans in this small fixture, but diagonal wall-frame results are mixed.
 These battery-powered controls do not qualify general representation throughput
 or the opt-in continuous receiver. Separate CPU samples mainly observe GPU wait
 and intentional offscreen pacing, not evidence for a CPU simulation rewrite.
-Next measure density, overlap and motion, startup baking and resident memory;
-repeat on AC power and Windows/OpenGL. For continuous receiving, instrument
+The AC/Metal Release qualification now measures density, overlap, motion,
+startup baking, process RSS and Metal driver allocation. Its 33 clean guarded
+runs are retained in the
+[memory qualification](../perf/sdf-voxel-profile/ac-release-memory/README.md).
+Repeat the same bounded slice on Windows/OpenGL; the NVX counters there describe
+device-wide capacity and availability rather than process residency. For
+continuous receiving, instrument
 actual post-prepass candidate visits/misses/first blockers before choosing the
 next query optimization.
 Fixed tilted GRID subjects now have paired root/parented ShapeDebug controls:
@@ -52,8 +57,9 @@ recipes and dynamic GPU baking need explicit authoring and invalidation designs.
 The baker now explicitly enumerates supported primitives and accepts a caller
 budget for output plus temporary distance payload (256 MiB by default).
 Exact-boundary, scratch-accounting, oversized-grid and beyond-64-cubed controls
-cover the admission contract. This bounds authoring payload, not process RSS or
-later pool/GPU residency; those remain part of the performance comparison.
+cover the admission contract. This bounds authoring payload, not allocator
+overhead or later pool/GPU residency; those are measured separately in the AC
+memory qualification.
 Defer additional shape-specific analytic receiver algorithms while measuring
 this route. Keep the correctness and cross-backend work below as regression gates.
 The small intermediate-yaw floor-shadow gap in the baked fixture is a rounded

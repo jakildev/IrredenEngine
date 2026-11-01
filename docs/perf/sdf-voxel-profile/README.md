@@ -54,9 +54,11 @@ it contributes no timing evidence.
   retains frame/system timers and the Debug CPU histogram. CPU profiler
   enablement and ORIGIN pivot mode remain configuration/source evidence.
 
-Repeat the completed comparison on AC power and Windows/OpenGL.
-Population, overlap, subdivisions, startup baking, resident
-memory and authored rotation/attachments need separate coverage. The four
+The [AC Release memory qualification](ac-release-memory/README.md) adds 33
+clean guarded runs across density, 16-copy overlap and root/parent motion. It
+retains startup bake scratch/payload, process RSS and Metal process allocation.
+Repeat that bounded slice on Windows/OpenGL. Subdivisions and additional
+authored rotation/attachment scales still need separate coverage. The four
 subjects and shared floor are not a large-entity performance workload. The
 earlier rounded-edge miss has a
 [closed-boundary fix](../../design/surface-shadow-sampling.md#rounded-finite-face-boundaries).
@@ -66,8 +68,8 @@ Neither attribution closes all voxel shadow defects.
 
 The [AC Release qualification slice](ac-release-qualification/README.md)
 retains matched density, 16-copy overlap and moving-transform measurements. It
-records an overlap-specific baked cost increase while leaving Windows/OpenGL
-and process/driver residency explicitly open.
+records an overlap-specific baked cost increase; the later memory slice closes
+its process/Metal-residency gap while leaving Windows/OpenGL explicitly open.
 
 The [native presentation qualification](../../pr-screenshots/claude/4762-sdf-presentation-qualification/README.md)
 crosses moving root/parent transforms with GRID, rigid DETACHED source faces and

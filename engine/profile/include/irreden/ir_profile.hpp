@@ -4,6 +4,7 @@
 // This is the API for the profiling module
 #include <irreden/profile/logger_spd.hpp>
 #include <irreden/profile/cpu_profiler.hpp>
+#include <irreden/profile/process_memory.hpp>
 #include <irreden/profile/scope_timer.hpp>
 
 #include <string>

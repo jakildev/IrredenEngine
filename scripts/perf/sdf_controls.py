@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import statistics
 from pathlib import Path
 
 from profile_matrix import run_rounds, summarize, verify_artifacts, write_cases
@@ -73,8 +74,66 @@ def verify_configurations(output: Path) -> None:
         if not hashes:
             raise ValueError(f"{path}: no configuration fingerprint")
         for name, digest in hashes.items():
+            # `--*` entries echo the case's own selector arguments, which differ
+            # between cases by design; file hashes are the cross-case drift check.
+            if name.startswith("--"):
+                continue
             if configurations.setdefault(name, digest) != digest:
                 raise ValueError(f"{path}: configuration changed between cases: {name}")
+
+
+def summarize_memory(output: Path, selected: dict[str, list[str]]) -> None:
+    lines = [
+        "Process deltas use the pre-scene resident sample from the same run. Metal reports "
+        "process-owned GPU allocation. OpenGL reports NVIDIA device capacity and availability "
+        "when GL_NVX_gpu_memory_info is exposed; device used is not process residency.",
+        "",
+        "| Case | Runs | Bake mean us | Asset bytes | Scratch peak bytes | Bake payload peak "
+        "bytes | RSS after bake delta bytes | Final RSS delta bytes | Process peak delta bytes "
+        "| GPU process bytes | GPU device used bytes |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name in selected:
+        runs = []
+        for path in sorted((output / name).glob("round-*/manifest.json")):
+            runs.extend(json.loads(path.read_text())["runs"])
+        if not runs:
+            continue
+        occupancy = [run["sdf_occupancy"] for run in runs]
+        residency = [run["sdf_residency"] for run in runs]
+
+        def mean(field: str, rows: list[dict]) -> str:
+            return f"{statistics.mean(row[field] for row in rows):.1f}"
+
+        gpu_process = [row["gpu_process_allocated_bytes"] for row in residency]
+        gpu_used = [
+            row["gpu_device_capacity_bytes"] - row["gpu_device_available_bytes"]
+            for row in residency
+            if row["gpu_device_capacity_bytes"] > 0 and row["gpu_device_available_bytes"] > 0
+        ]
+        rss_after_bake = [
+            row["process_after_bake_bytes"] - row["process_before_bytes"]
+            for row in occupancy
+        ]
+        rss_final = [
+            final["process_final_bytes"] - start["process_before_bytes"]
+            for start, final in zip(occupancy, residency)
+        ]
+        rss_peak = [
+            final["process_peak_bytes"] - start["process_before_bytes"]
+            for start, final in zip(occupancy, residency)
+        ]
+        gpu_used_text = f"{statistics.mean(gpu_used):.1f}" if gpu_used else "—"
+        lines.append(
+            f"| {name} | {len(runs)} | {mean('bake_us', occupancy)} "
+            f"| {mean('asset_bytes', occupancy)} | {mean('bake_scratch_peak_bytes', occupancy)} "
+            f"| {mean('bake_payload_peak_bytes', occupancy)} "
+            f"| {statistics.mean(rss_after_bake):.1f} | {statistics.mean(rss_final):.1f} "
+            f"| {statistics.mean(rss_peak):.1f} "
+            f"| {statistics.mean(gpu_process):.1f} "
+            f"| {gpu_used_text} |"
+        )
+    (output / "memory-summary.md").write_text("\n".join(lines) + "\n")
 
 
 def runner_options(release: bool) -> tuple[str, ...]:
@@ -114,9 +173,9 @@ def main() -> int:
             "GPU stage rows are sampled timeline intervals, not additive exclusive costs. "
             "Timing-off cases retain the GPU frame envelope. Compare representations within "
             "the same pose, shadow and timing mode; finite occupancy differs from analytic "
-            "geometry. The startup witness reports baker wall time and dense record payload; "
-            "process peak/resident memory and driver allocation remain separate measurements."
+            "geometry. Memory evidence is retained separately in memory-summary.md."
         ))
+        summarize_memory(output, selected)
 
     run_rounds(output, selected, common, args.rounds, after_round,
                runner_options=runner_options(args.release))

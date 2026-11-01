@@ -269,8 +269,13 @@ repeat `--case <name>` to run a bounded subset. Pass `--release` to select the
 worktree's supported Release tree directly.
 Every accepted ShapeDebug run
 must carry exactly one Release-compatible `SDF-OCCUPANCY` log witness; the
-runner retains its bake time, slot/occupied counts and dense-record bytes in the
-manifest. Those payload bytes are not process RSS or GPU driver residency.
+runner retains its bake time, slot/occupied counts, dense-record bytes, exact
+bake scratch and process samples in the manifest. It also requires one
+`SDF-RESIDENCY` witness after the measured frames. `sdf_controls.py` writes a
+`memory-summary.md` that keeps those exact payload figures separate from process
+RSS and GPU observations. Metal reports the process's current driver allocation;
+OpenGL reports device-wide capacity and availability only when
+`GL_NVX_gpu_memory_info` is present, not process-owned residency.
 
 ## Same-runner Linux diagnostic
 
