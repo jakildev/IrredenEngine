@@ -47,7 +47,7 @@ constexpr int kModulePanelGap = 6;
 
 constexpr SliderGeometry recipeParamSliderGeometry(int paramIndex) {
     return SliderGeometry{
-        IRMath::ivec2(kRecipesPanelPos.x + 4, kRecipeSliderTop + paramIndex * kRecipeSliderPitch),
+        IRMath::ivec2(kRecipesPanelPos.x + 3, kRecipeSliderTop + paramIndex * kRecipeSliderPitch),
         kRecipeSliderSize
     };
 }

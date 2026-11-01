@@ -40,6 +40,7 @@ IR_SESSION_PREDICATE_STUB(evaluateFillGhostCheck)
 IR_SESSION_PREDICATE_STUB(evaluateSliderCheck)
 IR_SESSION_PREDICATE_STUB(evaluateComponentCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePanelLabelCheck)
+IR_SESSION_PREDICATE_STUB(evaluateRecipePagerCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartGateCheck)
 IR_SESSION_PREDICATE_STUB(evaluateManifestCheck)
 IR_SESSION_PREDICATE_STUB(evaluateComponentValueCheck)
@@ -367,6 +368,7 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:expectManifestOmits("missing", "manifest_omits")
         s:expectComponentRegistered("MatrixComponent", 9, "component_registered")
         s:expectPanelLabel("Panel", "Label", "panel_label")
+        s:expectRecipePager(true, "recipe_pager")
         s:expectComponentValue(0, "MatrixComponent", "count", 1, true, "component_value")
         s:clearEntityScene()
         s:discardRemovedPart()
@@ -526,6 +528,7 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:expectPartAnchor(0, 9999, 'bad')",
         "session:selectPartMode(9999)",
         "session:expectPartModeDropdown(9999, 'bad')",
+        "session:expectRecipePager({}, 'bad')",
         "session:expectComponentValue(0, 'MatrixComponent', 'point', {x=1}, true, 'bad')",
         "session:expectComponentValue(0, 'MatrixComponent', 'callback', nil, true, 'bad')",
         "session:expectComponentValue(0, 'MatrixComponent', 'opaque', {}, true, 'bad')",

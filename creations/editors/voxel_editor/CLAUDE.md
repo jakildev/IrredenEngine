@@ -36,9 +36,10 @@ Design log, findings and the authoring-session history:
   after a dimmed / transform-mode idle pair on the same gizmo texels.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
-  `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`, `test_recipe_pages`,
-  `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`, `test_list_scroll`, `test_single`,
-  and the failing `test_unreachable` fixture.
+  `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
+  `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`,
+  `test_list_scroll`, `test_single`, `test_recipe_pages`, and the failing
+  `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `--module test/module --module-session test_bake_radius_guard` must exit 1

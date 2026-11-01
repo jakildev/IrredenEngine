@@ -676,8 +676,10 @@ class Handle {
     expectPanelLabel(const std::string &panel, const std::string &label, const std::string &name) {
         builder().expectPanelLabel(panel, label, name);
     }
-    void expectRecipePager(bool present, const std::string &name) {
-        builder().expectRecipePager(present, name);
+    void expectRecipePager(const sol::object &present, const std::string &name) {
+        if (!present.is<bool>())
+            throw argumentError("expectRecipePager", "present", "a boolean");
+        builder().expectRecipePager(present.as<bool>(), name);
     }
     void expectComponentValue(
         int target,

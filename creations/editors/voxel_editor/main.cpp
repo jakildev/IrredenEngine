@@ -2419,10 +2419,13 @@ void bindRecipeSliders() {
         if (used) {
             const RecipeParam &param = recipes[static_cast<std::size_t>(g_slidersRecipe)]
                                            .params_[static_cast<std::size_t>(first + i)];
-            slider.label_.clear();
+            slider.label_ = param.name_;
             slider.minValue_ = param.min_;
             slider.maxValue_ = param.max_;
-            slider.currentValue_ = g_recipeParamValues[static_cast<std::size_t>(first + i)];
+            IRPrefab::Widget::setSliderValue(
+                slider,
+                g_recipeParamValues[static_cast<std::size_t>(first + i)]
+            );
         } else {
             slider.label_.clear();
             slider.minValue_ = 0.0f;
@@ -2488,9 +2491,11 @@ const ModuleRecipe *boundRecipe(const EditorPart &part, std::size_t &index) {
 }
 
 void syncRecipeSliders(const PartRecipeBinding &binding, RecipeSliderSync sync) {
+    if (sync == RecipeSliderSync::NONE || g_recipesPanel == IREntity::kNullEntity)
+        return;
     std::size_t recipeIndex = 0;
-    if (sync == RecipeSliderSync::NONE || g_recipesPanel == IREntity::kNullEntity ||
-        bindingRecipe(binding, recipeIndex) == nullptr)
+    const ModuleRecipe *recipeDefinition = bindingRecipe(binding, recipeIndex);
+    if (recipeDefinition == nullptr)
         return;
     const int recipe = static_cast<int>(recipeIndex);
     if (sync == RecipeSliderSync::IF_SHOWN && g_slidersRecipe != recipe)
@@ -2500,7 +2505,13 @@ void syncRecipeSliders(const PartRecipeBinding &binding, RecipeSliderSync sync) 
     IRPrefab::Widget::setListSelectedIndex(g_recipeList, recipe);
     if (g_slidersRecipe != recipe)
         configureRecipeSliders(recipe);
-    g_recipeParamValues = binding.values_;
+    g_recipeParamValues.clear();
+    g_recipeParamValues.reserve(recipeDefinition->params_.size());
+    for (std::size_t i = 0; i < recipeDefinition->params_.size(); ++i) {
+        g_recipeParamValues.push_back(
+            i < binding.values_.size() ? binding.values_[i] : recipeDefinition->params_[i].default_
+        );
+    }
     bindRecipeSliders();
 }
 
