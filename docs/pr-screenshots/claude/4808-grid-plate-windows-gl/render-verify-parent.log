@@ -1,0 +1,79 @@
+[fleet-jobs] display: native Windows desktop session (not probed)
+[render-verify] target=IRCanvasStress demo=canvas_stress backend=windows-debug warmup=120
+[render-verify] 6 shots: so3_smooth_sweep, so3_offsnap_disc, so3_wide_parity, so3_grid_cross, so3_offsnap_wide, revoxelize_solids
+[render-verify] 13 extra run(s): modeswitch, sharedparts, detach, compare, impulse, floor_selfshadow, shadow_overlay_floor, world_placed_cast, gridspin_shadow_palette, grid_orbit_facing, grid_orbit_cardinals, cylinder_receiver, cylinder_receiver_pitched
++ fleet-run --timeout 400 IRCanvasStress --auto-screenshot 120
+[render-verify] warning: captured 12 shots, manifest expects 6; ignoring extras
+[render-verify] extra run 'modeswitch' skipped — no windows-debug references for modeswitch_grid, modeswitch_detached, modeswitch_revox, modeswitch_grid_return yet (bless with --update-references on this host).
+[render-verify] extra run 'sharedparts' skipped — no windows-debug references for sharedparts_spin_a, sharedparts_spin_b, sharedparts_yaw yet (bless with --update-references on this host).
+[render-verify] extra run 'detach' skipped — no windows-debug references for detach_hosted, detach_own_canvas, detach_grid yet (bless with --update-references on this host).
+[render-verify] extra run 'compare': --only compare
++ fleet-run --timeout 400 IRCanvasStress --auto-screenshot 120 --only compare
+[render-verify] extra run 'impulse' skipped — no windows-debug references for impulse_midspin, impulse_settled yet (bless with --update-references on this host).
+[render-verify] extra run 'floor_selfshadow': --only floor --debug-overlay shadow
++ fleet-run --timeout 400 IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow
+[render-verify] extra run 'shadow_overlay_floor': --only floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 400 IRCanvasStress --auto-screenshot 120 --only floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'world_placed_cast': --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 400 IRCanvasStress --auto-screenshot 120 --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'gridspin_shadow_palette': --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
++ fleet-run --timeout 400 IRCanvasStress --auto-screenshot 6 --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
+[render-verify] extra run 'grid_orbit_facing': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
++ fleet-run --timeout 400 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
+[render-verify] extra run 'grid_orbit_cardinals': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 400 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
+[render-verify] extra run 'cylinder_receiver' skipped — no windows-debug references for cylinder_receiver_000, cylinder_receiver_045, cylinder_receiver_090, cylinder_receiver_135, cylinder_receiver_180, cylinder_receiver_225, cylinder_receiver_270, cylinder_receiver_315 yet (bless with --update-references on this host).
+[render-verify] extra run 'cylinder_receiver_pitched' skipped — no windows-debug references for cylinder_receiver_pitched_000, cylinder_receiver_pitched_045, cylinder_receiver_pitched_090, cylinder_receiver_pitched_135, cylinder_receiver_pitched_180, cylinder_receiver_pitched_225, cylinder_receiver_pitched_270, cylinder_receiver_pitched_315 yet (bless with --update-references on this host).
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+so3_smooth_sweep                         PASS        100.0      0      inf
+so3_offsnap_disc                         PASS        100.0      0      inf
+so3_wide_parity                          PASS        100.0      0      inf
+so3_grid_cross                           PASS        100.0      0      inf
+so3_offsnap_wide                         PASS        100.0      0      inf
+revoxelize_solids                        PASS        100.0      0      inf
+modeswitch:modeswitch_grid               SKIP     no windows-debug reference yet
+modeswitch:modeswitch_detached           SKIP     no windows-debug reference yet
+modeswitch:modeswitch_revox              SKIP     no windows-debug reference yet
+modeswitch:modeswitch_grid_return        SKIP     no windows-debug reference yet
+sharedparts:sharedparts_spin_a           SKIP     no windows-debug reference yet
+sharedparts:sharedparts_spin_b           SKIP     no windows-debug reference yet
+sharedparts:sharedparts_yaw              SKIP     no windows-debug reference yet
+detach:detach_hosted                     SKIP     no windows-debug reference yet
+detach:detach_own_canvas                 SKIP     no windows-debug reference yet
+detach:detach_grid                       SKIP     no windows-debug reference yet
+compare:compare_yaw0                     FAIL      99.9992    240    54.63
+compare:compare_yaw_q                    FAIL      99.9992    240    54.25
+impulse:impulse_midspin                  SKIP     no windows-debug reference yet
+impulse:impulse_settled                  SKIP     no windows-debug reference yet
+floor_selfshadow:floor_selfshadow_offwide:shadow PASS
+shadow_overlay_floor:shadow_overlay_floor:shadow PASS
+world_placed_cast:shadow_overlay_floor:shadow PASS
+gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS
+grid_orbit_facing:grid_orbit_facing:normal-facing PASS
+grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS
+cylinder_receiver:cylinder_receiver_000  SKIP     no windows-debug reference yet
+cylinder_receiver:cylinder_receiver_045  SKIP     no windows-debug reference yet
+cylinder_receiver:cylinder_receiver_090  SKIP     no windows-debug reference yet
+cylinder_receiver:cylinder_receiver_135  SKIP     no windows-debug reference yet
+cylinder_receiver:cylinder_receiver_180  SKIP     no windows-debug reference yet
+cylinder_receiver:cylinder_receiver_225  SKIP     no windows-debug reference yet
+cylinder_receiver:cylinder_receiver_270  SKIP     no windows-debug reference yet
+cylinder_receiver:cylinder_receiver_315  SKIP     no windows-debug reference yet
+cylinder_receiver_pitched:cylinder_receiver_pitched_000 SKIP     no windows-debug reference yet
+cylinder_receiver_pitched:cylinder_receiver_pitched_045 SKIP     no windows-debug reference yet
+cylinder_receiver_pitched:cylinder_receiver_pitched_090 SKIP     no windows-debug reference yet
+cylinder_receiver_pitched:cylinder_receiver_pitched_135 SKIP     no windows-debug reference yet
+cylinder_receiver_pitched:cylinder_receiver_pitched_180 SKIP     no windows-debug reference yet
+cylinder_receiver_pitched:cylinder_receiver_pitched_225 SKIP     no windows-debug reference yet
+cylinder_receiver_pitched:cylinder_receiver_pitched_270 SKIP     no windows-debug reference yet
+cylinder_receiver_pitched:cylinder_receiver_pitched_315 SKIP     no windows-debug reference yet
+
+[render-verify] 2 of 18 checks FAIL (28 skipped — references pending)
+  - compare:compare_yaw0: max_delta 240 > 64  diff=C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-7/build/creations/demos/canvas_stress/save_files/render_verify_diffs/compare_yaw0.diff.png
+  - compare:compare_yaw_q: max_delta 240 > 64  diff=C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-7/build/creations/demos/canvas_stress/save_files/render_verify_diffs/compare_yaw_q.diff.png
