@@ -588,6 +588,19 @@ def resolve_measurement_root(measurement_root: int, runtime_roots: tuple[Path, .
     return 0
 
 
+def write_parker(path: Path, state: dict) -> None:
+    """A failed write leaves the last row standing; the parker keeps sampling.
+
+    The row is advisory to the holder's barrier, and coverage only accepts a
+    row whose covered_through reaches the release, so a lagging row can cost a
+    measurement but never certify one. Exiting would fail the queued run.
+    """
+    try:
+        atomic_json(path, state)
+    except OSError as error:
+        print(f"ir-acquire: parker row write failed, parker continues: {error}", file=sys.stderr)
+
+
 def cmd_park(args: argparse.Namespace) -> int:
     path = lease_path(args.tag)
     meta = read_json(path / "lease.json")
@@ -612,7 +625,7 @@ def cmd_park(args: argparse.Namespace) -> int:
     }
     if os.name == "nt":
         state["start_time"] = windows_process_start(os.getpid()) or 0
-    atomic_json(parker_path, state)
+    write_parker(parker_path, state)
     try:
         while True:
             payload = status_payload(args.tag)
@@ -620,7 +633,7 @@ def cmd_park(args: argparse.Namespace) -> int:
                 state["state"] = "busy"
                 state["quiet_since"] = now()
                 state["covered_through"] = now()
-                atomic_json(parker_path, state)
+                write_parker(parker_path, state)
                 hold = os.environ.get("IR_QUIET_TEST_UNPARK_HOLD", "")
                 if hold:
                     try:
@@ -660,7 +673,7 @@ def cmd_park(args: argparse.Namespace) -> int:
                 state["quiet_since"] = finished
                 event("busy", args.tag, f"{cores:.3f} {started:.6f}-{finished:.6f}")
             state["covered_through"] = finished
-            atomic_json(parker_path, state)
+            write_parker(parker_path, state)
     finally:
         try:
             parker_path.unlink()

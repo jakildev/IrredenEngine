@@ -246,6 +246,41 @@ class ParkRuntimeRootsTest(unittest.TestCase):
                 self.assertIn(ROOT, excluded)
                 self.assertEqual(set(runtime_roots), {RUNTIME, SECOND_RUNTIME})
 
+    def park_with_replace(self, fail_first):
+        """park() with os.replace refusing its first `fail_first` calls like a held-open target."""
+        calls = []
+
+        def replace(source, target):
+            calls.append(target)
+            if len(calls) <= fail_first:
+                raise PermissionError(5, "Access is denied", str(target))
+            os.replace(source, target)
+
+        def run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0, stdout=MSYS_PS, stderr="")
+
+        sampled = mock.Mock(return_value=(0.0, 1.0, 2.0))
+        with mock.patch.object(self.helper.os, "replace", replace, create=True), \
+                mock.patch.object(self.helper.time, "sleep"), \
+                mock.patch.object(self.helper, "sample_cores", sampled):
+            written, warning = self.park(run)
+        return written, warning, calls, sampled
+
+    def test_contended_parker_write_is_retried_into_place(self):
+        written, warning, calls, sampled = self.park_with_replace(fail_first=2)
+        self.assertEqual(warning, "")
+        self.assertEqual(len(calls), 2 + len(written))
+        self.assertEqual([row["state"] for row in written], ["busy", "parked", "busy"])
+        sampled.assert_called_once()
+
+    def test_parker_write_that_never_lands_is_logged_and_parking_continues(self):
+        written, warning, calls, sampled = self.park_with_replace(fail_first=10**6)
+        self.assertEqual(len(calls), len(written) * self.helper.REPLACE_ATTEMPTS)
+        self.assertEqual(warning.count("parker row write failed, parker continues"), len(written))
+        self.assertEqual([row["state"] for row in written], ["busy", "parked", "busy"])
+        sampled.assert_called_once()
+        self.assertEqual(list((self.helper.lease_path("pane") / "parkers").iterdir()), [])
+
     def test_unreadable_runtime_table_drops_the_root_and_samples_busy(self):
         for outcome in (
             FileNotFoundError("ps.exe"),
