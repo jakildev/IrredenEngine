@@ -123,6 +123,7 @@ float sourceShapeRaySeparation(vec2,float,uint,vec3,vec3,vec3){std::abort();}
 CASES = r"""
 struct Face {vec3 corner,u,v;};
 std::vector<Face> faces;
+bool secondDepthLayer=false;
 uint tileBase(uint cascade){return kSourceFaceTileOffset+cascade*128*128*65;}
 void reset(uint count,uint tileCount,uint cascade=0) {
     sunDepthBuf.words.assign(kSourceFaceBufferWords,0xffffffffu);
@@ -416,7 +417,7 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
             "{0,0},{1,1},int(cascade)*kCascadeTexelCount,")
     if suffix == "metal":
         call += "sunDepthBuf,"
-    call += "maxThrow,surface,{0,0,0,1},{0,0,0}"
+    call += "maxThrow,surface,secondDepthLayer,{0,0,0,1},{0,0,0}"
     call += ",sunQueryStats)" if query_stats else ")"
     define = "#define IR_SUN_FACE_OVERFLOW_REFERENCE 1\n" if enabled else ""
     if query_stats:

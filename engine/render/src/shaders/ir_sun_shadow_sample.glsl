@@ -31,7 +31,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform int shadowsEnabled;
     uniform int aoEnabled;
     uniform vec4 sunBasisU; // xyz: sun basis; w: finite caster coverage
-    uniform vec4 sunBasisV;
+    uniform vec4 sunBasisV; // xyz: sun basis; w: second raster depth retained
     uniform vec2 sunBufferOriginUV;
     uniform vec2 sunBufferTexelSize;
     uniform vec2 cascadeOriginUV_0;
@@ -121,8 +121,8 @@ bool sourceSunHierarchyBlocks(uint capacity, uint leaves, uint records,
 
 float sampleCascadeShadow(
     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
-    vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver, vec4 casterViewToWorld,
-    vec3 pcfOffset
+    vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver,
+    bool secondPrimaryDepth, vec4 casterViewToWorld, vec3 pcfOffset
 #if IR_SUN_QUERY_STATS
     , inout SunQueryStats sunQueryStats
 #endif
@@ -285,8 +285,11 @@ float sampleCascadeShadow(
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
             // Range and plane rejection are per layer; a nearer invalid tap
-            // cannot erase a valid blocker retained in the other layer.
-            const int layerCount = !surfaceReceiver && hasSourceFaces ? 2 : 1;
+            // cannot erase a valid blocker retained in the other layer. The
+            // fallback layer holds indexed casters or, without an index, the
+            // bake's retained second raster depth.
+            const int layerCount =
+                !surfaceReceiver && (hasSourceFaces || secondPrimaryDepth) ? 2 : 1;
             for (int layer = 0; layer < layerCount; ++layer) {
                 uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x
                     + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
@@ -384,8 +387,8 @@ float worldSunShadowFactorImpl(vec3 pos3D, vec3 normal, float isoDepth, bool sur
         }
         const float shadow = sampleCascadeShadow(
             sunUV, sunZ, normal, sunDir, uHat, vHat,
-            origin, texelSize, cascade * kCascadeTexelCount, sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
-            pcfOffset
+            origin, texelSize, cascade * kCascadeTexelCount, sunMaxShadowThrow, surfaceReceiver,
+            sunBasisV.w != 0.0, casterViewToWorld, pcfOffset
 #if IR_SUN_QUERY_STATS
             , sunQueryStats
 #endif

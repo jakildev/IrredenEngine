@@ -125,7 +125,9 @@ struct Adapter {
  Texture2D analyticTexture{13};std::pair<int,Texture2D*> analyticCasterDepth_{0,&analyticTexture};
  FrameDataVoxelToCanvas analyticCasterFrame_;bool analyticCasterReady_=false;
  ShaderProgram bake{1},scatter{2},blit{3};
- ShaderProgram *bakeProgram_=&bake,*worldPlacedScatterProgram_=&scatter;
+ ShaderProgram *bakeProgram_=&bake,*bakeSecondDepthProgram_=&bake;
+ ShaderProgram *worldPlacedScatterProgram_=&scatter;
+ bool retainSecondPrimaryDepth_=false;
  ShaderProgram *worldPlacedBlitProgram_=&blit;
  Texture2D resolved{12};std::pair<int,Texture2D*> worldPlacedResolveDepth_{0,&resolved};
  FrameDataSun frameData_;FrameDataVoxelToCanvas voxelFrameScratch_;
@@ -236,11 +238,12 @@ SHADER = r"""
 struct ivec2 {int x,y;};
 struct vec2 {float x,y;};
 struct vec3 {float x=0,y=0,z=0;};
+struct vec4 {float x=0,y=0,z=0,w=0;};
 ivec2 inputPixel{3,5},inputSize{32,48},trixelCanvasOffsetZ1{16,24},voxelRenderOptions{1,4};
 vec2 frameCanvasOffset{.25f,-.75f};
 int inputEncoded=0;
 float residualYaw=0,visualYaw=.35f,rasterYaw=1.5707964f,sunSplatMaxTexels=0;
-vec3 sunBasisU{},sunBasisV{},sunDirection{};
+vec4 sunBasisU{},sunBasisV{},sunDirection{};
 vec2 cascadeOriginUV_0{1,2},cascadeOriginUV_1{3,4};
 vec2 cascadeTexelSize_0{.5f,.25f},cascadeTexelSize_1{2,4};
 constexpr int kCascadeTexelCount=4096;
@@ -257,7 +260,7 @@ vec3 trixelCanvasPixelToWorld3DSmoothYaw(
  ivec2 p,int depth,ivec2 z,vec2 offset,ivec2 options,float yaw){
  checkInput(p,z,offset,options);return {float(depth),yaw,1};
 }
-vec3 sunSpaceProject(vec3 p,vec3,vec3,vec3){return p;}
+vec3 sunSpaceProject(vec3 p,vec4,vec4,vec4){return p;}
 void bakeCascadeBox(vec3 p,vec2 origin,vec2 texel,int offset,int radius){
  calls.push_back({p,origin,texel,offset,radius});
 }
@@ -301,9 +304,10 @@ int main(){
 
 
 def shader_source(suffix, folder):
-    source = uncomment((SHADERS / folder / f"c_bake_sun_shadow_map.{suffix}").read_text())
+    source = uncomment((SHADERS / folder / f"c_bake_sun_shadow_map_body.{suffix}").read_text())
     common = uncomment((SHADERS / folder / f"ir_iso_common.{suffix}").read_text())
-    function = extract_block(source, "void main(" if suffix == "glsl" else "kernel void c_bake")
+    function = extract_block(
+        source, "void main(" if suffix == "glsl" else "kernel void IR_SUN_BAKE_KERNEL_NAME(")
     body = function[function.index("{") + 1:-1]
     body = body.replace("frameData.", "").replace("sunFrameData.", "")
     body = re.sub(r"ivec2 pixel = ivec2\(gl_GlobalInvocationID.xy\);|"
@@ -323,8 +327,109 @@ def shader_source(suffix, folder):
             + "\nvoid run(){\n" + body + "}\n" + SHADER_CASES)
 
 
+SLOTS = r"""
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
+using uint=std::uint32_t;
+using std::max;
+using std::min;
+struct ivec2 {int x,y;};
+constexpr int kSunShadowMapDim=1024;
+constexpr uint kSourceFaceFallbackOffset=2u*1024u*1024u;
+std::vector<uint> sunDepthBuf(kSourceFaceFallbackOffset+2u*1024u*1024u,0xffffffffu);
+uint atomicMin(uint& word,uint value){
+ const uint previous=word;word=min(word,value);return previous;
+}
+using atomic_uint=uint;
+constexpr int memory_order_relaxed=0;
+uint atomic_fetch_min_explicit(uint* word,uint value,int){return atomicMin(*word,value);}
+"""
+
+SLOT_CASES = r"""
+uint word(float depth,uint low){return (uint((depth+512)*1024)<<8)|low;}
+int main(){
+ const uint empty=0xffffffffu;
+ const ivec2 px{5,7};
+ const bool second=SECOND_DEPTH;
+ uint checks=0;
+ const std::vector<std::vector<uint>> sets={
+  {word(2,0)},
+  {word(2,0),word(2,0x5c)},
+  {word(2,0),word(-87,0)},
+  {word(-87,0),word(-86.667f,0x5c),word(2,0)},
+  {word(-107,0),word(-87,0),word(2,0),word(2,0x0c)},
+  {word(-120,0),word(-120,0x11),word(-119,0),word(2,0)},
+ };
+ for(int cascadeOffset:{0,1024*1024}){
+  const uint index=cascadeOffset+px.y*kSunShadowMapDim+px.x;
+  for(auto set:sets){
+   std::sort(set.begin(),set.end());
+   const uint nearest=set.front();
+   uint expectedSecond=empty;
+   for(uint w:set)if((w>>8)!=(nearest>>8))expectedSecond=min(expectedSecond,w);
+   do{
+    sunDepthBuf[index]=empty;sunDepthBuf[kSourceFaceFallbackOffset+index]=empty;
+    for(uint w:set)writeSunTexel(cascadeOffset,px,w);
+    if(sunDepthBuf[index]!=nearest){std::cerr<<"nearest slot lost the minimum\n";return 1;}
+    const uint stored=sunDepthBuf[kSourceFaceFallbackOffset+index];
+    if(!second&&stored!=empty){
+     std::cerr<<"disabled diagnostic wrote the fallback layer\n";return 1;}
+    if(second&&stored!=expectedSecond){
+     std::cerr<<"second slot is not the nearest distinct loser\n";return 1;}
+    for(int d:{-1,1}){
+     if(sunDepthBuf[index+d]!=empty||sunDepthBuf[kSourceFaceFallbackOffset+index+d]!=empty){
+      std::cerr<<"neighbour texel written\n";return 1;}
+    }
+    ++checks;
+   }while(std::next_permutation(set.begin(),set.end()));
+  }
+ }
+ for(int cascadeOffset:{0,1024*1024}){
+  const uint index=cascadeOffset+px.y*kSunShadowMapDim+px.x;
+  sunDepthBuf[index]=empty;sunDepthBuf[kSourceFaceFallbackOffset+index]=empty;
+ }
+ for(ivec2 outside:{ivec2{-1,0},ivec2{1024,0},ivec2{0,-1},ivec2{0,1024}})
+  writeSunTexel(0,outside,word(2,0));
+ for(uint w:sunDepthBuf)if(w!=empty){std::cerr<<"out-of-bounds texel written\n";return 1;}
+ std::cout<<checks<<" slot permutations\n";
+}
+"""
+
+
+def slot_source(suffix, folder, enabled):
+    source = uncomment((SHADERS / folder / f"c_bake_sun_shadow_map_body.{suffix}").read_text())
+    function = extract_function(source, "writeSunTexel")
+    function = (function.replace("inline ", "").replace("device atomic_uint *sunDepthBuf, ", "")
+                .replace("int2", "ivec2"))
+    return (f"#define IR_SUN_SECOND_DEPTH {int(enabled)}\n" + SLOTS + function
+            + SLOT_CASES.replace("SECOND_DEPTH", str(int(enabled))))
+
+
 @unittest.skipUnless(COMPILER, "legacy bake controls require a C++ compiler")
 class LegacyShadowBakeTest(unittest.TestCase):
+    def test_shader_second_depth_slots(self):
+        for suffix, folder in (("glsl", ""), ("metal", "metal")):
+            with self.subTest(backend=suffix, variant="production"):
+                self.execute(slot_source(suffix, folder, False))
+            with self.subTest(backend=suffix, variant="second_depth"):
+                source = slot_source(suffix, folder, True)
+                self.execute(source)
+                mutations = (
+                    ("same_depth_pushed",
+                     "(displaced >> 8) == (min(previous, packedDepth) >> 8)", "false"),
+                    ("push_new_word_only", "max(previous, packedDepth)", "packedDepth"),
+                    ("wrong_layer", "int(kSourceFaceFallbackOffset) + index", "index + 1"),
+                    ("production_switch", "#define IR_SUN_SECOND_DEPTH 1",
+                     "#define IR_SUN_SECOND_DEPTH 0"),
+                )
+                for name, before, after in mutations:
+                    with self.subTest(mutation=name):
+                        self.assertEqual(source.count(before), 1, before)
+                        self.execute(source.replace(before, after), 1)
+
     def execute(self, source, expected=0):
         with tempfile.TemporaryDirectory() as tmp:
             cpp, exe = Path(tmp) / "bake.cpp", Path(tmp) / "bake"

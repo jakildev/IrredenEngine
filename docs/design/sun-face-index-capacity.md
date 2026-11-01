@@ -238,22 +238,51 @@ The fixture is deliberately a known-failing diagnostic, not a blessed image.
    invariance, exact throw boundaries, oblique light, mixed source/GRID/revoxelized
    modes, both cascades and pool exhaustion. Then sweep height in a running scene.
 
-A bounded depth-slab prototype is worth evaluating for **depth-only** samples:
-partition depth into slabs no wider than the query interval. A query's lower
-boundary slab needs its maximum, its upper boundary slab its minimum, and fully
-contained slabs need occupancy. Both endpoints cannot lie strictly inside one
-slab, so these extrema answer interval existence without retaining every point.
-Atomic min/max are independent of insertion order. Endpoint equality still needs
-strict-boundary tests. A dense layout over the full encoded depth range can be
-too expensive; include storage and clear bandwidth in the comparison.
+### Raster-only primary layer: measured decision
 
-That proof does not cover payload-dependent splat rejection, reconstructed plane
-tests or a finite footprint away from the stored tap. Keeping only extrema may
-still discard the valid candidate after another rejection. It is not a complete
-fallback design. A spatial/depth hierarchy retaining finite geometry is the
-alternative to evaluate; another nearest-K cache, an enlarged unconditional
-scan, or accepting whichever partial records won allocation does not establish
-the required invariant.
+The raster-only route runs whenever a particle raster pass is registered:
+`beginVoxelFaceCoverage` then publishes no finite index, every visible canvas
+pixel is a primary caster, and raster receivers take the independent-layer
+PCF path. The [native fixture](../pr-screenshots/claude/4799-raster-sun-depth-preservation/README.md)
+(`IRCanvasStress --probe-particle-raster --probe-ray-casters … --sun-primary-probe`)
+stacks GRID boxes on the shadowbox sun ray over a GRID floor: lower-only,
+distant-only, stacked, reversed creation order, duplicate and three-depth
+stacks, unlit pairs, cardinal and oblique light, both cascades, and a caster
+climbing through the throw boundary. Its capture-frame probe reads the floor
+ray's primary and fallback words per cascade with zero finite records, and
+counts each caster's canvas pixels so a culled caster is never mistaken for a
+collision. Stacking a caster 72 units up the ray replaces the lower box's
+nearest word (depth −15) with the distant top (−87) in both cascades and
+erases the whole floor shadow (4,939 cardinal, 5,408 oblique and 4,308
+cascade-0 missing pixels outside a 2-pixel band) while both casters keep their
+600 canvas pixels; distant-only stays lit and unlit pairs are identical.
+
+| Family | Evidence | Outcome |
+|---|---|---|
+| Second retained depth (nearest two distinct quantized depths; the loser of the nearest slot's atomic min lands in the otherwise empty fallback layer; the opt-in `retainSecondPrimaryDepth_` selects the `c_bake_sun_shadow_map_second_depth` compile-time variant, so the production bake carries no switch) | native fixture, two-slot write adapter and receiver controls in both shader dialects | **Rejected.** Zero recovered pixels in every stacked case: a flat raster top already yields three quantized depths per texel (−15, −14.667, −14.333 from the trixel lattice), so the second slot always holds the distant caster's own neighbour. No extra storage, no extra clear, one extra atomic per write and one extra read per tap, measured at +0.40 ms (+12 %) on `bakeSunShadowMap` and +9 % on the raster scene's GPU frame; the default path is byte-identical to the parent in all 165 captures and within noise in timing (bake 1.017×, GPU frame 1.011×). Arbitrary nearest-K inherits the failure with K words per texel. |
+| Depth-slab extrema | `test_render_sun_depth_slab.py`: 3.9 million exhaustive interval queries; the native sparse three-slot prototype ([branch evidence](https://github.com/jakildev/IrredenEngine/blob/ece131393858f732df072d2aea6deed72b18eea0/docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md), [guarded current-tree cost](../pr-screenshots/claude/4799-raster-sun-depth-preservation/slab-timing/README.md)) | Dense slabs are proof-rejected: depth-only existence is exact only when a slab is no wider than the query window (6,968 counterexamples when wider), and sixteen min/max slabs over the encoded range cost 256 MiB. The sparse layout keeps three (min, max) slots per texel, each owning one slab one throw (64 units) deep, claimed by compare-swap with a sticky overflow bit; the receiver reads them only when the nearest word is rejected as beyond the throw, and every candidate runs the unchanged per-word predicate. Natively it repairs every beyond-throw stack with at most three distinct slabs per texel to the lower-only control exactly (the parent loses 2,347 cardinal and 2,428 oblique pixels), through reversed creation order, 128 duplicates, re-voxelized casters and receiver, both receiver modes and a seven-shot track across the throw, and leaves the distant-only, in-window, unlit and overflowed scenes byte-identical. Residuals: a fourth distinct slab on a texel sets the overflow bit and keeps the nearest-only hole (the cardinal three- and four-band stacks keep all 2,347 missing pixels, the oblique two-band stack 2,344 of 2,436), and 48 of the 61,750 write sets per dialect in that branch's harness hide an interior write because both extrema of its slab are splats the receiver plane rejects (none with direct or surface words). The sun buffer grows from 30,670,864 to 81,002,512 bytes, 48 MiB cleared every frame. Under `ir-acquire benchmark` on the current tree the two small raster cells run 1.45× and 1.63× frame mean, 1.56× and 1.68× GPU envelope, with `bakeSunShadowMap` about 2×; the default raster scene and both IRPerfGrid zooms stay inside 1.10×. **Measured rejection (over budget)**; the branch ships the layer compiled out (`kSunDepthSlabSlots = 0`). |
+| Finite-index routing | canvas pixel census | **Rejected.** Every visible pixel is a caster: the three-object fixture occupies 31,320 of 463,524 canvas pixels (48 % of the 65,536-record pool), the default scene 34,376, and a covered canvas 7.1 pools. Routing points as faces also contradicts the index's authored-face semantics. |
+
+No candidate meets the adoption gate, so the primary layer keeps one nearest
+depth per texel and both prototypes stay opt-in: the second retained depth
+behind `retainSecondPrimaryDepth_` here, the slab layer behind
+`kSunDepthSlabSlots` on its branch. A receiver needs the nearest write in
+`(receiver − throw, receiver − bias)`. The nearest or any fixed-K nearest
+writes do not carry it; slab extrema one throw deep do, up to their slot
+capacity and the splat-extrema residual, so the slab family fails on cost, not
+on coverage. That branch's staged ablation splits the raster-route cost
+between the layout and its clear and the writer, whose two covering loads per
+splat write replace one atomic; the receiver's slab lookup measures free.
+Bringing the layer inside the budget is the follow-up's scope: a
+workgroup-cooperative splat that writes each texel's extrema once per 16×16
+canvas tile instead of once per caster pixel, and a generation-stamped slab
+plane or a vectorised clear that retires the per-frame 48 MiB clear. Adoption
+is decided after that measurement, against the same gate. A two-pass bake that anchors a second slot to each texel's farthest write
+(`min{z : z > max − throw}`) would answer the floor receiver exactly at one
+extra 8 MiB layer, a second bake dispatch per producer and three atomics per
+write; it still loses an elevated receiver with two casters more than the
+throw minus its elevation above it, so it is a redesign to escalate, not a
+bounded repair.
 
 ### Captured finite-quad hierarchy experiment
 

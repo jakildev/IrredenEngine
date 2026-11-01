@@ -159,6 +159,8 @@ const char *const kFileCompBuildSunHierarchy = "shaders/c_build_sun_hierarchy.gl
 const char *const kFileCompBakeVoxelSunFaces = "shaders/c_bake_voxel_sun_faces.glsl";
 const char *const kFileCompBakeBoxSunShadow = "shaders/c_bake_box_sun_shadow.glsl";
 const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.glsl";
+const char *const kFileCompBakeSunShadowMapSecondDepth =
+    "shaders/c_bake_sun_shadow_map_second_depth.glsl";
 const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
 const char *const kFileCompComputeSunShadowShapes = "shaders/c_compute_sun_shadow_shapes.glsl";
 const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_compact.glsl";

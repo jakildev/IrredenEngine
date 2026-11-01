@@ -185,6 +185,14 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     std::uint32_t recordCapacityChanges_ = 0;
     bool recordCeilingWarned_ = false;
     bool voxelFaceCoverage_ = true;
+    // Diagnostic for the raster-only route: the second-depth bake program keeps
+    // each texel's second distinct depth in the otherwise empty indexed
+    // fallback layer and the receiver tests it as an independent layer. A
+    // compile-time variant, so the production bake carries no switch. Two
+    // distinct distant depths still hide a lower caster
+    // (docs/design/sun-face-index-capacity.md).
+    bool retainSecondPrimaryDepth_ = false;
+    ShaderProgram *bakeSecondDepthProgram_ = nullptr;
     bool coverageFrameOpen_ = false;
     bool frameUsesFiniteCoverage_ = false;
     Buffer *analyticCasterFrameBuf_ = nullptr;
@@ -502,7 +510,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         clearDepthMap();
 
         // Bake: each pixel projects into both cascades in one pass.
-        bakeProgram_->use();
+        ShaderProgram *const rasterBakeProgram =
+            retainSecondPrimaryDepth_ ? bakeSecondDepthProgram_ : bakeProgram_;
+        rasterBakeProgram->use();
         canvasTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         canvasTextures.getTextureEntityIds()
@@ -674,7 +684,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // the unchanged cardinal recovery (the per-axis resolveDepth_ bake
             // above is the in-file precedent). Re-bind the bake's full set: the
             // scratch aliased slot 28 and the UBO was orphaned by the subData.
-            bakeProgram_->use();
+            rasterBakeProgram->use();
             sunShadowDepthMap_->bindBase(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_SunShadowDepthMap
@@ -861,6 +871,17 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     }
 
     void beginTick() {
+        // The diagnostic program compiles only once a creation opts in, so the
+        // default startup links one bake program.
+        if (retainSecondPrimaryDepth_ && bakeSecondDepthProgram_ == nullptr) {
+            bakeSecondDepthProgram_ = IRRender::createNamedResource<ShaderProgram>(
+                                          "BakeSunShadowMapSecondDepthProgram",
+                                          std::vector{ShaderStage{
+                                              IRRender::kFileCompBakeSunShadowMapSecondDepth,
+                                              ShaderType::COMPUTE
+                                          }}
+            ).second;
+        }
         beginVoxelFaceCoverage();
         if (sunShadowFrameDataBuf_ == nullptr) {
             sunShadowFrameDataBuf_ =
@@ -937,7 +958,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         vec3 uHat, vHat;
         IRMath::buildOrthonormalBasis(sunDir, uHat, vHat);
         frameData_.sunBasisU_ = vec4(uHat, frameData_.sunBasisU_.w);
-        frameData_.sunBasisV_ = vec4(vHat, 0.0f);
+        frameData_.sunBasisV_ =
+            vec4(vHat, retainSecondPrimaryDepth_ && !frameUsesFiniteCoverage_ ? 1.0f : 0.0f);
 
         const auto &cull = IRRender::getCullViewport();
         const ivec2 canvasSize = cull.canvasSize_;

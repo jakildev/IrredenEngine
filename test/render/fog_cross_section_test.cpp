@@ -1226,7 +1226,7 @@ TEST(FogCrossSectionShaderParity, CeilingSelectionBindingsAndCapSitesArePresentO
         for (const char *stem :
              {"c_bake_voxel_sun_faces",
               "c_bake_box_sun_shadow",
-              "c_bake_sun_shadow_map",
+              "c_bake_sun_shadow_map_body",
               "c_resolve_world_placed_depth",
               "c_shapes_to_trixel_body"}) {
             const auto caster = read(stem);
@@ -1298,7 +1298,7 @@ TEST(FogCrossSectionShaderParity, CeilingShadowCasterPolicyAndBakeRoutesStayBack
     for (const char *stem :
          {"c_bake_voxel_sun_faces",
           "c_bake_box_sun_shadow",
-          "c_bake_sun_shadow_map",
+          "c_bake_sun_shadow_map_body",
           "c_resolve_world_placed_depth",
           "c_shapes_to_trixel_body"}) {
         SCOPED_TRACE(stem);

@@ -44,14 +44,15 @@ bool sunCascadeKernelInterior(vec2,vec2,vec2){++interiorQueries;return interior;
 struct Call {vec2 origin,texel;int offset;bool surface;vec3 pcf;};
 Call calls[4];int callCount=0;
 float sampleCascadeShadow(vec2,float,vec3,vec3,vec3,vec3,vec2 origin,vec2 texel,
-                         int offset,float,bool surface,vec4,vec3 pcf){
+                         int offset,float,bool surface,bool,vec4,vec3 pcf){
  if(callCount<4)calls[callCount]={origin,texel,offset,surface,pcf};
  ++callCount;return origin.x==1?.25f:(offset==0?.125f:.875f);
 }
 float sampleCascadeShadow(vec2 uv,float z,vec3 normal,vec3 sun,vec3 u,vec3 v,
                          vec2 origin,vec2 texel,int offset,const uint*,float distance,
-                         bool surface,vec4 rotation,vec3 pcf){
- return sampleCascadeShadow(uv,z,normal,sun,u,v,origin,texel,offset,distance,surface,rotation,pcf);
+                         bool surface,bool second,vec4 rotation,vec3 pcf){
+ return sampleCascadeShadow(uv,z,normal,sun,u,v,origin,texel,offset,distance,surface,second,
+                            rotation,pcf);
 }
 """
 

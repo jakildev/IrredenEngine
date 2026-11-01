@@ -2,7 +2,9 @@
 
 Engine-level invariant for `BAKE_SUN_SHADOW_MAP`
 (`system_bake_sun_shadow_map.hpp`,
-`c_bake_sun_shadow_map.{glsl,metal}`). This is the third PR on this
+`c_bake_sun_shadow_map.{glsl,metal}`, a wrapper over the shared
+`c_bake_sun_shadow_map_body`; the `_second_depth` wrapper is an opt-in
+diagnostic, see `sun-face-index-capacity.md`). This is the third PR on this
 surface (#1784 → #2204 → #2270); the coverage model below is the settled
 account of *why* the screen-space sun-shadow bake leaves holes and *what*
 fills them. Future bake work must not re-derive it — in particular it must

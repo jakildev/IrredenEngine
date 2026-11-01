@@ -13,6 +13,135 @@
 
 namespace IRPrefab::SunShadow {
 
+struct PrimaryDepthTexel {
+    IRMath::ivec2 texel_{-1, -1};
+    std::uint32_t nearest_ = 0xFFFFFFFFu;
+    std::uint32_t second_ = 0xFFFFFFFFu;
+};
+
+struct PrimaryDepthProbe {
+    bool active_ = false;
+    bool finiteCoverage_ = false;
+    bool secondDepth_ = false;
+    std::uint32_t faceRecords_ = 0;
+    IRMath::vec3 sunUVZ_{};
+    PrimaryDepthTexel cascades_[kSunShadowCascadeCount];
+};
+
+// Capture only after shadow baking: the primary and fallback words of the sun
+// texel a world point projects to, per cascade. Synchronizes the GPU; never
+// use in timing runs.
+inline PrimaryDepthProbe readPrimaryDepthProbe(const IRMath::vec3 &world) {
+    PrimaryDepthProbe probe;
+    const auto system = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP);
+    if (system == IRSystem::kNullSystemId) {
+        return probe;
+    }
+    const auto *bake =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(system);
+    const IRRender::FrameDataSun &frame = bake->frameData_;
+    if (frame.shadowsEnabled_ == 0) {
+        return probe;
+    }
+    probe.active_ = true;
+    probe.finiteCoverage_ = bake->frameUsesFiniteCoverage_;
+    probe.secondDepth_ = frame.sunBasisV_.w != 0.0f;
+    probe.sunUVZ_ = IRMath::sunSpaceProject(
+        world,
+        IRMath::vec3(frame.sunBasisU_),
+        IRMath::vec3(frame.sunBasisV_),
+        IRMath::vec3(frame.sunDirection_)
+    );
+    const auto *buffer = bake->sunShadowDepthMap_;
+    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    IRRender::device()->finish();
+    buffer->getSubData(
+        std::size_t(kSourceFaceHeaderOffset) * sizeof(std::uint32_t),
+        sizeof(probe.faceRecords_),
+        &probe.faceRecords_
+    );
+    constexpr std::uint32_t kCascadeWords = kSourceFaceMapDimension * kSourceFaceMapDimension;
+    for (int cascade = 0; cascade < kSunShadowCascadeCount; ++cascade) {
+        const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
+        const auto size = cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_;
+        const IRMath::ivec2 texel(IRMath::floor((IRMath::vec2(probe.sunUVZ_) - origin) / size));
+        PrimaryDepthTexel &out = probe.cascades_[cascade];
+        if (texel.x < 0 || texel.y < 0 || texel.x >= kSunShadowMapDim ||
+            texel.y >= kSunShadowMapDim) {
+            continue;
+        }
+        out.texel_ = texel;
+        const std::size_t word = std::size_t(cascade) * kCascadeWords +
+                                 std::size_t(texel.y) * kSunShadowMapDim + std::size_t(texel.x);
+        buffer->getSubData(word * sizeof(std::uint32_t), sizeof(out.nearest_), &out.nearest_);
+        buffer->getSubData(
+            (word + kSourceFaceFallbackOffset) * sizeof(std::uint32_t),
+            sizeof(out.second_),
+            &out.second_
+        );
+    }
+    return probe;
+}
+
+struct CasterPixelCensus {
+    IRMath::ivec2 canvas_{};
+    std::size_t occupied_ = 0;
+    std::vector<std::size_t> counts_;
+};
+
+// Capture only: how many main-canvas pixels each tracked entity rasterized this
+// frame, with the occupied total, so a caster missing from the sun map can be
+// told apart from one the raster culled. Synchronizes the GPU; never use in
+// timing runs.
+inline CasterPixelCensus readCasterPixelCensus(const std::vector<IREntity::EntityId> &entities) {
+    CasterPixelCensus census;
+    census.counts_.assign(entities.size(), 0);
+    const auto mainCanvas = IRRender::getCanvas("main");
+    const auto canvasOpt =
+        IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(mainCanvas);
+    if (!canvasOpt.has_value()) {
+        return census;
+    }
+    const auto &canvas = **canvasOpt;
+    census.canvas_ = canvas.size_;
+    const std::size_t texels = std::size_t(canvas.size_.x) * std::size_t(canvas.size_.y);
+    std::vector<std::int32_t> distances(texels);
+    std::vector<std::uint32_t> ids(texels * 2);
+    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    IRRender::device()->finish();
+    canvas.getTextureDistances()->getSubImage2D(
+        0,
+        0,
+        canvas.size_.x,
+        canvas.size_.y,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        distances.data()
+    );
+    canvas.getTextureEntityIds()->getSubImage2D(
+        0,
+        0,
+        canvas.size_.x,
+        canvas.size_.y,
+        IRRender::PixelDataFormat::RG_INTEGER,
+        IRRender::PixelDataType::UINT32,
+        ids.data()
+    );
+    for (std::size_t i = 0; i < texels; ++i) {
+        if (distances[i] >= IRConstants::kTrixelDistanceMaxDistance) {
+            continue;
+        }
+        ++census.occupied_;
+        const auto id = IRRender::decodeCarrierEntityId(IRMath::uvec2(ids[2 * i], ids[2 * i + 1]));
+        for (std::size_t entity = 0; entity < entities.size(); ++entity) {
+            if (id == entities[entity]) {
+                ++census.counts_[entity];
+            }
+        }
+    }
+    return census;
+}
+
 // Capture only after shadow baking. Synchronizes the GPU; never use in timing runs.
 inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeometry = false) {
     std::ofstream output(path);

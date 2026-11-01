@@ -1295,7 +1295,9 @@ struct FrameDataSun {
     // FrameDataSun.
     int aoEnabled_ = 1;
     // Orthonormal sun-space basis perpendicular to sunDirection_.
-    // U.w is 1 for finite caster coverage, otherwise 0; V.w is padding.
+    // U.w is 1 for finite caster coverage, otherwise 0. V.w is 1 while the
+    // raster-only bake retains a second distinct depth per texel in the
+    // indexed fallback layer (BAKE_SUN_SHADOW_MAP::retainSecondPrimaryDepth_).
     vec4 sunBasisU_ = vec4(0.0f);
     vec4 sunBasisV_ = vec4(0.0f);
     // sunPx = floor((dot(p, uHat/vHat) - origin) / texelSize).
