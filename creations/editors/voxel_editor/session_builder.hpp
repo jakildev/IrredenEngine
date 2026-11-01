@@ -2567,10 +2567,10 @@ class Builder {
     }
 
     void expectRecipePager(bool present, std::string name) {
-        m_recipe.recipePagerChecks_.push_back(RecipePagerCheck{present, std::move(name)});
-        const RecipePagerCheck &check = m_recipe.recipePagerChecks_.back();
-        m_current.assertions_.push_back(
-            IRPrefab::GuiTest::predicate(&evaluateRecipePagerCheck, &check, check.name_.c_str())
+        addPredicateCheck(
+            m_recipe.recipePagerChecks_,
+            RecipePagerCheck{present, std::move(name)},
+            &evaluateRecipePagerCheck
         );
     }
 

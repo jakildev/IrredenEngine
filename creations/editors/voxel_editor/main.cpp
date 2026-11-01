@@ -2392,16 +2392,18 @@ void seedDemoSkeleton() {
     }
 }
 
-void destroyRecipePager() {
-    for (IREntity::EntityId *pager : {
-             &g_recipePagePrevBtn,
-             &g_recipePageNextBtn,
-             &g_recipePageLabel,
-         }) {
+void destroyWidgetPager(
+    IREntity::EntityId &previous, IREntity::EntityId &next, IREntity::EntityId &label
+) {
+    for (IREntity::EntityId *pager : {&previous, &next, &label}) {
         if (*pager != IREntity::kNullEntity)
             IREntity::destroyEntity(*pager);
         *pager = IREntity::kNullEntity;
     }
+}
+
+void destroyRecipePager() {
+    destroyWidgetPager(g_recipePagePrevBtn, g_recipePageNextBtn, g_recipePageLabel);
 }
 
 void bindRecipeSliders() {
@@ -2415,10 +2417,9 @@ void bindRecipeSliders() {
             first + i <
                 static_cast<int>(recipes[static_cast<std::size_t>(g_slidersRecipe)].params_.size());
         if (used) {
-            const RecipeParam &param =
-                recipes[static_cast<std::size_t>(g_slidersRecipe)]
-                    .params_[static_cast<std::size_t>(first + i)];
-            slider.label_ = param.name_;
+            const RecipeParam &param = recipes[static_cast<std::size_t>(g_slidersRecipe)]
+                                           .params_[static_cast<std::size_t>(first + i)];
+            slider.label_.clear();
             slider.minValue_ = param.min_;
             slider.maxValue_ = param.max_;
             slider.currentValue_ = g_recipeParamValues[static_cast<std::size_t>(first + i)];
@@ -2437,8 +2438,7 @@ void syncVisibleRecipeSliderValues() {
         return;
     const int first = g_recipeParamPage * kRecipeParamRowsPerPage;
     for (int i = 0;
-         i < kRecipeParamRowsPerPage &&
-         first + i < static_cast<int>(g_recipeParamValues.size());
+         i < kRecipeParamRowsPerPage && first + i < static_cast<int>(g_recipeParamValues.size());
          ++i) {
         g_recipeParamValues[static_cast<std::size_t>(first + i)] =
             IRPrefab::Widget::sliderValue(g_recipeSliders[i]);
@@ -2463,10 +2463,8 @@ void configureRecipeSliders(int recipeIndex) {
                 IRPrefab::Widget::makeButton(kRecipePagePrevPos, kRecipePageButtonSize, "<");
             g_recipePageNextBtn =
                 IRPrefab::Widget::makeButton(kRecipePageNextPos, kRecipePageButtonSize, ">");
-            g_recipePageLabel = IRPrefab::Widget::makeLabel(
-                kRecipePageLabelPos,
-                "1/" + std::to_string(pageCount)
-            );
+            g_recipePageLabel =
+                IRPrefab::Widget::makeLabel(kRecipePageLabelPos, "1/" + std::to_string(pageCount));
             IRPrefab::Widget::setDisabled(g_recipePagePrevBtn, true);
         }
     }
@@ -3064,8 +3062,7 @@ void updateRecipesPanel() {
         syncVisibleRecipeSliderValues();
         const int pageCount = recipeParamPageCount(static_cast<int>(g_recipeParamValues.size()));
         const int page = IRMath::clamp(
-            g_recipeParamPage +
-                (IRPrefab::Widget::wasClicked(g_recipePageNextBtn) ? 1 : 0) -
+            g_recipeParamPage + (IRPrefab::Widget::wasClicked(g_recipePageNextBtn) ? 1 : 0) -
                 (IRPrefab::Widget::wasClicked(g_recipePagePrevBtn) ? 1 : 0),
             0,
             pageCount - 1
@@ -3135,12 +3132,7 @@ void destroyComponentFieldRows() {
             IREntity::destroyEntity(row.input_);
     }
     g_componentFieldRows.clear();
-    for (IREntity::EntityId *pager :
-         {&g_componentPagePrevBtn, &g_componentPageNextBtn, &g_componentPageLabel}) {
-        if (*pager != IREntity::kNullEntity)
-            IREntity::destroyEntity(*pager);
-        *pager = IREntity::kNullEntity;
-    }
+    destroyWidgetPager(g_componentPagePrevBtn, g_componentPageNextBtn, g_componentPageLabel);
 }
 
 // Builds page g_componentFieldPage of @p record's fields.

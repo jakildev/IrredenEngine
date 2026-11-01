@@ -155,8 +155,6 @@ IREditor.registerRecipe(
     }
 )
 
--- A 1x1 column two cells off the centre in -X and +Y, `depth` cells tall; the
--- last recipe, so it lies below the RECIPES view.
 IREditor.registerRecipe(
     "test_pages",
     {
@@ -173,6 +171,8 @@ IREditor.registerRecipe(
     end
 )
 
+-- A 1x1 column two cells off the centre in -X and +Y, `depth` cells tall; the
+-- last recipe, so it lies below the RECIPES view.
 IREditor.registerRecipe(
     "test_below",
     {
