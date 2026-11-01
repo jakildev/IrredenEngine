@@ -15,7 +15,9 @@ launches it, and the wrapper is this checkout's ``scripts/fleet/fleet-run``
            when a probe shows sandbox-exec can run here
            (``isolation=applied``); otherwise ``isolation=skipped``
   Windows  reduces the executable's PATH to %SystemRoot%\\System32 and
-           %SystemRoot%
+           %SystemRoot%, passed in MSYS POSIX form (``/c/Windows/System32:
+           /c/Windows``); a SystemRoot that is unset or not ``<drive>:\\<dir>``
+           is a usage error
   Linux    unsets LD_LIBRARY_PATH
 
 Build the package first (``fleet-build --target <target>Package``). A
@@ -35,6 +37,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import re
 import subprocess
 import sys
 import tempfile
@@ -123,11 +126,32 @@ def child_options(host: str, environ: dict[str, str]) -> tuple[list[str], str | 
             return options, f"isolation=applied ({detail})"
         return options, f"isolation=skipped ({detail})"
     if host == "Windows":
-        sysroot = environ.get("SystemRoot", "")
-        if not sysroot:
-            raise UsageError("SystemRoot is not set")
-        return ["--child-env", f"PATH={sysroot}\\System32;{sysroot}"], None
+        return ["--child-env", f"PATH={windows_system_path(environ)}"], None
     return ["--child-unset", "LD_LIBRARY_PATH"], None
+
+
+def windows_system_path(environ: dict[str, str]) -> str:
+    """``%SystemRoot%\\System32`` and ``%SystemRoot%`` as an MSYS ``PATH`` list.
+
+    Gotcha: the value is set by MSYS ``env``, which converts ``PATH`` as a
+    ``:``-separated POSIX list when it spawns the native executable. The
+    Windows spelling ``C:\\Windows\\System32;C:\\Windows`` is split at the drive
+    colons and arrives as ``C;C:\\Windows\\System32;C;C:\\Windows``; the POSIX
+    spelling ``/c/Windows/System32:/c/Windows`` arrives as exactly the two
+    directories.
+
+    The lookup ignores case: Windows environment names are case-insensitive,
+    and native Python's ``dict(os.environ)`` spells this one ``SYSTEMROOT``.
+    """
+    sysroot = next((value for name, value in environ.items()
+                    if name.upper() == "SYSTEMROOT"), "")
+    if not sysroot:
+        raise UsageError("SystemRoot is not set")
+    match = re.fullmatch(r"([A-Za-z]):\\(.*)", sysroot)
+    if match is None:
+        raise UsageError(f"SystemRoot {sysroot!r} is not a <drive>:\\<dir> path")
+    root = f"/{match.group(1).lower()}/{match.group(2)}".replace("\\", "/").rstrip("/")
+    return f"{root}/System32:{root}"
 
 
 def resolve_fleet_run() -> str:

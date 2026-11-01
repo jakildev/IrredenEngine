@@ -400,8 +400,8 @@ the per-host restrictions and exit codes are in the script's docstring. A pass
 prints `ir-run: RESULT=CLEAN`, then `package-smoke: RESULT=PASS`; another
 verdict prints `RESULT=FAIL`. macOS also prints `isolation=applied` (Homebrew
 reads denied) or `isolation=skipped`, which is not clean-box evidence: run it
-from a normal shell, as a sandboxed process cannot nest `sandbox-exec`. Only
-the macOS arm is measured; `scripts/tests/test_package_smoke.py` pins Windows
-and Linux until a native run.
+from a normal shell, as a sandboxed process cannot nest `sandbox-exec`. The
+macOS and Windows arms are measured; `scripts/tests/test_package_smoke.py`
+pins Linux until a native run.
 
 Packaging never runs as part of a normal `--target <exe>` build.
