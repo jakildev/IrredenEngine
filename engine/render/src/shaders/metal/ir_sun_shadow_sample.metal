@@ -92,7 +92,8 @@ inline bool sourceSunHierarchyBlocks(device const uint* sunDepthBuf, uint capaci
                 ++visited;
                 sunQueryStats.counts[kSunQueryCandidates] += 1u;
 #endif
-                const float separation = sourceSunGeometrySeparation(sunDepthBuf, i, sunUV, sunZ
+                const float separation = sourceSunGeometrySeparation(
+                    sunDepthBuf, readSourceSunLeafRecord(sunDepthBuf, capacity, i), sunUV, sunZ
 #if IR_SUN_QUERY_STATS
                     , sunQueryStats
 #endif

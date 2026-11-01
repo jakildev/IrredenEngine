@@ -11,6 +11,11 @@ SourceSunGeometry readSourceSunGeometry(uint id) {
         sunDepthBuf[record + 9u]);
 }
 
+// Record ID held by hierarchy leaf slot @p slot.
+uint readSourceSunLeafRecord(uint capacity, uint slot) {
+    return sunDepthBuf[sourceFaceHierarchyOrderEntriesIndex(capacity) + slot];
+}
+
 // Word loads avoid imposing vector alignment on the appended SSBO range.
 SourceSunBounds readSourceSunBounds(uint capacity, uint node) {
     const uint offset = sourceFaceHierarchyNodeIndex(capacity, node);

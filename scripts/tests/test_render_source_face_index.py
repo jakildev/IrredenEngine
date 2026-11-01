@@ -333,7 +333,10 @@ int main() {
         oracle[kSourceFaceTileOffset+tile*65]=0;
         oracle[kSourceFaceSpillHeadOffset+tile]=0xffffffffu;
     }
-    if(!check("production clear resets counters and heads without erasing records")) return 27;
+    for(uint bucket=0;bucket<kSourceFaceHierarchyOrderBuckets;++bucket)
+        oracle[kSourceFaceHierarchyOrderOffset+bucket]=0;
+    if(!check("production clear resets counters, heads and order buckets without erasing records"))
+        return 27;
     if(!std::equal(actual.begin()+guardWords+kSourceFaceSpillNodeOffset,
                    actual.begin()+guardWords+kSourceFaceHierarchyNeededOffset,
                    stale.begin()+guardWords+kSourceFaceSpillNodeOffset)) return 28;

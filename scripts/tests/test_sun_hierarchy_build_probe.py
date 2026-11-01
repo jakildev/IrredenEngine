@@ -49,7 +49,12 @@ class HierarchyBuildProbeTest(unittest.TestCase):
             layout["kSourceFaceHierarchyOffset"], layout["kSourceFaceHierarchyReadyOffset"] + 1
         )
         self.assertEqual(
-            layout["kSourceFaceBufferWords"], layout["kSourceFaceHierarchyOffset"] + 2 * 8192 * 8
+            layout["kSourceFaceHierarchyOrderOffset"],
+            layout["kSourceFaceHierarchyOffset"] + 2 * 8192 * 8,
+        )
+        self.assertEqual(
+            layout["kSourceFaceBufferWords"],
+            layout["kSourceFaceHierarchyOrderEntriesOffset"] + layout["kSourceFaceCapacity"],
         )
 
     def test_expansion_uses_exact_included_source_and_hashes(self):

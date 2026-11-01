@@ -27,11 +27,20 @@ constant uint kSourceFaceRecordOffset = kSourceFaceTileOffset + kSourceFaceTileC
 constant uint kSourceFaceHierarchyLeafSize = 8u;
 constant uint kSourceFaceHierarchyNodeWords = 8u;
 constant uint kSourceFaceHierarchyWorkgroupSize = 128u;
+// Leaf order after the hierarchy nodes: one counting-sort bucket per Morton cell
+// of the record bounds' centres, then one record ID per leaf slot. Leaf slot i
+// holds record order[i], never record i.
+constant uint kSourceFaceHierarchyOrderCells = 16u;
+constant uint kSourceFaceHierarchyOrderBuckets = kSourceFaceHierarchyOrderCells * kSourceFaceHierarchyOrderCells * kSourceFaceHierarchyOrderCells;
+// hierarchyDispatch.z of the leaf-order passes.
+constant uint kSourceFaceHierarchyOrderCount = 1u;
+constant uint kSourceFaceHierarchyOrderScan = 2u;
+constant uint kSourceFaceHierarchyOrderScatter = 3u;
 // Words after the record pool that do not scale with it: the spill counter,
-// spill heads and nodes, and the two hierarchy flags.
-constant uint kSourceFaceTailFixedWords = 1u + kSourceFaceTileCount + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords + 2u;
-// Each record owns ten geometry words and two hierarchy node words.
-constant uint kSourceFaceWordsPerRecord = kSourceFaceRecordWords + 2u * kSourceFaceHierarchyNodeWords / kSourceFaceHierarchyLeafSize;
+// spill heads and nodes, the two hierarchy flags and the order buckets.
+constant uint kSourceFaceTailFixedWords = 1u + kSourceFaceTileCount + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords + 2u + kSourceFaceHierarchyOrderBuckets;
+// Each record owns ten geometry words, two hierarchy node words and one leaf slot.
+constant uint kSourceFaceWordsPerRecord = kSourceFaceRecordWords + 2u * kSourceFaceHierarchyNodeWords / kSourceFaceHierarchyLeafSize + 1u;
 constant uint kSourceFaceSpillCounterOffset = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
 constant uint kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
 constant uint kSourceFaceSpillNodeOffset = kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
@@ -39,7 +48,9 @@ constant uint kSourceFaceHierarchyNeededOffset = kSourceFaceSpillNodeOffset + kS
 constant uint kSourceFaceHierarchyReadyOffset = kSourceFaceHierarchyNeededOffset + 1u;
 constant uint kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
 constant uint kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
-constant uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+constant uint kSourceFaceHierarchyOrderOffset = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+constant uint kSourceFaceHierarchyOrderEntriesOffset = kSourceFaceHierarchyOrderOffset + kSourceFaceHierarchyOrderBuckets;
+constant uint kSourceFaceBufferWords = kSourceFaceHierarchyOrderEntriesOffset + kSourceFaceCapacity;
 // Sticky tile-count bit: a failed record reservation left overlapping geometry outside the pool.
 constant uint kSourceFaceTileRecordLost = 0x80000000u;
 
@@ -68,6 +79,15 @@ inline uint sourceFaceHierarchyReadyIndex(uint capacity) {
 
 inline uint sourceFaceHierarchyNodeIndex(uint capacity, uint node) {
     return sourceFaceHierarchyReadyIndex(capacity) + 1u + node * kSourceFaceHierarchyNodeWords;
+}
+
+// The order region follows the 2 * capacity / kSourceFaceHierarchyLeafSize hierarchy nodes.
+inline uint sourceFaceHierarchyOrderIndex(uint capacity) {
+    return sourceFaceHierarchyNodeIndex(capacity, 2u * (capacity / kSourceFaceHierarchyLeafSize));
+}
+
+inline uint sourceFaceHierarchyOrderEntriesIndex(uint capacity) {
+    return sourceFaceHierarchyOrderIndex(capacity) + kSourceFaceHierarchyOrderBuckets;
 }
 
 inline uint sourceFaceTileBase(uint tileIndex) {

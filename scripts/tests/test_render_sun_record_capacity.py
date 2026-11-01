@@ -110,12 +110,28 @@ void buildAll(uint capacity){
     }
     if(passes<2)passes=2;
     passes+=PASS_DELTA;
-    for(int pass=0;pass<passes;++pass){
-        level=(level+kSourceFaceHierarchyWorkgroupSize-1)/kSourceFaceHierarchyWorkgroupSize;
-        const uint groups=level<1?1:level;
-        for(uint group=0;group<groups;++group)buildInvocation(group,uint(pass));
-        if(pass==0)require(sunDepthBuf.words[sourceFaceHierarchyReadyIndex(capacity)]==0,
-                           "subtree dispatch cannot publish cross-workgroup readiness");
+    const uint leaves=level;
+    // The unordered build roots the extent the leaf order divides; only the
+    // ordered build that follows the count, scan and scatter passes publishes.
+    for(int ordered=0;ordered<2;++ordered){
+        level=leaves;
+        for(int pass=0;pass<passes;++pass){
+            level=(level+kSourceFaceHierarchyWorkgroupSize-1)/kSourceFaceHierarchyWorkgroupSize;
+            const uint groups=level<1?1:level;
+            hierarchyDispatch={pass,ordered,0,0};
+            for(uint group=0;group<groups;++group)buildInvocation(group,uint(pass));
+            if(pass==0 || !ordered)
+                require(sunDepthBuf.words[sourceFaceHierarchyReadyIndex(capacity)]==0,
+                        "only the ordered root publishes readiness");
+        }
+        if(ordered)break;
+        for(int order:{kSourceFaceHierarchyOrderCount,kSourceFaceHierarchyOrderScan,
+                       kSourceFaceHierarchyOrderScatter}){
+            hierarchyDispatch={0,0,order,0};
+            const uint groups=order==kSourceFaceHierarchyOrderScan?1u
+                : capacity/kSourceFaceHierarchyWorkgroupSize;
+            for(uint group=0;group<groups;++group)buildInvocation(group,0u);
+        }
     }
     sunDepthBuf.readCount=0;
 }

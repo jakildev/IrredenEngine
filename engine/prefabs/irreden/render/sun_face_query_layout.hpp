@@ -48,17 +48,30 @@ constexpr std::uint32_t kSourceFaceRecordOffset =
 constexpr std::uint32_t kSourceFaceHierarchyLeafSize = 8u;
 constexpr std::uint32_t kSourceFaceHierarchyNodeWords = 8u;
 constexpr std::uint32_t kSourceFaceHierarchyWorkgroupSize = 128u;
+// Leaf order after the hierarchy nodes: one counting-sort bucket per Morton cell
+// of the record bounds' centres, then one record ID per leaf slot. Leaf slot i
+// holds record order[i], never record i.
+constexpr std::uint32_t kSourceFaceHierarchyOrderCells = 16u;
+constexpr std::uint32_t kSourceFaceHierarchyOrderBuckets = kSourceFaceHierarchyOrderCells *
+                                                           kSourceFaceHierarchyOrderCells *
+                                                           kSourceFaceHierarchyOrderCells;
 // Words after the record pool that do not scale with it: the spill counter,
-// spill heads and nodes, and the two hierarchy flags.
+// spill heads and nodes, the two hierarchy flags and the order buckets.
 constexpr std::uint32_t kSourceFaceTailFixedWords =
-    1u + kSourceFaceTileCount + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords + 2u;
-// Each record owns ten geometry words and two hierarchy node words.
+    1u + kSourceFaceTileCount + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords + 2u +
+    kSourceFaceHierarchyOrderBuckets;
+// Each record owns ten geometry words, two hierarchy node words and one leaf slot.
 constexpr std::uint32_t kSourceFaceWordsPerRecord =
-    kSourceFaceRecordWords + 2u * kSourceFaceHierarchyNodeWords / kSourceFaceHierarchyLeafSize;
+    kSourceFaceRecordWords + 2u * kSourceFaceHierarchyNodeWords / kSourceFaceHierarchyLeafSize + 1u;
 // Dispatched passes cover kSourceFaceHierarchyWorkgroupSize^passes leaves; two
 // passes are the floor so the default allocation keeps its dispatch sequence.
 constexpr int kSourceFaceHierarchyMinBuildPasses = 2;
 constexpr int kSourceFaceHierarchyMaxBuildPasses = 3;
+// hierarchyDispatch.z of the leaf-order passes, which run between the unordered
+// and the ordered build.
+constexpr int kSourceFaceHierarchyOrderCount = 1;
+constexpr int kSourceFaceHierarchyOrderScan = 2;
+constexpr int kSourceFaceHierarchyOrderScatter = 3;
 // Sticky tile-count bit: a failed record reservation left overlapping geometry outside the pool.
 constexpr std::uint32_t kSourceFaceTileRecordLost = 0x80000000u;
 
@@ -94,8 +107,14 @@ struct SourceFaceLayout {
     constexpr std::uint32_t hierarchyMaxLeaves() const {
         return capacity_ / kSourceFaceHierarchyLeafSize;
     }
-    constexpr std::uint32_t bufferWords() const {
+    constexpr std::uint32_t hierarchyOrderOffset() const {
         return hierarchyOffset() + 2u * hierarchyMaxLeaves() * kSourceFaceHierarchyNodeWords;
+    }
+    constexpr std::uint32_t hierarchyOrderEntriesOffset() const {
+        return hierarchyOrderOffset() + kSourceFaceHierarchyOrderBuckets;
+    }
+    constexpr std::uint32_t bufferWords() const {
+        return hierarchyOrderEntriesOffset() + capacity_;
     }
     // The shader twins recover the capacity from the bound length (GLSL) or the
     // header word (Metal); the length form must invert bufferWords exactly.
@@ -142,6 +161,10 @@ constexpr std::uint32_t kSourceFaceHierarchyReadyOffset =
 constexpr std::uint32_t kSourceFaceHierarchyOffset = kSourceFaceDefaultLayout.hierarchyOffset();
 constexpr std::uint32_t kSourceFaceHierarchyMaxLeaves =
     kSourceFaceDefaultLayout.hierarchyMaxLeaves();
+constexpr std::uint32_t kSourceFaceHierarchyOrderOffset =
+    kSourceFaceDefaultLayout.hierarchyOrderOffset();
+constexpr std::uint32_t kSourceFaceHierarchyOrderEntriesOffset =
+    kSourceFaceDefaultLayout.hierarchyOrderEntriesOffset();
 constexpr std::uint32_t kSourceFaceBufferWords = kSourceFaceDefaultLayout.bufferWords();
 constexpr int kSourceFaceHierarchyLevels = 14;
 constexpr int kSourceFaceHierarchyBuildPasses = kSourceFaceDefaultLayout.buildPasses();
@@ -190,6 +213,19 @@ static_assert(
     "Hierarchy workgroup width must be a power of two"
 );
 static_assert(kSourceFaceHierarchyLeafSize > 0u, "Hierarchy leaves must hold records");
+static_assert(
+    kSourceFaceHierarchyOrderBuckets % kSourceFaceHierarchyWorkgroupSize == 0u,
+    "The one-workgroup bucket scan gives every lane an equal contiguous run"
+);
+static_assert(
+    (kSourceFaceHierarchyOrderCells & (kSourceFaceHierarchyOrderCells - 1u)) == 0u &&
+        kSourceFaceHierarchyOrderCells <= 1024u,
+    "Order cells interleave as whole bits of a 10-bit-per-axis Morton code"
+);
+static_assert(
+    kSourceFaceHierarchyOrderBuckets <= kSourceFaceFallbackOffset,
+    "The shadow clear dispatch must cover every order bucket"
+);
 static_assert(
     kSourceFaceHierarchyMaxLeaves == (1u << (kSourceFaceHierarchyLevels - 1)),
     "Hierarchy levels must reduce a power-of-two leaf allocation to one root"

@@ -27,6 +27,8 @@ void main() {
     if (linearIdx == 0) sunDepthBuf[sourceFaceSpillCounterIndex(capacity)] = 0u;
     if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyNeededIndex(capacity)] = 0u;
     if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyReadyIndex(capacity)] = 0u;
+    if (uint(linearIdx) < kSourceFaceHierarchyOrderBuckets)
+        sunDepthBuf[sourceFaceHierarchyOrderIndex(capacity) + uint(linearIdx)] = 0u;
     if (uint(linearIdx) < kSourceFaceTileCount) {
         sunDepthBuf[sourceFaceTileBase(uint(linearIdx))] = 0u;
         sunDepthBuf[sourceFaceSpillHeadIndex(capacity, uint(linearIdx))] = 0xFFFFFFFFu;

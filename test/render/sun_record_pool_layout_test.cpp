@@ -36,10 +36,15 @@ TEST(SunRecordPoolLayoutTest, TailFollowsRecordPoolContiguously) {
         EXPECT_EQ(layout.hierarchyOffset(), layout.hierarchyNeededOffset() + 2u);
         EXPECT_EQ(layout.hierarchyMaxLeaves() * kSourceFaceHierarchyLeafSize, capacity);
         EXPECT_EQ(
-            layout.bufferWords(),
+            layout.hierarchyOrderOffset(),
             layout.hierarchyOffset() +
                 2u * layout.hierarchyMaxLeaves() * kSourceFaceHierarchyNodeWords
         );
+        EXPECT_EQ(
+            layout.hierarchyOrderEntriesOffset(),
+            layout.hierarchyOrderOffset() + kSourceFaceHierarchyOrderBuckets
+        );
+        EXPECT_EQ(layout.bufferWords(), layout.hierarchyOrderEntriesOffset() + capacity);
         // The GLSL twin recovers the capacity from the bound length alone.
         EXPECT_EQ(SourceFaceLayout::capacityForBufferWords(layout.bufferWords()), capacity);
     }
