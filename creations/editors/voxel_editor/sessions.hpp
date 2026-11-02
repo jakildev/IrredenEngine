@@ -183,6 +183,9 @@ struct DocumentWorkflowCheck {
     bool error_;
     bool occupied_;
     const char *jointName_ = nullptr;
+    bool entityMode_ = false;
+    bool animationControlsDisabled_ = false;
+    bool checkAnimationControls_ = false;
 };
 bool evaluateDocumentWorkflowCheck(const void *context, std::string &actual);
 
@@ -2271,6 +2274,19 @@ inline Recipe build(
         builder.clickGui({310, 199});
         builder.save();
         builder.reload();
+        builder.segment("prepare_composite_for_discard_crossing");
+        builder.clickGui({570, 119});
+        rename(6, "composite");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
+        builder.clickGui({390, 119});
+        builder.segment("discard_composite_to_single_restores_animation_controls");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
+        builder.clickGui({570, 119});
+        builder.clickGui({190, 199});
+        builder.segment("discard_single_to_composite_disables_animation_controls");
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.clickGui({480, 119});
+        builder.clickGui({190, 199});
         Recipe recipe = builder.finish();
         static constexpr DocumentWorkflowCheck checks[] = {
             {"", true, false, true, false, true},
@@ -2294,6 +2310,9 @@ inline Recipe build(
             {"rescue", true, false, false, false, false, "tip"},
             {"rescue", true, true, false, false, false, "tip"},
             {"rescue", false, false, false, false, false, "tip"},
+            {"composite", false, false, false, false, false, nullptr, true, true, true},
+            {"", false, false, false, false, false, nullptr, false, false, true},
+            {"composite", false, false, false, false, false, nullptr, true, true, true},
         };
         if (recipe.segments_.size() != std::size(checks)) {
             recipe.errors_.push_back("document workflow shot count mismatch");

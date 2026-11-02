@@ -4444,15 +4444,19 @@ void beginDocumentSave(bool saveAs) {
         performPendingDocumentAction();
 }
 
+void restoreDocumentModalWidgets() {
+    for (const auto &[id, disabled] : g_editor.documentDisabledWidgets_) {
+        if (IREntity::entityExists(id))
+            IRPrefab::Widget::setDisabled(id, disabled);
+    }
+    g_editor.documentDisabledWidgets_.clear();
+}
+
 void updateDocumentModalWidgets() {
     const bool blocked = documentInteractionBlocked();
     const auto &documentWidgets = g_editor.documentPanel_.widgets();
     if (!blocked) {
-        for (const auto &[id, disabled] : g_editor.documentDisabledWidgets_) {
-            if (IREntity::entityExists(id))
-                IRPrefab::Widget::setDisabled(id, disabled);
-        }
-        g_editor.documentDisabledWidgets_.clear();
+        restoreDocumentModalWidgets();
         return;
     }
     IREntity::forEachComponent<C_Widget>([&](IREntity::EntityId id, C_Widget &widget) {
@@ -4472,6 +4476,8 @@ void updateDocuments() {
     const auto action = g_editor.documentPanel_.poll();
     const bool escape = documentInteractionBlocked() &&
                         IRInput::checkKeyMouseButton(IRInput::kKeyButtonEscape, IRInput::PRESSED);
+    if (action != DocumentPanelAction::NONE || escape)
+        restoreDocumentModalWidgets();
     if (action == DocumentPanelAction::CANCEL || escape) {
         g_editor.overwriteTarget_.reset();
         g_editor.document_.cancelPending();
@@ -4676,6 +4682,11 @@ bool evaluateDocumentWorkflowCheck(const void *context, std::string &actual) {
     const auto &document = g_editor.document_;
     const bool pending = document.pendingAction() != DocumentAction::NONE;
     const bool overwrite = g_editor.overwriteTarget_.has_value();
+    const bool animationControlsDisabled =
+        IREntity::getComponent<C_Widget>(g_scrubberSlider).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_fpsSlider).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_editor.addFrameButton_).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_editor.duplicateFrameButton_).disabled_;
     bool occupied = false;
     if (g_editor.editableVoxelSet_ != IREntity::kNullEntity) {
         const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
@@ -4699,11 +4710,15 @@ bool evaluateDocumentWorkflowCheck(const void *context, std::string &actual) {
     actual = "jointName=" + jointName + " name=" + document.location().baseName_ +
              " dirty=" + std::to_string(document.dirty()) + " pending=" + std::to_string(pending) +
              " overwrite=" + std::to_string(overwrite) + " occupied=" + std::to_string(occupied) +
+             " entityMode=" + std::to_string(g_entitySceneMode) +
+             " animationControlsDisabled=" + std::to_string(animationControlsDisabled) +
              " error=" + document.error();
-    return jointNameMatches && !g_entitySceneMode && document.location().baseName_ == check.name_ &&
-           document.dirty() == check.dirty_ && pending == check.pending_ &&
-           overwrite == check.overwrite_ && !document.error().empty() == check.error_ &&
-           occupied == check.occupied_;
+    return jointNameMatches && g_entitySceneMode == check.entityMode_ &&
+           (!check.checkAnimationControls_ ||
+            animationControlsDisabled == check.animationControlsDisabled_) &&
+           document.location().baseName_ == check.name_ && document.dirty() == check.dirty_ &&
+           pending == check.pending_ && overwrite == check.overwrite_ &&
+           !document.error().empty() == check.error_ && occupied == check.occupied_;
 }
 
 bool evaluateAnimationBoundaryCheck(const void *context, std::string &actual) {
