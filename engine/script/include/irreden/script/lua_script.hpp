@@ -111,9 +111,10 @@ class LuaScript {
     // bindings".
     void bindLuaCanvasDraw();
 
-    // Bind run-directory-relative text file access. Absolute paths and paths
-    // that resolve outside the run directory are rejected.
+    // Bind root-relative text file access. Absolute paths and paths that
+    // resolve outside the root are rejected. The no-arg form uses the run directory.
     void bindLuaFiles();
+    void bindLuaFiles(const std::filesystem::path &root);
 
     // Bind creation and asset discovery under a trusted checkout root.
     // Lua paths are relative to this root and cannot escape it.

@@ -4714,6 +4714,9 @@ int main(int argc, char **argv) {
         ""
     );
     IREngine::args()
+        .string("--module-files", "bind IRFile in the module VM under an existing directory", "");
+    IREngine::args().string("--module-arg", "pass one string to IREditor.moduleArg()", "");
+    IREngine::args()
         .string("--module-session", "replay an authoring session registered by --module", "");
     IREngine::args().flag(
         IRPrefab::GuiAudit::kLayoutCheckFlag,
@@ -4751,8 +4754,20 @@ int main(int argc, char **argv) {
     // A module loads before the session builds: module_loaded resolves its
     // expectations against what the module registered.
     const std::string moduleDir = IREngine::args().getString("--module");
+    const std::string moduleFiles = IREngine::args().getString("--module-files");
+    const std::string moduleArg = IREngine::args().getString("--module-arg");
     const std::string moduleSession = IREngine::args().getString("--module-session");
     const std::string guiSession = IREngine::args().getEnum("--gui-session");
+    const bool moduleFilesProvided = IREngine::args().wasProvided("--module-files");
+    const bool moduleArgProvided = IREngine::args().wasProvided("--module-arg");
+    if (moduleFilesProvided && moduleDir.empty()) {
+        IR_LOG_ERROR("--module-files requires --module <dir>");
+        return exitCleanly(2);
+    }
+    if (moduleArgProvided && moduleDir.empty()) {
+        IR_LOG_ERROR("--module-arg requires --module <dir>");
+        return exitCleanly(2);
+    }
     if (!moduleSession.empty() && moduleDir.empty()) {
         IR_LOG_ERROR("--module-session requires --module <dir>");
         return exitCleanly(2);
@@ -4761,6 +4776,15 @@ int main(int argc, char **argv) {
         IR_LOG_ERROR("--module-session cannot be combined with --gui-session {}", guiSession);
         return exitCleanly(2);
     }
+    if (moduleFilesProvided) {
+        std::error_code error;
+        if (!std::filesystem::is_directory(moduleFiles, error)) {
+            IR_LOG_ERROR("--module-files directory not found: {}", moduleFiles);
+            return exitCleanly(2);
+        }
+        IRVoxelEditor::g_moduleHost.script().bindLuaFiles(moduleFiles);
+    }
+    IRVoxelEditor::g_moduleHost.setModuleArg(moduleArg);
     if (!moduleDir.empty()) {
         std::string error;
         if (!IRVoxelEditor::g_moduleHost.load(moduleDir, error)) {
