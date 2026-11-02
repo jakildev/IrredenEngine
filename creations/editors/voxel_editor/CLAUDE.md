@@ -7,33 +7,7 @@ Design log, findings and the authoring-session history:
 ## Validators
 
 - `python3 scripts/gui-verify.py IRVoxelEditor` — blank-grid sculpt workflow; `-- --gui-layout-check` also fails layout findings. Add `--reference-scene` for the diagnostic furniture/legacy shot table.
-- `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` — one
-  scripted session: `sculpt_workflow` covers hover/continuous paint/cancel/history/reload and workspaces; `hierarchy_workflow` covers attachment/cycle refusal/history/LOD/reload; `animation_boundary` covers frame/part ownership; `sculpt_single_save` covers held-stroke save and frame switching. `face_pick` and `drag_probe` prove the picking contract
-  against the full reference scene, `place_below` the Alt modifier,
-  `fill_ghost` the fill preview drawn while a drag is held,
-  `module_loaded` (with `--module test/module`) the creation-module seam,
-  `component_attach` (same module) the COMPONENTS panel's manifest round trip,
-  `component_field_page` the same on a field only the panel's pager reaches,
-  `component_field_key` the same on a field whose name is not a Lua identifier,
-  `composite_proof` (same module) authors the reference composite entity: nine
-  parts from the module's recipes, a bake, LOD bands, an engine component and a
-  yawed radial array,
-  `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
-  `remove_part` removes and restores a part and proves its record is omitted on save;
-  `undo_history` proves frame-local stroke history and part removal payload restoration,
-  `tier_scrub` proves per-part LOD bands and the tier scrubber,
-  `part_mode_cycle` takes a Ctrl+P part through every render mode, the Ctrl+M
-  twin, an array, and a save and reload,
-  `corner_part_revox_refused` proves a part that is not centred on its
-  translation is kept out of DETACHED REVOX,
-  `parts_scroll` reaches every part of an arrayed scene through the PARTS list
-  alone (reveal after the array, wheel, row click),
-  `mode_preview` proves the deferred render-mode switch allocates and releases
-  the selected part's private canvas while rotated and private-canvas parts stay
-  outside the axis-aligned edit pick, `part_sizes` creates two parts of different extents and holds
-  the mirror and loft tools to them, `part_gizmo_reach` drags a part's gizmo after a bake at its pivot,
-  a camera turn, and on a turned copy, and `part_ring_turn` turns a part about each rotate ring's axis
-  after a dimmed / transform-mode idle pair on the same gizmo texels.
+- `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` runs a named scripted session; `sessions.hpp` owns the complete registry. Core authoring flows are `sculpt_workflow`, `hierarchy_workflow`, `animation_boundary`, `sculpt_single_save`, `local_canvas`, `document_workflow`, `workarea_focus` and `motion_preview`. Include `--gui-layout-check` to gate reachability/layout. `face_pick` compares actual rendered faces with picking, and `text_input_command_capture` checks editor shortcuts under text focus.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
@@ -125,6 +99,7 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   radius, and linear copies start one step out.
 - Part transform drags, LOD-band edits, and attachment each make one undo record; Escape cancels an active transform/LOD gesture. Shift+A/D add/duplicate single-asset frames; multipart frame controls are disabled.
 - Ordinary documents expose named Save / Save As / Open / New and Save / Discard / Cancel for unsaved changes, including native-window close. Failed loads retain the current document; failed saves never clear its modified state. Single-asset saves stage frames, layer metadata and optional rig as one publication; composite saves refuse unsupported frame, rig or layer metadata. `document_workflow` exercises these decisions through the UI.
+- PREVIEW isolates a rendering copy of the assembly and samples `C_AutoSpin` from immutable rest poses. Play/seek/step/reset never mutate authored parts; Save serializes the originals. Preview intentionally does not run module systems or arbitrary component factories. `motion_preview` exercises detached-child motion, save/reopen and input isolation.
 - Composite saves stage canonical files and roll back publication failures. Recovery directories survive failed rollback; this is not crash/power-loss atomic.
 - Delete and PARTS REMOVE remove the selected part as one undo record; undo
   restores its payload at the same index, redo removes it again. Records name
@@ -200,8 +175,7 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   ROOT, the root. Its records (`component_records.hpp`) hold no sol objects;
   each apply goes through the factory, and Ctrl+S writes them as `components`.
   A saved scene naming a module component loads only with that module.
-  The editor binds `C_AutoSpin` as its engine row; it runs no auto-spin
-  system, so the component is data there.
+  The editor binds `C_AutoSpin` as its engine row; authored entities keep their rest pose while PREVIEW samples isolated copies.
 - A list's visible-row count is a panel fact, not module ABI: a module
   registers any number of recipes and components, and a session names a row,
   never its position.

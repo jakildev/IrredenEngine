@@ -166,6 +166,7 @@ add_executable(IrredenEngineTest
   render/voxel_editor_sculpt_grid_test.cpp
   render/voxel_editor_part_edit_history_test.cpp
   render/voxel_editor_composite_save_transaction_test.cpp
+  render/voxel_editor_motion_preview_test.cpp
   render/voxel_editor_scene_io_test.cpp
   render/voxel_editor_document_lifecycle_test.cpp
   render/voxel_editor_local_part_edit_test.cpp

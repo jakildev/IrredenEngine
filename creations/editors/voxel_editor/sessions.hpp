@@ -154,6 +154,7 @@ enum class Id {
     SCULPT_SINGLE_SAVE,
     DOCUMENT_WORKFLOW,
     LOCAL_CANVAS,
+    MOTION_PREVIEW,
     WORKAREA_FOCUS,
     HIERARCHY_WORKFLOW,
     TIER_SCRUB,
@@ -206,6 +207,16 @@ struct WorkareaFocusCheck {
 };
 bool evaluateWorkareaFocusCheck(const void *context, std::string &actual);
 
+struct MotionPreviewCheck {
+    bool active_;
+    int minTick_;
+    int maxTick_;
+    bool saved_;
+    bool playing_ = false;
+    bool checkFraming_ = false;
+};
+bool evaluateMotionPreviewCheck(const void *context, std::string &actual);
+
 struct LocalCanvasCheck {
     bool editing_;
     bool occupied_;
@@ -233,6 +244,8 @@ inline Id idFromName(const std::string &name) {
         return Id::DOCUMENT_WORKFLOW;
     if (name == "workarea_focus")
         return Id::WORKAREA_FOCUS;
+    if (name == "motion_preview")
+        return Id::MOTION_PREVIEW;
     if (name == "local_canvas")
         return Id::LOCAL_CANVAS;
     if (name == "hierarchy_workflow")
@@ -2105,6 +2118,62 @@ inline Recipe build(
             );
         return recipe;
     }
+    case Id::MOTION_PREVIEW: {
+        Builder builder("motion_preview", sceneSize, sceneOrigin);
+        const IRMath::vec2 previewButton(578, 61);
+        const IRMath::vec2 stageCamera = -IRMath::pos3DtoPos2DIso(IRMath::vec3(305, 0, 0));
+        builder.segment("open_preview");
+        builder.clickGui(previewButton);
+        builder.segment("step", kSessionZoom, stageCamera);
+        builder.clickGui({95, 311});
+        builder.segment("seek", kSessionZoom, stageCamera);
+        builder.dragGuiSlider({{10, 280}, {228, 16}}, 0.0f, 600.0f, 60.0f);
+        builder.segment("save_authored_pose", kSessionZoom, stageCamera);
+        builder.tapKey(IRInput::kKeyButtonDelete);
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.clickGui({306, 119});
+        builder.clickGui({441, 199});
+        builder.segment("cancel_overwrite_keeps_preview", kSessionZoom, stageCamera);
+        builder.clickGui({394, 119});
+        builder.tapKey(IRInput::kKeyButtonEscape);
+        builder.segment("play", kSessionZoom, stageCamera);
+        builder.clickGui({37, 311});
+        builder.segment("pause", kSessionZoom, stageCamera);
+        builder.clickGui({37, 311});
+        builder.segment("reset", kSessionZoom, stageCamera);
+        builder.clickGui({153, 311});
+        builder.segment("done", kSessionZoom, stageCamera);
+        builder.clickGui({211, 311});
+        builder.segment("reopen_authored_pose");
+        builder.clickGui({482, 119});
+        builder.segment("escape_returns_to_authoring");
+        builder.clickGui(previewButton);
+        builder.tapKey(IRInput::kKeyButtonEscape);
+        Recipe recipe = builder.finish();
+        static constexpr MotionPreviewCheck checks[] = {
+            {true, 0, 0, false, false, true},
+            {true, 1, 1, false},
+            {true, 57, 63, false},
+            {true, 57, 63, true},
+            {true, 57, 63, true},
+            {true, 64, 600, true, true},
+            {true, 64, 600, true},
+            {true, 0, 0, true},
+            {false, 0, 0, true},
+            {false, 0, 0, true},
+            {false, 0, 0, true}
+        };
+        for (std::size_t i = 0; i < std::size(checks); ++i)
+            recipe.segments_[i].assertions_.push_back(
+                IRPrefab::GuiTest::predicate(
+                    &evaluateMotionPreviewCheck,
+                    &checks[i],
+                    "preview_never_changes_authored_document"
+                )
+            );
+        return recipe;
+    }
+
     case Id::LOCAL_CANVAS: {
         Builder builder("local_canvas", sceneSize, sceneOrigin);
         const IRMath::vec3 origin(291, 0, 0);
