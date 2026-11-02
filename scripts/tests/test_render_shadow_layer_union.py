@@ -219,7 +219,7 @@ class ShadowLayerUnionTest(unittest.TestCase):
             "count_overlap_twice": (("shadowAccum += weight;\n                break;",
                                      "shadowAccum += weight;"),
                                     "adding an out-of-range layer erased a valid shadow"),
-            "unbounded_shadows": (("if (depthDiff - bias >= maxShadowThrow) continue;", ""),
+            "unbounded_shadows": (("if (depthDiff - bias >= maxShadowThrow) return false;", ""),
                                   "out-of-range-only casters stay rejected"),
         }
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):

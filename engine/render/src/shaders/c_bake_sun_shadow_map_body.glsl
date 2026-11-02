@@ -12,17 +12,17 @@ layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
 #include "ir_fog_shadow_caster.glsl"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.glsl"
-#if IR_SUN_SECOND_DEPTH
-// kSourceFaceFallbackOffset: the indexed fallback layer the second-depth
-// diagnostic borrows while no finite index is published.
+// The primary layer's slab extrema, and under IR_SUN_SECOND_DEPTH the indexed
+// fallback layer the second-depth diagnostic borrows while no finite index is
+// published.
 #include "ir_sun_face_query_layout.glsl"
-#endif
 
 const int kEmptyDistanceEncoded = 65535;
 
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap {
     uint sunDepthBuf[];
 };
+#include "ir_sun_depth_slab_write.glsl"
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
@@ -101,6 +101,7 @@ void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
     const int index = cascadeOffset + px.y * kSunShadowMapDim + px.x;
 #if IR_SUN_SECOND_DEPTH
     const uint previous = atomicMin(sunDepthBuf[index], packedDepth);
+    writeSunDepthSlab(index, packedDepth);
     if (previous == 0xFFFFFFFFu) {
         return;
     }
@@ -110,7 +111,7 @@ void writeSunTexel(int cascadeOffset, ivec2 px, uint packedDepth) {
     }
     atomicMin(sunDepthBuf[int(kSourceFaceFallbackOffset) + index], displaced);
 #else
-    atomicMin(sunDepthBuf[index], packedDepth);
+    writeSunPrimaryDepth(index, packedDepth);
 #endif
 }
 
