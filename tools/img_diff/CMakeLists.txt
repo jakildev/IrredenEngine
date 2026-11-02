@@ -9,6 +9,7 @@ FetchContent_Declare(
     stbimage
     GIT_REPOSITORY https://github.com/nothings/stb/
     GIT_TAG master
+    GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(stbimage)
 

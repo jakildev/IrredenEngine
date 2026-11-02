@@ -282,7 +282,7 @@ else
     chmod +x "$TMPROOT/dump-env"
     SESSION=fleet-test
     TRANSIENT_PANE_CMD="$TMPROOT/dump-env pool-1"
-    IR_FLEET_WORKERS=6 FLEET_FABLE_FALLBACK="opus" _gh_app_token=""
+    IR_FLEET_WORKERS=6 IRREDEN_DEBUG_INFO=LINES FLEET_FABLE_FALLBACK="opus" _gh_app_token=""
     export FLEET_GH_ACCOUNTING=1 FLEET_GH_REAL="/new/gh" FLEET_GH_PYTHON="/new/python3" \
            FLEET_GH_LAUNCHER="/new/launcher" FLEET_GH_EVENT_ROOT="/new/events"
     block="$(sed -n '/^if tmux list-sessions >\/dev\/null 2>&1; then$/,/^seed_tmux_pane_env$/p' "$FLEET_UP")"
@@ -298,6 +298,7 @@ else
         assert_contains "$envf" "FLEET_GH_REAL=/new/gh" "$pane: this boot's pinned gh"
         assert_contains "$envf" "FLEET_GH_LAUNCHER=/new/launcher" "$pane: this boot's launcher"
         assert_contains "$envf" "IR_FLEET_WORKERS=6" "$pane: IR_FLEET_WORKERS"
+        assert_contains "$envf" "IRREDEN_DEBUG_INFO=LINES" "$pane: IRREDEN_DEBUG_INFO"
         assert_absent "$envf" "stale-app-token" "$pane: the stale App token is evicted"
         assert_absent "$envf" "stale-other-token" "$pane: the alternate token is evicted"
         assert_absent "$envf" "FLEET_GH_IDENTITY" "$pane: the daemon identity is evicted"

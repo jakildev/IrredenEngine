@@ -20,6 +20,7 @@ FetchContent_Declare(
     sol2
     GIT_REPOSITORY https://github.com/ThePhD/sol2.git
     GIT_TAG main
+    GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(sol2)
 target_link_libraries(

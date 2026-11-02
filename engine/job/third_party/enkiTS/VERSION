@@ -2,6 +2,7 @@ enkiTS v1.11
 https://github.com/dougbinks/enkiTS
 zlib license
 
-Pinned via IR_ENKITS_GIT_TAG cache variable in
-engine/job/third_party/enkiTS/CMakeLists.txt. Override at configure
-time with `-DIR_ENKITS_GIT_TAG=<sha>` for a fully reproducible build.
+Pinned to commit 6ffccbdb1000253d8d513dd7a5ae9226e5023a5c, fetched as a
+SHA256-checked source archive in engine/job/third_party/enkiTS/CMakeLists.txt.
+Set `-DIR_ENKITS_GIT_REF=<branch-or-tag>` at configure time to shallow-clone
+a mutable reference instead.

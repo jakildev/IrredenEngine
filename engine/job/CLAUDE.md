@@ -90,11 +90,10 @@ it; `0` is the arm with a single executor.
   several engines for a decade.
 
 The vendor wrapper at `engine/job/third_party/enkiTS/` pins the
-upstream revision via the `IR_ENKITS_GIT_TAG` cache variable. The
-default is the v1.11 commit SHA (`6ffccbdb…`) with
-`GIT_SHALLOW FALSE`, which is reproducible by default. Override at
-configure time with a branch/tag (and set `GIT_SHALLOW TRUE` in
-`FetchContent_Declare`) when you want a mutable reference. The
+upstream revision to the v1.11 commit (`6ffccbdb…`), fetched as a
+SHA256-checked source archive so no git history lands in `_deps`.
+Set the `IR_ENKITS_GIT_REF` cache variable to a branch/tag at
+configure time to shallow-clone a mutable reference instead. The
 wrapper forces `CXX_STANDARD 17` on the enkiTS target specifically
 because v1.11's `TaskScheduler.cpp` uses `std::is_pod` (removed in
 C++23, which the rest of the engine builds at). Drop the override

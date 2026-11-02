@@ -250,6 +250,25 @@ emutls-shaped crash (a `thread_local` destructor faulting during
 chasing. It is a diagnostic workaround, not a fix — the use-after-free is
 real and surfaces in a non-debugger run once the freed block is reused.
 
+A build dir configured with `IRREDEN_DEBUG_INFO=LINES` (every fleet build
+dir — see "Debug-info depth" below) gives `bt` function names and
+`file:line` but no locals, arguments or `print`-able types. Reconfigure
+with `-DIRREDEN_DEBUG_INFO=FULL` before a session that needs them.
+
+### Debug-info depth and build-dir footprint
+
+The engine and its deps link statically into every executable, so a Debug
+build with full `-g` repeats the engine's DWARF in each one (~330 MB per
+demo exe on MinGW). The `IRREDEN_DEBUG_INFO` cache variable picks the
+depth: `FULL` (`-g`, the default) or `LINES` (`-g1`). `fleet-up` exports
+`IRREDEN_DEBUG_INFO=LINES`, which seeds a build dir's first configure. Two
+compressed-DWARF routes do not exist on this toolchain: gcc rejects `-gz`
+("not supported in this configuration") and neither `ld
+--compress-debug-sections` nor `objcopy --compress-debug-sections` accepts
+PE. On MinGW, static libraries and the per-exe `objects.a` CMake builds for
+long link lines are thin archives (`cmake/ir_make_rules_override.cmake`),
+so they reference the `.obj` files instead of copying them.
+
 ### Running the fleet on native Windows
 
 The bash+tmux fleet runs natively (host key `windows`): orchestration from

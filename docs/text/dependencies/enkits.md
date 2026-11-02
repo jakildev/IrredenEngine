@@ -18,8 +18,8 @@
 
 ### Build Configuration
 -   Fetched at configure time via CMake `FetchContent` from `engine/job/third_party/enkiTS/`.
--   Default tag is the pinned SHA `6ffccbdb…` with `GIT_SHALLOW FALSE` for reproducibility.
--   Override at configure time via `-DIR_ENKITS_GIT_TAG=<branch-or-tag>` (set `GIT_SHALLOW TRUE` when using a mutable ref).
+-   Default is the pinned v1.11 commit `6ffccbdb…`, fetched as a SHA256-checked GitHub source archive (no git history in `_deps`).
+-   Override at configure time via `-DIR_ENKITS_GIT_REF=<branch-or-tag>`, which shallow-clones that ref instead.
 -   The wrapper forces `CXX_STANDARD 17` on the enkiTS target to avoid `std::is_pod` removal in C++23.
 
 ### Runtime Notes
