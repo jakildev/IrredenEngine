@@ -104,6 +104,13 @@ fleet workflow.
   salvages any other HEAD to `salvage/<path-slug>` first; `--dirty-too` extends
   it to dirty ones. A clone whose worktrees cannot be listed exits 3, never
   clean. `fleet-health` runs the listing and warns on a non-empty or failed one.
+- **`fleet-clean`** — reports regenerable disk in a fleet clone, and with
+  `--apply` deletes it: build dirs untouched for `--days` (default 14), dirs
+  under `.claude/worktrees/` that `git worktree list` does not know, registered
+  worktrees under a temp dir, old `*.prof` / `save_files/` output, and
+  `tmp_pack_*` git garbage. `--wipe-builds` also clears every idle pool's
+  builds. Never touches a busy, dirty or locked worktree or a tracked file;
+  `fleet-clean --help` lists every rule.
 - **`fleet-edit`** — exact string replacement CLI (Python3). Takes a
   target file, an old-text file, and a new-text file; replaces exactly
   one occurrence (or all with `--replace-all`). Use for tasks that need

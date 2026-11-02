@@ -1,0 +1,549 @@
+#!/usr/bin/env bash
+# fleet-clean — report, and with --apply reclaim, regenerable disk in a fleet clone.
+#
+#   fleet-clean [--days N] [--apply] [--wipe-builds] [--root <engine-clone>]
+#
+# Dry run by default: one line per reclaimable item with its size, then a total.
+# The clone is --root (default FLEET_ENGINE_ROOT, else ~/src/IrredenEngine) plus
+# its nested game clone (FLEET_GAME_ROOT, default <root>/creations/game) when
+# present.
+#
+# What it reclaims (N = --days, default 14):
+#   stale-build    build-game*/ and build-release/ in a pool worktree, the
+#                  <root>/build-game-<worktree>/ dirs ir_default_build_dir puts
+#                  at the engine root for game worktrees, and the main clone's
+#                  build/ and build-release/, when nothing in them changed for N
+#                  days. A build-game-<worktree>/ whose worktree is gone goes at
+#                  any age.
+#   wipe-build     --wipe-builds only: every build dir of an idle pool worktree
+#                  at any age, build/ included. For when the disk is critical.
+#   orphan         a dir under .claude/worktrees/ that `git worktree list` does
+#                  not know and whose .git link names no admin dir. Kept when any
+#                  non-ignored file holds content the clone has no object for.
+#   temp-worktree  a registered worktree outside the clone under a temp dir (a
+#                  bisect worktree in /tmp): `git worktree remove` when clean and
+#                  its HEAD is on a ref. `git worktree prune` runs after.
+#   old-capture    *.prof and save_files/ files older than N days inside the
+#                  build dirs that stay (and a pool's ignored save_files/).
+#   git-garbage    tmp_pack_* / tmp_obj_* / tmp_idx_* under .git/objects older
+#                  than N days, never under one day (a live fetch writes them).
+#
+# Never touched: a worktree that is busy (a reservation, a claim it owns, an
+# in-flight dispatch record naming it, a heartbeat within the hour, or a
+# checked-out branch other than its idle *-scratch one, which is the branch
+# fleet-worktree-busy-branches reports), dirty, or locked; and nothing git
+# tracks. Each kept worktree prints with its reason. Busy state is re-read
+# before every --apply deletion.
+#
+# Exit status: 0 success, 1 a deletion failed or a clone's worktrees could not
+# be listed, 2 usage error.
+#
+# FLEET_CLEAN_NOW (epoch seconds) pins the clock for tests.
+#
+# Source of truth: scripts/fleet/fleet-clean in the engine repo.
+# Installed to ~/bin/fleet-clean by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+# shellcheck source=fleet-common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+
+usage_error() {
+    echo "fleet-clean: $1" >&2
+    echo "usage: fleet-clean [--days N] [--apply] [--wipe-builds] [--root <engine-clone>]" >&2
+    exit 2
+}
+
+days=14
+apply=0
+wipe=0
+root="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --apply) apply=1; shift ;;
+        --wipe-builds) wipe=1; shift ;;
+        --days)
+            [[ $# -ge 2 ]] || usage_error "--days needs a value"
+            days="$2"; shift 2 ;;
+        --days=*) days="${1#--days=}"; shift ;;
+        --root)
+            [[ $# -ge 2 ]] || usage_error "--root needs a value"
+            root="$2"; shift 2 ;;
+        --root=*) root="${1#--root=}"; shift ;;
+        -h|--help)
+            awk 'NR==1 {next} /^#/ {print; next} {exit}' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *) usage_error "unknown arg '$1'" ;;
+    esac
+done
+[[ "$days" =~ ^[0-9]+$ ]] || usage_error "--days wants a whole number of days, got '$days'"
+[[ -n "$root" ]] || usage_error "--root needs a value"
+root="${root%/}"
+[[ -d "$root/.git" ]] || usage_error "$root is not a main clone (no .git directory)"
+
+now="${FLEET_CLEAN_NOW:-$(date +%s)}"
+[[ "$now" =~ ^[0-9]+$ ]] || usage_error "FLEET_CLEAN_NOW must be epoch seconds, got '$now'"
+
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
+RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
+HEARTBEATS_DIR="${FLEET_HEARTBEATS_DIR:-$HOME/.fleet/heartbeats}"
+REBASE_SCRATCH="${FLEET_REBASE_SCRATCH:-$HOME/.fleet/rebase-scratch}"
+
+game="${FLEET_GAME_ROOT:-$root/creations/game}"
+game="${game%/}"
+clones=("$root")
+[[ -d "$game/.git" ]] && clones+=("$game")
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/fleet-clean.XXXXXX")
+trap 'rm -rf "$WORK"' EXIT
+
+# stamp_at <file> <epoch> — a reference file for `find -newer`, so the age
+# checks run on find's own mtime comparison on every host.
+stamp_at() {
+    local stamp
+    stamp=$(date -u -d "@$2" +%Y%m%d%H%M.%S 2>/dev/null || date -u -r "$2" +%Y%m%d%H%M.%S)
+    TZ=UTC touch -t "$stamp" "$1"
+}
+REF_STALE="$WORK/ref-stale"
+REF_RECENT="$WORK/ref-recent"
+REF_GARBAGE="$WORK/ref-garbage"
+stamp_at "$REF_STALE" $((now - days * 86400))
+stamp_at "$REF_RECENT" $((now - 3600))
+stamp_at "$REF_GARBAGE" $((now - (days > 0 ? days : 1) * 86400))
+
+# canon <path> — one spelling per directory: the physical path when it exists
+# (git prints realpaths, MSYS prints C:/ where the shell says /c/), lowercased
+# on Windows where the filesystem ignores case.
+canon() {
+    local p="${1%/}"
+    if [[ -d "$p" ]]; then
+        p=$(cd "$p" 2>/dev/null && pwd -P) || p="${1%/}"
+    fi
+    p=$(canonicalize_path_spelling "$p")
+    case "${OSTYPE:-}" in
+        msys*|cygwin*) p=$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]') ;;
+    esac
+    printf '%s' "$p"
+}
+
+# is_under <path> <dir> — <path> is strictly inside <dir>.
+is_under() {
+    local p d
+    p=$(canon "$1")
+    d=$(canon "$2")
+    [[ "$p" == "$d"/* ]]
+}
+
+# newer_than <path> <ref> — something under <path> changed after <ref>. A walk
+# that fails answers yes, so an unreadable tree never reads as stale.
+newer_than() {
+    local out
+    out=$(find "$1" -newer "$2" -print -quit 2>/dev/null) || return 0
+    [[ -n "$out" ]]
+}
+
+# has_tracked <repo> <relpath> — git tracks something at or under <relpath>.
+# A failed lookup answers yes.
+has_tracked() {
+    local out
+    out=$(git -C "$1" ls-files -- "$2" 2>/dev/null) || return 0
+    [[ -n "$out" ]]
+}
+
+size_kb() {
+    du -sk "$1" 2>/dev/null | awk '{k = $1} END {print k + 0}'
+}
+
+list_kb() {
+    tr '\n' '\0' < "$1" | xargs -0 du -k 2>/dev/null | awk '{s += $1} END {print s + 0}'
+}
+
+human_kb() {
+    awk -v k="$1" 'BEGIN {
+        split("K M G T", u, " "); i = 1
+        while (k >= 1024 && i < 4) { k /= 1024; i++ }
+        printf(i == 1 ? "%d%s" : "%.1f%s", k, u[i])
+    }'
+}
+
+# --- busy state --------------------------------------------------------------
+
+declare -A BUSY=()
+
+# load_busy — BUSY[<worktree basename>] = why the fleet holds it: a worktree
+# reservation, a claim it owns, an in-flight dispatch record naming it, or a
+# heartbeat within the hour (a babysat architect pane has no dispatch record).
+# A pane's engine worktree and its game twin share the basename, so one entry
+# covers both.
+load_busy() {
+    BUSY=()
+    local f b
+    for f in "$RESERVATIONS_DIR"/*.json; do
+        [[ -f "$f" ]] || continue
+        b=$(basename "$f" .json)
+        BUSY["$b"]="reserved"
+    done
+    for f in "$CLAIMS_DIR"/*/owner; do
+        [[ -f "$f" ]] || continue
+        b=$(tr -d '\r\n' < "$f")
+        [[ -n "$b" && -z "${BUSY[$b]+x}" ]] && BUSY["$b"]="claim $(basename "$(dirname "$f")")"
+    done
+    for f in "$STATE_DIR"/dispatch/*.json; do
+        [[ -f "$f" ]] || continue
+        b=$(sed -n 's/.*"agent":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
+        [[ -n "$b" && -z "${BUSY[$b]+x}" ]] && BUSY["$b"]="in-flight dispatch"
+    done
+    for f in "$HEARTBEATS_DIR"/*; do
+        [[ -f "$f" && "$f" -nt "$REF_RECENT" ]] || continue
+        b=$(basename "$f")
+        [[ -z "${BUSY[$b]+x}" ]] && BUSY["$b"]="heartbeat within the hour"
+    done
+    return 0
+}
+
+# kept_reason <path> <branch> <locked> — why a registered worktree must not be
+# touched. Prints nothing and fails when it is idle.
+kept_reason() {
+    local path="$1" branch="$2" locked="$3" b n
+    b=$(basename "$path")
+    if [[ -n "${BUSY[$b]+x}" ]]; then
+        printf 'busy: %s' "${BUSY[$b]}"
+        return 0
+    fi
+    if [[ "$locked" == 1 ]]; then
+        printf 'locked'
+        return 0
+    fi
+    if [[ -n "$branch" && "$branch" != *-scratch ]]; then
+        printf 'holds branch %s' "$branch"
+        return 0
+    fi
+    if ! n=$(git -C "$path" status --porcelain --untracked-files=normal 2>/dev/null | wc -l); then
+        printf 'status unreadable'
+        return 0
+    fi
+    if (( n > 0 )); then
+        printf '%d dirty file(s)' "$n"
+        return 0
+    fi
+    return 1
+}
+
+# --- items -------------------------------------------------------------------
+
+ITEM_KIND=()
+ITEM_PATH=()
+ITEM_ARG=()
+ITEM_OWNER=()
+total_kb=0
+
+# add_item <kind> <kb> <path> <note> [<arg>] [<owner>] — record and print one
+# reclaimable item. <arg> is the file list (old-capture, git-garbage) or the
+# clone (temp-worktree); <owner> is the worktree basename re-checked for busy
+# state before an --apply deletion.
+add_item() {
+    ITEM_KIND+=("$1")
+    ITEM_PATH+=("$3")
+    ITEM_ARG+=("${5:-}")
+    ITEM_OWNER+=("${6:-}")
+    total_kb=$((total_kb + $2))
+    printf '  %-13s %8s  %s  (%s)\n' "$1" "$(human_kb "$2")" "$3" "$4"
+}
+
+keep() {
+    printf '  %-13s %8s  %s  (%s)\n' kept - "$1" "$2"
+}
+
+capture_seq=0
+
+# captures <dir> [<owner>] — profiler captures and run output under <dir> older
+# than N days.
+captures() {
+    local dir="$1" owner="${2:-}" list n
+    capture_seq=$((capture_seq + 1))
+    list="$WORK/files-$capture_seq"
+    # A partial walk only lists fewer files, never a newer one.
+    find "$dir" -type f \( -name '*.prof' -o -path '*/save_files/*' \) \
+        ! -newer "$REF_STALE" -print 2>/dev/null > "$list" || true
+    n=$(wc -l < "$list")
+    (( n > 0 )) || return 0
+    add_item old-capture "$(list_kb "$list")" "$dir" \
+        "$((n)) file(s) older than ${days}d" "$list" "$owner"
+}
+
+# build_dir <dir> <repo> <owner> <wipeable> — classify one build dir of an idle
+# owner: stale, wiped, or swept for old captures.
+build_dir() {
+    local dir="$1" repo="$2" owner="$3" wipeable="$4"
+    if has_tracked "$repo" "${dir##*/}"; then
+        keep "$dir" "git tracks files in it"
+    elif ! newer_than "$dir" "$REF_STALE"; then
+        add_item stale-build "$(size_kb "$dir")" "$dir" "untouched ${days}d+" "" "$owner"
+    elif (( wipe && wipeable )); then
+        add_item wipe-build "$(size_kb "$dir")" "$dir" "--wipe-builds" "" "$owner"
+    else
+        captures "$dir" "$owner"
+    fi
+}
+
+# --- worktree registry -------------------------------------------------------
+
+# worktree_rows <clone> — `git worktree list --porcelain` as one row per
+# worktree, split on $SEP: path, HEAD, branch, locked (0/1), prunable (0/1).
+# The first row is the main checkout. Not tabs: `read` folds runs of IFS
+# whitespace, so a detached worktree's empty branch would shift the fields.
+SEP=$'\x1f'
+worktree_rows() {
+    git -C "$1" worktree list --porcelain | tr -d '\r' | awk -v s="$SEP" '
+        function emit() { if (p != "") print p s h s b s l s x }
+        /^worktree / { emit(); p = substr($0, 10); h = ""; b = ""; l = 0; x = 0; next }
+        /^HEAD /     { h = $2; next }
+        /^branch /   { b = substr($0, 8); sub(/^refs\/heads\//, "", b); next }
+        /^locked/    { l = 1; next }
+        /^prunable/  { x = 1; next }
+        END          { emit() }'
+}
+
+declare -A REGISTERED=()   # canon path -> 1, every clone
+declare -A VERDICT=()      # canon path -> kept reason ("" = idle), pool worktrees
+declare -A GAME_POOL=()    # basename -> path, the game clone's pool worktrees
+declare -A ROWS=()         # clone -> worktree_rows output
+listed=()                  # the clones whose worktrees could be listed, in order
+failures=0
+
+load_busy
+
+temp_roots=()
+for t in /tmp /var/tmp "${TMPDIR:-}" "${TEMP:-}" "${TMP:-}"; do
+    [[ -n "$t" && -d "$t" ]] || continue
+    temp_roots+=("$t")
+done
+
+echo "fleet-clean: $root ($( ((apply)) && echo apply || echo 'dry run'); builds stale after ${days}d$( ((wipe)) && echo '; --wipe-builds'))"
+
+for clone in "${clones[@]}"; do
+    if ! rows=$(worktree_rows "$clone"); then
+        echo "fleet-clean: error: git worktree list failed in $clone; skipping its worktrees" >&2
+        failures=$((failures + 1))
+        continue
+    fi
+    ROWS["$clone"]="$rows"
+    listed+=("$clone")
+    while IFS="$SEP" read -r path _head _branch _locked _prunable; do
+        [[ -n "$path" ]] && REGISTERED["$(canon "$path")"]=1
+    done <<< "$rows"
+done
+
+# Pool worktrees: build dirs of the idle ones.
+for clone in ${listed[@]+"${listed[@]}"}; do
+    pool="$clone/.claude/worktrees"
+    while IFS="$SEP" read -r path _head branch locked _prunable; do
+        [[ -n "$path" && -d "$path" ]] || continue
+        is_under "$path" "$pool" || continue
+        [[ "$clone" == "$game" ]] && GAME_POOL["$(basename "$path")"]="$path"
+        reason=$(kept_reason "$path" "$branch" "$locked") || reason=""
+        VERDICT["$(canon "$path")"]="$reason"
+        builds=()
+        for d in "$path"/build-game* "$path"/build-release "$path"/build; do
+            [[ -d "$d" ]] && builds+=("$d")
+        done
+        if [[ -n "$reason" ]]; then
+            (( ${#builds[@]} > 0 )) && keep "$path" "$reason"
+            continue
+        fi
+        owner=$(basename "$path")
+        if (( ${#builds[@]} > 0 )); then
+            for d in "${builds[@]}"; do
+                if [[ "${d##*/}" == build ]]; then
+                    # A pool's build/ is its incremental cache: only --wipe-builds takes it.
+                    if has_tracked "$path" build; then
+                        keep "$d" "git tracks files in it"
+                    elif (( wipe )); then
+                        add_item wipe-build "$(size_kb "$d")" "$d" "--wipe-builds" "" "$owner"
+                    else
+                        captures "$d" "$owner"
+                    fi
+                else
+                    build_dir "$d" "$path" "$owner" 1
+                fi
+            done
+        fi
+        if [[ -d "$path/save_files" ]] && ! has_tracked "$path" save_files \
+            && git -C "$path" check-ignore -q save_files 2>/dev/null; then
+            captures "$path/save_files" "$owner"
+        fi
+    done <<< "${ROWS[$clone]}"
+done
+
+# Engine-root build dirs: the main clone's own, and the game worktrees' builds.
+for d in "$root/build" "$root/build-release"; do
+    [[ -d "$d" ]] && build_dir "$d" "$root" "" 0
+done
+for d in "$root"/build-game-*; do
+    [[ -d "$d" ]] || continue
+    name="${d##*/build-game-}"
+    if [[ ! -d "$game/.git" ]]; then
+        build_dir "$d" "$root" "" 0
+        continue
+    fi
+    if [[ "$name" == "$(basename "$game")" || "${name%-release}" == "$(basename "$game")" ]]; then
+        build_dir "$d" "$root" "" 0   # the game main clone's build
+        continue
+    fi
+    owner_path=""
+    for cand in "$name" "${name%-release}"; do
+        if [[ -n "${GAME_POOL[$cand]+x}" ]]; then
+            owner_path="${GAME_POOL[$cand]}"
+            break
+        fi
+    done
+    if [[ -z "$owner_path" ]]; then
+        if has_tracked "$root" "${d##*/}"; then
+            keep "$d" "git tracks files in it"
+        elif newer_than "$d" "$REF_RECENT"; then
+            keep "$d" "no game worktree '$name', but written within the hour"
+        else
+            add_item stale-build "$(size_kb "$d")" "$d" "game worktree '$name' is gone"
+        fi
+        continue
+    fi
+    reason="${VERDICT[$(canon "$owner_path")]:-}"
+    if [[ -n "$reason" ]]; then
+        keep "$d" "$reason"
+    else
+        build_dir "$d" "$root" "$(basename "$owner_path")" 1
+    fi
+done
+
+# unsaved_count <clone> <dir> — non-ignored files under <dir> whose content the
+# clone holds no object for: work that exists nowhere else. Fails when it cannot
+# tell. An absent index file reads as empty, so every file is "other".
+unsaved_count() {
+    local clone="$1" dir="$2" shas
+    shas=$(GIT_INDEX_FILE="$WORK/no-index" git -C "$dir" --git-dir="$clone/.git" --work-tree=. \
+            -c core.quotePath=false ls-files --others --exclude-standard \
+        | tr -d '\r' \
+        | GIT_INDEX_FILE="$WORK/no-index" git -C "$dir" --git-dir="$clone/.git" --work-tree=. \
+            hash-object --stdin-paths) || return 1
+    [[ -n "$shas" ]] || { echo 0; return 0; }
+    printf '%s\n' "$shas" | tr -d '\r' | git -C "$clone" cat-file --batch-check \
+        | tr -d '\r' | awk '$2 == "missing" {n++} END {print n + 0}'
+}
+
+# Orphans: dirs under .claude/worktrees/ that no clone registers.
+for clone in ${listed[@]+"${listed[@]}"}; do
+    for d in "$clone"/.claude/worktrees/*/; do
+        d="${d%/}"
+        [[ -d "$d" ]] || continue
+        [[ -n "${REGISTERED[$(canon "$d")]+x}" ]] && continue
+        # Second witness, independent of path spelling: a .git link whose admin
+        # dir still exists belongs to git.
+        if [[ -f "$d/.git" ]]; then
+            admin=$(sed -n 's/^gitdir: //p' "$d/.git" | tr -d '\r')
+            [[ -n "$admin" && -d "$admin" ]] && continue
+        elif [[ -e "$d/.git" ]]; then
+            keep "$d" "a clone of its own, not a worktree"
+            continue
+        fi
+        b=$(basename "$d")
+        if [[ -n "${BUSY[$b]+x}" ]]; then
+            keep "$d" "busy: ${BUSY[$b]}"
+        elif [[ -n $(find "$d" -maxdepth 0 -newer "$REF_RECENT" 2>/dev/null) ]]; then
+            keep "$d" "created within the hour"
+        elif has_tracked "$clone" ".claude/worktrees/$b"; then
+            keep "$d" "git tracks files in it"
+        elif ! n=$(unsaved_count "$clone" "$d"); then
+            keep "$d" "could not check its files against the clone"
+        elif (( n > 0 )); then
+            keep "$d" "$n file(s) hold content the clone has no object for"
+        else
+            add_item orphan "$(size_kb "$d")" "$d" "not in git worktree list" "" "$b"
+        fi
+    done
+done
+
+# Registered worktrees outside the clone under a temp dir.
+for clone in ${listed[@]+"${listed[@]}"}; do
+    first=1
+    while IFS="$SEP" read -r path head _branch locked prunable; do
+        if (( first )); then first=0; continue; fi
+        [[ -n "$path" && "$prunable" == 0 && -d "$path" ]] || continue
+        is_under "$path" "$clone" && continue
+        is_under "$path" "$REBASE_SCRATCH" && continue
+        in_temp=0
+        for t in ${temp_roots[@]+"${temp_roots[@]}"}; do
+            is_under "$path" "$t" && { in_temp=1; break; }
+        done
+        (( in_temp )) || continue
+        b=$(basename "$path")
+        if [[ -n "${BUSY[$b]+x}" ]]; then
+            keep "$path" "busy: ${BUSY[$b]}"
+        elif [[ "$locked" == 1 ]]; then
+            keep "$path" "locked"
+        elif ! n=$(git -C "$path" status --porcelain --untracked-files=normal 2>/dev/null | wc -l); then
+            keep "$path" "status unreadable"
+        elif (( n > 0 )); then
+            keep "$path" "$((n)) dirty file(s)"
+        elif [[ -z "$head" || -z $(git -C "$clone" for-each-ref --count=1 --contains "$head" 2>/dev/null) ]]; then
+            keep "$path" "HEAD ${head:0:9} is on no ref; fleet-worktree-sweep --prune salvages it"
+        else
+            add_item temp-worktree "$(size_kb "$path")" "$path" "registered in $clone" "$clone" "$b"
+        fi
+    done <<< "${ROWS[$clone]}"
+done
+
+# Git's own leftovers from interrupted fetches and repacks.
+for clone in "${clones[@]}"; do
+    [[ -d "$clone/.git/objects" ]] || continue
+    capture_seq=$((capture_seq + 1))
+    list="$WORK/files-$capture_seq"
+    find "$clone/.git/objects" -maxdepth 2 -type f \
+        \( -name 'tmp_pack_*' -o -name 'tmp_obj_*' -o -name 'tmp_idx_*' \) \
+        ! -newer "$REF_GARBAGE" -print 2>/dev/null > "$list" || true
+    n=$(wc -l < "$list")
+    (( n > 0 )) && add_item git-garbage "$(list_kb "$list")" "$clone/.git/objects" "$((n)) file(s)" "$list"
+done
+
+if (( ! apply )); then
+    for clone in ${listed[@]+"${listed[@]}"}; do
+        git -C "$clone" worktree prune --dry-run --verbose 2>&1 | tr -d '\r' \
+            | sed "s|^|  prune         $clone: |" || true
+    done
+    echo "total: $(human_kb "$total_kb") reclaimable in ${#ITEM_KIND[@]} item(s); rerun with --apply to delete"
+    exit $(( failures > 0 ))
+fi
+
+load_busy
+reclaimed=0
+for i in "${!ITEM_KIND[@]}"; do
+    kind="${ITEM_KIND[$i]}" path="${ITEM_PATH[$i]}" arg="${ITEM_ARG[$i]}" owner="${ITEM_OWNER[$i]}"
+    if [[ -n "$owner" && -n "${BUSY[$owner]+x}" ]]; then
+        echo "skipped: $path (became busy: ${BUSY[$owner]})"
+        continue
+    fi
+    kb=0
+    case "$kind" in
+        old-capture|git-garbage)
+            kb=$(list_kb "$arg")
+            tr '\n' '\0' < "$arg" | xargs -0 rm -f -- && ok=1 || ok=0 ;;
+        temp-worktree)
+            kb=$(size_kb "$path")
+            git -C "$arg" worktree remove --force "$path" >/dev/null 2>&1 && ok=1 || ok=0 ;;
+        *)
+            kb=$(size_kb "$path")
+            rm -rf -- "$path" && ok=1 || ok=0 ;;
+    esac
+    if (( ok )); then
+        echo "removed: $path"
+        reclaimed=$((reclaimed + kb))
+    else
+        echo "FAILED: $path ($kind)" >&2
+        failures=$((failures + 1))
+    fi
+done
+for clone in ${listed[@]+"${listed[@]}"}; do
+    git -C "$clone" worktree prune --verbose 2>&1 | tr -d '\r' | sed "s|^|pruned: $clone: |" || true
+done
+echo "reclaimed: $(human_kb "$reclaimed")$( ((failures)) && echo "; $failures failure(s)")"
+exit $(( failures > 0 ))
