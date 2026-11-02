@@ -669,6 +669,11 @@ struct PanelLabelCheck {
     std::string name_;
 };
 
+struct RecipePagerCheck {
+    bool present_ = false;
+    std::string name_;
+};
+
 // Component expectation on an entity-scene target (a part index, or
 // kEntitySceneRootTarget), read from the live entity: field_ of component_
 // holds expected_. A nullopt expected_ asserts the component is absent.
@@ -733,6 +738,7 @@ struct Recipe {
     // Same contract, for the module checks.
     std::deque<ComponentCheck> componentChecks_;
     std::deque<PanelLabelCheck> panelLabelChecks_;
+    std::deque<RecipePagerCheck> recipePagerChecks_;
     std::deque<ComponentValueCheck> componentValueChecks_;
     // Same contract, for the entity-scene LOD checks.
     std::deque<PartGateCheck> partGateChecks_;
@@ -826,6 +832,7 @@ bool evaluateSliderCheck(const void *context, std::string &actual);
 // Defined in main.cpp, where the module host and its docked panels live.
 bool evaluateComponentCheck(const void *context, std::string &actual);
 bool evaluatePanelLabelCheck(const void *context, std::string &actual);
+bool evaluateRecipePagerCheck(const void *context, std::string &actual);
 
 // Read one PartGateCheck / ManifestCheck against the live entity scene and the
 // file its last save wrote. Defined in main.cpp, where the scene lives.
@@ -1328,10 +1335,19 @@ class Builder {
             recipeListRowCenterGuiTrixel(0),
             static_cast<int>(recipeIndex)
         )));
+        const int lastPage = recipeParamPageCount(static_cast<int>(recipe->params_.size())) - 1;
+        for (int page = 0; page < lastPage; ++page)
+            clickGui(recipePageButtonCenterGuiTrixel(kRecipePagePrevPos));
+        int page = 0;
         for (std::size_t i = 0; i < recipe->params_.size(); ++i) {
             const RecipeParam &param = recipe->params_[i];
+            const int paramPage = static_cast<int>(i) / kRecipeParamRowsPerPage;
+            while (page < paramPage) {
+                clickGui(recipePageButtonCenterGuiTrixel(kRecipePageNextPos));
+                ++page;
+            }
             dragGuiSlider(
-                recipeParamSliderGeometry(static_cast<int>(i)),
+                recipeParamSliderGeometry(static_cast<int>(i) % kRecipeParamRowsPerPage),
                 param.min_,
                 param.max_,
                 values[i]
@@ -2547,6 +2563,14 @@ class Builder {
         const PanelLabelCheck &check = m_recipe.panelLabelChecks_.back();
         m_current.assertions_.push_back(
             IRPrefab::GuiTest::predicate(&evaluatePanelLabelCheck, &check, check.name_.c_str())
+        );
+    }
+
+    void expectRecipePager(bool present, std::string name) {
+        addPredicateCheck(
+            m_recipe.recipePagerChecks_,
+            RecipePagerCheck{present, std::move(name)},
+            &evaluateRecipePagerCheck
         );
     }
 

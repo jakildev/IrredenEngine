@@ -676,6 +676,11 @@ class Handle {
     expectPanelLabel(const std::string &panel, const std::string &label, const std::string &name) {
         builder().expectPanelLabel(panel, label, name);
     }
+    void expectRecipePager(const sol::object &present, const std::string &name) {
+        if (!present.is<bool>())
+            throw argumentError("expectRecipePager", "present", "a boolean");
+        builder().expectRecipePager(present.as<bool>(), name);
+    }
     void expectComponentValue(
         int target,
         const std::string &component,
@@ -1006,6 +1011,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectComponentRegistered,
         "expectPanelLabel",
         &Handle::expectPanelLabel,
+        "expectRecipePager",
+        &Handle::expectRecipePager,
         "expectComponentValue",
         &Handle::expectComponentValue,
         "recordError",

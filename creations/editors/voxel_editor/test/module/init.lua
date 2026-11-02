@@ -1,4 +1,4 @@
--- Neutral fixture for IRVoxelEditor --module: five components, six recipes
+-- Neutral fixture for IRVoxelEditor --module: five components, seven recipes
 -- and one panel, so every registration path the editor hosts is exercised and
 -- both the COMPONENTS and RECIPES lists hold more rows than they show.
 
@@ -155,6 +155,22 @@ IREditor.registerRecipe(
     }
 )
 
+IREditor.registerRecipe(
+    "test_pages",
+    {
+        { name = "a", type = IREditor.ParamType.INT, default = 1, min = 0, max = 4 },
+        { name = "b", type = IREditor.ParamType.INT, default = 1, min = 0, max = 4 },
+        { name = "c", type = IREditor.ParamType.INT, default = 1, min = 0, max = 4 },
+        { name = "x", type = IREditor.ParamType.INT, default = 1, min = 0, max = 4 },
+        { name = "y", type = IREditor.ParamType.INT, default = 1, min = 0, max = 4 },
+    },
+    function(values, size)
+        local cx = math.floor(size.x / 2)
+        local cy = math.floor(size.y / 2)
+        return { { cx + values.x, cy + values.y, size.z - 2, { r = 210, g = 80, b = 180 } } }
+    end
+)
+
 -- A 1x1 column two cells off the centre in -X and +Y, `depth` cells tall; the
 -- last recipe, so it lies below the RECIPES view.
 IREditor.registerRecipe(
@@ -251,6 +267,23 @@ IREditor.registerSession("test_recipe_attach", function(session)
     session:expectComponentValue(0, "TestModuleTag", "weight", 7, true, "field_survives_reload")
     session:expectComponentValue(
         0, "TestModuleTag", "weight", 1, false, "field_is_not_default_after_reload")
+end)
+
+IREditor.registerSession("test_recipe_pages", function(session)
+    local size = session:sceneSize()
+    local x = math.floor(size.x / 2)
+    local y = math.floor(size.y / 2)
+
+    session:segment("paged_recipe")
+    session:addVoxelPart()
+    session:applyRecipe("test_pages", { x = 3, y = 2 })
+    session:expectRecipePager(true, "pager_present_for_five_params")
+    session:expectPartOccupancy(0, { x + 3, y + 2, size.z - 2 }, true, "paged_values_filled")
+    session:expectPartOccupancy(0, { x + 1, y + 1, size.z - 2 }, false, "defaults_differ")
+
+    session:segment("single_page_recipe")
+    session:applyRecipe("test_column", { height = 3 })
+    session:expectRecipePager(false, "pager_absent_for_one_param")
 end)
 
 IREditor.registerSession("test_class_paint", function(session)
