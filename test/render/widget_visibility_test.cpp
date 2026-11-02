@@ -3,6 +3,7 @@
 #include <irreden/command/command_manager.hpp>
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/input/input_manager.hpp>
+#include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
@@ -97,6 +98,28 @@ TEST_F(WidgetVisibilityTest, HiddenWidgetsCannotHoverTabFocusOrActivateHotkeys) 
     press(IRInput::kKeyButtonM);
     EXPECT_FALSE(IRPrefab::Widget::wasClicked(hidden));
     EXPECT_FALSE(IRPrefab::Widget::isHovered(hidden));
+}
+
+TEST_F(WidgetVisibilityTest, HiddenWidgetHitboxDoesNotInterceptWorldInput) {
+    const auto widget =
+        IRPrefab::Widget::makeButton(IRMath::ivec2(10), IRMath::ivec2(60, 20), "BUTTON");
+    auto &hitbox = IREntity::getComponent<IRComponents::C_HitBox2DGui>(widget);
+    const auto &position = IREntity::getComponent<IRComponents::C_GuiPosition>(widget);
+    IRSystem::System<IRSystem::HITBOX_MOUSE_TEST_GUI> hitboxSystem;
+    hitboxSystem.mouseGuiTrixel_ = IRMath::vec2(20.0f, 15.0f);
+
+    hitboxSystem.tick(hitbox, position);
+    ASSERT_TRUE(hitbox.hovered_);
+
+    IRPrefab::Widget::setVisible(widget, false);
+    hitboxSystem.tick(hitbox, position);
+    EXPECT_FALSE(hitbox.enabled_);
+    EXPECT_FALSE(hitbox.hovered_);
+
+    IRPrefab::Widget::setVisible(widget, true);
+    hitboxSystem.tick(hitbox, position);
+    EXPECT_TRUE(hitbox.enabled_);
+    EXPECT_TRUE(hitbox.hovered_);
 }
 
 TEST_F(WidgetVisibilityTest, HideShowCancelsKeyboardFocusWithoutLosingAuthoredText) {

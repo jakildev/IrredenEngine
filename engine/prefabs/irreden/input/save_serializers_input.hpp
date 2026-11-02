@@ -73,6 +73,7 @@ template <> struct SaveSerialize<IRComponents::C_HitBox2DGui> {
     static void write(IRAsset::BinaryWriter &writer, const IRComponents::C_HitBox2DGui &value) {
         IRMath::BinaryIO::writeIVec2(writer, value.size_);
         IRMath::BinaryIO::writeIVec2(writer, value.offset_);
+        writer.writeU8(value.enabled_ ? 1 : 0);
     }
 
     static IRAsset::Result<IRComponents::C_HitBox2DGui> read(IRAsset::BinaryReader &reader) {
@@ -80,6 +81,7 @@ template <> struct SaveSerialize<IRComponents::C_HitBox2DGui> {
         IRComponents::C_HitBox2DGui value{};
         IR_SAVE_READ(value.size_, IRMath::BinaryIO::readIVec2(reader));
         IR_SAVE_READ(value.offset_, IRMath::BinaryIO::readIVec2(reader));
+        IR_SAVE_READ_BOOL(value.enabled_, reader.readU8());
         return Res::success(std::move(value));
     }
 };
@@ -88,7 +90,8 @@ template <> struct SaveMigration<IRComponents::C_HitBox2DGui> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_HitBox2DGui>>>
     migrators() {
         return {
-            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_HitBox2DGui> {
+            {1u,
+             [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_HitBox2DGui> {
                  struct LegacyHitBox2DGui {
                      IRMath::ivec2 size_;
                      bool hovered_;
@@ -107,6 +110,13 @@ template <> struct SaveMigration<IRComponents::C_HitBox2DGui> {
                  return IRAsset::Result<IRComponents::C_HitBox2DGui>::success(
                      IRComponents::C_HitBox2DGui{legacy.size_}
                  );
+             }},
+            {2u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_HitBox2DGui> {
+                 using Res = IRAsset::Result<IRComponents::C_HitBox2DGui>;
+                 IRComponents::C_HitBox2DGui value{};
+                 IR_SAVE_READ(value.size_, IRMath::BinaryIO::readIVec2(reader));
+                 IR_SAVE_READ(value.offset_, IRMath::BinaryIO::readIVec2(reader));
+                 return Res::success(std::move(value));
              }},
         };
     }

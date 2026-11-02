@@ -376,6 +376,9 @@ inline void setVisible(IREntity::EntityId widget, bool visible) {
         return;
     }
     header.visible_ = visible;
+    if (auto hitbox = IREntity::getComponentOptional<IRComponents::C_HitBox2DGui>(widget)) {
+        (*hitbox)->enabled_ = visible;
+    }
     if (visible) {
         return;
     }

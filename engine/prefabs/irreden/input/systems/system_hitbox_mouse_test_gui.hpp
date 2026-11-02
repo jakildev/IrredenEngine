@@ -26,8 +26,9 @@ template <> struct System<HITBOX_MOUSE_TEST_GUI> {
     void tick(C_HitBox2DGui &hitbox, const C_GuiPosition &guiPos) {
         const vec2 lo = vec2(guiPos.pos_ + hitbox.offset_);
         const vec2 hi = lo + vec2(hitbox.size_);
-        hitbox.hovered_ = mouseGuiTrixel_.x >= lo.x && mouseGuiTrixel_.x < hi.x &&
-                          mouseGuiTrixel_.y >= lo.y && mouseGuiTrixel_.y < hi.y;
+        hitbox.hovered_ = hitbox.enabled_ && mouseGuiTrixel_.x >= lo.x &&
+                          mouseGuiTrixel_.x < hi.x && mouseGuiTrixel_.y >= lo.y &&
+                          mouseGuiTrixel_.y < hi.y;
     }
 
     void beginTick() {
