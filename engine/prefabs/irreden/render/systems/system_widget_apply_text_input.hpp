@@ -28,9 +28,16 @@ namespace IRSystem {
 // system's archetype filter.
 template <> struct System<WIDGET_APPLY_TEXT_INPUT> {
     struct PendingKey {
-        char glyph_ = 0;       // 0 = control key
-        enum class Control : int { NONE, BACKSPACE, DELETE, LEFT, RIGHT, HOME, END } control_ =
-            Control::NONE;
+        char glyph_ = 0; // 0 = control key
+        enum class Control : int {
+            NONE,
+            BACKSPACE,
+            DELETE,
+            LEFT,
+            RIGHT,
+            HOME,
+            END
+        } control_ = Control::NONE;
     };
     std::vector<PendingKey> pending_;
     bool reserved_ = false;
@@ -51,28 +58,40 @@ template <> struct System<WIDGET_APPLY_TEXT_INPUT> {
                 );
             }
         }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonBackspace,
-                                         IRInput::ButtonStatuses::PRESSED)) {
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonBackspace,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
             pending_.push_back({0, PendingKey::Control::BACKSPACE});
         }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonDelete,
-                                         IRInput::ButtonStatuses::PRESSED)) {
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonDelete,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
             pending_.push_back({0, PendingKey::Control::DELETE});
         }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonLeft,
-                                         IRInput::ButtonStatuses::PRESSED)) {
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonLeft,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
             pending_.push_back({0, PendingKey::Control::LEFT});
         }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonRight,
-                                         IRInput::ButtonStatuses::PRESSED)) {
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonRight,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
             pending_.push_back({0, PendingKey::Control::RIGHT});
         }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonHome,
-                                         IRInput::ButtonStatuses::PRESSED)) {
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonHome,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
             pending_.push_back({0, PendingKey::Control::HOME});
         }
-        if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonEnd,
-                                         IRInput::ButtonStatuses::PRESSED)) {
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonEnd,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
             pending_.push_back({0, PendingKey::Control::END});
         }
     }
@@ -82,9 +101,12 @@ template <> struct System<WIDGET_APPLY_TEXT_INPUT> {
         const IRComponents::C_WidgetState &state,
         IRComponents::C_WidgetTextInput &ti
     ) {
-        if (widget.disabled_) return;
-        if (!state.focused_) return;
-        if (pending_.empty()) return;
+        if (!widget.visible_ || widget.disabled_)
+            return;
+        if (!state.focused_)
+            return;
+        if (pending_.empty())
+            return;
 
         for (const auto &key : pending_) {
             if (key.control_ == PendingKey::Control::BACKSPACE) {
@@ -105,8 +127,7 @@ template <> struct System<WIDGET_APPLY_TEXT_INPUT> {
             } else if (key.control_ == PendingKey::Control::END) {
                 ti.cursorPos_ = static_cast<int>(ti.text_.size());
             } else if (key.glyph_ != 0) {
-                if (ti.maxLength_ > 0 &&
-                    static_cast<int>(ti.text_.size()) >= ti.maxLength_) {
+                if (ti.maxLength_ > 0 && static_cast<int>(ti.text_.size()) >= ti.maxLength_) {
                     continue;
                 }
                 ti.text_.insert(static_cast<std::size_t>(ti.cursorPos_), 1, key.glyph_);
@@ -123,8 +144,7 @@ template <> struct System<WIDGET_APPLY_TEXT_INPUT> {
             WIDGET_APPLY_TEXT_INPUT,
             IRComponents::C_Widget,
             IRComponents::C_WidgetState,
-            IRComponents::C_WidgetTextInput
-        >("WidgetApplyTextInput");
+            IRComponents::C_WidgetTextInput>("WidgetApplyTextInput");
     }
 };
 

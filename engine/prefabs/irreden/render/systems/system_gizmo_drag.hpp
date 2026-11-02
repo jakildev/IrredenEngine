@@ -12,6 +12,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
+#include <irreden/render/gizmo_drag_math.hpp>
 
 namespace IRSystem {
 
@@ -38,7 +39,8 @@ namespace IRSystem {
 //     through the anchor.
 //   - Each frame, recompute the cursor world point at THAT SAME plane
 //     and project the world delta onto the handle's unit axis.
-//   - anchor.translation_ = startPos + axisUnit * dot(worldDelta, axisUnit).
+//   - Convert that axis displacement into the parent frame before adding
+//     it to the anchor's captured local translation.
 //   Fixing the plane prevents the gizmo from running away from the
 //   cursor as its iso depth changes.
 //
@@ -70,6 +72,8 @@ template <> struct System<GIZMO_DRAG> {
     IRMath::vec4 dragStartAnchorRot_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     IRMath::vec3 dragStartCursorWorld_ = IRMath::vec3(0.0f);
     float dragPlaneIsoDepth_ = 0.0f;
+    IRMath::vec3 dragAxisWorld_ = IRMath::vec3(0.0f);
+    IRComponents::C_WorldTransform dragStartParentWorld_;
     IRMath::vec2 dragStartCursorScreen_ = IRMath::vec2(0.0f);
     IRMath::vec2 dragAnchorScreenIso_ = IRMath::vec2(0.0f);
     float dragStartRotateAngle_ = 0.0f;
@@ -202,6 +206,13 @@ template <> struct System<GIZMO_DRAG> {
         auto &anchorWorldTransform =
             IREntity::getComponent<IRComponents::C_WorldTransform>(dragAnchor_);
         const IRMath::vec3 anchorWorld = anchorWorldTransform.translation_;
+        dragAxisWorld_ =
+            IRPrefab::Gizmo::translationAxisWorld(axisToUnit(dragAxis_), anchorWorldTransform);
+        const IREntity::EntityId parent = IREntity::getEntityManager().getParent(dragAnchor_);
+        dragStartParentWorld_ =
+            parent == IREntity::kNullEntity
+                ? IRComponents::C_WorldTransform{}
+                : IREntity::getComponent<IRComponents::C_WorldTransform>(parent);
 
         dragStartAnchorPos_ = anchorLocal.translation_;
         dragStartAnchorRot_ = anchorLocal.rotation_;
@@ -228,12 +239,15 @@ template <> struct System<GIZMO_DRAG> {
 
         switch (dragKind_) {
         case IRComponents::GizmoKind::TRANSLATE_ARROW: {
-            const IRMath::vec3 axisUnit = axisToUnit(dragAxis_);
             const IRMath::vec3 cursorWorld =
                 IRRender::mouseWorldPos3DAtIsoDepth(dragPlaneIsoDepth_);
             const IRMath::vec3 worldDelta = cursorWorld - dragStartCursorWorld_;
-            const float along = IRMath::dot(worldDelta, axisUnit);
-            anchorLocal.translation_ = dragStartAnchorPos_ + axisUnit * along;
+            anchorLocal.translation_ =
+                dragStartAnchorPos_ + IRPrefab::Gizmo::translationDeltaInParent(
+                                          worldDelta,
+                                          dragAxisWorld_,
+                                          dragStartParentWorld_
+                                      );
             break;
         }
         case IRComponents::GizmoKind::ROTATE_RING: {

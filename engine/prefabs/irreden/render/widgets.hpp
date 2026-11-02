@@ -85,14 +85,16 @@ inline IRPrefab::GuiRect sliderThumbRect(
 
 // A hit region draws nothing, so keyboard focus on one would be invisible.
 inline bool isTabFocusCandidate(const IRComponents::C_Widget &widget) {
-    return !widget.disabled_ && widget.kind_ != IRComponents::WidgetKind::TEXT_INPUT &&
+    return widget.visible_ && !widget.disabled_ &&
+           widget.kind_ != IRComponents::WidgetKind::TEXT_INPUT &&
            widget.kind_ != IRComponents::WidgetKind::NUMBER_FIELD &&
            widget.kind_ != IRComponents::WidgetKind::HIT_REGION;
 }
 
 inline bool takesKeyboardFocus(const IRComponents::C_Widget &widget) {
-    return !widget.disabled_ && (widget.kind_ == IRComponents::WidgetKind::TEXT_INPUT ||
-                                 widget.kind_ == IRComponents::WidgetKind::NUMBER_FIELD);
+    return widget.visible_ && !widget.disabled_ &&
+           (widget.kind_ == IRComponents::WidgetKind::TEXT_INPUT ||
+            widget.kind_ == IRComponents::WidgetKind::NUMBER_FIELD);
 }
 
 // The single widget WIDGET_INPUT routes hover to: among enabled widgets whose
@@ -108,7 +110,7 @@ inline IREntity::EntityId topmostHoveredWidget() {
                 return;
             }
             const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(id);
-            if (!widget.disabled_ && widget.zOrder_ >= topZ) {
+            if (widget.visible_ && !widget.disabled_ && widget.zOrder_ >= topZ) {
                 topZ = widget.zOrder_;
                 topmost = id;
             }
@@ -360,6 +362,65 @@ inline void setCheckboxState(IREntity::EntityId widget, bool checked) {
 
 inline void setDisabled(IREntity::EntityId widget, bool disabled) {
     IREntity::getComponent<IRComponents::C_Widget>(widget).disabled_ = disabled;
+}
+
+// Visibility is independent of disabled state. Hiding cancels gestures and edits;
+// showing restores the same layout and values without restoring keyboard focus.
+inline bool isVisible(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_Widget>(widget).visible_;
+}
+
+inline void setVisible(IREntity::EntityId widget, bool visible) {
+    auto &header = IREntity::getComponent<IRComponents::C_Widget>(widget);
+    if (header.visible_ == visible) {
+        return;
+    }
+    header.visible_ = visible;
+    if (visible) {
+        return;
+    }
+    if (auto state = IREntity::getComponentOptional<IRComponents::C_WidgetState>(widget)) {
+        **state = IRComponents::C_WidgetState{};
+    }
+    if (auto hitbox = IREntity::getComponentOptional<IRComponents::C_HitBox2DGui>(widget)) {
+        (*hitbox)->hovered_ = false;
+        if (header.kind_ == IRComponents::WidgetKind::DROPDOWN) {
+            (*hitbox)->size_ = header.size_;
+            (*hitbox)->offset_ = IRMath::ivec2(0);
+        }
+    }
+    if (auto dropdown = IREntity::getComponentOptional<IRComponents::C_WidgetDropdown>(widget)) {
+        (*dropdown)->isOpen_ = false;
+        (*dropdown)->typeahead_.clear();
+        if (header.zOrder_ >= IRComponents::kWidgetDropdownOpenZBias) {
+            header.zOrder_ -= IRComponents::kWidgetDropdownOpenZBias;
+        }
+    }
+    if (auto field = IREntity::getComponentOptional<IRComponents::C_WidgetNumberField>(widget)) {
+        (*field)->editing_ = false;
+        (*field)->editBuffer_.clear();
+    }
+    if (auto *request = IREntity::singletonOrNull<IRComponents::C_WidgetFocusRequest>();
+        request != nullptr && request->widget_ == widget) {
+        request->widget_ = IREntity::kNullEntity;
+    }
+    if (auto *frame = IREntity::singletonOrNull<IRComponents::C_WidgetInputFrame>();
+        frame != nullptr && frame->focusedWidget_ == widget) {
+        frame->focusedWidget_ = IREntity::kNullEntity;
+        frame->focusVisible_ = false;
+    }
+    IREntity::forEachComponent<IRComponents::C_GuiHoverState>(
+        [widget](IREntity::EntityId &, IRComponents::C_GuiHoverState &hover) {
+            if (hover.hoveredWidget_ == widget) {
+                hover.hoveredWidget_ = IREntity::kNullEntity;
+            }
+        }
+    );
+    if (auto *layout = IREntity::singletonOrNull<IRComponents::C_LayoutState>();
+        layout != nullptr && layout->draggedPanelEntity_ == widget) {
+        layout->draggedPanelEntity_ = IREntity::kNullEntity;
+        layout->draggedPanelNodeIdx_ = -1;
+    }
 }
 
 // Declares (or withdraws) `widget` as a deliberate cover for the GUI layout

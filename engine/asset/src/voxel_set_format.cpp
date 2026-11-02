@@ -913,9 +913,14 @@ BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &den
     chunks.push_back(makeModeChunk(VoxelSetMode::DENSE));
     appendDenseChunks(chunks, dense);
     const auto status = writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
-    if (status.ok()) {
-        emitVoxelSetSidecar(path, VoxelSetMode::DENSE, &dense, {});
+    const bool closed = fw.close();
+    if (!status.ok()) {
+        return status;
     }
+    if (!closed) {
+        return BinaryStatus::error(BinaryIOError::WriteFailed, fw.failureMessage());
+    }
+    emitVoxelSetSidecar(path, VoxelSetMode::DENSE, &dense, {});
     return status;
 }
 

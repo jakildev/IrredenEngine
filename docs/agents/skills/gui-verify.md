@@ -121,6 +121,42 @@ asserts pixels against committed references. For both on a GUI region, add
 a `crops` block to the creation's `test/references/manifest.json` and run
 `render-verify` alongside.
 
+## Task-based usability pass
+
+Authoring changes need two kinds of evidence: deterministic sessions establish
+regression behavior; an outcome-driven task establishes whether the normal UI
+lets someone discover and complete that work. A passing assertion count or clean
+layout report does not substitute for the task pass.
+
+Use a task card describing a result, such as making an asymmetric object from a
+blank document, correcting a mistake, saving, closing, and reopening it. For a
+composition change, include selecting a child, moving or rotating it, editing its
+local geometry, and verifying the exported hierarchy. For a procedural change,
+include regeneration and the promised preservation of manual edits. Choose the
+smallest complete task affected by the change.
+
+Start the ordinary application through the run tool, with normal defaults and
+production input. During the initial attempt, use only the visible interface and
+the task card: no source-derived coordinates, layout constants, session-builder
+helpers, or prescribed click sequence. Consult source after recording a blocker
+to diagnose it. An evaluator separate from the implementer is useful when
+available, but the task evidence is required regardless of staffing.
+
+Record the attempted actions, unexpected edits, missed targets, silent no-ops,
+mode/focus confusion, and any documentation needed. Inspect hover, held-drag,
+release, undo/redo, and reopen states where applicable. Report observed task
+completion and recovery separately from visual judgment. For picking or layout
+changes, exercise relevant viewport sizes, DPI settings, and backend coverage;
+state which combinations were actually tested.
+
+Attach a compact task trace and representative captures to the change's review
+evidence, with the resulting persisted artifact or round-trip check when the task
+creates data. If the UI cannot be driven on the available host, report that lane
+as untested with the concrete environment limitation; source inspection and
+scripted playback must not be labeled a hands-on pass. Do not wait for the owner
+to discover an obvious blocker that an agent can reproduce. Human sessions
+calibrate comfort and taste after basic workflow failures have been addressed.
+
 ## Anti-patterns
 
 - Asserting world-space voxel positions before the camera settles — gate

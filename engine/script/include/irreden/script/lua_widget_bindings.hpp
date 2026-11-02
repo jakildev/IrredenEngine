@@ -903,6 +903,14 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
         );
     };
 
+    gui["setVisible"] = [](lua_Integer id, bool visible) {
+        requireWidget<IRComponents::C_Widget>(id, "IRGui.setVisible", "widget");
+        IRPrefab::Widget::setVisible(static_cast<IREntity::EntityId>(id), visible);
+    };
+    gui["isVisible"] = [](lua_Integer id) {
+        requireWidget<IRComponents::C_Widget>(id, "IRGui.isVisible", "widget");
+        return IRPrefab::Widget::isVisible(static_cast<IREntity::EntityId>(id));
+    };
     gui["setDisabled"] = [](lua_Integer id, bool disabled) {
         requireWidget<IRComponents::C_Widget>(id, "IRGui.setDisabled", "widget");
         IRPrefab::Widget::setDisabled(static_cast<IREntity::EntityId>(id), disabled);

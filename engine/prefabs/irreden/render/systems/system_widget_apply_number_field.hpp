@@ -56,7 +56,7 @@ template <> struct System<WIDGET_APPLY_NUMBER_FIELD> {
         const int maxCharacters = IRMath::clamp(innerWidth / glyphWidth, 0, 16);
         field.updateEdit(
             state.focused_,
-            widget.disabled_,
+            !widget.visible_ || widget.disabled_,
             typed_,
             backspace_,
             escape_,

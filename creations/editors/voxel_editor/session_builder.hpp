@@ -118,7 +118,7 @@ inline constexpr float kRecipeHandlePlaneSlack = 1e-3f;
 
 // Keep this above the live candidate count so the command-owned Tab walk proves
 // that editor commands do not hand focus to a widget.
-inline constexpr int kTabWalkPresses = 80;
+inline constexpr int kTabWalkPresses = 96;
 using ::IRVoxelEditor::kSkeletonPanelPos;
 using ::IRVoxelEditor::kSkeletonPanelSize;
 inline constexpr IRMath::ivec2 kJointRenameInputPos{
@@ -751,6 +751,7 @@ struct Recipe {
     // cube, perimeter gizmos, starter rig, satellite sets) around the editable
     // set instead of the bare stage entity recipes author on.
     bool referenceFurniture_ = false;
+    bool startWithEmptyComposite_ = false;
     // Recipe errors (an unreachable cell, an occluded aim). Non-empty means the
     // session is not runnable; the editor logs these and exits rather than
     // replaying a stream that would author the wrong thing.
@@ -858,7 +859,8 @@ class Builder {
         std::string name,
         IRMath::ivec3 sceneSize,
         IRMath::vec3 sceneOrigin,
-        const ModuleSessionView *moduleView = nullptr
+        const ModuleSessionView *moduleView = nullptr,
+        bool preserveSingleSetOnConversion = false
     )
         : m_model(sceneSize, sceneOrigin)
         , m_sceneSize(sceneSize)
@@ -866,6 +868,7 @@ class Builder {
         , m_moduleView(moduleView)
         , m_recipeList(recipeListGeometry())
         , m_componentList(componentListGeometry()) {
+        m_preserveSingleSetOnConversion = preserveSingleSetOnConversion;
         m_recipe.name_ = std::move(name);
         if (m_moduleView != nullptr) {
             for (const ModuleRecipe &recipe : m_moduleView->recipes_)
@@ -900,9 +903,7 @@ class Builder {
         m_recipe.referenceFurniture_ = true;
     }
 
-    // Close the current segment and open a new one. The camera framing is
-    // re-applied per shot, which is also how a session recovers from the A/D
-    // frame keys nudging the camera.
+    // Close the current segment and open a new one with its camera framing.
     //
     // Segments are shot boundaries: a segment's assertions evaluate ONCE, at
     // end of segment, against the state after ALL of that segment's events
@@ -1668,16 +1669,16 @@ class Builder {
         typeText(componentOverridesInputCenterGuiTrixel(), text);
     }
 
-    // Duplicate the active animation frame (D) and select the copy. The editor
+    // Duplicate the active animation frame (Shift+D) and select the copy. The editor
     // snapshots the live voxels into the source frame first, so the duplicate
     // starts as an exact copy — which is why the shadow model can simply be
     // cloned rather than re-derived.
-    //
-    // D is also the camera-right binding (no modifier guard), so the
-    // caller must open a new segment afterwards to re-apply the camera before
-    // aiming anything.
     void duplicateFrame() {
-        tapKey(IRInput::kKeyButtonD);
+        if (m_entityMode) {
+            recordError("duplicateFrame: entity parts do not support frame animation");
+            return;
+        }
+        chordKey(IRInput::kKeyButtonLeftShift, IRInput::kKeyButtonD);
         m_frameModels.insert(m_frameModels.begin() + m_activeFrame, m_model);
         ++m_activeFrame;
     }
@@ -1738,6 +1739,16 @@ class Builder {
     // The editor seats the part's cell (0,0,0) at deriveSceneOrigin, which is
     // the model's origin too.
     void addVoxelPart() {
+        if (!m_entityMode) {
+            if (m_preserveSingleSetOnConversion) {
+                m_partModels.push_back(m_model);
+                m_partBindings.emplace_back();
+                m_activePart = 0;
+            } else {
+                m_recipe.startWithEmptyComposite_ = true;
+            }
+        }
+        m_entityMode = true;
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
         if (!m_partModels.empty()) {
             m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
@@ -2790,6 +2801,10 @@ class Builder {
     // Shared body of prevFrame / nextFrame. The shadow model is swapped exactly
     // as switchToFrame swaps the live voxels, so aiming survives a frame step.
     void stepFrame(int delta) {
+        if (m_entityMode) {
+            recordError("stepFrame: entity parts do not support frame animation");
+            return;
+        }
         const int target = m_activeFrame + delta;
         if (target < 0 || target >= static_cast<int>(m_frameModels.size()) + 1) {
             recordError(
@@ -2940,6 +2955,8 @@ class Builder {
     // Parallel to m_partModels.
     std::vector<PartBinding> m_partBindings;
     int m_activePart = -1;
+    bool m_entityMode = false;
+    bool m_preserveSingleSetOnConversion = false;
     std::optional<RemovedPartModel> m_removedPartModel;
     // The animation's non-active frames, indexed as the editor indexes them
     // with the active frame removed — m_model IS frame m_activeFrame, mirroring

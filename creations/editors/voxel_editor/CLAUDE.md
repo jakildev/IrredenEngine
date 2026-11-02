@@ -6,9 +6,9 @@ Design log, findings and the authoring-session history:
 
 ## Validators
 
-- `python3 scripts/gui-verify.py IRVoxelEditor` — the standing GUI shot table; `-- --gui-layout-check` also fails any GUI layout finding (every shot is clean).
+- `python3 scripts/gui-verify.py IRVoxelEditor` — blank-grid sculpt workflow; `-- --gui-layout-check` also fails layout findings. Add `--reference-scene` for the diagnostic furniture/legacy shot table.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` — one
-  scripted session: `face_pick` and `drag_probe` prove the picking contract
+  scripted session: `sculpt_workflow` covers hover/continuous paint/cancel/history/reload and workspaces; `hierarchy_workflow` covers attachment/cycle refusal/history/LOD/reload; `animation_boundary` covers frame/part ownership; `sculpt_single_save` covers held-stroke save and frame switching. `face_pick` and `drag_probe` prove the picking contract
   against the full reference scene, `place_below` the Alt modifier,
   `fill_ghost` the fill preview drawn while a drag is held,
   `module_loaded` (with `--module test/module`) the creation-module seam,
@@ -61,7 +61,7 @@ Design log, findings and the authoring-session history:
 
 ## Picking contract
 
-Every edit gesture picks through `IRVoxelEditor::pickEditable()`
+Surface edit gestures pick through `IRVoxelEditor::pickEditable()`
 (`editor_picking.hpp`). Never call `IRPrefab::Picking::castVoxelRay()` bare
 from an edit path.
 
@@ -90,11 +90,9 @@ readback on every editable texel; an aim and a pick share one screen mapping.
 - Ctrl+P enters entity-scene mode and adds a voxel part at the PART SIZE
   panel's W / H / D (initially `--scene-size`); Ctrl+Shift+P adds the
   BAKE panel's selected SDF primitive. Tab/Shift+Tab select parts. Ctrl+S and
-  Ctrl+O write/read the v2 prefab manifest plus one `.vxs` per voxel part.
-- A voxel part starts clear (the single-set editor keeps its seeded ground
-  plane), so a click has nothing to pick until a first write that needs no
-  pick: BAKE, or a module recipe APPLY. Sessions author that write with
-  `Builder::bakeSphere` (panel geometry in `bake_panel.hpp`).
+  Ctrl+O write/read the prefab manifest plus one `.vxs` per voxel part (v3 for nested parents, v2 for flat scenes).
+- Ordinary launch opens a blank grid in Sculpt; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. Right-drag orbits the camera.
+- Assemble exposes hierarchy/LOD/components/arrays; Generate exposes recipes/bake/module panels; Animate exposes single-asset frames/rig tools. Hidden widgets retain state and neither draw nor intercept input. ALL exposes the diagnostic layout.
 - BAKE reads the radius the P1 slider holds, and a scripted drag leaves that
   within `kBakeParamSliderDragDrift` of the request. `bakeSphere` models the
   bake only when both ends of that range bake the same cells, and is a recipe
@@ -104,8 +102,8 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   bounds; the manifest carries no size. An edit path sizes from the set it
   edits, never from `g_editableSceneSize`. The loft tool is the exception: its
   masks are scene-sized, so it refuses a part of any other extent.
-- Every voxel part the editor creates is `EntityAnchor::CENTER`: its
-  translation is the middle of its box and the point it turns about. The
+- New voxel parts use `EntityAnchor::CENTER`; an adopted single asset keeps its original anchor. NEW PART preserves that asset as the first part; multi-frame, layered, or rigged documents refuse conversion without mutation.
+- A new part's translation is the middle of its box and the point it turns about. The
   manifest's per-part `anchor` carries that through save and load, and every
   rebuild of a part's set (array copy, Ctrl+M twin, load, undo of a removal)
   passes the source's anchor to `DenseVoxel::toComponent`. A world-to-cell
@@ -114,8 +112,7 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   CORNER part usually fails it): `M`, the twin, the dropdown and `load` refuse.
 - A selected part's gizmo is drawn on its pivot's pixels, in front of the part's
   own content (`EntityScene::partViewClearance`); other content can occlude it.
-- `EntityScene` owns one root and its ordered part records. Only the selected
-  voxel part receives paint; other voxel parts carry `C_EditorReference`.
+- `EntityScene` owns a root and stable part records with optional parent ids. Attachment preserves world pose and rejects cycles; removing a parent detaches children preserving pose. Each part retains its local voxel canvas. Only the selected part receives paint; rotated/scaled/detached parts still require a future local-edit view.
 - A part's LOD band (`lodMax_` fine .. `lodMin_` coarse) is mirrored onto its
   set / shape so the engine's LOD gate previews it; parts stay resident (no
   `PREFAB_LOD_PARTS`). TIER and `,` / `.` pin `C_LodTierOverride` on the root
@@ -126,6 +123,8 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   stroke across the radial copy group through the same stroke buffer. The
   selected source stays outside the copy group: radial copies start at the
   radius, and linear copies start one step out.
+- Part transform drags, LOD-band edits, and attachment each make one undo record; Escape cancels an active transform/LOD gesture. Shift+A/D add/duplicate single-asset frames; multipart frame controls are disabled.
+- Composite saves stage canonical files and roll back publication failures. Recovery directories survive failed rollback; this is not crash/power-loss atomic.
 - Delete and PARTS REMOVE remove the selected part as one undo record; undo
   restores its payload at the same index, redo removes it again. Records name
   stable part ids, never entity ids. A removed rotational group member keeps the

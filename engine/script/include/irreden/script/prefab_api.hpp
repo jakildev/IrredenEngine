@@ -30,10 +30,10 @@ void bindPrefabApi(LuaScript &script);
 
 namespace IRPrefab::Prefab {
 
-// Newest schema version: v2 adds the `parts` list. Every version from
+// Newest schema version: v3 adds stable parent ids to the `parts` list. Every version from
 // kPrefabSchemaVersionMin up loads; others surface a diagnostic rather than
 // silently misinterpreting fields.
-constexpr int kPrefabSchemaVersion = 2;
+constexpr int kPrefabSchemaVersion = 3;
 constexpr int kPrefabSchemaVersionMin = 1;
 
 // Outcome of spawnPrefab; check entity_ != kNullEntity before use.
@@ -61,6 +61,8 @@ struct PrefabComponentDescription {
 
 struct PrefabPartDescription {
     std::string id_;
+    // Empty means the prefab root; otherwise names another part.
+    std::string parentId_;
     std::string voxelRef_;
     // How the voxel_ref content attaches to the part's translation. The `.vxs`
     // stores integer bounds, so this field is the only record of a non-CORNER
@@ -113,7 +115,7 @@ std::optional<std::string>
 writeManifest(const std::string &path, const PrefabDescription &description);
 
 // Load the prefab file registered under id, validate its schema, and instantiate at position.
-// A v2 root spawns the parts whose band holds its resolved tier as CHILD_OF children.
+// Composite roots spawn in-band parts and their transform ancestors as CHILD_OF trees.
 SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 position);
 
 // Creates part `index` of `root`: the id is reserved now and written to the
@@ -126,7 +128,7 @@ void stagePartSpawn(IREntity::EntityId root, IRComponents::C_PrefabParts &parts,
 // the slot. Safe inside a tick.
 void despawnPart(IRComponents::PrefabPartSlot &slot);
 
-// Pins a live resident part's content to `tier`; its content draws only while
+// Pins a live part's own content to `tier`; its content draws only while
 // `tier` is inside the part's band.
 void pinResidentPart(const IRComponents::PrefabPartSlot &slot, IRRender::LodLevel tier);
 

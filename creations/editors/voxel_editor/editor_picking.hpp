@@ -9,6 +9,8 @@
 
 #include <optional>
 
+#include "sculpt_grid.hpp"
+
 // The editor's picking contract:
 //   - the nearest EDITABLE voxel under the cursor is what a click edits;
 //   - the face it edits through is the one drawn under the cursor;
@@ -42,7 +44,10 @@ inline bool isEditable(IREntity::EntityId entity) {
         return false;
     }
     const auto world = IREntity::getComponentOptional<IRComponents::C_WorldTransform>(entity);
-    return !world || world.value()->rotation_ == IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // Current cell authoring uses an axis-aligned, unit-spaced world grid.
+    // This checks composed world scale, including scale inherited from parents.
+    return !world || (world.value()->rotation_ == IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f) &&
+                      world.value()->scale_ == IRMath::vec3(1.0f));
 }
 
 // What a place / erase gesture acts on this frame.
@@ -53,6 +58,28 @@ inline std::optional<IRPrefab::Picking::RayHit> pickEditable() {
             .shapes_ = false,
             .accepts_ = &isEditable,
         }
+    );
+}
+
+inline std::optional<IRMath::ivec3>
+pickEditablePlane(IREntity::EntityId entity, int axis, int slice, float planeOffset = 0.0f) {
+    if (entity == IREntity::kNullEntity || !isEditable(entity))
+        return std::nullopt;
+    const auto set = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
+    if (!set || set.value()->globalPositions_.empty())
+        return std::nullopt;
+    const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
+    const auto cardinal = IRMath::rasterYawCardinalIndex(rasterYaw);
+    const IRMath::vec3 direction = IRMath::rotateCardinalZInv(IRMath::vec3(1.0f), cardinal);
+    const IRMath::vec3 origin =
+        IRMath::vec3(IRMath::roundVec3HalfUp(set.value()->globalPositions_[0].pos_));
+    return pickSculptPlane(
+        IRRender::mouseWorldPos3DAtIsoDepthExact(0.0f) - origin,
+        direction,
+        set.value()->size_,
+        axis,
+        slice,
+        planeOffset
     );
 }
 

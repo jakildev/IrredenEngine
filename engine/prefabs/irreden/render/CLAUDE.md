@@ -159,6 +159,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - Dropdown typeahead, strip, and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers), and every widget's text placement one (`widget_text_layout.hpp`: renderers queue through it,
   the layout audit `gui_layout_audit.hpp` measures it — declare a deliberate overlay with `setCoversBelow`); `topIndex` is a shown-row ordinal, so use `shownItemAt` for its item; an open strip goes where `stripLayout` puts it (below the header, else above, else the roomier side cut to whole rows; `visibleRows_`, 0 = `kDropdownMaxVisibleRows`) and the wheel scrolls it while hovered. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
   `WIDGET_RENDER_DROPDOWN` paints open strips in `endTick`, after the headers' text dispatch, so a strip covers the headers below it.
+- `Widget::setVisible(id, visible)` / `isVisible(id)` (Lua: `IRGui.setVisible` / `isVisible`) hide a widget without changing its position, disabled state, selection, or value. Hidden widgets do not draw, enter the layout audit, take focus, or receive pointer/hotkey actions. Hiding cancels gestures, focus, numeric edits, and open dropdowns; showing does not restore them. Visibility is per widget, so owners apply it to each member of a panel; it does not reflow the dock layout. Use the setter, not direct writes to `C_Widget::visible_`, to clear transient input immediately. Lua callbacks queued before hiding are dropped, except the hover-exit notification.
 - The wheel scrolls the hovered list (Lua: `IRGui.makeList`); `setListSelectedIndex` reveals the row only when the index changes, so a caller mirroring its state every frame never fights the wheel.
 - Sliders use plain absolute drag, press-time Shift for tenth-scale fine drag, Ctrl for step snapping, thumb double-click to restore the authored default, wheel/Shift-wheel for one/ten steps, and paired track double-click to focus a number field next INPUT frame.
 - Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`; text and number fields edit only while focused (a click, hotkey, or `focus(id)` at the next `WIDGET_INPUT::beginTick`); Enter or a click off widgets commits a number and drops focus, while Escape cancels a number edit;
@@ -201,7 +202,6 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   0 forever (`IR_PROFILE_FUNCTION` does not feed the histogram).
 
 ## Deprecated
-
 | Surface | Replacement |
 |---|---|
 | `IRPrefab::JointTransform::setSystem(SystemId)` | none — `system()` resolves via `IRSystem::findSystem(UPDATE_JOINT_MATRICES)` |

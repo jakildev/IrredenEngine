@@ -61,6 +61,13 @@ template <> struct System<WIDGET_INPUT_PANEL_DRAG> {
         const bool isDraggingThis = IRPrefab::Layout::isDraggingPanel() &&
                                     IRPrefab::Layout::getDraggedPanelNodeIdx() == leaf.nodeIdx_;
 
+        if (!widget.visible_) {
+            if (isDraggingThis) {
+                IRPrefab::Layout::cancelPanelDrag();
+            }
+            return;
+        }
+
         if (isDraggingThis) {
             if (!mouseLeftDown_) {
                 IRPrefab::Layout::endPanelDrag(mouseI);

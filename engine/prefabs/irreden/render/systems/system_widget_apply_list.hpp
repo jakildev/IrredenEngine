@@ -49,7 +49,7 @@ template <> struct System<WIDGET_APPLY_LIST> {
         const IRComponents::C_GuiPosition &guiPos
     ) {
         const int viewHeight = widget.size_.y;
-        if (widget.disabled_) {
+        if (!widget.visible_ || widget.disabled_) {
             list.scrollOffset_ = list.topIndex(viewHeight);
             state.dragValue_ = -1.0f;
             return;

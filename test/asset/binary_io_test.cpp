@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -165,6 +166,44 @@ TEST(BinaryIO, FileBackendRoundTrip) {
         EXPECT_DOUBLE_EQ(r.readF64().value_, 1.5);
     }
     std::remove(path.c_str());
+}
+
+TEST(BinaryIO, ExplicitCloseFlushesBeforeTheWriterIsDestroyed) {
+    const std::string path = kTmpDir + "/ir_test_binary_io_close.bin";
+    FileBinaryWriter writer(path);
+    ASSERT_TRUE(writer.ok());
+    writer.writeU32(0x12345678u);
+    ASSERT_TRUE(writer.close()) << writer.failureMessage();
+    EXPECT_FALSE(writer.ok());
+    EXPECT_FALSE(writer.failed());
+    EXPECT_TRUE(writer.close());
+    {
+        FileBinaryReader reader(path);
+        ASSERT_TRUE(reader.ok());
+        EXPECT_EQ(reader.readU32().value_, 0x12345678u);
+    }
+    std::remove(path.c_str());
+}
+
+TEST(BinaryIO, ClosePreservesAnOpenFailure) {
+    FileBinaryWriter writer(kTmpDir);
+    ASSERT_FALSE(writer.ok());
+    EXPECT_FALSE(writer.close());
+    EXPECT_TRUE(writer.failed());
+    EXPECT_FALSE(writer.failureMessage().empty());
+}
+
+TEST(BinaryIO, CloseReportsBufferedOutputFailure) {
+    if (!std::filesystem::exists("/dev/full")) {
+        GTEST_SKIP() << "This host has no /dev/full failure device";
+    }
+    FileBinaryWriter writer("/dev/full");
+    ASSERT_TRUE(writer.ok());
+    writer.writeU8(1);
+    EXPECT_FALSE(writer.close());
+    EXPECT_TRUE(writer.failed());
+    EXPECT_FALSE(writer.failureMessage().empty());
+    EXPECT_FALSE(writer.close());
 }
 
 TEST(BinaryIO, ChunkTagRoundTrip) {

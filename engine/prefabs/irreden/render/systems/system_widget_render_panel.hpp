@@ -40,6 +40,10 @@ template <> struct System<WIDGET_RENDER_PANEL> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
+        if (!widget.visible_) {
+            return;
+        }
+
         if (!canvas_)
             return;
 

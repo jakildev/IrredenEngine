@@ -800,4 +800,96 @@ TEST_F(PrefabParts, CheckedInFlowerFixtureSpawns) {
     EXPECT_GE(liveCount(result.entity_), 2);
 }
 
+TEST_F(PrefabParts, NestedPartsResolveForwardParentsAndComposeLocalTransforms) {
+    setZoom(16.0f);
+    const EntityId root = spawn("nested_forward", R"lua(
+        return { prefab_version = 3, parts = {
+            { id = 'child', parent = 'parent', shape = { type = IRShape.BOX },
+              transform = { translation = { 2, 0, 0 } } },
+            { id = 'parent', shape = { type = IRShape.SPHERE },
+              transform = { translation = { 10, 0, 0 },
+                            rotation = { 0, 0, 0.70710678, 0.70710678 } } },
+        } }
+    )lua");
+    ASSERT_NE(root, IREntity::kNullEntity);
+    const auto live = liveParts(root);
+    ASSERT_EQ(live.size(), 2u);
+    EXPECT_EQ(m_entityManager.getChildren(root), std::vector<EntityId>{live[1]});
+    EXPECT_EQ(m_entityManager.getChildren(live[1]), std::vector<EntityId>{live[0]});
+    const auto &world = IREntity::getComponent<IRComponents::C_WorldTransform>(live[0]);
+    EXPECT_NEAR(world.translation_.x, 10.0f, 0.0001f);
+    EXPECT_NEAR(world.translation_.y, 2.0f, 0.0001f);
+    EXPECT_NEAR(world.rotation_.z, 0.70710678f, 0.0001f);
+}
+
+TEST_F(PrefabParts, NestedLodRetainsHiddenAncestorsAndRebuildsParentFirst) {
+    setZoom(16.0f);
+    const EntityId root = spawn("nested_lod", R"lua(
+        return { prefab_version = 3, parts = {
+            { id = 'tip', parent = 'branch', shape = { type = IRShape.BOX },
+              lod = { fine = 0, coarse = 0 } },
+            { id = 'branch', parent = 'trunk', shape = { type = IRShape.SPHERE },
+              lod = { fine = 1, coarse = 1 } },
+            { id = 'trunk', shape = { type = IRShape.BOX },
+              lod = { fine = 2, coarse = 2 } },
+        } }
+    )lua");
+    ASSERT_NE(root, IREntity::kNullEntity);
+    EXPECT_EQ(liveCount(root), 3);
+    const auto drawsAt = [&](EntityId part) {
+        IRPrefab::Lod::TierSnapshot snapshot;
+        snapshot.capture();
+        const auto &shape = IREntity::getComponent<C_ShapeDescriptor>(part);
+        return !IRRender::shouldSkipAtLod(shape.lodMin_, shape.lodMax_, snapshot.resolve(part));
+    };
+    const auto first = liveParts(root);
+    std::vector<EntityId> canvases;
+    for (EntityId entity : first) {
+        const EntityId canvas = IREntity::createEntity(IRComponents::C_DetachedCanvas{});
+        IREntity::setComponent(entity, C_EntityCanvas{canvas, IRMath::ivec2(16)});
+        canvases.push_back(canvas);
+    }
+    IRPrefab::EntityCanvas::ensureOwnerTeardownHook();
+    EXPECT_TRUE(drawsAt(first[0]));
+    EXPECT_FALSE(drawsAt(first[1]));
+    EXPECT_FALSE(drawsAt(first[2]));
+    setZoom(1.0f);
+    settle();
+    EXPECT_EQ(liveCount(root), 0);
+    for (EntityId entity : first)
+        EXPECT_FALSE(IREntity::entityExists(entity));
+    for (EntityId canvas : canvases)
+        EXPECT_FALSE(IREntity::entityExists(canvas));
+    setZoom(16.0f);
+    settle();
+    const auto rebuilt = liveParts(root);
+    EXPECT_EQ(liveCount(root), 3);
+    EXPECT_EQ(m_entityManager.getChildren(root), std::vector<EntityId>{rebuilt[2]});
+    EXPECT_EQ(m_entityManager.getChildren(rebuilt[2]), std::vector<EntityId>{rebuilt[1]});
+    EXPECT_EQ(m_entityManager.getChildren(rebuilt[1]), std::vector<EntityId>{rebuilt[0]});
+    EXPECT_TRUE(drawsAt(rebuilt[0]));
+    EXPECT_FALSE(drawsAt(rebuilt[1]));
+    EXPECT_FALSE(drawsAt(rebuilt[2]));
+}
+
+TEST_F(PrefabParts, InvalidHierarchyFailsBeforeCreatingEntities) {
+    const auto rejects =
+        [&](const std::string &tag, const std::string &parts, const char *message) {
+            const auto result =
+                spawnResult(tag, "return { prefab_version = 3, parts = { " + parts + " } }");
+            EXPECT_EQ(result.entity_, IREntity::kNullEntity);
+            EXPECT_NE(result.error_.find(message), std::string::npos) << result.error_;
+        };
+    rejects("missing_parent", "{ id = 'a', parent = 'missing' }", "missing parent");
+    rejects("self_parent", "{ id = 'a', parent = 'a' }", "cycle");
+    rejects("cyclic_parent", "{ id = 'a', parent = 'b' }, { id = 'b', parent = 'a' }", "cycle");
+    rejects("typed_parent", "{ id = 'a', parent = 7 }", "non-empty part id");
+    const auto oldSchema = spawnResult("v2_parent", R"lua(
+        return { prefab_version = 2, parts = { { id = 'a' }, { id = 'b', parent = 'a' } } }
+    )lua");
+    EXPECT_EQ(oldSchema.entity_, IREntity::kNullEntity);
+    EXPECT_NE(oldSchema.error_.find("requires prefab_version = 3"), std::string::npos);
+    EXPECT_EQ(IREntity::countComponents<C_PrefabParts>(), 0);
+}
+
 } // namespace

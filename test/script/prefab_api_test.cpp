@@ -1520,7 +1520,7 @@ TEST_F(PrefabWriter, ReaderRefusesAnAnchorWithNoVoxelContent) {
 
     std::ifstream in(controlPath);
     std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-    const std::string versionLine = "prefab_version = 2,";
+    const std::string versionLine = "prefab_version = " + std::to_string(written.version_) + ",";
     const std::size_t at = text.find(versionLine);
     ASSERT_NE(at, std::string::npos) << text;
     text.insert(at + versionLine.size(), "\n  anchor = 1,");
@@ -1969,6 +1969,168 @@ TEST_F(PrefabWriter, V1ReadStillLoads) {
     const IRPrefab::Prefab::SpawnResult loaded =
         IRPrefab::Prefab::spawnPrefab(m_lua, "writer_v1_compat", vec3(0.0f));
     EXPECT_NE(loaded.entity_, IREntity::kNullEntity) << loaded.error_;
+}
+
+TEST_F(PrefabWriter, EntitySceneReparentPreservesWorldAndRejectsCycles) {
+    IRVoxelEditor::EntityScene scene;
+    IRComponents::C_LocalTransform parentTransform{vec3(10.0f, 0.0f, 0.0f)};
+    parentTransform.rotation_ = IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), IRMath::kPi * 0.5f);
+    parentTransform.scale_ = vec3(2.0f);
+    const auto parent = scene.addShapePart({}, parentTransform);
+    const auto child =
+        scene.addShapePart({}, IRComponents::C_LocalTransform{vec3(10.0f, 3.0f, 0.0f)});
+    const auto attached = scene.reparentPart("part_1", "part_0");
+    ASSERT_TRUE(attached.ok_) << attached.error_;
+    const auto childLocal = IREntity::getComponent<IRComponents::C_LocalTransform>(child);
+    EXPECT_NEAR(childLocal.translation_.x, 1.5f, 0.0001f);
+    EXPECT_NEAR(childLocal.translation_.y, 0.0f, 0.0001f);
+    EXPECT_EQ(childLocal.scale_, vec3(0.5f));
+    EXPECT_EQ(m_entity_manager.getChildren(parent), std::vector<IREntity::EntityId>{child});
+    EXPECT_FALSE(scene.reparentPart("part_0", "part_1").ok_);
+    EXPECT_FALSE(scene.reparentPart("part_1", "part_1").ok_);
+    EXPECT_FALSE(scene.reparentPart("part_1", "missing").ok_);
+    EXPECT_EQ(scene.parts()[0].parentId_, "");
+    EXPECT_EQ(scene.parts()[1].parentId_, "part_0");
+    ASSERT_TRUE(scene.reparentPart("part_1", "").ok_);
+    const auto detached = IREntity::getComponent<IRComponents::C_LocalTransform>(child);
+    EXPECT_NEAR(detached.translation_.x, 10.0f, 0.0001f);
+    EXPECT_NEAR(detached.translation_.y, 3.0f, 0.0001f);
+    EXPECT_NEAR(detached.rotation_.w, 1.0f, 0.0001f);
+    EXPECT_EQ(detached.scale_, vec3(1.0f));
+    parentTransform.scale_ = vec3(0.0f);
+    IREntity::setComponent(parent, parentTransform);
+    EXPECT_FALSE(scene.reparentPart("part_1", "part_0").ok_);
+    EXPECT_EQ(scene.findPart("part_1")->parentId_, "");
+    ASSERT_TRUE(scene.reparentPart("part_1", "part_0", false).ok_);
+    EXPECT_EQ(
+        IREntity::getComponent<IRComponents::C_LocalTransform>(child).translation_,
+        detached.translation_
+    );
+    scene.clear();
+}
+
+TEST_F(PrefabWriter, EntitySceneHierarchyRoundTripCloneAndRemovalUndo) {
+    IRVoxelEditor::EntityScene scene;
+    scene.addShapePart({}, IRComponents::C_LocalTransform{vec3(4.0f, 0.0f, 0.0f)});
+    const auto child =
+        scene.addShapePart({}, IRComponents::C_LocalTransform{vec3(7.0f, 0.0f, 0.0f)});
+    ASSERT_TRUE(scene.reparentPart("part_1", "part_0").ok_);
+    const auto saved = scene.save("/tmp", "prefab_writer_nested_scene");
+    ASSERT_TRUE(saved.ok_) << saved.error_;
+    const auto manifest =
+        IRPrefab::Prefab::readManifest(m_lua, "/tmp/prefab_writer_nested_scene.prefab.lua");
+    ASSERT_TRUE(manifest.ok()) << manifest.error_;
+    EXPECT_EQ(manifest.description_->version_, 3);
+    EXPECT_EQ(manifest.description_->parts_[1].parentId_, "part_0");
+    EXPECT_EQ(manifest.description_->parts_[1].transform_.translation_, vec3(3.0f, 0.0f, 0.0f));
+    IRVoxelEditor::EntityScene loaded;
+    ASSERT_TRUE(loaded.load(m_lua, "/tmp", "prefab_writer_nested_scene").ok_);
+    EXPECT_EQ(loaded.parts()[1].parentId_, "part_0");
+    EXPECT_EQ(
+        m_entity_manager.getChildren(loaded.parts()[0].entity_),
+        std::vector<IREntity::EntityId>{loaded.parts()[1].entity_}
+    );
+    scene.select(1, false);
+    const auto clones = scene.cloneSelected(
+        m_lua,
+        {IRComponents::C_LocalTransform{vec3(0.0f, 2.0f, 0.0f)}},
+        vec3(0.0f, 0.0f, 1.0f),
+        0
+    );
+    ASSERT_TRUE(clones.error_.empty()) << clones.error_;
+    ASSERT_EQ(clones.entities_.size(), 1u);
+    EXPECT_EQ(scene.parts().back().parentId_, "part_0");
+    scene.select(0, false);
+    const auto removed = scene.removeSelectedPart();
+    ASSERT_TRUE(removed.has_value());
+    EXPECT_TRUE(IREntity::entityExists(child));
+    EXPECT_EQ(scene.findPart("part_1")->parentId_, "");
+    EXPECT_EQ(
+        IREntity::getComponent<IRComponents::C_LocalTransform>(child).translation_,
+        vec3(7.0f, 0.0f, 0.0f)
+    );
+    const auto restored = scene.restorePart(m_lua, *removed);
+    ASSERT_TRUE(restored.ok()) << restored.error_;
+    EXPECT_EQ(scene.findPart("part_1")->parentId_, "part_0");
+    EXPECT_EQ(scene.findPart("part_2")->parentId_, "part_0");
+    EXPECT_EQ(
+        IREntity::getComponent<IRComponents::C_LocalTransform>(child).translation_,
+        vec3(3.0f, 0.0f, 0.0f)
+    );
+    EXPECT_EQ(m_entity_manager.getChildren(restored.entity_).size(), 2u);
+    loaded.clear();
+    scene.clear();
+}
+
+TEST_F(PrefabWriter, HierarchyWriterRejectsMissingParentAndCycleBeforeWriting) {
+    IRPrefab::Prefab::PrefabDescription description;
+    IRPrefab::Prefab::PrefabPartDescription part;
+    part.id_ = "child";
+    part.parentId_ = "missing";
+    part.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+    description.parts_.push_back(part);
+    const std::string path = "/tmp/prefab_writer_invalid_hierarchy.prefab.lua";
+    const auto missing = IRPrefab::Prefab::writeManifest(path, description);
+    ASSERT_TRUE(missing.has_value());
+    EXPECT_NE(missing->find("missing parent"), std::string::npos);
+    description.parts_[0].parentId_ = "child";
+    const auto cycle = IRPrefab::Prefab::writeManifest(path, description);
+    ASSERT_TRUE(cycle.has_value());
+    EXPECT_NE(cycle->find("cycle"), std::string::npos);
+}
+
+TEST_F(PrefabWriter, EntitySceneAdoptsExistingVoxelAssetWithoutReplacingIt) {
+    const auto source = IREntity::createEntity(
+        IRComponents::C_LocalTransform{vec3(4.0f, -3.0f, 2.0f)},
+        IRComponents::C_VoxelSetNew{
+            IRComponents::C_VoxelSetNew::StagedInit{},
+            IRMath::ivec3(3, 2, 4),
+            IRMath::ivec3(0),
+            std::vector<IRComponents::C_Voxel>(24),
+            IREntity::kNullEntity,
+            IRComponents::EntityAnchor::CORNER
+        }
+    );
+    auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(source);
+    set.pendingVoxels_[5].color_ = IRMath::Color{21, 42, 63, 255};
+    set.pendingVoxels_[5].bone_id_ = 7;
+    set.lodMax_ = IRRender::LodLevel::LOD_1;
+    set.lodMin_ = IRRender::LodLevel::LOD_3;
+    IRVoxelEditor::EntityScene scene;
+    ASSERT_EQ(scene.adoptVoxelPart(source), source);
+    ASSERT_EQ(scene.parts().size(), 1u);
+    EXPECT_EQ(scene.parts()[0].entity_, source);
+    EXPECT_EQ(scene.parts()[0].lodMax_, IRRender::LodLevel::LOD_1);
+    EXPECT_EQ(scene.parts()[0].lodMin_, IRRender::LodLevel::LOD_3);
+    EXPECT_EQ(
+        IREntity::getComponent<IRComponents::C_LocalTransform>(source).translation_,
+        vec3(4.0f, -3.0f, 2.0f)
+    );
+    const auto &adopted = IREntity::getComponent<IRComponents::C_VoxelSetNew>(source);
+    EXPECT_EQ(adopted.anchor_, IRComponents::EntityAnchor::CORNER);
+    EXPECT_EQ(adopted.pendingVoxels_[5].bone_id_, 7u);
+    EXPECT_EQ(adopted.pendingVoxels_[5].color_.red_, 21);
+    EXPECT_EQ(adopted.pendingVoxels_[5].color_.green_, 42);
+    EXPECT_EQ(adopted.pendingVoxels_[5].color_.blue_, 63);
+    EXPECT_EQ(adopted.pendingVoxels_[5].color_.alpha_, 255);
+    EXPECT_EQ(scene.adoptVoxelPart(source), IREntity::kNullEntity);
+    scene.addShapePart({}, IRComponents::C_LocalTransform{vec3(0.0f)});
+    EXPECT_EQ(scene.parts().size(), 2u);
+    ASSERT_TRUE(scene.save("/tmp", "prefab_adopt_existing").ok_);
+    IRVoxelEditor::EntityScene loaded;
+    ASSERT_TRUE(loaded.load(m_lua, "/tmp", "prefab_adopt_existing").ok_);
+    ASSERT_EQ(loaded.parts().size(), 2u);
+    const auto &restored =
+        IREntity::getComponent<IRComponents::C_VoxelSetNew>(loaded.parts()[0].entity_);
+    EXPECT_EQ(restored.size_, IRMath::ivec3(3, 2, 4));
+    EXPECT_EQ(restored.anchor_, IRComponents::EntityAnchor::CORNER);
+    EXPECT_EQ(restored.pendingVoxels_[5].bone_id_, 7u);
+    EXPECT_EQ(restored.pendingVoxels_[5].color_.red_, 21);
+    EXPECT_EQ(restored.pendingVoxels_[5].color_.green_, 42);
+    EXPECT_EQ(restored.pendingVoxels_[5].color_.blue_, 63);
+    EXPECT_EQ(restored.pendingVoxels_[5].color_.alpha_, 255);
+    loaded.clear();
+    scene.clear();
 }
 
 } // namespace

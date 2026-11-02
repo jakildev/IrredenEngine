@@ -18,6 +18,7 @@
 #include <irreden/voxel/grid_rotation.hpp>
 
 #include "component_records.hpp"
+#include "composite_save_transaction.hpp"
 #include "module_session_view.hpp"
 
 #include <algorithm>
@@ -54,6 +55,7 @@ struct EditorPart {
     // The module recipe APPLY last wrote into this part, which its handles
     // drag and its class mask keeps.
     std::optional<PartRecipeBinding> recipeBinding_;
+    std::string parentId_;
 };
 
 // The root as a component-attach target; a part is its index.
@@ -72,15 +74,24 @@ struct EntitySceneCloneResult {
 using EntityScenePartPayload =
     std::variant<IRAsset::DenseVoxelSet, IRComponents::C_ShapeDescriptor>;
 
+struct DetachedEditorChild {
+    std::string id_;
+    IRComponents::C_LocalTransform transform_;
+};
+
 struct RemovedEditorPart {
     EditorPart part_;
     std::size_t index_ = 0;
     IRComponents::C_LocalTransform transform_;
     EntityScenePartPayload payload_;
+    std::vector<DetachedEditorChild> detachedChildren_;
     IRComponents::EntityAnchor voxelAnchor_ = IRComponents::EntityAnchor::CORNER;
 
     std::size_t byteSize() const {
-        std::size_t bytes = sizeof(RemovedEditorPart) + part_.id_.size();
+        std::size_t bytes = sizeof(RemovedEditorPart) + part_.id_.size() + part_.parentId_.size();
+        for (const DetachedEditorChild &child : detachedChildren_) {
+            bytes += sizeof(DetachedEditorChild) + child.id_.size();
+        }
         for (const ComponentRecord &component : part_.components_) {
             bytes += sizeof(ComponentRecord) + component.name_.size() + component.overrides_.size();
             for (const ComponentField &field : component.fields_) {
@@ -181,6 +192,50 @@ class EntityScene {
         return found == m_parts.end() ? nullptr : &*found;
     }
 
+    const EditorPart *findPart(const std::string &id) const {
+        const auto found = std::find_if(m_parts.begin(), m_parts.end(), [&id](const auto &part) {
+            return part.id_ == id;
+        });
+        return found == m_parts.end() ? nullptr : &*found;
+    }
+
+    EntitySceneResult
+    reparentPart(const std::string &id, const std::string &parentId, bool preserveWorld = true) {
+        EditorPart *part = findPart(id);
+        const EditorPart *parent = parentId.empty() ? nullptr : findPart(parentId);
+        if (!part || (!parentId.empty() && !parent)) {
+            return {false, "part or parent does not exist"};
+        }
+        for (const EditorPart *ancestor = parent; ancestor;
+             ancestor = ancestor->parentId_.empty() ? nullptr : findPart(ancestor->parentId_)) {
+            if (ancestor->id_ == id)
+                return {false, "a part cannot be parented to itself or its descendant"};
+        }
+        IRComponents::C_LocalTransform local =
+            IREntity::getComponent<IRComponents::C_LocalTransform>(part->entity_);
+        if (preserveWorld) {
+            const IRMath::SQT world = authoredTransform(id);
+            const IRMath::SQT parentWorld = authoredTransform(parentId);
+            if (parentWorld.scale_.x == 0.0f || parentWorld.scale_.y == 0.0f ||
+                parentWorld.scale_.z == 0.0f) {
+                return {false, "cannot preserve position under a zero-scale parent"};
+            }
+            const IRMath::vec4 inverseRotation = IRMath::quatInverse(parentWorld.rotation_);
+            local.translation_ = IRMath::rotateVectorByQuat(
+                                     world.translation_ - parentWorld.translation_,
+                                     inverseRotation
+                                 ) /
+                                 parentWorld.scale_;
+            local.rotation_ = IRMath::quatMul(inverseRotation, world.rotation_);
+            local.scale_ = world.scale_ / parentWorld.scale_;
+        }
+        const IREntity::EntityId parentEntity = parent ? parent->entity_ : m_root;
+        IREntity::setParent(part->entity_, parentEntity);
+        IREntity::setComponent(part->entity_, local);
+        part->parentId_ = parentId;
+        return {true, {}};
+    }
+
     const EditorPart *selectedPart() const {
         return m_selected >= 0 && m_selected < static_cast<int>(m_parts.size())
                    ? &m_parts[static_cast<std::size_t>(m_selected)]
@@ -254,6 +309,33 @@ class EntityScene {
     void begin() {
         clear();
         m_root = createRoot();
+    }
+
+    // Takes ownership of a standalone authored set without rebuilding its payload.
+    // An existing parent is refused: callers must explicitly detach it first.
+    IREntity::EntityId adoptVoxelPart(IREntity::EntityId entity) {
+        auto &manager = IREntity::getEntityManager();
+        if (!IREntity::entityExists(entity) || manager.getParent(entity) != IREntity::kNullEntity ||
+            !manager.getComponentOptional<IRComponents::C_VoxelSetNew>(entity) ||
+            !manager.getComponentOptional<IRComponents::C_LocalTransform>(entity)) {
+            return IREntity::kNullEntity;
+        }
+        if (!active())
+            begin();
+        const auto *set = *manager.getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
+        const auto fine = set->lodMax_;
+        const auto coarse = set->lodMin_;
+        const auto mode = manager.getComponentOptional<IRComponents::C_RotationMode>(entity);
+        const auto authoredMode = mode ? (*mode)->mode_ : IRComponents::RotationMode::GRID;
+        if (!mode)
+            IREntity::setComponent(entity, IRComponents::C_RotationMode{authoredMode});
+        appendPart(entity, "part_" + std::to_string(m_nextPartId++), EditorPartKind::VOXEL_SET);
+        m_parts.back().mode_ = authoredMode;
+        if (const auto canvas = manager.getComponentOptional<IRComponents::C_EntityCanvas>(entity))
+            m_parts.back().canvasSize_ = (*canvas)->canvasSize_;
+        m_parts.back().lodMax_ = fine;
+        m_parts.back().lodMin_ = coarse;
+        return entity;
     }
 
     IREntity::EntityId addVoxelPart(
@@ -371,7 +453,10 @@ class EntityScene {
                     IRComponents::C_RotationMode{source.mode_}
                 );
             }
-            IREntity::setParent(entity, m_root);
+            IREntity::setParent(
+                entity,
+                source.parentId_.empty() ? m_root : findPart(source.parentId_)->entity_
+            );
             EditorPart clone{
                 entity,
                 id,
@@ -385,7 +470,8 @@ class EntityScene {
                 groupId,
                 groupAxis,
                 rotationalOrder,
-                source.recipeBinding_
+                source.recipeBinding_,
+                source.parentId_
             };
             applyBand(clone);
             applyTierOverride(entity);
@@ -418,6 +504,16 @@ class EntityScene {
             destroyPreview();
         }
         destroySelectionGizmos();
+        for (EditorPart &part : m_parts) {
+            if (part.parentId_.empty() ||
+                std::find(entities.begin(), entities.end(), part.entity_) != entities.end())
+                continue;
+            const EditorPart *parent = findPart(part.parentId_);
+            if (parent &&
+                std::find(entities.begin(), entities.end(), parent->entity_) != entities.end()) {
+                reparentPart(part.id_, {});
+            }
+        }
         for (IREntity::EntityId entity : entities) {
             if (IREntity::entityExists(entity)) {
                 IREntity::destroyEntity(entity);
@@ -467,6 +563,14 @@ class EntityScene {
         removed.index_ = static_cast<std::size_t>(std::distance(m_parts.begin(), selectedIt));
         removed.transform_ =
             IREntity::getComponent<IRComponents::C_LocalTransform>(selected.entity_);
+        for (const EditorPart &child : m_parts) {
+            if (child.parentId_ == selected.id_) {
+                removed.detachedChildren_.push_back(
+                    {child.id_,
+                     IREntity::getComponent<IRComponents::C_LocalTransform>(child.entity_)}
+                );
+            }
+        }
         if (selected.kind_ == EditorPartKind::SHAPE) {
             removed.payload_ =
                 IREntity::getComponent<IRComponents::C_ShapeDescriptor>(selected.entity_);
@@ -484,6 +588,12 @@ class EntityScene {
             return {IREntity::kNullEntity, "entity scene is not active"};
         }
 
+        const EditorPart *parent =
+            removed.part_.parentId_.empty() ? nullptr : findPart(removed.part_.parentId_);
+        if (!removed.part_.parentId_.empty() && !parent) {
+            return {IREntity::kNullEntity, "the restored part's parent does not exist"};
+        }
+        const IREntity::EntityId parentEntity = parent ? parent->entity_ : m_root;
         IREntity::EntityId entity = IREntity::kNullEntity;
         if (removed.part_.kind_ == EditorPartKind::SHAPE) {
             entity = IREntity::createEntity(
@@ -501,7 +611,7 @@ class EntityScene {
                 IRComponents::C_RotationMode{removed.part_.mode_}
             );
         }
-        IREntity::setParent(entity, m_root);
+        IREntity::setParent(entity, parentEntity);
 
         EditorPart restored = removed.part_;
         restored.entity_ = entity;
@@ -517,6 +627,13 @@ class EntityScene {
 
         const std::size_t index = IRMath::min(removed.index_, m_parts.size());
         m_parts.insert(m_parts.begin() + static_cast<std::ptrdiff_t>(index), std::move(restored));
+        for (const DetachedEditorChild &detached : removed.detachedChildren_) {
+            if (EditorPart *child = findPart(detached.id_)) {
+                IREntity::setParent(child->entity_, entity);
+                IREntity::setComponent(child->entity_, detached.transform_);
+                child->parentId_ = removed.part_.id_;
+            }
+        }
         select(static_cast<int>(index), false);
         return {entity, {}};
     }
@@ -586,13 +703,26 @@ class EntityScene {
         if (directoryError) {
             return {false, "could not create '" + dir + "': " + directoryError.message()};
         }
+        CompositeSaveTransaction transaction;
+        if (!transaction.begin(dir, baseName)) {
+            return {false, transaction.error()};
+        }
 
+        std::vector<std::string> optionalSidecars;
         IRPrefab::Prefab::PrefabDescription description;
+        description.version_ = std::any_of(
+                                   m_parts.begin(),
+                                   m_parts.end(),
+                                   [](const auto &part) { return !part.parentId_.empty(); }
+                               )
+                                   ? 3
+                                   : 2;
         description.components_ = describeComponents(m_rootComponents);
         description.parts_.reserve(m_parts.size());
         for (const EditorPart &editorPart : m_parts) {
             IRPrefab::Prefab::PrefabPartDescription part;
             part.id_ = editorPart.id_;
+            part.parentId_ = editorPart.parentId_;
             part.transform_ =
                 IREntity::getComponent<IRComponents::C_LocalTransform>(editorPart.entity_);
             part.rotationMode_ = editorPart.mode_;
@@ -616,11 +746,25 @@ class EntityScene {
                     IREntity::getComponent<IRComponents::C_VoxelSetNew>(editorPart.entity_);
                 IRAsset::DenseVoxelSet dense = IRPrefab::DenseVoxel::fromComponent(set);
                 const std::string filename = baseName + "_" + editorPart.id_ + ".vxs";
+                const auto stagedPath = transaction.stageFile(filename);
+                if (!stagedPath) {
+                    return {false, transaction.error()};
+                }
                 const std::string voxelPath = IRUtility::joinPath(dir, filename, "");
                 if (const IRAsset::BinaryStatus status =
-                        IRAsset::saveDenseVoxelSet(voxelPath, dense);
+                        IRAsset::saveDenseVoxelSet(stagedPath->string(), dense);
                     !status.ok()) {
-                    return {false, "failed to save voxel part '" + editorPart.id_ + "'"};
+                    return {
+                        false,
+                        "failed to save voxel part '" + editorPart.id_ + "': " + status.message_
+                    };
+                }
+                std::error_code sidecarError;
+                if (std::filesystem::is_regular_file(
+                        stagedPath->string() + ".json",
+                        sidecarError
+                    )) {
+                    optionalSidecars.push_back(filename + ".json");
                 }
                 part.voxelRef_ = voxelPath;
                 part.anchor_ = set.anchor_;
@@ -628,52 +772,71 @@ class EntityScene {
             description.parts_.push_back(std::move(part));
         }
 
-        const std::string manifestPath = IRUtility::joinPath(dir, baseName, ".prefab.lua");
-        if (const std::optional<std::string> error =
-                IRPrefab::Prefab::writeManifest(manifestPath, description)) {
-            return {false, *error};
-        }
-        const std::string sidecarPath = IRUtility::joinPath(dir, baseName, ".recipes.lua");
+        const std::string sidecarFilename = baseName + ".recipes.lua";
         const bool hasBindings = std::any_of(m_parts.begin(), m_parts.end(), [](const auto &part) {
             return part.recipeBinding_.has_value();
         });
         if (!hasBindings) {
-            std::error_code removeError;
-            std::filesystem::remove(sidecarPath, removeError);
-            return {true, {}};
-        }
-        std::ofstream sidecar(sidecarPath, std::ios::trunc);
-        if (!sidecar)
-            return {false, "could not write recipe sidecar '" + sidecarPath + "'"};
-        sidecar << "return { version = 1, parts = {\n";
-        sidecar << std::setprecision(9);
-        for (const EditorPart &part : m_parts) {
-            if (!part.recipeBinding_)
-                continue;
-            const PartRecipeBinding &binding = *part.recipeBinding_;
-            const auto recipe = std::find_if(recipes.begin(), recipes.end(), [&](const auto &item) {
-                return item.name_ == binding.recipe_;
-            });
-            if (recipe == recipes.end())
-                continue;
-            sidecar << "  [\"" << part.id_ << "\"] = { recipe = \"" << binding.recipe_
-                    << "\", values = {";
-            for (std::size_t i = 0; i < recipe->params_.size() && i < binding.values_.size(); ++i)
-                sidecar << (i == 0 ? " " : ", ") << recipe->params_[i].name_ << " = "
-                        << binding.values_[i];
-            sidecar << " }, fallback = { " << static_cast<int>(binding.fallbackColor_.red_) << ", "
-                    << static_cast<int>(binding.fallbackColor_.green_) << ", "
-                    << static_cast<int>(binding.fallbackColor_.blue_) << ", "
-                    << static_cast<int>(binding.fallbackColor_.alpha_) << " }, mask = {";
-            for (const RecipeClassMaskEntry &entry : binding.mask_) {
-                sidecar << " { " << entry.local_.x << ", " << entry.local_.y << ", "
-                        << entry.local_.z << ", \"" << entry.className_ << "\" },";
+            if (!transaction.removeFile(sidecarFilename)) {
+                return {false, transaction.error()};
             }
-            sidecar << " } },\n";
+        } else {
+            const auto sidecarPath = transaction.stageFile(sidecarFilename);
+            if (!sidecarPath) {
+                return {false, transaction.error()};
+            }
+            std::ofstream sidecar(*sidecarPath, std::ios::trunc);
+            if (!sidecar)
+                return {false, "could not write recipe sidecar '" + sidecarFilename + "'"};
+            sidecar << "return { version = 1, parts = {\n";
+            sidecar << std::setprecision(9);
+            for (const EditorPart &part : m_parts) {
+                if (!part.recipeBinding_)
+                    continue;
+                const PartRecipeBinding &binding = *part.recipeBinding_;
+                const auto recipe =
+                    std::find_if(recipes.begin(), recipes.end(), [&](const auto &item) {
+                        return item.name_ == binding.recipe_;
+                    });
+                if (recipe == recipes.end())
+                    continue;
+                sidecar << "  [\"" << part.id_ << "\"] = { recipe = \"" << binding.recipe_
+                        << "\", values = {";
+                for (std::size_t i = 0; i < recipe->params_.size() && i < binding.values_.size();
+                     ++i)
+                    sidecar << (i == 0 ? " " : ", ") << recipe->params_[i].name_ << " = "
+                            << binding.values_[i];
+                sidecar << " }, fallback = { " << static_cast<int>(binding.fallbackColor_.red_)
+                        << ", " << static_cast<int>(binding.fallbackColor_.green_) << ", "
+                        << static_cast<int>(binding.fallbackColor_.blue_) << ", "
+                        << static_cast<int>(binding.fallbackColor_.alpha_) << " }, mask = {";
+                for (const RecipeClassMaskEntry &entry : binding.mask_) {
+                    sidecar << " { " << entry.local_.x << ", " << entry.local_.y << ", "
+                            << entry.local_.z << ", \"" << entry.className_ << "\" },";
+                }
+                sidecar << " } },\n";
+            }
+            sidecar << "} }\n";
+            sidecar.close();
+            if (!sidecar)
+                return {false, "failed to write recipe sidecar '" + sidecarFilename + "'"};
         }
-        sidecar << "} }\n";
-        if (!sidecar)
-            return {false, "failed to write recipe sidecar '" + sidecarPath + "'"};
+        const auto manifestPath = transaction.stageFile(baseName + ".prefab.lua");
+        if (!manifestPath) {
+            return {false, transaction.error()};
+        }
+        if (const std::optional<std::string> error =
+                IRPrefab::Prefab::writeManifest(manifestPath->string(), description)) {
+            return {false, *error};
+        }
+        if (!transaction.publish()) {
+            return {false, transaction.error()};
+        }
+        for (const std::string &filename : optionalSidecars) {
+            if (!transaction.publishOptionalFile(filename)) {
+                IR_LOG_WARN("{}", transaction.error());
+            }
+        }
         return {true, {}};
     }
 
@@ -860,6 +1023,7 @@ class EntityScene {
                     description.resident_
                 }
             );
+            stagedParts.back().parentId_ = description.parentId_;
             const auto binding =
                 std::find_if(stagedBindings.begin(), stagedBindings.end(), [&](const auto &entry) {
                     return entry.first == description.id_;
@@ -880,6 +1044,16 @@ class EntityScene {
                     stagedNextPartId = IRMath::max(stagedNextPartId, numericId + 1);
                 }
             }
+        }
+
+        for (const EditorPart &part : stagedParts) {
+            if (part.parentId_.empty())
+                continue;
+            const auto parent =
+                std::find_if(stagedParts.begin(), stagedParts.end(), [&](const auto &candidate) {
+                    return candidate.id_ == part.parentId_;
+                });
+            IREntity::setParent(part.entity_, parent->entity_);
         }
 
         std::string componentErrors;
@@ -912,6 +1086,21 @@ class EntityScene {
     }
 
   private:
+    IRMath::SQT authoredTransform(const std::string &id) const {
+        std::vector<IREntity::EntityId> chain;
+        for (const EditorPart *part = id.empty() ? nullptr : findPart(id); part;
+             part = part->parentId_.empty() ? nullptr : findPart(part->parentId_)) {
+            chain.push_back(part->entity_);
+        }
+        const auto &rootLocal = IREntity::getComponent<IRComponents::C_LocalTransform>(m_root);
+        IRMath::SQT world{rootLocal.scale_, rootLocal.rotation_, rootLocal.translation_};
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            const auto &local = IREntity::getComponent<IRComponents::C_LocalTransform>(*it);
+            world = IRMath::sqtCompose(world, {local.scale_, local.rotation_, local.translation_});
+        }
+        return world;
+    }
+
     static std::vector<IRPrefab::Prefab::PrefabComponentDescription>
     describeComponents(const std::vector<ComponentRecord> &records) {
         std::vector<IRPrefab::Prefab::PrefabComponentDescription> described;

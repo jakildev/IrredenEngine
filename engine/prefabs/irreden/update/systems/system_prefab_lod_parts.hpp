@@ -14,8 +14,8 @@
 
 namespace IRSystem {
 
-// Keeps a composite prefab root's live parts equal to the parts whose band
-// holds the root's resolved tier. A tier must hold for
+// Keeps a composite prefab root's in-band parts and their transform ancestors
+// alive at the root's resolved tier. A tier must hold for
 // kPrefabPartsTierSettleTicks before the parts follow it; then a part entering
 // its band spawns (at most kPrefabPartSpawnBudgetPerTick per tick, the rest on
 // later ticks) and a part leaving it is destroyed, or, when resident, kept and
@@ -51,22 +51,27 @@ template <> struct System<PREFAB_LOD_PARTS> {
 
         const bool tierChanged = tier != parts.tier_;
         parts.tier_ = tier;
-        for (std::size_t i = 0; i < parts.slots_.size(); ++i) {
+        parts.updateNeeded(tier);
+        for (auto it = parts.hierarchyOrder_.rbegin(); it != parts.hierarchyOrder_.rend(); ++it) {
+            IRComponents::PrefabPartSlot &slot = parts.slots_[*it];
+            if (slot.entity_ != IREntity::kNullEntity && !slot.needed_) {
+                IRPrefab::Prefab::despawnPart(slot);
+            }
+        }
+        for (std::size_t i : parts.hierarchyOrder_) {
             IRComponents::PrefabPartSlot &slot = parts.slots_[i];
-            const bool inBand = slot.inBand(tier);
             if (slot.entity_ == IREntity::kNullEntity) {
-                if (inBand && spawnBudget_ > 0) {
+                const bool parentReady =
+                    slot.parentIndex_ == IRComponents::kPrefabRootParent ||
+                    parts.slots_[slot.parentIndex_].entity_ != IREntity::kNullEntity;
+                if (slot.needed_ && parentReady && spawnBudget_ > 0) {
                     --spawnBudget_;
                     IRPrefab::Prefab::stagePartSpawn(root, parts, i);
                 }
                 continue;
             }
-            if (slot.resident_) {
-                if (tierChanged) {
-                    IRPrefab::Prefab::pinResidentPart(slot, tier);
-                }
-            } else if (!inBand) {
-                IRPrefab::Prefab::despawnPart(slot);
+            if (tierChanged) {
+                IRPrefab::Prefab::pinResidentPart(slot, tier);
             }
         }
     }

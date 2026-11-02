@@ -184,7 +184,7 @@ bool writeJsonSidecarToFile(const std::string &path, const std::string &json) {
         return false;
     }
     const std::size_t written = std::fwrite(json.data(), 1, json.size(), f);
-    std::fclose(f);
+    const bool closed = std::fclose(f) == 0;
     if (written != json.size()) {
         IRE_LOG_ERROR(
             "writeJsonSidecarToFile: short write on {} ({} of {} bytes)",
@@ -192,6 +192,10 @@ bool writeJsonSidecarToFile(const std::string &path, const std::string &json) {
             written,
             json.size()
         );
+        return false;
+    }
+    if (!closed) {
+        IRE_LOG_ERROR("writeJsonSidecarToFile: close failed for {}", path);
         return false;
     }
     return true;
