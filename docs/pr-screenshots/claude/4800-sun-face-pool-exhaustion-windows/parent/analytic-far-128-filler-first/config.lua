@@ -1,0 +1,1 @@
+config = {window_mode="offscreen", profiling_enabled=false, gpu_stage_timing=false, init_window_width=1280, init_window_height=720, game_resolution_width=1280, game_resolution_height=720, screenshot_output_dir="C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/pr-screenshots/claude/4800-sun-face-pool-exhaustion-windows/parent/analytic-far-128-filler-first"}

@@ -299,6 +299,14 @@ python3 docs/pr-screenshots/claude/4759-sun-face-pool-exhaustion/slab_extrema_wi
 All drivers stage GLSL instead of Metal off macOS, so the same commands
 run on Windows/OpenGL. `ab_timing.py` needs two complete build trees because
 a layout change cannot be staged as four shaders. Captured on Apple M4 Max, macOS, Metal Debug.
-**Windows/OpenGL captures were not run on this host.** The CPU shader adapters
-execute both backends' sources, not the OpenGL driver. Capture frames
-synchronize the GPU and are not timing evidence.
+Capture frames synchronize the GPU and are not timing evidence.
+
+The first two commands grade the retained-record repair against its parent.
+With the repair on `origin/master` and the growth layout after it, they need
+a build of a commit from `71829165a` (the repair) up to, not including,
+`d72f88820` (growth), and `--parent-ref ecb5405ba`, the commit before the repair:
+staging the parent's four shaders into a growth build mismatches the buffer
+layout, and staging `origin/master`'s stages the head's own shaders. The
+[Windows/OpenGL replay](../4800-sun-face-pool-exhaustion-windows/README.md)
+gives the exact sequence and reproduces every receiver crop here pixel for
+pixel at 1×.

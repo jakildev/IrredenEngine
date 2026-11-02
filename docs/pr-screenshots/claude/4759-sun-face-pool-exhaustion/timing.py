@@ -2,12 +2,13 @@
 """Profile parent/head/parent sun shaders on exhausted and complete record pools.
 
 Timing only: no index probe, no screenshots. repeat_profile.py owns benchmark
-resource coordination. The parent passes stage origin/master's sun-index shaders
+resource coordination. The parent passes stage --parent-ref's sun-index shaders
 into the build's runtime shader directory exactly as capture.py does.
 """
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +28,9 @@ COMMON = ["--only", "shadowbox,floor", "--probe-source-box", "--probe-floor-mode
           "--probe-overlapping-source-offset", "0", "0", "-60"]
 FILLER = ["--probe-record-pool-filler", "300",
           "--probe-record-pool-filler-offset", "200", "-200", "0"]
+# A quiet-window breach rejects the run before any number is kept, so a retry
+# only waits for a quieter host; any other failure stops the matrix.
+QUIET_ATTEMPTS = 8
 CASES = [("far-128", []),
          ("far-128-filler-last", [*FILLER, "--probe-record-pool-filler-last"]),
          ("far-128-filler-first", FILLER)]
@@ -35,6 +39,8 @@ CASES = [("far-128", []),
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--parent-ref", default="origin/master",
+                        help="ref whose sun-index shaders the parent passes stage")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -42,17 +48,28 @@ def main():
     shader_dir = binary.parent / "shaders" / SUBDIR
     matrix = []
     for passname, variant in (("parent-a", "parent"), ("head", "head"), ("parent-b", "parent")):
-        saved = stage_parent(shader_dir) if variant == "parent" else {}
+        saved = stage_parent(shader_dir, args.parent_ref) if variant == "parent" else {}
         try:
             hashes = {name: sha256(shader_dir / name) for name in POLICY_SHADERS}
             for name, extra in CASES:
+                directory = output / passname / name
                 command = ["python3", "scripts/perf/repeat_profile.py", "--target",
-                           "IRCanvasStress", "--output", str(output / passname / name),
+                           "IRCanvasStress", "--output", str(directory),
                            "--repeats", "1", "--timeout", "180", "--", *COMMON, *extra]
                 print(passname, name, flush=True)
-                subprocess.run(command, cwd=ROOT, check=True)
+                for breaches in range(QUIET_ATTEMPTS):
+                    if subprocess.run(command, cwd=ROOT).returncode == 0:
+                        break
+                    log = (directory / "run-1.log").read_text(errors="replace")
+                    if "ir-run: RESULT=CONTAMINATED" not in log:
+                        raise RuntimeError(f"{passname} {name}: run failed; see {directory}")
+                    shutil.rmtree(directory)
+                else:
+                    raise RuntimeError(f"{passname} {name}: no quiet window in "
+                                       f"{QUIET_ATTEMPTS} attempts")
                 matrix.append({"pass": passname, "variant": variant, "case": name,
-                               "shader_sha256": hashes, "command": command})
+                               "shader_sha256": hashes, "command": command,
+                               "quiet_breaches_discarded": breaches})
                 (output / "matrix.json").write_text(json.dumps(matrix, indent=2) + "\n")
         finally:
             restore(shader_dir, saved)
