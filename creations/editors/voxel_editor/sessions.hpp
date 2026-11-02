@@ -2199,7 +2199,7 @@ inline Recipe build(
         };
         builder.segment("overwrite_requires_decision");
         builder.clickGui(sculptButtonCenter(0));
-        builder.at(cell);
+        builder.click(cell);
         builder.clickGui({390, 119});
         builder.segment("cancel_preserves_unsaved_asset");
         builder.clickGui({310, 199});
