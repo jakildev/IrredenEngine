@@ -155,6 +155,7 @@
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include "hierarchy_panel.hpp"
 #include "part_edit_history.hpp"
+#include "local_part_edit.hpp"
 #include "sculpt_panel.hpp"
 
 // Authoring sessions — recipes of editor gestures compiled into
@@ -240,6 +241,10 @@ struct WorkspaceMember {
 };
 
 struct EditorState {
+    LocalPartEditSession localEdit_;
+    EditorStageView localEditView_;
+    Workspace workspaceBeforeLocalEdit_ = Workspace::ASSEMBLE;
+    IREntity::EntityId localEditButton_ = IREntity::kNullEntity;
     std::string documentStatus_;
     IREntity::EntityId documentStatusLabel_ = IREntity::kNullEntity;
     Workspace workspace_ = Workspace::ALL;
@@ -355,6 +360,10 @@ constexpr float kRotationSensitivity = 0.004f;
 
 void refreshRecipeHandles();
 void cancelSculptStroke();
+void finishSculptStroke();
+void closeLocalPartEdit();
+void disableJointAuthoringForLocalEdit();
+void refreshLocalPartEdit();
 void finishPartEdits();
 bool cancelPartEdits();
 
@@ -381,6 +390,8 @@ IRSystem::SystemId g_gizmoHoverSystem = IRSystem::kNullSystemId;
 IRSystem::SystemId g_gizmoDragSystem = IRSystem::kNullSystemId;
 
 void setTransformMode(bool on) {
+    if (on)
+        closeLocalPartEdit();
     using IRSystem::System;
     g_transformMode = on;
     IRSystem::getSystemParams<System<IRSystem::GIZMO_HOVER>>(g_gizmoHoverSystem)->enabled_ = on;
@@ -1183,6 +1194,7 @@ void createModePreviewTwin() {
 // A request the part cannot take leaves its mode as it was and re-syncs the
 // dropdown to it.
 void setSelectedPartRotationMode(IRComponents::RotationMode mode) {
+    closeLocalPartEdit();
     EditorPart *part = g_entityScene.selectedPart();
     if (part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET || part->mode_ == mode ||
         (mode == IRComponents::RotationMode::DETACHED_REVOXELIZE && !partCanRevoxelize(*part))) {
@@ -1323,6 +1335,7 @@ bool canEditAnimationFrames() {
 void selectEditorPart(int index, bool createGizmos = true) {
     finishPartEdits();
     cancelSculptStroke();
+    closeLocalPartEdit();
     const IREntity::EntityId selected = g_entityScene.select(index, createGizmos);
     if (g_entityScene.previewSourceEntity() != IREntity::kNullEntity &&
         selected != g_entityScene.previewSourceEntity()) {
@@ -1357,6 +1370,73 @@ void selectEditorPart(int index, bool createGizmos = true) {
     reseatEditorMirrorAxes();
     syncPartSizeReadout();
     refreshRecipeHandles();
+}
+
+void closeLocalPartEdit() {
+    if (!g_editor.localEdit_.active())
+        return;
+    finishSculptStroke();
+    const auto source = g_editor.localEdit_.source(g_entityScene);
+    g_editor.localEdit_.close();
+    g_editor.localEditView_.restore();
+    g_editor.workspace_ = g_editor.workspaceBeforeLocalEdit_;
+    g_editor.editableVoxelSet_ = source;
+    g_sceneVoxelSetEntity = source;
+    g_editor.documentStatus_ = "Returned to assembly; local edits kept.";
+    reseatEditorMirrorAxes();
+    refreshRecipeHandles();
+}
+
+void refreshLocalPartEdit() {
+    if (g_editor.localEdit_.active() && !g_editor.localEdit_.refresh(g_entityScene)) {
+        closeLocalPartEdit();
+        g_editor.documentStatus_ = "Local edit closed: source part changed or was removed.";
+    }
+}
+
+bool localToolUnsupported(const char *tool) {
+    if (!g_editor.localEdit_.active())
+        return false;
+    g_editor.documentStatus_ =
+        std::string(tool) + " is unavailable in local canvas; use DONE EDIT first.";
+    return true;
+}
+
+void toggleLocalPartEdit() {
+    if (g_editor.localEdit_.active()) {
+        closeLocalPartEdit();
+        return;
+    }
+    const auto *part = g_entityScene.selectedPart();
+    if (!part || part->kind_ != EditorPartKind::VOXEL_SET) {
+        g_editor.documentStatus_ = "Select a voxel part to edit its local canvas.";
+        return;
+    }
+    finishSculptStroke();
+    finishPartEdits();
+    setTransformMode(false);
+    const std::string partId = part->id_;
+    const auto size = IREntity::getComponent<C_VoxelSetNew>(part->entity_).size_;
+    const vec3 origin = localEditStageOrigin(g_entityScene, size);
+    g_editor.localEditView_.capture();
+    if (!g_editor.localEdit_.begin(g_entityScene, partId, origin)) {
+        g_editor.documentStatus_ = "Cannot open local canvas for this part.";
+        return;
+    }
+    g_editor.workspaceBeforeLocalEdit_ = g_editor.workspace_;
+    g_editor.workspace_ = Workspace::SCULPT;
+    g_editor.editableVoxelSet_ = g_editor.localEdit_.proxy();
+    g_sceneVoxelSetEntity = g_editor.localEdit_.source(g_entityScene);
+    g_sculpt.tool_ = SculptTool::BRUSH;
+    g_sculpt.showGrid_ = true;
+    g_eraseMode = false;
+    g_classPaintMode = false;
+    g_bonePaint.active_ = false;
+    g_loftTool.active_ = false;
+    disableJointAuthoringForLocalEdit();
+    g_editor.localEditView_.focus(origin + vec3(size - ivec3(1)) * 0.5f);
+    g_editor.documentStatus_ = "LOCAL CANVAS: " + partId + " | DONE EDIT returns to assembly.";
+    reseatEditorMirrorAxes();
 }
 
 void selectRelativeEditorPart(int offset) {
@@ -1419,6 +1499,7 @@ void addEditorVoxelPart() {
 
 void clearEntitySceneForLoad() {
     cancelSculptStroke();
+    closeLocalPartEdit();
     clearUndoHistory();
     g_entityScene.clear();
     refreshRecipeHandles();
@@ -1498,6 +1579,7 @@ std::optional<RemovedEditorPart> snapshotEditorPartById(const std::string &partI
 void removeSelectedPart() {
     finishPartEdits();
     cancelSculptStroke();
+    closeLocalPartEdit();
     if (!g_entitySceneMode || g_entityScene.selectedPart() == nullptr) {
         return;
     }
@@ -1677,7 +1759,7 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
 // state to the in-flight stroke buffer. `flat` is the linear pool index so the
 // per-voxel mutation reuses the precomputed offset. `boneId` is 0 (identity) for
 // normal color-paint; the active bone index in bone-paint mode. Writes
-// the raw `voxels_` span directly — callers always finish a batch of these
+// the authored local records — callers always finish a batch of these
 // (single edit, line, AABB, face-fill, or SDF bake) with one `commitStroke()`,
 // which resyncs derived state once for the whole batch. Not called directly:
 // applyEdit fans an edit out across the enabled mirror planes into this.
@@ -1691,25 +1773,26 @@ void applyEditRaw(
     std::uint8_t boneId,
     bool paintOnly = false
 ) {
-    if (paintOnly && set.voxels_[flat].color_.alpha_ == 0)
+    if (paintOnly && set.mutableAuthoredRecords()[flat].color_.alpha_ == 0)
         return;
-    UndoEdit edit{voxelSetEntity, localIdx, set.voxels_[flat], {}};
+    UndoEdit edit{voxelSetEntity, localIdx, set.mutableAuthoredRecords()[flat], {}};
     if (paintOnly) {
-        set.voxels_[flat].color_ = placeColor;
+        set.mutableAuthoredRecords()[flat].color_ = placeColor;
     } else if (place) {
-        set.voxels_[flat].color_ = placeColor;
-        set.voxels_[flat].bone_id_ = boneId;
-        set.voxels_[flat].layer_id_ = g_layerManager.activeLayerId();
+        set.mutableAuthoredRecords()[flat].color_ = placeColor;
+        set.mutableAuthoredRecords()[flat].bone_id_ = boneId;
+        set.mutableAuthoredRecords()[flat].layer_id_ = g_layerManager.activeLayerId();
         // Keep hidden when placed onto a currently-hidden layer.
-        if (g_layerManager.isVisible(set.voxels_[flat].layer_id_))
-            set.voxels_[flat].activate();
+        if (g_layerManager.isVisible(set.mutableAuthoredRecords()[flat].layer_id_))
+            set.mutableAuthoredRecords()[flat].activate();
         else
-            set.voxels_[flat].deactivate();
+            set.mutableAuthoredRecords()[flat].deactivate();
     } else {
-        set.voxels_[flat].deactivate();
-        set.voxels_[flat].layer_id_ = 0;
+        set.mutableAuthoredRecords()[flat].deactivate();
+        set.mutableAuthoredRecords()[flat].layer_id_ = 0;
     }
-    edit.after_ = set.voxels_[flat];
+    edit.after_ = set.mutableAuthoredRecords()[flat];
+    g_editor.localEdit_.mirrorCell(g_entityScene, voxelSetEntity, flat, edit.after_);
     g_editor.pendingStroke_.push_back(std::move(edit));
 }
 
@@ -1732,6 +1815,21 @@ void applyEdit(
     std::uint8_t boneId = 0,
     bool paintOnly = false
 ) {
+    const auto canonical = g_editor.localEdit_.canonical(g_entityScene, voxelSetEntity);
+    if (canonical != voxelSetEntity) {
+        if (canonical != IREntity::kNullEntity)
+            applyEdit(
+                canonical,
+                IREntity::getComponent<C_VoxelSetNew>(canonical),
+                localIdx,
+                flat,
+                place,
+                placeColor,
+                boneId,
+                paintOnly
+            );
+        return;
+    }
     if (g_symmetry.enableX_ || g_symmetry.enableY_ || g_symmetry.enableZ_) {
         applyMirrors(localIdx, g_symmetry, g_mirrorScratch);
     } else {
@@ -1784,7 +1882,7 @@ void applyEdit(
             }
             const std::size_t mirroredFlat =
                 static_cast<std::size_t>(IRMath::index3DtoIndex1D(mirroredCell, set.size_));
-            if (mirroredFlat < set.voxels_.size()) {
+            if (mirroredFlat < set.mutableAuthoredRecords().size()) {
                 applyEditRaw(
                     voxelSetEntity,
                     set,
@@ -1816,7 +1914,7 @@ void applyEdit(
             }
             const std::size_t targetFlat =
                 static_cast<std::size_t>(IRMath::index3DtoIndex1D(targetCell, targetSet.size_));
-            if (targetFlat < targetSet.voxels_.size()) {
+            if (targetFlat < targetSet.mutableAuthoredRecords().size()) {
                 applyEditRaw(
                     g_rotationGroupScratch[i]->entity_,
                     targetSet,
@@ -1901,8 +1999,8 @@ void commitStroke(
             auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
             const std::size_t flat =
                 static_cast<std::size_t>(IRMath::index3DtoIndex1D(edit.localIdx_, set.size_));
-            if (flat < set.voxels_.size()) {
-                set.voxels_[flat] = redo ? edit.after_ : edit.before_;
+            if (flat < set.mutableAuthoredRecords().size()) {
+                set.mutableAuthoredRecords()[flat] = redo ? edit.after_ : edit.before_;
             }
             if (std::find(touchedSets.begin(), touchedSets.end(), entity) == touchedSets.end()) {
                 touchedSets.push_back(entity);
@@ -1918,8 +2016,9 @@ void commitStroke(
             }
         }
         for (IREntity::EntityId entity : touchedSets) {
-            IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
+            IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterAuthoredEdits();
         }
+        refreshLocalPartEdit();
         if (bindingChange) {
             setPartBinding(
                 bindingChange->partId_,
@@ -1938,9 +2037,10 @@ void commitStroke(
     g_editor.pendingStroke_.reserve(kUndoStrokeReserve);
     if (!derivedStateAlreadySynced) {
         for (const auto &editedSet : editedSets) {
-            IREntity::getComponent<C_VoxelSetNew>(editedSet.first).resyncAfterRawEdits();
+            IREntity::getComponent<C_VoxelSetNew>(editedSet.first).resyncAfterAuthoredEdits();
         }
     }
+    refreshLocalPartEdit();
 }
 
 // World cell of `set`'s cell (0,0,0). A set's translation is its anchor, not
@@ -2197,9 +2297,10 @@ void refreshPendingSculptSets() {
     for (const UndoEdit &edit : g_editor.pendingStroke_) {
         if (std::find(touched.begin(), touched.end(), edit.voxelSet_) == touched.end()) {
             touched.push_back(edit.voxelSet_);
-            IREntity::getComponent<C_VoxelSetNew>(edit.voxelSet_).resyncAfterRawEdits();
+            IREntity::getComponent<C_VoxelSetNew>(edit.voxelSet_).resyncAfterAuthoredEdits();
         }
     }
+    refreshLocalPartEdit();
 }
 
 void cancelSculptStroke() {
@@ -2210,7 +2311,7 @@ void cancelSculptStroke() {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(edit->voxelSet_);
         const auto flat =
             static_cast<std::size_t>(IRMath::index3DtoIndex1D(edit->localIdx_, set.size_));
-        set.voxels_[flat] = edit->before_;
+        set.mutableAuthoredRecords()[flat] = edit->before_;
     }
     refreshPendingSculptSets();
     g_editor.pendingStroke_.clear();
@@ -2655,6 +2756,10 @@ struct JointToolState {
     IREntity::EntityId lastDragHandle_ = IREntity::kNullEntity;
 };
 JointToolState g_jointTool;
+
+void disableJointAuthoringForLocalEdit() {
+    g_jointTool.active_ = false;
+}
 
 bool hasRigForCompositeConversion() {
     return !g_jointTool.parentIdx_.empty();
@@ -3986,6 +4091,19 @@ unsigned workspaceMembership(ivec2 pos) {
 }
 
 void updateWorkspaces() {
+    if (g_editor.localEditButton_ != IREntity::kNullEntity) {
+        if (IRPrefab::Widget::wasClicked(g_editor.localEditButton_))
+            toggleLocalPartEdit();
+        const auto *part = g_entityScene.selectedPart();
+        IRPrefab::Widget::setDisabled(
+            g_editor.localEditButton_,
+            !g_editor.localEdit_.active() && (!part || part->kind_ != EditorPartKind::VOXEL_SET)
+        );
+        IRPrefab::Widget::setButtonLabel(
+            g_editor.localEditButton_,
+            g_editor.localEdit_.active() ? "DONE EDIT" : "LOCAL EDIT"
+        );
+    }
     if (g_editor.documentStatusLabel_ != IREntity::kNullEntity) {
         std::string status = g_editor.documentStatus_;
         if (IRRender::measureText(status, 0, IRRender::TextSize::SMALL).x > 620) {
@@ -3998,6 +4116,8 @@ void updateWorkspaces() {
     }
     for (std::size_t i = 0; i < g_editor.workspaceButtons_.size(); ++i) {
         if (IRPrefab::Widget::wasClicked(g_editor.workspaceButtons_[i])) {
+            if (static_cast<Workspace>(i) != Workspace::SCULPT)
+                closeLocalPartEdit();
             finishSculptStroke();
             finishPartEdits();
             g_fillTool.dragging_ = false;
@@ -4030,8 +4150,14 @@ void updateWorkspaces() {
             found = g_editor.workspaceMembers_.emplace(id, WorkspaceMember{mask}).first;
         }
         auto &member = found->second;
-        const bool allowed = g_editor.workspace_ == Workspace::ALL ||
-                             (member.mask_ & workspaceMask(g_editor.workspace_)) != 0;
+        bool allowed = g_editor.workspace_ == Workspace::ALL ||
+                       (member.mask_ & workspaceMask(g_editor.workspace_)) != 0;
+        if (g_editor.localEdit_.active()) {
+            const auto position = IREntity::getComponentOptional<C_GuiPosition>(id);
+            if (position && (*position)->pos_.x >= 130 && (*position)->pos_.x < 250 &&
+                (*position)->pos_.y >= 240 && (*position)->pos_.y < 336)
+                allowed = false;
+        }
         if (!allowed) {
             if (!member.hidden_)
                 member.visibleBeforeHide_ = widget.visible_;
@@ -4060,6 +4186,41 @@ bool evaluateWorkspaceCheck(const void *context, std::string &actual) {
            palette == (all || workspace == 0 || workspace == 2) &&
            hierarchy == (all || workspace == 1) && bake == (all || workspace == 2) &&
            animation == (all || workspace == 3);
+}
+
+bool evaluateLocalCanvasCheck(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const LocalCanvasCheck *>(context);
+    const auto *part = g_entityScene.findPart("part_1");
+    const auto *parent = g_entityScene.findPart("part_0");
+    if (!part || !parent) {
+        actual = "source or parent missing";
+        return false;
+    }
+    const auto expected = localCanvasChildTransform();
+    const auto expectedParent = localCanvasParentTransform();
+    const auto &local = IREntity::getComponent<C_LocalTransform>(part->entity_);
+    const auto &parentLocal = IREntity::getComponent<C_LocalTransform>(parent->entity_);
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
+    const auto records = set.authoredRecords();
+    const auto flat = static_cast<std::size_t>(IRMath::index3DtoIndex1D(ivec3(2, 2, 4), set.size_));
+    const bool occupied = flat < records.size() && records[flat].color_.alpha_ != 0;
+    const bool pose =
+        IRMath::length(local.translation_ - expected.translation_) < 0.001f &&
+        IRMath::length(local.rotation_ - expected.rotation_) < 0.001f &&
+        IRMath::length(local.scale_ - expected.scale_) < 0.001f &&
+        IRMath::length(parentLocal.translation_ - expectedParent.translation_) < 0.001f &&
+        IRMath::length(parentLocal.rotation_ - expectedParent.rotation_) < 0.001f &&
+        IRMath::length(parentLocal.scale_ - expectedParent.scale_) < 0.001f;
+    const bool hierarchy = part->parentId_ == "part_0" &&
+                           IREntity::getEntityManager().getParent(part->entity_) == parent->entity_;
+    const bool mode = part->mode_ == RotationMode::DETACHED_REVOXELIZE &&
+                      IREntity::getComponent<C_RotationMode>(part->entity_).mode_ == part->mode_ &&
+                      IREntity::getComponentOptional<C_EntityCanvas>(part->entity_).has_value();
+    actual = "editing=" + std::to_string(g_editor.localEdit_.active()) +
+             " occupied=" + std::to_string(occupied) + " pose=" + std::to_string(pose) +
+             " hierarchy=" + std::to_string(hierarchy) + " mode=" + std::to_string(mode);
+    return g_editor.localEdit_.active() == check.editing_ && occupied == check.occupied_ && pose &&
+           hierarchy && mode && set.anchor_ == EntityAnchor::CENTER;
 }
 
 bool evaluateAnimationBoundaryCheck(const void *context, std::string &actual) {
@@ -5263,7 +5424,7 @@ int main(int argc, char **argv) {
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | "
         "tier_scrub | remove_part | undo_history | animation_boundary | sculpt_workflow | "
-        "sculpt_single_save | "
+        "sculpt_single_save | local_canvas | "
         "radial_array | "
         "linear_array | nway_symmetry | "
         "mode_preview | "
@@ -5287,6 +5448,7 @@ int main(int argc, char **argv) {
          "animation_boundary",
          "sculpt_workflow",
          "sculpt_single_save",
+         "local_canvas",
          "hierarchy_workflow",
          "tier_scrub",
          "radial_array",
@@ -6988,6 +7150,8 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonU,
         []() {
             IRVoxelEditor::finishSculptStroke();
+            if (IRVoxelEditor::localToolUnsupported("Class painting"))
+                return;
             IRVoxelEditor::g_classPaintMode = !IRVoxelEditor::g_classPaintMode;
             IR_LOG_INFO("Class paint mode: {}", IRVoxelEditor::g_classPaintMode ? "ON" : "OFF");
         },
@@ -7170,6 +7334,10 @@ void initCommands() {
                 IR_LOG_INFO("Fill drag cancelled (Escape).");
                 return;
             }
+            if (IRVoxelEditor::g_editor.localEdit_.active()) {
+                IRVoxelEditor::closeLocalPartEdit();
+                return;
+            }
             IRWindow::closeWindow();
         },
         IRInput::kModifierNone,
@@ -7186,6 +7354,8 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonF,
         []() {
             IRVoxelEditor::finishSculptStroke();
+            if (IRVoxelEditor::localToolUnsupported("Loft"))
+                return;
             auto &loft = IRVoxelEditor::g_loftTool;
             loft.active_ = !loft.active_;
             IRVoxelEditor::g_fillTool.dragging_ = false;
@@ -7248,6 +7418,8 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonK,
         []() {
+            if (IRVoxelEditor::localToolUnsupported("Layers"))
+                return;
             std::uint8_t id = IRVoxelEditor::g_layerManager.addLayer(
                 "layer " + std::to_string(IRVoxelEditor::g_layerManager.layers().size())
             );
@@ -7268,6 +7440,8 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonLeftBracket,
         []() {
+            if (IRVoxelEditor::localToolUnsupported("Layers"))
+                return;
             IRVoxelEditor::g_layerManager.selectPrevLayer();
             IRVoxelEditor::logLayerState();
         },
@@ -7283,6 +7457,8 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonRightBracket,
         []() {
+            if (IRVoxelEditor::localToolUnsupported("Layers"))
+                return;
             IRVoxelEditor::g_layerManager.selectNextLayer();
             IRVoxelEditor::logLayerState();
         },
@@ -7299,6 +7475,8 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonJ,
         []() {
+            if (IRVoxelEditor::localToolUnsupported("Joint authoring"))
+                return;
             IRVoxelEditor::g_jointTool.active_ = !IRVoxelEditor::g_jointTool.active_;
             IR_LOG_INFO("Joint authoring: {}", IRVoxelEditor::g_jointTool.active_ ? "ON" : "OFF");
         },
@@ -7389,6 +7567,8 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonH,
         []() {
+            if (IRVoxelEditor::localToolUnsupported("Layers"))
+                return;
             const std::uint8_t layerId = IRVoxelEditor::g_layerManager.activeLayerId();
             bool nowVisible = IRVoxelEditor::g_layerManager.toggleLayerVisibility(layerId);
             IRVoxelEditor::applyLayerVisibility(layerId, nowVisible);
@@ -7613,6 +7793,7 @@ void initCommands() {
         []() {
             if (IRVoxelEditor::g_entitySceneMode) {
                 IRVoxelEditor::cancelSculptStroke();
+                IRVoxelEditor::closeLocalPartEdit();
                 IRVoxelEditor::cancelPartEdits();
                 const auto loaded = IRVoxelEditor::g_entityScene.load(
                     IRVoxelEditor::g_moduleHost.script(),
@@ -8429,6 +8610,12 @@ void initEntities() {
             )
         );
     }
+    g_editor.localEditButton_ = IRPrefab::Widget::makeButton(
+        IRVoxelEditor::kLocalEditButtonPos,
+        IRVoxelEditor::kLocalEditButtonSize,
+        "LOCAL EDIT",
+        IRRender::TextSize::SMALL
+    );
     g_editor.documentStatusLabel_ =
         IRPrefab::Widget::makeLabel(ivec2(4, 78), "", {}, IRRender::TextSize::SMALL);
     IRPrefab::Widget::makeLabel(
@@ -8494,6 +8681,20 @@ void initEntities() {
         IRVoxelEditor::g_entityScene.begin();
         g_editor.editableVoxelSet_ = IREntity::kNullEntity;
         IRVoxelEditor::g_sceneVoxelSetEntity = IREntity::kNullEntity;
+    }
+
+    if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOCAL_CANVAS) {
+        IREntity::destroyEntity(g_editor.editableVoxelSet_);
+        IRVoxelEditor::enterEntitySceneMode();
+        auto &scene = IRVoxelEditor::g_entityScene;
+        scene.begin();
+        scene.addShapePart({}, IRVoxelEditor::Session::localCanvasParentTransform());
+        const auto child = scene.addVoxelPart(ivec3(5), vec3(3, 1, 0), EntityAnchor::CENTER);
+        IREntity::getComponent<C_VoxelSetNew>(child).deactivateAll();
+        IREntity::setComponent(child, IRVoxelEditor::Session::localCanvasChildTransform());
+        scene.reparentPart("part_1", "part_0", false);
+        IRVoxelEditor::selectEditorPart(1, false);
+        IRVoxelEditor::setSelectedPartRotationMode(RotationMode::DETACHED_REVOXELIZE);
     }
 
     // GUI-test assertions — populated here (not at the constexpr

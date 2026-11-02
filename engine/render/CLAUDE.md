@@ -70,8 +70,8 @@ Changes without a visual effect need no captures.
 
 ### Metal negates clip `position.y`; GL does not
 
-- Every Metal full-screen or quad vertex stage negates clip-space
-  `position.y`; its GLSL twin does not. This is the backend origin adapter.
+- Metal full-screen and canvas-quad vertex stages negate clip `position.y`; GLSL does not.
+  Debug overlays use bottom-up viewport pixels, so Metal matches GLSL without an extra Y negation.
 
 ### Trixel→framebuffer hover: raw texel, no parity shift
 

@@ -21,7 +21,6 @@ vertex VertexOut v_debug_overlay(
 ) {
     VertexOut out;
     out.position = ubo.mvp * float4(in.position, 0.0, 1.0);
-    out.position.y = -out.position.y;
     out.color = in.color;
     return out;
 }

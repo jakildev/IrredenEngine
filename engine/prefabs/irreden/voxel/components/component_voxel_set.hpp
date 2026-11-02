@@ -906,6 +906,32 @@ struct C_VoxelSetNew {
         return std::span<const C_Voxel>{voxels_.data(), count};
     }
 
+    // Edits are indexed in the authored local canvas, never rotated output slots.
+    // Finish each batch with resyncAfterAuthoredEdits().
+    std::span<C_Voxel> mutableAuthoredRecords() {
+        if (!pendingVoxels_.empty())
+            return pendingVoxels_;
+        const std::size_t count = numVoxels_ > 0 ? static_cast<std::size_t>(numVoxels_) : 0u;
+        if (rotationSourceVoxels_.size() == count)
+            return std::span<C_Voxel>{rotationSourceVoxels_.data(), count};
+        return std::span<C_Voxel>{voxels_.data(), count};
+    }
+
+    void resyncAfterAuthoredEdits() {
+        if (!pendingVoxels_.empty()) {
+            IRPrefab::Voxel::recomputeFaceOccupancy(pendingVoxels_, size_);
+        } else if (
+            numVoxels_ > 0 && rotationSourceVoxels_.size() == static_cast<std::size_t>(numVoxels_)
+        ) {
+            IRPrefab::Voxel::recomputeFaceOccupancy(rotationSourceVoxels_, size_);
+            // The GRID rebuild consumes this source on the next update. Do not
+            // copy its current raster destination back over the edited source.
+            markPoolRecordsChanged();
+        } else {
+            resyncAfterRawEdits();
+        }
+    }
+
     // Self-side half of the canvas-teardown re-stage: fold the
     // authored records and local origin back into `pendingVoxels_` /
     // `pendingBoundsMin_` — exactly the staged state `attachToCanvas` seeds
