@@ -463,6 +463,60 @@ TEST_F(GuiLayoutAudit, TextInputAndListRows) {
     );
 }
 
+TEST_F(GuiLayoutAudit, TextInputViewportFollowsCursorWithoutChangingValue) {
+    const std::string value = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const auto id = IRPrefab::Widget::makeTextInput(ivec2(10, 10), ivec2(50, 14), value);
+    auto &input = IREntity::getComponent<IRComponents::C_WidgetTextInput>(id);
+    const auto &widget = data<C_Widget>(id);
+    const IRPrefab::GuiRect bounds{ivec2(10, 10), widget.size_};
+    struct Case {
+        int cursor_;
+        std::string_view visible_;
+        int cursorX_;
+    };
+    for (const auto &test :
+         {Case{26, "WXYZ", 50},
+          Case{13, "LMNO", 34},
+          Case{0, "ABCD", 18},
+          Case{-1, "ABCD", 18},
+          Case{100, "WXYZ", 50}}) {
+        SCOPED_TRACE(test.cursor_);
+        input.cursorPos_ = test.cursor_;
+        const auto viewport =
+            IRPrefab::WidgetText::textInputViewport(widget, input, bounds.pos_, theme());
+        EXPECT_EQ(viewport.text_.text_, test.visible_);
+        EXPECT_EQ(viewport.cursor_.pos_.x, test.cursorX_);
+        EXPECT_TRUE(IRPrefab::contains(bounds, viewport.cursor_));
+        EXPECT_TRUE(IRPrefab::contains(bounds, queued(viewport.text_)));
+        expectRuns(id, {queued(viewport.text_)});
+        EXPECT_TRUE(report(kCanvas).empty()) << describe(report(kCanvas));
+        EXPECT_EQ(IRPrefab::Widget::textInputValue(id), value);
+    }
+}
+
+TEST_F(GuiLayoutAudit, TextInputViewportHandlesEmptyShortAndNarrowFields) {
+    const auto id = IRPrefab::Widget::makeTextInput(ivec2(10, 10), ivec2(50, 14), "HI");
+    auto &input = IREntity::getComponent<IRComponents::C_WidgetTextInput>(id);
+    auto &widget = IREntity::getComponent<C_Widget>(id);
+    auto viewport = IRPrefab::WidgetText::textInputViewport(widget, input, ivec2(10, 10), theme());
+    EXPECT_EQ(viewport.text_.text_, "HI");
+    EXPECT_EQ(viewport.cursor_.pos_.x, 34);
+    IRPrefab::Widget::setTextInputValue(id, "");
+    viewport = IRPrefab::WidgetText::textInputViewport(widget, input, ivec2(10, 10), theme());
+    EXPECT_TRUE(viewport.text_.text_.empty());
+    EXPECT_EQ(viewport.cursor_.pos_.x, 18);
+    IRPrefab::Widget::setTextInputValue(id, "LONG VALUE");
+    for (int width : {0, 1, 10, 18}) {
+        SCOPED_TRACE(width);
+        widget.size_.x = width;
+        viewport = IRPrefab::WidgetText::textInputViewport(widget, input, ivec2(10, 10), theme());
+        EXPECT_TRUE(viewport.text_.text_.empty());
+        EXPECT_GE(viewport.cursor_.pos_.x, 10);
+        EXPECT_LE(viewport.cursor_.pos_.x + viewport.cursor_.size_.x, 10 + width);
+        EXPECT_EQ(IRPrefab::Widget::textInputValue(id), "LONG VALUE");
+    }
+}
+
 TEST_F(GuiLayoutAudit, DropdownHeaderAndOpenStripRows) {
     const IREntity::EntityId id =
         IRPrefab::Widget::makeDropdown(ivec2(10, 10), ivec2(100, 18), {"ONE", "TWO"}, 1, 18);

@@ -68,9 +68,11 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
             scratch_
         );
 
+        const auto viewport =
+            IRPrefab::WidgetText::textInputViewport(widget, textInput, guiPos.pos_, theme_);
         IRPrefab::WidgetText::queue(
             textCmds_,
-            IRPrefab::WidgetText::textInputText(widget, textInput, guiPos.pos_, theme_),
+            viewport.text_,
             canvas_->size_,
             IRPrefab::Widget::detail::stateText(theme_, widget)
         );
@@ -86,19 +88,10 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
         if (!cursorVisible)
             return;
 
-        const int textX = guiPos.pos_.x + theme_.padding_ * 2;
-        const int cursorChars =
-            IRMath::clamp(textInput.cursorPos_, 0, static_cast<int>(textInput.text_.size()));
-        const int cursorX = IRMath::min(
-            textX + cursorChars * IRRender::kGlyphStepX,
-            guiPos.pos_.x + widget.size_.x - theme_.textInputCursorWidth_
-        );
-        const int cursorH = IRRender::kGlyphHeight;
-        const int cursorY = guiPos.pos_.y + (widget.size_.y - cursorH) / 2;
         IRRender::fillRect(
             *canvas_,
-            IRMath::ivec2(cursorX, cursorY),
-            IRMath::ivec2(theme_.textInputCursorWidth_, cursorH),
+            viewport.cursor_.pos_,
+            viewport.cursor_.size_,
             theme_.textInputCursor_,
             IRRender::kWidgetBorderDistance,
             scratch_
