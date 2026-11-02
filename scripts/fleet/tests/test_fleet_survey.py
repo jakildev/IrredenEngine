@@ -435,6 +435,15 @@ class Queue(FleetSurveyFixture):
         ghost = self.run_survey(state=state)["repos"]["engine"]["queue"]["ghost"][0]
         self.assertEqual(ghost["shadow_pr"], 900)
 
+    def test_host_scoped_decline_is_not_a_ghost(self):
+        self.decline_file.write_text(
+            "2026-10-07T04:40:00Z\n"
+            "Remaining work requires fleet:needs-gl-host evidence\n"
+            "worker\nshadow_merged_pr=900\n")
+        queue = self.run_survey()["repos"]["engine"]["queue"]
+        self.assertEqual(queue["ghost"], [])
+        self.assertIn("#101", [row["id"] for row in queue["claimable_here"]])
+
 
 class Parks(FleetSurveyFixture):
     def verdicts(self):

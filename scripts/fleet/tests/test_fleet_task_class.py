@@ -805,6 +805,14 @@ class DispatchTargets(HostSeamCase):
                 self.assertEqual(pick({"tasks_open": [task, actionable]}, "opus", False),
                                  ["task:engine:4185"])
 
+                for reason in ("Remaining work needs fleet:needs-gl-host",
+                               "fleet-claim host=mac can complete the remaining work"):
+                    with self.subTest(reason=reason):
+                        record.write_text(
+                            f"2026-10-07T12:00:00Z\n{reason}\nworker\n"
+                            "shadow_merged_pr=4199\n")
+                        self.assertIsNone(fleet_task_class._shadowed_closeout(task))
+
                 record.write_text("2026-10-07T12:00:00Z\nHTTP 503 from GitHub\nworker\n"
                                   "shadow_merged_pr=4199\n")
                 self.assertEqual(fleet_task_class.shadowed_closeouts(state, "engine"), [])
