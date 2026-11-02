@@ -46,7 +46,7 @@ class TimestampDevice : public RenderDevice {
     void setDepthTest(bool) override {}
     void setDepthWrite(bool) override {}
     void clearTexImage(const Texture2D *, int, const void *) override {}
-    void fillBuffer(const Buffer *, std::size_t, std::uint8_t) override {}
+    void fillBuffer(const Buffer *, std::size_t, std::size_t, std::uint8_t) override {}
     void copyBufferSubData(
         const Buffer *, std::ptrdiff_t, const Buffer *, std::ptrdiff_t, std::size_t
     ) override {}

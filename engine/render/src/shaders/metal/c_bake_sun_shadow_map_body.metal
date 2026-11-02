@@ -2,11 +2,11 @@
 #include "ir_fog_shadow_caster.metal"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.metal"
-#if IR_SUN_SECOND_DEPTH
-// kSourceFaceFallbackOffset: the indexed fallback layer the second-depth
-// diagnostic borrows while no finite index is published.
+// The primary layer's slab extrema, and under IR_SUN_SECOND_DEPTH the indexed
+// fallback layer the second-depth diagnostic borrows while no finite index is
+// published.
 #include "ir_sun_face_query_layout.metal"
-#endif
+#include "ir_sun_depth_slab_write.metal"
 #include <metal_atomic>
 
 // Mirrors shaders/c_bake_sun_shadow_map_body.glsl. Shared body: the
@@ -65,6 +65,7 @@ inline void writeSunTexel(
         packedDepth,
         memory_order_relaxed
     );
+    writeSunDepthSlab(sunDepthBuf, index, packedDepth);
     if (previous == 0xFFFFFFFFu) {
         return;
     }
@@ -78,7 +79,7 @@ inline void writeSunTexel(
         memory_order_relaxed
     );
 #else
-    atomic_fetch_min_explicit(&sunDepthBuf[index], packedDepth, memory_order_relaxed);
+    writeSunPrimaryDepth(sunDepthBuf, index, packedDepth);
 #endif
 }
 

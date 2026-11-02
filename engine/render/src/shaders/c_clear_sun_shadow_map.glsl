@@ -35,4 +35,5 @@ void main() {
     }
     sunDepthBuf[linearIdx + kSourceFaceFallbackOffset] = 0xFFFFFFFFu;
     sunDepthBuf[linearIdx] = 0xFFFFFFFFu;
+    // The slab planes are cleared by the bake system's two device fills.
 }

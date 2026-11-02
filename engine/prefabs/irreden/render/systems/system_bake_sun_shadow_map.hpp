@@ -85,6 +85,10 @@ constexpr int kBakeSunShadowGroupSize = 16;
 // those references deliberately, never reflexively.
 constexpr int kSunSplatMaxTexels = 7;
 static_assert(kSunSplatMaxTexels < 8, "Splat offsets must reserve -8 for finite surface writes");
+static_assert(
+    float(IRPrefab::SunShadow::kSunDepthSlabWidthUnits) == kSunShadowMaxDistance,
+    "Depth-slab extrema answer a throw-wide window only when the slab is one throw wide"
+);
 
 namespace detail {
 
@@ -1060,7 +1064,35 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         frameData_.sunMaxShadowThrow_ = kSunShadowMaxDistance;
     }
 
+    // The slab planes clear through two contiguous device fills: every min
+    // plane to the empty sentinel, every max plane to zero, which sits below
+    // every packed depth with the overflow bit clear. Nothing to fill at zero
+    // slots. The capacity word lies past both ranges, so neither fill touches it.
+    void clearDepthSlabPlanes() {
+        using IRPrefab::SunShadow::kSunDepthSlabMaxPlanesOffset;
+        using IRPrefab::SunShadow::kSunDepthSlabMinPlanesOffset;
+        using IRPrefab::SunShadow::kSunDepthSlabPlanesWords;
+        if (kSunDepthSlabPlanesWords == 0u) {
+            return;
+        }
+        const std::size_t planesBytes =
+            std::size_t(kSunDepthSlabPlanesWords) * sizeof(std::uint32_t);
+        IRRender::device()->fillBuffer(
+            sunShadowDepthMap_,
+            std::size_t(kSunDepthSlabMinPlanesOffset) * sizeof(std::uint32_t),
+            planesBytes,
+            0xFF
+        );
+        IRRender::device()->fillBuffer(
+            sunShadowDepthMap_,
+            std::size_t(kSunDepthSlabMaxPlanesOffset) * sizeof(std::uint32_t),
+            planesBytes,
+            0x00
+        );
+    }
+
     void clearDepthMap() {
+        clearDepthSlabPlanes();
         // Clear the full depth map (both cascades) to 0xFFFFFFFF.
         clearProgram_->use();
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);

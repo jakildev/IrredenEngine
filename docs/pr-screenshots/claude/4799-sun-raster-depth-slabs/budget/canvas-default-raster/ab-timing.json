@@ -1,0 +1,2095 @@
+{
+  "arms": {
+    "baseline": "/private/tmp/pool-2-4845/arms/base",
+    "per-pixel": "/private/tmp/pool-2-4845/arms/per-pixel",
+    "head": "/private/tmp/pool-2-4845/arms/fills"
+  },
+  "arm_layout_sha256": {
+    "baseline": "f2be0c48a42b7d54b99a836994bb6a793772543087ef5d330d8874bb43f0de1b",
+    "per-pixel": "f2be0c48a42b7d54b99a836994bb6a793772543087ef5d330d8874bb43f0de1b",
+    "head": "f2be0c48a42b7d54b99a836994bb6a793772543087ef5d330d8874bb43f0de1b"
+  },
+  "pairs": 5,
+  "frame_ratio_limit": 1.1,
+  "bake_floor_ms": {
+    "canvas-lower": 0.064,
+    "canvas-stacked-128": 0.029
+  },
+  "bound_ratio_cap": 1.15,
+  "cells": {
+    "canvas-default-raster": {
+      "target": "IRCanvasStress",
+      "commands": {
+        "baseline": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "scripts/perf/repeat_profile.py",
+          "--target",
+          "IRCanvasStress",
+          "--output",
+          "/private/tmp/pool-2-4845/timing/canvas-default-raster/canvas-default-raster/pair-4/baseline",
+          "--repeats",
+          "1",
+          "--timeout",
+          "400",
+          "--",
+          "--no-spin",
+          "--no-auto-rotate",
+          "--probe-particle-raster",
+          "--auto-profile",
+          "--profile-frames",
+          "360",
+          "--window-mode",
+          "offscreen"
+        ],
+        "per-pixel": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "scripts/perf/repeat_profile.py",
+          "--target",
+          "IRCanvasStress",
+          "--output",
+          "/private/tmp/pool-2-4845/timing/canvas-default-raster/canvas-default-raster/pair-4/per-pixel",
+          "--repeats",
+          "1",
+          "--timeout",
+          "400",
+          "--",
+          "--no-spin",
+          "--no-auto-rotate",
+          "--probe-particle-raster",
+          "--auto-profile",
+          "--profile-frames",
+          "360",
+          "--window-mode",
+          "offscreen"
+        ],
+        "head": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "scripts/perf/repeat_profile.py",
+          "--target",
+          "IRCanvasStress",
+          "--output",
+          "/private/tmp/pool-2-4845/timing/canvas-default-raster/canvas-default-raster/pair-4/head",
+          "--repeats",
+          "1",
+          "--timeout",
+          "400",
+          "--",
+          "--no-spin",
+          "--no-auto-rotate",
+          "--probe-particle-raster",
+          "--auto-profile",
+          "--profile-frames",
+          "360",
+          "--window-mode",
+          "offscreen"
+        ]
+      },
+      "identities": {
+        "baseline": {
+          "binary_sha256": "19f6c5c3a038fdc2270856d0c219cf1ccc594c36c8aeb7faf3b0a17e432f9ddd",
+          "shader_sha256": "332bc8a4b00263c69c2da8209527811b92461d128ea5057f83e2ae2e4d043a53"
+        },
+        "per-pixel": {
+          "binary_sha256": "2c63da800f8e0c85bbb5edb2c535c0ec705b8ae8e94df27a65630cf02b7c768b",
+          "shader_sha256": "5c8a7be26c59a12871ef66b2cdc60d362aff1833f102402af49cae42632d8d70"
+        },
+        "head": {
+          "binary_sha256": "66349f14fc613d482ae79404f6ee4c8e50f124e090cefb1f57babda174e9ea84",
+          "shader_sha256": "061d2fd497c7787f5b84ae25329761dc599424c5dfc9d302c512c2f58396d779"
+        }
+      },
+      "samples": {
+        "baseline": [
+          {
+            "steady_mean_ms": 19.93,
+            "steady_p99_ms": 23.24,
+            "gpu_envelope_ms": 5.739,
+            "gpu:canvasClear": 0.009,
+            "gpu:voxelCompact": 0.035,
+            "gpu:voxelStage1": 0.031,
+            "gpu:voxelCardinalElect": 0.014,
+            "gpu:voxelStage2": 0.015,
+            "gpu:shapeOwnerClear": 0.007,
+            "gpu:shapeDepth": 0.088,
+            "gpu:shapeOwnerElect": 0.089,
+            "gpu:shapePublish": 0.09,
+            "gpu:computeVoxelAO": 0.101,
+            "gpu:bakeSunShadowMap": 1.448,
+            "gpu:computeSunShadow": 0.028,
+            "gpu:computeLightVolume": 0.046,
+            "gpu:lightingToTrixel": 0.018,
+            "gpu:trixelToFb": 1.031,
+            "gpu:cardinalSurfaceFb": 1.571,
+            "gpu:entityCanvasToFb": 2.046,
+            "gpu:fbToScreen": 0.034,
+            "cpu:SingleVoxelToCanvasFirst": 1.71,
+            "cpu:LightingToTrixel": 0.13,
+            "cpu:BakeSunShadowMap": 0.114,
+            "cpu:CanvasToFramebuffer": 0.04,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 19.5,
+            "steady_p99_ms": 21.5,
+            "gpu_envelope_ms": 5.541,
+            "gpu:canvasClear": 0.009,
+            "gpu:voxelCompact": 0.034,
+            "gpu:voxelStage1": 0.031,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.007,
+            "gpu:shapeDepth": 0.078,
+            "gpu:shapeOwnerElect": 0.077,
+            "gpu:shapePublish": 0.08,
+            "gpu:computeVoxelAO": 0.092,
+            "gpu:bakeSunShadowMap": 1.338,
+            "gpu:computeSunShadow": 0.025,
+            "gpu:computeLightVolume": 0.045,
+            "gpu:lightingToTrixel": 0.017,
+            "gpu:trixelToFb": 0.935,
+            "gpu:cardinalSurfaceFb": 1.417,
+            "gpu:entityCanvasToFb": 1.857,
+            "gpu:fbToScreen": 0.031,
+            "cpu:SingleVoxelToCanvasFirst": 1.685,
+            "cpu:LightingToTrixel": 0.127,
+            "cpu:BakeSunShadowMap": 0.112,
+            "cpu:CanvasToFramebuffer": 0.042,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 19.73,
+            "steady_p99_ms": 23.22,
+            "gpu_envelope_ms": 5.549,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.034,
+            "gpu:voxelStage1": 0.029,
+            "gpu:voxelCardinalElect": 0.014,
+            "gpu:voxelStage2": 0.015,
+            "gpu:shapeOwnerClear": 0.007,
+            "gpu:shapeDepth": 0.078,
+            "gpu:shapeOwnerElect": 0.079,
+            "gpu:shapePublish": 0.08,
+            "gpu:computeVoxelAO": 0.089,
+            "gpu:bakeSunShadowMap": 1.345,
+            "gpu:computeSunShadow": 0.024,
+            "gpu:computeLightVolume": 0.042,
+            "gpu:lightingToTrixel": 0.017,
+            "gpu:trixelToFb": 0.937,
+            "gpu:cardinalSurfaceFb": 1.428,
+            "gpu:entityCanvasToFb": 1.871,
+            "gpu:fbToScreen": 0.03,
+            "cpu:SingleVoxelToCanvasFirst": 1.696,
+            "cpu:LightingToTrixel": 0.129,
+            "cpu:BakeSunShadowMap": 0.113,
+            "cpu:CanvasToFramebuffer": 0.04,
+            "cpu:ComputeSunShadow": 0.005
+          },
+          {
+            "steady_mean_ms": 21.55,
+            "steady_p99_ms": 28.56,
+            "gpu_envelope_ms": 5.585,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.034,
+            "gpu:voxelStage1": 0.03,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.015,
+            "gpu:shapeOwnerClear": 0.007,
+            "gpu:shapeDepth": 0.08,
+            "gpu:shapeOwnerElect": 0.079,
+            "gpu:shapePublish": 0.082,
+            "gpu:computeVoxelAO": 0.098,
+            "gpu:bakeSunShadowMap": 1.365,
+            "gpu:computeSunShadow": 0.025,
+            "gpu:computeLightVolume": 0.042,
+            "gpu:lightingToTrixel": 0.017,
+            "gpu:trixelToFb": 0.949,
+            "gpu:cardinalSurfaceFb": 1.441,
+            "gpu:entityCanvasToFb": 1.866,
+            "gpu:fbToScreen": 0.031,
+            "cpu:SingleVoxelToCanvasFirst": 1.949,
+            "cpu:LightingToTrixel": 0.141,
+            "cpu:BakeSunShadowMap": 0.122,
+            "cpu:CanvasToFramebuffer": 0.047,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 21.62,
+            "steady_p99_ms": 26.23,
+            "gpu_envelope_ms": 5.752,
+            "gpu:canvasClear": 0.009,
+            "gpu:voxelCompact": 0.035,
+            "gpu:voxelStage1": 0.03,
+            "gpu:voxelCardinalElect": 0.014,
+            "gpu:voxelStage2": 0.015,
+            "gpu:shapeOwnerClear": 0.009,
+            "gpu:shapeDepth": 0.084,
+            "gpu:shapeOwnerElect": 0.082,
+            "gpu:shapePublish": 0.084,
+            "gpu:computeVoxelAO": 0.097,
+            "gpu:bakeSunShadowMap": 1.393,
+            "gpu:computeSunShadow": 0.025,
+            "gpu:computeLightVolume": 0.046,
+            "gpu:lightingToTrixel": 0.018,
+            "gpu:trixelToFb": 0.972,
+            "gpu:cardinalSurfaceFb": 1.479,
+            "gpu:entityCanvasToFb": 1.933,
+            "gpu:fbToScreen": 0.032,
+            "cpu:SingleVoxelToCanvasFirst": 1.849,
+            "cpu:LightingToTrixel": 0.139,
+            "cpu:BakeSunShadowMap": 0.123,
+            "cpu:CanvasToFramebuffer": 0.046,
+            "cpu:ComputeSunShadow": 0.006
+          }
+        ],
+        "per-pixel": [
+          {
+            "steady_mean_ms": 21.56,
+            "steady_p99_ms": 23.82,
+            "gpu_envelope_ms": 6.917,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.033,
+            "gpu:voxelStage1": 0.028,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.006,
+            "gpu:shapeDepth": 0.075,
+            "gpu:shapeOwnerElect": 0.076,
+            "gpu:shapePublish": 0.076,
+            "gpu:computeVoxelAO": 0.213,
+            "gpu:bakeSunShadowMap": 2.669,
+            "gpu:computeSunShadow": 0.027,
+            "gpu:computeLightVolume": 0.306,
+            "gpu:lightingToTrixel": 0.017,
+            "gpu:trixelToFb": 2.34,
+            "gpu:cardinalSurfaceFb": 2.722,
+            "gpu:entityCanvasToFb": 3.158,
+            "gpu:fbToScreen": 0.03,
+            "cpu:SingleVoxelToCanvasFirst": 1.802,
+            "cpu:LightingToTrixel": 0.136,
+            "cpu:BakeSunShadowMap": 0.121,
+            "cpu:CanvasToFramebuffer": 0.042,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 21.25,
+            "steady_p99_ms": 23.26,
+            "gpu_envelope_ms": 6.869,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.033,
+            "gpu:voxelStage1": 0.027,
+            "gpu:voxelCardinalElect": 0.012,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.007,
+            "gpu:shapeDepth": 0.076,
+            "gpu:shapeOwnerElect": 0.075,
+            "gpu:shapePublish": 0.075,
+            "gpu:computeVoxelAO": 0.194,
+            "gpu:bakeSunShadowMap": 2.666,
+            "gpu:computeSunShadow": 0.026,
+            "gpu:computeLightVolume": 0.278,
+            "gpu:lightingToTrixel": 0.017,
+            "gpu:trixelToFb": 2.242,
+            "gpu:cardinalSurfaceFb": 2.715,
+            "gpu:entityCanvasToFb": 3.145,
+            "gpu:fbToScreen": 0.029,
+            "cpu:SingleVoxelToCanvasFirst": 1.762,
+            "cpu:LightingToTrixel": 0.132,
+            "cpu:BakeSunShadowMap": 0.116,
+            "cpu:CanvasToFramebuffer": 0.043,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 21.63,
+            "steady_p99_ms": 23.91,
+            "gpu_envelope_ms": 6.986,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.033,
+            "gpu:voxelStage1": 0.028,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.007,
+            "gpu:shapeDepth": 0.078,
+            "gpu:shapeOwnerElect": 0.079,
+            "gpu:shapePublish": 0.08,
+            "gpu:computeVoxelAO": 0.212,
+            "gpu:bakeSunShadowMap": 2.703,
+            "gpu:computeSunShadow": 0.027,
+            "gpu:computeLightVolume": 0.29,
+            "gpu:lightingToTrixel": 0.017,
+            "gpu:trixelToFb": 2.336,
+            "gpu:cardinalSurfaceFb": 2.771,
+            "gpu:entityCanvasToFb": 3.219,
+            "gpu:fbToScreen": 0.031,
+            "cpu:SingleVoxelToCanvasFirst": 1.812,
+            "cpu:LightingToTrixel": 0.138,
+            "cpu:BakeSunShadowMap": 0.122,
+            "cpu:CanvasToFramebuffer": 0.042,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 23.08,
+            "steady_p99_ms": 25.64,
+            "gpu_envelope_ms": 7.06,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.034,
+            "gpu:voxelStage1": 0.029,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.007,
+            "gpu:shapeDepth": 0.077,
+            "gpu:shapeOwnerElect": 0.077,
+            "gpu:shapePublish": 0.076,
+            "gpu:computeVoxelAO": 0.213,
+            "gpu:bakeSunShadowMap": 2.689,
+            "gpu:computeSunShadow": 0.027,
+            "gpu:computeLightVolume": 0.273,
+            "gpu:lightingToTrixel": 0.017,
+            "gpu:trixelToFb": 2.312,
+            "gpu:cardinalSurfaceFb": 2.739,
+            "gpu:entityCanvasToFb": 3.169,
+            "gpu:fbToScreen": 0.03,
+            "cpu:SingleVoxelToCanvasFirst": 1.9,
+            "cpu:LightingToTrixel": 0.147,
+            "cpu:BakeSunShadowMap": 0.128,
+            "cpu:CanvasToFramebuffer": 0.047,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 23.61,
+            "steady_p99_ms": 27.47,
+            "gpu_envelope_ms": 7.184,
+            "gpu:canvasClear": 0.009,
+            "gpu:voxelCompact": 0.034,
+            "gpu:voxelStage1": 0.029,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.006,
+            "gpu:shapeDepth": 0.077,
+            "gpu:shapeOwnerElect": 0.079,
+            "gpu:shapePublish": 0.079,
+            "gpu:computeVoxelAO": 0.216,
+            "gpu:bakeSunShadowMap": 2.719,
+            "gpu:computeSunShadow": 0.028,
+            "gpu:computeLightVolume": 0.288,
+            "gpu:lightingToTrixel": 0.019,
+            "gpu:trixelToFb": 2.347,
+            "gpu:cardinalSurfaceFb": 2.773,
+            "gpu:entityCanvasToFb": 3.214,
+            "gpu:fbToScreen": 0.03,
+            "cpu:SingleVoxelToCanvasFirst": 1.978,
+            "cpu:LightingToTrixel": 0.152,
+            "cpu:BakeSunShadowMap": 0.133,
+            "cpu:CanvasToFramebuffer": 0.045,
+            "cpu:ComputeSunShadow": 0.006
+          }
+        ],
+        "head": [
+          {
+            "steady_mean_ms": 21.44,
+            "steady_p99_ms": 23.82,
+            "gpu_envelope_ms": 6.764,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.033,
+            "gpu:voxelStage1": 0.028,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.006,
+            "gpu:shapeDepth": 0.078,
+            "gpu:shapeOwnerElect": 0.077,
+            "gpu:shapePublish": 0.079,
+            "gpu:computeVoxelAO": 0.082,
+            "gpu:bakeSunShadowMap": 2.518,
+            "gpu:computeSunShadow": 0.027,
+            "gpu:computeLightVolume": 0.189,
+            "gpu:lightingToTrixel": 0.018,
+            "gpu:trixelToFb": 2.112,
+            "gpu:cardinalSurfaceFb": 2.567,
+            "gpu:entityCanvasToFb": 3.019,
+            "gpu:fbToScreen": 0.03,
+            "cpu:SingleVoxelToCanvasFirst": 1.804,
+            "cpu:LightingToTrixel": 0.138,
+            "cpu:BakeSunShadowMap": 0.127,
+            "cpu:CanvasToFramebuffer": 0.042,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 21.57,
+            "steady_p99_ms": 25.09,
+            "gpu_envelope_ms": 6.84,
+            "gpu:canvasClear": 0.009,
+            "gpu:voxelCompact": 0.034,
+            "gpu:voxelStage1": 0.029,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.006,
+            "gpu:shapeDepth": 0.078,
+            "gpu:shapeOwnerElect": 0.077,
+            "gpu:shapePublish": 0.08,
+            "gpu:computeVoxelAO": 0.082,
+            "gpu:bakeSunShadowMap": 2.574,
+            "gpu:computeSunShadow": 0.028,
+            "gpu:computeLightVolume": 0.205,
+            "gpu:lightingToTrixel": 0.018,
+            "gpu:trixelToFb": 2.144,
+            "gpu:cardinalSurfaceFb": 2.621,
+            "gpu:entityCanvasToFb": 3.071,
+            "gpu:fbToScreen": 0.031,
+            "cpu:SingleVoxelToCanvasFirst": 1.796,
+            "cpu:LightingToTrixel": 0.135,
+            "cpu:BakeSunShadowMap": 0.124,
+            "cpu:CanvasToFramebuffer": 0.04,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 23.18,
+            "steady_p99_ms": 25.4,
+            "gpu_envelope_ms": 6.968,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.035,
+            "gpu:voxelStage1": 0.028,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.015,
+            "gpu:shapeOwnerClear": 0.007,
+            "gpu:shapeDepth": 0.079,
+            "gpu:shapeOwnerElect": 0.079,
+            "gpu:shapePublish": 0.08,
+            "gpu:computeVoxelAO": 0.085,
+            "gpu:bakeSunShadowMap": 2.592,
+            "gpu:computeSunShadow": 0.026,
+            "gpu:computeLightVolume": 0.146,
+            "gpu:lightingToTrixel": 0.018,
+            "gpu:trixelToFb": 2.222,
+            "gpu:cardinalSurfaceFb": 2.648,
+            "gpu:entityCanvasToFb": 3.098,
+            "gpu:fbToScreen": 0.03,
+            "cpu:SingleVoxelToCanvasFirst": 1.92,
+            "cpu:LightingToTrixel": 0.149,
+            "cpu:BakeSunShadowMap": 0.135,
+            "cpu:CanvasToFramebuffer": 0.044,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 22.8,
+            "steady_p99_ms": 25.11,
+            "gpu_envelope_ms": 6.852,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.033,
+            "gpu:voxelStage1": 0.028,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.005,
+            "gpu:shapeDepth": 0.074,
+            "gpu:shapeOwnerElect": 0.074,
+            "gpu:shapePublish": 0.076,
+            "gpu:computeVoxelAO": 0.083,
+            "gpu:bakeSunShadowMap": 2.529,
+            "gpu:computeSunShadow": 0.026,
+            "gpu:computeLightVolume": 0.178,
+            "gpu:lightingToTrixel": 0.017,
+            "gpu:trixelToFb": 2.154,
+            "gpu:cardinalSurfaceFb": 2.559,
+            "gpu:entityCanvasToFb": 2.997,
+            "gpu:fbToScreen": 0.029,
+            "cpu:SingleVoxelToCanvasFirst": 1.896,
+            "cpu:LightingToTrixel": 0.145,
+            "cpu:BakeSunShadowMap": 0.133,
+            "cpu:CanvasToFramebuffer": 0.045,
+            "cpu:ComputeSunShadow": 0.006
+          },
+          {
+            "steady_mean_ms": 23.21,
+            "steady_p99_ms": 26.59,
+            "gpu_envelope_ms": 7.001,
+            "gpu:canvasClear": 0.008,
+            "gpu:voxelCompact": 0.034,
+            "gpu:voxelStage1": 0.028,
+            "gpu:voxelCardinalElect": 0.013,
+            "gpu:voxelStage2": 0.014,
+            "gpu:shapeOwnerClear": 0.008,
+            "gpu:shapeDepth": 0.08,
+            "gpu:shapeOwnerElect": 0.079,
+            "gpu:shapePublish": 0.081,
+            "gpu:computeVoxelAO": 0.083,
+            "gpu:bakeSunShadowMap": 2.602,
+            "gpu:computeSunShadow": 0.026,
+            "gpu:computeLightVolume": 0.196,
+            "gpu:lightingToTrixel": 0.018,
+            "gpu:trixelToFb": 2.192,
+            "gpu:cardinalSurfaceFb": 2.647,
+            "gpu:entityCanvasToFb": 3.104,
+            "gpu:fbToScreen": 0.031,
+            "cpu:SingleVoxelToCanvasFirst": 1.902,
+            "cpu:LightingToTrixel": 0.146,
+            "cpu:BakeSunShadowMap": 0.134,
+            "cpu:CanvasToFramebuffer": 0.045,
+            "cpu:ComputeSunShadow": 0.006
+          }
+        ]
+      },
+      "summary": {
+        "baseline": {
+          "cpu:BakeSunShadowMap": {
+            "mean": 0.11679999999999999,
+            "min": 0.112,
+            "max": 0.123,
+            "sd": 0.005263078946776304,
+            "n": 5
+          },
+          "cpu:CanvasToFramebuffer": {
+            "mean": 0.043,
+            "min": 0.04,
+            "max": 0.047,
+            "sd": 0.003316624790355399,
+            "n": 5
+          },
+          "cpu:ComputeSunShadow": {
+            "mean": 0.0058000000000000005,
+            "min": 0.005,
+            "max": 0.006,
+            "sd": 0.00044721359549995795,
+            "n": 5
+          },
+          "cpu:LightingToTrixel": {
+            "mean": 0.1332,
+            "min": 0.127,
+            "max": 0.141,
+            "sd": 0.00634034699365894,
+            "n": 5
+          },
+          "cpu:SingleVoxelToCanvasFirst": {
+            "mean": 1.7777999999999998,
+            "min": 1.685,
+            "max": 1.949,
+            "sd": 0.11648905527988458,
+            "n": 5
+          },
+          "gpu:bakeSunShadowMap": {
+            "mean": 1.3778000000000001,
+            "min": 1.338,
+            "max": 1.448,
+            "sd": 0.04467325822010297,
+            "n": 5
+          },
+          "gpu:canvasClear": {
+            "mean": 0.0086,
+            "min": 0.008,
+            "max": 0.009,
+            "sd": 0.0005477225575051657,
+            "n": 5
+          },
+          "gpu:cardinalSurfaceFb": {
+            "mean": 1.4672,
+            "min": 1.417,
+            "max": 1.571,
+            "sd": 0.06256356767320737,
+            "n": 5
+          },
+          "gpu:computeLightVolume": {
+            "mean": 0.0442,
+            "min": 0.042,
+            "max": 0.046,
+            "sd": 0.002049390153191918,
+            "n": 5
+          },
+          "gpu:computeSunShadow": {
+            "mean": 0.0254,
+            "min": 0.024,
+            "max": 0.028,
+            "sd": 0.00151657508881031,
+            "n": 5
+          },
+          "gpu:computeVoxelAO": {
+            "mean": 0.0954,
+            "min": 0.089,
+            "max": 0.101,
+            "sd": 0.004827007354458872,
+            "n": 5
+          },
+          "gpu:entityCanvasToFb": {
+            "mean": 1.9146,
+            "min": 1.857,
+            "max": 2.046,
+            "sd": 0.07934922809958511,
+            "n": 5
+          },
+          "gpu:fbToScreen": {
+            "mean": 0.0316,
+            "min": 0.03,
+            "max": 0.034,
+            "sd": 0.0015165750888103114,
+            "n": 5
+          },
+          "gpu:lightingToTrixel": {
+            "mean": 0.0174,
+            "min": 0.017,
+            "max": 0.018,
+            "sd": 0.0005477225575051647,
+            "n": 5
+          },
+          "gpu:shapeDepth": {
+            "mean": 0.0816,
+            "min": 0.078,
+            "max": 0.088,
+            "sd": 0.004335896677735759,
+            "n": 5
+          },
+          "gpu:shapeOwnerClear": {
+            "mean": 0.0073999999999999995,
+            "min": 0.007,
+            "max": 0.009,
+            "sd": 0.0008944271909999155,
+            "n": 5
+          },
+          "gpu:shapeOwnerElect": {
+            "mean": 0.08120000000000001,
+            "min": 0.077,
+            "max": 0.089,
+            "sd": 0.004711687595755897,
+            "n": 5
+          },
+          "gpu:shapePublish": {
+            "mean": 0.08320000000000001,
+            "min": 0.08,
+            "max": 0.09,
+            "sd": 0.004147288270665542,
+            "n": 5
+          },
+          "gpu:trixelToFb": {
+            "mean": 0.9648,
+            "min": 0.935,
+            "max": 1.031,
+            "sd": 0.03982712643412773,
+            "n": 5
+          },
+          "gpu:voxelCardinalElect": {
+            "mean": 0.013600000000000001,
+            "min": 0.013,
+            "max": 0.014,
+            "sd": 0.0005477225575051667,
+            "n": 5
+          },
+          "gpu:voxelCompact": {
+            "mean": 0.0344,
+            "min": 0.034,
+            "max": 0.035,
+            "sd": 0.0005477225575051667,
+            "n": 5
+          },
+          "gpu:voxelStage1": {
+            "mean": 0.030199999999999998,
+            "min": 0.029,
+            "max": 0.031,
+            "sd": 0.0008366600265340751,
+            "n": 5
+          },
+          "gpu:voxelStage2": {
+            "mean": 0.014799999999999999,
+            "min": 0.014,
+            "max": 0.015,
+            "sd": 0.0004472135954999576,
+            "n": 5
+          },
+          "gpu_envelope_ms": {
+            "mean": 5.6332,
+            "min": 5.541,
+            "max": 5.752,
+            "sd": 0.10394806395503453,
+            "n": 5
+          },
+          "steady_mean_ms": {
+            "mean": 20.466,
+            "min": 19.5,
+            "max": 21.62,
+            "sd": 1.0330682455675428,
+            "n": 5
+          },
+          "steady_p99_ms": {
+            "mean": 24.55,
+            "min": 21.5,
+            "max": 28.56,
+            "sd": 2.814693589007514,
+            "n": 5
+          }
+        },
+        "per-pixel": {
+          "cpu:BakeSunShadowMap": {
+            "mean": 0.124,
+            "min": 0.116,
+            "max": 0.133,
+            "sd": 0.006595452979136461,
+            "n": 5
+          },
+          "cpu:CanvasToFramebuffer": {
+            "mean": 0.0438,
+            "min": 0.042,
+            "max": 0.047,
+            "sd": 0.002167948338867879,
+            "n": 5
+          },
+          "cpu:ComputeSunShadow": {
+            "mean": 0.006,
+            "min": 0.006,
+            "max": 0.006,
+            "sd": 0.0,
+            "n": 5
+          },
+          "cpu:LightingToTrixel": {
+            "mean": 0.14100000000000001,
+            "min": 0.132,
+            "max": 0.152,
+            "sd": 0.008246211251235314,
+            "n": 5
+          },
+          "cpu:SingleVoxelToCanvasFirst": {
+            "mean": 1.8508,
+            "min": 1.762,
+            "max": 1.978,
+            "sd": 0.08713896946831534,
+            "n": 5
+          },
+          "gpu:bakeSunShadowMap": {
+            "mean": 2.6892,
+            "min": 2.666,
+            "max": 2.719,
+            "sd": 0.022498888861452633,
+            "n": 5
+          },
+          "gpu:canvasClear": {
+            "mean": 0.0082,
+            "min": 0.008,
+            "max": 0.009,
+            "sd": 0.0004472135954999576,
+            "n": 5
+          },
+          "gpu:cardinalSurfaceFb": {
+            "mean": 2.7439999999999998,
+            "min": 2.715,
+            "max": 2.773,
+            "sd": 0.027018512172212652,
+            "n": 5
+          },
+          "gpu:computeLightVolume": {
+            "mean": 0.28700000000000003,
+            "min": 0.273,
+            "max": 0.306,
+            "sd": 0.012727922061357842,
+            "n": 5
+          },
+          "gpu:computeSunShadow": {
+            "mean": 0.027000000000000003,
+            "min": 0.026,
+            "max": 0.028,
+            "sd": 0.0007071067811865482,
+            "n": 5
+          },
+          "gpu:computeVoxelAO": {
+            "mean": 0.2096,
+            "min": 0.194,
+            "max": 0.216,
+            "sd": 0.008848728722251571,
+            "n": 5
+          },
+          "gpu:entityCanvasToFb": {
+            "mean": 3.181,
+            "min": 3.145,
+            "max": 3.219,
+            "sd": 0.03354847239443247,
+            "n": 5
+          },
+          "gpu:fbToScreen": {
+            "mean": 0.03,
+            "min": 0.029,
+            "max": 0.031,
+            "sd": 0.000707106781186547,
+            "n": 5
+          },
+          "gpu:lightingToTrixel": {
+            "mean": 0.017400000000000002,
+            "min": 0.017,
+            "max": 0.019,
+            "sd": 0.0008944271909999152,
+            "n": 5
+          },
+          "gpu:shapeDepth": {
+            "mean": 0.0766,
+            "min": 0.075,
+            "max": 0.078,
+            "sd": 0.001140175425099139,
+            "n": 5
+          },
+          "gpu:shapeOwnerClear": {
+            "mean": 0.0066,
+            "min": 0.006,
+            "max": 0.007,
+            "sd": 0.0005477225575051661,
+            "n": 5
+          },
+          "gpu:shapeOwnerElect": {
+            "mean": 0.0772,
+            "min": 0.075,
+            "max": 0.079,
+            "sd": 0.0017888543819998333,
+            "n": 5
+          },
+          "gpu:shapePublish": {
+            "mean": 0.0772,
+            "min": 0.075,
+            "max": 0.08,
+            "sd": 0.002167948338867882,
+            "n": 5
+          },
+          "gpu:trixelToFb": {
+            "mean": 2.3154,
+            "min": 2.242,
+            "max": 2.347,
+            "sd": 0.04309060222368674,
+            "n": 5
+          },
+          "gpu:voxelCardinalElect": {
+            "mean": 0.0128,
+            "min": 0.012,
+            "max": 0.013,
+            "sd": 0.0004472135954999576,
+            "n": 5
+          },
+          "gpu:voxelCompact": {
+            "mean": 0.0334,
+            "min": 0.033,
+            "max": 0.034,
+            "sd": 0.0005477225575051667,
+            "n": 5
+          },
+          "gpu:voxelStage1": {
+            "mean": 0.028200000000000003,
+            "min": 0.027,
+            "max": 0.029,
+            "sd": 0.0008366600265340763,
+            "n": 5
+          },
+          "gpu:voxelStage2": {
+            "mean": 0.014000000000000002,
+            "min": 0.014,
+            "max": 0.014,
+            "sd": 0.0,
+            "n": 5
+          },
+          "gpu_envelope_ms": {
+            "mean": 7.0032,
+            "min": 6.869,
+            "max": 7.184,
+            "sd": 0.12414789567286282,
+            "n": 5
+          },
+          "steady_mean_ms": {
+            "mean": 22.226,
+            "min": 21.25,
+            "max": 23.61,
+            "sd": 1.0483463168247407,
+            "n": 5
+          },
+          "steady_p99_ms": {
+            "mean": 24.82,
+            "min": 23.26,
+            "max": 27.47,
+            "sd": 1.728915845262573,
+            "n": 5
+          }
+        },
+        "head": {
+          "cpu:BakeSunShadowMap": {
+            "mean": 0.1306,
+            "min": 0.124,
+            "max": 0.135,
+            "sd": 0.004827007354458872,
+            "n": 5
+          },
+          "cpu:CanvasToFramebuffer": {
+            "mean": 0.0432,
+            "min": 0.04,
+            "max": 0.045,
+            "sd": 0.0021679483388678785,
+            "n": 5
+          },
+          "cpu:ComputeSunShadow": {
+            "mean": 0.006,
+            "min": 0.006,
+            "max": 0.006,
+            "sd": 0.0,
+            "n": 5
+          },
+          "cpu:LightingToTrixel": {
+            "mean": 0.1426,
+            "min": 0.135,
+            "max": 0.149,
+            "sd": 0.00585662018573852,
+            "n": 5
+          },
+          "cpu:SingleVoxelToCanvasFirst": {
+            "mean": 1.8636,
+            "min": 1.796,
+            "max": 1.92,
+            "sd": 0.05879455757125818,
+            "n": 5
+          },
+          "gpu:bakeSunShadowMap": {
+            "mean": 2.5629999999999997,
+            "min": 2.518,
+            "max": 2.602,
+            "sd": 0.03762977544445361,
+            "n": 5
+          },
+          "gpu:canvasClear": {
+            "mean": 0.0082,
+            "min": 0.008,
+            "max": 0.009,
+            "sd": 0.0004472135954999576,
+            "n": 5
+          },
+          "gpu:cardinalSurfaceFb": {
+            "mean": 2.6084,
+            "min": 2.559,
+            "max": 2.648,
+            "sd": 0.04292784644027686,
+            "n": 5
+          },
+          "gpu:computeLightVolume": {
+            "mean": 0.1828,
+            "min": 0.146,
+            "max": 0.205,
+            "sd": 0.022818851855428663,
+            "n": 5
+          },
+          "gpu:computeSunShadow": {
+            "mean": 0.026600000000000002,
+            "min": 0.026,
+            "max": 0.028,
+            "sd": 0.0008944271909999167,
+            "n": 5
+          },
+          "gpu:computeVoxelAO": {
+            "mean": 0.083,
+            "min": 0.082,
+            "max": 0.085,
+            "sd": 0.0012247448713915902,
+            "n": 5
+          },
+          "gpu:entityCanvasToFb": {
+            "mean": 3.0578,
+            "min": 2.997,
+            "max": 3.104,
+            "sd": 0.04776714351936906,
+            "n": 5
+          },
+          "gpu:fbToScreen": {
+            "mean": 0.030199999999999998,
+            "min": 0.029,
+            "max": 0.031,
+            "sd": 0.0008366600265340751,
+            "n": 5
+          },
+          "gpu:lightingToTrixel": {
+            "mean": 0.0178,
+            "min": 0.017,
+            "max": 0.018,
+            "sd": 0.00044721359549995676,
+            "n": 5
+          },
+          "gpu:shapeDepth": {
+            "mean": 0.07780000000000001,
+            "min": 0.074,
+            "max": 0.08,
+            "sd": 0.002280350850198278,
+            "n": 5
+          },
+          "gpu:shapeOwnerClear": {
+            "mean": 0.0064,
+            "min": 0.005,
+            "max": 0.008,
+            "sd": 0.001140175425099138,
+            "n": 5
+          },
+          "gpu:shapeOwnerElect": {
+            "mean": 0.0772,
+            "min": 0.074,
+            "max": 0.079,
+            "sd": 0.0020493901531919213,
+            "n": 5
+          },
+          "gpu:shapePublish": {
+            "mean": 0.0792,
+            "min": 0.076,
+            "max": 0.081,
+            "sd": 0.0019235384061671362,
+            "n": 5
+          },
+          "gpu:trixelToFb": {
+            "mean": 2.1648,
+            "min": 2.112,
+            "max": 2.222,
+            "sd": 0.04286257108480542,
+            "n": 5
+          },
+          "gpu:voxelCardinalElect": {
+            "mean": 0.013000000000000001,
+            "min": 0.013,
+            "max": 0.013,
+            "sd": 0.0,
+            "n": 5
+          },
+          "gpu:voxelCompact": {
+            "mean": 0.033800000000000004,
+            "min": 0.033,
+            "max": 0.035,
+            "sd": 0.0008366600265340763,
+            "n": 5
+          },
+          "gpu:voxelStage1": {
+            "mean": 0.028200000000000003,
+            "min": 0.028,
+            "max": 0.029,
+            "sd": 0.00044721359549995833,
+            "n": 5
+          },
+          "gpu:voxelStage2": {
+            "mean": 0.0142,
+            "min": 0.014,
+            "max": 0.015,
+            "sd": 0.0004472135954999576,
+            "n": 5
+          },
+          "gpu_envelope_ms": {
+            "mean": 6.885,
+            "min": 6.764,
+            "max": 7.001,
+            "sd": 0.09759610647971569,
+            "n": 5
+          },
+          "steady_mean_ms": {
+            "mean": 22.44,
+            "min": 21.44,
+            "max": 23.21,
+            "sd": 0.8699137888319736,
+            "n": 5
+          },
+          "steady_p99_ms": {
+            "mean": 25.201999999999998,
+            "min": 23.82,
+            "max": 26.59,
+            "sd": 0.9870005065854828,
+            "n": 5
+          }
+        }
+      },
+      "steady_frame_histogram_ms": {
+        "baseline": {
+          "17": 2,
+          "18": 154,
+          "19": 521,
+          "20": 312,
+          "21": 183,
+          "22": 68,
+          "23": 47,
+          "24": 22,
+          "25": 20,
+          "26": 8,
+          "27": 6,
+          "28": 6,
+          "30": 1
+        },
+        "per-pixel": {
+          "19": 6,
+          "20": 257,
+          "21": 403,
+          "22": 320,
+          "23": 207,
+          "24": 117,
+          "25": 33,
+          "26": 3,
+          "27": 4
+        },
+        "head": {
+          "19": 17,
+          "20": 187,
+          "21": 299,
+          "22": 441,
+          "23": 214,
+          "24": 167,
+          "25": 19,
+          "26": 4,
+          "27": 1,
+          "28": 1
+        }
+      },
+      "rows": {
+        "per-pixel": {
+          "cpu:BakeSunShadowMap": {
+            "ratio": 1.0616438356164384,
+            "paired": {
+              "deltas": [
+                0.006999999999999992,
+                0.0040000000000000036,
+                0.008999999999999994,
+                0.006000000000000005,
+                0.010000000000000009
+              ],
+              "mean": 0.007200000000000001,
+              "sd": 0.002387467277262664,
+              "n": 5,
+              "lower95": 0.004923646916666925
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "cpu:CanvasToFramebuffer": {
+            "ratio": 1.0186046511627906,
+            "paired": {
+              "deltas": [
+                0.0020000000000000018,
+                0.000999999999999994,
+                0.0020000000000000018,
+                0.0,
+                -0.0010000000000000009
+              ],
+              "mean": 0.0007999999999999993,
+              "sd": 0.0013038404810405307,
+              "n": 5,
+              "lower95": -0.0004431589439810196
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "cpu:ComputeSunShadow": {
+            "ratio": 1.0344827586206895,
+            "paired": {
+              "deltas": [
+                0.0,
+                0.0,
+                0.001,
+                0.0,
+                0.0
+              ],
+              "mean": 0.0002,
+              "sd": 0.00044721359549995795,
+              "n": 5,
+              "lower95": -0.0002264
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "cpu:LightingToTrixel": {
+            "ratio": 1.0585585585585586,
+            "paired": {
+              "deltas": [
+                0.006000000000000005,
+                0.0050000000000000044,
+                0.009000000000000008,
+                0.006000000000000005,
+                0.012999999999999984
+              ],
+              "mean": 0.007800000000000001,
+              "sd": 0.0032710854467592173,
+              "n": 5,
+              "lower95": 0.004681152879668523
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "cpu:SingleVoxelToCanvasFirst": {
+            "ratio": 1.041061986725166,
+            "paired": {
+              "deltas": [
+                0.09200000000000008,
+                0.07699999999999996,
+                0.1160000000000001,
+                -0.049000000000000155,
+                0.129
+              ],
+              "mean": 0.073,
+              "sd": 0.07114421972303872,
+              "n": 5,
+              "lower95": 0.005166875973459606
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:bakeSunShadowMap": {
+            "ratio": 1.9518072289156625,
+            "paired": {
+              "deltas": [
+                1.221,
+                1.3279999999999998,
+                1.3579999999999999,
+                1.324,
+                1.3259999999999998
+              ],
+              "mean": 1.3114,
+              "sd": 0.052419462034629764,
+              "n": 5,
+              "lower95": 1.2614201719346694
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:canvasClear": {
+            "ratio": 0.9534883720930233,
+            "paired": {
+              "deltas": [
+                -0.0009999999999999992,
+                -0.0009999999999999992,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "mean": -0.00039999999999999964,
+              "sd": 0.0005477225575051657,
+              "n": 5,
+              "lower95": -0.0009222312131613728
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:cardinalSurfaceFb": {
+            "ratio": 1.8702290076335875,
+            "paired": {
+              "deltas": [
+                1.151,
+                1.2979999999999998,
+                1.343,
+                1.2979999999999998,
+                1.294
+              ],
+              "mean": 1.2768,
+              "sd": 0.07314847913661633,
+              "n": 5,
+              "lower95": 1.207055896024395
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:computeLightVolume": {
+            "ratio": 6.493212669683258,
+            "paired": {
+              "deltas": [
+                0.26,
+                0.23300000000000004,
+                0.24799999999999997,
+                0.231,
+                0.242
+              ],
+              "mean": 0.2428,
+              "sd": 0.011819475453673895,
+              "n": 5,
+              "lower95": 0.23153061019575594
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:computeSunShadow": {
+            "ratio": 1.062992125984252,
+            "paired": {
+              "deltas": [
+                -0.0010000000000000009,
+                0.0009999999999999974,
+                0.002999999999999999,
+                0.0019999999999999983,
+                0.002999999999999999
+              ],
+              "mean": 0.0015999999999999986,
+              "sd": 0.0016733200530681513,
+              "n": 5,
+              "lower95": 4.55729027958973e-06
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:computeVoxelAO": {
+            "ratio": 2.19706498951782,
+            "paired": {
+              "deltas": [
+                0.11199999999999999,
+                0.10200000000000001,
+                0.123,
+                0.11499999999999999,
+                0.119
+              ],
+              "mean": 0.1142,
+              "sd": 0.007981227975693962,
+              "n": 5,
+              "lower95": 0.10659022327791412
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:entityCanvasToFb": {
+            "ratio": 1.6614436435809046,
+            "paired": {
+              "deltas": [
+                1.112,
+                1.288,
+                1.3479999999999999,
+                1.303,
+                1.281
+              ],
+              "mean": 1.2664,
+              "sd": 0.09016263084005471,
+              "n": 5,
+              "lower95": 1.1804335933946288
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:fbToScreen": {
+            "ratio": 0.9493670886075948,
+            "paired": {
+              "deltas": [
+                -0.0040000000000000036,
+                -0.0019999999999999983,
+                0.0010000000000000009,
+                -0.0010000000000000009,
+                -0.0020000000000000018
+              ],
+              "mean": -0.0016000000000000007,
+              "sd": 0.0018165902124584964,
+              "n": 5,
+              "lower95": -0.003332044987868389
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:lightingToTrixel": {
+            "ratio": 1.0000000000000002,
+            "paired": {
+              "deltas": [
+                -0.0009999999999999974,
+                0.0,
+                0.0,
+                0.0,
+                0.0010000000000000009
+              ],
+              "mean": 6.938893903907229e-19,
+              "sd": 0.000707106781186547,
+              "n": 5,
+              "lower95": -0.0006741975971478973
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:shapeDepth": {
+            "ratio": 0.9387254901960784,
+            "paired": {
+              "deltas": [
+                -0.012999999999999998,
+                -0.0020000000000000018,
+                0.0,
+                -0.0030000000000000027,
+                -0.007000000000000006
+              ],
+              "mean": -0.005000000000000002,
+              "sd": 0.005147815070493499,
+              "n": 5,
+              "lower95": -0.00990823259432558
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:shapeOwnerClear": {
+            "ratio": 0.891891891891892,
+            "paired": {
+              "deltas": [
+                -0.001,
+                0.0,
+                0.0,
+                0.0,
+                -0.002999999999999999
+              ],
+              "mean": -0.0007999999999999998,
+              "sd": 0.0013038404810405294,
+              "n": 5,
+              "lower95": -0.0020431589439810177
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:shapeOwnerElect": {
+            "ratio": 0.9507389162561576,
+            "paired": {
+              "deltas": [
+                -0.012999999999999998,
+                -0.0020000000000000018,
+                0.0,
+                -0.0020000000000000018,
+                -0.0030000000000000027
+              ],
+              "mean": -0.004000000000000001,
+              "sd": 0.005147815070493499,
+              "n": 5,
+              "lower95": -0.008908232594325579
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:shapePublish": {
+            "ratio": 0.9278846153846153,
+            "paired": {
+              "deltas": [
+                -0.013999999999999999,
+                -0.0050000000000000044,
+                0.0,
+                -0.006000000000000005,
+                -0.0050000000000000044
+              ],
+              "mean": -0.006000000000000003,
+              "sd": 0.005049752469181038,
+              "n": 5,
+              "lower95": -0.010814733886727284
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:trixelToFb": {
+            "ratio": 2.3998756218905473,
+            "paired": {
+              "deltas": [
+                1.309,
+                1.307,
+                1.3989999999999998,
+                1.363,
+                1.375
+              ],
+              "mean": 1.3506,
+              "sd": 0.04099756090305858,
+              "n": 5,
+              "lower95": 1.3115104907700288
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:voxelCardinalElect": {
+            "ratio": 0.9411764705882353,
+            "paired": {
+              "deltas": [
+                -0.0010000000000000009,
+                -0.0009999999999999992,
+                -0.0010000000000000009,
+                0.0,
+                -0.0010000000000000009
+              ],
+              "mean": -0.0008000000000000004,
+              "sd": 0.0004472135954999581,
+              "n": 5,
+              "lower95": -0.0012264000000000005
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:voxelCompact": {
+            "ratio": 0.9709302325581395,
+            "paired": {
+              "deltas": [
+                -0.0020000000000000018,
+                -0.0010000000000000009,
+                -0.0010000000000000009,
+                0.0,
+                -0.0010000000000000009
+              ],
+              "mean": -0.0010000000000000009,
+              "sd": 0.0007071067811865482,
+              "n": 5,
+              "lower95": -0.0016741975971479
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:voxelStage1": {
+            "ratio": 0.9337748344370863,
+            "paired": {
+              "deltas": [
+                -0.002999999999999999,
+                -0.004,
+                -0.0010000000000000009,
+                -0.0009999999999999974,
+                -0.0009999999999999974
+              ],
+              "mean": -0.001999999999999999,
+              "sd": 0.0014142135623730957,
+              "n": 5,
+              "lower95": -0.0033483951942957966
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:voxelStage2": {
+            "ratio": 0.9459459459459462,
+            "paired": {
+              "deltas": [
+                -0.0009999999999999992,
+                0.0,
+                -0.0009999999999999992,
+                -0.0009999999999999992,
+                -0.0009999999999999992
+              ],
+              "mean": -0.0007999999999999993,
+              "sd": 0.0004472135954999576,
+              "n": 5,
+              "lower95": -0.001226399999999999
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu_envelope_ms": {
+            "ratio": 1.2432010225094083,
+            "paired": {
+              "deltas": [
+                1.178,
+                1.3279999999999994,
+                1.4369999999999994,
+                1.4749999999999996,
+                1.4320000000000004
+              ],
+              "mean": 1.3699999999999997,
+              "sd": 0.12040141195185375,
+              "n": 5,
+              "lower95": 1.255202143734301
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "steady_mean_ms": {
+            "ratio": 1.085996286523991,
+            "paired": {
+              "deltas": [
+                1.629999999999999,
+                1.75,
+                1.8999999999999986,
+                1.5299999999999976,
+                1.9899999999999984
+              ],
+              "mean": 1.7599999999999987,
+              "sd": 0.18867962264113225,
+              "n": 5,
+              "lower95": 1.5801016429202297
+            },
+            "limit": "ratio <= 1.10x",
+            "verdict": "pass"
+          },
+          "steady_p99_ms": {
+            "ratio": 1.0109979633401223,
+            "paired": {
+              "deltas": [
+                0.5800000000000018,
+                1.7600000000000016,
+                0.6900000000000013,
+                -2.919999999999998,
+                1.2399999999999984
+              ],
+              "mean": 0.270000000000001,
+              "sd": 1.8445595680270122,
+              "n": 5,
+              "lower95": -1.4887126324445372
+            },
+            "limit": "ratio <= 1.10x",
+            "verdict": "pass"
+          }
+        },
+        "head": {
+          "cpu:BakeSunShadowMap": {
+            "ratio": 1.1181506849315068,
+            "paired": {
+              "deltas": [
+                0.012999999999999998,
+                0.011999999999999997,
+                0.022000000000000006,
+                0.01100000000000001,
+                0.01100000000000001
+              ],
+              "mean": 0.013800000000000003,
+              "sd": 0.004658325879540846,
+              "n": 5,
+              "lower95": 0.009358475468940877
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "cpu:CanvasToFramebuffer": {
+            "ratio": 1.0046511627906978,
+            "paired": {
+              "deltas": [
+                0.0020000000000000018,
+                -0.0020000000000000018,
+                0.003999999999999997,
+                -0.0020000000000000018,
+                -0.0010000000000000009
+              ],
+              "mean": 0.0001999999999999988,
+              "sd": 0.0026832815729997475,
+              "n": 5,
+              "lower95": -0.002358400000000001
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "cpu:ComputeSunShadow": {
+            "ratio": 1.0344827586206895,
+            "paired": {
+              "deltas": [
+                0.0,
+                0.0,
+                0.001,
+                0.0,
+                0.0
+              ],
+              "mean": 0.0002,
+              "sd": 0.00044721359549995795,
+              "n": 5,
+              "lower95": -0.0002264
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "cpu:LightingToTrixel": {
+            "ratio": 1.0705705705705706,
+            "paired": {
+              "deltas": [
+                0.008000000000000007,
+                0.008000000000000007,
+                0.01999999999999999,
+                0.0040000000000000036,
+                0.0069999999999999785
+              ],
+              "mean": 0.009399999999999997,
+              "sd": 0.006148170459575756,
+              "n": 5,
+              "lower95": 0.00353796917101249
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "cpu:SingleVoxelToCanvasFirst": {
+            "ratio": 1.0482618967262909,
+            "paired": {
+              "deltas": [
+                0.09400000000000008,
+                0.11099999999999999,
+                0.22399999999999998,
+                -0.05300000000000016,
+                0.052999999999999936
+              ],
+              "mean": 0.08579999999999996,
+              "sd": 0.10017834097248772,
+              "n": 5,
+              "lower95": -0.009715979434647581
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:bakeSunShadowMap": {
+            "ratio": 1.8602119320656114,
+            "paired": {
+              "deltas": [
+                1.0699999999999998,
+                1.2359999999999998,
+                1.247,
+                1.164,
+                1.2089999999999999
+              ],
+              "mean": 1.1851999999999998,
+              "sd": 0.07191453260642111,
+              "n": 5,
+              "lower95": 1.1166324139249453
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:canvasClear": {
+            "ratio": 0.9534883720930233,
+            "paired": {
+              "deltas": [
+                -0.0009999999999999992,
+                0.0,
+                0.0,
+                0.0,
+                -0.0009999999999999992
+              ],
+              "mean": -0.00039999999999999964,
+              "sd": 0.0005477225575051657,
+              "n": 5,
+              "lower95": -0.0009222312131613728
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:cardinalSurfaceFb": {
+            "ratio": 1.7778080697928025,
+            "paired": {
+              "deltas": [
+                0.9960000000000002,
+                1.204,
+                1.2200000000000002,
+                1.118,
+                1.1679999999999997
+              ],
+              "mean": 1.1412,
+              "sd": 0.09012879673001291,
+              "n": 5,
+              "lower95": 1.0552658528444019
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:computeLightVolume": {
+            "ratio": 4.135746606334841,
+            "paired": {
+              "deltas": [
+                0.14300000000000002,
+                0.15999999999999998,
+                0.10399999999999998,
+                0.13599999999999998,
+                0.15000000000000002
+              ],
+              "mean": 0.1386,
+              "sd": 0.021279097725232624,
+              "n": 5,
+              "lower95": 0.11831124455665158
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:computeSunShadow": {
+            "ratio": 1.0472440944881891,
+            "paired": {
+              "deltas": [
+                -0.0010000000000000009,
+                0.002999999999999999,
+                0.0019999999999999983,
+                0.0009999999999999974,
+                0.0009999999999999974
+              ],
+              "mean": 0.0011999999999999984,
+              "sd": 0.0014832396974191326,
+              "n": 5,
+              "lower95": -0.000214208810607544
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:computeVoxelAO": {
+            "ratio": 0.8700209643605871,
+            "paired": {
+              "deltas": [
+                -0.019000000000000003,
+                -0.009999999999999995,
+                -0.00399999999999999,
+                -0.015,
+                -0.013999999999999999
+              ],
+              "mean": -0.012399999999999998,
+              "sd": 0.005683308895353133,
+              "n": 5,
+              "lower95": -0.017818804207572002
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:entityCanvasToFb": {
+            "ratio": 1.597095999164316,
+            "paired": {
+              "deltas": [
+                0.9730000000000003,
+                1.2140000000000002,
+                1.2269999999999999,
+                1.1309999999999998,
+                1.171
+              ],
+              "mean": 1.1432,
+              "sd": 0.10237773195377976,
+              "n": 5,
+              "lower95": 1.0455869905916226
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:fbToScreen": {
+            "ratio": 0.9556962025316454,
+            "paired": {
+              "deltas": [
+                -0.0040000000000000036,
+                0.0,
+                0.0,
+                -0.0019999999999999983,
+                -0.0010000000000000009
+              ],
+              "mean": -0.0014000000000000006,
+              "sd": 0.0016733200530681524,
+              "n": 5,
+              "lower95": -0.00299544270972041
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:lightingToTrixel": {
+            "ratio": 1.0229885057471264,
+            "paired": {
+              "deltas": [
+                0.0,
+                0.0009999999999999974,
+                0.0009999999999999974,
+                0.0,
+                0.0
+              ],
+              "mean": 0.000399999999999999,
+              "sd": 0.0005477225575051647,
+              "n": 5,
+              "lower95": -0.0001222312131613733
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:shapeDepth": {
+            "ratio": 0.9534313725490197,
+            "paired": {
+              "deltas": [
+                -0.009999999999999995,
+                0.0,
+                0.0010000000000000009,
+                -0.006000000000000005,
+                -0.0040000000000000036
+              ],
+              "mean": -0.0038000000000000004,
+              "sd": 0.004494441010848845,
+              "n": 5,
+              "lower95": -0.008085266964845947
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:shapeOwnerClear": {
+            "ratio": 0.864864864864865,
+            "paired": {
+              "deltas": [
+                -0.001,
+                -0.001,
+                0.0,
+                -0.002,
+                -0.0009999999999999992
+              ],
+              "mean": -0.0009999999999999998,
+              "sd": 0.0007071067811865475,
+              "n": 5,
+              "lower95": -0.0016741975971478983
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:shapeOwnerElect": {
+            "ratio": 0.9507389162561576,
+            "paired": {
+              "deltas": [
+                -0.011999999999999997,
+                0.0,
+                0.0,
+                -0.0050000000000000044,
+                -0.0030000000000000027
+              ],
+              "mean": -0.004000000000000001,
+              "sd": 0.004949747468305832,
+              "n": 5,
+              "lower95": -0.00871938318003529
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:shapePublish": {
+            "ratio": 0.9519230769230769,
+            "paired": {
+              "deltas": [
+                -0.010999999999999996,
+                0.0,
+                0.0,
+                -0.006000000000000005,
+                -0.0030000000000000027
+              ],
+              "mean": -0.004000000000000001,
+              "sd": 0.00463680924774785,
+              "n": 5,
+              "lower95": -0.00842100929652947
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:trixelToFb": {
+            "ratio": 2.243781094527363,
+            "paired": {
+              "deltas": [
+                1.0810000000000002,
+                1.209,
+                1.285,
+                1.205,
+                1.2200000000000002
+              ],
+              "mean": 1.2,
+              "sd": 0.07397972695272664,
+              "n": 5,
+              "lower95": 1.1294633349923602
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:voxelCardinalElect": {
+            "ratio": 0.9558823529411765,
+            "paired": {
+              "deltas": [
+                -0.0010000000000000009,
+                0.0,
+                -0.0010000000000000009,
+                0.0,
+                -0.0010000000000000009
+              ],
+              "mean": -0.0006000000000000005,
+              "sd": 0.0005477225575051667,
+              "n": 5,
+              "lower95": -0.0011222312131613746
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:voxelCompact": {
+            "ratio": 0.9825581395348838,
+            "paired": {
+              "deltas": [
+                -0.0020000000000000018,
+                0.0,
+                0.0010000000000000009,
+                -0.0010000000000000009,
+                -0.0010000000000000009
+              ],
+              "mean": -0.0006000000000000005,
+              "sd": 0.001140175425099139,
+              "n": 5,
+              "lower95": -0.0016871109602979834
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:voxelStage1": {
+            "ratio": 0.9337748344370863,
+            "paired": {
+              "deltas": [
+                -0.002999999999999999,
+                -0.0019999999999999983,
+                -0.0010000000000000009,
+                -0.0019999999999999983,
+                -0.0019999999999999983
+              ],
+              "mean": -0.001999999999999999,
+              "sd": 0.000707106781186547,
+              "n": 5,
+              "lower95": -0.0026741975971478972
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu:voxelStage2": {
+            "ratio": 0.9594594594594595,
+            "paired": {
+              "deltas": [
+                -0.0009999999999999992,
+                0.0,
+                0.0,
+                -0.0009999999999999992,
+                -0.0009999999999999992
+              ],
+              "mean": -0.0005999999999999995,
+              "sd": 0.0005477225575051657,
+              "n": 5,
+              "lower95": -0.0011222312131613727
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "gpu_envelope_ms": {
+            "ratio": 1.222218277355677,
+            "paired": {
+              "deltas": [
+                1.0250000000000004,
+                1.2989999999999995,
+                1.4189999999999996,
+                1.2670000000000003,
+                1.2490000000000006
+              ],
+              "mean": 1.2518,
+              "sd": 0.1430566321426585,
+              "n": 5,
+              "lower95": 1.1154013114104102
+            },
+            "limit": "reported",
+            "verdict": "-"
+          },
+          "steady_mean_ms": {
+            "ratio": 1.0964526531808854,
+            "paired": {
+              "deltas": [
+                1.5100000000000016,
+                2.0700000000000003,
+                3.4499999999999993,
+                1.25,
+                1.5899999999999999
+              ],
+              "mean": 1.9740000000000002,
+              "sd": 0.8767439763123549,
+              "n": 5,
+              "lower95": 1.1380602270115396
+            },
+            "limit": "ratio <= 1.10x",
+            "verdict": "pass"
+          },
+          "steady_p99_ms": {
+            "ratio": 1.0265580448065172,
+            "paired": {
+              "deltas": [
+                0.5800000000000018,
+                3.59,
+                2.1799999999999997,
+                -3.4499999999999993,
+                0.35999999999999943
+              ],
+              "mean": 0.6520000000000004,
+              "sd": 2.6402405193466745,
+              "n": 5,
+              "lower95": -1.8653621034281096
+            },
+            "limit": "ratio <= 1.10x",
+            "verdict": "pass"
+          }
+        }
+      },
+      "head_over_baseline": {
+        "cpu:BakeSunShadowMap": 1.1181506849315068,
+        "cpu:CanvasToFramebuffer": 1.0046511627906978,
+        "cpu:ComputeSunShadow": 1.0344827586206895,
+        "cpu:LightingToTrixel": 1.0705705705705706,
+        "cpu:SingleVoxelToCanvasFirst": 1.0482618967262909,
+        "gpu:bakeSunShadowMap": 1.8602119320656114,
+        "gpu:canvasClear": 0.9534883720930233,
+        "gpu:cardinalSurfaceFb": 1.7778080697928025,
+        "gpu:computeLightVolume": 4.135746606334841,
+        "gpu:computeSunShadow": 1.0472440944881891,
+        "gpu:computeVoxelAO": 0.8700209643605871,
+        "gpu:entityCanvasToFb": 1.597095999164316,
+        "gpu:fbToScreen": 0.9556962025316454,
+        "gpu:lightingToTrixel": 1.0229885057471264,
+        "gpu:shapeDepth": 0.9534313725490197,
+        "gpu:shapeOwnerClear": 0.864864864864865,
+        "gpu:shapeOwnerElect": 0.9507389162561576,
+        "gpu:shapePublish": 0.9519230769230769,
+        "gpu:trixelToFb": 2.243781094527363,
+        "gpu:voxelCardinalElect": 0.9558823529411765,
+        "gpu:voxelCompact": 0.9825581395348838,
+        "gpu:voxelStage1": 0.9337748344370863,
+        "gpu:voxelStage2": 0.9594594594594595,
+        "gpu_envelope_ms": 1.222218277355677,
+        "steady_mean_ms": 1.0964526531808854,
+        "steady_p99_ms": 1.0265580448065172
+      }
+    }
+  }
+}

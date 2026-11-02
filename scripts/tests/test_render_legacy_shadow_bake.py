@@ -346,6 +346,14 @@ uint atomicMin(uint& word,uint value){
 using atomic_uint=uint;
 constexpr int memory_order_relaxed=0;
 uint atomic_fetch_min_explicit(uint* word,uint value,int){return atomicMin(*word,value);}
+// The shipped layout compiles the depth-slab layer out, so the primary write is
+// the nearest atomicMin alone; test_render_sun_depth_slab executes the layer.
+void writeSunDepthSlab(int,uint){}
+void writeSunDepthSlab(std::vector<uint>&,int,uint){}
+void writeSunPrimaryDepth(int index,uint packedDepth){atomicMin(sunDepthBuf[index],packedDepth);}
+void writeSunPrimaryDepth(std::vector<uint>& buf,int index,uint packedDepth){
+ atomicMin(buf[index],packedDepth);
+}
 """
 
 SLOT_CASES = r"""

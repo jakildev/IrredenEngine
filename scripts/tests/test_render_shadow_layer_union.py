@@ -171,8 +171,9 @@ class ShadowLayerUnionTest(unittest.TestCase):
                                         "second retained depth blocks the receiver"),
             "always_read_fallback": (("(hasSourceFaces || secondPrimaryDepth)", "true"),
                                      "default receiver ignores the diagnostic layer"),
-            "unbounded_second_depth": (("if (depthDiff - bias >= maxShadowThrow) continue;", ""),
-                                       "nearest-only answer follows the throw window"),
+            "unbounded_second_depth": (
+                ("if (depthDiff - bias >= maxShadowThrow) return false;", ""),
+                "nearest-only answer follows the throw window"),
         }
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             with self.subTest(backend=suffix):
@@ -219,7 +220,7 @@ class ShadowLayerUnionTest(unittest.TestCase):
             "count_overlap_twice": (("shadowAccum += weight;\n                break;",
                                      "shadowAccum += weight;"),
                                     "adding an out-of-range layer erased a valid shadow"),
-            "unbounded_shadows": (("if (depthDiff - bias >= maxShadowThrow) continue;", ""),
+            "unbounded_shadows": (("if (depthDiff - bias >= maxShadowThrow) return false;", ""),
                                   "out-of-range-only casters stay rejected"),
         }
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):

@@ -2416,6 +2416,20 @@ TEST_F(PositionUploadTest, UnalignedSparseBatchWaitsAndPatchesInPlace) {
     EXPECT_EQ(result, expected);
 }
 
+TEST_F(PositionUploadTest, OffsetFillLeavesTheBytesOutsideItsRangeUntouched) {
+    using namespace IRRender;
+    std::vector<std::uint8_t> expected(16, 0x55);
+    Buffer bytes(expected.data(), expected.size(), BUFFER_STORAGE_DYNAMIC);
+    device_->fillBuffer(&bytes, 4, 8, 0xFF);
+    device_->fillBuffer(&bytes, 12, 2, 0x00);
+    device_->finish();
+    std::vector<std::uint8_t> result(expected.size());
+    bytes.getSubData(0, result.size(), result.data());
+    std::fill(expected.begin() + 4, expected.begin() + 12, 0xFF);
+    std::fill(expected.begin() + 12, expected.begin() + 14, 0x00);
+    EXPECT_EQ(result, expected);
+}
+
 TEST_F(PositionUploadTest, UnalignedPartialUploadPreservesPendingGpuBytes) {
     using namespace IRRender;
     for (const std::size_t byteCount : {8u, 9u}) {

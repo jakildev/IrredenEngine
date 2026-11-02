@@ -1,0 +1,27 @@
+# active=1
+# finite_coverage=1
+# canvas=642,722
+# caster_pixels=0
+# splat_radius=0
+# residual_yaw=0.349999905
+# group_16_cascade_0_workgroups=0
+# group_16_cascade_0_fit_32=0/0
+# group_16_cascade_0_fit_40=0/0
+# group_16_cascade_0_fit_48=0/0
+# group_16_cascade_0_fit_64=0/0
+# group_16_cascade_1_workgroups=0
+# group_16_cascade_1_fit_32=0/0
+# group_16_cascade_1_fit_40=0/0
+# group_16_cascade_1_fit_48=0/0
+# group_16_cascade_1_fit_64=0/0
+# group_8_cascade_0_workgroups=0
+# group_8_cascade_0_fit_32=0/0
+# group_8_cascade_0_fit_40=0/0
+# group_8_cascade_0_fit_48=0/0
+# group_8_cascade_0_fit_64=0/0
+# group_8_cascade_1_workgroups=0
+# group_8_cascade_1_fit_32=0/0
+# group_8_cascade_1_fit_40=0/0
+# group_8_cascade_1_fit_48=0/0
+# group_8_cascade_1_fit_64=0/0
+cascade,group_x,group_y,pixels,min_x,min_y,max_x,max_y,fit_32,fit_40,fit_48,fit_64

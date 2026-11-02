@@ -1,0 +1,7460 @@
+{
+ "label": "baseline",
+ "route": "particles",
+ "build_dir": "/private/tmp/pool-2-4799/base-src/build",
+ "head": "fb783c1b7c2f0dcc47644abb12949ff020857f86",
+ "binary_sha256": "de6866dfa22aaf3940a933077d437587fa5bf41a1ce6a5c87789f9f733d50e28",
+ "crop": [
+  1100,
+  600,
+  1460,
+  840
+ ],
+ "band_px": 2,
+ "cases": {
+  "lower": {
+   "name": "lower",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 0,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": null,
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/lower/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "2a0177657126e5204469c0f5e968d15bdc5de4207d6dcd6e2162885595724b27",
+   "receiver": "receiver.png",
+   "receiver_sha256": "fa7adfa77b01b5666b110ed94c973174a76d8d380b85f913c349d5100bcb99ce",
+   "pose": null,
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-15": 1175,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-15": 861
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "lower-unlit": {
+   "name": "lower-unlit",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 0,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": false,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": null,
+   "offset": null,
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/lower-unlit/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--no-shadows"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "5c63d86b139e6423649bceddc9e04ad73f3803da2f011a2177f43e368ce5d99e",
+   "receiver": "receiver.png",
+   "receiver_sha256": "7e88f342e32b8758908b2cf753ba7ccda8580060f48964b68b62db99d576dcde",
+   "pose": null,
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   }
+  },
+  "floor": {
+   "name": "floor",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 0,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": false,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": null,
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/floor/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--probe-hidden-box",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "ec0e2e0eb974d584a57f657a7580a5ab4014ef6543f4927281075782c86fb566",
+   "receiver": "receiver.png",
+   "receiver_sha256": "f722677417947788f745663ef702df97e33fde6bb0f495d05cb6d8cf9b8448bd",
+   "pose": null,
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "3": 1225
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "3": 861
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 11468,
+    "changed_outside_band": 8257,
+    "excess_shadow_outside_band": 604,
+    "missing_shadow_outside_band": 7653
+   }
+  },
+  "distant-8-h60": {
+   "name": "distant-8-h60",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": false,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "floor",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/distant-8-h60/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--probe-hidden-box",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "69df3357a42d371c0c2b9555c21868897a1ec12fc0336650b9f86b54c93c3753",
+   "receiver": "receiver.png",
+   "receiver_sha256": "f722677417947788f745663ef702df97e33fde6bb0f495d05cb6d8cf9b8448bd",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-85": 398,
+       "-84": 39,
+       "3": 788
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-85": 379,
+       "3": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "stacked-8-h60": {
+   "name": "stacked-8-h60",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/stacked-8-h60/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "e2a6ff37008e86485aad134f6a165f2b8d8b413282529f20c0c0764efa2bf002",
+   "receiver": "receiver.png",
+   "receiver_sha256": "664ec90d4ca3c6884cc4f69891f80816da7c33bda058941cbceee21be8f46b30",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-85": 398,
+       "-84": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-85": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2400,
+    "changed_outside_band": 2347,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "stacked-8-h60-unlit": {
+   "name": "stacked-8-h60-unlit",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": false,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": null,
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/stacked-8-h60-unlit/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--no-shadows",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "d8e0bc82b72c257b106a9ba4ab7731dbc20c549e95a8e68c68fe62f50167c51e",
+   "receiver": "receiver.png",
+   "receiver_sha256": "7e88f342e32b8758908b2cf753ba7ccda8580060f48964b68b62db99d576dcde",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   }
+  },
+  "stacked-8-h60-last": {
+   "name": "stacked-8-h60-last",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": "last",
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/stacked-8-h60-last/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60",
+    "--probe-overlapping-source-last"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "e2a6ff37008e86485aad134f6a165f2b8d8b413282529f20c0c0764efa2bf002",
+   "receiver": "receiver.png",
+   "receiver_sha256": "664ec90d4ca3c6884cc4f69891f80816da7c33bda058941cbceee21be8f46b30",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-85": 398,
+       "-84": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-85": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2400,
+    "changed_outside_band": 2347,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "stacked-128-h60": {
+   "name": "stacked-128-h60",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 128,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/stacked-128-h60/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "128",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "e2a6ff37008e86485aad134f6a165f2b8d8b413282529f20c0c0764efa2bf002",
+   "receiver": "receiver.png",
+   "receiver_sha256": "664ec90d4ca3c6884cc4f69891f80816da7c33bda058941cbceee21be8f46b30",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-85": 398,
+       "-84": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-85": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2400,
+    "changed_outside_band": 2347,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "stacked-8-h90": {
+   "name": "stacked-8-h90",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -90,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0,
+    0,
+    -90
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/stacked-8-h90/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-90"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "f064d702dc1ca9d2336849a1f45886d8f0aefcad49f3a058d6d473c9fc92c0b1",
+   "receiver": "receiver.png",
+   "receiver_sha256": "664ec90d4ca3c6884cc4f69891f80816da7c33bda058941cbceee21be8f46b30",
+   "pose": [
+    0.0,
+    0.0,
+    -90.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-115": 398,
+       "-114": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-115": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2400,
+    "changed_outside_band": 2347,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "stacked-8-h30": {
+   "name": "stacked-8-h30",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -30,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0,
+    0,
+    -30
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/stacked-8-h30/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-30"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "2c1c32d1e3a6239f0de59dd34241ca6655573bebc096907e0f9c487015d101ab",
+   "receiver": "receiver.png",
+   "receiver_sha256": "8c82f11f76ec7ef3406f71374b2b6a209c131a734182dfc4bf1bb653b4043c7c",
+   "pose": [
+    0.0,
+    0.0,
+    -30.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-55": 398,
+       "-54": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-55": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 1200,
+    "changed_outside_band": 750,
+    "excess_shadow_outside_band": 750,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "layered-2-h60-step40": {
+   "name": "layered-2-h60-step40",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 2,
+   "layer_step": 40.0,
+   "control": "lower",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/layered-2-h60-step40/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60",
+    "--probe-overlapping-source-layers",
+    "2",
+    "--probe-overlapping-source-layer-step",
+    "40.0"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "23317b8a55c11216ccebf34eef5da69b250f98acaf8777dbddfada8815ddfdb5",
+   "receiver": "receiver.png",
+   "receiver_sha256": "664ec90d4ca3c6884cc4f69891f80816da7c33bda058941cbceee21be8f46b30",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-125": 398,
+       "-124": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-125": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2400,
+    "changed_outside_band": 2347,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "layered-3-h60-step64": {
+   "name": "layered-3-h60-step64",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 3,
+   "layer_step": 64.0,
+   "control": "lower",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/layered-3-h60-step64/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60",
+    "--probe-overlapping-source-layers",
+    "3",
+    "--probe-overlapping-source-layer-step",
+    "64.0"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "702b0d860c5df0b7ec92e06646b9122646b9668bdd52379e1bf3e4ffa2923a4d",
+   "receiver": "receiver.png",
+   "receiver_sha256": "664ec90d4ca3c6884cc4f69891f80816da7c33bda058941cbceee21be8f46b30",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-149": 398,
+       "-148": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-149": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2400,
+    "changed_outside_band": 2347,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "layered-4-h60-step64": {
+   "name": "layered-4-h60-step64",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 4,
+   "layer_step": 64.0,
+   "control": "lower",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/layered-4-h60-step64/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60",
+    "--probe-overlapping-source-layers",
+    "4",
+    "--probe-overlapping-source-layer-step",
+    "64.0"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "8e8c3202536206566a5bd57817d8577d41f0f531caf9012ec97cbcb24881a056",
+   "receiver": "receiver.png",
+   "receiver_sha256": "664ec90d4ca3c6884cc4f69891f80816da7c33bda058941cbceee21be8f46b30",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-149": 398,
+       "-148": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-149": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2400,
+    "changed_outside_band": 2347,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "oblique-lower": {
+   "name": "oblique-lower",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 0,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": null,
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-lower/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "90d43b277ffd899499b7cc1832c57b9a0b020f1befe5091b871fbb3305131b07",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": null,
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-lower-unlit": {
+   "name": "oblique-lower-unlit",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 0,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": false,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": null,
+   "offset": null,
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-lower-unlit/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--no-shadows"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "3641ab5546a1aaec8678426bb574ea200237f9cef9fc862147a15be776a261eb",
+   "receiver": "receiver.png",
+   "receiver_sha256": "de319e50a37273b25b19602079d34ae667f987992c823e6d95c03fb2872cf56d",
+   "pose": null,
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   }
+  },
+  "oblique-floor": {
+   "name": "oblique-floor",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 0,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": false,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": null,
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-floor/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--probe-hidden-box",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "0b0a1c272c3939ffccfd2129d89eb6acc0089a4e67020af14184b152b7afc383",
+   "receiver": "receiver.png",
+   "receiver_sha256": "a3c4ce511091c89ed63f7032a8ab8027729cf4b4dd491756e4602aeeec74cfd1",
+   "pose": null,
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-5": 19,
+       "-4": 60,
+       "-3": 110,
+       "-2": 152,
+       "-1": 195,
+       "0": 239,
+       "1": 228,
+       "2": 225,
+       "3": 187,
+       "4": 140,
+       "5": 96,
+       "6": 46,
+       "7": 8
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-6": 3,
+       "-5": 27,
+       "-4": 52,
+       "-3": 85,
+       "-2": 110,
+       "-1": 133,
+       "0": 150,
+       "1": 134,
+       "2": 126,
+       "3": 96,
+       "4": 65,
+       "5": 38,
+       "6": 13
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 11984,
+    "changed_outside_band": 8726,
+    "excess_shadow_outside_band": 604,
+    "missing_shadow_outside_band": 8122
+   }
+  },
+  "oblique-distant-8-h60": {
+   "name": "oblique-distant-8-h60",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": false,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-floor",
+   "offset": [
+    -18.0,
+    -24.0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-distant-8-h60/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--probe-hidden-box",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-18.0",
+    "-24.0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "6539dbb83d5ecff354a42a2b180faf305de77f8e970423eb5fbea8e85e2b069f",
+   "receiver": "receiver.png",
+   "receiver_sha256": "a3c4ce511091c89ed63f7032a8ab8027729cf4b4dd491756e4602aeeec74cfd1",
+   "pose": [
+    -18.0,
+    -24.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-5": 19,
+       "-4": 60,
+       "-3": 110,
+       "-2": 152,
+       "-1": 195,
+       "0": 239,
+       "1": 228,
+       "2": 225,
+       "3": 187,
+       "4": 140,
+       "5": 96,
+       "6": 46,
+       "7": 8
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-6": 3,
+       "-5": 27,
+       "-4": 52,
+       "-3": 85,
+       "-2": 110,
+       "-1": 133,
+       "0": 150,
+       "1": 134,
+       "2": 126,
+       "3": 96,
+       "4": 65,
+       "5": 38,
+       "6": 13
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-stacked-8-h60": {
+   "name": "oblique-stacked-8-h60",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -18.0,
+    -24.0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-stacked-8-h60/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-18.0",
+    "-24.0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "142781f5fd7a7037f8d87aa3497eba9ba0e0ff6fbf32e3df92f1732146e5c2a3",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -18.0,
+    -24.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-stacked-8-h60-unlit": {
+   "name": "oblique-stacked-8-h60-unlit",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": false,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": null,
+   "offset": [
+    -18.0,
+    -24.0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-stacked-8-h60-unlit/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--no-shadows",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-18.0",
+    "-24.0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "ae3f5ec7e3037bef2477c83c3801b9f0e0482f843c383f3fee3f89225218730c",
+   "receiver": "receiver.png",
+   "receiver_sha256": "de319e50a37273b25b19602079d34ae667f987992c823e6d95c03fb2872cf56d",
+   "pose": [
+    -18.0,
+    -24.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   }
+  },
+  "oblique-stacked-8-h60-last": {
+   "name": "oblique-stacked-8-h60-last",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": "last",
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -18.0,
+    -24.0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-stacked-8-h60-last/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-18.0",
+    "-24.0",
+    "-60",
+    "--probe-overlapping-source-last"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "142781f5fd7a7037f8d87aa3497eba9ba0e0ff6fbf32e3df92f1732146e5c2a3",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -18.0,
+    -24.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-stacked-128-h60": {
+   "name": "oblique-stacked-128-h60",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 128,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -18.0,
+    -24.0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-stacked-128-h60/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "128",
+    "--probe-overlapping-source-offset",
+    "-18.0",
+    "-24.0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "142781f5fd7a7037f8d87aa3497eba9ba0e0ff6fbf32e3df92f1732146e5c2a3",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -18.0,
+    -24.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-stacked-8-h90": {
+   "name": "oblique-stacked-8-h90",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -90,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -27.0,
+    -36.0,
+    -90
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-stacked-8-h90/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-27.0",
+    "-36.0",
+    "-90"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "0c110b20c3cb53b8e6ecffbd97a3bd6cc263613c3eba17ae1b822283d4696e82",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -27.0,
+    -36.0,
+    -90.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-stacked-8-h30": {
+   "name": "oblique-stacked-8-h30",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -30,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -9.0,
+    -12.0,
+    -30
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-stacked-8-h30/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-30"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "bc140531fdd2b7ae6ecd33c6215eb78c5d417bb8efd13480b4708b3ffe2c1705",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -9.0,
+    -12.0,
+    -29.9999981
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-layered-2-h60-step40": {
+   "name": "oblique-layered-2-h60-step40",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 2,
+   "layer_step": 40.0,
+   "control": "oblique-lower",
+   "offset": [
+    -18.0,
+    -24.0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-layered-2-h60-step40/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-18.0",
+    "-24.0",
+    "-60",
+    "--probe-overlapping-source-layers",
+    "2",
+    "--probe-overlapping-source-layer-step",
+    "40.0"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "fc3b43312d08a06f0516b5a4aac19e61504ee2ee0b5bf38897a0579abe491032",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -18.0,
+    -24.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-layered-3-h60-step64": {
+   "name": "oblique-layered-3-h60-step64",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 3,
+   "layer_step": 64.0,
+   "control": "oblique-lower",
+   "offset": [
+    -18.0,
+    -24.0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-layered-3-h60-step64/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-18.0",
+    "-24.0",
+    "-60",
+    "--probe-overlapping-source-layers",
+    "3",
+    "--probe-overlapping-source-layer-step",
+    "64.0"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "fd92eb131fb9d386c69b31500517e4e2e1c85fb87e8eadf7106ed0cac2b5e99d",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -18.0,
+    -24.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-layered-4-h60-step64": {
+   "name": "oblique-layered-4-h60-step64",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 4,
+   "layer_step": 64.0,
+   "control": "oblique-lower",
+   "offset": [
+    -18.0,
+    -24.0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-layered-4-h60-step64/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-18.0",
+    "-24.0",
+    "-60",
+    "--probe-overlapping-source-layers",
+    "4",
+    "--probe-overlapping-source-layer-step",
+    "64.0"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "fd92eb131fb9d386c69b31500517e4e2e1c85fb87e8eadf7106ed0cac2b5e99d",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -18.0,
+    -24.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "lower-revoxelize": {
+   "name": "lower-revoxelize",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 0,
+   "height": -60,
+   "mode": "revoxelize",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower-revoxelize",
+   "offset": null,
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/lower-revoxelize/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "a552071e4125074545460554598fbe176bac089a5646b357928527c33e21b018",
+   "receiver": "receiver.png",
+   "receiver_sha256": "55d5b9c137f045e3a7c0b91626b99fae2547214808f88234a5c440dc307d6478",
+   "pose": null,
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-15": 1224,
+       "3": 1
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-15": 861
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "stacked-8-h60-revoxelize": {
+   "name": "stacked-8-h60-revoxelize",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "revoxelize",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower-revoxelize",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/stacked-8-h60-revoxelize/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "revoxelize",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "f169334a234eacff999fa336c934fa7ce3a2b9e66f81b7eec1ce0177a4ab352b",
+   "receiver": "receiver.png",
+   "receiver_sha256": "2cf4a8b73f315451124137b0d0bbefed4a0871cfcd8c09eba0f1e6a6dd1e71e3",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-85": 476,
+       "-84": 41,
+       "-15": 707,
+       "3": 1
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-85": 417,
+       "-84": 18,
+       "-15": 426
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2864,
+    "changed_outside_band": 2773,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2773
+   }
+  },
+  "lower-revoxelized": {
+   "name": "lower-revoxelized",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 0,
+   "height": -60,
+   "mode": "grid",
+   "floor": "revoxelized",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower-revoxelized",
+   "offset": null,
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/lower-revoxelized/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "revoxelized",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "85798008fd0079640c1bb2f72f89688d447a51e499a2210b6a680df303e5e9c6",
+   "receiver": "receiver.png",
+   "receiver_sha256": "d107620776d89d0b3f28da3f7c341d7678ceb8e11513a39cc41947c5b694b723",
+   "pose": null,
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-15": 1175,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-15": 861
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "stacked-8-h60-revoxelized": {
+   "name": "stacked-8-h60-revoxelized",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "revoxelized",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower-revoxelized",
+   "offset": [
+    0,
+    0,
+    -60
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/stacked-8-h60-revoxelized/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "revoxelized",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-60"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "288fe371e31cfbf8b4f7b9a16f3408651402ced35d63bba2bfebdbdb4760035f",
+   "receiver": "receiver.png",
+   "receiver_sha256": "592aab2c5b8456c425a9a97e1149feb06abb975ba32fb3d91c3245a635ed7edc",
+   "pose": [
+    0.0,
+    0.0,
+    -60.0
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-85": 398,
+       "-84": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-85": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2392,
+    "changed_outside_band": 2262,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 2262
+   }
+  },
+  "moving-8": {
+   "name": "moving-8",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -30,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": null,
+   "offset": [
+    0,
+    0,
+    -30
+   ],
+   "velocity": [
+    0,
+    0,
+    -20
+   ],
+   "shots": [
+    {
+     "frame": "screenshot_000001.png",
+     "frame_sha256": "5cfa53b54f1c8c8b461d606f89835085165bacdb215184b9ac80220ea2ffaa18",
+     "receiver": "receiver-0.png",
+     "receiver_sha256": "da43445f7098bd87ff0aa9e49bfdc3aeb93ddff7c3d021c1d3156052c04bf74a",
+     "pose": [
+      0.0,
+      0.0,
+      -36.3333092
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "591,398,639,422",
+       "cascade_1_texels": "493,502,533,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1225,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1225
+        },
+        "nearest_depths": {
+         "-62": 314,
+         "-61": 128,
+         "-60": 56,
+         "-59": 2,
+         "-15": 675,
+         "-14": 50
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 861,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 861
+        },
+        "nearest_depths": {
+         "-62": 314,
+         "-61": 79,
+         "-60": 30,
+         "-15": 438
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "moving-8-pose-0",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000002.png",
+     "frame_sha256": "cc775b1517d55d6449a69a9a6c4db3628fe8b2c0e48b9c1121f3ad316e98ab9e",
+     "receiver": "receiver-1.png",
+     "receiver_sha256": "7baeff4ac43182e5b6619f47b2a1df63edf7728bd4be19e35b211b3cfb3a9f45",
+     "pose": [
+      0.0,
+      0.0,
+      -39.6666298
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "591,398,639,422",
+       "cascade_1_texels": "493,502,533,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1225,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1225
+        },
+        "nearest_depths": {
+         "-65": 381,
+         "-64": 65,
+         "-63": 49,
+         "-62": 2,
+         "-15": 678,
+         "-14": 50
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 861,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 861
+        },
+        "nearest_depths": {
+         "-65": 366,
+         "-64": 26,
+         "-63": 30,
+         "-15": 439
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "moving-8-pose-1",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000003.png",
+     "frame_sha256": "d93ef356d2d4940737c90e8d7723a951a246f50af0b77f975aa46b768309e041",
+     "receiver": "receiver-2.png",
+     "receiver_sha256": "948df85d8bcc04793967b101594f9c3f13a888d3de57ae9774c0a528f5ecae45",
+     "pose": [
+      0.0,
+      0.0,
+      -42.9999847
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "591,398,639,422",
+       "cascade_1_texels": "493,502,533,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1225,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1225
+        },
+        "nearest_depths": {
+         "-68": 398,
+         "-67": 39,
+         "-15": 738,
+         "-14": 50
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 861,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 861
+        },
+        "nearest_depths": {
+         "-68": 379,
+         "-15": 482
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "moving-8-pose-2",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000004.png",
+     "frame_sha256": "385f1f61ca319eadca93291446fbde86b71ad8e39004a622a703768baaf78a9f",
+     "receiver": "receiver-3.png",
+     "receiver_sha256": "efdd5bff9ecd2ae75588f79e0a1547b5667295de1417d5f5ad8ca3988a903a38",
+     "pose": [
+      0.0,
+      0.0,
+      -46.3333435
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "591,398,639,422",
+       "cascade_1_texels": "493,502,533,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1225,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1225
+        },
+        "nearest_depths": {
+         "-72": 314,
+         "-71": 128,
+         "-70": 56,
+         "-69": 2,
+         "-15": 675,
+         "-14": 50
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 861,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 861
+        },
+        "nearest_depths": {
+         "-72": 314,
+         "-71": 79,
+         "-70": 30,
+         "-15": 438
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "moving-8-pose-3",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000005.png",
+     "frame_sha256": "8c48f42b3610ca74ef7205fcf881286612f53914c6162ddd7deedc26ed220402",
+     "receiver": "receiver-4.png",
+     "receiver_sha256": "7baeff4ac43182e5b6619f47b2a1df63edf7728bd4be19e35b211b3cfb3a9f45",
+     "pose": [
+      0.0,
+      0.0,
+      -49.6667023
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "591,398,639,422",
+       "cascade_1_texels": "493,502,533,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1225,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1225
+        },
+        "nearest_depths": {
+         "-75": 381,
+         "-74": 65,
+         "-73": 49,
+         "-72": 2,
+         "-15": 678,
+         "-14": 50
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 861,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 861
+        },
+        "nearest_depths": {
+         "-75": 366,
+         "-74": 26,
+         "-73": 30,
+         "-15": 439
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "moving-8-pose-4",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000006.png",
+     "frame_sha256": "6fc9bbb68bafbae41b8ab88d892f20c33250147065391308139f0b0ce261d273",
+     "receiver": "receiver-5.png",
+     "receiver_sha256": "948df85d8bcc04793967b101594f9c3f13a888d3de57ae9774c0a528f5ecae45",
+     "pose": [
+      0.0,
+      0.0,
+      -53.000061
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "591,398,639,422",
+       "cascade_1_texels": "493,502,533,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1225,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1225
+        },
+        "nearest_depths": {
+         "-78": 398,
+         "-77": 39,
+         "-15": 738,
+         "-14": 50
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 861,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 861
+        },
+        "nearest_depths": {
+         "-78": 379,
+         "-15": 482
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "moving-8-pose-5",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000007.png",
+     "frame_sha256": "48cf7ecab076c252cf3f29721098ada904dbaf27d37bf39677b6cf233167627a",
+     "receiver": "receiver-6.png",
+     "receiver_sha256": "e9a31ffb780595807156a54963af34509149d1eb5b1368a2f9aee48960dd9abd",
+     "pose": [
+      0.0,
+      0.0,
+      -56.3334198
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "591,398,639,422",
+       "cascade_1_texels": "493,502,533,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1225,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1225
+        },
+        "nearest_depths": {
+         "-82": 314,
+         "-81": 128,
+         "-80": 56,
+         "-79": 2,
+         "-15": 675,
+         "-14": 50
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 861,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 861
+        },
+        "nearest_depths": {
+         "-82": 314,
+         "-81": 79,
+         "-80": 30,
+         "-15": 438
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "moving-8-pose-6",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    }
+   ],
+   "poses": "moving-8-pose",
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/moving-8/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "7",
+    "8",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0",
+    "0",
+    "-30",
+    "--probe-overlapping-source-velocity",
+    "0",
+    "0",
+    "-20"
+   ],
+   "result": "CLEAN"
+  },
+  "moving-8-pose-0": {
+   "name": "moving-8-pose-0",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0.0,
+    0.0,
+    -36.3333092
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/moving-8-pose-0/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0.0",
+    "0.0",
+    "-36.3333092"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "5cfa53b54f1c8c8b461d606f89835085165bacdb215184b9ac80220ea2ffaa18",
+   "receiver": "receiver.png",
+   "receiver_sha256": "da43445f7098bd87ff0aa9e49bfdc3aeb93ddff7c3d021c1d3156052c04bf74a",
+   "pose": [
+    0.0,
+    0.0,
+    -36.3333092
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-62": 314,
+       "-61": 128,
+       "-60": 56,
+       "-59": 2,
+       "-15": 675,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-62": 314,
+       "-61": 79,
+       "-60": 30,
+       "-15": 438
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 1368,
+    "changed_outside_band": 843,
+    "excess_shadow_outside_band": 843,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "moving-8-pose-1": {
+   "name": "moving-8-pose-1",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0.0,
+    0.0,
+    -39.6666298
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/moving-8-pose-1/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0.0",
+    "0.0",
+    "-39.6666298"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "b058357550fca5a5e33d1c7a06b4981e92af025c2982582cdfad63dcd1ccb761",
+   "receiver": "receiver.png",
+   "receiver_sha256": "7baeff4ac43182e5b6619f47b2a1df63edf7728bd4be19e35b211b3cfb3a9f45",
+   "pose": [
+    0.0,
+    0.0,
+    -39.6666298
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-65": 381,
+       "-64": 65,
+       "-63": 49,
+       "-62": 2,
+       "-15": 678,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-65": 366,
+       "-64": 26,
+       "-63": 30,
+       "-15": 439
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 4028,
+    "changed_outside_band": 3447,
+    "excess_shadow_outside_band": 843,
+    "missing_shadow_outside_band": 2604
+   }
+  },
+  "moving-8-pose-2": {
+   "name": "moving-8-pose-2",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0.0,
+    0.0,
+    -42.9999847
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/moving-8-pose-2/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0.0",
+    "0.0",
+    "-42.9999847"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "e77f4d050872e988997c56ee78b3ac05642f236519df9542cd8f2f254022fb8b",
+   "receiver": "receiver.png",
+   "receiver_sha256": "948df85d8bcc04793967b101594f9c3f13a888d3de57ae9774c0a528f5ecae45",
+   "pose": [
+    0.0,
+    0.0,
+    -42.9999847
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-68": 398,
+       "-67": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-68": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 3600,
+    "changed_outside_band": 3097,
+    "excess_shadow_outside_band": 750,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "moving-8-pose-3": {
+   "name": "moving-8-pose-3",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0.0,
+    0.0,
+    -46.3333435
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/moving-8-pose-3/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0.0",
+    "0.0",
+    "-46.3333435"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "dd9199d6eb0c07168aec0e44a070203e9603dfb37adb22d6a2319f8c7d4fef15",
+   "receiver": "receiver.png",
+   "receiver_sha256": "efdd5bff9ecd2ae75588f79e0a1547b5667295de1417d5f5ad8ca3988a903a38",
+   "pose": [
+    0.0,
+    0.0,
+    -46.3333435
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-72": 314,
+       "-71": 128,
+       "-70": 56,
+       "-69": 2,
+       "-15": 675,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-72": 314,
+       "-71": 79,
+       "-70": 30,
+       "-15": 438
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 4032,
+    "changed_outside_band": 3451,
+    "excess_shadow_outside_band": 843,
+    "missing_shadow_outside_band": 2608
+   }
+  },
+  "moving-8-pose-4": {
+   "name": "moving-8-pose-4",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0.0,
+    0.0,
+    -49.6667023
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/moving-8-pose-4/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0.0",
+    "0.0",
+    "-49.6667023"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "b979020098a16241f45ab8d732901edded478d971a14963ccb4f1f4f143cd84c",
+   "receiver": "receiver.png",
+   "receiver_sha256": "7baeff4ac43182e5b6619f47b2a1df63edf7728bd4be19e35b211b3cfb3a9f45",
+   "pose": [
+    0.0,
+    0.0,
+    -49.6667023
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-75": 381,
+       "-74": 65,
+       "-73": 49,
+       "-72": 2,
+       "-15": 678,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-75": 366,
+       "-74": 26,
+       "-73": 30,
+       "-15": 439
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 4028,
+    "changed_outside_band": 3447,
+    "excess_shadow_outside_band": 843,
+    "missing_shadow_outside_band": 2604
+   }
+  },
+  "moving-8-pose-5": {
+   "name": "moving-8-pose-5",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0.0,
+    0.0,
+    -53.000061
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/moving-8-pose-5/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0.0",
+    "0.0",
+    "-53.000061"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "72feefd498db39e6221fad64078d1e974b39464e9032dfa0104b4fac66235285",
+   "receiver": "receiver.png",
+   "receiver_sha256": "948df85d8bcc04793967b101594f9c3f13a888d3de57ae9774c0a528f5ecae45",
+   "pose": [
+    0.0,
+    0.0,
+    -53.000061
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-78": 398,
+       "-77": 39,
+       "-15": 738,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-78": 379,
+       "-15": 482
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 3600,
+    "changed_outside_band": 3097,
+    "excess_shadow_outside_band": 750,
+    "missing_shadow_outside_band": 2347
+   }
+  },
+  "moving-8-pose-6": {
+   "name": "moving-8-pose-6",
+   "sun": [
+    0,
+    0,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "lower",
+   "offset": [
+    0.0,
+    0.0,
+    -56.3334198
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/moving-8-pose-6/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "0.0",
+    "0.0",
+    "-56.3334198"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "47966d14aea991fe2ffc132f3f7454a06910027ad0706d7dba245378080bf482",
+   "receiver": "receiver.png",
+   "receiver_sha256": "e9a31ffb780595807156a54963af34509149d1eb5b1368a2f9aee48960dd9abd",
+   "pose": [
+    0.0,
+    0.0,
+    -56.3334198
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "591,398,639,422",
+     "cascade_1_texels": "493,502,533,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1225,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1225
+      },
+      "nearest_depths": {
+       "-82": 314,
+       "-81": 128,
+       "-80": 56,
+       "-79": 2,
+       "-15": 675,
+       "-14": 50
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 861,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 861
+      },
+      "nearest_depths": {
+       "-82": 314,
+       "-81": 79,
+       "-80": 30,
+       "-15": 438
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 2880,
+    "changed_outside_band": 2731,
+    "excess_shadow_outside_band": 123,
+    "missing_shadow_outside_band": 2608
+   }
+  },
+  "oblique-moving-8": {
+   "name": "oblique-moving-8",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -30,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": null,
+   "offset": [
+    -9.0,
+    -12.0,
+    -30
+   ],
+   "velocity": [
+    0,
+    0,
+    -20
+   ],
+   "shots": [
+    {
+     "frame": "screenshot_000001.png",
+     "frame_sha256": "d1e45c081fd5778f685cb82448f9a153a40faa5cc09a8a6b097b219dcda09497",
+     "receiver": "receiver-0.png",
+     "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+     "pose": [
+      -9.0,
+      -12.0,
+      -36.3333054
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "623,342,677,372",
+       "cascade_1_texels": "493,499,535,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1705,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1705
+        },
+        "nearest_depths": {
+         "-17": 269,
+         "-16": 135,
+         "-15": 153,
+         "-14": 100,
+         "-13": 48,
+         "-12": 2,
+         "-11": 14,
+         "-10": 2,
+         "-9": 18,
+         "-8": 32,
+         "-7": 9,
+         "-6": 15,
+         "-4": 55,
+         "-3": 116,
+         "-2": 142,
+         "-1": 205,
+         "0": 157,
+         "1": 114,
+         "2": 97,
+         "3": 22
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 1032,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1032
+        },
+        "nearest_depths": {
+         "-17": 233,
+         "-16": 96,
+         "-15": 98,
+         "-14": 74,
+         "-13": 14,
+         "-12": 7,
+         "-10": 16,
+         "-9": 10,
+         "-8": 18,
+         "-7": 12,
+         "-4": 54,
+         "-3": 90,
+         "-2": 89,
+         "-1": 96,
+         "0": 67,
+         "1": 48,
+         "2": 10
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "oblique-moving-8-pose-0",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000002.png",
+     "frame_sha256": "13eed37910e807ba8eefa5b8e6d69b78d00acbccf64f130598cd3c92a7e27027",
+     "receiver": "receiver-1.png",
+     "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+     "pose": [
+      -9.0,
+      -12.0,
+      -39.666626
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "623,342,677,372",
+       "cascade_1_texels": "493,499,535,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1705,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1705
+        },
+        "nearest_depths": {
+         "-17": 269,
+         "-16": 135,
+         "-15": 153,
+         "-14": 100,
+         "-13": 48,
+         "-12": 2,
+         "-11": 14,
+         "-10": 2,
+         "-9": 18,
+         "-8": 32,
+         "-7": 9,
+         "-6": 15,
+         "-4": 55,
+         "-3": 116,
+         "-2": 142,
+         "-1": 205,
+         "0": 157,
+         "1": 114,
+         "2": 97,
+         "3": 22
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 1032,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1032
+        },
+        "nearest_depths": {
+         "-17": 233,
+         "-16": 96,
+         "-15": 98,
+         "-14": 74,
+         "-13": 14,
+         "-12": 7,
+         "-10": 16,
+         "-9": 10,
+         "-8": 18,
+         "-7": 12,
+         "-4": 54,
+         "-3": 90,
+         "-2": 89,
+         "-1": 96,
+         "0": 67,
+         "1": 48,
+         "2": 10
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "oblique-moving-8-pose-1",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000003.png",
+     "frame_sha256": "b8742ad535e1f03de3a3c787c18f250a87b20068f08f697a5b618fa0eff637d7",
+     "receiver": "receiver-2.png",
+     "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+     "pose": [
+      -9.0,
+      -12.0,
+      -42.9999695
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "623,342,677,372",
+       "cascade_1_texels": "493,499,535,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1705,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1705
+        },
+        "nearest_depths": {
+         "-17": 269,
+         "-16": 135,
+         "-15": 153,
+         "-14": 100,
+         "-13": 48,
+         "-12": 2,
+         "-11": 14,
+         "-10": 2,
+         "-9": 18,
+         "-8": 32,
+         "-7": 9,
+         "-6": 15,
+         "-4": 55,
+         "-3": 116,
+         "-2": 142,
+         "-1": 205,
+         "0": 157,
+         "1": 114,
+         "2": 97,
+         "3": 22
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 1032,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1032
+        },
+        "nearest_depths": {
+         "-17": 233,
+         "-16": 96,
+         "-15": 98,
+         "-14": 74,
+         "-13": 14,
+         "-12": 7,
+         "-10": 16,
+         "-9": 10,
+         "-8": 18,
+         "-7": 12,
+         "-4": 54,
+         "-3": 90,
+         "-2": 89,
+         "-1": 96,
+         "0": 67,
+         "1": 48,
+         "2": 10
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "oblique-moving-8-pose-2",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000004.png",
+     "frame_sha256": "9051b86df50e2d12b316e4c367e2eb8aa7d3a1c79c163b439df1ec74f02d4262",
+     "receiver": "receiver-3.png",
+     "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+     "pose": [
+      -9.0,
+      -12.0,
+      -46.3333282
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "623,342,677,372",
+       "cascade_1_texels": "493,499,535,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1705,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1705
+        },
+        "nearest_depths": {
+         "-17": 269,
+         "-16": 135,
+         "-15": 153,
+         "-14": 100,
+         "-13": 48,
+         "-12": 2,
+         "-11": 14,
+         "-10": 2,
+         "-9": 18,
+         "-8": 32,
+         "-7": 9,
+         "-6": 15,
+         "-4": 55,
+         "-3": 116,
+         "-2": 142,
+         "-1": 205,
+         "0": 157,
+         "1": 114,
+         "2": 97,
+         "3": 22
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 1032,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1032
+        },
+        "nearest_depths": {
+         "-17": 233,
+         "-16": 96,
+         "-15": 98,
+         "-14": 74,
+         "-13": 14,
+         "-12": 7,
+         "-10": 16,
+         "-9": 10,
+         "-8": 18,
+         "-7": 12,
+         "-4": 54,
+         "-3": 90,
+         "-2": 89,
+         "-1": 96,
+         "0": 67,
+         "1": 48,
+         "2": 10
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "oblique-moving-8-pose-3",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000005.png",
+     "frame_sha256": "c7d71cb62d76b4cc93767fb0d5603684010e36ac53e538eda6f319b53665472c",
+     "receiver": "receiver-4.png",
+     "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+     "pose": [
+      -9.0,
+      -12.0,
+      -49.666687
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "623,342,677,372",
+       "cascade_1_texels": "493,499,535,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1705,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1705
+        },
+        "nearest_depths": {
+         "-17": 269,
+         "-16": 135,
+         "-15": 153,
+         "-14": 100,
+         "-13": 48,
+         "-12": 2,
+         "-11": 14,
+         "-10": 2,
+         "-9": 18,
+         "-8": 32,
+         "-7": 9,
+         "-6": 15,
+         "-4": 55,
+         "-3": 116,
+         "-2": 142,
+         "-1": 205,
+         "0": 157,
+         "1": 114,
+         "2": 97,
+         "3": 22
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 1032,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1032
+        },
+        "nearest_depths": {
+         "-17": 233,
+         "-16": 96,
+         "-15": 98,
+         "-14": 74,
+         "-13": 14,
+         "-12": 7,
+         "-10": 16,
+         "-9": 10,
+         "-8": 18,
+         "-7": 12,
+         "-4": 54,
+         "-3": 90,
+         "-2": 89,
+         "-1": 96,
+         "0": 67,
+         "1": 48,
+         "2": 10
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "oblique-moving-8-pose-4",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000006.png",
+     "frame_sha256": "06b8a7f0d47b9a1e43ca5ede63638ab968c435f895388d8832e7ee65632a06db",
+     "receiver": "receiver-5.png",
+     "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+     "pose": [
+      -9.0,
+      -12.0,
+      -53.0000458
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "623,342,677,372",
+       "cascade_1_texels": "493,499,535,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1705,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1705
+        },
+        "nearest_depths": {
+         "-17": 269,
+         "-16": 135,
+         "-15": 153,
+         "-14": 100,
+         "-13": 48,
+         "-12": 2,
+         "-11": 14,
+         "-10": 2,
+         "-9": 18,
+         "-8": 32,
+         "-7": 9,
+         "-6": 15,
+         "-4": 55,
+         "-3": 116,
+         "-2": 142,
+         "-1": 205,
+         "0": 157,
+         "1": 114,
+         "2": 97,
+         "3": 22
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 1032,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1032
+        },
+        "nearest_depths": {
+         "-17": 233,
+         "-16": 96,
+         "-15": 98,
+         "-14": 74,
+         "-13": 14,
+         "-12": 7,
+         "-10": 16,
+         "-9": 10,
+         "-8": 18,
+         "-7": 12,
+         "-4": 54,
+         "-3": 90,
+         "-2": 89,
+         "-1": 96,
+         "0": 67,
+         "1": 48,
+         "2": 10
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "oblique-moving-8-pose-5",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    },
+    {
+     "frame": "screenshot_000007.png",
+     "frame_sha256": "e8ace9a7f6e4612b229cb0c0e41b312c23440209116c5784aeacc70e5d8740b1",
+     "receiver": "receiver-6.png",
+     "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+     "pose": [
+      -9.0,
+      -12.0,
+      -56.3334045
+     ],
+     "route": {
+      "finite_coverage": 0,
+      "particle_pass": 1
+     },
+     "probe": {
+      "header": {
+       "active": "1",
+       "finite_coverage": "0",
+       "max_shadow_throw": "64",
+       "slab_slots": "0",
+       "world_rect": "-12,-6,12,6,2",
+       "cascade_0_texels": "623,342,677,372",
+       "cascade_1_texels": "493,499,535,522"
+      },
+      "cascades": {
+       "0": {
+        "texels": 1705,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1705
+        },
+        "nearest_depths": {
+         "-17": 269,
+         "-16": 135,
+         "-15": 153,
+         "-14": 100,
+         "-13": 48,
+         "-12": 2,
+         "-11": 14,
+         "-10": 2,
+         "-9": 18,
+         "-8": 32,
+         "-7": 9,
+         "-6": 15,
+         "-4": 55,
+         "-3": 116,
+         "-2": 142,
+         "-1": 205,
+         "0": 157,
+         "1": 114,
+         "2": 97,
+         "3": 22
+        },
+        "slab_extrema": {}
+       },
+       "1": {
+        "texels": 1032,
+        "overflow": 0,
+        "slab_count_histogram": {
+         "0": 1032
+        },
+        "nearest_depths": {
+         "-17": 233,
+         "-16": 96,
+         "-15": 98,
+         "-14": 74,
+         "-13": 14,
+         "-12": 7,
+         "-10": 16,
+         "-9": 10,
+         "-8": 18,
+         "-7": 12,
+         "-4": 54,
+         "-3": 90,
+         "-2": 89,
+         "-1": 96,
+         "0": 67,
+         "1": 48,
+         "2": 10
+        },
+        "slab_extrema": {}
+       }
+      }
+     },
+     "control": "oblique-moving-8-pose-6",
+     "versus_control": {
+      "changed": 0,
+      "changed_outside_band": 0,
+      "excess_shadow_outside_band": 0,
+      "missing_shadow_outside_band": 0
+     }
+    }
+   ],
+   "poses": "oblique-moving-8-pose",
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-moving-8/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "7",
+    "8",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-30",
+    "--probe-overlapping-source-velocity",
+    "0",
+    "0",
+    "-20"
+   ],
+   "result": "CLEAN"
+  },
+  "oblique-moving-8-pose-0": {
+   "name": "oblique-moving-8-pose-0",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -9.0,
+    -12.0,
+    -36.3333054
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-moving-8-pose-0/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-36.3333054"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "d1e45c081fd5778f685cb82448f9a153a40faa5cc09a8a6b097b219dcda09497",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -9.0,
+    -12.0,
+    -36.3333054
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-moving-8-pose-1": {
+   "name": "oblique-moving-8-pose-1",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -9.0,
+    -12.0,
+    -39.666626
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-moving-8-pose-1/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-39.666626"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "65e35a12b39d01c3b6169266cf7772d58edf7469d35b7663dcc5b7189854f7c0",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -9.0,
+    -12.0,
+    -39.666626
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-moving-8-pose-2": {
+   "name": "oblique-moving-8-pose-2",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -9.0,
+    -12.0,
+    -42.9999695
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-moving-8-pose-2/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-42.9999695"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "4798e796d22828cda1125b26db488e35570290a4c419386144ce2a5b0f2c3c90",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -9.0,
+    -12.0,
+    -42.9999695
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-moving-8-pose-3": {
+   "name": "oblique-moving-8-pose-3",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -9.0,
+    -12.0,
+    -46.3333282
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-moving-8-pose-3/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-46.3333282"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "0fcf56cf42033a6197d4281cc1f31079abbf183153008211c3351448f8ef5ef4",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -9.0,
+    -12.0,
+    -46.3333282
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-moving-8-pose-4": {
+   "name": "oblique-moving-8-pose-4",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -9.0,
+    -12.0,
+    -49.666687
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-moving-8-pose-4/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-49.666687"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "e7ce65ea22bcb7d7e1e7e0fe71da1ade05592782ed45abf23d2f69da7703fb42",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -9.0,
+    -12.0,
+    -49.666687
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-moving-8-pose-5": {
+   "name": "oblique-moving-8-pose-5",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -9.0,
+    -12.0,
+    -53.0000458
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-moving-8-pose-5/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-53.0000458"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "7b509ee069697e1a4905e8a0fead7ef69a9c82a0892602f6bc2f99d716dd44da",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -9.0,
+    -12.0,
+    -53.0000458
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  },
+  "oblique-moving-8-pose-6": {
+   "name": "oblique-moving-8-pose-6",
+   "sun": [
+    0.3,
+    0.4,
+    -1
+   ],
+   "casters": 8,
+   "height": -60,
+   "mode": "grid",
+   "floor": "grid",
+   "lower": true,
+   "lit": true,
+   "order": null,
+   "layers": 1,
+   "layer_step": 0.0,
+   "control": "oblique-lower",
+   "offset": [
+    -9.0,
+    -12.0,
+    -56.3334045
+   ],
+   "velocity": null,
+   "shots": 1,
+   "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "--build-dir",
+    "/private/tmp/pool-2-4799/base-src/build",
+    "IRCanvasStress",
+    "--config-preset",
+    "/private/tmp/pool-2-4799/matrix/baseline/oblique-moving-8-pose-6/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--yaw",
+    "0",
+    "--zoom",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--subdivisions",
+    "1",
+    "--probe-raster-sun-route",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--sun-direction",
+    "0.3",
+    "0.4",
+    "-1",
+    "--probe-grid",
+    "--sun-primary-probe",
+    "-12",
+    "-6",
+    "12",
+    "6",
+    "--probe-overlapping-source",
+    "--probe-overlapping-source-mode",
+    "grid",
+    "--probe-overlapping-source-count",
+    "8",
+    "--probe-overlapping-source-offset",
+    "-9.0",
+    "-12.0",
+    "-56.3334045"
+   ],
+   "result": "CLEAN",
+   "frame": "screenshot_000001.png",
+   "frame_sha256": "67acc3e0eff8227be4b7071d996fbcfd47b149b755a382f015bbb12ae61218b2",
+   "receiver": "receiver.png",
+   "receiver_sha256": "506f2b6a4f102ce21e34713ab6f763b85a30e3c4087e82fbfb9a73e09c051a0e",
+   "pose": [
+    -9.0,
+    -12.0,
+    -56.3334045
+   ],
+   "route": {
+    "finite_coverage": 0,
+    "particle_pass": 1
+   },
+   "probe": {
+    "header": {
+     "active": "1",
+     "finite_coverage": "0",
+     "max_shadow_throw": "64",
+     "slab_slots": "0",
+     "world_rect": "-12,-6,12,6,2",
+     "cascade_0_texels": "623,342,677,372",
+     "cascade_1_texels": "493,499,535,522"
+    },
+    "cascades": {
+     "0": {
+      "texels": 1705,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1705
+      },
+      "nearest_depths": {
+       "-17": 269,
+       "-16": 135,
+       "-15": 153,
+       "-14": 100,
+       "-13": 48,
+       "-12": 2,
+       "-11": 14,
+       "-10": 2,
+       "-9": 18,
+       "-8": 32,
+       "-7": 9,
+       "-6": 15,
+       "-4": 55,
+       "-3": 116,
+       "-2": 142,
+       "-1": 205,
+       "0": 157,
+       "1": 114,
+       "2": 97,
+       "3": 22
+      },
+      "slab_extrema": {}
+     },
+     "1": {
+      "texels": 1032,
+      "overflow": 0,
+      "slab_count_histogram": {
+       "0": 1032
+      },
+      "nearest_depths": {
+       "-17": 233,
+       "-16": 96,
+       "-15": 98,
+       "-14": 74,
+       "-13": 14,
+       "-12": 7,
+       "-10": 16,
+       "-9": 10,
+       "-8": 18,
+       "-7": 12,
+       "-4": 54,
+       "-3": 90,
+       "-2": 89,
+       "-1": 96,
+       "0": 67,
+       "1": 48,
+       "2": 10
+      },
+      "slab_extrema": {}
+     }
+    }
+   },
+   "versus_control": {
+    "changed": 0,
+    "changed_outside_band": 0,
+    "excess_shadow_outside_band": 0,
+    "missing_shadow_outside_band": 0
+   }
+  }
+ }
+}
