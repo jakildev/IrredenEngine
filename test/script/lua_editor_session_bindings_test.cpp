@@ -2,9 +2,10 @@
 
 #include "../../creations/editors/voxel_editor/editor_lua_host.hpp"
 
-#include <tuple>
-
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <tuple>
 
 namespace IRVoxelEditor::Session {
 
@@ -156,6 +157,9 @@ void expectOneErrorAndNoEvents(
 class LuaEditorSessionBindingsTest : public testing::Test {
   protected:
     LuaEditorSessionBindingsTest() {
+        std::error_code error;
+        std::filesystem::remove_all(m_testDirectory, error);
+        std::filesystem::create_directories(m_testDirectory);
         m_lua.bindLuaDrivenEcs();
         m_host.bind(m_lua);
         const sol::protected_function_result component = m_lua.lua().safe_script(R"lua(
@@ -234,11 +238,48 @@ class LuaEditorSessionBindingsTest : public testing::Test {
         }
     }
 
+    ~LuaEditorSessionBindingsTest() override {
+        std::error_code error;
+        std::filesystem::remove_all(m_testDirectory, error);
+    }
+
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;
     IRVoxelEditor::ModuleHost m_host;
+    std::filesystem::path m_testDirectory =
+        std::filesystem::temp_directory_path() / "ir_lua_editor_session_bindings_test";
 };
+
+TEST_F(LuaEditorSessionBindingsTest, ModuleArgReturnsLaunchValueAndEmptyDefault) {
+    sol::protected_function_result result =
+        m_lua.lua().safe_script("return IREditor.moduleArg()", sol::script_pass_on_error);
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
+    EXPECT_EQ(result.get<std::string>(), "");
+
+    m_host.setModuleArg("profile=alpha beta  gamma=2");
+    result = m_lua.lua().safe_script("return IREditor.moduleArg()", sol::script_pass_on_error);
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
+    EXPECT_EQ(result.get<std::string>(), "profile=alpha beta  gamma=2");
+}
+
+TEST_F(LuaEditorSessionBindingsTest, ModuleLoadSeesOnlyAnInstalledFilesBinding) {
+    const std::filesystem::path nilModule = m_testDirectory / "nil_module";
+    const std::filesystem::path filesModule = m_testDirectory / "files_module";
+    const std::filesystem::path filesRoot = m_testDirectory / "files_root";
+    std::filesystem::create_directories(nilModule);
+    std::filesystem::create_directories(filesModule);
+    std::filesystem::create_directories(filesRoot);
+    std::ofstream(nilModule / "init.lua") << "assert(IRFile == nil, 'IRFile must be opt-in')";
+    std::ofstream(filesModule / "init.lua") << "assert(IRFile.writeText('load.txt', 'loaded'))\n"
+                                               "assert(IRFile.readText('load.txt') == 'loaded')\n";
+
+    std::string error;
+    ASSERT_TRUE(m_host.load(nilModule.string(), error)) << error;
+    m_lua.bindLuaFiles(filesRoot);
+    ASSERT_TRUE(m_host.load(filesModule.string(), error)) << error;
+    EXPECT_TRUE(std::filesystem::is_regular_file(filesRoot / "load.txt"));
+}
 
 TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
     IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
