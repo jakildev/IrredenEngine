@@ -11,6 +11,10 @@ IRGLFWWindow &getWindow();
 
 /// Signals the window to close on the next `World::gameLoop()` iteration.
 void closeWindow();
+/// Installs a close-request guard, including native window-manager requests.
+/// Returning false consumes the request and leaves the window open. Clear with
+/// an empty callback; captured state must outlive the installed callback.
+void setCloseGuard(std::function<bool()> guard);
 /// True once a close has been requested (by @ref closeWindow or the window
 /// manager) and the loop has not yet exited. The read side of @ref closeWindow:
 /// a headless test that drives a QUIT control has no other way to observe that
