@@ -44,6 +44,11 @@ TEST_F(VoxelEditorLocalPartEdit, ProxyKeepsNestedPoseAndEachRenderModeAndNeverBe
         const auto before = local;
         IREntity::setComponent(source, IRComponents::C_RotationMode{mode});
         scene.setPartRenderState(source, mode, IRMath::ivec2(64));
+        auto &seed = IREntity::getComponent<IRComponents::C_VoxelSetNew>(source);
+        seed.mutableAuthoredRecords()[4].color_ = IRMath::Color{11, 22, 33, 255};
+        seed.mutableAuthoredRecords()[4].material_id_ = 7;
+        seed.mutableAuthoredRecords()[4].reserved_ = IRComponents::VoxelReserved::kPriorityMask;
+        seed.resyncAfterAuthoredEdits();
         IRVoxelEditor::LocalPartEditSession edit;
         ASSERT_TRUE(edit.begin(scene, "part_0", IRMath::vec3(500, 0, 0)));
         const auto proxy = edit.proxy();
@@ -51,6 +56,11 @@ TEST_F(VoxelEditorLocalPartEdit, ProxyKeepsNestedPoseAndEachRenderModeAndNeverBe
         EXPECT_EQ(scene.parts().size(), 2u);
         EXPECT_EQ(manager_.getParent(source), parent);
         EXPECT_EQ(manager_.getParent(proxy), IREntity::kNullEntity);
+        const auto initial =
+            IREntity::getComponent<IRComponents::C_VoxelSetNew>(proxy).authoredRecords()[4];
+        EXPECT_EQ(initial.material_id_, 7);
+        EXPECT_EQ(initial.reserved_, IRComponents::VoxelReserved::kPriorityMask);
+        EXPECT_EQ(initial.color_.red_, 11);
         EXPECT_EQ(edit.canonical(scene, proxy), source);
         EXPECT_EQ(
             IREntity::getComponent<IRComponents::C_RotationMode>(proxy).mode_,

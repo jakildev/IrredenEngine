@@ -97,8 +97,9 @@ class LocalPartEditSession {
             IRComponents::C_RotationMode{IRComponents::RotationMode::GRID},
             IRComponents::C_LodTierOverride{IRRender::LodLevel::LOD_0}
         );
-        if (IREntity::getComponent<IRComponents::C_VoxelSetNew>(m_proxy).recordCount() !=
-            dense.voxels_.size()) {
+        // Runtime priority and other authored carriers are not serialized by
+        // DenseVoxel; seed the view from the complete source records as well.
+        if (!refresh(scene)) {
             close();
             return false;
         }
