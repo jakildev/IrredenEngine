@@ -297,9 +297,9 @@ struct PerAxisCanvasStore {
     //     baseInstance} + droppedCount.
     //     instanceCount/droppedCount are GPU atomics (resolveMode 3). The
     //     overflow indirect draw sources its args at ctrlBaseUints_*4 directly.
-    // [entriesBaseUints_, +overflowCap_*3) — overflow entries, 3 uints
+    // [entriesBaseUints_, +overflowCap_*4) — overflow entries, 4 uints
     //     each: {iso cell x|y (16+15) with cut flag in bit 31, colorPacked,
-    //     encoded distance}. Height is below 32768; the
+    //     encoded distance, voxel pool index}. Height is below 32768; the
     //     exact (cell, value) pair the cardinal store would have written, so
     //     the scatter's overflow branch reuses the cell path's recovery
     //     bit-for-bit.
@@ -332,7 +332,7 @@ struct PerAxisCanvasStore {
     }
     int entriesBaseUints_ = 0;
     int overflowCap_ = 0;
-    static constexpr std::uint32_t kOverflowSortBlockBits = 11;
+    static constexpr std::uint32_t kOverflowSortBlockBits = 10;
     static constexpr std::uint32_t kOverflowSortMaxStageBits = 30;
     static constexpr std::uint32_t kOverflowSortCommandUints = 4;
     static constexpr std::uint32_t kOverflowSortCommandCount =
@@ -513,7 +513,7 @@ struct PerAxisCanvasStore {
         winnerIds_ = IRRender::createResource<Buffer>(
             nullptr,
             (static_cast<std::size_t>(entriesBaseUints_) +
-             static_cast<std::size_t>(overflowCap_) * 3u) *
+             static_cast<std::size_t>(overflowCap_) * 4u) *
                 sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,

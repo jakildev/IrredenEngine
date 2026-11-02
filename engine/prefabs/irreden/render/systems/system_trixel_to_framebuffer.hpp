@@ -141,6 +141,40 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // them, restoring the cardinal output for A/B triage. Resolved
     // once in create(); default off.
     bool overflowDrawDisabled_ = false;
+    ShaderProgram *hoverResolveProgram_ = nullptr;
+    bool scatterHoverPending_ = false;
+
+    void resolveScatterHover(
+        C_TrixelCanvasFramebuffer &framebuffer, C_FrameDataTrixelToFramebuffer &frameData, int mode
+    ) {
+        if (!hoverResolveProgram_) {
+            hoverResolveProgram_ =
+                IRRender::createNamedResource<ShaderProgram>(
+                    "PerAxisHoverResolve",
+                    std::vector{ShaderStage{kFileCompPerAxisHoverResolve, ShaderType::COMPUTE}}
+                ).second;
+        }
+        framebuffer.framebuffer_.second->unbind();
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
+        framebuffer.framebuffer_.second->getTextureEntityIds().bind(0);
+        framebuffer.getTextureDepth().bind(1);
+        frameData.frameData_.hoverResolveMode_ = mode;
+        frameData.frameData_.mouseFramebufferPixel_ = IRRender::mouseMainFramebufferPixel();
+        frameData.updateFrameData(frameDataBuf_);
+        hoverResolveProgram_->use();
+        IRRender::device()->dispatchCompute(1, 1, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        framebuffer.bindFramebuffer();
+        program_->use();
+    }
+
+    void endTick() {
+        if (!scatterHoverPending_)
+            return;
+        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        auto &frameData = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
+        resolveScatterHover(framebuffer, frameData, 1);
+    }
 
     void tick(
         IREntity::EntityId entity,
@@ -246,12 +280,19 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // ghost the snapped layer through. Lighting and AO are applied separately.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
+            framebuffer.framebuffer_.second->bindWithEntityIds();
+            framebuffer.framebuffer_.second->clearEntityIds();
             drawPerAxisScatter(
                 frameData,
                 *perAxisCanvases_,
                 logicalCanvasSize,
                 framebufferResolution
             );
+            framebuffer.bindFramebuffer();
+            if (behavior.mouseHoverEnabled_) {
+                resolveScatterHover(framebuffer, frameData, 0);
+                scatterHoverPending_ = true;
+            }
             // SDF / text gathered beside the scatter composite on its face-free key.
             frameData.frameData_.scatterFbResolution_.w = 1.0f;
             // Fall through (no early return) to the single-canvas gather below:
@@ -458,8 +499,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // the gather did, so the scatter lands at the same scale/position.
     //
     // The draw uses the compacted non-empty cell indices and indirect draw args.
-    // Picking during rotation remains disabled; the gather path resolves it at
-    // every cardinal.
     void drawPerAxisScatter(
         C_FrameDataTrixelToFramebuffer &frameData,
         const C_PerAxisTrixelCanvases &axes,
@@ -673,9 +712,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             if (bindAO) {
                 tex.ao_.second->bind(4);
             }
-            if (bindAO && surfaceFogEnabled_) {
-                tex.entityIds_.second->bind(2);
-            }
+            tex.entityIds_.second->bind(2);
             cellCompacted->bindRange(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisCellCompacted,
@@ -701,7 +738,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_PerAxisCellCompacted,
                 static_cast<std::ptrdiff_t>(axes.entriesBaseUints_) * sizeof(std::uint32_t),
-                static_cast<size_t>(axes.overflowCap_) * 3u * sizeof(std::uint32_t)
+                static_cast<size_t>(axes.overflowCap_) * 4u * sizeof(std::uint32_t)
             );
             IRRender::device()->drawElementsInstancedIndirect(
                 DrawMode::TRIANGLES,
@@ -785,6 +822,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     void beginTick() {
+        scatterHoverPending_ = false;
         {
             IR_PROFILE_SCOPE("ttf_hover_reset");
             // A CPU write here would wait for last frame's composite, which

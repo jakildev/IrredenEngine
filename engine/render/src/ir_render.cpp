@@ -188,6 +188,28 @@ vec2 getMousePositionOutputView() {
 vec2 getMousePositionMainFramebuffer() {
     return getMousePositionOutputView() / vec2(getRenderManager().getOutputScaleFactor());
 }
+ivec2 mouseMainFramebufferPixel() {
+    const auto entity = getRenderManager().getMainFramebuffer();
+    const auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>(entity);
+    const auto &transform = IREntity::getComponent<C_WorldTransform>(entity);
+    const vec2 offset = IRMath::isoDeltaToScreenDelta(
+                            IRMath::pos3DtoPos2DIso(transform.translation_),
+                            getTriangleStepSizeScreen()
+                        ) +
+                        vec2(
+                            IRPrefab::Camera::screenResidual(
+                                getEffectiveCameraIso(),
+                                getCameraZoom(),
+                                getOutputScaleFactor()
+                            )
+                        );
+    const vec2 pixel = (windowPointsToFramebufferPx(IRInput::getMousePosition()) -
+                        vec2(getViewport()) * 0.5f - vec2(offset.x, -offset.y)) /
+                           vec2(getOutputScaleFactor()) +
+                       vec2(framebuffer.getResolutionPlusBuffer()) * 0.5f;
+    return ivec2(IRMath::floor(pixel));
+}
+
 ivec2 guiTrixelToScreenPx(vec2 guiTrixel) {
     const EntityId guiCanvas = getCanvas("gui");
     if (guiCanvas == IREntity::kNullEntity) {
@@ -325,6 +347,10 @@ vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth) {
 }
 
 ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
+    const float yaw = IRPrefab::Camera::getYaw();
+    if (IRPrefab::Camera::computeYawSplit(yaw).second != 0.0f) {
+        return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIsoYawed(worldPos, yaw));
+    }
     // +0.5 aims the iso cell centre, so mouseWorldPos3DAtIsoDepth's floor
     // lands on worldPos's own iso pixel.
     const vec3 rotated = IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex());
@@ -332,6 +358,10 @@ ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
 }
 
 ivec2 worldPos3DToMouseScreenPxExact(vec3 worldPos) {
+    const float yaw = IRPrefab::Camera::getYaw();
+    if (IRPrefab::Camera::computeYawSplit(yaw).second != 0.0f) {
+        return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIsoYawed(worldPos, yaw));
+    }
     const vec3 rotated = IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex());
     return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIso(rotated) + displayedIsoBias());
 }

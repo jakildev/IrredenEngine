@@ -30,10 +30,12 @@ flat in float vCellTieOffset;
 #if IR_PER_AXIS_SURFACE_FOG
 flat in uint vFogCarrier;
 // The cell's own axis-canvas entity id: its fog class and cut-face provenance.
-layout(binding = 2) uniform usampler2D perAxisEntityIds;
+
 #endif
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out uvec2 FragEntityId;
+flat in uvec2 vOverflowEntityId;
 
 // HSV → RGB. Keep identical to hsvToRgb in c_shapes_to_trixel_body.glsl so
 // voxel-scatter depth-color is bit-exact with the SDF twin when mode is on.
@@ -42,6 +44,8 @@ vec3 hsvToRgb(vec3 c) {
     vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
+
+layout(binding = 2) uniform usampler2D perAxisEntityIds;
 
 void main() {
     if (vColor.a < 0.1) {
@@ -137,5 +141,7 @@ void main() {
         FragColor = vColor;
     }
 #endif
+    FragEntityId = decodeEntityId(vOwnerPixel.x < 0 ? vOverflowEntityId
+        : texelFetch(perAxisEntityIds, vOwnerPixel, 0).rg);
     gl_FragDepth = finalDepth;
 }

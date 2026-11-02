@@ -81,14 +81,15 @@ struct C_FrameDataTrixelToFramebuffer{
 struct C_PerAxisTrixelCanvases{
  static constexpr int kAxisCount=3;
  struct AxisTextures{std::pair<int,Texture*> colors_,distances_,ao_,entityIds_;};
- std::array<Texture,9> textures{{{100},{101},{102},{200},{201},{202},{300},{301},{302}}};
+ std::array<Texture,12> textures{{
+  {100},{101},{102},{200},{201},{202},{300},{301},{302},{400},{401},{402}}};
  std::array<AxisTextures,3> axes_;
  Buffer cells{25},indirect{126},indirectArgs{127},overflow{125},overflowArgs{128};
  std::pair<int,Buffer*> cellCompacted_{0,&cells},cellIndirect_{0,&indirect},
   cellIndirectArgs_{0,&indirectArgs},winnerIds_{0,&overflow},overflowDrawArgs_{0,&overflowArgs};
  int cellRegionStride_=16,entriesBaseUints_=64,overflowCap_=8,ctrlBaseUints_=12;
  C_PerAxisTrixelCanvases(){for(int i=0;i<3;++i)
-  axes_[i]={{0,&textures[i]},{0,&textures[i+3]},{0,&textures[i+6]}};
+  axes_[i]={{0,&textures[i]},{0,&textures[i+3]},{0,&textures[i+6]},{0,&textures[i+9]}};
  }
 };
 struct Device{
@@ -113,6 +114,7 @@ struct Device{
          "regular arguments from the copied cell args");
    check(storage[25]&&storage[25]->id==25&&offsets[25]==axis*16*4,"regular cell region");
    check(textures[0]==100+axis&&textures[1]==200+axis,"regular textures");
+   check(textures[2]==400+axis,"axis entity-id texture");
    if(used==1||visibility)check(textures[4]==300+axis,"axis AO texture");
   }else{
    check(args->id==128&&offset==0,"overflow arguments from the copied draw args");
