@@ -37,7 +37,7 @@ Design log, findings and the authoring-session history:
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
-  `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`,
+  `test_recipe_handle`, `test_recipe_handle_turned`, `test_recipe_float_step`, `test_radius`,
   `test_list_scroll`, `test_single`, `test_recipe_pages`, and the failing
   `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
@@ -151,9 +151,9 @@ readback on every editable texel; an aim and a pick share one screen mapping.
 - Module sessions use `applyRecipe(name, values)`, `attachComponent(name)`,
   `setComponentField(component, field, text)`, and
   `setComponentOverrides(component, text)` instead of RECIPES or COMPONENTS
-  panel coordinates. `applyRecipe` accepts only INT params with whole targets
-  and at least four slider trixels per unit; other recipes keep using the raw
-  GUI gestures without occupancy-model updates.
+  panel coordinates. `applyRecipe` admits whole INT targets and exact stepped
+  FLOAT (`step`) lattice targets at four slider trixels per unit or step; other
+  recipes keep using the raw GUI gestures without occupancy-model updates.
 - Recipe-bound parts use `paintClass(cell, class)` and `expectPartCellClass(part, cell, class | nil, name)` for persistent class masks.
 - Each of those names its list row. The Builder wheels a row below the
   RECIPES or COMPONENTS view into it with the live list's least movement, and

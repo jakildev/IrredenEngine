@@ -1255,6 +1255,40 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
 
+    // Why a scripted drag cannot leave @p param's RECIPES slider on @p value,
+    // or empty when it can. The cursor lands strictly within 2 trixels of its
+    // aim, so 4 trixels per unit (INT) or per step (stepped FLOAT) holds the
+    // dragged value within half a lattice spacing of a lattice target, and the
+    // live APPLY rounds (INT) or the slider snaps (FLOAT) back onto it. An
+    // unstepped FLOAT has no lattice, so no exact target.
+    static std::string recipeParamAdmissionError(const RecipeParam &param, float value) {
+        if (value < param.min_ || value > param.max_)
+            return "is outside its range";
+        const float trackTrixels = static_cast<float>(kRecipeSliderSize.x);
+        if (param.type_ == RecipeParamType::INT) {
+            if (value != static_cast<float>(IRMath::roundHalfUp(value)))
+                return "is not a whole number";
+            if ((param.max_ - param.min_) * 4.0f > trackTrixels)
+                return "has fewer than 4 trixels per unit";
+            return {};
+        }
+        if (!param.step_)
+            return "is a FLOAT without a step; only INT and stepped FLOAT params have exact "
+                   "slider targets";
+        // Every value within 0.49 step of the target must snap to it. That also
+        // refuses a top value the snap reaches only by its final clamp, unless
+        // the range falls short of a whole number of steps by under 0.01 step.
+        const float halfStep = 0.49f * *param.step_;
+        const float lattice = recipeParamLatticeValue(param, value);
+        if (lattice != value || recipeParamLatticeValue(param, value - halfStep) != value ||
+            recipeParamLatticeValue(param, value + halfStep) != value)
+            return recipeValueText(value) + " is not on its step lattice (nearest " +
+                   recipeValueText(lattice) + ")";
+        if ((param.max_ - param.min_) / *param.step_ * 4.0f > trackTrixels)
+            return "has fewer than 4 trixels per step";
+        return {};
+    }
+
     void applyRecipe(
         const std::string &name, const std::vector<std::pair<std::string, float>> &requestedValues
     ) {
@@ -1281,22 +1315,9 @@ class Builder {
             );
             const float value =
                 requested == requestedValues.end() ? param.default_ : requested->second;
-            if (param.type_ != RecipeParamType::INT) {
-                recordError("applyRecipe: param '" + param.name_ + "' is not INT");
-                return;
-            }
-            if (value < param.min_ || value > param.max_) {
-                recordError("applyRecipe: param '" + param.name_ + "' is outside its range");
-                return;
-            }
-            if (value != static_cast<float>(IRMath::roundHalfUp(value))) {
-                recordError("applyRecipe: param '" + param.name_ + "' is not a whole number");
-                return;
-            }
-            if ((param.max_ - param.min_) * 4.0f > static_cast<float>(kRecipeSliderSize.x)) {
-                recordError(
-                    "applyRecipe: param '" + param.name_ + "' has fewer than 4 trixels per unit"
-                );
+            const std::string error = recipeParamAdmissionError(param, value);
+            if (!error.empty()) {
+                recordError("applyRecipe: param '" + param.name_ + "' " + error);
                 return;
             }
             values.push_back(value);

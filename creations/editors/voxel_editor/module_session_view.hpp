@@ -21,6 +21,9 @@ struct RecipeParam {
     float default_ = 0.0f;
     float min_ = 0.0f;
     float max_ = 1.0f;
+    // FLOAT only: the lattice every value of the param lies on, anchored at
+    // min_ (RECIPES slider snap, APPLY, handle drags, Session::Builder).
+    std::optional<float> step_;
 };
 
 struct RecipeCell {
@@ -75,7 +78,8 @@ struct ModuleSessionView {
         std::string &
     )>;
     // (recipe, handle, values, size, dragged cell) -> values with the handle's
-    // params replaced by its drag result, rounded and clamped to their ranges.
+    // params replaced by its drag result: INT rounded, stepped FLOAT snapped to
+    // its lattice, each clamped to its range.
     using HandleDrag = std::function<bool(
         std::size_t,
         std::size_t,
