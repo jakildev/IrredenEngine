@@ -37,7 +37,7 @@ vec2 clamp(vec2 point,vec2 low,vec2 high){
     return {std::clamp(point.x,low.x,high.x),std::clamp(point.y,low.y,high.y)};
 }
 vec4 fragmentColor;
-struct FaceFields {vec3 faceOrigin;int faceId;ivec2 ownerPixel;};
+struct FaceFields {vec3 faceOrigin;int faceId;ivec2 ownerPixel;ivec2 overflowEntityId{0};};
 struct DistanceSample {int r;};
 struct DistanceTexture {
     ivec2 cell;
@@ -84,6 +84,7 @@ int main(int argc,char** argv) {
                                              storeFrame,visibleFaceIds);
         const FaceFields overflow=scatterFace(true,cell,encoded,canvasSize,
                                               storeFrame,visibleFaceIds);
+        if(overflow.overflowEntityId.x!=123 || overflow.overflowEntityId.y!=456) return 12;
         if(regular.faceId!=faceId || overflow.faceId!=faceId) {
             std::fprintf(stderr,"signed face identity\n");return 1;
         }
@@ -150,6 +151,7 @@ def vertex_decode(vertex):
                       vertex, re.DOTALL)[0]
     fetch = re.sub(r"^\s*color(?:\.a)? = [^;]+;", "", fetch, flags=re.MULTILINE)
     fetch = fetch.replace("gl_InstanceID", "instanceId")
+    fetch = fetch.replace("vOverflowEntityId", "out.overflowEntityId")
     decode = re.search(r"const int slot = decodeSlot\(rawDist\);.*?"
                        r"const vec3 origin = baseOrigin\b[^;]+;", vertex, re.DOTALL)[0]
     output_source = vertex[vertex.index(decode) + len(decode):]
@@ -168,11 +170,13 @@ FaceFields scatterFace(bool overflowMode,ivec2 cell,int encoded,ivec2 canvasSize
     const uint linear=uint(cell.y*canvasSize.x+cell.x);
     const uint packed=uint(cell.x)|(uint(cell.y)<<16u);
     const uint regularCells[]={0u,linear,0u};
-    const uint overflowCells[]={0u,0u,0u,packed,0u,uint(encoded)};
+    const uint overflowCells[]={0u,0u,0u,0u,packed,0u,uint(encoded),1u};
+    const ivec2 entityIds[]={ivec2(0),ivec2(123,456)};
+    FaceFields out;
     const uint* compactedCells=overflowMode?overflowCells:regularCells;
     const DistanceTexture triangleDistances{cell,encoded};
     ivec2 ij;int rawDist;
-""" + fetch + "\n" + decode + "\nFaceFields out;\n" + "\n".join(outputs) \
+""" + fetch + "\n" + decode + "\n" + "\n".join(outputs) \
         + "\nreturn out;\n}\n"
 
 

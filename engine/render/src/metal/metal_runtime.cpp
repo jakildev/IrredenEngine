@@ -47,6 +47,7 @@ struct MetalRuntimeState {
     MTL::Texture *offscreenColorTexture_ = nullptr;
     MTL::Texture *colorTexture_ = nullptr;
     MTL::Texture *depthTexture_ = nullptr;
+    MTL::Texture *entityIdTexture_ = nullptr;
     MTL::PixelFormat colorPixelFormat_ = MTL::PixelFormatBGRA8Unorm;
     MTL::PixelFormat depthPixelFormat_ = MTL::PixelFormatInvalid;
 
@@ -314,7 +315,8 @@ void untrackMetalTexture(MTL::Texture *texture) {
     // leaves useDefaultRenderTarget_ false with no color attachment, and
     // createRenderEncoder then returns nullptr for every later pass, silently
     // rendering nothing. Same scrub MetalFramebufferImpl::unbind() performs.
-    if (runtime.colorTexture_ == texture || runtime.depthTexture_ == texture) {
+    if (runtime.colorTexture_ == texture || runtime.depthTexture_ == texture ||
+        runtime.entityIdTexture_ == texture) {
         bindMetalDefaultRenderTarget();
     }
 }
@@ -335,6 +337,7 @@ void bindMetalDefaultRenderTarget() {
     g_runtime().useDefaultRenderTarget_ = true;
     g_runtime().colorTexture_ = nullptr;
     g_runtime().depthTexture_ = nullptr;
+    g_runtime().entityIdTexture_ = nullptr;
     g_runtime().colorPixelFormat_ = MTL::PixelFormatBGRA8Unorm;
     g_runtime().depthPixelFormat_ = MTL::PixelFormatInvalid;
 }
@@ -343,11 +346,13 @@ void bindMetalFramebufferRenderTarget(
     MTL::Texture *colorTexture,
     MTL::Texture *depthTexture,
     MTL::PixelFormat colorPixelFormat,
-    MTL::PixelFormat depthPixelFormat
+    MTL::PixelFormat depthPixelFormat,
+    MTL::Texture *entityIdTexture
 ) {
     g_runtime().useDefaultRenderTarget_ = false;
     g_runtime().colorTexture_ = colorTexture;
     g_runtime().depthTexture_ = depthTexture;
+    g_runtime().entityIdTexture_ = entityIdTexture;
     g_runtime().colorPixelFormat_ = colorPixelFormat;
     g_runtime().depthPixelFormat_ = depthPixelFormat;
 }
@@ -368,6 +373,10 @@ bool metalUsesDefaultRenderTarget() {
 
 MTL::Texture *metalCurrentColorTexture() {
     return g_runtime().colorTexture_;
+}
+
+MTL::Texture *metalCurrentEntityIdTexture() {
+    return g_runtime().entityIdTexture_;
 }
 
 MTL::Texture *metalCurrentDepthTexture() {

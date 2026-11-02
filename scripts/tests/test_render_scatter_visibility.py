@@ -94,11 +94,16 @@ struct Input {
     vec4 color{1,1,1,1};
     vec2 quadParam{.5f,.5f},position{2.5f,1.5f},depthSlope{0,0};
     ivec3 visibilityExtent{4,3,1};
-    vec3 faceOrigin{0,0,0};int faceId=0;ivec2 ownerPixel{-1,-1};
+    vec3 faceOrigin{0,0,0};int faceId=0;ivec2 ownerPixel{-1,-1};ivec2 overflowEntityId{7,9};
     float depth=.25f,cellTieOffset=0;
 };
 struct Discard {};
 void discard_fragment(){throw Discard{};}
+ivec2 outputEntityId;
+struct EntitySample {ivec2 rg;};
+struct EntityTexture {EntitySample read(ivec2){return {ivec2(7,9)};}} perAxisEntityIds;
+EntitySample texelFetch(EntityTexture,ivec2,int){return {ivec2(7,9)};}
+ivec2 decodeEntityId(ivec2 id){return id;}
 float outputDepth=0;
 vec4 outputColor;
 vec3 sampledPosition;
@@ -303,7 +308,7 @@ def conditional_block(source):
 def fragment_body(source, suffix):
     body = host(function_body(source, "main" if suffix == "glsl" else "IR_PER_AXIS_FRAGMENT_NAME"))
     fields = ("Color", "QuadParam", "Depth", "DepthSlope", "CellTieOffset",
-              "VisibilityExtent", "FaceOrigin", "FaceId", "OwnerPixel")
+              "VisibilityExtent", "FaceOrigin", "FaceId", "OwnerPixel", "OverflowEntityId")
     for field in sorted(fields, key=len, reverse=True):
         body = body.replace("v" + field, "in." + field[0].lower() + field[1:])
     body = body.replace("in.visibilityExtent.xy",
@@ -313,6 +318,7 @@ def fragment_body(source, suffix):
     body = body.replace("in.color.a", "in.color.w").replace("in.color.rgb", "in.color.rgb()")
     body = body.replace("FragmentOut out;", "").replace("out.color", "outputColor")
     body = body.replace("FragColor", "outputColor").replace("gl_FragDepth", "outputDepth")
+    body = body.replace("out.entityId", "outputEntityId").replace("FragEntityId", "outputEntityId")
     body = body.replace("out.depth", "outputDepth").replace("return out;", "return outputDepth;")
     return re.sub(r"\bdiscard\s*;", "discard_fragment();", body)
 

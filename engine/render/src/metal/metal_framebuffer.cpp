@@ -58,12 +58,13 @@ class MetalFramebufferImpl final : public FramebufferImpl {
         }
     }
 
-    void bind() const override {
+    void bind(const Texture2D *entityIds) const override {
         bindMetalFramebufferRenderTarget(
             m_colorTexture,
             m_depthTexture,
             m_colorPixelFormat,
-            m_depthPixelFormat
+            m_depthPixelFormat,
+            entityIds ? static_cast<MTL::Texture *>(entityIds->getNativeTexture()) : nullptr
         );
     }
 

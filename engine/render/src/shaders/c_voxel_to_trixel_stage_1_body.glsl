@@ -219,7 +219,7 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
 // so the scatter's overflow branch reuses the per-cell recovery bit-for-bit.
 void overflowAppendTap(
     const ivec2 perAxisBase, const ivec3 facePos, const int voxelDistance, const uint colorPacked,
-    const bool isCutFace
+    const bool isCutFace, const uint voxelIndex
 ) {
     // A face-origin depth sample cannot prove occlusion of the finite quad.
     // Keep cardinal losers for the framebuffer depth test.
@@ -241,11 +241,12 @@ void overflowAppendTap(
         atomicAdd(perAxisWinnerIds[ctrlBase + 5u], 1u);
         return;
     }
-    const uint entryBase = uint(overflowScratchLayout.z) + idx * 3u;
+    const uint entryBase = uint(overflowScratchLayout.z) + idx * 4u;
     perAxisWinnerIds[entryBase + 0u] =
         packOverflowEntryCell(cardPix, isCutFace);
     perAxisWinnerIds[entryBase + 1u] = colorPacked;
     perAxisWinnerIds[entryBase + 2u] = uint(voxelDistance);
+    perAxisWinnerIds[entryBase + 3u] = voxelIndex;
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
@@ -546,7 +547,7 @@ void main() {
             );
             const uint overflowColor =
                 (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
-            overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace);
+            overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace, voxelIndex);
             return;
         }
         // Equal keys arise from perAxisStoreFacePos's 4-bit frac quantization —

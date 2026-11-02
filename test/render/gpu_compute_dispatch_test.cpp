@@ -26,6 +26,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/framebuffer.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/opengl/opengl_render_impl.hpp>
 #include <irreden/render/render_device.hpp>
@@ -1756,6 +1757,7 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
     axes->createGlitchWorklist();
     const auto faceTextures = axes->axes_;
     const auto winners = axes->winnerIds_;
+    const auto voxelEntityIds = axes->voxelEntityIds_;
     const auto compacted = axes->cellCompacted_;
     const auto indirect = axes->cellIndirect_;
     const auto glitchFlags = axes->glitchTileFlags_;
@@ -1767,6 +1769,12 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
     const int liveResources = resources.liveResourceCount();
     const std::uint32_t scratchValue = 0x12345678u;
     winners.second->subData(0, sizeof(scratchValue), &scratchValue);
+    const std::array<std::uint32_t, 4> mainIds{13u, 1u, 17u, 2u};
+    Buffer sharedIds(mainIds.data(), sizeof(mainIds), BUFFER_STORAGE_DYNAMIC);
+    device()->copyBufferSubData(&sharedIds, 0, voxelEntityIds.second, 0, sizeof(mainIds));
+    const std::array<std::uint32_t, 4> privateIds{91u, 3u, 97u, 4u};
+    sharedIds.subData(0, sizeof(privateIds), privateIds.data());
+    device()->finish();
     const auto expectRetainedFaces = [&] {
         for (int axis = 0; axis < Axes::kAxisCount; ++axis) {
             EXPECT_EQ(axes->axes_[axis].colors_, faceTextures[axis].colors_);
@@ -1788,6 +1796,10 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
             );
         }
         EXPECT_EQ(axes->winnerIds_, winners);
+        EXPECT_EQ(axes->voxelEntityIds_, voxelEntityIds);
+        std::array<std::uint32_t, 4> retainedIds{};
+        axes->voxelEntityIds_.second->getSubData(0, sizeof(retainedIds), retainedIds.data());
+        EXPECT_EQ(retainedIds, mainIds);
         EXPECT_EQ(axes->cellCompacted_, compacted);
         EXPECT_EQ(axes->cellIndirect_, indirect);
         EXPECT_EQ(axes->glitchTileFlags_, glitchFlags);
@@ -1825,6 +1837,44 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
     EXPECT_EQ(resources.freeIdCount(), 128u);
 }
 
+TEST_F(PositionUploadTest, FramebufferEntityIdsAllocateLazilyAndClearIndependently) {
+    using namespace IRRender;
+    Framebuffer target{
+        IRMath::ivec2(4),
+        IRMath::ivec2(2),
+        TextureFormat::RGBA8,
+        TextureFormat::DEPTH24_STENCIL8
+    };
+    EXPECT_THROW(target.getTextureEntityIds(), std::runtime_error);
+    EXPECT_THROW(target.clearEntityIds(), std::runtime_error);
+    target.bindWithEntityIds();
+    EXPECT_EQ(target.getTextureEntityIds().getSize(), IRMath::uvec2(6));
+    const IRMath::uvec2 owner(17u, 29u);
+    const std::uint8_t color[4]{31, 63, 127, 255};
+    target.getTextureColorForWrite()
+        .clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, color);
+    target.getTextureEntityIds().clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &owner);
+    target.clearEntityIds();
+    target.bind();
+    device()->finish();
+    IRMath::uvec2 actual(1);
+    target.getTextureEntityIds()
+        .getSubImage2D(0, 0, 1, 1, PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &actual);
+    EXPECT_EQ(actual, IRMath::uvec2(0));
+    std::array<std::uint8_t, 4> actualColor{};
+    target.getTextureColor().getSubImage2D(
+        0,
+        0,
+        1,
+        1,
+        PixelDataFormat::RGBA,
+        PixelDataType::UNSIGNED_BYTE,
+        actualColor.data()
+    );
+    EXPECT_EQ(actualColor, (std::array<std::uint8_t, 4>{31, 63, 127, 255}));
+    target.unbind();
+}
+
 TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions) {
     using namespace IRRender;
     using Axes = IRComponents::C_PerAxisTrixelCanvases;
@@ -1832,8 +1882,8 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     const auto layout = Axes::scratchLayoutFor(64, static_cast<int>(cap));
     const std::uint32_t ctrl = static_cast<std::uint32_t>(layout.y);
     const std::uint32_t entries = static_cast<std::uint32_t>(layout.z);
-    using Record = std::array<std::uint32_t, 3>;
-    std::vector<std::uint32_t> words(entries + cap * 3, 0xA5A5A5A5u);
+    using Record = std::array<std::uint32_t, 4>;
+    std::vector<std::uint32_t> words(entries + cap * 4, 0xA5A5A5A5u);
     Buffer scratch(words.data(), words.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
     FrameDataVoxelToCanvas frame{};
     frame.overflowScratchLayout_ = layout;
@@ -1850,7 +1900,9 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             return a[0] < b[0];
         if (a[2] != b[2])
             return a[2] < b[2];
-        return a[1] < b[1];
+        if (a[1] != b[1])
+            return a[1] < b[1];
+        return a[3] < b[3];
     };
     struct SortCase {
         std::uint32_t count;
@@ -1859,7 +1911,7 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     };
     for (const SortCase sortCase : {
              SortCase{0u, 0u, true},
-             SortCase{2048u, 0u, true},
+             SortCase{1024u, 0u, true},
              SortCase{4097u, 0u, false},
              SortCase{4097u, 4097u, true},
              SortCase{1u, 4097u, true},
@@ -1875,10 +1927,15 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
         std::vector<Record> expected;
         expected.reserve(count);
         for (std::uint32_t i = 0; i < count; ++i) {
-            Record record{(count - i) % 37u, (i * 97u) % 65521u, (i * 31u) % 101u};
+            Record record{
+                (i / 4u) % 37u,
+                ((i / 4u) * 97u) % 65521u,
+                ((i / 4u) * 41u) % 101u,
+                count - i
+            };
             expected.push_back(record);
-            for (int word = 0; word < 3; ++word)
-                words[entries + i * 3 + word] = record[word];
+            for (int word = 0; word < 4; ++word)
+                words[entries + i * 4 + word] = record[word];
         }
         std::sort(expected.begin(), expected.end(), recordLess);
         scratch.subData(0, words.size() * sizeof(std::uint32_t), words.data());
@@ -1945,9 +2002,10 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
         for (std::uint32_t i = 0; i < count; ++i) {
             observed.push_back(
                 Record{
-                    actual[entries + i * 3],
-                    actual[entries + i * 3 + 1],
-                    actual[entries + i * 3 + 2]
+                    actual[entries + i * 4],
+                    actual[entries + i * 4 + 1],
+                    actual[entries + i * 4 + 2],
+                    actual[entries + i * 4 + 3]
                 }
             );
         }

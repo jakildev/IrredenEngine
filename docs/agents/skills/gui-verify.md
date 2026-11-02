@@ -38,7 +38,7 @@ GUI-ASSERT shot=<N> label=<lbl> kind=<KIND> target=<eid> name=<tag> result=PASS|
 ```
 
 Kinds: `HOVERS`, `CLICK_FIRES`, `SLIDER_VALUE`, `CHECKBOX`, `PICKS_VOXEL`,
-`PICKS_ISO_COLUMN`, `PREDICATE`. `PREDICATE` takes a creation-supplied
+`PICKS_ISO_COLUMN`, `HOVERED_ENTITY_ID`, `PREDICATE`. `PREDICATE` takes a creation-supplied
 `bool(context, actual)` for state the prefab layer cannot see; use it
 rather than emitting a `GUI-ASSERT` line by hand — the runner parses one
 format.
@@ -70,6 +70,16 @@ lines, prints a shot / label / kind / name / result / actual table with a
 `Failing assertions:` list, and exits non-zero on any FAIL or a non-zero
 binary exit. A binary that exits 0 with no `GUI-ASSERT` lines is
 mis-wired; the runner warns.
+
+## Rotation picking participant
+
+| Target | Session | Coverage |
+|---|---|---|
+| `IRShapeDebug` | `--rotation-pick-test gui` | Eight shots at 20/0, 70/90, 160/180 and 250/270 degrees; three settled hover reads each. |
+
+Run `python3 scripts/gui-verify.py IRShapeDebug -- --rotation-pick-test gui`.
+Companion `fleet-run IRShapeDebug --rotation-pick-test sweep`, `tie`, and
+`cube` runs print counted results and exit nonzero on a failed read.
 
 ## Layout check
 

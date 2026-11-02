@@ -1,0 +1,72 @@
+Feedback amendment to engine PR #4864 / issue #4820
+Runtime/model: OpenAI Codex (GPT-6)
+Host: macOS, Apple M4 Max, macos-debug / Metal source backend
+Source base before amendment: 6adf5e0b36893bcd4bf11e0a31b7c5c0eb0f508d
+The containing commit identifies the amended source tree.
+
+Build:
+fleet-build --detach --target IRShapeDebug IrredenEngineTest IRCanvasStress IRVoxelEditor
+job 20261102T034634Z-build-4ba44b succeeded exit=0.
+Final incremental build: fleet-build --detach --target IRShapeDebug IrredenEngineTest
+job 20261102T035728Z-build-ca44ac succeeded exit=0.
+Both terminal fleet-jobs waits confirmed completion.
+
+Native CPU suite:
+fleet-run --timeout 180 IrredenEngineTest --gtest_brief=1
+[==========] 3466 tests from 557 test suites ran. (14118 ms total)
+[  PASSED  ] 3427 tests.
+[  SKIPPED ] 39 tests.
+ir-run: RESULT=CLEAN exe=IrredenEngineTest exit=0
+38 GPU tests skipped: No Metal device available — headless host without a GPU.
+One further skip is the OpenGL-only FogCrossSection probe.
+This run does not establish GPU allocation/lifetime or native OverflowSort acceptance.
+
+Hermetic focused checks:
+python3 scripts/tests/test_render_visibility_routing.py: PASS (64 configurations;
+30 defective mutations rejected, including lost retained-ID binding and lost restore).
+python3 scripts/tests/test_render_overflow_entry.py: PASS
+GLSL and Metal: round_trips=2621440 signed_depths=131072 sort_pairs=100000 flag_tie=PASS
+python3 scripts/shader_parity_audit.py: clean, 143 glsl and 133 metal files, 5 allowlisted.
+Standalone header checks: 773 headers, 54 compute-kernel checks, 11 scratch checks,
+205 inventory checks, 147 GLSL checks; exit=0.
+Ruff, changed-line clang-format, comment-reference lint and git diff --check pass.
+Five simplify scans and the follow-up binding/lifetime/test review found no remaining defect.
+
+Earlier in this iteration:
+fleet-jobs start gui-verify -- IRCanvasStress --no-build -- --gui-session hover_canary
+job 20261102T035343Z-gui-verify-69d409 succeeded exit=0, 1/1 assertions PASS,
+hovered=437 expected=437 and RESULT=CLEAN. No new screenshots are claimed for
+ShapeDebug after the amendment.
+
+Blocked graphics commands (no further retries):
+fleet-run --timeout 180 IRShapeDebug --rotation-pick-test tie
+ir-run: RESULT=NO-DISPLAY exe=IRShapeDebug exit=69
+fleet-run --env IR_WINDOW_MODE=offscreen --timeout 180 IRShapeDebug --rotation-pick-test tie
+ir-run: RESULT=NO-DISPLAY exe=IRShapeDebug exit=69
+fleet-jobs start light-verify -- --if-changed
+job 20261102T040857Z-light-verify-6f452e failed exit=69 (terminal wait).
+ir-run: RESULT=NO-DISPLAY exe=IRLightingEmissive exit=69
+[light-verify] ENV-FAIL: Discovered 0 display monitors (the host session has no WindowServer connection; sign in or wake the Aqua session)
+The required three identical tie runs, final rotation GUI/sweep/cube, remaining
+GUI sessions, full ShapeDebug/CanvasStress render comparisons and five interleaved
+base/head performance pairs remain unverified on this host. No performance win,
+frame-time acceptance or new byte-identical image claim is made.
+Graphics-session follow-up: https://github.com/jakildev/IrredenEngine/issues/4866
+Required GL runtime follow-up: https://github.com/jakildev/IrredenEngine/issues/4865
+
+Allocation accounting:
+RG32UI owner attachment: 1284 * 722 * 8 = 7416384 bytes at default buffered size.
+Default overflow record region: 12 MiB -> 16 MiB, prefix unchanged.
+Retained main entity-ID buffer: 64^3 * 8 = 2097152 bytes; copies 8 * liveVoxelCount
+bytes on rotating main-canvas raster frames. Maximum pool edge is clamped to 563.
+
+Guard positive control: compile verbatim overflowCapacityFor/scratchLayoutFor
+methods and their control/alignment constants from the working tree and pre-amend
+HEAD with minimal math/value adapters. Calls: overflowCapacityFor(0,710^3),
+scratchLayoutFor(64,1<<30); require two runtime_error rejections.
+amended exit=0 four-word overflow guard controls: 2/2 rejected
+pre-fix exit=1 four-word overflow guard controls: 0/2 rejected
+
+Final hermetic invocation: bash scripts/tests/run_all.sh
+run_all.sh: 124 suite(s) — 124 passed, 0 failed
+exit=0

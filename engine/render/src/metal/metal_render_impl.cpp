@@ -246,6 +246,12 @@ MTL::RenderCommandEncoder *createRenderEncoder() {
         colorAttachment->setClearColor(MTL::ClearColor(0.0, 0.0, 0.0, 1.0));
     }
 
+    if (auto *ids = metalCurrentEntityIdTexture()) {
+        auto *attachment = renderPassDescriptor->colorAttachments()->object(1);
+        attachment->setTexture(ids);
+        attachment->setLoadAction(MTL::LoadActionLoad);
+        attachment->setStoreAction(MTL::StoreActionStore);
+    }
     if (depthTexture != nullptr) {
         auto *depthAttachment = renderPassDescriptor->depthAttachment();
         depthAttachment->setTexture(depthTexture);

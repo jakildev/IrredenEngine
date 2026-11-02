@@ -90,6 +90,7 @@ Changes without a visual effect need no captures.
   shift stays out of the hover path. Read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
   before changing it; the executor is `IRShapeDebug --gui-test`'s `hover_parity_*` shots.
+- Rotating scatter writes an optional `RG32UI` owner attachment; two depth-texel reads resolve its id through the 32-byte hover record ([contract](../../docs/design/per-axis-trixel-canvas-rotation.md#picking-follows-the-depth-tested-owner)).
 - **The engine GUI canvas displays as `LOCAL_TRIANGLES`** (render-manager-stamped;
   `RECTANGULAR` at full resolution), hover off. `IRPrefab::GuiCanvas` owns which
   pass composites it: [GUI trixel display](../../docs/design/gui-trixel-display.md).

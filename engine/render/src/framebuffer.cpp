@@ -1,4 +1,5 @@
 #include <irreden/render/framebuffer.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <utility>
 
@@ -34,7 +35,38 @@ Framebuffer::Framebuffer(
 Framebuffer::~Framebuffer() = default;
 
 void Framebuffer::bind() const {
-    m_impl->bind();
+    m_impl->bind(nullptr);
+}
+
+void Framebuffer::bindWithEntityIds() {
+    if (!m_textureEntityIds) {
+        m_textureEntityIds = std::make_unique<Texture2D>(
+            TextureKind::TEXTURE_2D,
+            m_resolutionPlusBuffer.x,
+            m_resolutionPlusBuffer.y,
+            TextureFormat::RG32UI,
+            TextureWrap::CLAMP_TO_EDGE,
+            TextureFilter::NEAREST
+        );
+    }
+    m_impl->bind(m_textureEntityIds.get());
+}
+
+void Framebuffer::clearEntityIds() {
+    const uvec2 zero(0);
+    IR_ASSERT(
+        m_textureEntityIds != nullptr,
+        "Entity-id attachment must be allocated before clearing"
+    );
+    m_textureEntityIds->clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &zero);
+}
+
+Texture2D &Framebuffer::getTextureEntityIds() {
+    IR_ASSERT(
+        m_textureEntityIds != nullptr,
+        "Entity-id attachment must be allocated before reading"
+    );
+    return *m_textureEntityIds;
 }
 
 void Framebuffer::unbind() {

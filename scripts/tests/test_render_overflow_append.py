@@ -56,9 +56,9 @@ int main() {
     FrameDataVoxelToTrixel frame{overflowScratchLayout};
     auto append=[&](ivec3 p,int depth,uint color,bool cut=false) {
 #ifdef METAL_ADAPTER
-        overflowAppendTap(base,p,depth,color,cut,frame,distances,perAxisWinnerIds,canvasSize);
+        overflowAppendTap(base,p,depth,color,cut,17u,frame,distances,perAxisWinnerIds,canvasSize);
 #else
-        overflowAppendTap(base,p,depth,color,cut);
+        overflowAppendTap(base,p,depth,color,cut,17u);
 #endif
     };
     append(face,100,0x11111111u); // settled cardinal winner
@@ -68,21 +68,23 @@ int main() {
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=0) return 2;
     if(perAxisWinnerIds[320]!=0x00080008u ||
        perAxisWinnerIds[321]!=0x22222222u || perAxisWinnerIds[322]!=101u ||
-       perAxisWinnerIds[323]!=(0x00080008u|kOverflowCutFaceBit) ||
-       perAxisWinnerIds[324]!=0x33333333u || perAxisWinnerIds[325]!=102u) return 3;
-    if(overflowEntryCell(perAxisWinnerIds[323])!=0x00080008u ||
-       !overflowEntryIsCutFace(perAxisWinnerIds[323])) return 6;
+       perAxisWinnerIds[324]!=(0x00080008u|kOverflowCutFaceBit) ||
+       perAxisWinnerIds[325]!=0x33333333u || perAxisWinnerIds[326]!=102u ||
+       perAxisWinnerIds[323]!=17u ||
+       perAxisWinnerIds[327]!=17u) return 3;
+    if(overflowEntryCell(perAxisWinnerIds[324])!=0x00080008u ||
+       !overflowEntryIsCutFace(perAxisWinnerIds[324])) return 6;
     append(face,103,0x44444444u); // cap reports, count stays capped
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=1 ||
-       perAxisWinnerIds[326]!=0) return 4;
+       perAxisWinnerIds[328]!=0) return 4;
     append({1000,0,0},104,0x55555555u); // off-canvas cardinal key
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=1) return 5;
     perAxisWinnerIds[301]=0;
     append(face,-32768,0x87654321u,false);
     append(face,-32768,0x87654321u,true);
-    if((perAxisWinnerIds[320]^perAxisWinnerIds[323])!=kOverflowCutFaceBit ||
-       perAxisWinnerIds[321]!=perAxisWinnerIds[324] ||
-       perAxisWinnerIds[322]!=perAxisWinnerIds[325] ||
+    if((perAxisWinnerIds[320]^perAxisWinnerIds[324])!=kOverflowCutFaceBit ||
+       perAxisWinnerIds[321]!=perAxisWinnerIds[325] ||
+       perAxisWinnerIds[322]!=perAxisWinnerIds[326] ||
        int(perAxisWinnerIds[322])!=-32768) return 7;
     std::puts("overflow append controls passed");
     return 0;

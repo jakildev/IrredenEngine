@@ -276,7 +276,7 @@ stores + view mask ×3 (mode 0)  →  overflow append ×3 (mode 3)
 4. **Lighting (C2, `c_light_overflow_faces.{glsl,metal}`)** — a bounded
    compute pass at the tail of `LIGHTING_TO_TRIXEL`, dispatched while the
    sun-shadow map and 128³ light volume are still bound, recovers each
-   overflow entry's world position + face normal from the same 3-uint entry
+   overflow entry's world position + face normal from the same four-word entry
    the scatter reads (`perAxisCellToWorld3D` + `faceOutwardNormal6`) and
    relights it in place (sun cascade + light volume + Lambert, `AO = 1.0`,
    mirroring `c_lighting_to_trixel`'s own world sample) before the scatter
@@ -365,6 +365,51 @@ early rejection require fresh validation against the saturated workload.
 no per-axis canvas cell, and AO is a canvas-cell-resident quantity. No other
 drift from the cell-path lighting model.
 
+### Picking follows the depth-tested owner
+
+The corrected tie fixture and retained main-pool ID buffer are implemented.
+Native capture, repeatability and performance acceptance remain pending on a
+macOS session with a WindowServer connection; picking remains open until that
+evidence is complete.
+
+The scatter writes a decoded entity id to a lazily allocated `RG32UI`
+framebuffer attachment at colour index 1, alongside its unchanged colour.
+Only scatter programs bind that attachment, including the discarding visibility
+prepass. Hardware strict-LESS depth testing elects both outputs together.
+Cell faces read their axis entity-id texel; overflow faces carry a voxel pool
+index in word 3 and fetch the full id from buffer 13. The four-word sort key
+includes that index last, so identical keys still mean identical records.
+The axis store snapshots the main pool's live entity-ID prefix before later
+private-canvas uploads reuse buffer 13, then binds that snapshot for overflow
+draws and restores the shared binding afterward. Its allocation follows the
+axis store through resize, cardinal parking and resume. Four-word uint
+addressing limits overflow capacity to 2^29 records and the pool edge to 563;
+the aligned scratch prefix is included in the address-bound assertion.
+
+A one-thread resolve samples the id and depth attachments immediately after
+scatter, saving ownership in the trailing 16 bytes of the 32-byte hover
+record. After all trixel-to-framebuffer draws, the same kernel re-reads the
+depth texel and publishes the saved id only if the depth bits are unchanged.
+A later depth-winning gather keeps its own hover result. This compares the
+same hardware-quantized texel on both reads, including OpenGL's 24-bit depth.
+The gather's original 16-byte prefix and hover rule remain unchanged.
+
+`mouseMainFramebufferPixel()` inverts the screen blit's placement, including
+its camera residual. Its integer pixel and the resolve mode occupy the tail
+of the composite frame uniform. Cardinal frames use the existing gather;
+non-cardinal cursor projection uses live yaw. The ID attachment costs eight
+bytes per buffered framebuffer pixel; default overflow entries grow from
+12 MiB to 16 MiB. The sort uses a 1,024-record, 16 KiB shared slab.
+
+`IRShapeDebug --rotation-pick-test gui` checks four rotating/cardinal pairs;
+`sweep`, `tie`, and `cube` exercise every degree, equal-depth ownership, and
+288 top-surface samples respectively. The test's top face is centered at
+`P + (0, 0, -0.5)`: the raster cell is centered on P and +Z points down.
+The tie fixture moves A to `P + rotateCardinalZInvI(ivec3(-1), k)` for each
+yaw group's raster cardinal k, asserts the common-cell premise and waits for
+the world transform before grading the group's first rendered sample. A
+hidden private canvas uploads different IDs to exercise the retained snapshot.
+
 ### Draw order is canonical — but only on flagged pools (#2479)
 
 The overflow sorting guarantee below does not cover cell-list compaction order.
@@ -375,7 +420,7 @@ finite footprints; same-class depth collisions remain. See
 
 The mode-3 append assigns entry indices with `atomicAdd`, and **entry index IS
 draw order** in the scatter's overflow branch (`v_peraxis_scatter.glsl` indexes
-by `gl_InstanceID * 3u`). Two entries whose `(cardPix, voxelDistance)` key ties
+by `gl_InstanceID * 4u`). Two entries whose `(cardPix, voxelDistance)` key ties
 therefore resolved their depth contest by run-variant arrival order — measured
 as 10 distinct rotated-shot hashes across 10 runs on the amplitude-5 displaced
 scene, and independently named as a run-variant class by the
@@ -383,17 +428,17 @@ scene, and independently named as a run-variant class by the
 
 `c_per_axis_overflow_sort.{glsl,metal}` closes it: between the append and the
 indirect draw it canonically orders the appended entries by full record value
-(lexicographic `(maskedPackedCell, encodedDistance, colorPacked, cutFlag)`,
-with the cell from word 0 bits 30:0, distance from word 2, colour from word 1
-and the final cut flag from word 0 bit 31), so draw order — and every equal-key
-winner — is a pure function of the appended **set**. The key spans all three words, so key-equality and
+(lexicographic `(maskedPackedCell, encodedDistance, colorPacked, cutFlag, voxelIndex)`,
+with the cell from word 0 bits 30:0, distance from word 2, colour from word 1,
+the cut flag from word 0 bit 31, and the voxel pool index from word 3), so draw order — and every equal-key
+winner — is a pure function of the appended **set**. The key spans all four words, so key-equality and
 record-equality coincide and equal records need no ordering at all.
 
 **The sort is eligible when `storeTiesPossible_` is set.** Current-frame
 GPU counts generate indirect grids for fill, local sort and each remaining
 stage. Empty lists and stages wider than the active power-of-two span have
 zero-sized grids. The completed prior-frame count bounds CPU command encoding
-to twice its power-of-two span, floored at one 2,048-entry local block. Current
+to twice its power-of-two span, floored at one 1,024-entry local block. Current
 GPU counts size the indirect grids within that encoded prefix. The first
 rotating frame after an allocation has no completed frame behind it (the ctrl
 block's index-count word is still the zero seed) and encodes every stage to the
@@ -740,9 +785,9 @@ sweep degenerates after a single `texelFetch` + branch and does **not** dominate
   are lit (AO + sun-shadow + light-volume + Lambert) at trixel resolution before
   the scatter composites them, so rotating voxels show full lighting. See the
   §"Open decisions" → "Lighting / AO placement" resolution.
-- **Picking during rotation.** Winning entity-id from the composite — the gather
-  fast path still resolves hover at every cardinal; the scatter does not yet
-  write the hovered-id SSBO.
+- **Picking during rotation.** The attachment, retained pool IDs and corrected
+  tie fixture are implemented; native capture, repeatability and performance
+  acceptance remain open (see §"Picking follows the depth-tested owner").
 - **Compute-compaction pre-pass** (append non-empty cell indices + indirect
   draw args to shrink the scatter instance count). Measured-deferred: the perf
   gate above shows the empty-cell sweep does not dominate, so this is a future

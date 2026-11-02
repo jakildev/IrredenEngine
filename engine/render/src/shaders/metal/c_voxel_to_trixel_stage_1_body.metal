@@ -81,6 +81,7 @@ inline void overflowAppendTap(
     int voxelDistance,
     uint colorPacked,
     bool isCutFace,
+    uint voxelIndex,
     constant FrameDataVoxelToTrixel& frameData,
     device const atomic_int* distanceScratch,
     device atomic_uint* scratch,
@@ -111,7 +112,7 @@ inline void overflowAppendTap(
         atomic_fetch_add_explicit(&scratch[ctrlBase + 5u], 1u, memory_order_relaxed);
         return;
     }
-    const uint entryBase = uint(frameData.overflowScratchLayout.z) + idx * 3u;
+    const uint entryBase = uint(frameData.overflowScratchLayout.z) + idx * 4u;
     atomic_store_explicit(
         &scratch[entryBase + 0u],
         packOverflowEntryCell(cardPix, isCutFace),
@@ -119,6 +120,7 @@ inline void overflowAppendTap(
     );
     atomic_store_explicit(&scratch[entryBase + 1u], colorPacked, memory_order_relaxed);
     atomic_store_explicit(&scratch[entryBase + 2u], uint(voxelDistance), memory_order_relaxed);
+    atomic_store_explicit(&scratch[entryBase + 3u], voxelIndex, memory_order_relaxed);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
@@ -432,7 +434,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
             const uint overflowColor =
                 (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
             overflowAppendTap(
-                perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace,
+                perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace, voxelIndex,
                 frameData, distanceScratch, perAxisWinnerIds, canvasSize
             );
             return;

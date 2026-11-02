@@ -1,0 +1,19 @@
+Job: 20261102T031707Z-gui-verify-0b3845
+[2026-11-01 19:17:08.805] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-11-01 19:17:09.052] [ClientLog] [info] GUI-ASSERT shot=0 label=continuous_zoom_hover_above_diagonal kind=HOVERED_ENTITY_ID target=486 name=hover_id_above_diagonal_is_raw_texel result=PASS actual=hovered=486
+[2026-11-01 19:17:09.052] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=0 label=continuous_zoom_hover_above_diagonal assertions=1
+[2026-11-01 19:17:09.052] [ClientLog] [info] CaptureCamera: label=continuous_zoom_hover_above_diagonal yaw=0 zoom=(2.5,2.5) effectiveIso=(0,-80) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:17:09.248] [ClientLog] [info] GUI-ASSERT shot=1 label=continuous_zoom_hover_below_diagonal kind=HOVERED_ENTITY_ID target=486 name=hover_id_below_diagonal_is_voxel result=PASS actual=hovered=486
+[2026-11-01 19:17:09.248] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=1 label=continuous_zoom_hover_below_diagonal assertions=1
+[2026-11-01 19:17:09.248] [ClientLog] [info] CaptureCamera: label=continuous_zoom_hover_below_diagonal yaw=0 zoom=(2.5,2.5) effectiveIso=(0,-80) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:17:09.468] [ClientLog] [info] GUI-ASSERT shot=2 label=continuous_zoom_hover_row_above_occupied kind=HOVERED_ENTITY_ID target=487 name=hover_id_row_above_occupied_is_stable result=PASS actual=hovered=487,487,487
+[2026-11-01 19:17:09.468] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=2 label=continuous_zoom_hover_row_above_occupied assertions=1
+[2026-11-01 19:17:09.468] [ClientLog] [info] CaptureCamera: label=continuous_zoom_hover_row_above_occupied yaw=0 zoom=(2.5,2.5) effectiveIso=(0,-96) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:17:09.692] [ClientLog] [info] GUI-ASSERT shot=3 label=continuous_zoom_drag_pan_tracks_cursor kind=HOVERED_ENTITY_ID target=486 name=hover_id_follows_drag_pan result=PASS actual=hovered=486,486
+[2026-11-01 19:17:09.692] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=3 label=continuous_zoom_drag_pan_tracks_cursor assertions=1
+[2026-11-01 19:17:09.692] [ClientLog] [info] CaptureCamera: label=continuous_zoom_drag_pan_tracks_cursor yaw=0 zoom=(2.5,2.5) effectiveIso=(32,-41.6) subdivisions=3 gameResolution=(1280,720)
+[2026-11-01 19:17:09.928] [ClientLog] [info] GUI-ASSERT shot=4 label=continuous_zoom_hover_off_centre kind=HOVERED_ENTITY_ID target=486 name=hover_id_off_centre_is_voxel result=PASS actual=hovered=486,486
+[2026-11-01 19:17:09.928] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=4 label=continuous_zoom_hover_off_centre assertions=1
+[2026-11-01 19:17:09.928] [ClientLog] [info] CaptureCamera: label=continuous_zoom_hover_off_centre yaw=0 zoom=(2.5,2.5) effectiveIso=(18,-54) subdivisions=3 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[gui-verify] 5/5 assertions passed

@@ -1,0 +1,35 @@
+Selected native probe output; baseline = 795e16adb809e526536e734e9b56b4bbe60a170f.
+Head tie/cube were captured before the WIP commit; sweep repeated on bdbe31ea0.
+Nonzero exit 2 is the fixture's intentional assertion-failure return, reported as CRASH by fleet-run.
+
+baselineSweepLog
+[2026-11-01 19:07:32.359] [ClientLog] [info] ROTATION-PICK sweep frames=360 hits=4 misses=356 result=FAIL
+ir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none
+
+baselineCubeLog
+[2026-11-01 19:07:55.217] [ClientLog] [info] ROTATION-PICK cube frames=288 hits=0 misses=288 result=FAIL
+ir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none
+
+baselineTieLog
+[2026-11-01 19:10:17.193] [ClientLog] [info] ROTATION-PICK tie yaw=20 nearer=0 farther=0 background=3843
+[2026-11-01 19:10:17.193] [ClientLog] [info] ROTATION-PICK tie yaw=70 nearer=0 farther=0 background=3843
+[2026-11-01 19:10:17.193] [ClientLog] [info] ROTATION-PICK tie yaw=160 nearer=0 farther=0 background=3843
+[2026-11-01 19:10:17.193] [ClientLog] [info] ROTATION-PICK tie yaw=250 nearer=0 farther=0 background=3843
+[2026-11-01 19:10:17.193] [ClientLog] [info] ROTATION-PICK tie frames=15372 hits=15372 misses=0 result=FAIL
+ir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none
+
+headTie1Log
+[2026-11-01 19:12:53.011] [ClientLog] [info] ROTATION-PICK tie yaw=20 nearer=2019 farther=1259 background=565
+[2026-11-01 19:12:53.011] [ClientLog] [info] ROTATION-PICK tie yaw=70 nearer=21 farther=2943 background=879
+[2026-11-01 19:12:53.011] [ClientLog] [info] ROTATION-PICK tie yaw=160 nearer=0 farther=2944 background=899
+[2026-11-01 19:12:53.011] [ClientLog] [info] ROTATION-PICK tie yaw=250 nearer=0 farther=2941 background=902
+[2026-11-01 19:12:53.011] [ClientLog] [info] ROTATION-PICK tie frames=15372 hits=15372 misses=0 result=FAIL
+ir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none
+
+cubeLog
+[2026-11-01 19:02:39.503] [ClientLog] [info] ROTATION-PICK cube frames=288 hits=288 misses=0 result=PASS
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+
+finalSweepLog
+[2026-11-01 19:26:17.778] [ClientLog] [info] ROTATION-PICK sweep frames=360 hits=360 misses=0 result=PASS
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0

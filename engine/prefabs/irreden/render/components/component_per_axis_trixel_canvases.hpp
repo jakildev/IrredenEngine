@@ -297,15 +297,18 @@ struct PerAxisCanvasStore {
     //     baseInstance} + droppedCount.
     //     instanceCount/droppedCount are GPU atomics (resolveMode 3). The
     //     overflow indirect draw sources its args at ctrlBaseUints_*4 directly.
-    // [entriesBaseUints_, +overflowCap_*3) — overflow entries, 3 uints
+    // [entriesBaseUints_, +overflowCap_*4) — overflow entries, 4 uints
     //     each: {iso cell x|y (16+15) with cut flag in bit 31, colorPacked,
-    //     encoded distance}. Height is below 32768; the
+    //     encoded distance, voxel pool index}. Height is below 32768; the
     //     exact (cell, value) pair the cardinal store would have written, so
     //     the scatter's overflow branch reuses the cell path's recovery
     //     bit-for-bit.
     // A Buffer (not textures) because Metal has only one image-atomic scratch
     // slot (held by distances_). Sized/freed with the axis textures.
     std::pair<ResourceId, Buffer *> winnerIds_{0, nullptr};
+    // Overflow indices refer to this canvas's pool, while slot 13 is reused
+    // by later private-canvas uploads before the framebuffer composite.
+    std::pair<ResourceId, Buffer *> voxelEntityIds_{0, nullptr};
     // Constant seed for the ctrl block, copied in at the top of each rotating
     // frame; a CPU write there would wait for the previous frame's atomics.
     std::pair<ResourceId, Buffer *> overflowCtrlSeed_{0, nullptr};
@@ -332,7 +335,7 @@ struct PerAxisCanvasStore {
     }
     int entriesBaseUints_ = 0;
     int overflowCap_ = 0;
-    static constexpr std::uint32_t kOverflowSortBlockBits = 11;
+    static constexpr std::uint32_t kOverflowSortBlockBits = 10;
     static constexpr std::uint32_t kOverflowSortMaxStageBits = 30;
     static constexpr std::uint32_t kOverflowSortCommandUints = 4;
     static constexpr std::uint32_t kOverflowSortCommandCount =
@@ -377,19 +380,20 @@ struct PerAxisCanvasStore {
     }
 
     // VoxelPoolConfig::kMaxEdge is sized off this bound: the largest pool's
-    // face demand fits the signed 2^30 field, one edge more does not.
+    // face demand fits four-word entries plus a signed-offset scratch prefix.
+    static constexpr std::uint64_t kMaxOverflowRecords = std::uint64_t{1} << 29;
     static_assert(
         static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge) *
                 IRRender::VoxelPoolConfig::kMaxEdge * IRRender::VoxelPoolConfig::kMaxEdge *
                 kAxisCount <=
-            (std::uint64_t{1} << 30),
+            kMaxOverflowRecords,
         "VoxelPoolConfig::kMaxEdge overflows the per-axis overflow lane"
     );
     static_assert(
         static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge + 1) *
                 (IRRender::VoxelPoolConfig::kMaxEdge + 1) *
                 (IRRender::VoxelPoolConfig::kMaxEdge + 1) * kAxisCount >
-            (std::uint64_t{1} << 30),
+            kMaxOverflowRecords,
         "VoxelPoolConfig::kMaxEdge is not the largest edge the overflow lane fits"
     );
 
@@ -400,8 +404,8 @@ struct PerAxisCanvasStore {
             IRMath::max(static_cast<std::uint64_t>(axisCells) / 4u, std::uint64_t{65536});
         const std::uint64_t demand = IRMath::max(faceDemand, canvasReserve);
         IR_ASSERT(
-            demand <= (std::uint64_t{1} << 30),
-            "per-axis capacity exceeds signed shader field"
+            demand <= kMaxOverflowRecords,
+            "per-axis capacity exceeds four-word shader address space"
         );
         return static_cast<int>(IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(demand)));
     }
@@ -417,6 +421,12 @@ struct PerAxisCanvasStore {
             "per-axis scratch offsets exceed signed shader fields"
         );
         const int controlBase = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
+        IR_ASSERT(
+            static_cast<std::uint64_t>(controlBase) + kOverflowControlUints +
+                    static_cast<std::uint64_t>(overflowCapacity) * 4u <=
+                std::uint64_t{1} << 32,
+            "per-axis scratch entries exceed uint shader address space"
+        );
         return ivec4(
             0,
             controlBase,
@@ -513,11 +523,16 @@ struct PerAxisCanvasStore {
         winnerIds_ = IRRender::createResource<Buffer>(
             nullptr,
             (static_cast<std::size_t>(entriesBaseUints_) +
-             static_cast<std::size_t>(overflowCap_) * 3u) *
+             static_cast<std::size_t>(overflowCap_) * 4u) *
                 sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisResolveScratch
+        );
+        voxelEntityIds_ = IRRender::createResource<Buffer>(
+            nullptr,
+            static_cast<std::size_t>(IRRender::VoxelPoolConfig::getTotalSize()) * sizeof(uvec2),
+            BUFFER_STORAGE_DYNAMIC
         );
         // Seed the ctrl block so the first rotating frame's pre-reset counter
         // readback (the cap-overflow warn) reads zeros, not uninitialized data.
@@ -595,6 +610,8 @@ struct PerAxisCanvasStore {
         glitchTileRegionStride_ = 0;
         IRRender::destroyResource<Buffer>(winnerIds_.first);
         winnerIds_ = {0, nullptr};
+        IRRender::destroyResource<Buffer>(voxelEntityIds_.first);
+        voxelEntityIds_ = {0, nullptr};
         IRRender::destroyResource<Buffer>(overflowCtrlSeed_.first);
         overflowCtrlSeed_ = {0, nullptr};
         IRRender::destroyResource<Buffer>(overflowDrawArgs_.first);
