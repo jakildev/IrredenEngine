@@ -545,6 +545,9 @@ bool g_guiTest = false;
 // picking GUI test (kContinuousZoomGuiShots). Turns the continuous zoom policy
 // on for the run.
 bool g_continuousZoomGuiTest = false;
+enum class RotationPickMode { OFF, GUI, SWEEP, TIE, CUBE };
+RotationPickMode g_rotationPickMode = RotationPickMode::OFF;
+bool g_rotationPickPassed = false;
 // The cull-eviction fixture replaces both the scene and capture table;
 // keep it flag-gated so the standing render references retain their scene.
 bool g_cullEvictTest = false;
@@ -1679,6 +1682,12 @@ void registerCliArgs() {
         "Replace the capture table with the fractional-zoom picking GUI test (continuous zoom "
         "2.5); needs --auto-screenshot"
     );
+    args.enumValue(
+        "--rotation-pick-test",
+        "Rotating hover validation",
+        {"off", "gui", "sweep", "tie", "cube"},
+        "off"
+    );
     args.string("--debug-overlay", "Debug overlay mode (e.g. none, depth, normals)", "none");
     args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
     args.flag("--pivot-origin", "Force the legacy world-origin Z-yaw pivot (#1352 A/B)");
@@ -1821,6 +1830,15 @@ void readCliArgs() {
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
     g_continuousZoomGuiTest = args.getFlag("--continuous-zoom-gui-test");
+    const auto rotationPickMode = args.getEnum("--rotation-pick-test");
+    if (rotationPickMode == "gui")
+        g_rotationPickMode = RotationPickMode::GUI;
+    if (rotationPickMode == "sweep")
+        g_rotationPickMode = RotationPickMode::SWEEP;
+    if (rotationPickMode == "tie")
+        g_rotationPickMode = RotationPickMode::TIE;
+    if (rotationPickMode == "cube")
+        g_rotationPickMode = RotationPickMode::CUBE;
     g_zoomContinuous = args.getFlag("--zoom-continuous") || g_continuousZoomGuiTest;
     if (args.wasProvided("--zoom-sweep")) {
         const std::vector<float> &sweep = args.getFloats("--zoom-sweep");
@@ -2133,6 +2151,8 @@ int main(int argc, char **argv) {
         );
     }
     IREngine::gameLoop();
+    if (g_rotationPickMode != RotationPickMode::OFF && g_rotationPickMode != RotationPickMode::GUI)
+        return g_rotationPickPassed ? 0 : 2;
     return g_shapeSampleProbe && (!g_shapeSampleProbeAttempted || !g_shapeSampleProbePassed) ? 2
                                                                                              : 0;
 }
@@ -2550,6 +2570,236 @@ void onHoverParityAssertFrame(int shotIndex) {
         return;
     }
     aimHoverParity(g_hoverParity.shots_[shotIndex]);
+}
+
+constexpr std::array<int, 8> kRotationPickDegrees{20, 0, 70, 90, 160, 180, 250, 270};
+constexpr vec3 kRotationPickAim = kHoverParityVoxelWorld + vec3(0.0f, 0.0f, -0.5f);
+struct RotationPickSample {
+    int yawDegrees_;
+    ivec2 cursor_;
+    IREntity::EntityId expected_;
+    int group_;
+};
+struct RotationPickFixture {
+    IREntity::EntityId entity_ = IREntity::kNullEntity;
+    std::array<IRVideo::GuiTestShot, kRotationPickDegrees.size()> shots_{};
+    IRPrefab::GuiTest::Assertion assertion_[1];
+    IRPrefab::GuiTest::LatchState latch_;
+    IREntity::EntityId nearer_ = IREntity::kNullEntity;
+    std::vector<RotationPickSample> samples_;
+    std::vector<std::pair<vec3, IREntity::EntityId>> cubeTargets_;
+    std::array<int, 4> nearerHits_{};
+    std::array<int, 4> fartherHits_{};
+    std::array<int, 4> backgroundHits_{};
+    int frame_ = -10;
+    int hits_ = 0;
+    int misses_ = 0;
+};
+RotationPickFixture g_rotationPick;
+
+// The voxel raster is centered on its authored cell; +Z points down.
+// Continuous-yaw probes use an independent forward projection, so this
+// oracle also runs against the renderer without its yaw-aware cursor helper.
+ivec2 rotationPickScreenPixel(vec3 world) {
+    const float yaw = IRPrefab::Camera::getYaw();
+    if (IRPrefab::Camera::computeYawSplit(yaw).second == 0.0f) {
+        return IRRender::worldPos3DToMouseScreenPx(
+            kHoverParityVoxelWorld + vec3(0.0f, 0.0f, -0.375f)
+        );
+    }
+    const vec2 iso = IRMath::pos3DtoPos2DIsoYawed(world, yaw);
+    const vec2 screen =
+        iso + IRRender::getEffectiveCameraIso() +
+        IRRender::getMainCanvasSizeTrixels() / IRRender::getCameraZoom() / vec2(2.0f);
+    return IRMath::roundVec(
+        IRInput::getMousePosition() +
+        IRRender::framebufferPxToWindowPoints(
+            screen * IRRender::getTriangleStepSizeScreen() - IRRender::getMousePositionOutputView()
+        )
+    );
+}
+
+void initRotationPickFixture() {
+    IRRender::setSubdivisionMode(IRRender::SubdivisionMode::NONE);
+    IRRender::setCameraZoom(kHoverParityZoom);
+    IRRender::setCameraPosition2DIso(-IRMath::pos3DtoPos2DIso(kRotationPickAim));
+    IRRender::setRotationPivotFocus(kRotationPickAim);
+    auto &cubeTargets = g_rotationPick.cubeTargets_;
+    if (g_rotationPickMode == RotationPickMode::CUBE) {
+        IRRender::setCameraZoom(8.0f);
+        const vec3 focus = kVoxelEntityCubeOrigin + vec3(3.0f) + kVoxelEntityCubeTwinOffset * 0.5f;
+        IRRender::setCameraPosition2DIso(-IRMath::pos3DtoPos2DIso(focus));
+        IRRender::setRotationPivotFocus(focus);
+        for (int z = 0; z < kVoxelEntityCubeSize; ++z) {
+            for (int y = 0; y < kVoxelEntityCubeSize; ++y) {
+                for (int x = 0; x < kVoxelEntityCubeSize; ++x) {
+                    const vec3 origin = kVoxelEntityCubeOrigin + vec3(x, y, z);
+                    const auto entity = createCornerVoxel(origin, kVoxelEntityCubeColor);
+                    if (z == 0)
+                        cubeTargets.emplace_back(origin + vec3(0.0f, 0.0f, -0.5f), entity);
+                }
+            }
+        }
+        const auto twin = IREntity::createEntity(
+            C_LocalTransform{kVoxelEntityCubeOrigin + kVoxelEntityCubeTwinOffset},
+            C_VoxelSetNew{ivec3(kVoxelEntityCubeSize), kVoxelEntityCubeColor, EntityAnchor::CORNER}
+        );
+        for (int y = 0; y < kVoxelEntityCubeSize; ++y) {
+            for (int x = 0; x < kVoxelEntityCubeSize; ++x) {
+                cubeTargets.emplace_back(
+                    kVoxelEntityCubeOrigin + kVoxelEntityCubeTwinOffset + vec3(x, y, -0.5f),
+                    twin
+                );
+            }
+        }
+    } else {
+        if (g_rotationPickMode == RotationPickMode::TIE) {
+            g_rotationPick.nearer_ =
+                createCornerVoxel(kHoverParityVoxelWorld - vec3(1), kHoverParityColor);
+        }
+        g_rotationPick.entity_ = createCornerVoxel(kHoverParityVoxelWorld, kHoverParityColor);
+        if (g_rotationPickMode == RotationPickMode::TIE) {
+            const auto other = createCornerVoxel(kHoverParityVoxelWorld, kHoverParityColor);
+            if (IREntity::getComponent<C_VoxelSetNew>(other).voxelStartIdx_ <
+                IREntity::getComponent<C_VoxelSetNew>(g_rotationPick.entity_).voxelStartIdx_) {
+                g_rotationPick.entity_ = other;
+            }
+        }
+    }
+    g_rotationPick.assertion_[0] =
+        IRPrefab::GuiTest::hoveredEntityId(g_rotationPick.entity_, "rotation_pick_owner", 3);
+    IRPrefab::Camera::setYaw(0.0f);
+}
+
+void buildRotationPickSamples() {
+    const auto &cubeTargets = g_rotationPick.cubeTargets_;
+    if (g_rotationPickMode == RotationPickMode::TIE ||
+        g_rotationPickMode == RotationPickMode::CUBE) {
+        for (int group = 0; group < 4; ++group) {
+            const int degrees = kRotationPickDegrees[group * 2];
+            IRPrefab::Camera::setYaw(degrees * IRMath::kPi / 180.0f);
+            if (g_rotationPickMode == RotationPickMode::CUBE) {
+                for (const auto &[world, entity] : cubeTargets) {
+                    g_rotationPick.samples_.push_back(
+                        {degrees, rotationPickScreenPixel(world), entity, group}
+                    );
+                }
+                continue;
+            }
+            ivec2 low(1000000), high(-1000000);
+            for (int corner = 0; corner < 8; ++corner) {
+                const auto pixel = rotationPickScreenPixel(
+                    kHoverParityVoxelWorld +
+                    vec3(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1) - vec3(0.5f)
+                );
+                low = IRMath::min(low, pixel);
+                high = IRMath::max(high, pixel);
+            }
+            for (int y = low.y; y <= high.y; ++y) {
+                for (int x = low.x; x <= high.x; ++x) {
+                    g_rotationPick.samples_.push_back(
+                        {degrees, ivec2(x, y), g_rotationPick.entity_, group}
+                    );
+                }
+            }
+        }
+    }
+    IRPrefab::Camera::setYaw(0.0f);
+}
+
+void onRotationPickGuiFrame(int index, bool capture) {
+    IRInput::injectMouseMove(rotationPickScreenPixel(kRotationPickAim));
+    IRPrefab::GuiTest::onFrame(
+        g_rotationPick.latch_,
+        index,
+        capture,
+        g_rotationPick.shots_[index].render_.label_,
+        g_rotationPick.assertion_,
+        1
+    );
+}
+
+void tickRotationPickSweep() {
+    if (g_rotationPick.frame_ < 0) {
+        IRPrefab::Camera::setYaw(0.0f);
+        IRInput::injectMouseMove(rotationPickScreenPixel(kRotationPickAim));
+        ++g_rotationPick.frame_;
+        return;
+    }
+    if (g_rotationPick.frame_ == 0)
+        buildRotationPickSamples();
+    const bool sweep = g_rotationPickMode == RotationPickMode::SWEEP;
+    const bool tie = g_rotationPickMode == RotationPickMode::TIE;
+    const int count = sweep ? 360 : static_cast<int>(g_rotationPick.samples_.size());
+    if (g_rotationPick.frame_ > 0) {
+        const int previous = g_rotationPick.frame_ - 1;
+        const auto actual = IRRender::getEntityIdAtMouseTrixel();
+        const auto expected =
+            sweep ? g_rotationPick.entity_ : g_rotationPick.samples_[previous].expected_;
+        bool hit = actual == expected;
+        if (tie) {
+            const int group = g_rotationPick.samples_[previous].group_;
+            if (actual == g_rotationPick.nearer_)
+                ++g_rotationPick.nearerHits_[group];
+            if (actual == g_rotationPick.entity_)
+                ++g_rotationPick.fartherHits_[group];
+            if (actual == IREntity::kNullEntity)
+                ++g_rotationPick.backgroundHits_[group];
+            hit = actual == IREntity::kNullEntity || actual == g_rotationPick.nearer_ || hit;
+        }
+        if (hit) {
+            ++g_rotationPick.hits_;
+        } else {
+            if (g_rotationPick.misses_ < 12) {
+                IR_LOG_ERROR(
+                    "ROTATION-PICK miss sample={} expected={} actual={}",
+                    previous,
+                    expected,
+                    actual
+                );
+            }
+            ++g_rotationPick.misses_;
+        }
+    }
+    if (g_rotationPick.frame_ == count) {
+        g_rotationPickPassed = g_rotationPick.hits_ == count;
+        if (tie) {
+            for (int group = 0; group < 4; ++group) {
+                IR_LOG_INFO(
+                    "ROTATION-PICK tie yaw={} nearer={} farther={} background={}",
+                    kRotationPickDegrees[group * 2],
+                    g_rotationPick.nearerHits_[group],
+                    g_rotationPick.fartherHits_[group],
+                    g_rotationPick.backgroundHits_[group]
+                );
+                g_rotationPickPassed = g_rotationPickPassed &&
+                                       g_rotationPick.nearerHits_[group] > 0 &&
+                                       g_rotationPick.fartherHits_[group] > 0;
+            }
+        }
+        IR_LOG_INFO(
+            "ROTATION-PICK {} frames={} hits={} misses={} result={}",
+            sweep ? "sweep"
+            : tie ? "tie"
+                  : "cube",
+            count,
+            g_rotationPick.hits_,
+            g_rotationPick.misses_,
+            g_rotationPickPassed ? "PASS" : "FAIL"
+        );
+        IRWindow::closeWindow();
+        return;
+    }
+    const int index = IRMath::max(g_rotationPick.frame_, 0);
+    const int degree = sweep ? index : g_rotationPick.samples_[index].yawDegrees_;
+    IRPrefab::Camera::setYaw(static_cast<float>(degree) * IRMath::kPi / 180.0f);
+    IRInput::injectMouseMove(
+        sweep ? rotationPickScreenPixel(kRotationPickAim) : g_rotationPick.samples_[index].cursor_
+    );
+    // Samples advance per render, independently of the fixed INPUT cadence.
+    IRInput::getInputManager().tick();
+    IRInput::getInputManager().advanceInputState(IRTime::Events::RENDER);
+    ++g_rotationPick.frame_;
 }
 
 // The pivot trio runs panned off-origin at a non-cardinal yaw: ORIGIN and
@@ -4057,7 +4307,50 @@ void initSystems() {
         renderPipeline.push_back(autoProfileId);
     }
 
-    if (g_autoWarmupFrames > 0 && g_cullEvictTest) {
+    if (g_rotationPickMode == RotationPickMode::SWEEP ||
+        g_rotationPickMode == RotationPickMode::TIE ||
+        g_rotationPickMode == RotationPickMode::CUBE) {
+        IRInput::beginSyntheticInput();
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_VoxelSetNew>(
+                "RotationPickSweep",
+                [](C_VoxelSetNew &) {},
+                &tickRotationPickSweep
+            )
+        );
+    }
+    if (g_rotationPickMode == RotationPickMode::GUI) {
+        constexpr const char *labels[] = {
+            "rotation_20",
+            "cardinal_0",
+            "rotation_70",
+            "cardinal_90",
+            "rotation_160",
+            "cardinal_180",
+            "rotation_250",
+            "cardinal_270"
+        };
+        static_assert(std::size(labels) == kRotationPickDegrees.size());
+        for (std::size_t i = 0; i < kRotationPickDegrees.size(); ++i) {
+            auto &shot = g_rotationPick.shots_[i].render_;
+            shot.zoom_ = kHoverParityZoom;
+            shot.cameraIso_ = -IRMath::pos3DtoPos2DIso(kRotationPickAim);
+            shot.yawRadians_ = static_cast<float>(kRotationPickDegrees[i]) * IRMath::kPi / 180.0f;
+            shot.label_ = labels[i];
+            shot.pivotFocusWorld_ = kRotationPickAim;
+            shot.hasPivotFocus_ = true;
+        }
+        IRVideo::GuiTestConfig cfg{};
+        cfg.warmupFrames_ = IRMath::max(g_autoWarmupFrames, 10);
+        cfg.settleFrames_ = 5;
+        cfg.shots_ = g_rotationPick.shots_.data();
+        cfg.numShots_ = static_cast<int>(g_rotationPick.shots_.size());
+        cfg.onAssertFrame_ = &onRotationPickGuiFrame;
+        renderPipeline.insert(
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
+            IRVideo::createGuiTestSystem(cfg)
+        );
+    } else if (g_autoWarmupFrames > 0 && g_cullEvictTest) {
         IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         // The pose swap lands on a shot's first live frame; the settle window
@@ -5469,6 +5762,10 @@ void initGlitchSubjectFixture() {
 }
 
 void initEntities() {
+    if (g_rotationPickMode != RotationPickMode::OFF) {
+        initRotationPickFixture();
+        return;
+    }
     const auto &sdfVoxelMode = IREngine::args().getEnum("--sdf-voxel-scene");
     if (sdfVoxelMode != "off") {
         using Pose = IRShapeDebug::SdfVoxelScene::Pose;
