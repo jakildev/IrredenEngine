@@ -367,9 +367,10 @@ drift from the cell-path lighting model.
 
 ### Picking follows the depth-tested owner
 
-Work in progress: the tie-fixture acceptance contract needs correction, and
-the overflow id buffer still needs a main-pool lifetime across detached-canvas
-uploads. Picking during rotation remains an open item until both are resolved.
+The corrected tie fixture and retained main-pool ID buffer are implemented.
+Native capture, repeatability and performance acceptance remain pending on a
+macOS session with a WindowServer connection; picking remains open until that
+evidence is complete.
 
 The scatter writes a decoded entity id to a lazily allocated `RG32UI`
 framebuffer attachment at colour index 1, alongside its unchanged colour.
@@ -378,6 +379,12 @@ prepass. Hardware strict-LESS depth testing elects both outputs together.
 Cell faces read their axis entity-id texel; overflow faces carry a voxel pool
 index in word 3 and fetch the full id from buffer 13. The four-word sort key
 includes that index last, so identical keys still mean identical records.
+The axis store snapshots the main pool's live entity-ID prefix before later
+private-canvas uploads reuse buffer 13, then binds that snapshot for overflow
+draws and restores the shared binding afterward. Its allocation follows the
+axis store through resize, cardinal parking and resume. Four-word uint
+addressing limits overflow capacity to 2^29 records and the pool edge to 563;
+the aligned scratch prefix is included in the address-bound assertion.
 
 A one-thread resolve samples the id and depth attachments immediately after
 scatter, saving ownership in the trailing 16 bytes of the 32-byte hover
@@ -398,6 +405,10 @@ bytes per buffered framebuffer pixel; default overflow entries grow from
 `sweep`, `tie`, and `cube` exercise every degree, equal-depth ownership, and
 288 top-surface samples respectively. The test's top face is centered at
 `P + (0, 0, -0.5)`: the raster cell is centered on P and +Z points down.
+The tie fixture moves A to `P + rotateCardinalZInvI(ivec3(-1), k)` for each
+yaw group's raster cardinal k, asserts the common-cell premise and waits for
+the world transform before grading the group's first rendered sample. A
+hidden private canvas uploads different IDs to exercise the retained snapshot.
 
 ### Draw order is canonical — but only on flagged pools (#2479)
 
@@ -774,9 +785,9 @@ sweep degenerates after a single `texelFetch` + branch and does **not** dominate
   are lit (AO + sun-shadow + light-volume + Lambert) at trixel resolution before
   the scatter composites them, so rotating voxels show full lighting. See the
   §"Open decisions" → "Lighting / AO placement" resolution.
-- **Picking during rotation.** The attachment and re-read implementation is WIP;
-  the tie fixture and shared pool-id lifetime remain unresolved (see
-  §"Picking follows the depth-tested owner").
+- **Picking during rotation.** The attachment, retained pool IDs and corrected
+  tie fixture are implemented; native capture, repeatability and performance
+  acceptance remain open (see §"Picking follows the depth-tested owner").
 - **Compute-compaction pre-pass** (append non-empty cell indices + indirect
   draw args to shrink the scatter instance count). Measured-deferred: the perf
   gate above shows the empty-cell sweep does not dominate, so this is a future

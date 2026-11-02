@@ -135,6 +135,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // restore never fires.
     Buffer *voxelCompactedBuf_ = nullptr;
     Buffer *voxelIndirectBuf_ = nullptr;
+    Buffer *voxelEntityIdBuf_ = nullptr;
     // kill switch (same pattern as the sun-splat one): setting
     // IR_PERAXIS_OVERFLOW_DISABLE in the environment skips the overflow entry
     // draw only — the mask/append dispatches still run but nothing consumes
@@ -731,6 +732,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // Overflow entries encode their own face and albedo at slot 25; the
         // resident axis textures supply only their dimensions, never AO.
         if (!overflowDrawDisabled_) {
+            if (voxelEntityIdBuf_ == nullptr)
+                voxelEntityIdBuf_ = IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer");
+            axes.voxelEntityIds_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_VoxelEntityIds
+            );
             frameData.frameData_.overflowMode_ = 1;
             frameData.updateFrameData(frameDataBuf_);
             Buffer *overflowScratch = axes.winnerIds_.second;
@@ -746,6 +753,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 axes.overflowDrawArgs_.second,
                 0
             );
+            voxelEntityIdBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelEntityIds);
             frameData.frameData_.overflowMode_ = 0;
         }
     }

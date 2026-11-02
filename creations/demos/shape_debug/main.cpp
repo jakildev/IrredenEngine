@@ -42,6 +42,7 @@
 #include <irreden/common/components/component_auto_spin_lua.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/render/entity_canvas.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -2591,9 +2592,12 @@ struct RotationPickFixture {
     std::array<int, 4> nearerHits_{};
     std::array<int, 4> fartherHits_{};
     std::array<int, 4> backgroundHits_{};
+    std::array<vec3, 4> tiePositions_{};
     int frame_ = -10;
     int hits_ = 0;
     int misses_ = 0;
+    int tieGroup_ = -1;
+    bool samplePending_ = false;
 };
 RotationPickFixture g_rotationPick;
 
@@ -2654,8 +2658,19 @@ void initRotationPickFixture() {
         }
     } else {
         if (g_rotationPickMode == RotationPickMode::TIE) {
+            for (int group = 0; group < 4; ++group) {
+                const float yaw = kRotationPickDegrees[group * 2] * IRMath::kPi / 180.0f;
+                const auto cardinal =
+                    IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(yaw).first);
+                const ivec3 offset = IRMath::rotateCardinalZInvI(ivec3(-1), cardinal);
+                IR_ASSERT(
+                    IRMath::pos3DtoPos2DIso(IRMath::rotateCardinalZ(offset, cardinal)) == ivec2(0),
+                    "tie fixture nearer voxel must share the farther voxel's cardinal store cell"
+                );
+                g_rotationPick.tiePositions_[group] = kHoverParityVoxelWorld + vec3(offset);
+            }
             g_rotationPick.nearer_ =
-                createCornerVoxel(kHoverParityVoxelWorld - vec3(1), kHoverParityColor);
+                createCornerVoxel(g_rotationPick.tiePositions_[0], kHoverParityColor);
         }
         g_rotationPick.entity_ = createCornerVoxel(kHoverParityVoxelWorld, kHoverParityColor);
         if (g_rotationPickMode == RotationPickMode::TIE) {
@@ -2664,6 +2679,23 @@ void initRotationPickFixture() {
                 IREntity::getComponent<C_VoxelSetNew>(g_rotationPick.entity_).voxelStartIdx_) {
                 g_rotationPick.entity_ = other;
             }
+            // A later private-pool upload must not replace main-pool overflow owners.
+            auto privateCanvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+                "rotationPickPrivate",
+                ivec2(16),
+                ivec3(4),
+                true
+            );
+            privateCanvas.visible_ = false;
+            IREntity::createEntity(
+                privateCanvas,
+                C_VoxelSetNew{
+                    ivec3(4),
+                    kHoverParityColor,
+                    EntityAnchor::CORNER,
+                    privateCanvas.canvasEntity_
+                }
+            );
         }
     }
     g_rotationPick.assertion_[0] =
@@ -2726,12 +2758,13 @@ void tickRotationPickSweep() {
         ++g_rotationPick.frame_;
         return;
     }
-    if (g_rotationPick.frame_ == 0)
+    if (g_rotationPick.frame_ == 0 && g_rotationPick.samples_.empty())
         buildRotationPickSamples();
     const bool sweep = g_rotationPickMode == RotationPickMode::SWEEP;
     const bool tie = g_rotationPickMode == RotationPickMode::TIE;
     const int count = sweep ? 360 : static_cast<int>(g_rotationPick.samples_.size());
-    if (g_rotationPick.frame_ > 0) {
+    if (g_rotationPick.samplePending_) {
+        g_rotationPick.samplePending_ = false;
         const int previous = g_rotationPick.frame_ - 1;
         const auto actual = IRRender::getEntityIdAtMouseTrixel();
         const auto expected =
@@ -2792,13 +2825,28 @@ void tickRotationPickSweep() {
     }
     const int index = IRMath::max(g_rotationPick.frame_, 0);
     const int degree = sweep ? index : g_rotationPick.samples_[index].yawDegrees_;
-    IRPrefab::Camera::setYaw(static_cast<float>(degree) * IRMath::kPi / 180.0f);
+    const float yaw = static_cast<float>(degree) * IRMath::kPi / 180.0f;
+    IRPrefab::Camera::setYaw(yaw);
+    if (tie) {
+        const int group = g_rotationPick.samples_[index].group_;
+        const vec3 position = g_rotationPick.tiePositions_[group];
+        if (g_rotationPick.tieGroup_ != group) {
+            IREntity::getComponent<C_LocalTransform>(g_rotationPick.nearer_).translation_ =
+                position;
+            g_rotationPick.tieGroup_ = group;
+        }
+        // UPDATE must propagate the new pose before this render can grade a sample.
+        if (IREntity::getComponent<C_WorldTransform>(g_rotationPick.nearer_).translation_ !=
+            position)
+            return;
+    }
     IRInput::injectMouseMove(
         sweep ? rotationPickScreenPixel(kRotationPickAim) : g_rotationPick.samples_[index].cursor_
     );
     // Samples advance per render, independently of the fixed INPUT cadence.
     IRInput::getInputManager().tick();
     IRInput::getInputManager().advanceInputState(IRTime::Events::RENDER);
+    g_rotationPick.samplePending_ = true;
     ++g_rotationPick.frame_;
 }
 

@@ -2016,6 +2016,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
                                             perAxisCanvases_ != nullptr &&
                                             perAxisCanvases_->isAllocated();
+        if (skipSingleCanvasVoxels) {
+            IRRender::device()->copyBufferSubData(
+                voxelEntityIdBuf_,
+                0,
+                perAxisCanvases_->voxelEntityIds_.second,
+                0,
+                static_cast<std::size_t>(liveVoxelCount) * sizeof(IREntity::EntityId)
+            );
+        }
         if (voxelFaceBaker_ != nullptr) {
             voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
             voxelColorBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelColors);

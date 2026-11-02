@@ -306,6 +306,9 @@ struct PerAxisCanvasStore {
     // A Buffer (not textures) because Metal has only one image-atomic scratch
     // slot (held by distances_). Sized/freed with the axis textures.
     std::pair<ResourceId, Buffer *> winnerIds_{0, nullptr};
+    // Overflow indices refer to this canvas's pool, while slot 13 is reused
+    // by later private-canvas uploads before the framebuffer composite.
+    std::pair<ResourceId, Buffer *> voxelEntityIds_{0, nullptr};
     // Constant seed for the ctrl block, copied in at the top of each rotating
     // frame; a CPU write there would wait for the previous frame's atomics.
     std::pair<ResourceId, Buffer *> overflowCtrlSeed_{0, nullptr};
@@ -377,19 +380,20 @@ struct PerAxisCanvasStore {
     }
 
     // VoxelPoolConfig::kMaxEdge is sized off this bound: the largest pool's
-    // face demand fits the signed 2^30 field, one edge more does not.
+    // face demand fits four-word entries plus a signed-offset scratch prefix.
+    static constexpr std::uint64_t kMaxOverflowRecords = std::uint64_t{1} << 29;
     static_assert(
         static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge) *
                 IRRender::VoxelPoolConfig::kMaxEdge * IRRender::VoxelPoolConfig::kMaxEdge *
                 kAxisCount <=
-            (std::uint64_t{1} << 30),
+            kMaxOverflowRecords,
         "VoxelPoolConfig::kMaxEdge overflows the per-axis overflow lane"
     );
     static_assert(
         static_cast<std::uint64_t>(IRRender::VoxelPoolConfig::kMaxEdge + 1) *
                 (IRRender::VoxelPoolConfig::kMaxEdge + 1) *
                 (IRRender::VoxelPoolConfig::kMaxEdge + 1) * kAxisCount >
-            (std::uint64_t{1} << 30),
+            kMaxOverflowRecords,
         "VoxelPoolConfig::kMaxEdge is not the largest edge the overflow lane fits"
     );
 
@@ -400,8 +404,8 @@ struct PerAxisCanvasStore {
             IRMath::max(static_cast<std::uint64_t>(axisCells) / 4u, std::uint64_t{65536});
         const std::uint64_t demand = IRMath::max(faceDemand, canvasReserve);
         IR_ASSERT(
-            demand <= (std::uint64_t{1} << 30),
-            "per-axis capacity exceeds signed shader field"
+            demand <= kMaxOverflowRecords,
+            "per-axis capacity exceeds four-word shader address space"
         );
         return static_cast<int>(IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(demand)));
     }
@@ -417,6 +421,12 @@ struct PerAxisCanvasStore {
             "per-axis scratch offsets exceed signed shader fields"
         );
         const int controlBase = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
+        IR_ASSERT(
+            static_cast<std::uint64_t>(controlBase) + kOverflowControlUints +
+                    static_cast<std::uint64_t>(overflowCapacity) * 4u <=
+                std::uint64_t{1} << 32,
+            "per-axis scratch entries exceed uint shader address space"
+        );
         return ivec4(
             0,
             controlBase,
@@ -519,6 +529,11 @@ struct PerAxisCanvasStore {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisResolveScratch
         );
+        voxelEntityIds_ = IRRender::createResource<Buffer>(
+            nullptr,
+            static_cast<std::size_t>(IRRender::VoxelPoolConfig::getTotalSize()) * sizeof(uvec2),
+            BUFFER_STORAGE_DYNAMIC
+        );
         // Seed the ctrl block so the first rotating frame's pre-reset counter
         // readback (the cap-overflow warn) reads zeros, not uninitialized data.
         // Word 0 stays zero only until the first rotating frame's reset writes
@@ -595,6 +610,8 @@ struct PerAxisCanvasStore {
         glitchTileRegionStride_ = 0;
         IRRender::destroyResource<Buffer>(winnerIds_.first);
         winnerIds_ = {0, nullptr};
+        IRRender::destroyResource<Buffer>(voxelEntityIds_.first);
+        voxelEntityIds_ = {0, nullptr};
         IRRender::destroyResource<Buffer>(overflowCtrlSeed_.first);
         overflowCtrlSeed_ = {0, nullptr};
         IRRender::destroyResource<Buffer>(overflowDrawArgs_.first);

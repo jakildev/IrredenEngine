@@ -32,6 +32,7 @@ enum class PolygonMode{FILL};
 enum class DrawMode{TRIANGLES};
 enum class IndexType{UNSIGNED_SHORT};
 constexpr int kBufferIndex_IndirectDispatchParams=26,kBufferIndex_PerAxisCellCompacted=25;
+constexpr int kBufferIndex_VoxelEntityIds=13;
 constexpr int kPerAxisCellIndirectStrideBytes=32,BUFFER_STORAGE_DYNAMIC=1;
 struct ivec2{int x,y;};
 struct vec2{float x,y;};
@@ -84,9 +85,10 @@ struct C_PerAxisTrixelCanvases{
  std::array<Texture,12> textures{{
   {100},{101},{102},{200},{201},{202},{300},{301},{302},{400},{401},{402}}};
  std::array<AxisTextures,3> axes_;
- Buffer cells{25},indirect{126},indirectArgs{127},overflow{125},overflowArgs{128};
+ Buffer cells{25},indirect{126},indirectArgs{127},overflow{125},overflowArgs{128},entityIds{113};
  std::pair<int,Buffer*> cellCompacted_{0,&cells},cellIndirect_{0,&indirect},
-  cellIndirectArgs_{0,&indirectArgs},winnerIds_{0,&overflow},overflowDrawArgs_{0,&overflowArgs};
+  cellIndirectArgs_{0,&indirectArgs},winnerIds_{0,&overflow},overflowDrawArgs_{0,&overflowArgs},
+  voxelEntityIds_{0,&entityIds};
  int cellRegionStride_=16,entriesBaseUints_=64,overflowCap_=8,ctrlBaseUints_=12;
  C_PerAxisTrixelCanvases(){for(int i=0;i<3;++i)
   axes_[i]={{0,&textures[i]},{0,&textures[i+3]},{0,&textures[i+6]},{0,&textures[i+9]}};
@@ -119,6 +121,7 @@ struct Device{
   }else{
    check(args->id==128&&offset==0,"overflow arguments from the copied draw args");
    check(storage[25]&&storage[25]->id==125&&offsets[25]==64*4,"overflow region");
+   check(storage[13]&&storage[13]->id==113,"overflow reads retained main-pool entity IDs");
   }
   if(prepass||replay){
    check(storage[26]&&storage[26]->owned,"visibility resource at slot 26");
@@ -136,7 +139,14 @@ struct Device{
  }
  void finish(){++finishes;}
 } gpu;
-namespace IRRender{Device* device(){return &gpu;}}
+namespace IRRender{
+Device* device(){return &gpu;}
+Buffer sharedEntityIds{213};
+template<class T>T* getNamedResource(const char* name){
+ check(std::strcmp(name,"VoxelEntityIdBuffer")==0,"shared entity-ID buffer lookup");
+ return &sharedEntityIds;
+}
+}
 struct GpuSubStageScope{explicit GpuSubStageScope(const char*){}};
 void log(const char*,std::uint32_t a,std::uint32_t b,std::uint32_t c,std::size_t pixels){
  ++logs;logged={a,b,c,pixels};
@@ -154,6 +164,7 @@ struct Adapter{
  int visibilityStatsFrameCount_=0;
  std::unique_ptr<Buffer> visibilityBuffer_;std::size_t visibilityPixelCount_=0;
  Buffer frame{3},voxelCells{225},voxelIndirect{226};Buffer* frameDataBuf_=&frame;
+ Buffer* voxelEntityIdBuf_=nullptr;
  ShaderProgram gather{0},lighting{1},visible{3},beauty{4},probe{5},queryStats{6};
  ShaderProgram *program_=&gather,*scatterLightingProgram_=&lighting;
  ShaderProgram *visibleLightingProgram_=&visible,*scatterProgram_=&beauty;
@@ -175,7 +186,8 @@ void appendDraws(std::vector<std::string>& wanted,bool overflow,bool ao){
  wanted.push_back("upload0");for(int axis=0;axis<3;++axis){
   if(ao)wanted.push_back("ao");wanted.push_back("draw0");
  }
- if(overflow){wanted.push_back("upload1");wanted.push_back("draw1");}
+ if(overflow){wanted.push_back("bind13");wanted.push_back("upload1");
+  wanted.push_back("draw1");wanted.push_back("bind13");}
 }
 int main(){
  int cases=0;
@@ -198,6 +210,7 @@ int main(){
    a.prepare(framebuffer);check(allocations==allocBefore+int(active),"allocation reuse");
    C_FrameDataTrixelToFramebuffer frameData;C_PerAxisTrixelCanvases axes;
    a.restoreVoxelCompactionSlots();events.clear();finishes=reads=logs=queryLogs=0;
+   storage[13]=&IRRender::sharedEntityIds;
    sunReady=surfaceReady=false;
    a.run(frameData,axes,vec2{37,19});
    check(frameData.frameData_.scatterFbResolution_.x==37&&
@@ -214,6 +227,7 @@ int main(){
    if(lighting)wanted.push_back("restoreSurface");wanted.push_back("program0");
    check(events==wanted,"clear/barrier/program/draw/restore order");
    check(storage[25]==&a.voxelCells&&storage[26]==&a.voxelIndirect,"restored borrowed slots");
+   check(storage[13]==&IRRender::sharedEntityIds,"restored shared entity-ID buffer");
    check(depthTest&&depthWrite&&used==0&&frameData.frameData_.overflowMode_==0&&!prepassSelector,
          "restored draw state");
    for(int frame=1;frame<181;++frame){events.clear();a.run(frameData,axes,vec2{37,19});}
@@ -328,6 +342,10 @@ class VisibilityRoutingTest(unittest.TestCase):
                 r"axes\.overflowDrawArgs_\.second,\s*0\s*\)",
                 "overflowScratch, static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_)"
                 " * sizeof(std::uint32_t))"),
+            "overflow-reads-shared-pool-ids": (
+                r"axes\.voxelEntityIds_\.second->bindBase\(.*?\);", ""),
+            "lost-entity-id-restore": (
+                r"voxelEntityIdBuf_->bindBase\(.*?\);", ""),
         }
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)

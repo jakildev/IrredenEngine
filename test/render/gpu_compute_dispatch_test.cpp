@@ -26,6 +26,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/framebuffer.hpp>
 #include <irreden/render/ir_gl_api.hpp>
 #include <irreden/render/opengl/opengl_render_impl.hpp>
 #include <irreden/render/render_device.hpp>
@@ -1756,6 +1757,7 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
     axes->createGlitchWorklist();
     const auto faceTextures = axes->axes_;
     const auto winners = axes->winnerIds_;
+    const auto voxelEntityIds = axes->voxelEntityIds_;
     const auto compacted = axes->cellCompacted_;
     const auto indirect = axes->cellIndirect_;
     const auto glitchFlags = axes->glitchTileFlags_;
@@ -1767,6 +1769,12 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
     const int liveResources = resources.liveResourceCount();
     const std::uint32_t scratchValue = 0x12345678u;
     winners.second->subData(0, sizeof(scratchValue), &scratchValue);
+    const std::array<std::uint32_t, 4> mainIds{13u, 1u, 17u, 2u};
+    Buffer sharedIds(mainIds.data(), sizeof(mainIds), BUFFER_STORAGE_DYNAMIC);
+    device()->copyBufferSubData(&sharedIds, 0, voxelEntityIds.second, 0, sizeof(mainIds));
+    const std::array<std::uint32_t, 4> privateIds{91u, 3u, 97u, 4u};
+    sharedIds.subData(0, sizeof(privateIds), privateIds.data());
+    device()->finish();
     const auto expectRetainedFaces = [&] {
         for (int axis = 0; axis < Axes::kAxisCount; ++axis) {
             EXPECT_EQ(axes->axes_[axis].colors_, faceTextures[axis].colors_);
@@ -1788,6 +1796,10 @@ TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAnd
             );
         }
         EXPECT_EQ(axes->winnerIds_, winners);
+        EXPECT_EQ(axes->voxelEntityIds_, voxelEntityIds);
+        std::array<std::uint32_t, 4> retainedIds{};
+        axes->voxelEntityIds_.second->getSubData(0, sizeof(retainedIds), retainedIds.data());
+        EXPECT_EQ(retainedIds, mainIds);
         EXPECT_EQ(axes->cellCompacted_, compacted);
         EXPECT_EQ(axes->cellIndirect_, indirect);
         EXPECT_EQ(axes->glitchTileFlags_, glitchFlags);

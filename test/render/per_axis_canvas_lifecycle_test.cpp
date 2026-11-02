@@ -42,6 +42,20 @@ TEST(PerAxisCanvasLifecycle, ScratchUniformUsesTheOwnedRegionOffsets) {
     EXPECT_EQ(store.overflowScratchLayout(), IRMath::ivec4(0, 128, 256, 65536));
 }
 
+TEST(PerAxisCanvasLifecycle, LargestPoolAndScratchPrefixFitFourWordAddressing) {
+    using Store = IRComponents::PerAxisCanvasStore;
+    constexpr int edge = IRRender::VoxelPoolConfig::kMaxEdge;
+    const int capacity = Store::overflowCapacityFor(0, edge * edge * edge);
+    const auto layout = Store::scratchLayoutFor(
+        std::numeric_limits<int>::max() - Store::kOverflowControlUints - 63,
+        capacity
+    );
+    EXPECT_LE(
+        static_cast<std::uint64_t>(layout.z) + static_cast<std::uint64_t>(layout.w) * 4u - 1u,
+        std::numeric_limits<std::uint32_t>::max()
+    );
+}
+
 #ifndef IR_RELEASE
 TEST(PerAxisCanvasLifecycle, AllocationRefusesHeightReservedForOverflowProvenance) {
     IRComponents::PerAxisCanvasStore store;
@@ -62,6 +76,8 @@ TEST(PerAxisCanvasLifecycle, ScratchLayoutRefusesNegativeAndOverflowingOffsets) 
     EXPECT_THROW(Store::scratchLayoutFor(-1, 1), std::runtime_error);
     EXPECT_THROW(Store::scratchLayoutFor(1, -1), std::runtime_error);
     EXPECT_THROW(Store::scratchLayoutFor(std::numeric_limits<int>::max(), 1), std::runtime_error);
+    EXPECT_THROW(Store::scratchLayoutFor(64, 1 << 30), std::runtime_error);
+    EXPECT_THROW(Store::overflowCapacityFor(0, 710 * 710 * 710), std::runtime_error);
 }
 #endif
 

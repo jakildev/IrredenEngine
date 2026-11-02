@@ -1,4 +1,12 @@
-# Rotation picking WIP evidence
+# Initial rotation picking evidence
+
+The captures and readings below describe the first published implementation,
+before the feedback amendment. The amendment corrects the cardinal-dependent
+tie offset, retains main-pool IDs and bounds four-word scratch addressing.
+Its current validation and graphics-session limitation are recorded in
+`amendment-validation.txt`; the earlier images are retained with their original
+commit provenance. Remaining native validation is tracked in #4866, and GL
+runtime verification in #4865.
 
 Control: `795e16adb809e526536e734e9b56b4bbe60a170f`, fixture-only on
 `8a38400646e46b3d3e72adc2b56dfacf9e4c85c6`. Engine implementation:
