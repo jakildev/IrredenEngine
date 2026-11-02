@@ -13,17 +13,21 @@
 // final, and a stale EMPTY load is corrected by the swap's returned word.
 // A texel with more distinct slabs than slots sets the sticky overflow bit on
 // slot 0's max word; the receiver then answers from the nearest word alone.
-void writeSunDepthSlab(int texelIndex, uint packedDepth) {
+//
+// The pair is one slab's reduced (min, max), both members of the texel's
+// write set; a single write is the pair (depth, depth). Reducing writes before
+// the merge changes neither the slabs a texel saw nor their extrema.
+void mergeSunDepthSlabPair(int texelIndex, uint lowDepth, uint highDepth) {
     if (kSunDepthSlabSlots == 0u) return;
-    const uint slab = sunDepthSlab(packedDepth);
+    const uint slab = sunDepthSlab(lowDepth);
     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
         const uint low = sunDepthSlabMinIndex(texelIndex, slot);
         const uint high = sunDepthSlabMaxIndex(texelIndex, slot);
         uint resident = sunDepthBuf[low];
         if (resident == 0xFFFFFFFFu) {
-            resident = atomicCompSwap(sunDepthBuf[low], 0xFFFFFFFFu, packedDepth);
+            resident = atomicCompSwap(sunDepthBuf[low], 0xFFFFFFFFu, lowDepth);
             if (resident == 0xFFFFFFFFu) {
-                atomicMax(sunDepthBuf[high], packedDepth);
+                atomicMax(sunDepthBuf[high], highDepth);
                 return;
             }
         }
@@ -32,9 +36,9 @@ void writeSunDepthSlab(int texelIndex, uint packedDepth) {
             // the write proves the atomic would be a no-op; a stale load only
             // issues a redundant one. Coverage splats repeat one depth across
             // a box of texels, so most writes take neither atomic.
-            if (packedDepth < resident) atomicMin(sunDepthBuf[low], packedDepth);
-            if (packedDepth > (sunDepthBuf[high] & ~kSunDepthSlabOverflow)) {
-                atomicMax(sunDepthBuf[high], packedDepth);
+            if (lowDepth < resident) atomicMin(sunDepthBuf[low], lowDepth);
+            if (highDepth > (sunDepthBuf[high] & ~kSunDepthSlabOverflow)) {
+                atomicMax(sunDepthBuf[high], highDepth);
             }
             return;
         }
@@ -43,6 +47,10 @@ void writeSunDepthSlab(int texelIndex, uint packedDepth) {
     if ((sunDepthBuf[flagWord] & kSunDepthSlabOverflow) == 0u) {
         atomicOr(sunDepthBuf[flagWord], kSunDepthSlabOverflow);
     }
+}
+
+void writeSunDepthSlab(int texelIndex, uint packedDepth) {
+    mergeSunDepthSlabPair(texelIndex, packedDepth, packedDepth);
 }
 
 // One primary write: the nearest word and its slab extrema together.

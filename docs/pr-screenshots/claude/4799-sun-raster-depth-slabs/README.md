@@ -15,23 +15,26 @@ Crops are rectangle `(1100,600)-(1460,840)`; "missing" counts receiver pixels
 brighter than the lower-only control outside a 2 px band around its edges,
 "excess" counts darker ones. [capture.py](capture.py) is the replay driver;
 [captures-baseline.json](captures-baseline.json),
-[captures-head.json](captures-head.json) and the `captures-oblique-*.json`
-twins retain every command, frame and receiver hash, the `SUN-ROUTE` witness
-(`finite_coverage=0 particle_pass=1` on every lit head shot) and the probe
-summaries.
+[captures-per-pixel.json](captures-per-pixel.json) and
+[captures-head.json](captures-head.json) retain every command, frame and
+receiver hash, the `SUN-ROUTE` witness (`finite_coverage=0 particle_pass=1` on
+every lit three-slot shot) and the probe summaries.
 
 The slab build is `kSunDepthSlabSlots = 3` in the three layout twins
 (`sun_face_query_layout.hpp`, `ir_sun_face_query_layout.glsl`,
 `ir_sun_face_query_layout.metal`); the shipped default is 0 (see Cost and
-Budget). The capture arms below were built on master `a6b9953c3`, before the
-record-pool growth (`d72f88820`) merged; that change touches the finite route
-only, and the shipped default rebased onto it reproduces the baseline receiver
-hashes exactly (`captures-default.json`: `lower`, `stacked-8-h60`,
-`oblique-lower`, `oblique-stacked-8-h60`). The capture baseline binary is that
-master plus this branch's CanvasStress fixture flags and a slab-free probe
-twin, built in a separate worktree, so both arms take the same argv. The
-budget arms (below) are frozen build trees of this branch rebased onto master
-`8a3840064`, identified by binary and shader hashes in `budget/*/manifests.json`.
+Budget). Every arm is a frozen build tree of this branch on master
+`8a3840064`, identified by binary and shader hashes in the capture JSONs and
+`budget/*/manifests.json`: **base** = zero slots (master's layout, writer and
+clear plus the fixture flags the stacked scenes need; master's own binary
+rejects `--probe-overlapping-source-mode`), **per-pixel** = three slots with the
+prototype's per-pixel writer and per-texel clear, **fills** = three slots with
+the two device fills, **head** = three slots with the fills and the
+workgroup-cooperative splat kernel. `captures-baseline.json` is the base arm,
+`captures-per-pixel.json` and `captures-head.json` the three-slot arms; all
+three take the same argv. The shipped default reproduces the base arm's
+receiver hashes exactly (`captures-default.json`: `lower`, `stacked-8-h60`,
+`oblique-lower`, `oblique-stacked-8-h60`).
 
 | Baseline: lower caster under eight casters at -84 | Slab build |
 |---|---|
@@ -85,10 +88,6 @@ and stacked scenes are byte-identical, so the visible difference is shadow.
 | oblique-layered-2-h60-step40 (two bands, two slabs) | 2,436 / 0 | 2,344 / 0 | no |
 | oblique-layered-3-h60-step64, -4 | 2,428 / 0 | 0 / 0 | no |
 
-The sign of the oblique stack offset was wrong in the first oblique pass
-(casters off the receiver's sun ray); the oblique rows above are the
-re-capture in `captures-oblique-*.json`.
-
 Moving casters: the eight-caster stack starts 56 units above the floor and
 rises at 20 units/s; seven shots eight frames apart cross the 64-unit throw
 between shots 1 and 2. Each shot is graded against a static capture of the
@@ -97,6 +96,14 @@ static poses exactly on every shot (0 / 0), so motion leaves no stale-frame
 residue. Against the lower-only scene the baseline's static poses lose
 2,347..2,608 pixels from pose 1 on; the slab build loses none, and both show
 the stack's own legitimate shadow on the box top as excess.
+
+Re-captured on the current tree with the three frozen arms: every row above
+reads the same (base arm versus lower-only control; three-slot arms versus
+theirs), the 17 controls keep receiver hashes identical to the base arm's, and
+the cooperative kernel's receivers are hash-identical to the per-pixel writer's
+on all 58 captures (the 29 static cases, two seven-shot tracks and their
+static poses), so the cooperative path is exact natively as well as in the
+harness.
 
 Reading the table:
 
@@ -124,10 +131,20 @@ keep the nearest-only answer, 48 splat-extrema residuals (an interior write
 hidden because both extrema of its slab are splats the receiver plane
 rejects; none with direct or surface words), poisoned storage cleared, mixed
 primary / indexed layers counted once, and ten mutation controls per dialect.
+The same harness emulates the cooperative kernel's window lane by lane with the
+barriers as phase boundaries (reset, footprint reduction, init, routed splat,
+flush) and compares the planes it leaves with the per-pixel writer's on 107
+write sets in both dialects (153,953 writes spilled past the window, 411
+dropped at the cascade edge, 39,060 overflowed texels, both lane orders, tiles
+merging into planes another tile already claimed); a dropped flush, a spill
+routed nowhere, a shifted flush origin and an inclusive window bound each fail
+by name.
 
-## Cost
+## Cost of the prototype
 
-Five interleaved pairs per cell through [ab_timing.py](ab_timing.py)
+The prototype's measurement on master `a6b9953c3`, kept as the record the
+budget work started from; the current-tree readings are in the Budget sections
+below. Five interleaved pairs per cell through [ab_timing.py](ab_timing.py)
 (`repeat_profile.py`, 360 profiled frames for IRCanvasStress and 60 for
 IRPerfGrid, both complete build trees, Apple M4 Max, macOS Metal debug);
 [ab-timing.md](ab-timing.md) has every GPU stage and sun-system CPU row with
@@ -217,93 +234,155 @@ not modelled, so the counts are an upper bound on bake writes.
 Three slots of (min, max) plus the nearest word are 28 bytes per window texel,
 so 32 KiB of threadgroup memory holds a 32-texel window at 16x16 (28,672
 bytes). At that window the two small raster cells fit 54% (cascade 0) and 81%
-(cascade 1) of their caster pixels and the default raster scene 78%, below the
-plan's 95% / 90% premise: the median 16x16 tile spans 27 (cascade 0) and 20
-(cascade 1) base texels on the small cells and 23 / 22 on the default scene,
-plus the 14-texel splat halo. The pixels that do not fit would take the
-per-pixel global path, so exactness is unaffected; the cost model is. The
-redundancy the reduction would remove is real: each tile's pixels issue 225
-box writes each against a bounding box of about 1,500 texels, a lower bound of
-29x (cascade 0) to 43x writes per texel within one tile, and the whole-map
-census shows 164 writes per written texel across tiles on the lower cell.
-Two shapes that fit the budget are in the data: 8x8 groups fit 94% of the
-small cells and 99.8% of the default scene at a 32 window, and a 48 window
-with the nearest word plus one (min, max) pair (12 bytes per texel, 27,648
-bytes) fits 89% / 96% and 100%. Both are design calls, not this task's
-decision; the task stops after the fills below.
+(cascade 1) of their caster pixels and the default raster scene 78%: the median
+16x16 tile spans 27 (cascade 0) and 20 (cascade 1) base texels on the small
+cells and 23 / 22 on the default scene, plus the 14-texel splat halo. The
+redundancy the reduction removes is real: each tile's pixels issue 225 box
+writes each against a bounding box of about 1,500 texels, a lower bound of 29x
+(cascade 0) to 43x writes per texel within one tile, and the whole-map census
+shows 164 writes per written texel across tiles on the lower cell. The design
+answer took the 8x8 group at the 32 window with the full 28-byte texel (94% of
+the small cells' pixels, 99.8% of the default scene's), with the spill decided
+per write rather than per pixel, and retired the pixel-level premise bar: a
+pixel whose box leaves the window still writes most of its box through the
+window and only the texels outside it through the per-pixel path, so the
+slow-path residual is the share of box writes outside the window, which the
+probe now reports beside the fit (`spill_writes_<window>` header lines).
 
-## Budget: contiguous slab-plane fills
+The census shot above is the zoom-2 capture frame (`smallzoom_high`, 16,008
+caster pixels on the lower cell); the timing cells profile at zoom 1, whose
+frame (`so3_smooth_sweep`, 4,002 caster pixels) is in `footprint/<cell>-zoom1.csv`.
+Per-write spill at the 8x8 group and 32 window:
 
-The slab planes are now laid out as every slot's min plane then every slot's
-max plane, and the bake system clears them with two device fills (`0xFF` over
-the min planes, `0x00` over the max planes) through `RenderDevice::fillBuffer`
-with a byte offset, instead of the per-texel clear kernel's slot loop. Three
-frozen build trees of this branch were profiled through [ab_timing.py](ab_timing.py)
-in one guarded `ir-acquire benchmark` window per cell, five interleaved
-rounds, order reversed on alternate rounds (Apple M4 Max, Metal, display held
-awake): **base** = this commit at zero slots (master's layout, writer and
-clear plus the fixture flags the stacked cell needs; master's own binary
-cannot run `--probe-overlapping-source-mode`), **per-pixel** = three slots
-with the prototype's per-pixel writer and per-texel clear loop, **fills** =
-three slots with the two device fills. `budget/<cell>/ab-timing.md` has every
-row with the base spread, the paired delta, its one-sided 95% lower bound and
-the verdict against the plan's gate; `ab-timing.json` the samples and the
-steady frame-time bins; `manifests.json` the fifteen run manifests.
+| Cell | Frame | Caster pixels | Cascade 0 pixels fit | Cascade 0 writes spilled | Cascade 1 pixels fit | Cascade 1 writes spilled |
+|---|---|---:|---:|---:|---:|---:|
+| canvas-lower | zoom 2 census | 16,008 | 93.8% | 6.14% (221,175 / 3,601,800) | 93.8% | 4.50% (162,165 / 3,601,800) |
+| canvas-lower | zoom 1 profiled | 4,002 | 88.8% | 5.17% (46,515 / 900,450) | 94.5% | 2.82% (25,395 / 900,450) |
+| canvas-stacked-128 | zoom 2 census | 16,224 | 93.9% | 6.06% (221,175 / 3,650,400) | 93.9% | 4.44% (162,165 / 3,650,400) |
+| canvas-stacked-128 | zoom 1 profiled | 4,056 | 89.0% | 5.10% (46,515 / 912,600) | 94.6% | 2.78% (25,395 / 912,600) |
+| canvas-default-raster | zoom 2 census | 121,920 | 99.8% | 0.04% (10,815 / 27,432,000) | 99.9% | 0.02% (4,815 / 27,432,000) |
+| canvas-default-raster | zoom 1 profiled | 34,376 | 100% | 0% | 100% | 0% |
 
-| Cell | Row | Base mean (min..max) | Per-pixel | Fills | Gate | Verdict |
-|---|---|---|---|---|---|---|
-| canvas-lower | GPU bakeSunShadowMap ms | 1.518 (1.458..1.555) | 2.935, 1.934x | 3.059, 2.016x (delta +1.542, lower bound +1.485) | delta <= 0.064 ms | FAIL |
-| canvas-lower | steady frame mean ms | 8.480 (8.390..8.620) | 13.482, 1.590x | 14.342, 1.691x | <= 1.10x | FAIL |
-| canvas-lower | steady frame p99 ms | 15.694 (8.700..17.830) | 21.142, 1.347x | 21.998, 1.402x | <= 1.10x | FAIL |
-| canvas-lower | GPU envelope ms | 2.753 (2.432..2.965) | 4.023, 1.461x | 4.123, 1.498x | reported | - |
-| canvas-stacked-128 | GPU bakeSunShadowMap ms | 1.520 (1.472..1.537) | 3.183, 2.094x | 3.206, 2.109x (delta +1.686, lower bound +1.623) | delta <= 0.029 ms | FAIL |
-| canvas-stacked-128 | steady frame mean ms | 11.676 (10.380..13.240) | 16.506, 1.414x | 15.148, 1.297x | <= 1.10x | FAIL |
-| canvas-stacked-128 | steady frame p99 ms | 21.112 (19.080..23.380) | 24.488, 1.160x | 24.688, 1.169x | <= 1.10x | FAIL |
-| canvas-stacked-128 | GPU envelope ms | 2.694 (2.544..2.818) | 4.328, 1.606x | 4.296, 1.595x | reported | - |
-| canvas-default-raster | GPU bakeSunShadowMap ms | 1.378 (1.338..1.448) | 2.689, 1.952x | 2.563, 1.860x | reported (base range 0.110) | - |
-| canvas-default-raster | steady frame mean ms | 20.466 (19.500..21.620) | 22.226, 1.086x | 22.440, 1.096x | <= 1.10x | pass |
-| canvas-default-raster | steady frame p99 ms | 24.550 (21.500..28.560) | 24.820, 1.011x | 25.202, 1.027x | <= 1.10x | pass |
-| canvas-default-raster | GPU envelope ms | 5.633 (5.541..5.752) | 7.003, 1.243x | 6.885, 1.222x | reported | - |
-| perf-grid-zoom1 | GPU bakeSunShadowMap ms | 0.401 (0.386..0.416) | 0.408, 1.018x | 0.434, 1.083x | reported | - |
-| perf-grid-zoom1 | steady frame mean / p99 | 25.510 / 34.832 | 1.004x / 1.001x | 1.014x / 1.014x | <= 1.10x | pass |
-| perf-grid-zoom4 | GPU bakeSunShadowMap ms | 0.137 (0.125..0.150) | 0.133, 0.971x | 0.135, 0.983x | reported | - |
-| perf-grid-zoom4 | steady frame mean / p99 | 27.536 / 38.396 | 1.018x / 0.941x | 1.048x / 1.020x | <= 1.10x | pass |
+## Budget: the four arms on the five cells
+
+The slab planes are laid out as every slot's min plane then every slot's max
+plane, and the bake system clears them with two device fills (`0xFF` over the
+min planes, `0x00` over the max planes) through `RenderDevice::fillBuffer`
+with a byte offset, instead of the per-texel clear kernel's slot loop. The
+cooperative splat (design answer: 8x8 pixel tile, 32-texel window, nearest
+word plus three (min, max) pairs per window texel, per-write spill) is the
+third wrapper `c_bake_sun_shadow_map_cooperative`, dispatched where the
+coverage splat is engaged; the production, second-depth and clear kernels stay
+at 16x16. The four frozen trees were profiled through [ab_timing.py](ab_timing.py)
+in one guarded `ir-acquire benchmark` window per cell, five interleaved rounds,
+order reversed on alternate rounds (Apple M4 Max, Metal, display held awake).
+`budget/<cell>/ab-timing.md` has every row with the base spread, the paired
+delta, its one-sided 95% lower bound and the verdict against the plan's gate;
+`ab-timing.json` the samples and the steady frame-time bins; `manifests.json`
+the twenty run manifests.
+
+| Cell | Row | Base mean (min..max) | Per-pixel | Fills | Head (cooperative) | Gate | Head verdict |
+|---|---|---|---|---|---|---|---|
+| canvas-lower | GPU bakeSunShadowMap ms | 1.451 (1.434..1.465) | 2.714, 1.871x | 2.942, 2.028x | 4.762, 3.282x (delta +3.311, lower bound +3.191) | delta <= 0.064 ms | FAIL |
+| canvas-lower | steady frame mean ms | 8.850 (8.330..9.490) | 13.390, 1.513x | 13.296, 1.502x | 16.754, 1.893x | <= 1.10x | FAIL |
+| canvas-lower | steady frame p99 ms | 14.140 (8.800..18.020) | 20.306, 1.436x | 20.760, 1.468x | 23.250, 1.644x | <= 1.10x | FAIL |
+| canvas-lower | GPU envelope ms | 2.374 (2.265..2.453) | 3.635, 1.531x | 3.838, 1.617x | 5.677, 2.391x | reported | - |
+| canvas-stacked-128 | GPU bakeSunShadowMap ms | 1.458 (1.439..1.476) | 3.026, 2.076x | 3.327, 2.283x | 4.080, 2.799x (delta +2.622, lower bound +2.539) | delta <= 0.029 ms | FAIL |
+| canvas-stacked-128 | steady frame mean ms | 11.992 (9.970..13.800) | 14.868, 1.240x | 18.708, 1.560x | 17.510, 1.460x | <= 1.10x | FAIL |
+| canvas-stacked-128 | steady frame p99 ms | 20.550 (17.930..22.480) | 23.776, 1.157x | 24.928, 1.213x | 25.852, 1.258x | <= 1.10x | FAIL |
+| canvas-stacked-128 | GPU envelope ms | 2.444 (2.300..2.519) | 4.029, 1.648x | 4.360, 1.784x | 5.090, 2.083x | reported | - |
+| canvas-default-raster | GPU bakeSunShadowMap ms | 2.401 (2.308..2.459) | 3.160, 1.316x | 3.042, 1.267x | 3.570, 1.487x | reported (base range 0.151) | - |
+| canvas-default-raster | steady frame mean ms | 22.640 (22.360..22.930) | 22.358, 0.988x | 22.198, 0.980x | 22.474, 0.993x | <= 1.10x | pass |
+| canvas-default-raster | steady frame p99 ms | 28.784 (27.400..32.620) | 25.990, 0.903x | 26.040, 0.905x | 26.034, 0.904x | <= 1.10x | pass |
+| canvas-default-raster | GPU envelope ms | 7.447 (7.301..7.551) | 7.544, 1.013x | 7.393, 0.993x | 7.613, 1.022x | reported | - |
+| perf-grid-zoom1 | GPU bakeSunShadowMap ms | 0.374 (0.334..0.404) | 0.387, 1.035x | 0.391, 1.045x | 0.379, 1.013x | reported | - |
+| perf-grid-zoom1 | steady frame mean / p99 | 23.462 / 31.180 | 1.040x / 1.053x | 1.044x / 1.080x | 1.044x / 1.043x | <= 1.10x | pass |
+| perf-grid-zoom4 | GPU bakeSunShadowMap ms | 0.131 (0.123..0.144) | 0.122, 0.930x | 0.122, 0.930x | 0.125, 0.957x | reported | - |
+| perf-grid-zoom4 | steady frame mean / p99 | 26.526 / 34.930 | 0.973x / 0.984x | 0.970x / 0.994x | 0.921x / 0.935x | <= 1.10x | pass |
 
 Reading the table:
 
-- The fills are cost-neutral against the per-texel clear loop: on the two
-  small raster cells the bake row moves +0.12 and +0.02 ms and the envelope
-  +0.10 and -0.03 ms between the per-pixel and fills arms, inside those arms'
-  spreads; on the default raster scene both improve by 0.12 ms. The 48 MiB
-  per-frame clear is not where the layout's cost lives on this GPU; the
-  writer's dependent loads are, and the two small cells stay at about 2x on
-  the bake row and 1.3x to 1.7x on the frame mean with either clear. The
-  frame rows show the vsync cliff the plan predicted: the base arm's steady
-  frames sit 91% in the 8..9 ms bin on the lower cell, the three-slot arms
-  split between 8..9 ms and 17..20 ms.
-- The base arm's bake row here (1.518 ms) sits above the planning measurement
-  of master (1.437 ms) and the committed zero-slot arm (1.414 ms), with a
-  between-run range of 0.097 ms against the locked 0.064 ms floor; a noisier
-  window than the planning measurement, as the plan's gotcha anticipated, and
-  F stays. The verdicts do not depend on it: every three-slot delta on the
-  gated rows is more than twenty floors wide.
-- Other GPU stage rows move with the three-slot arms on the small cells
-  (`cardinalSurfaceFb` 1.75x, `computeVoxelAO` 2.46x on the lower cell) even
-  though neither touches the slab words; the per-encoder timestamps absorb
-  the frame's changed pacing, so the bake row and the envelope are the
-  attributable readings and the frame rows the gate.
+- The fills are cost-neutral against the per-texel clear loop, as before: the
+  per-pixel and fills arms sit within 0.31 ms of each other on every bake row
+  and within their spreads on the envelope. The writer carries the three-slot
+  cost.
+- The cooperative kernel is slower than the per-pixel writer it replaces, by
+  +2.0 ms on the lower cell's bake row and +1.1 ms on the stacked cell's; it
+  fails decision 7 on both small cells by more than forty floors, and the
+  frame rows with it. The default raster scene passes the frame gate with
+  every arm (the bake row is 1.49x there, hidden behind a 22 ms frame), and
+  the IRPerfGrid cells pay nothing (finite route, no caster pixels).
+- The base arm's bake row sits at 1.451 / 1.458 ms with between-run ranges of
+  0.031 / 0.037 ms, inside the locked floors' derivation; the frame rows at
+  the 120 Hz vsync lock split between the 8..9 ms and 17..19 ms bins as the
+  plan predicted.
 
-The shipped layout stays at zero slots. The phase 0 census above is the
-input to the design question the cooperative splat now poses (window shape
-and per-texel representation under the 32 KiB floor); this branch carries the
-fills, the probe and the rebased layer compiled out.
+### Attribution: the window skeleton alone is over budget
+
+`budget/attribution/<cell>/` times the two small cells with a third arm
+staged by [stage_window_nearest_only.py](stage_window_nearest_only.py) from
+the head tree: the cooperative kernel with its slab words compiled out, so the
+window carries the nearest word alone and the flush writes only it (the planes
+are not exact there; the arm is timed, never captured).
+
+| Cell | Row | Base | Cooperative (head) | Nearest-only window |
+|---|---|---|---|---|
+| canvas-lower | GPU bakeSunShadowMap ms | 1.441 (1.435..1.454) | 4.678, 3.246x | 2.098, 1.456x (delta +0.657, lower bound +0.642) |
+| canvas-lower | GPU envelope ms | 2.275 | 5.485, 2.411x | 2.940, 1.293x |
+| canvas-lower | steady frame mean / p99 ms | 8.330 / 8.812 | 17.072 / 22.756 | 8.704 / 17.306 |
+| canvas-stacked-128 | GPU bakeSunShadowMap ms | 1.449 (1.437..1.460) | 4.080, 2.815x | 2.106, 1.453x (delta +0.656, lower bound +0.645) |
+| canvas-stacked-128 | GPU envelope ms | 2.289 | 4.931, 2.154x | 2.961, 1.293x |
+| canvas-stacked-128 | steady frame mean / p99 ms | 12.924 / 19.566 | 17.330 / 24.028 | 14.342 / 22.104 |
+
+The window machinery alone (reset, footprint reduction, init, the shared
+nearest-word atomics, the flush and five barriers per cascade, under a 28 KiB
+threadgroup allocation) costs +0.66 ms on the bake row on both cells, ten and
+twenty-two floors wide, before any slab word is touched; the shared-memory slab
+claim adds a further +2.6 ms / +2.0 ms. Master's nearest-only bake does the
+same writes as that skeleton with one fire-and-forget global `atomicMin` each
+and no barrier, 0.66 ms cheaper; on this GPU a threadgroup reduction of the
+coverage splat does not pay for itself even with nothing to reduce into.
+
+`budget/cooperative-full-window/<cell>/` keeps the first form of the kernel,
+measured in the same protocol before the restructure: it cleared and flushed
+the whole 1,024-texel window on every tile, caster or not, with four barriers
+per cascade. Lower cell bake 3.777 ms (2.607x), stacked 4.497 ms (3.066x),
+default raster 3.837 ms (1.725x); the restructure (footprint-rectangle init
+and flush, empty tiles skipping both) moved the stacked and default cells by
+-0.4 and -0.3 ms and the lower cell by +1.0 ms, inside the spread of a kernel
+that is slow for a reason the window shape does not reach.
+
+### The opt-out is master's cost
+
+`budget/master-vs-base/`: origin/master's own frozen binary (`8a3840064`)
+against the zero-slot base arm on `canvas-lower`, five interleaved pairs:
+`bakeSunShadowMap` 1.465 vs 1.458 ms (+0.006 ms, 1.004x, inside F by rule
+(i)), envelope 1.004x, steady frame mean 1.022x, steady p99 17.614 vs
+15.874 ms (1.110x) with both arms 90% / 93% in the 7..9 ms bins, the p99
+difference being the bimodal vsync p99 of two of the base runs (8.8 ms) rather
+than a shift. The zero-slot layout, writer and dispatches are master's.
+
+### Decision
+
+Decision 7 fails on both small raster cells, so the shipped layout stays at
+zero slots and the layer compiled out; `kSunDepthSlabSlots = 0u` in the three
+twins, the cooperative program is not constructed and the dispatches are
+master's. Recorded in the design note, not built: a load-free direct-mapped
+slab table (slot = slab mod slots, fire-and-forget extrema, the receiver
+trusting a slot only when its slab matches), premised on a collision census
+computed from the per-pixel arm's probe CSVs over this matrix: of 95,158
+probed texels, 79,738 hold two or more distinct slabs and 4 of those (all in
+`oblique-layered-2-h60-step40`, an overflowing scene) hold two slabs congruent
+mod 3; and 256 threads over the 8x8 tile, which the attribution arm suggests
+would not recover the window skeleton's own cost.
 
 ## Deterministic replay
 
 ```
 ir-acquire gpu -- python3 docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/capture.py --output <dir> --label head
-ir-acquire gpu -- python3 docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/capture.py --output <dir> --build-dir <baseline-build> --label baseline
-ir-acquire --timeout 3600 benchmark -- python3 docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/ab_timing.py --output <dir>/<cell> --baseline <zero-slot-build> --arm per-pixel=<per-pixel-build> --head build --pairs 5 --cells <cell>
+ir-acquire gpu -- python3 docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/capture.py --output <dir> --build-dir <zero-slot-build> --label baseline
+ir-acquire --timeout 3600 benchmark -- python3 docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/ab_timing.py --output <dir>/<cell> --baseline <zero-slot-build> --arm per-pixel=<per-pixel-build> --arm fills=<fills-build> --head build --pairs 5 --cells <cell>
+cp -Rc build <dir>/coop-nearest && python3 docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/stage_window_nearest_only.py <dir>/coop-nearest   # the attribution arm, then --arm cooperative=build --head <dir>/coop-nearest
 python3 docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/stage_ablation.py --output <dir>
 IRREDEN_BUILD_DIR=build ir-acquire gpu -- fleet-run IRCanvasStress <cell argv with --auto-screenshot 10> --sun-bake-footprint-probe   # writes sun-footprint-<shot>.csv beside the exe
 ```

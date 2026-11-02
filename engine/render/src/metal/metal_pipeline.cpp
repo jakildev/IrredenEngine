@@ -108,6 +108,11 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_clear_sun_shadow_map") {
         return MTL::Size(16, 16, 1);
     }
+    // The cooperative bake reduces an 8x8 pixel tile's splat boxes in one
+    // threadgroup window (IR_SUN_BAKE_GROUP_SIZE in its wrapper).
+    if (functionName == "c_bake_sun_shadow_map_cooperative") {
+        return MTL::Size(8, 8, 1);
+    }
     if (functionName == "c_resolve_per_axis_screen_depth" ||
         functionName == "c_resolve_per_axis_blit" ||
         functionName == "c_resolve_world_placed_depth") {

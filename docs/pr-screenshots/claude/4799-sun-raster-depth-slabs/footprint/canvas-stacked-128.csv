@@ -9,21 +9,37 @@
 # group_16_cascade_0_fit_40=13872/16224
 # group_16_cascade_0_fit_48=14462/16224
 # group_16_cascade_0_fit_64=15748/16224
+# group_16_cascade_0_spill_writes_32=790972/3650400
+# group_16_cascade_0_spill_writes_40=380138/3650400
+# group_16_cascade_0_spill_writes_48=225585/3650400
+# group_16_cascade_0_spill_writes_64=73695/3650400
 # group_16_cascade_1_workgroups=90
 # group_16_cascade_1_fit_32=13217/16224
 # group_16_cascade_1_fit_40=14552/16224
 # group_16_cascade_1_fit_48=15594/16224
 # group_16_cascade_1_fit_64=16099/16224
+# group_16_cascade_1_spill_writes_32=372706/3650400
+# group_16_cascade_1_spill_writes_40=179535/3650400
+# group_16_cascade_1_spill_writes_48=83895/3650400
+# group_16_cascade_1_spill_writes_64=6165/3650400
 # group_8_cascade_0_workgroups=298
 # group_8_cascade_0_fit_32=15237/16224
 # group_8_cascade_0_fit_40=15237/16224
 # group_8_cascade_0_fit_48=15310/16224
 # group_8_cascade_0_fit_64=16163/16224
+# group_8_cascade_0_spill_writes_32=221175/3650400
+# group_8_cascade_0_spill_writes_40=177900/3650400
+# group_8_cascade_0_spill_writes_48=82515/3650400
+# group_8_cascade_0_spill_writes_64=5460/3650400
 # group_8_cascade_1_workgroups=298
 # group_8_cascade_1_fit_32=15237/16224
 # group_8_cascade_1_fit_40=15369/16224
 # group_8_cascade_1_fit_48=16092/16224
 # group_8_cascade_1_fit_64=16224/16224
+# group_8_cascade_1_spill_writes_32=162165/3650400
+# group_8_cascade_1_spill_writes_40=56340/3650400
+# group_8_cascade_1_spill_writes_48=8730/3650400
+# group_8_cascade_1_spill_writes_64=0/3650400
 cascade,group_x,group_y,pixels,min_x,min_y,max_x,max_y,fit_32,fit_40,fit_48,fit_64
 0,15,22,91,754,376,764,397,82,91,91,91
 0,15,23,239,740,388,764,401,161,239,239,239

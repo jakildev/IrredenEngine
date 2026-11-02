@@ -3,9 +3,21 @@
 // packed sun-space depth into both cascade regions of the sun shadow
 // depth SSBO. Companion to c_compute_sun_shadow.glsl's screen-space
 // lookup branch. Shared body: c_bake_sun_shadow_map.glsl and
-// c_bake_sun_shadow_map_second_depth.glsl define IR_SUN_SECOND_DEPTH.
+// c_bake_sun_shadow_map_second_depth.glsl define IR_SUN_SECOND_DEPTH;
+// c_bake_sun_shadow_map_cooperative.glsl defines IR_SUN_BAKE_COOPERATIVE and
+// the smaller group size its threadgroup window reduces.
 
-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+#ifndef IR_SUN_BAKE_GROUP_SIZE
+#define IR_SUN_BAKE_GROUP_SIZE 16
+#endif
+#ifndef IR_SUN_BAKE_COOPERATIVE
+#define IR_SUN_BAKE_COOPERATIVE 0
+#endif
+#if IR_SUN_BAKE_COOPERATIVE && IR_SUN_SECOND_DEPTH
+#error "The second-depth diagnostic keeps per-pixel writes"
+#endif
+
+layout(local_size_x = IR_SUN_BAKE_GROUP_SIZE, local_size_y = IR_SUN_BAKE_GROUP_SIZE, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
@@ -23,6 +35,9 @@ layout(std430, binding = 28) restrict buffer SunShadowDepthMap {
     uint sunDepthBuf[];
 };
 #include "ir_sun_depth_slab_write.glsl"
+#if IR_SUN_BAKE_COOPERATIVE
+#include "ir_sun_depth_slab_window.glsl"
+#endif
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
@@ -141,6 +156,86 @@ void bakeCascadeBox(vec3 sp, vec2 origin, vec2 texelSz, int cascadeOffset, int r
     }
 }
 
+#if IR_SUN_BAKE_COOPERATIVE
+const uint kBakeLanes = uint(IR_SUN_BAKE_GROUP_SIZE * IR_SUN_BAKE_GROUP_SIZE);
+
+// One cascade through the shared window: reset, footprint reduction, init,
+// per-write routed splat, flush, a barrier between each. Every lane runs every
+// phase and reaches every barrier; a lane without a caster only skips its own
+// reduce and splat, and a tile without a caster has an empty footprint, so its
+// init and flush loops run nothing. Lanes agree on the radius, which depends
+// on frame uniforms alone.
+void bakeCascadeCooperative(
+    bool caster, vec3 sp, vec2 origin, vec2 texelSz, int cascadeOffset, int radius
+) {
+    const uint lane = gl_LocalInvocationIndex;
+    sunWindowReset(lane);
+    memoryBarrierShared();
+    barrier();
+    ivec2 base = ivec2(0);
+    if (caster) {
+        base = ivec2(floor((sp.xy - origin) / texelSz));
+        sunWindowReduceBase(base);
+    }
+    memoryBarrierShared();
+    barrier();
+    const ivec2 anchor = sunWindowAnchor(radius);
+    const ivec2 extent = sunWindowExtent(radius);
+    sunWindowInit(lane, kBakeLanes, extent);
+    memoryBarrierShared();
+    barrier();
+    if (caster) {
+        for (int dy = -radius; dy <= radius; ++dy) {
+            for (int dx = -radius; dx <= radius; ++dx) {
+                writeSunTexelCooperative(cascadeOffset, base + ivec2(dx, dy), anchor,
+                                         packSunDepth(sp.z, ivec2(dx, dy)));
+            }
+        }
+    }
+    memoryBarrierShared();
+    barrier();
+    sunWindowFlush(lane, kBakeLanes, cascadeOffset, anchor, extent);
+    memoryBarrierShared();
+    barrier();
+}
+
+void main() {
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 size = imageSize(trixelDistances);
+    bool caster = pixel.x < size.x && pixel.y < size.y;
+    const int encoded = caster ? imageLoad(trixelDistances, pixel).x : kEmptyDistanceEncoded;
+    caster = caster && encoded < kEmptyDistanceEncoded;
+    vec3 sunProj = vec3(0.0);
+    if (caster) {
+        const int rawDepth = decodeDepthSingle(encoded);
+        vec3 pos3D;
+        if (residualYaw != 0.0) {
+            pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+                pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
+            );
+        } else {
+            pos3D = trixelCanvasPixelToWorld3D(
+                pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+            );
+        }
+        const bool fogBodyOrPrecut =
+            fogCeilingEnabled.y != 0 || decodeFogBody(imageLoad(trixelEntityIds, pixel).xy);
+        if (!(fogBodyOrPrecut) && fogCeilingEnabled.x != 0 && fogShadowVisionCircleCount > 0 &&
+            !fogFieldCastsSunShadow(pos3D, false, fogCeilingEnabled.x, fogShadowCell(pos3D))) {
+            caster = false;
+        }
+        sunProj = sunSpaceProject(pos3D, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
+    }
+    int radius = 0;
+    if (residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
+        radius = int(sunSplatMaxTexels);
+    }
+    bakeCascadeCooperative(caster, sunProj, cascadeOriginUV_0, cascadeTexelSize_0, 0, radius);
+    bakeCascadeCooperative(
+        caster, sunProj, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, radius
+    );
+}
+#else
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(trixelDistances);
@@ -192,3 +287,4 @@ void main() {
     bakeCascadeBox(sunProj, cascadeOriginUV_0, cascadeTexelSize_0, 0, radius);
     bakeCascadeBox(sunProj, cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, radius);
 }
+#endif

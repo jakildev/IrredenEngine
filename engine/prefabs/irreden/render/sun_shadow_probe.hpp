@@ -412,9 +412,10 @@ inline bool writeSunPrimaryDepthProbe(
 // report the base-texel bounding box and how many of its pixels' splat boxes
 // fit a window of 32, 40, 48 and 64 texels anchored at that box's minimum
 // (the cooperative splat's shared window). The header repeats the fit census
-// for 16x16 (the dispatched workgroup) and 8x8 groups. Fog culling is not
-// modelled, so the census is an upper bound on bake writes. Synchronizes the
-// GPU; never use in timing runs.
+// for 16x16 and 8x8 groups and, per window, the share of box writes that fall
+// outside it: the writes the cooperative kernel routes to the per-pixel path.
+// Fog culling is not modelled, so the census is an upper bound on bake writes.
+// Synchronizes the GPU; never use in timing runs.
 inline bool writeSunBakeFootprintProbe(const std::string &path) {
     std::ofstream output(path);
     if (!output) {
@@ -513,17 +514,26 @@ inline bool writeSunBakeFootprintProbe(const std::string &path) {
     std::ostringstream rows;
     for (int g = 0; g < kGroupSizeCount; ++g) {
         std::size_t fits[kSunShadowCascadeCount][kWindowCount] = {};
+        std::size_t spills[kSunShadowCascadeCount][kWindowCount] = {};
         std::size_t pixelsPerCascade[kSunShadowCascadeCount] = {};
         std::size_t groupsPerCascade[kSunShadowCascadeCount] = {};
+        const int boxEdge = 2 * radius + 1;
         for (const auto &[key, group] : groups[g]) {
             const auto [cascade, gx, gy] = key;
             std::size_t fit[kWindowCount] = {};
             for (const IRMath::ivec2 base : group.bases_) {
-                const IRMath::ivec2 reach = base - group.min_ + 2 * radius;
+                const IRMath::ivec2 rel = base - group.min_;
+                const IRMath::ivec2 reach = rel + 2 * radius;
                 for (int w = 0; w < kWindowCount; ++w) {
                     if (reach.x < kWindows[w] && reach.y < kWindows[w]) {
                         ++fit[w];
                     }
+                    const IRMath::ivec2 inside = IRMath::clamp(
+                        IRMath::ivec2(kWindows[w]) - rel,
+                        IRMath::ivec2(0),
+                        IRMath::ivec2(boxEdge)
+                    );
+                    spills[cascade][w] += std::size_t(boxEdge * boxEdge - inside.x * inside.y);
                 }
             }
             for (int w = 0; w < kWindowCount; ++w) {
@@ -548,6 +558,11 @@ inline bool writeSunBakeFootprintProbe(const std::string &path) {
                 output << "# group_" << kGroupSizes[g] << "_cascade_" << cascade << "_fit_"
                        << kWindows[w] << '=' << fits[cascade][w] << '/' << pixelsPerCascade[cascade]
                        << "\n";
+            }
+            for (int w = 0; w < kWindowCount; ++w) {
+                output << "# group_" << kGroupSizes[g] << "_cascade_" << cascade << "_spill_writes_"
+                       << kWindows[w] << '=' << spills[cascade][w] << '/'
+                       << pixelsPerCascade[cascade] * std::size_t(boxEdge * boxEdge) << "\n";
             }
         }
     }

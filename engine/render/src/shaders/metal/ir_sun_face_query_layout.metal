@@ -31,6 +31,11 @@ constant uint kSunDepthSlabWidthUnits = 64u;
 // because wrappers include this layout without ir_sun_projection.
 constant uint kSunDepthSlabQuantized = 65536u;
 constant uint kSunDepthSlabOverflow = 0x80000000u;
+// Cooperative splat: the square sun-texel window one bake workgroup reduces
+// in threadgroup memory before merging into the planes; the CPU twin asserts
+// it fits the 32 KiB floor with every slot's pair beside the nearest word.
+constant uint kSunDepthSlabWindowTexels = 32u;
+constant uint kSunDepthSlabWindowArea = kSunDepthSlabWindowTexels * kSunDepthSlabWindowTexels;
 // Planar storage: every slot's min plane, then every slot's max plane, so each
 // extremum family is one contiguous range a device fill clears.
 constant uint kSunDepthSlabPlanesWords = kSunDepthSlabSlots * kSourceFaceFallbackOffset;

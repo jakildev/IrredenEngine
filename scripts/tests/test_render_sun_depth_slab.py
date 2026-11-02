@@ -16,6 +16,14 @@ depth-decided words, never remove the nearest word's shadow, never add a
 shadow no write supports, and answer independently of write order. An
 overflowed texel keeps the nearest-only answer. Mutations of the writer, the
 clear and the receiver each fail a named control.
+
+Part five emulates the workgroup-cooperative splat lane by lane, the kernel's
+barriers as phase boundaries (init, anchor reduction, routed splat, flush),
+and requires the planes it leaves to equal the per-pixel writer's on every
+write set: boxes inside the window, boxes spilling past it, boxes leaving the
+cascade, four slabs on one texel, slabs the global planes already hold, both
+lane orders. A dropped flush, a spill routed nowhere, a shifted flush origin
+and an inclusive window bound each fail the comparison.
 """
 
 import re
@@ -379,6 +387,315 @@ int main(){
 }
 """
 
+# Lane-by-lane emulation of one bake workgroup. The kernel separates its phases
+# with barriers; here every lane completes a phase before any lane starts the
+# next, in ascending or descending lane order. The reference applies the
+# per-pixel writer to the same write set, and the planes must agree word for word.
+COOPERATIVE_CASES = r"""
+const uint kLanes = uint(TILE_EDGE * TILE_EDGE);
+struct Lane { bool caster; ivec2 base; float z; };
+int texelIndexOf(int cascadeOffset, ivec2 px){return cascadeOffset+px.y*kSunShadowMapDim+px.x;}
+bool insideMap(ivec2 px){return px.x>=0&&px.x<kSunShadowMapDim&&px.y>=0&&px.y<kSunShadowMapDim;}
+void referenceTile(const std::vector<Lane>& lanes,int cascadeOffset,int radius){
+    for(const Lane& lane:lanes){
+        if(!lane.caster)continue;
+        for(int dy=-radius;dy<=radius;++dy)for(int dx=-radius;dx<=radius;++dx){
+            const ivec2 px=lane.base+ivec2(dx,dy);
+            if(!insideMap(px))continue;
+            PRIMARY(texelIndexOf(cascadeOffset,px),packSunDepth(lane.z,ivec2(dx,dy)));
+        }
+    }
+}
+void cooperativeTile(const std::vector<Lane>& lanes,int cascadeOffset,int radius,bool descending){
+    std::vector<uint> order;
+    for(uint lane=0;lane<kLanes;++lane)order.push_back(descending?kLanes-1-lane:lane);
+    for(uint lane:order)WINDOW_RESET(lane);
+    for(uint lane:order)if(lanes[lane].caster)WINDOW_REDUCE(lanes[lane].base);
+    const ivec2 anchor=WINDOW_ANCHOR(radius);
+    const ivec2 extent=WINDOW_EXTENT(radius);
+    for(uint lane:order)WINDOW_INIT(lane,kLanes,extent);
+    for(uint lane:order){
+        if(!lanes[lane].caster)continue;
+        for(int dy=-radius;dy<=radius;++dy)for(int dx=-radius;dx<=radius;++dx){
+            WINDOW_WRITE(cascadeOffset,lanes[lane].base+ivec2(dx,dy),anchor,
+                         packSunDepth(lanes[lane].z,ivec2(dx,dy)));
+        }
+    }
+    for(uint lane:order)WINDOW_FLUSH(lane,kLanes,cascadeOffset,anchor,extent);
+}
+const char* planeOf(uint index){
+    if(index<kSunDepthSlabMinPlanesOffset)return index<kSourceFaceFallbackOffset?"nearest":"fallback";
+    if(index<kSunDepthSlabMaxPlanesOffset)return "slab min";
+    if(index<kSourceFaceHeaderOffset)return "slab max";
+    return "tail";
+}
+uint cooperativeSets=0,spilledWrites=0,overflowTexels=0,droppedWrites=0;
+uint rng=12345u;
+uint next(uint bound){rng=rng*1664525u+1013904223u;return (rng>>8)%bound;}
+// `priming` is written per pixel in both arms first, so the cooperative tile
+// merges into planes other workgroups already claimed.
+ivec2 extentOf(int radius){return WINDOW_EXTENT(radius);}
+void compare(const std::vector<Lane>& priming,const std::vector<Lane>& lanes,int cascadeOffset,
+             int radius,bool descending,const char* label){
+    clearEverything();
+    referenceTile(priming,cascadeOffset,radius);
+    referenceTile(lanes,cascadeOffset,radius);
+    std::vector<uint> expected=sunDepthBuf.words;
+    clearEverything();
+    referenceTile(priming,cascadeOffset,radius);
+    cooperativeTile(lanes,cascadeOffset,radius,descending);
+    // Nearest words agree word for word. A texel's slots are a set: slot
+    // positions follow arrival order and the receiver scans every slot, so the
+    // sorted (min, max) pairs are compared; an overflowed texel's slots hold
+    // whichever three slabs arrived first, which the receiver never reads, so
+    // only its overflow bit is compared.
+    auto mismatch=[&](uint i,const char* what){
+        const bool slabWord=i>=kSunDepthSlabOffset&&i<kSourceFaceHeaderOffset;
+        const uint texel=(i-(slabWord?kSunDepthSlabOffset:0u))%kSourceFaceFallbackOffset;
+        std::cerr<<label<<": "<<what<<" at word "<<i<<" (cascade "<<texel/kCascadeTexelCount
+                 <<" texel "<<texel%kCascadeTexelCount%kSunShadowMapDim<<','
+                 <<texel%kCascadeTexelCount/kSunShadowMapDim<<") expected "<<expected[i]
+                 <<" got "<<sunDepthBuf.words[i]<<"\n";
+        require(false,"cooperative window disagrees with the per-pixel writer");
+    };
+    for(uint i=0;i<kSunDepthSlabOffset;++i)
+        if(expected[i]!=sunDepthBuf.words[i])mismatch(i,planeOf(i));
+    for(uint i=kSourceFaceHeaderOffset;i<expected.size();++i)
+        if(expected[i]!=sunDepthBuf.words[i])mismatch(i,planeOf(i));
+    if(!std::equal(expected.begin()+kSunDepthSlabOffset,expected.begin()+kSourceFaceHeaderOffset,
+                   sunDepthBuf.words.begin()+kSunDepthSlabOffset)){
+        for(uint texel=0;texel<kSourceFaceFallbackOffset;++texel){
+            const uint flag=sunDepthSlabMaxIndex(int(texel),0u);
+            const uint flagE=expected[flag]&kSunDepthSlabOverflow,flagG=sunDepthBuf.words[flag]&kSunDepthSlabOverflow;
+            if(flagE!=flagG)mismatch(flag,"overflow bit");
+            if(flagE!=0u)continue;
+            std::vector<std::pair<uint,uint>> e,g;
+            for(uint slot=0;slot<kSunDepthSlabSlots;++slot){
+                e.push_back({expected[sunDepthSlabMinIndex(int(texel),slot)],
+                             expected[sunDepthSlabMaxIndex(int(texel),slot)]&~kSunDepthSlabOverflow});
+                g.push_back({sunDepthBuf.words[sunDepthSlabMinIndex(int(texel),slot)],
+                             sunDepthBuf.words[sunDepthSlabMaxIndex(int(texel),slot)]&~kSunDepthSlabOverflow});
+            }
+            std::sort(e.begin(),e.end());std::sort(g.begin(),g.end());
+            if(e!=g)mismatch(sunDepthSlabMinIndex(int(texel),0u),"slab set");
+        }
+    }
+    // A tile without a caster has an empty footprint and touches no window word.
+    if(std::none_of(lanes.begin(),lanes.end(),[](const Lane& l){return l.caster;})){
+        require(extentOf(radius).x==0,"an empty tile has no footprint");
+    }
+    // The spill and overflow census of the set, from the reference planes.
+    ivec2 lo{kSunShadowMapDim,kSunShadowMapDim},hi{-1,-1};
+    for(const Lane& lane:lanes){
+        if(!lane.caster)continue;
+        lo=ivec2(std::min(lo.x,lane.base.x),std::min(lo.y,lane.base.y));
+        hi=ivec2(std::max(hi.x,lane.base.x),std::max(hi.y,lane.base.y));
+    }
+    if(hi.x>=0){
+        const ivec2 anchor=lo-radius;
+        for(const Lane& lane:lanes){
+            if(!lane.caster)continue;
+            for(int dy=-radius;dy<=radius;++dy)for(int dx=-radius;dx<=radius;++dx){
+                const ivec2 rel=lane.base+ivec2(dx,dy)-anchor;
+                if(!(uint(rel.x)<kSunDepthSlabWindowTexels&&uint(rel.y)<kSunDepthSlabWindowTexels))++spilledWrites;
+                if(!insideMap(lane.base+ivec2(dx,dy)))++droppedWrites;
+            }
+        }
+        for(int y=std::max(0,lo.y-radius);y<=std::min(kSunShadowMapDim-1,hi.y+radius);++y)
+        for(int x=std::max(0,lo.x-radius);x<=std::min(kSunShadowMapDim-1,hi.x+radius);++x){
+            if((sunDepthBuf.words[sunDepthSlabMaxIndex(texelIndexOf(cascadeOffset,ivec2(x,y)),0u)]
+                &kSunDepthSlabOverflow)!=0u)++overflowTexels;
+        }
+    }
+    ++cooperativeSets;
+}
+std::vector<Lane> emptyTile(){return std::vector<Lane>(kLanes,Lane{false,ivec2(0,0),0.0f});}
+int main(){
+    static_assert(kSunDepthSlabSlots>=3u,"the fixture needs the far, lower and receiver slabs");
+    sunDepthBuf.words.assign(kSourceFaceBufferWords,0xDEADBEEFu);
+    sunDepthBuf.recordOffset=kSourceFaceRecordOffset;sunDepthBuf.recordEnd=kSourceFaceSpillCounterOffset;
+    sunDepthBuf.spillCounterOffset=kSourceFaceSpillCounterOffset;
+    sunDepthBuf.words[kSourceFaceCapacityOffset]=kSourceFaceCapacity;
+    const std::vector<Lane> none=emptyTile();
+    const int offsets[2]={0,kCascadeTexelCount};
+    // No caster at all: the footprint is empty and nothing is written.
+    compare(none,none,offsets[0],7,false,"empty tile");
+    // One caster: the whole box inside the window, at both radii.
+    for(int radius:{7,0}){
+        std::vector<Lane> lanes=emptyTile();
+        lanes[27]={true,ivec2(100,100),-15.0f};
+        compare(none,lanes,offsets[0],radius,false,"one caster");
+    }
+    // Every lane a caster on a tight cluster: no spill.
+    {
+        std::vector<Lane> lanes=emptyTile();
+        for(uint lane=0;lane<kLanes;++lane)
+            lanes[lane]={true,ivec2(200+int(lane%TILE_EDGE),300+int(lane/TILE_EDGE)),-15.0f+float(lane%3)};
+        compare(none,lanes,offsets[1],7,false,"clustered tile");
+        compare(none,lanes,offsets[1],7,true,"clustered tile, descending lanes");
+    }
+    // Bases 20 texels apart: the second box reaches window column 32 exactly.
+    {
+        std::vector<Lane> lanes=emptyTile();
+        lanes[0]={true,ivec2(400,400),-15.0f};
+        lanes[9]={true,ivec2(420,400),-15.0f};
+        lanes[18]={true,ivec2(400,425),-85.0f};
+        compare(none,lanes,offsets[0],7,false,"spilling boxes");
+    }
+    // Boxes leaving the cascade at both corners are dropped, not wrapped.
+    {
+        std::vector<Lane> lanes=emptyTile();
+        lanes[1]={true,ivec2(2,3),-15.0f};
+        lanes[2]={true,ivec2(1021,1022),-85.0f};
+        lanes[3]={true,ivec2(0,0),2.0f};
+        compare(none,lanes,offsets[1],7,false,"map edges");
+    }
+    // Four distinct slabs on one texel overflow in the window; two in the
+    // window on top of two the planes already hold overflow at the merge.
+    {
+        std::vector<Lane> lanes=emptyTile();
+        lanes[4]={true,ivec2(500,500),-200.0f};
+        lanes[5]={true,ivec2(500,500),-120.0f};
+        lanes[6]={true,ivec2(500,500),-40.0f};
+        lanes[7]={true,ivec2(500,500),40.0f};
+        compare(none,lanes,offsets[0],7,false,"window overflow");
+        std::vector<Lane> priming=emptyTile();
+        priming[0]={true,ivec2(503,498),-200.0f};
+        priming[1]={true,ivec2(497,502),-120.0f};
+        std::vector<Lane> second=emptyTile();
+        second[8]={true,ivec2(500,500),-40.0f};
+        second[9]={true,ivec2(500,500),40.0f};
+        compare(priming,second,offsets[0],7,false,"merge overflow");
+        std::vector<Lane> same=emptyTile();
+        same[8]={true,ivec2(500,500),-121.0f};
+        same[9]={true,ivec2(506,494),-199.0f};
+        compare(priming,same,offsets[1],7,true,"merge into claimed slabs");
+    }
+    // Duplicates and the fixture stack through the window.
+    {
+        std::vector<Lane> lanes=emptyTile();
+        for(uint lane=0;lane<kLanes;++lane)lanes[lane]={true,ivec2(600,600),-85.0f};
+        lanes[10]={true,ivec2(600,600),-15.0f};
+        lanes[11]={true,ivec2(601,600),2.0f};
+        compare(none,lanes,offsets[0],7,false,"duplicate stack");
+    }
+    // Random tiles: casters scattered over a region wider than the window
+    // minus the halo, depths from a handful of slabs, both radii, both
+    // cascades, both lane orders, some over a primed neighbourhood.
+    for(uint trial=0;trial<96;++trial){
+        const int radius=trial%4==3?0:7;
+        const ivec2 centre{int(20+next(984)),int(20+next(984))};
+        const int spread=int(8+next(36));
+        std::vector<Lane> lanes=emptyTile(),priming=emptyTile();
+        for(uint lane=0;lane<kLanes;++lane){
+            if(next(4)==0)continue;
+            const float depths[6]={-200.0f,-120.0f,-85.0f,-15.0f,2.0f,40.0f};
+            lanes[lane]={true,centre+ivec2(int(next(uint(spread)))-spread/2,int(next(uint(spread)))-spread/2),
+                         depths[next(6)]+float(next(8))*0.25f};
+        }
+        if(trial%3==0)for(uint lane=0;lane<kLanes;lane+=5)
+            priming[lane]={true,centre+ivec2(int(next(40))-20,int(next(40))-20),-85.0f-float(next(3))*64.0f};
+        compare(priming,lanes,offsets[trial%2],radius,trial%2==1,"random tile");
+    }
+    require(spilledWrites>0&&overflowTexels>0&&droppedWrites>0,
+            "the sweep exercises spills, overflow and dropped writes");
+    std::cout<<cooperativeSets<<" cooperative write sets agree with the per-pixel writer ("
+             <<spilledWrites<<" spilled writes, "<<droppedWrites<<" dropped at the cascade edge, "
+             <<overflowTexels<<" overflowed texels)\n";
+}
+"""
+
+# The kernel's wrapper, system constant and Metal registry entry carry the
+# cooperative group size; the harness reads each so a drift fails here.
+COOPERATIVE_WRAPPER = {
+    "glsl": SHADERS / "c_bake_sun_shadow_map_cooperative.glsl",
+    "metal": SHADERS / "metal" / "c_bake_sun_shadow_map_cooperative.metal",
+}
+METAL_PIPELINE = SHADERS.parent / "metal" / "metal_pipeline.cpp"
+LAYOUT_TWINS = {
+    "hpp": SHADERS.parents[2] / "prefabs" / "irreden" / "render" / "sun_face_query_layout.hpp",
+    "glsl": SHADERS / "ir_sun_face_query_layout.glsl",
+    "metal": SHADERS / "metal" / "ir_sun_face_query_layout.metal",
+}
+
+
+def cooperative_group_size(suffix):
+    return int(re.search(r"#define IR_SUN_BAKE_GROUP_SIZE (\d+)",
+                         COOPERATIVE_WRAPPER[suffix].read_text())[1])
+
+
+def window_source(suffix, directory, mutation=None):
+    """The cooperative window include as host code: GLSL's file-scope shared
+    arrays become globals, Metal's threadgroup atomics become plain words. The
+    arrays gain one spare row so an inclusive window bound (a control) aliases
+    into padding the flush never visits instead of past the allocation."""
+    source = (SHADERS / directory / f"ir_sun_depth_slab_window.{suffix}").read_text()
+    if mutation is not None:
+        old, new = mutation
+        if source.count(old) != 1:
+            raise ValueError(f"window mutation subject not unique: {old!r}")
+        source = source.replace(old, new)
+    source = "\n".join(line for line in source.splitlines()
+                       if not line.startswith(("#include", "using namespace")))
+    source = (source.replace("threadgroup atomic_uint *", "uint *")
+              .replace("threadgroup atomic_int *", "int *")
+              .replace("int2(0)", "ivec2(0)")
+              .replace("device atomic_uint *sunDepthBuf", "BoundBuffer& sunDepthBuf")
+              .replace("shared uint ", "uint ").replace("shared int ", "int "))
+    source = source.replace("[kSunDepthSlabWindowArea];",
+                            "[kSunDepthSlabWindowArea + kSunDepthSlabWindowTexels];")
+    source = source.replace("[kSunDepthSlabWindowSlotWords];",
+                            "[kSunDepthSlabWindowSlotWords + kSunDepthSlabWindowTexels];")
+    return source + "\n"
+
+
+COOPERATIVE_SHIMS = {
+    "glsl": r"""
+int atomicMin(int& x,int v){int o=x;x=std::min(o,v);return o;}
+int atomicMax(int& x,int v){int o=x;x=std::max(o,v);return o;}
+ivec2 operator-(ivec2 a,int b){return {a.x-b,a.y-b};}
+ivec2 operator+(ivec2 a,int b){return {a.x+b,a.y+b};}
+ivec2 min(ivec2 a,ivec2 b){return {std::min(a.x,b.x),std::min(a.y,b.y)};}
+""",
+    "metal": r"""
+int atomic_load_explicit(int* x,memory_order_t){return *x;}
+void atomic_store_explicit(int* x,int v,memory_order_t){*x=v;}
+int atomic_fetch_min_explicit(int* x,int v,memory_order_t){int o=*x;*x=std::min(o,v);return o;}
+int atomic_fetch_max_explicit(int* x,int v,memory_order_t){int o=*x;*x=std::max(o,v);return o;}
+ivec2 operator-(ivec2 a,int b){return {a.x-b,a.y-b};}
+ivec2 operator+(ivec2 a,int b){return {a.x+b,a.y+b};}
+ivec2 min(ivec2 a,ivec2 b){return {std::min(a.x,b.x),std::min(a.y,b.y)};}
+""",
+}
+COOPERATIVE_GLUE = {
+    "glsl": r"""
+#define PRIMARY(t,w) writeSunPrimaryDepth(t,w)
+#define WINDOW_RESET(lane) sunWindowReset(lane)
+#define WINDOW_REDUCE(base) sunWindowReduceBase(base)
+#define WINDOW_ANCHOR(radius) sunWindowAnchor(radius)
+#define WINDOW_EXTENT(radius) sunWindowExtent(radius)
+#define WINDOW_INIT(lane,lanes,extent) sunWindowInit(lane,lanes,extent)
+#define WINDOW_WRITE(off,px,anchor,w) writeSunTexelCooperative(off,px,anchor,w)
+#define WINDOW_FLUSH(lane,lanes,off,anchor,extent) sunWindowFlush(lane,lanes,off,anchor,extent)
+""",
+    "metal": r"""
+uint windowNearestStore[kSunDepthSlabWindowArea + kSunDepthSlabWindowTexels];
+uint windowSlabMinStore[kSunDepthSlabWindowSlotWords + kSunDepthSlabWindowTexels];
+uint windowSlabMaxStore[kSunDepthSlabWindowSlotWords + kSunDepthSlabWindowTexels];
+int windowBaseMinStore[2],windowBaseMaxStore[2];
+SunDepthSlabWindow window{windowNearestStore,windowSlabMinStore,windowSlabMaxStore,windowBaseMinStore,
+                          windowBaseMaxStore};
+#define PRIMARY(t,w) writeSunPrimaryDepth(sunDepthBuf,t,w)
+#define WINDOW_RESET(lane) sunWindowReset(window,lane)
+#define WINDOW_REDUCE(base) sunWindowReduceBase(window,base)
+#define WINDOW_ANCHOR(radius) sunWindowAnchor(window,radius)
+#define WINDOW_EXTENT(radius) sunWindowExtent(window,radius)
+#define WINDOW_INIT(lane,lanes,extent) sunWindowInit(window,lane,lanes,extent)
+#define WINDOW_WRITE(off,px,anchor,w) writeSunTexelCooperative(sunDepthBuf,window,off,px,anchor,w)
+#define WINDOW_FLUSH(lane,lanes,off,anchor,extent) sunWindowFlush(sunDepthBuf,window,lane,lanes,off,anchor,extent)
+""",
+}
+
 
 def writer_source(suffix, directory):
     source = (SHADERS / directory / f"ir_sun_depth_slab_write.{suffix}").read_text()
@@ -418,9 +735,12 @@ def fills_source():
 
 
 def host_source(suffix, directory, sampler_mutation=None, writer_mutation=None,
-                clear_mutation=None):
+                clear_mutation=None, cooperative=False, window_mutation=None):
     writer = writer_source(suffix, directory)
     clear = clear_source(suffix, directory)
+    if cooperative:
+        writer += (COOPERATIVE_SHIMS[suffix] + window_source(suffix, directory, window_mutation)
+                   + COOPERATIVE_GLUE[suffix])
     if writer_mutation is not None:
         old, new = writer_mutation
         if writer.count(old) != 1:
@@ -435,6 +755,9 @@ def host_source(suffix, directory, sampler_mutation=None, writer_mutation=None,
             else "writeSunPrimaryDepth(T,W)")
     cases = re.sub(r"WRITE_PRIMARY\(([^,]+),([^)]+)\)",
                    lambda m: call.replace("T", m[1]).replace("W", m[2]), CASES)
+    if cooperative:
+        cases = (cases[:cases.index(MAIN)]
+                 + COOPERATIVE_CASES.replace("TILE_EDGE", str(cooperative_group_size(suffix))))
     cases = "#include <algorithm>\n#include <cstring>\n" + SHIMS[suffix] + writer + clear + cases
     code = overflow.host_source(suffix, directory, False, mutation=sampler_mutation,
                                 cases=cases, include_pcf=True)
@@ -519,17 +842,17 @@ class SunDepthSlabTest(unittest.TestCase):
         writer = {
             "glsl": {
                 "drop_same_slab_max": (
-                    ("            if (packedDepth > (sunDepthBuf[high] & "
+                    ("            if (highDepth > (sunDepthBuf[high] & "
                      "~kSunDepthSlabOverflow)) {\n"
-                     "                atomicMax(sunDepthBuf[high], packedDepth);\n"
+                     "                atomicMax(sunDepthBuf[high], highDepth);\n"
                      "            }\n", ""),
                     "slab extrema depend on write order"),
                 "no_overflow_flag": (
                     ("        atomicOr(sunDepthBuf[flagWord], kSunDepthSlabOverflow);\n", ""),
                     "overflow bit follows distinct slab count"),
                 "stale_covering_skip": (
-                    ("if (packedDepth < resident) atomicMin",
-                     "if (packedDepth > resident) atomicMin"),
+                    ("if (lowDepth < resident) atomicMin",
+                     "if (lowDepth > resident) atomicMin"),
                     "slab extrema depend on write order"),
                 "wrong_slab_match": (
                     ("if (sunDepthSlab(resident) == slab) {", "if (true) {"),
@@ -537,9 +860,9 @@ class SunDepthSlabTest(unittest.TestCase):
             },
             "metal": {
                 "drop_same_slab_max": (
-                    ("            if (packedDepth > (high & ~kSunDepthSlabOverflow)) {\n"
+                    ("            if (highDepth > (high & ~kSunDepthSlabOverflow)) {\n"
                      "                atomic_fetch_max_explicit(&sunDepthBuf[highIndex], "
-                     "packedDepth, memory_order_relaxed);\n"
+                     "highDepth, memory_order_relaxed);\n"
                      "            }\n", ""),
                     "slab extrema depend on write order"),
                 "no_overflow_flag": (
@@ -547,7 +870,7 @@ class SunDepthSlabTest(unittest.TestCase):
                      "kSunDepthSlabOverflow, memory_order_relaxed);\n", ""),
                     "overflow bit follows distinct slab count"),
                 "stale_covering_skip": (
-                    ("if (packedDepth < resident) {", "if (packedDepth > resident) {"),
+                    ("if (lowDepth < resident) {", "if (lowDepth > resident) {"),
                     "slab extrema depend on write order"),
                 "wrong_slab_match": (
                     ("if (sunDepthSlab(resident) == slab) {", "if (true) {"),
@@ -580,6 +903,79 @@ class SunDepthSlabTest(unittest.TestCase):
                 self.assertNotEqual(run.returncode, 0)
                 self.assertIn("clear resets poisoned slab words", run.stderr)
 
+
+    def test_cooperative_window_agrees_with_per_pixel_writer(self):
+        harness = overflow.SourceFaceOverflowTest()
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            with self.subTest(backend=suffix):
+                run = harness.compile_and_run(host_source(suffix, directory, cooperative=True))
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertIn("agree with the per-pixel writer", run.stdout)
+                print(f"{suffix}: {run.stdout}", end="")
+
+    def test_cooperative_mutation_controls(self):
+        harness = overflow.SourceFaceOverflowTest()
+        disagree = "cooperative window disagrees with the per-pixel writer"
+        controls = {
+            "glsl": {
+                "dropped_flush": (
+                    ("        atomicMin(sunDepthBuf[index], nearest);\n", ""), disagree),
+                "dropped_spill": (
+                    ("    writeSunPrimaryDepth(cascadeOffset + px.y * kSunShadowMapDim + px.x, "
+                     "packedDepth);\n", ""), disagree),
+                "wrong_window_origin": (
+                    ("        const ivec2 px = anchor + cell;", "        const ivec2 px = anchor + cell + ivec2(1, 0);"), disagree),
+                "inclusive_window_bound": (
+                    ("if (uint(rel.x) < kSunDepthSlabWindowTexels && uint(rel.y) < "
+                     "kSunDepthSlabWindowTexels) {",
+                     "if (uint(rel.x) <= kSunDepthSlabWindowTexels && uint(rel.y) < "
+                     "kSunDepthSlabWindowTexels) {"), disagree),
+            },
+            "metal": {
+                "dropped_flush": (
+                    ("        atomic_fetch_min_explicit(&sunDepthBuf[index], nearest, "
+                     "memory_order_relaxed);\n", ""), disagree),
+                "dropped_spill": (
+                    ("    writeSunPrimaryDepth(sunDepthBuf, cascadeOffset + px.y * kSunShadowMapDim "
+                     "+ px.x, packedDepth);\n", ""), disagree),
+                "wrong_window_origin": (
+                    ("        const int2 px = anchor + cell;", "        const int2 px = anchor + cell + int2(1, 0);"), disagree),
+                "inclusive_window_bound": (
+                    ("if (uint(rel.x) < kSunDepthSlabWindowTexels && uint(rel.y) < "
+                     "kSunDepthSlabWindowTexels) {",
+                     "if (uint(rel.x) <= kSunDepthSlabWindowTexels && uint(rel.y) < "
+                     "kSunDepthSlabWindowTexels) {"), disagree),
+            },
+        }
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            for name, (mutation, failure) in controls[suffix].items():
+                with self.subTest(backend=suffix, mutation=name):
+                    run = harness.compile_and_run(
+                        host_source(suffix, directory, cooperative=True, window_mutation=mutation))
+                    self.assertNotEqual(run.returncode, 0)
+                    self.assertIn(failure, run.stderr)
+
+    def test_cooperative_layout_twins_and_group_size_agree(self):
+        windows = {name: int(re.search(r"kSunDepthSlabWindowTexels = (\d+)u", path.read_text())[1])
+                   for name, path in LAYOUT_TWINS.items()}
+        slots = {name: int(re.search(r"kSunDepthSlabSlots = (\d+)u", path.read_text())[1])
+                 for name, path in LAYOUT_TWINS.items()}
+        self.assertEqual(len(set(windows.values())), 1, windows)
+        self.assertEqual(len(set(slots.values())), 1, slots)
+        window = windows["hpp"]
+        self.assertLessEqual(window * window * (1 + 2 * slots["hpp"]) * 4, 32768)
+        groups = {suffix: cooperative_group_size(suffix) for suffix in COOPERATIVE_WRAPPER}
+        groups["system"] = int(re.search(r"kBakeSunShadowCooperativeGroupSize = (\d+);",
+                                         BAKE_SYSTEM.read_text())[1])
+        registry = re.search(
+            r'functionName == "c_bake_sun_shadow_map_cooperative"\) \{\s*'
+            r"return MTL::Size\((\d+), (\d+), 1\);", METAL_PIPELINE.read_text())
+        self.assertIsNotNone(registry, "cooperative kernel missing from the threadgroup registry")
+        groups["registry"] = int(registry[1])
+        self.assertEqual(registry[1], registry[2])
+        self.assertEqual(len(set(groups.values())), 1, groups)
+        # The flush hands every lane an equal share of the window.
+        self.assertEqual((window * window) % (groups["system"] ** 2), 0)
 
 
 if __name__ == "__main__":

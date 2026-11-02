@@ -295,7 +295,7 @@ cascade-0 missing pixels outside a 2-pixel band) while both casters keep their
 | Family | Evidence | Outcome |
 |---|---|---|
 | Second retained depth (nearest two distinct quantized depths; the loser of the nearest slot's atomic min lands in the otherwise empty fallback layer; the opt-in `retainSecondPrimaryDepth_` selects the `c_bake_sun_shadow_map_second_depth` compile-time variant, so the production bake carries no switch) | native fixture, two-slot write adapter and receiver controls in both shader dialects | **Rejected.** Zero recovered pixels in every stacked case: a flat raster top already yields three quantized depths per texel (−15, −14.667, −14.333 from the trixel lattice), so the second slot always holds the distant caster's own neighbour. No extra storage, no extra clear, one extra atomic per write and one extra read per tap, measured at +0.40 ms (+12 %) on `bakeSunShadowMap` and +9 % on the raster scene's GPU frame; the default path is byte-identical to the parent in all 165 captures and within noise in timing (bake 1.017×, GPU frame 1.011×). Arbitrary nearest-K inherits the failure with K words per texel. |
-| Depth-slab extrema | `test_render_sun_depth_slab.py`: 3.9 million exhaustive interval queries and the executed three-slot writer, clear and receiver sweep in both dialects; the native sparse three-slot layer, compiled out at the shipped zero slots ([evidence](../pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md), [guarded prototype cost](../pr-screenshots/claude/4799-raster-sun-depth-preservation/slab-timing/README.md), [budget work](../pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md#budget-phase-0-the-splat-footprint-per-bake-workgroup)) | Dense slabs are proof-rejected: depth-only existence is exact only when a slab is no wider than the query window (6,968 counterexamples when wider), and sixteen min/max slabs over the encoded range cost 256 MiB. The sparse layout (mechanism below) repairs every beyond-throw stack with at most three distinct slabs per texel to the lower-only control exactly and leaves every other scene byte-identical; its residuals are a fourth slab on a texel (overflow, nearest-only hole) and 48 of 61,750 harness write sets hidden behind rejected splat extrema. The sun buffer grows from 30,670,864 to 81,002,512 bytes. Cost on the current tree, three frozen arms in guarded interleaved windows: the two small raster cells run `bakeSunShadowMap` at 1.93x to 2.11x (deltas +1.4 to +1.7 ms against locked floors of 0.064 and 0.029 ms), frame mean 1.30x to 1.69x and p99 1.16x to 1.40x; the default raster scene passes the frame gate at 1.09x / 1.03x with the bake row at 1.86x; both IRPerfGrid zooms are inside 1.05x. Replacing the per-texel slab clear with two contiguous device fills moved no gated row (within 0.12 ms); the writer's dependent loads carry the cost. The cooperative-splat premise measured below its bar: a 16x16 bake workgroup's splat boxes fit a 32-texel window (the 32 KiB floor at three slots) for 54% / 81% of the small cells' caster pixels and 78% of the default scene's; 8x8 groups fit 94% / 99.8%. **Over budget; compiled out (`kSunDepthSlabSlots = 0`), the window shape is the open design question.** |
+| Depth-slab extrema | `test_render_sun_depth_slab.py`: 3.9 million exhaustive interval queries and the executed three-slot writer, clear, receiver and workgroup-cooperative splat in both dialects; the native sparse three-slot layer, compiled out at the shipped zero slots ([evidence](../pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md), [guarded prototype cost](../pr-screenshots/claude/4799-raster-sun-depth-preservation/slab-timing/README.md), [budget work](../pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md#budget-the-four-arms-on-the-five-cells)) | Dense slabs are proof-rejected: depth-only existence is exact only when a slab is no wider than the query window (6,968 counterexamples when wider), and sixteen min/max slabs over the encoded range cost 256 MiB. The sparse layout (mechanism below) repairs every beyond-throw stack with at most three distinct slabs per texel to the lower-only control exactly and leaves every other scene byte-identical; its residuals are a fourth slab on a texel (overflow, nearest-only hole) and 48 of 61,750 harness write sets hidden behind rejected splat extrema. The sun buffer grows from 30,670,864 to 81,002,512 bytes. Cost on the current tree, four frozen arms in guarded interleaved windows: the per-pixel writer runs `bakeSunShadowMap` at 1.87x / 2.08x on the two small raster cells (deltas +1.26 / +1.57 ms against locked floors of 0.064 / 0.029 ms) with frame mean 1.51x / 1.24x; the contiguous device fills move no gated row (within 0.31 ms of the per-texel clear); the workgroup-cooperative splat (8x8 tile, 32-texel window, per-write spill, exact to the per-pixel writer on all 58 captures and in the harness) is slower still at 3.28x / 2.80x, and its window skeleton with the slab words compiled out already costs +0.66 ms on both cells, so the shared-memory reduction does not pay for itself on this GPU; the default raster scene passes the frame gate with every arm, and both IRPerfGrid zooms are inside 1.05x. **Over budget; compiled out (`kSunDepthSlabSlots = 0`), the next lever is a load-free direct-mapped slab table (collision census 4 of 79,738 multi-slab texels).** |
 | Finite-index routing | canvas pixel census | **Rejected.** Every visible pixel is a caster: the three-object fixture occupies 31,320 of 463,524 canvas pixels (48 % of the 65,536-record pool), the default scene 34,376, and a covered canvas 7.1 pools. Routing points as faces also contradicts the index's authored-face semantics. |
 
 No candidate meets the adoption gate, so the primary layer keeps one nearest
@@ -327,6 +327,35 @@ its wrappers (the second-depth diagnostic keeps its fallback-layer write and
 feeds the slab extrema too), its world-placed and per-axis resolves, and the
 ceiling-cut surface writes of the box bake. The indexed fallback layer stays
 nearest-only; its casters have exact records.
+
+The layer's final state is a function of the write set alone: the nearest word
+is the set's minimum, the slabs are the set's distinct slabs with their
+per-slab extrema, and overflow is sticky once a texel saw more distinct slabs
+than slots (the receiver then answers from the nearest word, so which three
+slots survive is unobservable, as is the order the slots were claimed in). Any
+writer that partitions the write set across paths is therefore exact when every
+write lands exactly once in a path that ends in the global merge; window size,
+group shape and anchor move only cost.
+
+The coverage-splat bake uses that freedom. Where the splat is engaged (the
+cardinal main-canvas bake and the world-placed cast resolve; the per-axis
+resolve and the no-splat detached bakes write one word per pixel and keep the
+production kernel), the bake system dispatches
+`c_bake_sun_shadow_map_cooperative`, the shared body at an 8x8 pixel tile:
+per cascade the workgroup clears a `kSunDepthSlabWindowTexels`-square window
+of nearest words and slot pairs in threadgroup memory (32 texels, 28 bytes per
+texel, 28,672 bytes under the 32 KiB floor the layout header asserts), reduces
+its casters' base texels to the window anchor one splat radius below their
+minimum, routes each box write per texel (inside the window the shared claim,
+outside the per-pixel global write), and flushes each window texel once: the
+nearest word, one claim-and-merge per slot pair, and the overflow bit. Every
+lane reaches every barrier; a lane without a caster skips only its own reduce
+and splat. The window include (`ir_sun_depth_slab_window`) holds the shared
+arrays and phases; `scripts/tests/test_render_sun_depth_slab.py` emulates them
+lane by lane with the barriers as phase boundaries against the per-pixel
+writer on every write set, including spilling, cascade-edge and overflowing
+ones, and fails by name on a dropped flush, a spill routed nowhere, a shifted
+flush origin and an inclusive window bound.
 
 The receiver consults the slabs in exactly one case: the nearest word was
 rejected as beyond the throw. A near or same-plane rejection leaves nothing
@@ -371,29 +400,59 @@ extrema atomics when a plain load shows the write moves nothing did not move
 the bake, planar planes beat per-texel pairs, and a row prefetch spilled
 registers.
 
-The budget work ([README](../pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md#budget-phase-0-the-splat-footprint-per-bake-workgroup))
-measured the two paths the prototype left open. The contiguous device fills
-replace the per-texel clear loop and are cost-neutral on this GPU: within
-0.12 ms of the per-texel clear on the `bakeSunShadowMap` row and the GPU
-envelope of every cell, so the clear is not where the layout's cost lives.
-The workgroup-cooperative splat was gated on a footprint census before any
-kernel: per 16x16 bake workgroup, the median tile spans 27 (cascade 0) and 20
-(cascade 1) base texels on the small raster cells, 23 / 22 on the default
-scene, plus a 14-texel splat halo; one nearest word and three (min, max)
-pairs per window texel are 28 bytes, so the 32 KiB threadgroup floor holds a
-32-texel window, which fits 54% / 81% of the small cells' caster pixels and
-78% of the default scene's, below the 95% / 90% premise. The redundancy a
-tile-local reduction would remove is 29x to 43x writes per texel inside a
-tile (164x per written texel across tiles on the lower cell). Shapes that fit
-the floor exist in the census: 8x8 groups at a 32 window (94% of the small
-cells, 99.8% of the default scene) and a 48 window with one (min, max) pair
-per texel (89% / 96% and 100%, a second slab spilling to the per-pixel path).
-Choosing between them is the open design question; until it is answered the
-layer ships compiled out, and the three-arm timing on the current tree
-(base at zero slots, per-pixel writer, fills) stands as the cost record:
-`bakeSunShadowMap` 1.93x to 2.11x and frame mean 1.30x to 1.69x on the two
-small raster cells, the default raster scene inside the frame gate at 1.09x,
-both IRPerfGrid zooms inside 1.05x.
+The budget work ([README](../pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md#budget-the-four-arms-on-the-five-cells))
+measured the two paths the prototype left open on four frozen arms (base at
+zero slots, the per-pixel writer, the fills, the cooperative kernel) in one
+guarded interleaved window per cell, graded by the locked per-cell floors of
+the `bakeSunShadowMap` row (0.064 ms on the lower-caster cell, 0.029 ms on
+the 128-caster stack: the base arm's measured between-run range) and the
+1.10x point gate on the frame rows.
+
+- The contiguous device fills replace the per-texel clear loop and are
+  cost-neutral on this GPU: within 0.31 ms of the per-texel clear on the
+  `bakeSunShadowMap` row of every cell and inside the arms' spreads on the
+  envelope, so the clear is not where the layout's cost lives.
+- The workgroup-cooperative splat was first gated on a footprint census: per
+  16x16 bake workgroup the median tile spans 27 (cascade 0) and 20 (cascade 1)
+  base texels on the small raster cells plus a 14-texel splat halo, so the
+  32-texel window the 32 KiB floor allows at 28 bytes per texel fits 54% /
+  81% of their caster pixels; 8x8 groups fit 94%. The design answer took the
+  8x8 tile at the 32 window with the spill decided per write (5% to 6% of box
+  writes on the small cells' zoom-2 census frame, 3% to 5% on the profiled
+  zoom-1 frame, under 0.05% on the default scene) and made the timing the
+  gate. Built to that shape (mechanism in the previous section), the kernel is
+  exact: hash-identical receivers to the per-pixel writer on all 58 captures
+  and agreement with it on every emulated write set. It is also slower than
+  the per-pixel writer it replaces: `bakeSunShadowMap` 3.28x / 2.80x of the
+  base arm on the two small cells against 1.87x / 2.08x for the per-pixel
+  arm. The attribution arm with the slab words compiled out, the nearest word
+  alone through the window, still costs +0.66 ms on both cells (1.46x, ten
+  and twenty-two floors), so the window skeleton (reset, footprint reduction,
+  init, shared nearest atomics, flush, five barriers per cascade under a
+  28 KiB threadgroup allocation) is over budget before any slab is touched,
+  and the shared-memory slab claim adds +2.6 / +2.0 ms on top. Master's
+  nearest-only bake does the same writes with one fire-and-forget global
+  atomic each. A first form that cleared and flushed the whole window on
+  every tile measured 2.61x / 3.07x; restructuring to the footprint
+  rectangle moved the cells by -0.4 to +1.0 ms, inside the spread of a kernel
+  slow for a reason the window shape does not reach.
+
+The shipped layout therefore stays at zero slots: the layer compiled out, the
+cooperative program never constructed, the dispatches master's (measured:
+origin/master's binary against the zero-slot arm on the lower-caster cell,
+`bakeSunShadowMap` 1.004x inside the floor, frame mean 1.022x). Two levers are
+recorded, not built. The one that removes work is a load-free direct-mapped
+slab table: slot = slab mod slots, fire-and-forget `atomicMin` / `atomicMax`
+with no load and no claim, the receiver trusting a slot's extremum only when
+its slab equals the queried slab and answering from the nearest word
+otherwise, so a collision degrades to the nearest-only answer and never to a
+wrong shadow. Its premise is a collision census over the per-pixel arm's
+rectangle-probe CSVs across the whole capture matrix: of 95,158 probed texels
+under the receiver, 79,738 hold two or more distinct slabs and 4 of those (all
+in an overflowing layered scene) hold two slabs congruent mod three; every
+repaired case has none. The other lever, 256 threads over the 8x8 tile, would
+rearrange the window's work rather than remove it, and the attribution arm
+says the skeleton itself is the cost.
 
 A two-pass bake that anchors a second slot to each texel's farthest write
 (`min{z : z > max − throw}`) would answer the floor receiver exactly at one

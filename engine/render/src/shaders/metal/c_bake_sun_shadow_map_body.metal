@@ -11,7 +11,21 @@
 
 // Mirrors shaders/c_bake_sun_shadow_map_body.glsl. Shared body: the
 // c_bake_sun_shadow_map and c_bake_sun_shadow_map_second_depth wrappers
-// define IR_SUN_SECOND_DEPTH and IR_SUN_BAKE_KERNEL_NAME.
+// define IR_SUN_SECOND_DEPTH and IR_SUN_BAKE_KERNEL_NAME;
+// c_bake_sun_shadow_map_cooperative defines IR_SUN_BAKE_COOPERATIVE and the
+// group size the threadgroup registry dispatches it at.
+#ifndef IR_SUN_BAKE_GROUP_SIZE
+#define IR_SUN_BAKE_GROUP_SIZE 16
+#endif
+#ifndef IR_SUN_BAKE_COOPERATIVE
+#define IR_SUN_BAKE_COOPERATIVE 0
+#endif
+#if IR_SUN_BAKE_COOPERATIVE && IR_SUN_SECOND_DEPTH
+#error "The second-depth diagnostic keeps per-pixel writes"
+#endif
+#if IR_SUN_BAKE_COOPERATIVE
+#include "ir_sun_depth_slab_window.metal"
+#endif
 
 constant int kEmptyDistanceEncoded = 65535;
 
@@ -110,6 +124,44 @@ inline void bakeCascadeBox(
     }
 }
 
+#if IR_SUN_BAKE_COOPERATIVE
+constant uint kBakeLanes = uint(IR_SUN_BAKE_GROUP_SIZE * IR_SUN_BAKE_GROUP_SIZE);
+
+// One cascade through the shared window: reset, footprint reduction, init,
+// per-write routed splat, flush, a barrier between each. Every lane runs every
+// phase and reaches every barrier; a lane without a caster only skips its own
+// reduce and splat, and a tile without a caster has an empty footprint, so its
+// init and flush loops run nothing. Mirrors GLSL.
+inline void bakeCascadeCooperative(
+    device atomic_uint *sunDepthBuf, SunDepthSlabWindow window, uint lane,
+    bool caster, float3 sp, float2 origin, float2 texelSz, int cascadeOffset, int radius
+) {
+    sunWindowReset(window, lane);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    int2 base = int2(0);
+    if (caster) {
+        base = int2(floor((sp.xy - origin) / texelSz));
+        sunWindowReduceBase(window, base);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    const int2 anchor = sunWindowAnchor(window, radius);
+    const int2 extent = sunWindowExtent(window, radius);
+    sunWindowInit(window, lane, kBakeLanes, extent);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (caster) {
+        for (int dy = -radius; dy <= radius; ++dy) {
+            for (int dx = -radius; dx <= radius; ++dx) {
+                writeSunTexelCooperative(sunDepthBuf, window, cascadeOffset, base + int2(dx, dy),
+                                         anchor, packSunDepth(sp.z, int2(dx, dy)));
+            }
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    sunWindowFlush(sunDepthBuf, window, lane, kBakeLanes, cascadeOffset, anchor, extent);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+}
+#endif
+
 kernel void IR_SUN_BAKE_KERNEL_NAME(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
@@ -118,8 +170,65 @@ kernel void IR_SUN_BAKE_KERNEL_NAME(
     texture2d<uint, access::read> trixelEntityIds [[texture(3)]],
     constant FogShadowObserverData& fogObservers [[buffer(27)]],
     texture2d<uint, access::read> fogShadowWindow [[texture(4)]],
+#if IR_SUN_BAKE_COOPERATIVE
+    uint lane [[thread_index_in_threadgroup]],
+#endif
     uint3 globalId [[thread_position_in_grid]]
 ) {
+#if IR_SUN_BAKE_COOPERATIVE
+    threadgroup atomic_uint sunWindowNearest[kSunDepthSlabWindowArea];
+    threadgroup atomic_uint sunWindowSlabMin[kSunDepthSlabWindowSlotWords];
+    threadgroup atomic_uint sunWindowSlabMax[kSunDepthSlabWindowSlotWords];
+    threadgroup atomic_int sunWindowBaseMin[2];
+    threadgroup atomic_int sunWindowBaseMax[2];
+    const SunDepthSlabWindow window{sunWindowNearest, sunWindowSlabMin, sunWindowSlabMax,
+                                    sunWindowBaseMin, sunWindowBaseMax};
+    const int2 pixel = int2(globalId.xy);
+    const int2 size = int2(int(trixelDistances.get_width()), int(trixelDistances.get_height()));
+    bool caster = pixel.x < size.x && pixel.y < size.y;
+    const int encoded = caster ? trixelDistances.read(uint2(pixel)).x : kEmptyDistanceEncoded;
+    caster = caster && encoded < kEmptyDistanceEncoded;
+    float3 sunProj = float3(0.0);
+    if (caster) {
+        const int rawDepth = decodeDepthSingle(encoded);
+        float3 pos3D;
+        if (frameData.residualYaw != 0.0) {
+            pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+                pixel, rawDepth, frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset,
+                frameData.voxelRenderOptions, frameData.visualYaw
+            );
+        } else {
+            pos3D = trixelCanvasPixelToWorld3D(
+                pixel, rawDepth, frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset,
+                frameData.voxelRenderOptions, frameData.rasterYaw
+            );
+        }
+        const bool fogBodyOrPrecut = sunFrameData.fogCeilingEnabled.y != 0 ||
+            decodeFogBody(trixelEntityIds.read(uint2(pixel)).xy);
+        if (!(fogBodyOrPrecut) && sunFrameData.fogCeilingEnabled.x != 0 &&
+            fogObservers.visionCircleCount > 0 &&
+            !fogFieldCastsSunShadow(pos3D, false, sunFrameData.fogCeilingEnabled.x,
+                fogShadowCell(pos3D, fogObservers, fogShadowWindow), fogObservers)) {
+            caster = false;
+        }
+        sunProj = sunSpaceProject(
+            pos3D, sunFrameData.sunBasisU.xyz, sunFrameData.sunBasisV.xyz,
+            sunFrameData.sunDirection.xyz
+        );
+    }
+    int radius = 0;
+    if (frameData.residualYaw == 0.0 && sunFrameData.sunSplatMaxTexels > 0.0) {
+        radius = int(sunFrameData.sunSplatMaxTexels);
+    }
+    bakeCascadeCooperative(
+        sunDepthBuf, window, lane, caster, sunProj,
+        sunFrameData.cascadeOriginUV_0, sunFrameData.cascadeTexelSize_0, 0, radius
+    );
+    bakeCascadeCooperative(
+        sunDepthBuf, window, lane, caster, sunProj,
+        sunFrameData.cascadeOriginUV_1, sunFrameData.cascadeTexelSize_1, kCascadeTexelCount, radius
+    );
+#else
     int2 pixel = int2(globalId.xy);
     int2 size = int2(
         int(trixelDistances.get_width()),
@@ -192,4 +301,5 @@ kernel void IR_SUN_BAKE_KERNEL_NAME(
         sunDepthBuf, sunProj,
         sunFrameData.cascadeOriginUV_1, sunFrameData.cascadeTexelSize_1, kCascadeTexelCount, radius
     );
+#endif
 }

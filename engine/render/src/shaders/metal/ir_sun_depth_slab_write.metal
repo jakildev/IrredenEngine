@@ -11,9 +11,12 @@ using namespace metal;
 // first empty slot with a compare-exchange; later writers of that slab min /
 // max the pair. A slot's slab never changes once claimed. A texel with more
 // distinct slabs than slots sets the sticky overflow bit on slot 0's max word.
-inline void writeSunDepthSlab(device atomic_uint *sunDepthBuf, int texelIndex, uint packedDepth) {
+// The pair is one slab's reduced (min, max); a single write is (depth, depth).
+inline void mergeSunDepthSlabPair(
+    device atomic_uint *sunDepthBuf, int texelIndex, uint lowDepth, uint highDepth
+) {
     if (kSunDepthSlabSlots == 0u) return;
-    const uint slab = sunDepthSlab(packedDepth);
+    const uint slab = sunDepthSlab(lowDepth);
     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
         const uint low = sunDepthSlabMinIndex(texelIndex, slot);
         const uint highIndex = sunDepthSlabMaxIndex(texelIndex, slot);
@@ -21,12 +24,12 @@ inline void writeSunDepthSlab(device atomic_uint *sunDepthBuf, int texelIndex, u
         if (resident == 0xFFFFFFFFu) {
             // A weak exchange may fail spuriously with the slot still empty.
             while (!atomic_compare_exchange_weak_explicit(
-                       &sunDepthBuf[low], &resident, packedDepth,
+                       &sunDepthBuf[low], &resident, lowDepth,
                        memory_order_relaxed, memory_order_relaxed)) {
                 if (resident != 0xFFFFFFFFu) break;
             }
             if (resident == 0xFFFFFFFFu) {
-                atomic_fetch_max_explicit(&sunDepthBuf[highIndex], packedDepth, memory_order_relaxed);
+                atomic_fetch_max_explicit(&sunDepthBuf[highIndex], highDepth, memory_order_relaxed);
                 return;
             }
         }
@@ -34,12 +37,12 @@ inline void writeSunDepthSlab(device atomic_uint *sunDepthBuf, int texelIndex, u
             // Extrema only move one way, so a plain load that already covers
             // the write proves the atomic would be a no-op; a stale load only
             // issues a redundant one. Mirrors GLSL.
-            if (packedDepth < resident) {
-                atomic_fetch_min_explicit(&sunDepthBuf[low], packedDepth, memory_order_relaxed);
+            if (lowDepth < resident) {
+                atomic_fetch_min_explicit(&sunDepthBuf[low], lowDepth, memory_order_relaxed);
             }
             const uint high = atomic_load_explicit(&sunDepthBuf[highIndex], memory_order_relaxed);
-            if (packedDepth > (high & ~kSunDepthSlabOverflow)) {
-                atomic_fetch_max_explicit(&sunDepthBuf[highIndex], packedDepth, memory_order_relaxed);
+            if (highDepth > (high & ~kSunDepthSlabOverflow)) {
+                atomic_fetch_max_explicit(&sunDepthBuf[highIndex], highDepth, memory_order_relaxed);
             }
             return;
         }
@@ -48,6 +51,10 @@ inline void writeSunDepthSlab(device atomic_uint *sunDepthBuf, int texelIndex, u
     if ((atomic_load_explicit(&sunDepthBuf[flagWord], memory_order_relaxed) & kSunDepthSlabOverflow) == 0u) {
         atomic_fetch_or_explicit(&sunDepthBuf[flagWord], kSunDepthSlabOverflow, memory_order_relaxed);
     }
+}
+
+inline void writeSunDepthSlab(device atomic_uint *sunDepthBuf, int texelIndex, uint packedDepth) {
+    mergeSunDepthSlabPair(sunDepthBuf, texelIndex, packedDepth, packedDepth);
 }
 
 // One primary write: the nearest word and its slab extrema together. Mirrors GLSL.

@@ -67,6 +67,14 @@ constexpr std::uint32_t kSunDepthSlabMaxPlanesOffset =
 constexpr std::uint32_t kSunDepthSlabWidthUnits = 64u;
 constexpr std::uint32_t kSunDepthSlabQuantized = 65536u;
 constexpr std::uint32_t kSunDepthSlabOverflow = 0x80000000u;
+// Cooperative splat: the square sun-texel window one bake workgroup reduces in
+// threadgroup memory before merging into the planes. Each window texel holds
+// the nearest word and every slot's (min, max) pair.
+constexpr std::uint32_t kSunDepthSlabWindowTexels = 32u;
+constexpr std::uint32_t kSunDepthSlabWindowArea =
+    kSunDepthSlabWindowTexels * kSunDepthSlabWindowTexels;
+// Threadgroup memory every GL implementation guarantees and Apple GPUs allow.
+constexpr std::uint32_t kSunDepthSlabWindowBudgetBytes = 32768u;
 constexpr std::uint32_t kSourceFaceHeaderOffset = kSunDepthSlabOffset + kSunDepthSlabLayerWords;
 // Header words: requested record count, then the allocated record capacity.
 constexpr std::uint32_t kSourceFaceCapacityOffset = kSourceFaceHeaderOffset + 1u;
@@ -275,6 +283,10 @@ static_assert(
 static_assert(
     kSunDepthSlabMaxPlanesOffset + kSunDepthSlabPlanesWords == kSourceFaceHeaderOffset,
     "The min planes then the max planes fill the slab region exactly"
+);
+static_assert(
+    kSunDepthSlabWindowArea * (1u + 2u * kSunDepthSlabSlots) * 4u <= kSunDepthSlabWindowBudgetBytes,
+    "The cooperative splat window must fit the threadgroup memory floor"
 );
 
 static_assert(
