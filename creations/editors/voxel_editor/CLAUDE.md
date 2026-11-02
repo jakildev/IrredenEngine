@@ -180,6 +180,13 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   error.
 - A recipe is a pure function of `(values, size, mask)`. APPLY writes its cells
   as one undo record and binds the part to it (`EditorPart::recipeBinding_`).
+  Reapplying the same recipe replaces unchanged generated cells and preserves
+  manual colours, erasures, metadata and additions; handles use the same rule.
+  Persistent class masks participate in both old and new evaluations. An erased
+  coordinate has no tombstone after it leaves the generated footprint, so a later
+  expansion can fill it again. Switching recipe identity retains additive behavior.
+  The session occupancy model preserves erasures but cannot model colour-only
+  overrides; assert their live result without subsequent model-dependent aims.
 - `opts.handles` (header contract): in transform mode the bound part's handles
   draw in front of its content and behind its gizmo, turned with it (none on a
   turned GRID part). A drag frame replaces the old values' cells with the new;

@@ -1351,6 +1351,18 @@ class Builder {
             );
             return;
         }
+        OccupancyModel applied = m_model;
+        if (m_activePart >= 0 && m_partBindings[static_cast<std::size_t>(m_activePart)].binding_ &&
+            m_partBindings[static_cast<std::size_t>(m_activePart)].binding_->recipe_ == name) {
+            const auto &before = *m_partBindings[static_cast<std::size_t>(m_activePart)].binding_;
+            if (!replaceRecipeCells(applied, recipeIndex, mask, before.values_, values, error)) {
+                recordError("applyRecipe: " + error);
+                return;
+            }
+        } else {
+            for (const RecipeCell &cell : cells)
+                applied.set(cell.local_, true);
+        }
         clickGui(recipeListRowCenterGuiTrixel(revealListRow(
             m_recipeList,
             kRecipeListSize.y,
@@ -1377,8 +1389,7 @@ class Builder {
         }
         clickGui(recipeApplyCenterGuiTrixel());
         m_recipeListSelected = static_cast<int>(recipeIndex);
-        for (const RecipeCell &cell : cells)
-            m_model.set(cell.local_, true);
+        m_model = std::move(applied);
         if (m_activePart >= 0) {
             PartBinding &shadow = m_partBindings[static_cast<std::size_t>(m_activePart)];
             PartRecipeBinding binding;
@@ -2682,9 +2693,8 @@ class Builder {
             binding.known_ = false;
     }
 
-    // Applies the editor's handle re-apply to @p model: a cell the recipe made
-    // only at @p oldValues is cleared, and every cell it makes at @p newValues
-    // is set.
+    // Occupancy preserves manual erasures while replacing the generated footprint.
+    // Colour-only overrides are runtime assertions, outside this boolean model.
     bool replaceRecipeCells(
         OccupancyModel &model,
         std::size_t recipeIndex,
@@ -2698,6 +2708,7 @@ class Builder {
         if (!m_moduleView->evaluate_(recipeIndex, oldValues, model.size(), mask, oldCells, error) ||
             !m_moduleView->evaluate_(recipeIndex, newValues, model.size(), mask, newCells, error))
             return false;
+        const OccupancyModel before = model;
         for (const RecipeCell &cell : oldCells) {
             const bool kept =
                 std::any_of(newCells.begin(), newCells.end(), [&cell](const RecipeCell &next) {
@@ -2706,8 +2717,14 @@ class Builder {
             if (!kept)
                 model.set(cell.local_, false);
         }
-        for (const RecipeCell &cell : newCells)
-            model.set(cell.local_, true);
+        for (const RecipeCell &cell : newCells) {
+            const bool generatedBefore =
+                std::any_of(oldCells.begin(), oldCells.end(), [&cell](const RecipeCell &old) {
+                    return old.local_ == cell.local_;
+                });
+            if (!generatedBefore || before.occupied(cell.local_))
+                model.set(cell.local_, true);
+        }
         return true;
     }
 
