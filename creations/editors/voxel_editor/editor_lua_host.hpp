@@ -24,7 +24,13 @@
 //
 //   IREditor.registerRecipe(name, params, fn, opts?)
 //     params: list of { name, type = IREditor.ParamType.INT | FLOAT,
-//                       default, min, max }
+//                       default, min, max, step? }
+//       step: FLOAT only, finite and > 0. The param's values are the lattice
+//         min + k * step clamped to [min, max]: its slider snaps there on
+//         every drag and nudge, APPLY and handle drags evaluate there, and
+//         Session::Builder applyRecipe may target it. default (min when
+//         omitted) must be a lattice value exactly; a step on an INT, a bad
+//         step, or an off-lattice default is a load error.
 //     opts.classes: up to 16 unique class names, mapped to palette slots
 //     fn(values, size, mask) -> { {x, y, z, color?}, ... }
 //       values: param name -> value (INT params arrive as integers)
@@ -42,8 +48,9 @@
 //       drag(values, size, point) -> { <bound param> = number, ... }
 //         point: { x, y, z }, the whole set-local cell the cursor is dragged
 //         to on the screen plane through `at`; values are the ones the drag
-//         started from. INT results are rounded, and every result is clamped
-//         to its param's range. A key outside `params`, a non-number, or a
+//         started from. INT results are rounded, stepped FLOAT results
+//         snapped to their lattice, and every result is clamped to its
+//         param's range. A key outside `params`, a non-number, or a
 //         raise is logged and that drag frame changes nothing.
 //     Each drag frame that changes the values replaces the cells the recipe
 //     made at the old values with the cells it makes at the new ones, and the
@@ -260,7 +267,8 @@ class ModuleHost {
 
     // Calls handle @p handleIndex's `drag` at set-local cell @p point and
     // writes @p values, with the handle's params replaced by what it returned,
-    // to @p out: INT params rounded, every param clamped to its range. Returns
+    // to @p out: INT params rounded, stepped FLOAT params snapped to their
+    // lattice, every param clamped to its range. Returns
     // false with @p error set, and @p out untouched, when `drag` raises,
     // returns a non-table, or returns a key the handle does not bind or a
     // value that is not a number.
@@ -314,7 +322,10 @@ class ModuleHost {
                                         IRMath::ceil(param.min_),
                                         IRMath::floor(param.max_)
                                     )
-                                  : IRMath::clamp(*number, param.min_, param.max_);
+                                  : recipeParamLatticeValue(
+                                        param,
+                                        IRMath::clamp(*number, param.min_, param.max_)
+                                    );
         }
         out = std::move(dragged);
         return true;
@@ -518,7 +529,7 @@ class ModuleHost {
         const std::string where = "IREditor.registerRecipe('" + recipeName + "')";
         if (entry.get_type() != sol::type::table)
             throw sol::error{
-                where + ": each param must be a { name, type, default, min, max } table"
+                where + ": each param must be a { name, type, default, min, max, step? } table"
             };
         const sol::table t = entry.as<sol::table>();
         const sol::optional<std::string> paramName = t["name"];
@@ -547,6 +558,23 @@ class ModuleHost {
         param.min_ = *minValue;
         param.max_ = *maxValue;
         param.default_ = IRMath::clamp(t.get_or("default", *minValue), *minValue, *maxValue);
+        const sol::object stepObj = t["step"];
+        if (stepObj.get_type() != sol::type::lua_nil && stepObj.get_type() != sol::type::none) {
+            if (param.type_ != RecipeParamType::FLOAT)
+                throw sol::error{field + ": step is for FLOAT params only"};
+            const sol::optional<float> step = stepObj.as<sol::optional<float>>();
+            if (stepObj.get_type() != sol::type::number || !step || !IRMath::isFinite(*step) ||
+                !(*step > 0.0f))
+                throw sol::error{field + ": step must be a finite number > 0"};
+            param.step_ = *step;
+            const float lattice = recipeParamLatticeValue(param, param.default_);
+            if (lattice != param.default_) {
+                throw sol::error{
+                    field + ": default " + recipeValueText(param.default_) +
+                    " is not on its step lattice (nearest " + recipeValueText(lattice) + ")"
+                };
+            }
+        }
         return param;
     }
 

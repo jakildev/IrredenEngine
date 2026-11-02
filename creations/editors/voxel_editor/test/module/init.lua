@@ -1,4 +1,4 @@
--- Neutral fixture for IRVoxelEditor --module: five components, seven recipes
+-- Neutral fixture for IRVoxelEditor --module: five components, eight recipes
 -- and one panel, so every registration path the editor hosts is exercised and
 -- both the COMPONENTS and RECIPES lists hold more rows than they show.
 
@@ -169,6 +169,54 @@ IREditor.registerRecipe(
         local cy = math.floor(size.y / 2)
         return { { cx + values.x, cy + values.y, size.z - 2, { r = 210, g = 80, b = 180 } } }
     end
+)
+
+-- One cell per lattice point of a stepped FLOAT: `ratio` on its 0.25 lattice
+-- is k / 4 exactly, and fills column k of a row along +X above the ground;
+-- any other value fills the `raw` marker cell instead. The lattice points sit
+-- between slider trixels (11 steps on the 112-trixel track), so a drag the
+-- slider did not snap holds a raw value. The `knob` handle sits on the filled
+-- cell and returns a value 0.1 past the dragged cell's lattice point.
+local function ratioRow(size)
+    return math.floor(size.x / 2) - 5, math.floor(size.y / 2), size.z - 2
+end
+
+IREditor.registerRecipe(
+    "test_ratio",
+    {
+        {
+            name = "ratio",
+            type = IREditor.ParamType.FLOAT,
+            default = 0.75,
+            min = 0,
+            max = 2.75,
+            step = 0.25,
+        },
+    },
+    function(values, size)
+        local x0, y, z = ratioRow(size)
+        local k = values.ratio * 4
+        if k == math.floor(k) then
+            return { { x0 + k, y, z, { r = 240, g = 200, b = 70 } } }
+        end
+        return { { x0 + 5, y + 3, z, { r = 240, g = 60, b = 60 } } }
+    end,
+    {
+        handles = {
+            {
+                name = "knob",
+                params = { "ratio" },
+                at = function(values, size)
+                    local x0, y, z = ratioRow(size)
+                    return { x0 + values.ratio * 4, y, z }
+                end,
+                drag = function(values, size, point)
+                    local x0 = ratioRow(size)
+                    return { ratio = (point.x - x0) / 4 + 0.1 }
+                end,
+            },
+        },
+    }
 )
 
 -- A 1x1 column two cells off the centre in -X and +Y, `depth` cells tall; the
@@ -474,6 +522,61 @@ IREditor.registerSession("test_recipe_handle_turned", function(session)
     session:expectPartMatchesRecipe(copy, "turned_copy_cells_match")
     session:expectPartOccupancy(copy, { x + 4, y, z }, true, "turned_copy_new_end_filled")
     session:expectRecipeValue(0, "length", 2, "source_keeps_its_length")
+end)
+
+-- test_ratio's stepped FLOAT through APPLY at an explicit lattice value, at
+-- its omitted default, and through a handle drag whose result is off the
+-- lattice. Every cell checked is test_ratio's column for a lattice point; the
+-- raw marker is the cell an unsnapped value fills.
+IREditor.registerSession("test_recipe_float_step", function(session)
+    local size = session:sceneSize()
+    local x0 = math.floor(size.x / 2) - 5
+    local y = math.floor(size.y / 2)
+    local z = size.z - 2
+    local function column(k)
+        return { x0 + k, y, z }
+    end
+    local raw = { x0 + 5, y + 3, z }
+
+    session:segment("arm")
+    session:addVoxelPart()
+    session:expectPartOccupancy(0, column(6), false, "lattice_cell_empty_before_apply")
+
+    session:segment("explicit")
+    session:applyRecipe("test_ratio", { ratio = 1.5 })
+    session:expectRecipeValue(0, "ratio", 1.5, "explicit_ratio_bound")
+    session:expectPartOccupancy(0, column(6), true, "explicit_lattice_cell_filled")
+    session:expectPartOccupancy(0, column(7), false, "explicit_next_lattice_cell_empty")
+    session:expectPartOccupancy(0, column(5), false, "explicit_previous_lattice_cell_empty")
+    session:expectPartOccupancy(0, raw, false, "explicit_raw_marker_empty")
+
+    session:segment("default_arm")
+    session:addVoxelPart()
+    session:expectPartOccupancy(1, column(3), false, "default_cell_empty_before_apply")
+
+    session:segment("default")
+    session:applyRecipe("test_ratio", {})
+    session:expectRecipeValue(1, "ratio", 0.75, "default_ratio_bound")
+    session:expectPartOccupancy(1, column(3), true, "default_lattice_cell_filled")
+    session:expectPartOccupancy(1, column(4), false, "default_next_lattice_cell_empty")
+    session:expectPartOccupancy(1, raw, false, "default_raw_marker_empty")
+
+    session:segment("handle_arm")
+    session:addVoxelPart()
+    session:applyRecipe("test_ratio", { ratio = 2 })
+    session:expectPartOccupancy(2, column(8), true, "handle_start_cell_filled")
+    session:expectPartOccupancy(2, column(10), false, "handle_target_cell_empty_before_drag")
+
+    -- Two cells out in X and two up keeps at's world coordinate sum. drag
+    -- returns 2.6 there, which the stepped param snaps to 2.5.
+    session:segment("handle_drag")
+    session:toggleTransformMode()
+    session:dragRecipeHandle("knob", { x0 + 10, y, z - 2 })
+    session:expectRecipeValue(2, "ratio", 2.5, "dragged_ratio_snapped")
+    session:expectPartMatchesRecipe(2, "dragged_cells_match")
+    session:expectPartOccupancy(2, column(10), true, "dragged_lattice_cell_filled")
+    session:expectPartOccupancy(2, column(8), false, "drag_start_cell_cleared")
+    session:expectPartOccupancy(2, raw, false, "dragged_raw_marker_empty")
 end)
 
 -- Reaches rows below both list views by name alone: the last recipe, the last

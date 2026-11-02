@@ -202,6 +202,35 @@ class LuaEditorSessionBindingsTest : public testing::Test {
                 end
                 return {}
             end)
+            -- One cell at (k, 5, 5) when ratio is k / 4 exactly, else the
+            -- raw marker (1, 9, 9); 11 steps, between slider trixels.
+            IREditor.registerRecipe("stepped_float", {
+                { name = "ratio", type = IREditor.ParamType.FLOAT, default = 0.75, min = 0,
+                  max = 2.75, step = 0.25 },
+            }, function(values, size)
+                local k = values.ratio * 4
+                if k == math.floor(k) then
+                    return { { k, 5, 5 } }
+                end
+                return { { 1, 9, 9 } }
+            end, {
+                handles = {
+                    { name = "knob", params = { "ratio" },
+                      at = function(values, size) return { values.ratio * 4, 5, 5 } end,
+                      drag = function(values, size, point)
+                          return { ratio = point.x / 4 + 0.1 }
+                      end },
+                },
+            })
+            IREditor.registerRecipe("dense_float", {
+                { name = "fine", type = IREditor.ParamType.FLOAT, default = 0, min = 0, max = 1,
+                  step = 0.03125 },
+            }, function(values, size) return {} end)
+            -- 4.8 steps: the snap reaches max only by its final clamp.
+            IREditor.registerRecipe("ragged_float", {
+                { name = "top", type = IREditor.ParamType.FLOAT, default = 0, min = 0, max = 1.2,
+                  step = 0.25 },
+            }, function(values, size) return {} end)
             IREditor.registerRecipe("wide_int", {
                 { name = "value", type = IREditor.ParamType.INT, default = 1, min = 0, max = 29 },
             }, function(values, size) return {} end)
@@ -1090,7 +1119,170 @@ TEST_F(LuaEditorSessionBindingsTest, RegisterRecipeRejectsMalformedHandles) {
         EXPECT_NE(std::string(sol::error(result).what()).find(token), std::string::npos)
             << sol::error(result).what();
     }
-    EXPECT_EQ(m_host.recipes().size(), 5u);
+    EXPECT_EQ(m_host.recipes().size(), 8u);
+}
+
+TEST_F(LuaEditorSessionBindingsTest, RegisterRecipeRejectsMalformedSteps) {
+    for (const auto &[param, token] : std::vector<std::pair<std::string, std::string>>{
+             {"type = IREditor.ParamType.INT, min = 0, max = 4, step = 1", "FLOAT params only"},
+             {"type = IREditor.ParamType.FLOAT, min = 0, max = 1, step = 0", "finite number > 0"},
+             {"type = IREditor.ParamType.FLOAT, min = 0, max = 1, step = -0.25",
+              "finite number > 0"},
+             {"type = IREditor.ParamType.FLOAT, min = 0, max = 1, step = 'x'", "finite number > 0"},
+             {"type = IREditor.ParamType.FLOAT, min = 0, max = 1, step = math.huge",
+              "finite number > 0"},
+             {"type = IREditor.ParamType.FLOAT, min = 0, max = 1, step = 0 / 0",
+              "finite number > 0"},
+             {"type = IREditor.ParamType.FLOAT, default = 0.3, min = 0, max = 1, step = 0.25",
+              "not on its step lattice (nearest 0.25)"},
+             {"type = IREditor.ParamType.FLOAT, default = 1, min = 0, max = 1, step = 0.3",
+              "not on its step lattice (nearest "},
+         }) {
+        const sol::protected_function_result result = m_lua.lua().safe_script(
+            "IREditor.registerRecipe('malformed_step', { { name = 'n', " + param +
+                " } }, function() return {} end)",
+            sol::script_pass_on_error
+        );
+        ASSERT_FALSE(result.valid()) << param;
+        const std::string what = sol::error(result).what();
+        EXPECT_NE(what.find("param 'n'"), std::string::npos) << what;
+        EXPECT_NE(what.find(token), std::string::npos) << what;
+    }
+    EXPECT_EQ(m_host.recipes().size(), 8u);
+    const IRVoxelEditor::RecipeParam &stepped = m_host.recipes()[3].params_.front();
+    ASSERT_TRUE(stepped.step_.has_value());
+    EXPECT_EQ(*stepped.step_, 0.25f);
+    EXPECT_EQ(stepped.default_, 0.75f);
+}
+
+// The live slider snap, the RECIPES lattice helper, a handle drag and the
+// Builder's binding all hand the recipe the same float.
+TEST_F(LuaEditorSessionBindingsTest, SteppedFloatLatticeIsTheSliderSnap) {
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    const IRVoxelEditor::RecipeParam &param = view.recipes_[3].params_.front();
+    IRComponents::C_WidgetSlider slider;
+    slider.minValue_ = param.min_;
+    slider.maxValue_ = param.max_;
+    slider.step_ = *param.step_;
+    for (int i = -40; i <= 340; ++i) {
+        const float value = static_cast<float>(i) / 113.0f;
+        const float lattice = IRVoxelEditor::recipeParamLatticeValue(param, value);
+        EXPECT_EQ(lattice, IRPrefab::Widget::snapSliderValue(slider, value)) << value;
+        EXPECT_EQ(IRVoxelEditor::recipeParamLatticeValue(param, lattice), lattice) << value;
+        const float steps = lattice * 4.0f;
+        EXPECT_EQ(steps, static_cast<float>(IRMath::roundHalfUp(steps))) << value;
+    }
+
+    for (int x = 0; x <= 11; ++x) {
+        std::vector<float> dragged;
+        std::string error;
+        ASSERT_TRUE(view.handleDrag_(
+            3,
+            0,
+            {0.75f},
+            IRMath::ivec3(16),
+            IRMath::ivec3(x, 5, 5),
+            dragged,
+            error
+        )) << error;
+        const float returned = static_cast<float>(x) / 4.0f + 0.1f;
+        ASSERT_EQ(dragged.size(), 1u);
+        EXPECT_EQ(dragged.front(), IRVoxelEditor::recipeParamLatticeValue(param, returned)) << x;
+        EXPECT_EQ(dragged.front(), static_cast<float>(x) / 4.0f) << x;
+    }
+}
+
+TEST_F(LuaEditorSessionBindingsTest, ApplyRecipeAdmitsExactSteppedFloatTargets) {
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    for (const auto &[values, cell] :
+         std::vector<std::pair<std::vector<std::pair<std::string, float>>, IRMath::ivec3>>{
+             {{{"ratio", 1.5f}}, IRMath::ivec3(6, 5, 5)},
+             {{}, IRMath::ivec3(3, 5, 5)},
+             {{{"ratio", 0.0f}}, IRMath::ivec3(0, 5, 5)},
+             {{{"ratio", 2.75f}}, IRMath::ivec3(11, 5, 5)},
+         }) {
+        SCOPED_TRACE(testing::Message() << "cell " << cell.x);
+        Builder builder("stepped", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
+        EXPECT_FALSE(builder.model().occupied(cell));
+        builder.applyRecipe("stepped_float", values);
+        EXPECT_TRUE(builder.model().occupied(cell));
+        EXPECT_FALSE(builder.model().occupied(cell + IRMath::ivec3(1, 0, 0)));
+        EXPECT_FALSE(builder.model().occupied(IRMath::ivec3(1, 9, 9)));
+        const Recipe recipe = builder.finish();
+        EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
+        EXPECT_GT(eventCount(recipe), 0u);
+    }
+}
+
+TEST_F(LuaEditorSessionBindingsTest, ApplyRecipeRefusesUnprovableSteppedFloatTargets) {
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    for (const auto &[name, values, token] : std::vector<
+             std::tuple<std::string, std::vector<std::pair<std::string, float>>, std::string>>{
+             {"stepped_float", {{"ratio", 1.6f}}, "'ratio' 1.60000002 is not on its step lattice"},
+             {"stepped_float", {{"ratio", 1.5f + 1.0e-6f}}, "'ratio'"},
+             {"stepped_float", {{"ratio", 3.0f}}, "'ratio' is outside its range"},
+             {"dense_float", {{"fine", 0.5f}}, "'fine' has fewer than 4 trixels per step"},
+             {"ragged_float", {{"top", 1.2f}}, "'top' 1.20000005 is not on its step lattice"},
+             {"interior_float", {{"value", 0.0f}}, "'value' is a FLOAT without a step"},
+         }) {
+        SCOPED_TRACE(name);
+        Builder builder("reject", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
+        const OccupancyModel before = builder.model();
+        builder.applyRecipe(name, values);
+        EXPECT_TRUE(builder.model().sameOccupancy(before));
+        expectOneErrorAndNoEvents(builder.finish(), token);
+    }
+    Builder below("ragged_below", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
+    below.applyRecipe("ragged_float", {{"top", 1.0f}});
+    EXPECT_TRUE(below.finish().ok());
+}
+
+TEST_F(LuaEditorSessionBindingsTest, DragRecipeHandleSnapsASteppedFloatResult) {
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    const IRMath::ivec3 size(16);
+    Builder builder("stepped_handle", size, IRVoxelEditor::deriveSceneOrigin(size), &view);
+    builder.addVoxelPart();
+    builder.applyRecipe("stepped_float", {{"ratio", 1.0f}});
+    builder.toggleTransformMode();
+    EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(4, 5, 5)));
+
+    // at (4, 5, 5); drag returns 1.6 at x 6, which snaps to 1.5.
+    builder.dragRecipeHandle("knob", IRMath::ivec3(6, 5, 3));
+    EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(6, 5, 5)));
+    EXPECT_FALSE(builder.model().occupied(IRMath::ivec3(4, 5, 5)));
+    EXPECT_FALSE(builder.model().occupied(IRMath::ivec3(1, 9, 9)));
+
+    const Recipe recipe = builder.finish();
+    EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
+}
+
+// The INT boundary below with one step for one unit: 28 steps on the track
+// hold every target under any cursor offset strictly inside 2 trixels, and the
+// Builder admits exactly that density.
+TEST_F(LuaEditorSessionBindingsTest, FourTrixelsPerStepIsTheExactSteppedBoundary) {
+    const float trackWidth = static_cast<float>(IRVoxelEditor::kRecipeSliderSize.x);
+    const float step = 0.25f;
+    for (int target = 0; target <= 28; ++target) {
+        const float value = static_cast<float>(target) * step;
+        for (int offset = -31; offset <= 31; ++offset) {
+            const float cursor =
+                static_cast<float>(target) * 4.0f + static_cast<float>(offset) / 16.0f;
+            const float held = cursor / trackWidth * 28.0f * step;
+            EXPECT_EQ(IRPrefab::Widget::snapSliderValue(0.0f, 7.0f, step, held), value)
+                << target << " " << offset;
+        }
+    }
+
+    IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    IRVoxelEditor::RecipeParam &param = view.recipes_[3].params_.front();
+    param.max_ = 7.0f;
+    Builder admitted("twenty_eight_steps", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
+    admitted.applyRecipe("stepped_float", {{"ratio", 2.5f}});
+    EXPECT_TRUE(admitted.finish().ok());
+    param.max_ = 7.25f;
+    Builder refused("twenty_nine_steps", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
+    refused.applyRecipe("stepped_float", {{"ratio", 2.5f}});
+    expectOneErrorAndNoEvents(refused.finish(), "fewer than 4 trixels per step");
 }
 
 // The wheel a segment turns, in rows toward the list's end, and the GUI point

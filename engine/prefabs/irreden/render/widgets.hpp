@@ -40,13 +40,21 @@ inline float clampSliderValue(const IRComponents::C_WidgetSlider &slider, float 
     return IRMath::clamp(value, slider.minValue_, slider.maxValue_);
 }
 
-inline float snapSliderValue(const IRComponents::C_WidgetSlider &slider, float value) {
-    const float clamped = clampSliderValue(slider, value);
-    const float steps = (clamped - slider.minValue_) / slider.step_;
-    return clampSliderValue(
-        slider,
-        slider.minValue_ + static_cast<float>(IRMath::roundHalfUp(steps)) * slider.step_
+// @p value on the lattice of @p step anchored at @p minValue, inside
+// [@p minValue, @p maxValue]. A caller that must agree with a slider's snap
+// bit for bit (a value modelled away from the widget) calls this overload.
+inline float snapSliderValue(float minValue, float maxValue, float step, float value) {
+    const float clamped = IRMath::clamp(value, minValue, maxValue);
+    const float steps = (clamped - minValue) / step;
+    return IRMath::clamp(
+        minValue + static_cast<float>(IRMath::roundHalfUp(steps)) * step,
+        minValue,
+        maxValue
     );
+}
+
+inline float snapSliderValue(const IRComponents::C_WidgetSlider &slider, float value) {
+    return snapSliderValue(slider.minValue_, slider.maxValue_, slider.step_, value);
 }
 
 inline void setSliderValue(IRComponents::C_WidgetSlider &slider, float value) {

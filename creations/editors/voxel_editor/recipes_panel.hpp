@@ -3,8 +3,14 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/widgets.hpp>
 
 #include "anim_panel.hpp"
+#include "module_session_view.hpp"
+
+#include <iomanip>
+#include <sstream>
+#include <string>
 
 // GUI-canvas geometry of the module UI: the RECIPES panel (recipe list, one
 // slider per parameter, APPLY) and the column of module panels docked under
@@ -40,6 +46,23 @@ constexpr IRMath::ivec2 kRecipePageButtonSize{22, 14};
 
 constexpr int recipeParamPageCount(int paramCount) {
     return IRMath::max(1, IRMath::divCeil(paramCount, kRecipeParamRowsPerPage));
+}
+
+// The value a RECIPES row holds for @p value: a stepped FLOAT param's lattice
+// point, through the slider snap itself so the live row, APPLY, a handle drag
+// and Session::Builder agree bit for bit; any other param's @p value as is.
+inline float recipeParamLatticeValue(const RecipeParam &param, float value) {
+    return param.step_
+               ? IRPrefab::Widget::snapSliderValue(param.min_, param.max_, *param.step_, value)
+               : value;
+}
+
+// @p value with the digits that tell two floats apart, for an error an author
+// copies a lattice value from.
+inline std::string recipeValueText(float value) {
+    std::ostringstream text;
+    text << std::setprecision(9) << value;
+    return text.str();
 }
 
 constexpr IRMath::ivec2 kModulePanelSize{120, 48};
