@@ -6,14 +6,27 @@
 #include <irreden/render/sun_face_query_layout.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
+#include <map>
+#include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace IRPrefab::SunShadow {
+
+// The sun texel a sun-space UV falls in, per cascade: the floor the bake's
+// splat box is anchored at.
+inline IRMath::ivec2
+sunCascadeTexel(const IRRender::FrameDataSun &frame, int cascade, IRMath::vec2 sunUV) {
+    const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
+    const auto size = cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_;
+    return IRMath::ivec2(IRMath::floor((sunUV - origin) / size));
+}
 
 struct PrimaryDepthTexel {
     IRMath::ivec2 texel_{-1, -1};
@@ -64,9 +77,7 @@ inline PrimaryDepthProbe readPrimaryDepthProbe(const IRMath::vec3 &world) {
     );
     constexpr std::uint32_t kCascadeWords = kSourceFaceMapDimension * kSourceFaceMapDimension;
     for (int cascade = 0; cascade < kSunShadowCascadeCount; ++cascade) {
-        const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
-        const auto size = cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_;
-        const IRMath::ivec2 texel(IRMath::floor((IRMath::vec2(probe.sunUVZ_) - origin) / size));
+        const IRMath::ivec2 texel = sunCascadeTexel(frame, cascade, IRMath::vec2(probe.sunUVZ_));
         PrimaryDepthTexel &out = probe.cascades_[cascade];
         if (texel.x < 0 || texel.y < 0 || texel.x >= kSunShadowMapDim ||
             texel.y >= kSunShadowMapDim) {
@@ -344,12 +355,10 @@ inline bool writeSunPrimaryDepthProbe(
     std::vector<std::uint32_t> nearest;
     std::vector<std::uint32_t> slabs;
     for (std::uint32_t cascade = 0; cascade < kSourceFaceCascadeCount; ++cascade) {
-        const auto origin = cascade == 0 ? frame.cascadeOriginUV_0_ : frame.cascadeOriginUV_1_;
-        const auto texel = cascade == 0 ? frame.cascadeTexelSize_0_ : frame.cascadeTexelSize_1_;
         const IRMath::ivec2 first =
-            IRMath::max(IRMath::ivec2(IRMath::floor((uvMin - origin) / texel)), IRMath::ivec2(0));
+            IRMath::max(sunCascadeTexel(frame, int(cascade), uvMin), IRMath::ivec2(0));
         const IRMath::ivec2 last = IRMath::min(
-            IRMath::ivec2(IRMath::floor((uvMax - origin) / texel)),
+            sunCascadeTexel(frame, int(cascade), uvMax),
             IRMath::ivec2(int(kSunShadowMapDim) - 1)
         );
         output << "# cascade_" << cascade << "_texels=" << first.x << ',' << first.y << ','
@@ -369,7 +378,7 @@ inline bool writeSunPrimaryDepthProbe(
                 width * sizeof(std::uint32_t),
                 nearest.data()
             );
-            // Planar slab words: one contiguous run per (slot, min / max) plane.
+            // Planar slab words: the min planes, then the max planes, one run each.
             for (std::uint32_t plane = 0; plane < kSunDepthSlabTexelWords; ++plane) {
                 buffer->getSubData(
                     (std::size_t(kSunDepthSlabOffset) +
@@ -382,9 +391,8 @@ inline bool writeSunPrimaryDepthProbe(
             for (std::size_t i = 0; i < width; ++i) {
                 output << cascade << ',' << first.x + int(i) << ',' << y << ',' << nearest[i];
                 for (std::uint32_t slot = 0; slot < kSunDepthSlabSlots; ++slot) {
-                    output << ',' << slabs[std::size_t(slot * kSunDepthSlabWords) * width + i]
-                           << ','
-                           << (slabs[std::size_t(slot * kSunDepthSlabWords + 1) * width + i] &
+                    output << ',' << slabs[std::size_t(slot) * width + i] << ','
+                           << (slabs[std::size_t(kSunDepthSlabSlots + slot) * width + i] &
                                ~kSunDepthSlabOverflow);
                 }
                 const bool overflow =
@@ -393,6 +401,159 @@ inline bool writeSunPrimaryDepthProbe(
             }
         }
     }
+    output.close();
+    return !output.fail();
+}
+
+// Capture only: the sun-texel footprint of the main canvas's bake, grouped by
+// bake workgroup and cascade. Each caster pixel is recovered through the bake's
+// own frame data (the resident FrameDataVoxelToCanvas and FrameDataSun
+// uploads) and projected to its splat box's base texel; per group the rows
+// report the base-texel bounding box and how many of its pixels' splat boxes
+// fit a window of 32, 40, 48 and 64 texels anchored at that box's minimum
+// (the cooperative splat's shared window). The header repeats the fit census
+// for 16x16 (the dispatched workgroup) and 8x8 groups. Fog culling is not
+// modelled, so the census is an upper bound on bake writes. Synchronizes the
+// GPU; never use in timing runs.
+inline bool writeSunBakeFootprintProbe(const std::string &path) {
+    std::ofstream output(path);
+    if (!output) {
+        return false;
+    }
+    const auto *bake = probeBakeSystem(output, false);
+    if (bake == nullptr) {
+        return false;
+    }
+    const auto mainCanvas = IRRender::getCanvas("main");
+    const auto canvasOpt =
+        IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(mainCanvas);
+    if (!canvasOpt.has_value()) {
+        output << "# active=0\n";
+        return false;
+    }
+    const auto &canvas = **canvasOpt;
+    IRRender::FrameDataVoxelToCanvas voxelFrame{};
+    bake->voxelFrameDataBuf_->getSubData(0, sizeof(voxelFrame), &voxelFrame);
+    const IRRender::FrameDataSun &sun = bake->frameData_;
+    const std::size_t texels = std::size_t(canvas.size_.x) * std::size_t(canvas.size_.y);
+    std::vector<std::int32_t> distances(texels);
+    canvas.getTextureDistances()->getSubImage2D(
+        0,
+        0,
+        canvas.size_.x,
+        canvas.size_.y,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        distances.data()
+    );
+    const int scale = voxelFrame.voxelRenderOptions_.x != 0
+                          ? IRMath::max(voxelFrame.voxelRenderOptions_.y, 1)
+                          : 1;
+    const IRMath::ivec2 frameOffset =
+        voxelFrame.trixelCanvasOffsetZ1_ +
+        IRMath::ivec2(IRMath::floor(voxelFrame.cameraTrixelOffset_ * float(scale)));
+    const int radius = voxelFrame.residualYaw_ == 0.0f && sun.sunSplatMaxTexels_ > 0.0f
+                           ? int(sun.sunSplatMaxTexels_)
+                           : 0;
+    const auto cardinal = IRMath::rasterYawCardinalIndex(voxelFrame.rasterYaw_);
+    constexpr int kWindows[] = {32, 40, 48, 64};
+    constexpr int kGroupSizes[] = {IRSystem::kBakeSunShadowGroupSize, 8};
+    constexpr int kWindowCount = 4;
+    constexpr int kGroupSizeCount = 2;
+    struct Group {
+        IRMath::ivec2 min_{INT_MAX, INT_MAX};
+        IRMath::ivec2 max_{INT_MIN, INT_MIN};
+        std::vector<IRMath::ivec2> bases_;
+    };
+    std::map<std::tuple<int, int, int>, Group> groups[kGroupSizeCount];
+    std::size_t casterPixels = 0;
+    for (int y = 0; y < canvas.size_.y; ++y) {
+        for (int x = 0; x < canvas.size_.x; ++x) {
+            const std::int32_t encoded = distances[std::size_t(y) * canvas.size_.x + x];
+            if (encoded >= IRConstants::kTrixelDistanceMaxDistance) {
+                continue;
+            }
+            ++casterPixels;
+            const float rawDepth = float(encoded >> 3);
+            const IRMath::vec2 isoRel(IRMath::ivec2(x, y) - frameOffset);
+            IRMath::vec3 pos3D =
+                voxelFrame.residualYaw_ != 0.0f
+                    ? IRMath::isoPixelToPos3DYawed(isoRel, rawDepth, voxelFrame.visualYaw_)
+                    : IRMath::rotateCardinalZInv(
+                          IRMath::isoPixelToPos3D(isoRel, rawDepth),
+                          cardinal
+                      );
+            if (scale > 1) {
+                pos3D /= float(scale);
+            }
+            const IRMath::vec3 sunProj = IRMath::sunSpaceProject(
+                pos3D,
+                IRMath::vec3(sun.sunBasisU_),
+                IRMath::vec3(sun.sunBasisV_),
+                IRMath::vec3(sun.sunDirection_)
+            );
+            for (int cascade = 0; cascade < kSunShadowCascadeCount; ++cascade) {
+                const IRMath::ivec2 base = sunCascadeTexel(sun, cascade, IRMath::vec2(sunProj));
+                for (int g = 0; g < kGroupSizeCount; ++g) {
+                    Group &group = groups[g][{cascade, x / kGroupSizes[g], y / kGroupSizes[g]}];
+                    group.min_ = IRMath::min(group.min_, base);
+                    group.max_ = IRMath::max(group.max_, base);
+                    group.bases_.push_back(base);
+                }
+            }
+        }
+    }
+    output << std::setprecision(9);
+    output << "# active=1\n";
+    output << "# finite_coverage=" << (bake->frameUsesFiniteCoverage_ ? 1 : 0) << "\n";
+    output << "# canvas=" << canvas.size_.x << ',' << canvas.size_.y << "\n";
+    output << "# caster_pixels=" << casterPixels << "\n";
+    output << "# splat_radius=" << radius << "\n";
+    output << "# residual_yaw=" << voxelFrame.residualYaw_ << "\n";
+    std::ostringstream rows;
+    for (int g = 0; g < kGroupSizeCount; ++g) {
+        std::size_t fits[kSunShadowCascadeCount][kWindowCount] = {};
+        std::size_t pixelsPerCascade[kSunShadowCascadeCount] = {};
+        std::size_t groupsPerCascade[kSunShadowCascadeCount] = {};
+        for (const auto &[key, group] : groups[g]) {
+            const auto [cascade, gx, gy] = key;
+            std::size_t fit[kWindowCount] = {};
+            for (const IRMath::ivec2 base : group.bases_) {
+                const IRMath::ivec2 reach = base - group.min_ + 2 * radius;
+                for (int w = 0; w < kWindowCount; ++w) {
+                    if (reach.x < kWindows[w] && reach.y < kWindows[w]) {
+                        ++fit[w];
+                    }
+                }
+            }
+            for (int w = 0; w < kWindowCount; ++w) {
+                fits[cascade][w] += fit[w];
+            }
+            pixelsPerCascade[cascade] += group.bases_.size();
+            ++groupsPerCascade[cascade];
+            if (g == 0) {
+                rows << cascade << ',' << gx << ',' << gy << ',' << group.bases_.size() << ','
+                     << group.min_.x << ',' << group.min_.y << ',' << group.max_.x << ','
+                     << group.max_.y;
+                for (int w = 0; w < kWindowCount; ++w) {
+                    rows << ',' << fit[w];
+                }
+                rows << '\n';
+            }
+        }
+        for (int cascade = 0; cascade < kSunShadowCascadeCount; ++cascade) {
+            output << "# group_" << kGroupSizes[g] << "_cascade_" << cascade
+                   << "_workgroups=" << groupsPerCascade[cascade] << "\n";
+            for (int w = 0; w < kWindowCount; ++w) {
+                output << "# group_" << kGroupSizes[g] << "_cascade_" << cascade << "_fit_"
+                       << kWindows[w] << '=' << fits[cascade][w] << '/' << pixelsPerCascade[cascade]
+                       << "\n";
+            }
+        }
+    }
+    output
+        << "cascade,group_x,group_y,pixels,min_x,min_y,max_x,max_y,fit_32,fit_40,fit_48,fit_64\n";
+    output << rows.str();
     output.close();
     return !output.fail();
 }

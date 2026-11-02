@@ -1009,21 +1009,28 @@ class MetalRenderDevice final : public RenderDevice {
         blit->endEncoding();
     }
 
-    void fillBuffer(const Buffer *buffer, std::size_t sizeBytes, std::uint8_t byteValue) override {
+    using RenderDevice::fillBuffer;
+    void fillBuffer(
+        const Buffer *buffer, std::size_t offsetBytes, std::size_t sizeBytes, std::uint8_t byteValue
+    ) override {
         if (buffer == nullptr || sizeBytes == 0) {
             return;
         }
         auto *mtlBuffer = static_cast<MTL::Buffer *>(buffer->getNativeBuffer());
-        if (mtlBuffer == nullptr) {
+        if (mtlBuffer == nullptr || offsetBytes >= mtlBuffer->length()) {
             return;
         }
-        const std::size_t clamped =
-            sizeBytes < mtlBuffer->length() ? sizeBytes : mtlBuffer->length();
+        const std::size_t available = mtlBuffer->length() - offsetBytes;
+        const std::size_t clamped = sizeBytes < available ? sizeBytes : available;
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer != nullptr) {
             auto *blit = createBlitEncoder(commandBuffer);
             blit->fillBuffer(
-                mtlBuffer, NS::Range::Make(0, static_cast<NS::UInteger>(clamped)), byteValue
+                mtlBuffer,
+                NS::Range::Make(
+                    static_cast<NS::UInteger>(offsetBytes), static_cast<NS::UInteger>(clamped)
+                ),
+                byteValue
             );
             blit->endEncoding();
             markMetalBufferEncoded(mtlBuffer);
@@ -1035,7 +1042,7 @@ class MetalRenderDevice final : public RenderDevice {
             // but guard the pointer so a future private-buffer caller no-ops
             // here instead of memset'ing null.
             if (void *mapped = mtlBuffer->contents()) {
-                std::memset(mapped, byteValue, clamped);
+                std::memset(static_cast<std::uint8_t *>(mapped) + offsetBytes, byteValue, clamped);
             }
         }
     }

@@ -327,10 +327,11 @@ int main() {
     const auto stale=actual;
     for(uint index=0;index<kSourceFaceFallbackOffset+17;++index) clearIndex(index);
     for(uint i=0;i<kSourceFaceFallbackOffset*2;++i) oracle[i]=0xffffffffu;
+    // The slab planes are the bake system's device fills, not this kernel's.
     for(uint texel=0;texel<kSourceFaceFallbackOffset;++texel)
     for(uint slot=0;slot<kSunDepthSlabSlots;++slot){
-        oracle[sunDepthSlabMinIndex(int(texel),slot)]=0xffffffffu;
-        oracle[sunDepthSlabMaxIndex(int(texel),slot)]=0u;
+        oracle[sunDepthSlabMinIndex(int(texel),slot)]=stale[sunDepthSlabMinIndex(int(texel),slot)];
+        oracle[sunDepthSlabMaxIndex(int(texel),slot)]=stale[sunDepthSlabMaxIndex(int(texel),slot)];
     }
     oracle[kSourceFaceHeaderOffset]=oracle[kSourceFaceSpillCounterOffset]=0;
     oracle[kSourceFaceHierarchyNeededOffset]=oracle[kSourceFaceHierarchyReadyOffset]=0;

@@ -58,6 +58,12 @@ constexpr std::uint32_t kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepth
 constexpr std::uint32_t kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
 constexpr std::uint32_t kSunDepthSlabLayerWords =
     kSourceFaceFallbackOffset * kSunDepthSlabTexelWords;
+// Planar storage: every slot's min plane, then every slot's max plane, so each
+// extremum family is one contiguous range a device fill clears.
+constexpr std::uint32_t kSunDepthSlabPlanesWords = kSunDepthSlabSlots * kSourceFaceFallbackOffset;
+constexpr std::uint32_t kSunDepthSlabMinPlanesOffset = kSunDepthSlabOffset;
+constexpr std::uint32_t kSunDepthSlabMaxPlanesOffset =
+    kSunDepthSlabOffset + kSunDepthSlabPlanesWords;
 constexpr std::uint32_t kSunDepthSlabWidthUnits = 64u;
 constexpr std::uint32_t kSunDepthSlabQuantized = 65536u;
 constexpr std::uint32_t kSunDepthSlabOverflow = 0x80000000u;
@@ -265,6 +271,10 @@ static_assert(
     kSunDepthSlabOffset == 2u * kSourceFaceFallbackOffset &&
         kSourceFaceHeaderOffset == kSunDepthSlabOffset + kSunDepthSlabLayerWords,
     "Slab extrema sit between the sampled layers and the index header"
+);
+static_assert(
+    kSunDepthSlabMaxPlanesOffset + kSunDepthSlabPlanesWords == kSourceFaceHeaderOffset,
+    "The min planes then the max planes fill the slab region exactly"
 );
 
 static_assert(

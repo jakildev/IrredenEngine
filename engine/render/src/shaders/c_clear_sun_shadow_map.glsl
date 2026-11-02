@@ -35,9 +35,5 @@ void main() {
     }
     sunDepthBuf[linearIdx + kSourceFaceFallbackOffset] = 0xFFFFFFFFu;
     sunDepthBuf[linearIdx] = 0xFFFFFFFFu;
-    // Slab mins start empty; maxes start at zero, below every packed depth.
-    for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
-        sunDepthBuf[sunDepthSlabMinIndex(linearIdx, slot)] = 0xFFFFFFFFu;
-        sunDepthBuf[sunDepthSlabMaxIndex(linearIdx, slot)] = 0u;
-    }
+    // The slab planes are cleared by the bake system's two device fills.
 }

@@ -27,7 +27,9 @@ from ab_timing import CELLS, parse_sample  # noqa: E402
 from capture import SUBDIR, SUFFIX, restore, stage_parent  # noqa: E402
 from verify_common import find_exe  # noqa: E402
 
-WRITERS = tuple(f"{name}.{SUFFIX}" for name in ("c_bake_sun_shadow_map", "c_bake_box_sun_shadow"))
+WRITERS = tuple(f"{name}.{SUFFIX}" for name in (
+    "c_bake_sun_shadow_map", "c_bake_sun_shadow_map_body", "c_bake_sun_shadow_map_second_depth",
+    "c_bake_box_sun_shadow"))
 READERS = (f"ir_sun_shadow_sample.{SUFFIX}",)
 VARIANTS = {
     "head": (),

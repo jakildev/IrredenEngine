@@ -351,7 +351,9 @@ uint atomic_fetch_min_explicit(uint* word,uint value,int){return atomicMin(*word
 void writeSunDepthSlab(int,uint){}
 void writeSunDepthSlab(std::vector<uint>&,int,uint){}
 void writeSunPrimaryDepth(int index,uint packedDepth){atomicMin(sunDepthBuf[index],packedDepth);}
-void writeSunPrimaryDepth(std::vector<uint>& buf,int index,uint packedDepth){atomicMin(buf[index],packedDepth);}
+void writeSunPrimaryDepth(std::vector<uint>& buf,int index,uint packedDepth){
+ atomicMin(buf[index],packedDepth);
+}
 """
 
 SLOT_CASES = r"""

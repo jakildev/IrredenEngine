@@ -2303,6 +2303,11 @@ void registerArgs() {
         "Retain each sun texel's second distinct raster depth (diagnostic)"
     );
     args.flag(
+        "--sun-bake-footprint-probe",
+        "On capture frames, write the bake's per-workgroup sun-texel footprint census to "
+        "sun-footprint-<shot>.csv (stalls GPU)"
+    );
+    args.flag(
         "--sun-primary-probe",
         "Log the shadowbox ray's primary sun texels and the caster pixel census on "
         "auto-screenshot frames (stalls GPU)"
@@ -3259,6 +3264,16 @@ void initSystems() {
             }
             if (IREngine::args().getFlag("--sun-primary-probe")) {
                 logSunPrimaryProbe(shotIndex);
+            }
+            if (IREngine::args().getFlag("--sun-bake-footprint-probe")) {
+                const std::string path = "sun-footprint-" + std::to_string(shotIndex) + ".csv";
+                const bool written = IRPrefab::SunShadow::writeSunBakeFootprintProbe(path);
+                IR_LOG_INFO(
+                    "sun-bake-footprint-probe: shot={} path={} written={}",
+                    shotIndex,
+                    path,
+                    written
+                );
             }
             if (IREngine::args().wasProvided("--sun-primary-rect-probe")) {
                 const std::vector<float> &rect =

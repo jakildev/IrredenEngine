@@ -166,9 +166,19 @@ int texelOf(uint cascade,int x,int y){return int(cascade*kCascadeTexelCount+y*kS
 uint word(float z,uint marker){return (uint((z+512.0f)*1024.0f)<<8)|marker;}
 float depthOf(uint w){return float(w>>8)/1024.0f-512.0f;}
 void clearEverything(){
+    clearDepthSlabPlanes();
     for(int y=0;y<2*kSunShadowMapDim;++y)for(int x=0;x<kSunShadowMapDim;++x)clearTexel(x,y);
 }
-void clearOne(uint cascade,int x,int y){clearTexel(x,y+int(cascade)*kSunShadowMapDim);}
+// The production clear is whole-map; one texel's words are reset here so the
+// sweep can reuse a texel without re-filling 48 MiB per write set.
+void clearOne(uint cascade,int x,int y){
+    const int texel=texelOf(cascade,x,y);
+    clearTexel(x,y+int(cascade)*kSunShadowMapDim);
+    for(uint slot=0;slot<kSunDepthSlabSlots;++slot){
+        sunDepthBuf.words[sunDepthSlabMinIndex(texel,slot)]=0xffffffffu;
+        sunDepthBuf.words[sunDepthSlabMaxIndex(texel,slot)]=0u;
+    }
+}
 // The production predicate, restated: throw window, then the direct / surface
 // near rejection or the coverage-splat same-plane test against the receiver plane.
 bool oracleWord(uint w,float z,float bias,bool surface,ivec2 px,vec2 gradUV,vec2 uv){
@@ -377,6 +387,10 @@ def writer_source(suffix, directory):
     return source.replace("device atomic_uint *sunDepthBuf", "BoundBuffer& sunDepthBuf") + "\n"
 
 
+BAKE_SYSTEM = (SHADERS.parents[2] / "prefabs" / "irreden" / "render" / "systems"
+               / "system_bake_sun_shadow_map.hpp")
+
+
 def clear_source(suffix, directory):
     source = (SHADERS / directory / f"c_clear_sun_shadow_map.{suffix}").read_text()
     constant = re.search(r"(?:const|constant) int kTotalTexels = [^;]+;", source)[0]
@@ -385,7 +399,22 @@ def clear_source(suffix, directory):
     body = re.sub(r"ivec2 gid = ivec2\(gl_GlobalInvocationID.xy\);|int2 gid = int2\(globalId.xy\);",
                   "ivec2 gid = ivec2(gx, gy);", body)
     return (constant.replace("constant", "const")
-            + "\nvoid clearTexel(int gx,int gy){" + body + "}\n")
+            + "\nvoid clearTexel(int gx,int gy){" + body + "}\n" + fills_source())
+
+
+def fills_source():
+    """The bake system's slab-plane fills, executed against the harness buffer:
+    the production member with its device call rebound to a byte fill."""
+    fills = extract_block(BAKE_SYSTEM.read_text(), "void clearDepthSlabPlanes(")
+    fills = re.sub(r"\s*using IRPrefab::SunShadow::\w+;", "", fills)
+    fills = fills.replace("IRRender::device()->fillBuffer(\n            sunShadowDepthMap_,",
+                          "fillWords(")
+    fills = fills.replace("std::uint32_t", "uint")
+    if fills.count("fillWords(") != 2:
+        raise ValueError("expected the two slab-plane fills")
+    return ("void fillWords(std::size_t offsetBytes,std::size_t sizeBytes,unsigned char value){\n"
+            "    std::memset(reinterpret_cast<unsigned char*>(sunDepthBuf.words.data())"
+            "+offsetBytes,value,sizeBytes);}\n" + fills + "\n")
 
 
 def host_source(suffix, directory, sampler_mutation=None, writer_mutation=None,
@@ -406,15 +435,16 @@ def host_source(suffix, directory, sampler_mutation=None, writer_mutation=None,
             else "writeSunPrimaryDepth(T,W)")
     cases = re.sub(r"WRITE_PRIMARY\(([^,]+),([^)]+)\)",
                    lambda m: call.replace("T", m[1]).replace("W", m[2]), CASES)
-    cases = "#include <algorithm>\n" + SHIMS[suffix] + writer + clear + cases
+    cases = "#include <algorithm>\n#include <cstring>\n" + SHIMS[suffix] + writer + clear + cases
     code = overflow.host_source(suffix, directory, False, mutation=sampler_mutation,
                                 cases=cases, include_pcf=True)
-    # The shipped layout compiles the layer out; the controls execute it at
-    # the smallest useful configuration.
-    shipped = "const uint kSunDepthSlabSlots = 0u;"
-    if shipped not in code:
-        raise ValueError("expected the shipped zero-slot layout")
-    return code.replace(shipped, "const uint kSunDepthSlabSlots = 3u;")
+    # The controls execute the layer at the smallest useful configuration
+    # whatever slot count ships (zero compiles it out).
+    code, replaced = re.subn(r"const uint kSunDepthSlabSlots = \d+u;",
+                             "const uint kSunDepthSlabSlots = 3u;", code)
+    if replaced == 0:
+        raise ValueError("expected the layout's slot-count constant")
+    return code
 
 
 @unittest.skipUnless(COMPILER, "slab proofs and controls require a C++ compiler")
@@ -448,7 +478,7 @@ class SunDepthSlabTest(unittest.TestCase):
             with self.subTest(backend=suffix, mutation="skip_same_plane_test"):
                 run = harness.compile_and_run(overflow.host_source(
                     suffix, directory, False, cases=PROVENANCE, include_pcf=True,
-                    mutation=("if (h <= bias) continue;", "")))
+                    mutation=("if (h <= bias) return false;", "")))
                 self.assertNotEqual(run.returncode, 0)
                 self.assertIn("coplanar splat", run.stderr)
 
@@ -524,18 +554,13 @@ class SunDepthSlabTest(unittest.TestCase):
                     "slabs retain the third depth"),
             },
         }
-        clear = {
-            "glsl": ("    for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {\n"
-                     "        sunDepthBuf[sunDepthSlabMinIndex(linearIdx, slot)] = 0xFFFFFFFFu;\n"
-                     "        sunDepthBuf[sunDepthSlabMaxIndex(linearIdx, slot)] = 0u;\n"
-                     "    }", ""),
-            "metal": ("    for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {\n"
-                      "        atomic_store_explicit(&sunDepthBuf[sunDepthSlabMinIndex(linearIdx, "
-                      "slot)], 0xFFFFFFFFu, memory_order_relaxed);\n"
-                      "        atomic_store_explicit(&sunDepthBuf[sunDepthSlabMaxIndex(linearIdx, "
-                      "slot)], 0u, memory_order_relaxed);\n"
-                      "    }", ""),
-        }
+        # Dropping the max-plane fill leaves poisoned max words (and their
+        # overflow bits) in place; the same subject in both dialects, since the
+        # fills belong to the bake system.
+        max_fill = re.search(
+            r"\n\s*fillWords\(\n\s*std::size_t\(kSunDepthSlabMaxPlanesOffset\)[^;]*;",
+            fills_source())[0]
+        clear = {"glsl": (max_fill, ""), "metal": (max_fill, "")}
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             for name, (mutation, failure) in sampler.items():
                 with self.subTest(backend=suffix, mutation=name):

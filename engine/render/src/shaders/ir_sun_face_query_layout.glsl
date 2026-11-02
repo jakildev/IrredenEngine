@@ -36,6 +36,11 @@ const uint kSunDepthSlabWidthUnits = 64u;
 // because wrappers include this layout without ir_sun_projection.
 const uint kSunDepthSlabQuantized = 65536u;
 const uint kSunDepthSlabOverflow = 0x80000000u;
+// Planar storage: every slot's min plane, then every slot's max plane, so each
+// extremum family is one contiguous range a device fill clears.
+const uint kSunDepthSlabPlanesWords = kSunDepthSlabSlots * kSourceFaceFallbackOffset;
+const uint kSunDepthSlabMinPlanesOffset = kSunDepthSlabOffset;
+const uint kSunDepthSlabMaxPlanesOffset = kSunDepthSlabOffset + kSunDepthSlabPlanesWords;
 const uint kSourceFaceHeaderOffset = kSunDepthSlabOffset + kSunDepthSlabLayerWords;
 const uint kSourceFaceCapacityOffset = kSourceFaceHeaderOffset + 1u;
 const uint kSourceFaceHeaderWords = 2u;
@@ -125,14 +130,12 @@ uint sunDepthSlab(uint packedDepth) {
     return (packedDepth >> 8) / kSunDepthSlabQuantized;
 }
 
-// Planar storage: every slot's min words form one texel-indexed plane, then
-// its max words, so a clear or a splat box touches consecutive words.
 uint sunDepthSlabMinIndex(int texelIndex, uint slot) {
-    return kSunDepthSlabOffset + slot * kSunDepthSlabWords * kSourceFaceFallbackOffset + uint(texelIndex);
+    return kSunDepthSlabMinPlanesOffset + slot * kSourceFaceFallbackOffset + uint(texelIndex);
 }
 
 uint sunDepthSlabMaxIndex(int texelIndex, uint slot) {
-    return sunDepthSlabMinIndex(texelIndex, slot) + kSourceFaceFallbackOffset;
+    return kSunDepthSlabMaxPlanesOffset + slot * kSourceFaceFallbackOffset + uint(texelIndex);
 }
 
 uint sourceFaceTileBase(uint tileIndex) {

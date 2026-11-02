@@ -36,9 +36,5 @@ kernel void c_clear_sun_shadow_map(
         0xFFFFFFFFu,
         memory_order_relaxed
     );
-    // Slab mins start empty; maxes start at zero, below every packed depth.
-    for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
-        atomic_store_explicit(&sunDepthBuf[sunDepthSlabMinIndex(linearIdx, slot)], 0xFFFFFFFFu, memory_order_relaxed);
-        atomic_store_explicit(&sunDepthBuf[sunDepthSlabMaxIndex(linearIdx, slot)], 0u, memory_order_relaxed);
-    }
+    // The slab planes are cleared by the bake system's two device fills.
 }

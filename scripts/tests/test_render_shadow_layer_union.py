@@ -171,8 +171,9 @@ class ShadowLayerUnionTest(unittest.TestCase):
                                         "second retained depth blocks the receiver"),
             "always_read_fallback": (("(hasSourceFaces || secondPrimaryDepth)", "true"),
                                      "default receiver ignores the diagnostic layer"),
-            "unbounded_second_depth": (("if (depthDiff - bias >= maxShadowThrow) continue;", ""),
-                                       "nearest-only answer follows the throw window"),
+            "unbounded_second_depth": (
+                ("if (depthDiff - bias >= maxShadowThrow) return false;", ""),
+                "nearest-only answer follows the throw window"),
         }
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             with self.subTest(backend=suffix):
