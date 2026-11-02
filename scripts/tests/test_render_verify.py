@@ -1032,6 +1032,46 @@ class HostClosedRetry(unittest.TestCase):
         self.assertIn("references not updated", err)
 
 
+class ExtraPassSkipPredicate(unittest.TestCase):
+    """An extra pass with no backend pixel references still runs when a gated
+    shot carries a ``structural`` entry; without one it is skipped
+    wholesale, with no capture invoked."""
+
+    setUp = HostClosedRetry.setUp
+    tearDown = HostClosedRetry.tearDown
+    _manifest = HostClosedRetry._manifest
+    _run = HostClosedRetry._run
+    CLEAN_OUT = HostClosedRetry.CLEAN_OUT
+
+    GATE = {"metric": "shadow", "min_largest_frac": 0.8, "max_components": 6}
+
+    def _extra_pass_manifest(self, *, structural):
+        # `a` is the default pass (reference committed); both extra passes'
+        # pixel shots have no linux-debug reference.
+        extra = {"name": "gated", "demo_args": ["--only", "gated"],
+                 "shots": ["g"]}
+        if structural:
+            extra["structural"] = {"g": [self.GATE]}
+        self._manifest(extra_runs=[extra])
+
+    def test_structural_gate_runs_pass_without_pixel_reference(self):
+        self._extra_pass_manifest(structural=True)
+        tally, out, _ = self._run([(0, self.CLEAN_OUT, BLACK),
+                                   (0, self.CLEAN_OUT, MAGENTA)])
+        self.assertEqual(len(self.calls), 2, "the extra pass ran its capture")
+        self.assertRegex(out, r"gated:g\s+SKIP")
+        self.assertRegex(out, r"gated:g:shadow\s+PASS")
+        self.assertEqual(tally["rc"], 0)
+
+    def test_pass_without_structural_entry_or_reference_is_skipped(self):
+        self._extra_pass_manifest(structural=False)
+        tally, out, _ = self._run([(0, self.CLEAN_OUT, BLACK)])
+        self.assertEqual(len(self.calls), 1, "no capture for the skipped pass")
+        self.assertIn("extra run 'gated' skipped", out)
+        self.assertRegex(out, r"gated:g\s+SKIP")
+        self.assertEqual(tally["rc"], 0)
+
+
 class SweepSummary(unittest.TestCase):
     def _summary(self, results):
         out, err = io.StringIO(), io.StringIO()
