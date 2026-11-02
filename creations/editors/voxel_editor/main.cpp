@@ -6907,7 +6907,6 @@ void initSystems() {
         {
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
-            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<C_Camera>(
                 "EditorConstructionGrid",
                 [](const C_Camera &) {},
@@ -6919,6 +6918,7 @@ void initSystems() {
                 }
             ),
             IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
