@@ -107,6 +107,41 @@ which was measured with the pivot unpinned and is not reproducible.
 
 The sweep exits 1: 14 of 16 runs pass.
 
+### Voxel-path run-to-run spread (2026-11-01)
+
+Three consecutive `RENDER=voxel bash scripts/dev/shape-rotate-jitter-sweep build`
+runs on one tree at `origin/master` `8a3840064` (macOS / Metal; zoom 8, 360
+steps, 30 deg/s, `--pivot-origin`, gate `MAX_JITTER=4.0`). Every shape scored
+identically in all three runs (`interior_px`, `jitter_score`, `flicker_p95` and
+`flicker_frac` match to the printed digits), so the max spread is 0 on all eight
+shapes. The scores also match the table above to two decimals.
+
+| shape         | run 1  | run 2  | run 3  | max spread | gate headroom (4.0 − score) |
+|---------------|--------|--------|--------|------------|-----------------------------|
+| box           | 0.6942 | 0.6942 | 0.6942 | 0.0000     | 3.31                        |
+| sphere        | 3.784  | 3.784  | 3.784  | 0.0000     | 0.216                       |
+| cylinder      | 2.5573 | 2.5573 | 2.5573 | 0.0000     | 1.44                        |
+| ellipsoid     | 2.3329 | 2.3329 | 2.3329 | 0.0000     | 1.67                        |
+| cone          | 1.9716 | 1.9716 | 1.9716 | 0.0000     | 2.03                        |
+| torus         | 3.0527 | 3.0527 | 3.0527 | 0.0000     | 0.947                       |
+| wedge         | 0.8317 | 0.8317 | 0.8317 | 0.0000     | 3.17                        |
+| curved_panel  | 0.6351 | 0.6351 | 0.6351 | 0.0000     | 3.36                        |
+
+**Outcome.** Every spread is under 0.5 and no shape sits within its own spread
+of the gate (tightest: sphere, 0.216 headroom against a 0 spread), so the
+voxel rows are part of the standing gate: under `RENDER=both` (or `voxel`) a
+voxel row over `MAX_JITTER` fails the sweep. No script change was needed —
+`run_one` already sets `worst_rc=1` for any failing row of either path.
+
+Mutation control (sphere and torus, whose SDF rows pass 0.5 at 0.42 and 0.23 but
+whose voxel rows score 3.78 and 3.05, so only a voxel row can fail them):
+`RENDER=both MAX_JITTER=0.5 bash scripts/dev/shape-rotate-jitter-sweep build "sphere torus"`
+exits non-zero; the same command at the default gate exits zero.
+
+The spread is zero because the pivot-pinned voxel scene is deterministic on one
+host; it says nothing about cross-backend or cross-host differences (the OpenGL
+table is still a follow-up), and a renderer change will move the scores.
+
 ### Open work from this table
 
 No tolerance changes (`MAX_JITTER` stays 4.0). The shapes that fail the gate are
@@ -145,9 +180,8 @@ the voxel path to move first.
 artifacts live: the **SDF analytical solver** (default) and the **voxel-pool**
 raster (`--spin-shape-voxel` / `RENDER=voxel|both`), which under camera yaw is the
 per-axis trixel-scatter path (#1883). Both are on the main canvas. The table above
-covers both paths on Metal from the one `RENDER=both` command; the voxel path is
-captured but not yet gated as its own row (the objective keeps it a capture until
-the table is stable).
+covers both paths on Metal from the one `RENDER=both` command; the voxel rows are
+gated (the three-run spread above is 0, so the table is stable).
 
 The **detached / world-placed entity-canvas** path (SO(3) re-voxelize) is *not*
 covered here: it carries its own round-to-cell sub-cell non-determinism (a few-
