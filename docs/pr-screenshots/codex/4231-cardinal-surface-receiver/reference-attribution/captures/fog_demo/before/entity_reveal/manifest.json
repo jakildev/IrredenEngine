@@ -1,0 +1,31 @@
+{
+  "arm": "before",
+  "case": "entity_reveal",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRFogDemo",
+    "--auto-screenshot",
+    "10",
+    "--entity-reveal"
+  ],
+  "labels": [
+    "fog_entity_reveal"
+  ],
+  "sources": [
+    "save_files/screenshots/screenshot_000036.png"
+  ],
+  "shader_hashes": {
+    "c_compute_sun_shadow_body.glsl": "0ffd2c69a974fde835031568056cf33f1cf06d4b6a8b19bc7173174a284b01ec",
+    "metal/c_compute_sun_shadow_body.metal": "2cc0af6c1cf889f231125eb9eed0b55b5e2abb83587a6b3e39bdedd882e74cfb"
+  },
+  "clean": true,
+  "exit_code": 0,
+  "exit_evidence": "Capture driver rejects nonzero process return, missing RESULT=CLEAN, or insufficient screenshot count.",
+  "binary_sha256": null,
+  "binary_identity_limit": "Executable digest was not recorded; driver performed no builds between arms and changed only the staged compute bodies.",
+  "result_lines": [
+    "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+  ]
+}

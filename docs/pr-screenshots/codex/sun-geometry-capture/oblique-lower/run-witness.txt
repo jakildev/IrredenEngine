@@ -1,0 +1,7 @@
+ir-run: running debug tree /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build
+ir-run: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --config-preset /private/tmp/sun-geometry-capture-20261019/oblique-lower/config.lua --only shadowbox,floor --probe-source-box --probe-floor-mode grid --probe-floor-span 40 --no-spin --no-auto-rotate --pivot-origin --yaw 0 --zoom 1 --subdivisions 1 --no-ao --auto-screenshot 10 --sweep-frames 1 10 --sun-direction 0.3 0.4 -1 --sun-face-geometry-probe (timeout: 180s) (window mode: offscreen)
+[2026-10-19 21:01:14.899] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-10-19 21:01:14.954] [ClientLog] [info] LIGHTING-PROBE sun=(0.26832816,0.3577709,-0.8944272) shadows=true ao=false
+[2026-10-19 21:01:15.183] [ClientLog] [info] sun-face-index-probe: shot=0 path=sun-face-index-0.csv written=true
+ir-run: IRCanvasStress exited cleanly after 1s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

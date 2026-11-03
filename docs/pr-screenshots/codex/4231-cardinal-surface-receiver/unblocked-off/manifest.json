@@ -1,0 +1,53 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion",
+    "--probe-staircase",
+    "--probe-unblocked",
+    "--pivot-origin",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--no-shadows",
+    "--subdivisions",
+    "1",
+    "--zoom",
+    "4",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "4.71238898",
+    "4",
+    "--source-face-shadows"
+  ],
+  "clean": true,
+  "images": [
+    {
+      "file": "0.png",
+      "source": "save_files/screenshots/screenshot_000434.png",
+      "sha256": "111f6e0c4796ed2362f1a6c0f9068e265f7c33cf1239446d96a0b12aae377090"
+    },
+    {
+      "file": "1.png",
+      "source": "save_files/screenshots/screenshot_000435.png",
+      "sha256": "dbd1d2ea4a9ad7d3a8710efec052c4ebf4629ddc46285cf489af3cb6a75ea184"
+    },
+    {
+      "file": "2.png",
+      "source": "save_files/screenshots/screenshot_000436.png",
+      "sha256": "57a6d369834294a51d53076951188de259392119d9d6f65932bd134fa71dc9ef"
+    },
+    {
+      "file": "3.png",
+      "source": "save_files/screenshots/screenshot_000437.png",
+      "sha256": "4e2a2bb9a721399a51188b3e6dd06bfde1e6c0809ac8cf8565d7ba714d1fd8dd"
+    }
+  ],
+  "revision": "ad9a77540fce71a15dafbb59ca63f31246e8f0f6",
+  "patch_sha256": "c6f34d748a0847929507e6d44e36f74152a8bffa4b98cdecf13db6204c3ba0e1"
+}

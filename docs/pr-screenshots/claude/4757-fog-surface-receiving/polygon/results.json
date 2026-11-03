@@ -1,0 +1,4802 @@
+{
+ "quadrants/yaw0-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw0-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "41de9da05730ac7747d80adb863587c859459bf20ae94e6a53914eb55795d15a"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3102,
+   "outside": 21410,
+   "boundary": 496,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 0.0
+ },
+ "quadrants/yaw0-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw0-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "41de9da05730ac7747d80adb863587c859459bf20ae94e6a53914eb55795d15a"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3102,
+   "outside": 21410,
+   "boundary": 496,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 0.0
+ },
+ "quadrants/yaw0-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw0-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "97d9663a6875c3b68dc616f8fcbaafc6336e2a9b859e692f582ead77de0a3769"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3102,
+   "outside": 21410,
+   "boundary": 496,
+   "missing": 60,
+   "excess": 52
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 0.0
+ },
+ "quadrants/yaw0-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw0-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "72639ea4c41628eba72bcad7030646558e4019c6f74ea79f29b2143cb394b823"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3102,
+   "outside": 21410,
+   "boundary": 496,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 0.0
+ },
+ "quadrants/yaw1.57079632679-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw1.57079632679-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "1.57079632679",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "d105d3d755c0c59e4b54e7eb2ea846ad92904bbff5b187cd15a63602e0b55dc7"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21424,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 1.57079632679
+ },
+ "quadrants/yaw1.57079632679-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw1.57079632679-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "1.57079632679",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "d105d3d755c0c59e4b54e7eb2ea846ad92904bbff5b187cd15a63602e0b55dc7"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21424,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 1.57079632679
+ },
+ "quadrants/yaw1.57079632679-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw1.57079632679-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "1.57079632679",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "4c084c8e23a98db42be0054228a18c7e4351992bd12311dc3aa6a3907cd63a8c"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21424,
+   "boundary": 472,
+   "missing": 64,
+   "excess": 59
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 1.57079632679
+ },
+ "quadrants/yaw1.57079632679-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw1.57079632679-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "1.57079632679",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "ddfa59b0d943a3d1d1671b070c20e10cf4eb6e4d7eac0ed2c8f4a0f86fba08db"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21424,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 1.57079632679
+ },
+ "quadrants/yaw3.14159265359-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw3.14159265359-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "3.14159265359",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "814e354fcea160330a2e46208f39bd0cd5f2da920244cbc56dbe8ef6e938d96e"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3102,
+   "outside": 21410,
+   "boundary": 496,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 3.14159265359
+ },
+ "quadrants/yaw3.14159265359-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw3.14159265359-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "3.14159265359",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "814e354fcea160330a2e46208f39bd0cd5f2da920244cbc56dbe8ef6e938d96e"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3102,
+   "outside": 21410,
+   "boundary": 496,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 3.14159265359
+ },
+ "quadrants/yaw3.14159265359-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw3.14159265359-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "3.14159265359",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "a66e2e6ecbc4ebc8e9b8677851bc9fbffea3a45b071809dc58bc5d3d47424d6b"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3102,
+   "outside": 21410,
+   "boundary": 496,
+   "missing": 60,
+   "excess": 52
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 3.14159265359
+ },
+ "quadrants/yaw3.14159265359-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw3.14159265359-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "3.14159265359",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "646c160d560cd09b5496bb4361036d3bb39ec372c8f29bafa53b3ba8ee212d0c"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3102,
+   "outside": 21410,
+   "boundary": 496,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 3.14159265359
+ },
+ "quadrants/yaw4.71238898038-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw4.71238898038-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "4.71238898038",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "cf32bb8b15ec4693deba9a1986814c5131e60d407d720abe1aa24eb73a7bc2ab"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21424,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 4.71238898038
+ },
+ "quadrants/yaw4.71238898038-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw4.71238898038-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "4.71238898038",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "cf32bb8b15ec4693deba9a1986814c5131e60d407d720abe1aa24eb73a7bc2ab"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21424,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 4.71238898038
+ },
+ "quadrants/yaw4.71238898038-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw4.71238898038-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "4.71238898038",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "c6874fb7f052996ffd19b866cdabe47679ebe3c6c8b413df50c546da659a13f2"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21424,
+   "boundary": 472,
+   "missing": 64,
+   "excess": 59
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 4.71238898038
+ },
+ "quadrants/yaw4.71238898038-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw4.71238898038-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "4.71238898038",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "72b6d6be029f236296ae27918d0c1c21b1ac82c31c3e3e4e128b55c4c5db8a84"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21424,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 4.71238898038
+ },
+ "quadrants/yaw0.6-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw0.6-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "e55ad7b6e4d85c3e57aa3a62e4909ac49fdc188848b1330e484f2bdb3c195dbb"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 0.6
+ },
+ "quadrants/yaw0.6-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw0.6-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "50e334e0a8b72537cb0af669b719128fcb8ab2277bc8ceaf3df0563333a248c2"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 0.6
+ },
+ "quadrants/yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "7f47bbca1c7a43139402313f38e8f0f65f5ee17e60e3921362007f4feef9f80b"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 0.6
+ },
+ "quadrants/yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "0bd14afde31ba3ae3b29a81687b97345299d2d0e629ceedd3157373e45bc037f"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 0.6
+ },
+ "quadrants/yaw2.17079632679-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw2.17079632679-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "2.17079632679",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "a7acdad241507423e936c4025c424febabff542061af79202612d102373c4962"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21424,
+   "boundary": 480,
+   "missing": 32,
+   "excess": 650
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 2.17079632679
+ },
+ "quadrants/yaw2.17079632679-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw2.17079632679-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "2.17079632679",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "7592f89b82bc245f297459094d88b6fbb049d2b1d043c15709ccc204780da8b3"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21424,
+   "boundary": 480,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 2.17079632679
+ },
+ "quadrants/yaw2.17079632679-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw2.17079632679-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "2.17079632679",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "b06820be3ee152234b91b9adcf87157fc1f15f140eb755c399fd5c52fad4f5c7"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21424,
+   "boundary": 480,
+   "missing": 32,
+   "excess": 650
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 2.17079632679
+ },
+ "quadrants/yaw2.17079632679-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw2.17079632679-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "2.17079632679",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "8ac1b398f531e4d092243c79722b463d37e8d2f4adb5b9429a77c479efd09d08"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21424,
+   "boundary": 480,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 2.17079632679
+ },
+ "quadrants/yaw3.74159265359-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw3.74159265359-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "3.74159265359",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "a8e05574338f81f4de07bb4d5f67f3c38c9a9518eb7c066450dfe2d03cec05a3"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 3.74159265359
+ },
+ "quadrants/yaw3.74159265359-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw3.74159265359-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "3.74159265359",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "cfbf2b68e3f604fd0b5713d8d49c33446922f58a4db9a0442157bdeeb9978bf6"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 3.74159265359
+ },
+ "quadrants/yaw3.74159265359-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw3.74159265359-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "3.74159265359",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "e907c373ea119320c5979232e286ef7b5923800a75385b62c3cc415313fd3770"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 3.74159265359
+ },
+ "quadrants/yaw3.74159265359-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw3.74159265359-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "3.74159265359",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "bdeae1ba97e2e6ed948c22af50aeeba2ef3a0ad77c67f229ef12b666099c699e"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 3.74159265359
+ },
+ "quadrants/yaw5.31238898038-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw5.31238898038-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "5.31238898038",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "7e4a59917866e2e9753f7720702d37c318db5a8a6bc5c1066bbafca5ab6e9d4d"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24792,
+   "valid": 24792,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21208,
+   "boundary": 480,
+   "missing": 32,
+   "excess": 650
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 5.31238898038
+ },
+ "quadrants/yaw5.31238898038-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw5.31238898038-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "5.31238898038",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "5c6906f44de312d4394dadb2243163424bce023da42b99fb3ba3862000d28abb"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24792,
+   "valid": 24792,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21208,
+   "boundary": 480,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 5.31238898038
+ },
+ "quadrants/yaw5.31238898038-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw5.31238898038-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "5.31238898038",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "b2f5f9552d6ab1db94f77c94157174e385f003f1f794e9818ece27d6d8ae8890"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24792,
+   "valid": 24792,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21208,
+   "boundary": 480,
+   "missing": 32,
+   "excess": 650
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 5.31238898038
+ },
+ "quadrants/yaw5.31238898038-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/quadrants/yaw5.31238898038-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--yaw",
+   "5.31238898038",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "43e5afa19d8c17d8c9552ff036914b3ee6fbacedaa861c842f4e7c6da4d19b87"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24792,
+   "valid": 24792,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21208,
+   "boundary": 480,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.0,
+   0.0
+  ],
+  "yaw": 5.31238898038
+ },
+ "near/yaw0.002-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw0.002-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "0.002",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "32c64b4265f86eaaf33a667643ff5a4badbc9601451775b26a83d041b40a2e11"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25094,
+   "valid": 25094,
+   "unknown": 0,
+   "inside": 3100,
+   "outside": 21496,
+   "boundary": 498,
+   "missing": 18,
+   "excess": 644
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 0.002
+ },
+ "near/yaw0.002-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw0.002-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "0.002",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "04ebaccea5ba57f4feafe38834ab9dcb7232e89be0c4068c3e82b7dbcee91477"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25094,
+   "valid": 25094,
+   "unknown": 0,
+   "inside": 3100,
+   "outside": 21496,
+   "boundary": 498,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 0.002
+ },
+ "near/yaw0.002-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw0.002-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "0.002",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "d8a4795b88fd8a6ec8130d9533171acdcc3d6cb546669e25040870a76e58efa5"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25094,
+   "valid": 25094,
+   "unknown": 0,
+   "inside": 3100,
+   "outside": 21496,
+   "boundary": 498,
+   "missing": 18,
+   "excess": 644
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 0.002
+ },
+ "near/yaw0.002-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw0.002-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "0.002",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "eb7904c17517d412b0019d41fdb1f320aba6db0557e3e28d4956e8d3498df709"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25094,
+   "valid": 25094,
+   "unknown": 0,
+   "inside": 3100,
+   "outside": 21496,
+   "boundary": 498,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 0.002
+ },
+ "near/yaw1.57279632679-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw1.57279632679-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "1.57279632679",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "5f346e622ff8c6933ff290bf5b68bf590bce34333f908a8e05ec969b41a62fd1"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25100,
+   "valid": 25100,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21516,
+   "boundary": 472,
+   "missing": 22,
+   "excess": 660
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 1.57279632679
+ },
+ "near/yaw1.57279632679-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw1.57279632679-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "1.57279632679",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "fb413bf11d65a936ad455007fa5c64e10d24cf7002a65911a2df2ec8ced46a60"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25100,
+   "valid": 25100,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21516,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 1.57279632679
+ },
+ "near/yaw1.57279632679-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw1.57279632679-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "1.57279632679",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "65015339447b651acd2c6c18ce02972eeaab5e91c808f6152812b38a2fa2decb"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25100,
+   "valid": 25100,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21516,
+   "boundary": 472,
+   "missing": 22,
+   "excess": 660
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 1.57279632679
+ },
+ "near/yaw1.57279632679-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw1.57279632679-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "1.57279632679",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "7b7272a687783a55c45b8bf5d67c555cf2766e3a9a5739453ae20b3d6c26cc09"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25100,
+   "valid": 25100,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21516,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 1.57279632679
+ },
+ "near/yaw3.14359265359-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw3.14359265359-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "3.14359265359",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "0dc6a404a1c5c29415ed8c3ac64deb281b7af2466649e340dabb68628aa1c957"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25094,
+   "valid": 25094,
+   "unknown": 0,
+   "inside": 3100,
+   "outside": 21496,
+   "boundary": 498,
+   "missing": 18,
+   "excess": 644
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 3.14359265359
+ },
+ "near/yaw3.14359265359-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw3.14359265359-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "3.14359265359",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "3bcf1b033cf3a24bc283631c84247a6b2f94699b5ea1a3f21f0531660dc0d2df"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25094,
+   "valid": 25094,
+   "unknown": 0,
+   "inside": 3100,
+   "outside": 21496,
+   "boundary": 498,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 3.14359265359
+ },
+ "near/yaw3.14359265359-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw3.14359265359-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "3.14359265359",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "4ae14fc95e0cf79ac1e936a305c6ad9cea0b1fd93934f1f0fc6ce37f2e4e48d8"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25094,
+   "valid": 25094,
+   "unknown": 0,
+   "inside": 3100,
+   "outside": 21496,
+   "boundary": 498,
+   "missing": 18,
+   "excess": 644
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 3.14359265359
+ },
+ "near/yaw3.14359265359-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw3.14359265359-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "3.14359265359",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "aeb023fbdf864afd18ce77817c17a20b245c70ad1c1eded87c9364bb79ca0a9a"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25094,
+   "valid": 25094,
+   "unknown": 0,
+   "inside": 3100,
+   "outside": 21496,
+   "boundary": 498,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 3.14359265359
+ },
+ "near/yaw4.71438898038-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw4.71438898038-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "4.71438898038",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "70c338dd43cf3675f12e0cfcfcd8bd6c083a50799deec261da9b1e684cecc5d2"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25100,
+   "valid": 25100,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21516,
+   "boundary": 472,
+   "missing": 22,
+   "excess": 660
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 4.71438898038
+ },
+ "near/yaw4.71438898038-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw4.71438898038-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "4.71438898038",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "e90f9696e7d97637493ad3962caccec3d232f44a7942c43fc7d27f54d8e3ed76"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25100,
+   "valid": 25100,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21516,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 4.71438898038
+ },
+ "near/yaw4.71438898038-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw4.71438898038-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "4.71438898038",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "5a50c3e9a6159ca0164d891d9e4f100cdb80bb9fd1c1ec6285bac2a69baaa4d9"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25100,
+   "valid": 25100,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21516,
+   "boundary": 472,
+   "missing": 22,
+   "excess": 660
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 4.71438898038
+ },
+ "near/yaw4.71438898038-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/near/yaw4.71438898038-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.375",
+   "0.625",
+   "--yaw",
+   "4.71438898038",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "489b2136695ea625d195492ddc40470e1ed83cfe8c13017d4e4166e7cff7f851"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25100,
+   "valid": 25100,
+   "unknown": 0,
+   "inside": 3112,
+   "outside": 21516,
+   "boundary": 472,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.375,
+   0.625
+  ],
+  "yaw": 4.71438898038
+ },
+ "mid/yaw0.6-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw0.6-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "c3855bfdf6cb63d583dbc4262ed9e4bb5b8d4e9db4664118369dfeeb7c8a8bff"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 0.6
+ },
+ "mid/yaw0.6-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw0.6-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "6278bef38ba80cd6dcff76ed3e21950e7321512e513edbca684952741a5be974"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 0.6
+ },
+ "mid/yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "8d2badd4f30b1d0a1ac2ae2cf392c6b08d4b8bfb4a25206ef2ac01e86c1bc954"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 0.6
+ },
+ "mid/yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "2039afb8b23b9707020ab6a5d701a460c5f6ad64ded8105b484485a39ec45f4c"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 0.6
+ },
+ "mid/yaw2.17079632679-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw2.17079632679-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "2.17079632679",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "c8d0981c2f394513ba1fb5f222b98b657c60615ab933379c07d7cc82e3aa66a8"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21424,
+   "boundary": 480,
+   "missing": 32,
+   "excess": 650
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 2.17079632679
+ },
+ "mid/yaw2.17079632679-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw2.17079632679-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "2.17079632679",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "532d70de6acf4fd77e849fd32cf778109ac0d54f48cdbf73245377c8ddad754b"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21424,
+   "boundary": 480,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 2.17079632679
+ },
+ "mid/yaw2.17079632679-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw2.17079632679-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "2.17079632679",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "92fefe6daa7d751a0118003b4c5f584eb22d755c85559abd74ad1b4ac4c632d3"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21424,
+   "boundary": 480,
+   "missing": 32,
+   "excess": 650
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 2.17079632679
+ },
+ "mid/yaw2.17079632679-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw2.17079632679-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "2.17079632679",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "e1cd1de2534fb6c597262659a0a440f41ca84d59c981b7bf9b48d6fe0d9420a0"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 25008,
+   "valid": 25008,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21424,
+   "boundary": 480,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 2.17079632679
+ },
+ "mid/yaw3.74159265359-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw3.74159265359-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "3.74159265359",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "ae894677e07b8a96bf9184c331f606c1691066ce3ce76ce7ba557d9e53984afa"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 3.74159265359
+ },
+ "mid/yaw3.74159265359-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw3.74159265359-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "3.74159265359",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "0c29aa840923dc4e72c02f3c05663b2b1767ca1d9b2b7221eb12006ee90289fd"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 3.74159265359
+ },
+ "mid/yaw3.74159265359-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw3.74159265359-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "3.74159265359",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "2258498260646ce5f4f12af5b64b9b5da6886d806895aa5cd13d7108992c8f74"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 3.74159265359
+ },
+ "mid/yaw3.74159265359-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw3.74159265359-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "3.74159265359",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "2044fcc3603079079fd432a827816137716cc256333371a94c67010d2f7d5c6d"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 3.74159265359
+ },
+ "mid/yaw5.31238898038-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw5.31238898038-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "5.31238898038",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "d4c5105d42ff94156befd6f61c94cff19627d5b4c2a9aee9cfd6a985b5d064b9"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24792,
+   "valid": 24792,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21208,
+   "boundary": 480,
+   "missing": 32,
+   "excess": 650
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 5.31238898038
+ },
+ "mid/yaw5.31238898038-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw5.31238898038-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "5.31238898038",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "a1a81178152c8e42328ca96b2a9239486f4a02c62f677ca29f89a90bd9613255"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24792,
+   "valid": 24792,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21208,
+   "boundary": 480,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 5.31238898038
+ },
+ "mid/yaw5.31238898038-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw5.31238898038-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "5.31238898038",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "fbc97c8006f9ead96d9066287f5b098c137d158250b730faffbdb46d2edd3760"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24792,
+   "valid": 24792,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21208,
+   "boundary": 480,
+   "missing": 32,
+   "excess": 650
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 5.31238898038
+ },
+ "mid/yaw5.31238898038-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/mid/yaw5.31238898038-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-1.375",
+   "-0.625",
+   "--yaw",
+   "5.31238898038",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "4f4390e7c130d30fd3ae258345e7643cf70c8de8f0cf9028b3962107e3999897"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24792,
+   "valid": 24792,
+   "unknown": 0,
+   "inside": 3104,
+   "outside": 21208,
+   "boundary": 480,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -1.375,
+   -0.625
+  ],
+  "yaw": 5.31238898038
+ },
+ "subpos/yaw0.6-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/subpos/yaw0.6-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "9518ad919ffbe73c70d8eb98da1e74430992dfba568fa769ea4b52dabc09c715"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   0.1,
+   -0.2
+  ],
+  "yaw": 0.6
+ },
+ "subpos/yaw0.6-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/subpos/yaw0.6-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "d0308afb5a7fa9a806e3e20220e554156b105602b1e3b7dc376e3ed09a57b9a7"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.1,
+   -0.2
+  ],
+  "yaw": 0.6
+ },
+ "subpos/yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/subpos/yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "ea4cf24a0b1fa3fadd8c37e1927e4e5efec27d60217031224a478e2e93a83d2d"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   0.1,
+   -0.2
+  ],
+  "yaw": 0.6
+ },
+ "subpos/yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/subpos/yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "0.1",
+   "-0.2",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "33479ecd1982269f9de0eeadb0e6bfd203c360118d7613e9d155beaf6c6b4b3a"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   0.1,
+   -0.2
+  ],
+  "yaw": 0.6
+ },
+ "subneg/yaw0.6-fog0-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/subneg/yaw0.6-fog0-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "c4d5b0b5f4e46b952ec2538b2be5426bf38ffe3508b3b23c18d640280b77570f"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   -0.1,
+   0.2
+  ],
+  "yaw": 0.6
+ },
+ "subneg/yaw0.6-fog0-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/subneg/yaw0.6-fog0-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "0"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=none fogComposed=0"
+  ],
+  "frame_sha256": [
+   "3b67276c9083f6040a883575f9f5b53f5fbf7450e2ed5536856efae747741707"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.1,
+   0.2
+  ],
+  "yaw": 0.6
+ },
+ "subneg/yaw0.6-fog16-surface0": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/subneg/yaw0.6-fog16-surface0/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "frame_sha256": [
+   "14bf9d9399a5805638fe38b032d07138a05d6a6d150e24db9d695626b9ed539f"
+  ],
+  "passed": false,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 18,
+   "excess": 638
+  },
+  "camera_iso": [
+   -0.1,
+   0.2
+  ],
+  "yaw": 0.6
+ },
+ "subneg/yaw0.6-fog16-surface1": {
+  "command": [
+   "fleet-run",
+   "--timeout",
+   "240",
+   "IRCanvasStress",
+   "--config-preset",
+   "/tmp/pool-1-4757/final/polygon/subneg/yaw0.6-fog16-surface1/config.lua",
+   "--only",
+   "shadowbox,floor",
+   "--probe-grid",
+   "--probe-floor-mode",
+   "grid",
+   "--probe-floor-span",
+   "40",
+   "--sun-direction",
+   "0",
+   "0",
+   "-1",
+   "--no-spin",
+   "--no-auto-rotate",
+   "--pivot-origin",
+   "--zoom",
+   "4",
+   "--subdivisions",
+   "1",
+   "--no-ao",
+   "--auto-screenshot",
+   "10",
+   "--sweep-frames",
+   "1",
+   "10",
+   "--probe-overlapping-source",
+   "--camera-iso",
+   "-0.1",
+   "0.2",
+   "--yaw",
+   "0.6",
+   "--fog-reveal",
+   "16"
+  ],
+  "env": {
+   "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "result": "CLEAN",
+  "routes": [
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "frame_sha256": [
+   "44a9860c2edab6d4ce2a4f5d90b68e6a9fe3eb8fb4d181e722c9482347f3b798"
+  ],
+  "passed": true,
+  "counts": {
+   "eligible": 24854,
+   "valid": 24854,
+   "unknown": 0,
+   "inside": 3096,
+   "outside": 21266,
+   "boundary": 492,
+   "missing": 0,
+   "excess": 0
+  },
+  "camera_iso": [
+   -0.1,
+   0.2
+  ],
+  "yaw": 0.6
+ }
+}

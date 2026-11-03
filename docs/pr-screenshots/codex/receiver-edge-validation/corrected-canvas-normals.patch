@@ -1,0 +1,355 @@
+diff --git a/engine/render/src/shaders/c_compute_sun_shadow_body.glsl b/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
+index e7249e7c8..da117d27c 100644
+--- a/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
++++ b/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
+@@ -164,6 +164,9 @@ void main() {
+             false,
+             pos3D, normal)) {
+         receiverFace = encodeReceiverFace(normal);
++    } else if (selectedShapeBoxUsesWorldFaceSlot(pixel, size.x)) {
++        normal = faceOutwardNormal6(visibleFaceIds[face] ^ flip);
++        receiverFace = encodeReceiverFace(normal);
+     }
+ 
+ #endif
+diff --git a/engine/render/src/shaders/ir_selected_shape_receiver.glsl b/engine/render/src/shaders/ir_selected_shape_receiver.glsl
+index ccd486bdc..9f9373cb6 100644
+--- a/engine/render/src/shaders/ir_selected_shape_receiver.glsl
++++ b/engine/render/src/shaders/ir_selected_shape_receiver.glsl
+@@ -5,14 +5,19 @@ layout(std430, binding = 20) readonly buffer ReceiverShapes { ShapeDescriptor re
+ layout(std430, binding = 22) readonly buffer ReceiverOwners { uint receiverOwners[]; };
+ layout(std430, binding = 30) readonly buffer ReceiverTiles { ShapeTileDescriptor receiverTiles[]; };
+ 
++int selectedShapeIndex(ivec2 ownerPixel, int ownerWidth) {
++    if (receiverFrame.shapeCount <= 0) return -1;
++    uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
++    if (key == 0xffffffffu) return -1;
++    return receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
++}
++
+ // The stored owner selects geometry; the query may lie anywhere on that finite surface.
+ // Owner coordinates are in bounds for the retained submission. A miss preserves outputs.
+ bool selectedShapeBoxReceiver(ivec2 ownerPixel, int ownerWidth, vec2 queryPixel,
+                               bool recoverMiss, inout vec3 position, inout vec3 normal) {
+-    if (receiverFrame.shapeCount <= 0) return false;
+-    uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
+-    if (key == 0xffffffffu) return false;
+-    int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
++    int shapeIndex = selectedShapeIndex(ownerPixel, ownerWidth);
++    if (shapeIndex < 0) return false;
+     vec3 exactPosition, exactNormal;
+     if (!shapeBoxReceiver(receiverShapes[shapeIndex], receiverFrame,
+                           queryPixel, recoverMiss, exactPosition, exactNormal)) return false;
+@@ -20,3 +25,16 @@ bool selectedShapeBoxReceiver(ivec2 ownerPixel, int ownerWidth, vec2 queryPixel,
+     normal = exactNormal;
+     return true;
+ }
++
++// Solid smooth-yaw boxes store their entered world face in the cardinal triplet.
++// A missing emitter slab writes no owner; its legacy per-diamond slot cannot reach here.
++bool selectedShapeBoxUsesWorldFaceSlot(ivec2 ownerPixel, int ownerWidth) {
++    int shapeIndex = selectedShapeIndex(ownerPixel, ownerWidth);
++    if (shapeIndex < 0) return false;
++    ShapeDescriptor shape = receiverShapes[shapeIndex];
++    bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
++                      receiverFrame.voxelRenderOptions.y > 1;
++    return shape.shapeType == SHAPE_BOX && (shape.flags & 1u) == 0u &&
++           abs(shape.rotation.w) >= 0.9999 && receiverFrame.smoothYawEnabled != 0 &&
++           (smoothMode || receiverFrame.latticeShapes == 0);
++}
+diff --git a/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal b/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
+index 1e792d5c7..b57a3bd2e 100644
+--- a/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
++++ b/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
+@@ -140,6 +140,10 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
+             false,
+             pos3D, normal)) {
+         receiverFace = encodeReceiverFace(normal);
++    } else if (selectedShapeBoxUsesWorldFaceSlot(pixel, size.x,
++                   receiverFrame, receiverShapes, receiverOwners, receiverTiles)) {
++        normal = faceOutwardNormal6(frameData.visibleFaceIds[face] ^ flip);
++        receiverFace = encodeReceiverFace(normal);
+     }
+ 
+ #endif
+diff --git a/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal b/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
+index 1c07e07b5..136594f8c 100644
+--- a/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
++++ b/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
+@@ -1,3 +1,13 @@
++inline int selectedShapeIndex(int2 ownerPixel, int ownerWidth,
++                             constant ShapeProjectionData &receiverFrame,
++                             device const uint *receiverOwners,
++                             device const ShapeTileDescriptor *receiverTiles) {
++    if (receiverFrame.shapeCount <= 0) return -1;
++    uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
++    if (key == 0xffffffffu) return -1;
++    return receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
++}
++
+ // The stored owner selects geometry; the query may lie anywhere on that finite surface.
+ // Owner coordinates are in bounds for the retained submission. A miss preserves outputs.
+ inline bool selectedShapeBoxReceiver(int2 ownerPixel, int ownerWidth, float2 queryPixel,
+@@ -7,10 +17,9 @@ inline bool selectedShapeBoxReceiver(int2 ownerPixel, int ownerWidth, float2 que
+                                      device const ShapeTileDescriptor *receiverTiles,
+                                      bool recoverMiss,
+                                      thread float3 &position, thread float3 &normal) {
+-    if (receiverFrame.shapeCount <= 0) return false;
+-    uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
+-    if (key == 0xffffffffu) return false;
+-    int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
++    int shapeIndex = selectedShapeIndex(ownerPixel, ownerWidth,
++                                       receiverFrame, receiverOwners, receiverTiles);
++    if (shapeIndex < 0) return false;
+     float3 exactPosition, exactNormal;
+     if (!shapeBoxReceiver(receiverShapes[shapeIndex], receiverFrame,
+                           queryPixel, recoverMiss, exactPosition, exactNormal)) return false;
+@@ -18,3 +27,21 @@ inline bool selectedShapeBoxReceiver(int2 ownerPixel, int ownerWidth, float2 que
+     normal = exactNormal;
+     return true;
+ }
++
++// Solid smooth-yaw boxes store their entered world face in the cardinal triplet.
++// A missing emitter slab writes no owner; its legacy per-diamond slot cannot reach here.
++inline bool selectedShapeBoxUsesWorldFaceSlot(int2 ownerPixel, int ownerWidth,
++                                             constant ShapeProjectionData &receiverFrame,
++                                             device const ShapeDescriptor *receiverShapes,
++                                             device const uint *receiverOwners,
++                                             device const ShapeTileDescriptor *receiverTiles) {
++    int shapeIndex = selectedShapeIndex(ownerPixel, ownerWidth,
++                                       receiverFrame, receiverOwners, receiverTiles);
++    if (shapeIndex < 0) return false;
++    ShapeDescriptor shape = receiverShapes[shapeIndex];
++    bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
++                      receiverFrame.voxelRenderOptions.y > 1;
++    return shape.shapeType == SHAPE_BOX && (shape.flags & 1u) == 0u &&
++           abs(shape.rotation.w) >= 0.9999 && receiverFrame.smoothYawEnabled != 0 &&
++           (smoothMode || receiverFrame.latticeShapes == 0);
++}
+diff --git a/scripts/tests/test_render_shape_receiver.py b/scripts/tests/test_render_shape_receiver.py
+index 0c221c383..263e8b24a 100644
+--- a/scripts/tests/test_render_shape_receiver.py
++++ b/scripts/tests/test_render_shape_receiver.py
+@@ -110,6 +110,7 @@ int main(){
+      boundaries+=abs(abs(local)-half[a])<1.e-4;
+      normalAxes+=abs(n[a])==1.f;
+      if(n[a]!=-1.f&&n[a]!=0.f&&n[a]!=1.f)return 13;
++     if(n[a]!=0.f&&abs(local-n[a]*half[a])>1.e-4)return 19;
+     }
+     if(!boundaries||normalAxes!=1)return 14;
+     continue;
+@@ -176,8 +177,47 @@ int main(){
+   }
+  }
+  if(!nearbyMisses)return 18;
++ // A splatted floor silhouette retains coverage outside the finite ray hit.
++ // These local iso queries straddle its +X/-Y corner at two settled yaws.
++ int floorCorners=0;
++ for(int pose=0;pose<2;++pose){
++  f={};f.smoothYawEnabled=1;f.voxelRenderOptions={1,1};
++  f.visualYaw=pose==0?1.308994f:1.0471947f;
++  shape={};shape.params.xyz={120,120,4};shape.worldPosition.xyz={0,0,4};
++  for(float dx:{0.f,.5f})for(float dy:{0.f,1.f}){
++   const vec2 relative{(pose==0?-30.75f:-59.75f)+dx,
++                       (pose==0?120.5f:108.5f)+dy};
++   const vec2 pixel=relative+vec2(0,8);
++   vec3 position,normal;
++   if(shapeBoxReceiver(shape,f,pixel,false,position,normal))return 20;
++   if(!shapeBoxReceiver(shape,f,pixel,true,position,normal))return 21;
++   if(normal.x!=0||normal.y!=-1||normal.z!=0)return 22;
++   if(abs(position.y+60)>1.e-4||position.x<59.2f||position.x>59.8f||
++      position.z<5.99f||position.z>6.0001f)return 23;
++   // The recovered point's independently intersected ray must enter -Y,
++   // rather than merely report an arbitrary axis normal on some box boundary.
++   const double c=cos(double(f.visualYaw)),s=sin(double(f.visualYaw));
++   const double vx=c*position.x+s*position.y,vy=-s*position.x+c*position.y;
++   const double ix=-vx+vy,iy=-vx-vy+2*(position.z-4);
++   double origin[]={-c*ix/2-c*iy/6-s*ix/2+s*iy/6,
++                    -s*ix/2-s*iy/6+c*ix/2-c*iy/6,iy/3};
++   double direction[]={(c-s)/3,(s+c)/3,1./3},half[]={60,60,2};
++   Hit expected=intersect(origin,direction,half);
++   if(!expected.valid||expected.face!=2)return 24;
++   ++floorCorners;
++  }
++ }
++ f={};f.smoothYawEnabled=1;f.voxelRenderOptions={1,4};f.visualYaw=.35f;
++ shape={};shape.params.xyz={4,4,1};shape.worldPosition.xyz={40,0,2};
++ const ivec2 panelOrigin=roundHalfUp(pos3DtoPos2DIsoYawed(
++     shape.worldPosition.xyz*4.f,f.visualYaw));
++ for(vec2 relative:{vec2(13,-5),vec2(8,6),vec2(7,8)}){
++  vec3 position,normal;
++  if(shapeBoxReceiver(shape,f,vec2(panelOrigin)+relative,false,position,normal))return 25;
++ }
+  printf("receiver_hits=%d misses=%d recovered_hits=%d nearby_misses=%d max_shift=%.3f\n",
+-        hits,misses,recoveredHits,nearbyMisses,maxRecoveryShift);return 0;
++        hits,misses,recoveredHits,nearbyMisses,maxRecoveryShift);
++ printf("floor_corner_receivers=%d signed_normal=-Y\n",floorCorners);return 0;
+ }
+ """
+ 
+@@ -285,15 +325,22 @@ int main(){
+             block = per_axis[0] + "\n" + block
+             block = block.replace("frameData.", "").replace("sunFrameData.", "")
+             helper = (shaders / f"ir_selected_shape_receiver.{suffix}").read_text()
+-            helper = helper[helper.index("bool selectedShapeBoxReceiver"):]
++            helper = helper[helper.index("int selectedShapeIndex"):]
+             helper = helper.replace("inout vec3 ", "vec3& ")
+             helper = helper.replace("thread float3 &", "vec3& ")
+             helper = helper.replace("constant ShapeProjectionData &receiverFrame,", "")
+             helper = helper.replace("device const ShapeDescriptor *receiverShapes,", "")
+             helper = helper.replace("device const uint *receiverOwners,", "")
+             helper = helper.replace("device const ShapeTileDescriptor *receiverTiles,", "")
++            helper = helper.replace("device const ShapeTileDescriptor *receiverTiles)", ")")
++            helper = re.sub(r",\s*\)", ")", helper)
++            helper = re.sub(r",\s*receiverFrame, receiverOwners, receiverTiles\)",
++                            ")", helper)
+             block = block.replace(
+                 "receiverFrame, receiverShapes, receiverOwners, receiverTiles,", "")
++            block = re.sub(
++                r",\s*receiverFrame, receiverShapes, receiverOwners, receiverTiles\)",
++                ")", block)
+             for source, target in (("float4", "vec4"), ("float3", "vec3"),
+                                    ("float2", "vec2"), ("ivec2", "Point"),
+                                    ("uint2", "Point"), ("int2", "Point")):
+@@ -306,13 +353,20 @@ int main(){
+             harness = r"""
+ #include <vector>
+ #include <cstdlib>
++#include <cmath>
++#include <algorithm>
++using std::abs;using std::max;
+ using uint=unsigned;
+ struct vec2 {float x,y; vec2(float a,float b):x(a),y(b){}
+  template<class T> vec2(T v):x(v.x),y(v.y){} };
+ struct vec3 {int value=0;};
+ struct vec4 {vec4(float,float,float,float){}};
+ struct Tile {int shapeIndex;};
+-struct Frame {int shapeCount;};
++struct Frame {int shapeCount;struct {int x=1,y=1;} voxelRenderOptions;
++ int smoothYawEnabled=0,latticeShapes=0;};
++const uint SHAPE_BOX=0;
++struct ShapeDescriptor {int value;uint shapeType=1,flags=0;
++ struct {float w=1;} rotation;operator int()const{return value;}};
+ struct Point {int x,y;};
+ struct Canvas {void write(vec4,Point){}} canvasSunShadow;
+ void imageStore(Canvas&,Point,vec4){}
+@@ -327,8 +381,10 @@ template<class T> struct Checked {
+ Frame receiverFrame{3}; Point pixel{1,1},size{3,2};
+ Checked<uint> receiverOwners{{0xffffffffu,0xffffffffu,0xffffffffu,
+                               0xffffffffu,0xffffffffu,0xffffffffu}};
+-Checked<Tile> receiverTiles{{{0},{2}}}; Checked<int> receiverShapes{{11,22,33}};
++Checked<Tile> receiverTiles{{{0},{2}}};
++Checked<ShapeDescriptor> receiverShapes{{{11},{22},{33}}};
+ vec3 pos3D{7},normal{8}; bool finiteHit=true;
++vec3 faceOutwardNormal6(int face){return {100+face};}
+ float receiverFace=0;
+ float encodeReceiverFace(vec3 n){return float(n.value);}
+ vec2 lastQuery{0,0};bool lastRecover=false;
+@@ -361,10 +417,58 @@ int main(){
+  finiteHit=false;p.value=7;n.value=8;
+  if(selectedShapeBoxReceiver(pixel,size.x,vec2(100.f,100.f),false,p,n))return 6;
+  if(p.value!=7||n.value!=8)return 6;
++ receiverFrame.smoothYawEnabled=1;receiverShapes.data[2].shapeType=SHAPE_BOX;
++ for(int cardinal=0;cardinal<4;++cardinal)for(int slot=0;slot<3;++slot){
++  const int triplets[4][3]={{0,2,4},{2,1,4},{1,3,4},{3,0,4}};
++  for(int i=0;i<3;++i)visibleFaceIds[i]=triplets[cardinal][i];
++  face=slot;pos3D.value=7;normal.value=8;receiverFace=0;run();
++  if(pos3D.value!=7||normal.value!=100+triplets[cardinal][slot]||
++     receiverFace!=normal.value||lastRecover)return 7;
++ }
++ for(int kind=0;kind<6;++kind){
++  receiverFrame.smoothYawEnabled=kind==0?0:1;
++  receiverFrame.latticeShapes=kind==1||kind==5?1:0;
++  receiverFrame.voxelRenderOptions.y=kind==5?4:1;
++  receiverShapes.data[2].shapeType=kind==2?1:SHAPE_BOX;
++  receiverShapes.data[2].flags=kind==3?1u:0u;
++  receiverShapes.data[2].rotation.w=kind==4?.5f:1.f;
++  pos3D.value=7;normal.value=8;receiverFace=0;run();
++  if(pos3D.value!=7||lastRecover)return 8;
++  if(kind<5&&(normal.value!=8||receiverFace!=0))return 8;
++  if(kind==5&&(normal.value!=104||receiverFace!=104))return 9;
++ }
++ for(int smooth:{0,1})for(int mode:{0,1})for(int density:{0,1,4})
++ for(int lattice:{0,1})for(uint hollow:{0u,1u})for(uint type:{0u,1u})
++ for(float rotation:{.5f,.9999f,1.f}){
++  receiverFrame.smoothYawEnabled=smooth;receiverFrame.voxelRenderOptions={mode,density};
++  receiverFrame.latticeShapes=lattice;receiverShapes.data[2].flags=hollow;
++  receiverShapes.data[2].shapeType=type;receiverShapes.data[2].rotation.w=rotation;
++  if(selectedShapeBoxUsesWorldFaceSlot(pixel,size.x)!=
++     emitterUsesWorldFaceSlot(receiverShapes.data[2],receiverFrame))return 10;
++ }
+  return 0;
+ }
+ """
+             producer = (shaders / f"c_shapes_to_trixel_body.{suffix}").read_text()
++            statements = []
++            for name in ("smoothYaw", "renderMode", "subdivisions", "smoothMode",
++                         "latticeWalk", "hasEntityRotation"):
++                statement = re.search(r"(?:const )?(?:bool|int) " + name + r" = [^;]+;",
++                                      producer).group()
++                statement = statement.replace("frameData.", "")
++                for field in ("smoothYawEnabled", "voxelRenderOptions", "latticeShapes"):
++                    statement = statement.replace(field, "receiverFrame." + field)
++                statements.append(statement)
++            statements.append(re.search(
++                r"(?:const )?bool hollow = \(shape.flags & FLAG_HOLLOW\) != 0u;",
++                producer).group())
++            outer = re.search(r"if \((smoothYaw && !latticeWalk)\)", producer).group(1)
++            inner = re.search(r"if \(([^\n]+)\) \{\s*boxFaceSlot = shapeBoxFaceSlot",
++                              producer).group(1)
++            harness += (
++                "\nbool emitterUsesWorldFaceSlot(ShapeDescriptor shape,Frame receiverFrame){\n"
++                "const uint FLAG_HOLLOW=1u;\n" + "\n".join(statements)
++                + "\nreturn (" + outer + ") && (" + inner + ");\n}\n")
+             encoded = re.search(r"const uint sampleOwner = ([^;]+);", producer).group(1)
+             encoded = encoded.replace("tileIdx", "1u").replace("gl_LocalInvocationIndex", "local")
+             encoded = encoded.replace("gl_LocalInvocationID.y", "(local / 8u)")
+@@ -389,6 +493,16 @@ int main(){
+                     r"\1true,", block, count=1),
+                 "lost_finite_fallback": block.replace(
+                     "if (!shapeBoxReceiver", "if (false && !shapeBoxReceiver"),
++                "lost_box_slot_fallback": block.replace(
++                    "else if (selectedShapeBoxUsesWorldFaceSlot",
++                    "else if (false && selectedShapeBoxUsesWorldFaceSlot"),
++                "world_slot_on_nonbox": block.replace("shape.shapeType == SHAPE_BOX", "true"),
++                "world_slot_on_lattice": block.replace(
++                    "(smoothMode || receiverFrame.latticeShapes == 0)", "true"),
++                "world_slot_on_hollow": block.replace("(shape.flags & 1u) == 0u", "true"),
++                "world_slot_on_rotated": block.replace("abs(shape.rotation.w) >= 0.9999", "true"),
++                "world_slot_at_cardinal": block.replace(
++                    "receiverFrame.smoothYawEnabled != 0", "true"),
+             }
+             for name, query in variants.items():
+                 with (
+@@ -405,7 +519,7 @@ int main(){
+                         self.assertEqual(run.returncode, 0, run.stderr)
+                     else:
+                         self.assertNotEqual(query, block)
+-                        self.assertIn(run.returncode, (1, 2, 3, 4, 5, 6, 42), name)
++                        self.assertIn(run.returncode, (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 42), name)
+ 
+     def test_shared_projection_layout(self):
+         shaders = ROOT / "engine/render/src/shaders"
+@@ -457,6 +571,12 @@ int main(){
+                 "center_anchor": re.sub(
+                     r"vec2 anchorIso = vec2\([^;]+;",
+                     "vec2 anchorIso = vec2(0.0, 0.0);", functions, count=1),
++                "reversed_recovered_normal": functions.replace(
++                    "relativeIso = recoveredIso;",
++                    "relativeIso = recoveredIso; normal = -normal;"),
++                "unrelated_recovered_normal": functions.replace(
++                    "relativeIso = recoveredIso;",
++                    "relativeIso = recoveredIso; normal = vec3(1.0, 0.0, 0.0);"),
+             }
+             for name, body in variants.items():
+                 with (
+@@ -476,7 +596,8 @@ int main(){
+                         print(suffix, run.stdout.strip())
+                     else:
+                         self.assertIn(run.returncode,
+-                                      (2, 3, 4, 9, 12, 13, 14, 15, 16, 17, 18), name)
++                                      (2, 3, 4, 9, 12, 13, 14, 15, 16, 17, 18,
++                                       19, 20, 21, 22, 23, 24, 25), name)
+ 
+ 
+ if __name__ == "__main__":

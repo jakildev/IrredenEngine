@@ -1,0 +1,56 @@
+[
+  {
+    "phase": "before",
+    "index": 0,
+    "clean": true,
+    "quiet": [
+      "guarded"
+    ],
+    "revision": "8055aeb5f"
+  },
+  {
+    "phase": "before",
+    "index": 1,
+    "clean": true,
+    "quiet": [
+      "guarded"
+    ],
+    "revision": "8055aeb5f"
+  },
+  {
+    "phase": "before",
+    "index": 2,
+    "clean": true,
+    "quiet": [
+      "guarded"
+    ],
+    "revision": "8055aeb5f"
+  },
+  {
+    "phase": "after",
+    "index": 0,
+    "clean": true,
+    "quiet": [
+      "guarded"
+    ],
+    "revision": "cdab8cf8ea0e5063d6207f42d132bd15623d439b"
+  },
+  {
+    "phase": "after",
+    "index": 1,
+    "clean": true,
+    "quiet": [
+      "guarded"
+    ],
+    "revision": "cdab8cf8ea0e5063d6207f42d132bd15623d439b"
+  },
+  {
+    "phase": "after",
+    "index": 2,
+    "clean": true,
+    "quiet": [
+      "guarded"
+    ],
+    "revision": "cdab8cf8ea0e5063d6207f42d132bd15623d439b"
+  }
+]

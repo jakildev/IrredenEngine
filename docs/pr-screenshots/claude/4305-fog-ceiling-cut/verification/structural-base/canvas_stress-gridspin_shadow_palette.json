@@ -1,0 +1,39 @@
+{
+  "demo": "canvas_stress",
+  "target": "IRCanvasStress",
+  "name": "gridspin_shadow_palette",
+  "args": [
+    "--only",
+    "gridspin",
+    "--frozen-pose",
+    "0.5235987756",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--pivot-origin",
+    "--zoom",
+    "4",
+    "--debug-overlay",
+    "shadow",
+    "--sweep-yaw",
+    "0.39269908",
+    "0.39269908",
+    "1"
+  ],
+  "warmup": 6,
+  "offset": 0,
+  "shots": [
+    "gridspin_shadow_palette"
+  ],
+  "command": "fleet-run --build-dir /tmp/pool-1-4381/structural-base-build --timeout 60 IRCanvasStress --auto-screenshot 6 --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1",
+  "exit": 0,
+  "clean": true,
+  "hashes": {
+    "gridspin_shadow_palette.png": "8033e9fde522345e538dda387236d626922e41ce80c3fee7be1c7b64d70e57f0"
+  },
+  "probes": [
+    "[2026-10-13 17:12:50.963] [ClientLog] [info] LIGHTING-PROBE sun=(-0.4585579,-0.65508276,-0.60049254) shadows=true ao=false",
+    "[2026-10-13 17:12:52.135] [ClientLog] [info] CaptureCamera: label=sweep_yaw_0 yaw=0.392699 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)",
+    "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+  ],
+  "source_head": "8a1bc317a11218c27f46cd3c55080635fdb95397"
+}

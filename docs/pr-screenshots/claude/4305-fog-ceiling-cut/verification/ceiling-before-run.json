@@ -1,0 +1,17 @@
+{
+  "clean": true,
+  "exit": 0,
+  "hashes": {
+    "screenshot_000001.png": "46b1fe80b250d10ffa142ab692c13681888dea6c11a94ea7c4c64b2fc5d0ff47",
+    "screenshot_000002.png": "20f7a2c4c7b4e6ed123bdfcf98a009f6262e1136adcfa58a74733cce623fc84c"
+  },
+  "probes": [
+    "[2026-10-13 17:10:13.230] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=272 cpuFirstHidden=5 cpuFullyHidden=10 treatedFirstHidden=5 treatedFullyHidden=10 gpuFirstHidden=5 gpuFullyHidden=10 partialBand=64 bandChanged=0 dissolved=0 retained=64 capToned=0 topTexels=40 topPainted=40",
+    "[2026-10-13 17:10:13.230] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=272 cpuFirstHidden=5 cpuFullyHidden=10 treatedFirstHidden=5 treatedFullyHidden=10 gpuFirstHidden=5 gpuFullyHidden=10 partialBand=64 bandChanged=0 dissolved=0 retained=64 capToned=0 topTexels=40 topPainted=40",
+    "[2026-10-13 17:10:13.230] [ClientLog] [info] FOG-SURFACE-PROBE roi=band canvas=642x722 changed=0 centreBand=0 rimBand=0 outsideBand=0",
+    "[2026-10-13 17:10:13.230] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+    "[2026-10-13 17:10:13.295] [ClientLog] [info] CaptureCamera: label=fog_ceiling9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+    "[2026-10-13 17:10:13.585] [ClientLog] [info] CaptureCamera: label=fog_ceiling_yaw9 yaw=0.3499999 zoom=(8,8) effectiveIso=(-1.4001657,0.24756145) subdivisions=8 gameResolution=(1280,720)",
+    "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+  ]
+}

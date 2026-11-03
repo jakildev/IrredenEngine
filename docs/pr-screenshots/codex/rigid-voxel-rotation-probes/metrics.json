@@ -1,0 +1,722 @@
+[
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001678.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "26.92901637114869",
+      "--yaw",
+      "0",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 12286,
+      "observed_pixels": 12288,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 11768,
+      "face_interior_pixels": [
+        3768,
+        3734,
+        3758
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001678.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001679.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "26.92901637114869",
+      "--yaw",
+      "45",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 9892,
+      "observed_pixels": 9928,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 9396,
+      "face_interior_pixels": [
+        543,
+        6192,
+        2185
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001679.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001680.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "26.92901637114869",
+      "--yaw",
+      "90",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 11108,
+      "observed_pixels": 11120,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 10656,
+      "face_interior_pixels": [
+        3222,
+        5619,
+        1380
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001680.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001681.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "26.92901637114869",
+      "--yaw",
+      "135",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 10898,
+      "observed_pixels": 10920,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 10424,
+      "face_interior_pixels": [
+        5929,
+        2240,
+        1793
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001681.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001682.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "180.0",
+      "--yaw",
+      "0",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 12288,
+      "observed_pixels": 12288,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 11780,
+      "face_interior_pixels": [
+        3782,
+        3782,
+        3720
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001682.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001683.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "180.0",
+      "--yaw",
+      "45",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 9892,
+      "observed_pixels": 9912,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 9354,
+      "face_interior_pixels": [
+        6143,
+        513,
+        2187
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001683.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001684.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "180.0",
+      "--yaw",
+      "90",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 9558,
+      "observed_pixels": 9560,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 9094,
+      "face_interior_pixels": [
+        6428,
+        1098,
+        1119
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001684.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001685.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "180.0",
+      "--yaw",
+      "135",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 11018,
+      "observed_pixels": 11016,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 10504,
+      "face_interior_pixels": [
+        4322,
+        837,
+        4853
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001685.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001686.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "240.64227395494578",
+      "--yaw",
+      "0",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 12290,
+      "observed_pixels": 12288,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 11782,
+      "face_interior_pixels": [
+        3722,
+        3782,
+        3780
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001686.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001687.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "240.64227395494578",
+      "--yaw",
+      "45",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 1,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 9902,
+      "observed_pixels": 9840,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 9502,
+      "face_interior_pixels": [
+        3786,
+        0,
+        5527
+      ],
+      "sufficient_resolution": false,
+      "pass": false,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001687.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001688.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "240.64227395494578",
+      "--yaw",
+      "90",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 12286,
+      "observed_pixels": 12288,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 11780,
+      "face_interior_pixels": [
+        3664,
+        3813,
+        3808
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001688.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001689.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "240.64227395494578",
+      "--yaw",
+      "135",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 1,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 10028,
+      "observed_pixels": 9936,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 9628,
+      "face_interior_pixels": [
+        3808,
+        5580,
+        0
+      ],
+      "sufficient_resolution": false,
+      "pass": false,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001689.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001690.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "269.2901637114869",
+      "--yaw",
+      "0",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 12284,
+      "observed_pixels": 12368,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 11770,
+      "face_interior_pixels": [
+        3767,
+        3765,
+        3734
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001690.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001691.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "269.2901637114869",
+      "--yaw",
+      "45",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 9882,
+      "observed_pixels": 9904,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 9380,
+      "face_interior_pixels": [
+        2052,
+        636,
+        6212
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001691.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001692.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "269.2901637114869",
+      "--yaw",
+      "90",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 10900,
+      "observed_pixels": 10904,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 10456,
+      "face_interior_pixels": [
+        1162,
+        3123,
+        5739
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001692.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-face-metric.py",
+      "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001693.png",
+      "--shape",
+      "voxel",
+      "--axis-angle",
+      "1",
+      "1",
+      "1",
+      "269.2901637114869",
+      "--yaw",
+      "135",
+      "--iso-scale",
+      "64",
+      "32",
+      "--normals"
+    ],
+    "exit": 0,
+    "output": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "normal_faces_checked": true,
+      "expected_pixels": 10866,
+      "observed_pixels": 10848,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "testable_interior_pixels": 10384,
+      "face_interior_pixels": [
+        1580,
+        5909,
+        2427
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "image": "docs/pr-screenshots/codex/rigid-voxel-rotation-probes/screenshot_001693.png",
+      "scope": "source_geometry",
+      "clipped": false
+    }
+  }
+]

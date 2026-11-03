@@ -1,0 +1,118 @@
+[
+  {
+    "receiver": [
+      2.5,
+      -14.5,
+      5.5
+    ],
+    "expected": "lit",
+    "pixel": [
+      1223,
+      972
+    ],
+    "rgb": {
+      "face-sun": [
+        83,
+        86,
+        93
+      ],
+      "surface-sun": [
+        83,
+        86,
+        93
+      ],
+      "no-shadow": [
+        83,
+        86,
+        93
+      ]
+    }
+  },
+  {
+    "receiver": [
+      3.5,
+      -14.5,
+      5.5
+    ],
+    "expected": "cylinder",
+    "pixel": [
+      1200,
+      972
+    ],
+    "rgb": {
+      "face-sun": [
+        52,
+        54,
+        58
+      ],
+      "surface-sun": [
+        52,
+        54,
+        58
+      ],
+      "no-shadow": [
+        83,
+        86,
+        93
+      ]
+    }
+  },
+  {
+    "receiver": [
+      1.5,
+      -14.5,
+      5.5
+    ],
+    "expected": "torus",
+    "pixel": [
+      1246,
+      972
+    ],
+    "rgb": {
+      "face-sun": [
+        52,
+        54,
+        58
+      ],
+      "surface-sun": [
+        52,
+        54,
+        58
+      ],
+      "no-shadow": [
+        83,
+        86,
+        93
+      ]
+    }
+  },
+  {
+    "receiver": [
+      2.5,
+      -15.5,
+      5.5
+    ],
+    "expected": "cylinder",
+    "pixel": [
+      1223,
+      983
+    ],
+    "rgb": {
+      "face-sun": [
+        52,
+        54,
+        58
+      ],
+      "surface-sun": [
+        52,
+        54,
+        58
+      ],
+      "no-shadow": [
+        83,
+        86,
+        93
+      ]
+    }
+  }
+]

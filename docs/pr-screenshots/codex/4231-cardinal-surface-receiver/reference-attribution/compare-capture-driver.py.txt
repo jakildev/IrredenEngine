@@ -1,0 +1,42 @@
+from pathlib import Path
+import subprocess,json,re,shutil,hashlib
+from PIL import Image,ImageChops
+root=Path("/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render")
+base="codex/shadow-overflow-order-proof"
+import sys
+demo=sys.argv[1] if len(sys.argv)>1 else "canvas_stress"
+assets=root/f"build/creations/demos/{demo}/shaders"
+files=["c_compute_sun_shadow_body.glsl","metal/c_compute_sun_shadow_body.metal"]
+original={f:(assets/f).read_bytes() for f in files}
+manifest=json.loads((root/f"creations/demos/{demo}/test/references/manifest.json").read_text())
+cases=[]
+for row in manifest.get("extra_runs",[]):
+ if row["name"] == "compare":
+  cases.append((row["name"],row["shots"],row["demo_args"],row.get("warmup",manifest.get("warmup",120))))
+out=Path("/tmp/cardinal-4231/reference-controls");out.mkdir(parents=True,exist_ok=True)
+records=[]
+try:
+ for arm in ("before","after"):
+  for f in files:
+   data=subprocess.check_output(["git","show",f"{base}:engine/render/src/shaders/{f}"],cwd=root) if arm=="before" else original[f]
+   (assets/f).write_bytes(data)
+  for name,labels,args,warmup in cases:
+   dest=out/arm/name;dest.mkdir(parents=True,exist_ok=True)
+   cmd=["fleet-run","--timeout","180",manifest["target"],"--auto-screenshot",str(warmup),*args]
+   with (dest/"run.log").open("w") as log:r=subprocess.run(cmd,cwd=root,stdout=log,stderr=subprocess.STDOUT)
+   log=(dest/"run.log").read_text();names=re.findall(r"Saved screenshot: (save_files/screenshots/[^\s]+\.png)",log)
+   if r.returncode!=0 or "RESULT=CLEAN" not in log or len(names)<len(labels):raise RuntimeError((arm,name,r.returncode,len(names)))
+   selected=names[-3:-1]
+   for label,path in zip(labels,selected):shutil.copy2(root/f"build/creations/demos/{demo}"/path,dest/f"{label}.png")
+   rec={"arm":arm,"case":name,"command":cmd,"labels":labels,"sources":selected,"capture_offset":-3,"all_sources":names,"shader_hashes":{f:hashlib.sha256((assets/f).read_bytes()).hexdigest() for f in files},"clean":True}
+   records.append(rec);(dest/"manifest.json").write_text(json.dumps(rec,indent=2)+"\n")
+   print(arm,name,len(labels),flush=True)
+finally:
+ for f,data in original.items():(assets/f).write_bytes(data)
+for name,labels,args,warmup in cases:
+ for label in labels:
+  ref=root/f"creations/demos/{demo}/test/references/macos-debug"/f"{label}.png"
+  before=Image.open(out/"before"/name/f"{label}.png").convert("RGB")
+  after=Image.open(out/"after"/name/f"{label}.png").convert("RGB")
+  print(label,"baseline_equal_reference",ImageChops.difference(before,Image.open(ref).convert("RGB")).getbbox() is None,"changed",ImageChops.difference(before,after).getbbox(),flush=True)
+(out/"manifest.json").write_text(json.dumps({"base":base,"experiment":"Only staged sun-shadow compute body changed to base; same executable and all other assets; original files restored.","runs":records},indent=2)+"\n")

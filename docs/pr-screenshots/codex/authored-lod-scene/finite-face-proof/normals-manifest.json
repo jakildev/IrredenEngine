@@ -1,0 +1,58 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRShapeDebug",
+    "--lod-scene",
+    "--pivot-origin",
+    "--debug-overlay",
+    "normals",
+    "--auto-screenshot",
+    "20"
+  ],
+  "exit_code": 0,
+  "clean": true,
+  "images": [
+    {
+      "label": "lod_scene_coarse",
+      "file": "lod_scene_coarse.png",
+      "sha256": "e1d7f9ad38d754343c66baa96cc5d08f7661f4718f6840b91ad8120dcb81ec59"
+    },
+    {
+      "label": "lod_scene_medium_yaw45",
+      "file": "lod_scene_medium_yaw45.png",
+      "sha256": "95198d98309b4cc7eed4caee6545e30a86b27a6ce5344644cdd8c878ae607ef6"
+    },
+    {
+      "label": "lod_scene_fine_yaw90",
+      "file": "lod_scene_fine_yaw90.png",
+      "sha256": "4fbef7c27142bf594dd786ab136e8a67a0fb89be138ba9095d42cc4a7f57df8f"
+    },
+    {
+      "label": "lod_scene_return_yaw180",
+      "file": "lod_scene_return_yaw180.png",
+      "sha256": "57b4cb22ce6e0f49aba7322e06b7815b3cabf0fa9a6352cb601d081e78229b56"
+    },
+    {
+      "label": "lod_scene_coarse_yaw270",
+      "file": "lod_scene_coarse_yaw270.png",
+      "sha256": "fd99ca5dbc55d64450f42fd687bf58f5098cc170a2761c358b8eb8bb8b76f9b3"
+    },
+    {
+      "label": "lod_scene_restored",
+      "file": "lod_scene_restored.png",
+      "sha256": "e1d7f9ad38d754343c66baa96cc5d08f7661f4718f6840b91ad8120dcb81ec59"
+    }
+  ],
+  "binary_sha256": "2cb04b6e1116293588c4835a45b9fbf3a0b69e57706c7e84d58133b30463e7ca",
+  "head": "d80e7a70a08a5f5b2f0a032f34e6deb00b8a1c62",
+  "cameras": [
+    "label=lod_scene_coarse yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+    "label=lod_scene_medium_yaw45 yaw=0.78539824 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)",
+    "label=lod_scene_fine_yaw90 yaw=1.5707963 zoom=(16,16) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)",
+    "label=lod_scene_return_yaw180 yaw=-3.1414928 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)",
+    "label=lod_scene_coarse_yaw270 yaw=-1.5707963 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+    "label=lod_scene_restored yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)"
+  ]
+}

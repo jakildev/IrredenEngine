@@ -1,0 +1,13 @@
+diff --git a/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
+index 4f11e9138..277f4e64e 100644
+--- a/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
+@@ -661,7 +661,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
+             worldSurfaceLightingEligible =
+                 behavior.has_value() && behavior.value()->useCameraPositionIso_;
+         }
+-        cardinalSurfaceLightingEligible_ =
++        cardinalSurfaceLightingEligible_ = false &&
+             worldSurfaceLightingEligible && mainVoxelPool_ != nullptr &&
+             (perAxisCanvases_ == nullptr || !perAxisCanvases_->isAllocated());
+         if (cardinalSurfaceLightingEligible_ && findSystem(TRIXEL_GLITCH) != kNullSystemId) {

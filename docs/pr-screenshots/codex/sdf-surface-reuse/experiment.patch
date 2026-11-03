@@ -1,0 +1,243 @@
+diff --git a/engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp
+index 6d51846c6..b2183f75b 100644
+--- a/engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp
+@@ -58,16 +58,18 @@ template <> struct System<SHAPES_TO_TRIXEL> {
+     std::size_t winnerCapacityBytes_ = 0;
+     Buffer *animationParamsBuf_ = nullptr;
+ 
+-    void prepareWinnerBuffer(ivec2 size) {
++    void prepareWinnerBuffer(ivec2 size, int tileCount) {
+         const auto bytes = std::size_t(size.x) * std::size_t(size.y) * sizeof(std::uint32_t);
+-        if (bytes > winnerCapacityBytes_) {
++        const auto capacityBytes = bytes + std::size_t(tileCount) * kShapeTileSize *
++                                               kShapeTileSize * sizeof(std::uint32_t);
++        if (capacityBytes > winnerCapacityBytes_) {
+             if (winnerBuffer_)
+                 IRRender::destroyResource<Buffer>(winnerBufferId_);
+             const auto resource =
+-                IRRender::createResource<Buffer>(nullptr, bytes, BUFFER_STORAGE_DYNAMIC);
++                IRRender::createResource<Buffer>(nullptr, capacityBytes, BUFFER_STORAGE_DYNAMIC);
+             winnerBufferId_ = resource.first;
+             winnerBuffer_ = resource.second;
+-            winnerCapacityBytes_ = bytes;
++            winnerCapacityBytes_ = capacityBytes;
+         }
+         // Buffer clears must observe the previous canvas/frame's shader writes on OpenGL.
+         IRRender::device()->memoryBarrier(BarrierType::ALL);
+@@ -407,7 +409,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
+             const int gridY = IRMath::divCeil(tileCount, gridX);
+             frameData_.tileGridX = gridX;
+ 
+-            prepareWinnerBuffer(canvasTextures.size_);
++            prepareWinnerBuffer(canvasTextures.size_, gridX * gridY);
+             shapesProgram_->use();
+             shapeDescBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_ShapeDescriptors);
+             canvasTextures.getTextureDistances()
+@@ -438,6 +440,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
+                 1
+             );
+             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
++            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+ 
+             frameData_.passIndex = 3;
+             shapesFrameDataBuf_->subData(0, sizeof(GPUShapesFrameData), &frameData_);
+diff --git a/engine/render/src/shaders/c_shapes_to_trixel.glsl b/engine/render/src/shaders/c_shapes_to_trixel.glsl
+index 8e76c2b89..14e50469f 100644
+--- a/engine/render/src/shaders/c_shapes_to_trixel.glsl
++++ b/engine/render/src/shaders/c_shapes_to_trixel.glsl
+@@ -890,28 +890,38 @@ void main() {
+     // walk (the integer lattice does not align with shape-local axes under
+     // arbitrary rotation). Spheres are rotation-invariant so they still take
+     // the analytical path.
++    // Later passes share this canvas's immutable tile inputs and rejection tests.
++    // The lane tail follows the owner pixels and needs no clear: pass zero writes
++    // every lane that can reach a later read, including surface misses.
++    const uint surfaceIndex = uint(canvasSize.x) * uint(canvasSize.y)
++        + uint(tileIdx) * 64u + gl_LocalInvocationIndex;
+     int surfaceD;
+-    bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
+-    if (hasEntityRotation && shape.shapeType != SHAPE_SPHERE) {
+-        surfaceD = generalDepthSearchEntityRot(
+-            isoPixelRel, shape.shapeType, paramsScaled, hollow, dExtent,
+-            yawC, yawS, shape.rotation);
+-    } else if (latticeWalk) {
+-        surfaceD = snapLatticeWalkYawed(isoPixelRel, shape.shapeType, paramsScaled,
+-                                        dExtent, yawC, yawS, hollow);
+-    } else if (!smoothMode && !smoothYaw) {
+-        surfaceD = snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
+-                                   dExtent, cardinalIndex);
++    if (passIndex != 0) {
++        surfaceD = int(sampleOwners[surfaceIndex]);
+     } else {
+-        // Smooth-yaw routes sub==1 shapes through the analytical solver too:
+-        // the snap lattice walk is integer-cardinal-only, but while rotating
+-        // the voxel pool is off its cardinal lattice (per-axis scatter), so the
+-        // analytical continuous-yaw surface is the matching path. yawC/yawS are
+-        // the continuous cos/sin here, so the yaw-aware box/ellipsoid solvers
+-        // (slabFromLinear handles the non-cardinal slopes) and the general
+-        // search rotate the query by the full visualYaw.
+-        surfaceD = findSurfaceDepth(isoPixelRel, shape.shapeType, paramsScaled,
+-                                    shape.flags, dExtent, yawC, yawS);
++        bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
++        if (hasEntityRotation && shape.shapeType != SHAPE_SPHERE) {
++            surfaceD = generalDepthSearchEntityRot(
++                isoPixelRel, shape.shapeType, paramsScaled, hollow, dExtent,
++                yawC, yawS, shape.rotation);
++        } else if (latticeWalk) {
++            surfaceD = snapLatticeWalkYawed(isoPixelRel, shape.shapeType, paramsScaled,
++                                            dExtent, yawC, yawS, hollow);
++        } else if (!smoothMode && !smoothYaw) {
++            surfaceD = snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
++                                       dExtent, cardinalIndex);
++        } else {
++            // Smooth-yaw routes sub==1 shapes through the analytical solver too:
++            // the snap lattice walk is integer-cardinal-only, but while rotating
++            // the voxel pool is off its cardinal lattice (per-axis scatter), so the
++            // analytical continuous-yaw surface is the matching path. yawC/yawS are
++            // the continuous cos/sin here, so the yaw-aware box/ellipsoid solvers
++            // (slabFromLinear handles the non-cardinal slopes) and the general
++            // search rotate the query by the full visualYaw.
++            surfaceD = findSurfaceDepth(isoPixelRel, shape.shapeType, paramsScaled,
++                                        shape.flags, dExtent, yawC, yawS);
++        }
++        sampleOwners[surfaceIndex] = uint(surfaceD);
+     }
+     if (surfaceD == kInvalidDepth) return;
+ 
+diff --git a/engine/render/src/shaders/metal/c_shapes_to_trixel.metal b/engine/render/src/shaders/metal/c_shapes_to_trixel.metal
+index 3de180ffa..65dff55a1 100644
+--- a/engine/render/src/shaders/metal/c_shapes_to_trixel.metal
++++ b/engine/render/src/shaders/metal/c_shapes_to_trixel.metal
+@@ -1007,25 +1007,35 @@ kernel void c_shapes_to_trixel(
+     // walk (the integer lattice does not align with shape-local axes under
+     // arbitrary rotation). Spheres are rotation-invariant so they still take
+     // the analytical path.
++    // Later passes share this canvas's immutable tile inputs and rejection tests.
++    // The lane tail follows the owner pixels and needs no clear: pass zero writes
++    // every lane that can reach a later read, including surface misses.
++    const uint surfaceIndex = uint(frameData.canvasSize.x) * uint(frameData.canvasSize.y)
++        + uint(tileIdx) * 64u + localId.y * 8u + localId.x;
+     int surfaceD;
+-    const bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
+-    if (hasEntityRotation && shape.shapeType != SHAPE_SPHERE) {
+-        surfaceD = generalDepthSearchEntityRot(
+-            isoPixelRel, shape.shapeType, paramsScaled, hollow, dExtent,
+-            yawC, yawS, shape.rotation);
+-    } else if (latticeWalk) {
+-        surfaceD = snapLatticeWalkYawed(isoPixelRel, shape.shapeType, paramsScaled,
+-                                        dExtent, yawC, yawS, hollow);
+-    } else if (!smoothMode && !smoothYaw) {
+-        surfaceD = snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
+-                                   dExtent, cardinalIndex);
++    if (frameData.passIndex != 0) {
++        surfaceD = as_type<int>(atomic_load_explicit(&sampleOwners[surfaceIndex], memory_order_relaxed));
+     } else {
+-        // Smooth-yaw routes sub==1 shapes through the analytical solver too: the
+-        // snap lattice walk is integer-cardinal-only, but while rotating the
+-        // voxel pool is off its cardinal lattice (per-axis scatter), so the
+-        // analytical continuous-yaw surface is the matching path.
+-        surfaceD = findSurfaceDepth(isoPixelRel, shape.shapeType, paramsScaled,
+-                                    shape.flags, dExtent, yawC, yawS);
++        const bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
++        if (hasEntityRotation && shape.shapeType != SHAPE_SPHERE) {
++            surfaceD = generalDepthSearchEntityRot(
++                isoPixelRel, shape.shapeType, paramsScaled, hollow, dExtent,
++                yawC, yawS, shape.rotation);
++        } else if (latticeWalk) {
++            surfaceD = snapLatticeWalkYawed(isoPixelRel, shape.shapeType, paramsScaled,
++                                            dExtent, yawC, yawS, hollow);
++        } else if (!smoothMode && !smoothYaw) {
++            surfaceD = snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
++                                       dExtent, cardinalIndex);
++        } else {
++            // Smooth-yaw routes sub==1 shapes through the analytical solver too: the
++            // snap lattice walk is integer-cardinal-only, but while rotating the
++            // voxel pool is off its cardinal lattice (per-axis scatter), so the
++            // analytical continuous-yaw surface is the matching path.
++            surfaceD = findSurfaceDepth(isoPixelRel, shape.shapeType, paramsScaled,
++                                        shape.flags, dExtent, yawC, yawS);
++        }
++        atomic_store_explicit(&sampleOwners[surfaceIndex], as_type<uint>(surfaceD), memory_order_relaxed);
+     }
+     if (surfaceD == kInvalidDepth) {
+         return;
+diff --git a/scripts/tests/test_render_sdf_winner.py b/scripts/tests/test_render_sdf_winner.py
+index d139ded18..9e49e93e8 100644
+--- a/scripts/tests/test_render_sdf_winner.py
++++ b/scripts/tests/test_render_sdf_winner.py
+@@ -97,6 +97,66 @@ class SdfWinnerTest(unittest.TestCase):
+                                        capture_output=True, text=True)
+                 self.assertEqual(build.returncode == 0, not mutate, build.stderr)
+ 
++    def test_surface_reuse_preserves_signed_depth_and_misses(self):
++        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
++            source = (ROOT / "engine/render/src/shaders" /
++                      f"{folder}c_shapes_to_trixel.{suffix}").read_text()
++            begin = source.index("    const uint surfaceIndex =")
++            end = source.index("    if (surfaceD == kInvalidDepth)", begin)
++            body = source[begin:end]
++            query_begin = body.index("        ", body.index("} else {") + len("} else {"))
++            store = body.index("        sampleOwners[surfaceIndex] =" if suffix == "glsl"
++                               else "        atomic_store_explicit")
++            body = body[:query_begin] + "        surfaceD = evaluate();\n" + body[store:]
++            body = body.replace("frameData.", "")
++            body = body.replace("as_type<int>", "int").replace("as_type<uint>", "uint")
++            body = re.sub(
++                r"atomic_load_explicit\(&sampleOwners\[surfaceIndex\], memory_order_relaxed\)",
++                          "sampleOwners[surfaceIndex]", body)
++            body = re.sub(
++                r"atomic_store_explicit\(&sampleOwners\[surfaceIndex\], "
++                r"uint\(surfaceD\), memory_order_relaxed\);",
++                          "sampleOwners[surfaceIndex] = uint(surfaceD);", body)
++            program = r"""
++#include <cstdint>
++#include <vector>
++using uint = std::uint32_t;
++struct { uint x, y; } canvasSize{17,19}, localId{7,7};
++uint tileIdx=2, gl_LocalInvocationIndex=63;
++std::vector<uint> sampleOwners(17*19+3*64, 0xababababu);
++int expected=0, calls=0;
++int evaluate() { ++calls; return expected; }
++int execute(int passIndex) {
++BODY
++return surfaceD;
++}
++int main() {
++    for (int depth : {-12345, 0, 12345, 2147483647}) {
++        expected=depth;
++        calls=0;
++        for (int pass : {0,3,1,2}) if(execute(pass)!=depth) return 1;
++        if(calls!=1) return 2;
++        for(uint pixel=0;pixel<17*19;++pixel)
++            if(sampleOwners[pixel]!=0xababababu) return 3;
++    }
++}
++"""
++            for name, code, expected in (
++                ("production", body, 0),
++                ("recompute", body.replace("passIndex != 0", "false"), 2),
++                ("stale", body.replace("sampleOwners[surfaceIndex] = uint(surfaceD);", ""), 1),
++                ("owner_overlap", body.replace("uint(canvasSize.x) * uint(canvasSize.y)", "0u"), 3),
++            ):
++                with (self.subTest(backend=suffix, variant=name),
++                      tempfile.TemporaryDirectory() as tmp):
++                    path = Path(tmp)
++                    (path / "test.cpp").write_text(program.replace("BODY", code))
++                    build = subprocess.run([COMPILER, "-std=c++17", str(path / "test.cpp"),
++                                            "-o", str(path / "test")],
++                                           capture_output=True, text=True)
++                    self.assertEqual(build.returncode, 0, build.stderr)
++                    self.assertEqual(subprocess.run([str(path / "test")]).returncode, expected)
++
+     def test_election_and_clear_order(self):
+         system = (ROOT / "engine/prefabs/irreden/render/systems" /
+                   "system_shapes_to_trixel.hpp").read_text()
+@@ -106,6 +166,7 @@ class SdfWinnerTest(unittest.TestCase):
+         election = system.index("frameData_.passIndex = 3;", depth)
+         publish = system.index("frameData_.passIndex = 1;", election)
+         self.assertIn("BarrierType::SHADER_IMAGE_ACCESS", system[depth:election])
++        self.assertIn("BarrierType::SHADER_STORAGE", system[depth:election])
+         self.assertIn("BarrierType::SHADER_STORAGE", system[election:publish])
+         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+             source = (ROOT / "engine/render/src/shaders" /

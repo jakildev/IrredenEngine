@@ -1,0 +1,282 @@
+[
+  {
+    "image": "baked/0.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "baked/1.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "baked/2.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "baked/3.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "baked/4.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "baked/5.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "direct/0.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "direct/1.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "direct/2.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "direct/3.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "direct/4.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "direct/5.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/0.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/1.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/2.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/3.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/4.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/5.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/6.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/7.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "mixed/8.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/baked/0.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/baked/1.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/baked/2.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/baked/3.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/baked/4.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/baked/5.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/direct/0.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/direct/1.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/direct/2.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/direct/3.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/direct/4.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/direct/5.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/mixed/0.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  },
+  {
+    "image": "stats/mixed/1.png",
+    "changed_rgb_pixels": 0,
+    "size": [
+      2560,
+      1440
+    ]
+  }
+]

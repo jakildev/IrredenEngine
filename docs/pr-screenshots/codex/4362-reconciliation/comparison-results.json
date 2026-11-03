@@ -1,0 +1,84 @@
+{
+  "glsl": {
+    "geometry": [
+      {
+        "mode": "0",
+        "total": "4320",
+        "wrongPlane": "2160",
+        "differentCenter": "4320",
+        "outsideMicro": "1440",
+        "maxDelta": "1"
+      },
+      {
+        "mode": "1",
+        "total": "296784",
+        "wrongPlane": "0",
+        "differentCenter": "296784",
+        "outsideMicro": "98928",
+        "maxDelta": "1"
+      }
+    ],
+    "edge_query": [
+      {
+        "corner": "1.00002503",
+        "query": "0.999975026",
+        "u": "-5.0008297e-05",
+        "closed": "-1",
+        "tolerance": "1",
+        "faceFirstTile": "1",
+        "queryTile": "0"
+      },
+      {
+        "corner": "1.5",
+        "query": "1.49995005",
+        "u": "-4.99486923e-05",
+        "closed": "-1",
+        "tolerance": "1",
+        "faceFirstTile": "1",
+        "queryTile": "1"
+      }
+    ],
+    "outside_upper_edge": "outside upper edge=1.00004995 ulps_at_one=419 accepted=1"
+  },
+  "metal": {
+    "geometry": [
+      {
+        "mode": "0",
+        "total": "4320",
+        "wrongPlane": "2160",
+        "differentCenter": "4320",
+        "outsideMicro": "1440",
+        "maxDelta": "1"
+      },
+      {
+        "mode": "1",
+        "total": "296784",
+        "wrongPlane": "0",
+        "differentCenter": "296784",
+        "outsideMicro": "98928",
+        "maxDelta": "1"
+      }
+    ],
+    "edge_query": [
+      {
+        "corner": "1.00002503",
+        "query": "0.999975026",
+        "u": "-5.0008297e-05",
+        "closed": "-1",
+        "tolerance": "1",
+        "faceFirstTile": "1",
+        "queryTile": "0"
+      },
+      {
+        "corner": "1.5",
+        "query": "1.49995005",
+        "u": "-4.99486923e-05",
+        "closed": "-1",
+        "tolerance": "1",
+        "faceFirstTile": "1",
+        "queryTile": "1"
+      }
+    ],
+    "outside_upper_edge": "outside upper edge=1.00004995 ulps_at_one=419 accepted=1"
+  }
+}

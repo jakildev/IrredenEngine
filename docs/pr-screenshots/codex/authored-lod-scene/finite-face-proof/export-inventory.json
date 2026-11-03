@@ -1,0 +1,50 @@
+{
+  "normalization": "worktree and account paths replaced; image, executable and source digests unchanged",
+  "files": [
+    {
+      "file": "beauty-reference-delta.json",
+      "original_sha256": "3d57d94299bb7a1f02db9fb54dc973648b8f3e43a0fe45c9f0dbeb13a396307c",
+      "export_sha256": "3d57d94299bb7a1f02db9fb54dc973648b8f3e43a0fe45c9f0dbeb13a396307c"
+    },
+    {
+      "file": "lod-controls-manifest.json.gz",
+      "original_sha256": "91b5f7651f3c1f85ee8b5338b220ec177d325a16f460db0b3b6e820d774d2ed2",
+      "export_sha256": "c3b83972c70c19ffa2db9c76a9aabff39bc2adddd09e115f0f1231967cb6d697"
+    },
+    {
+      "file": "lod-controls-run.log.gz",
+      "original_sha256": "20519637e2a8ea1dcdad8eacddd32043425c31e24ff34ae95eaf2034312d1853",
+      "export_sha256": "6ebf5dbd5563595313b6aef17ff0486e8927469653410d6f8f10f6c4df3df4e3"
+    },
+    {
+      "file": "material-manifest.json",
+      "original_sha256": "6eff3f7a5e7ecea0f1cec810468a87b70c984682093989db6d825801ab8bc4e3",
+      "export_sha256": "6eff3f7a5e7ecea0f1cec810468a87b70c984682093989db6d825801ab8bc4e3"
+    },
+    {
+      "file": "material-run.log.gz",
+      "original_sha256": "cb409995abc8a225363013b524bc636ff71486697c8bc5b4d268c3069a63e13c",
+      "export_sha256": "ae7b24eb875c59c0a461b0509dc7670be0cd83f0d4936c153b53d002aeaad7c7"
+    },
+    {
+      "file": "native-result.json",
+      "original_sha256": "f661e0339bbb1bd3e768a5c744cd483dd7475a81b8a7c17448276414f7e6265c",
+      "export_sha256": "df871350a48f3c2a0188d6b9d744d3802117e8a98e0e9a66d7e42441073567cf"
+    },
+    {
+      "file": "normals-manifest.json",
+      "original_sha256": "0c1bfa809cb3a0fa1be91dd1c9622a4f744fb24cde0247ed081b4b0fcb9a2145",
+      "export_sha256": "0c1bfa809cb3a0fa1be91dd1c9622a4f744fb24cde0247ed081b4b0fcb9a2145"
+    },
+    {
+      "file": "normals-run.log.gz",
+      "original_sha256": "71ab05da34f39da31ca640ae697f629375d3301a4bac13d21952aa64cf83c7f6",
+      "export_sha256": "acd1a6ee1a6a1b7d05fa9989ef80426e6563c9cab430ba6ef1b218f9f3586547"
+    },
+    {
+      "file": "paired-provenance.json",
+      "original_sha256": "b3e6717be6f97935e77c36d198dde5d16447d0504721883c2cb2544c02a05b07",
+      "export_sha256": "b3e6717be6f97935e77c36d198dde5d16447d0504721883c2cb2544c02a05b07"
+    }
+  ]
+}

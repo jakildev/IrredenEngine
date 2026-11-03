@@ -1,0 +1,90 @@
+{
+  "lower": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/lower/screenshot_000001.png"
+  },
+  "far-8": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/far-8/screenshot_000001.png"
+  },
+  "far-16": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/far-16/screenshot_000001.png"
+  },
+  "far-128": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/far-128/screenshot_000001.png"
+  },
+  "near-128": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/near-128/screenshot_000001.png"
+  },
+  "oblique-lower": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/oblique-lower/screenshot_000001.png"
+  },
+  "oblique-far-128": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/oblique-far-128/screenshot_000001.png"
+  },
+  "lower-no-probe": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/lower-no-probe/screenshot_000001.png"
+  },
+  "far-128-no-probe": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/far-128-no-probe/screenshot_000001.png"
+  },
+  "oblique-aligned-16": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/oblique-aligned-16/screenshot_000001.png"
+  },
+  "oblique-aligned-128": {
+    "changed_rgba_pixels": 0,
+    "dimensions": [
+      2560,
+      1440
+    ],
+    "baseline": "docs/pr-screenshots/codex/sun-overflow-hierarchy/oblique-aligned-128/screenshot_000001.png"
+  }
+}

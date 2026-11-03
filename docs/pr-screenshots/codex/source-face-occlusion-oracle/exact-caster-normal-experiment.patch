@@ -1,0 +1,30 @@
+diff --git a/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal b/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
+index 3b206b620..48ea16a48 100644
+--- a/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
++++ b/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
+@@ -79,7 +79,7 @@ kernel void c_bake_voxel_sun_faces(
+         edgeU = rotateByQuat(edgeU, faceFrame.viewToWorld);
+         edgeV = rotateByQuat(edgeV, faceFrame.viewToWorld);
+         // Arbitrary source rotations cannot use the shared world/camera face basis.
+-        const uint faceMarker = sunVoxelFaceMarker(faceId, faceFrame.dispatch.w);
++        const uint faceMarker = rigidSource ? uint(0x86 + axis) : sunVoxelFaceMarker(faceId, faceFrame.dispatch.w);
+         const float3 projected = sunSpaceProject(corner, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+         const float3 projectedU = sunSpaceProject(edgeU, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+         const float3 projectedV = sunSpaceProject(edgeV, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index 1d2247f7d..36b6d709b 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -64,6 +64,12 @@ inline float sampleCascadeShadow(
+                 if (sunVoxelFaceViewAligned(nearest))
+                     planeNormal = rotateByQuat(planeNormal, casterViewToWorld);
+             }
++            const uint sourceAxis = (nearest & 0xFFu) - 0x86u;
++            if (sourceAxis < 3u) {
++                float3 axisNormal = float3(0.0);
++                axisNormal[sourceAxis] = 1.0;
++                planeNormal = rotateByQuat(axisNormal, float4(0.2209423827, 0.2209423827, 0.2209423827, 0.9238795325));
++            }
+             float2 gradient = float2(dot(planeNormal, uHat), dot(planeNormal, vHat)) / dot(planeNormal, sunDir);
+             float2 tapUV = origin + (float2(nearestPixel) + 0.5) * texelSz;
+             float casterZ = unpackSunDepth(nearest) + dot(gradient, sunUV - tapUV);

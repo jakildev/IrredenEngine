@@ -1,0 +1,22 @@
+[
+  {
+    "file": "c_compute_sun_shadow_body.glsl",
+    "candidate_sha256": "57d119f6c303022ab816b9dfe13a0c6e18bef020281514ee86d72b12a28d460f",
+    "parent_sha256": "8703c1b502fbfe94785e97cc47afb50da62bfb3e6931faceec16b7229dd944ad"
+  },
+  {
+    "file": "c_light_overflow_faces.glsl",
+    "candidate_sha256": "568af264bdd19009143112f3a70f0d00cca42cf8ac0b6204489f3dd537914daf",
+    "parent_sha256": "6b1448fe73036b08c9a52d8f7ac204f804b3b513d7edbcb318f8a1e3cea20871"
+  },
+  {
+    "file": "metal/c_compute_sun_shadow_body.metal",
+    "candidate_sha256": "e046ecd1b71e96898ddd65aaeed6d8a1b472cf37218bd7d7c52e33e7142a1c1a",
+    "parent_sha256": "a004e6c08ad397cb6ccb0c0e3961333d2879b8adfe8486a352aa31b88ab89608"
+  },
+  {
+    "file": "metal/c_light_overflow_faces.metal",
+    "candidate_sha256": "2b5a9aefddce4ec1a35b6166772a2bd6a212402807a406938bf2e34d7ce1cdcf",
+    "parent_sha256": "8ca957b657e40937bc424bbc32e35111ce445936dcf27a495e548e7394c74192"
+  }
+]

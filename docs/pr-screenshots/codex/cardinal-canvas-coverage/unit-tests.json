@@ -1,0 +1,325 @@
+{
+  "tests": 27,
+  "failures": 0,
+  "disabled": 0,
+  "errors": 0,
+  "timestamp": "2026-10-01T20:36:36Z",
+  "time": "0.073s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "TrixelCanvasCoverageTest",
+      "tests": 3,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-01T20:36:36Z",
+      "time": "0s",
+      "testsuite": [
+        {
+          "name": "ContainsViewportWithoutChangingTexelScreenScale",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/math\/ir_math_viewport_helpers_test.cpp",
+          "line": 546,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "TrixelCanvasCoverageTest"
+        },
+        {
+          "name": "DensityAboveZoomRequiresAdditionalStorage",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/math\/ir_math_viewport_helpers_test.cpp",
+          "line": 570,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "TrixelCanvasCoverageTest"
+        },
+        {
+          "name": "RejectsInvalidDensityOrZoomBeforeAllocation",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/math\/ir_math_viewport_helpers_test.cpp",
+          "line": 578,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "TrixelCanvasCoverageTest"
+        }
+      ]
+    },
+    {
+      "name": "PerAxisCanvasLifecycle",
+      "tests": 16,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-01T20:36:36Z",
+      "time": "0s",
+      "testsuite": [
+        {
+          "name": "ScratchRegionsAreAdjacentAlignedAndDisjoint",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 19,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "ScratchUniformUsesTheOwnedRegionOffsets",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 33,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "ScratchLayoutRefusesNegativeAndOverflowingOffsets",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 42,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "RotationAllocatesOnceAndThenKeeps",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 50,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "DensityGrowthKeepsLiveFacesAndResizesOnlyResolve",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 55,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "DensityChangeWhileParkedReusesFacesOnResume",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 68,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "CardinalFrameParksTheLiveSet",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 81,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "RotationResumingOnAParkedSetUnparksWhateverItWaited",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 85,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "ParkedSetSizedForAnotherCanvasIsReplaced",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 97,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "ParkedSetIsFreedOnTheFrameItsWindowCloses",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 104,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "NothingResidentOnACardinalIsKept",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 115,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "SweepAcrossACardinalNeitherAllocatesNorFreesAgain",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 175,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "CameraSettlingOnACardinalFreesTheSetAfterTheWindow",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 190,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "PauseInsideTheWindowKeepsTheSetAndRestartsTheCount",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 205,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "ParkAndUnparkRefuseAnEmptySet",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 223,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        },
+        {
+          "name": "ReleasingTheParkedSetResetsItsWait",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_lifecycle_test.cpp",
+          "line": 236,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasLifecycle"
+        }
+      ]
+    },
+    {
+      "name": "PerAxisCanvasSize",
+      "tests": 6,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-01T20:36:36Z",
+      "time": "0s",
+      "testsuite": [
+        {
+          "name": "DefaultFloorMatchesBoundsExactly",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_size_test.cpp",
+          "line": 24,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasSize"
+        },
+        {
+          "name": "NeverBelowWorstCaseFootprint",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_size_test.cpp",
+          "line": 32,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasSize"
+        },
+        {
+          "name": "BoundedAboveByWorstCaseFootprint",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_size_test.cpp",
+          "line": 42,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasSize"
+        },
+        {
+          "name": "CoarserFloorShrinksHorizontalOnly",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_size_test.cpp",
+          "line": 55,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasSize"
+        },
+        {
+          "name": "SubPixelFloorClampsToOnePixel",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_size_test.cpp",
+          "line": 68,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasSize"
+        },
+        {
+          "name": "Deterministic",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/per_axis_canvas_size_test.cpp",
+          "line": 78,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "PerAxisCanvasSize"
+        }
+      ]
+    },
+    {
+      "name": "CanvasBackingResizeTest",
+      "tests": 2,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-01T20:36:36Z",
+      "time": "0.072s",
+      "testsuite": [
+        {
+          "name": "CardinalGrowthClearsBackingAndPreservesAncillaryResources",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/gpu_compute_dispatch_test.cpp",
+          "line": 756,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0.071s",
+          "classname": "CanvasBackingResizeTest"
+        },
+        {
+          "name": "ResolveGrowthAndParkedResumePreserveFaceStoreAndScratch",
+          "file": "\/Users\/evinjkill\/src\/IrredenEngine\/.claude\/worktrees\/codex-shadow-render\/test\/render\/gpu_compute_dispatch_test.cpp",
+          "line": 833,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-01T20:36:36Z",
+          "time": "0s",
+          "classname": "CanvasBackingResizeTest"
+        }
+      ]
+    }
+  ]
+}

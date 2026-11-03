@@ -1,0 +1,56 @@
+[
+  {
+    "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1285.png",
+    "shape": "frame",
+    "yaw": 45.0,
+    "missing": 0,
+    "extra": 0,
+    "expected": 762,
+    "observed": 762,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 264,
+    "pass": false,
+    "scope": "lattice_consistency"
+  },
+  {
+    "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1301.png",
+    "shape": "frame",
+    "yaw": 45.0,
+    "missing": 0,
+    "extra": 0,
+    "expected": 762,
+    "observed": 762,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true,
+    "scope": "lattice_consistency"
+  },
+  {
+    "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1302.png",
+    "shape": "frame",
+    "yaw": 45.0,
+    "missing": 0,
+    "extra": 0,
+    "expected": 6882,
+    "observed": 6882,
+    "alignment": [
+      0,
+      0
+    ],
+    "unexpected_normal_pixels": 0,
+    "clipped": false,
+    "footprint_mismatches": 0,
+    "pass": true,
+    "scope": "lattice_consistency"
+  }
+]

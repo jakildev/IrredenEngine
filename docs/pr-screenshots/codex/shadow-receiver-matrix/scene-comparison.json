@@ -1,0 +1,325 @@
+[
+  {
+    "label": "lod_swap_zoom2_cube",
+    "parent_reference_pixels": 416,
+    "parent_reference_bounds": [
+      1324,
+      518,
+      1400,
+      542
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 49452,
+    "patch_bounds": [
+      402,
+      202,
+      1724,
+      800
+    ]
+  },
+  {
+    "label": "zoom4_yaw180",
+    "parent_reference_pixels": 1000,
+    "parent_reference_bounds": [
+      1316,
+      1106,
+      1440,
+      1250
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 99804,
+    "patch_bounds": [
+      1084,
+      656,
+      2240,
+      1440
+    ]
+  },
+  {
+    "label": "lod_swap_zoom16_sphere",
+    "parent_reference_pixels": 0,
+    "parent_reference_bounds": null,
+    "parent_reference_max_delta": 0,
+    "patch_pixels": 6964,
+    "patch_bounds": [
+      254,
+      0,
+      2560,
+      1360
+    ]
+  },
+  {
+    "label": "lod_swap_zoom4_cone",
+    "parent_reference_pixels": 1488,
+    "parent_reference_bounds": [
+      1376,
+      320,
+      1528,
+      360
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 177896,
+    "patch_bounds": [
+      0,
+      0,
+      2164,
+      880
+    ]
+  },
+  {
+    "label": "zoom4_pan16_yaw0_pivot",
+    "parent_reference_pixels": 1480,
+    "parent_reference_bounds": [
+      1619,
+      504,
+      1771,
+      544
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 179688,
+    "patch_bounds": [
+      0,
+      0,
+      2407,
+      1064
+    ]
+  },
+  {
+    "label": "zoom1_origin",
+    "parent_reference_pixels": 0,
+    "parent_reference_bounds": null,
+    "parent_reference_max_delta": 0,
+    "patch_pixels": 0,
+    "patch_bounds": null
+  },
+  {
+    "label": "lod_swap_zoom8_cone",
+    "parent_reference_pixels": 184,
+    "parent_reference_bounds": [
+      1480,
+      0,
+      1800,
+      14
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 207340,
+    "patch_bounds": [
+      0,
+      0,
+      2560,
+      1040
+    ]
+  },
+  {
+    "label": "zoom4_pan16_yaw45_pivot",
+    "parent_reference_pixels": 1480,
+    "parent_reference_bounds": [
+      1190,
+      420,
+      1342,
+      462
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 112072,
+    "patch_bounds": [
+      0,
+      406,
+      1966,
+      952
+    ]
+  },
+  {
+    "label": "zoom4_origin",
+    "parent_reference_pixels": 1488,
+    "parent_reference_bounds": [
+      1120,
+      448,
+      1272,
+      488
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 177028,
+    "patch_bounds": [
+      0,
+      76,
+      1908,
+      1008
+    ]
+  },
+  {
+    "label": "zoom16_lod_fine_sphere",
+    "parent_reference_pixels": 0,
+    "parent_reference_bounds": null,
+    "parent_reference_max_delta": 0,
+    "patch_pixels": 11152,
+    "patch_bounds": [
+      444,
+      0,
+      2560,
+      1440
+    ]
+  },
+  {
+    "label": "zoom4_pan16_yaw90_pivot",
+    "parent_reference_pixels": 2480,
+    "parent_reference_bounds": [
+      745,
+      507,
+      885,
+      659
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 172404,
+    "patch_bounds": [
+      1,
+      395,
+      1857,
+      1385
+    ]
+  },
+  {
+    "label": "zoom4_yaw45_inter_cardinal",
+    "parent_reference_pixels": 1480,
+    "parent_reference_bounds": [
+      806,
+      427,
+      958,
+      469
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 99124,
+    "patch_bounds": [
+      0,
+      413,
+      1582,
+      959
+    ]
+  },
+  {
+    "label": "zoom4_yaw90",
+    "parent_reference_pixels": 2488,
+    "parent_reference_bounds": [
+      535,
+      806,
+      675,
+      958
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 156714,
+    "patch_bounds": [
+      0,
+      694,
+      1647,
+      1440
+    ]
+  },
+  {
+    "label": "zoom4_offset_3_5",
+    "parent_reference_pixels": 1488,
+    "parent_reference_bounds": [
+      1168,
+      488,
+      1320,
+      528
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 177176,
+    "patch_bounds": [
+      46,
+      116,
+      1956,
+      1048
+    ]
+  },
+  {
+    "label": "zoom1_odd_offset",
+    "parent_reference_pixels": 0,
+    "parent_reference_bounds": null,
+    "parent_reference_max_delta": 0,
+    "patch_pixels": 0,
+    "patch_bounds": null
+  },
+  {
+    "label": "zoom2_origin",
+    "parent_reference_pixels": 416,
+    "parent_reference_bounds": [
+      1196,
+      582,
+      1272,
+      606
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 49432,
+    "patch_bounds": [
+      274,
+      266,
+      1596,
+      864
+    ]
+  },
+  {
+    "label": "zoom4_yaw270",
+    "parent_reference_pixels": 0,
+    "parent_reference_bounds": null,
+    "parent_reference_max_delta": 0,
+    "patch_pixels": 153856,
+    "patch_bounds": [
+      1008,
+      314,
+      2560,
+      1248
+    ]
+  },
+  {
+    "label": "lod_swap_zoom1_cube",
+    "parent_reference_pixels": 0,
+    "parent_reference_bounds": null,
+    "parent_reference_max_delta": 0,
+    "patch_pixels": 0,
+    "patch_bounds": null
+  },
+  {
+    "label": "zoom4_pan16_yaw180_pivot",
+    "parent_reference_pixels": 1000,
+    "parent_reference_bounds": [
+      814,
+      953,
+      938,
+      1097
+    ],
+    "parent_reference_max_delta": 53,
+    "patch_pixels": 182668,
+    "patch_bounds": [
+      582,
+      503,
+      2058,
+      1440
+    ]
+  },
+  {
+    "label": "zoom8_yaw180",
+    "parent_reference_pixels": 0,
+    "parent_reference_bounds": null,
+    "parent_reference_max_delta": 0,
+    "patch_pixels": 5564,
+    "patch_bounds": [
+      404,
+      607,
+      2012,
+      1440
+    ]
+  },
+  {
+    "label": "zoom8_origin",
+    "parent_reference_pixels": 0,
+    "parent_reference_bounds": null,
+    "parent_reference_max_delta": 0,
+    "patch_pixels": 210524,
+    "patch_bounds": [
+      0,
+      0,
+      2532,
+      1296
+    ]
+  }
+]

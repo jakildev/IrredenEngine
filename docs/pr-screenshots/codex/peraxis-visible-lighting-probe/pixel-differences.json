@@ -1,0 +1,3350 @@
+[
+  {
+    "candidate": "frame-0.png",
+    "reference": "../surface-shadow-query-gate/frame-0.png",
+    "difference_bbox": [
+      1132,
+      772,
+      1154,
+      786
+    ],
+    "pixels": [
+      {
+        "xy": [
+          1132,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1133,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1134,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1135,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1136,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1137,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1138,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1139,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1140,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1141,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1142,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1143,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1144,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1145,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1146,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1147,
+          772
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1132,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1133,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1134,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1135,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1136,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1137,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1138,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1139,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1140,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1141,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1142,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1143,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1144,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1145,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1146,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1147,
+          773
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1148,
+          774
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1149,
+          774
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1150,
+          774
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1151,
+          774
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1152,
+          774
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1153,
+          774
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1148,
+          775
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1149,
+          775
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1150,
+          775
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1151,
+          775
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1152,
+          775
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1153,
+          775
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1132,
+          782
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1133,
+          782
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1134,
+          782
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1135,
+          782
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1136,
+          782
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1137,
+          782
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1132,
+          783
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1133,
+          783
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1134,
+          783
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1135,
+          783
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1136,
+          783
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1137,
+          783
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1132,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1133,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1134,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1135,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1136,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1137,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1138,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1139,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1140,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1141,
+          784
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1132,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1133,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1134,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1135,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1136,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1137,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1138,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1139,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1140,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1141,
+          785
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      }
+    ]
+  },
+  {
+    "candidate": "frame-2.png",
+    "reference": "../surface-shadow-query-gate/frame-2.png",
+    "difference_bbox": [
+      1178,
+      552,
+      1192,
+      556
+    ],
+    "pixels": [
+      {
+        "xy": [
+          1186,
+          552
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1187,
+          552
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1188,
+          552
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1189,
+          552
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1190,
+          552
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1191,
+          552
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1186,
+          553
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1187,
+          553
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1188,
+          553
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1189,
+          553
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1190,
+          553
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1191,
+          553
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1178,
+          554
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1179,
+          554
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1180,
+          554
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1181,
+          554
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1178,
+          555
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1179,
+          555
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1180,
+          555
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      },
+      {
+        "xy": [
+          1181,
+          555
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          108,
+          65,
+          169
+        ]
+      }
+    ]
+  },
+  {
+    "candidate": "mixed-3.png",
+    "reference": "../surface-shadow-query-gate/mixed-3.png",
+    "difference_bbox": [
+      150,
+      632,
+      2394,
+      762
+    ],
+    "pixels": [
+      {
+        "xy": [
+          150,
+          632
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          50,
+          81,
+          146
+        ]
+      },
+      {
+        "xy": [
+          151,
+          632
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          50,
+          81,
+          146
+        ]
+      },
+      {
+        "xy": [
+          150,
+          633
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          50,
+          81,
+          146
+        ]
+      },
+      {
+        "xy": [
+          151,
+          633
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          50,
+          81,
+          146
+        ]
+      },
+      {
+        "xy": [
+          2392,
+          760
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          173,
+          58,
+          58
+        ]
+      },
+      {
+        "xy": [
+          2393,
+          760
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          173,
+          58,
+          58
+        ]
+      },
+      {
+        "xy": [
+          2392,
+          761
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          173,
+          58,
+          58
+        ]
+      },
+      {
+        "xy": [
+          2393,
+          761
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          173,
+          58,
+          58
+        ]
+      }
+    ]
+  },
+  {
+    "candidate": "sky-3.png",
+    "reference": "../surface-shadow-query-gate/sky-3.png",
+    "difference_bbox": [
+      2392,
+      760,
+      2394,
+      762
+    ],
+    "pixels": [
+      {
+        "xy": [
+          2392,
+          760
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          205,
+          205,
+          205
+        ]
+      },
+      {
+        "xy": [
+          2393,
+          760
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          205,
+          205,
+          205
+        ]
+      },
+      {
+        "xy": [
+          2392,
+          761
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          205,
+          205,
+          205
+        ]
+      },
+      {
+        "xy": [
+          2393,
+          761
+        ],
+        "candidate_rgb": [
+          0,
+          0,
+          0
+        ],
+        "reference_rgb": [
+          205,
+          205,
+          205
+        ]
+      }
+    ]
+  },
+  {
+    "candidate": "perf/on-z4/run-1.png",
+    "reference": "perf/off-z4/run-1.png",
+    "difference_bbox": [
+      1110,
+      772,
+      1130,
+      780
+    ],
+    "pixels": [
+      {
+        "xy": [
+          1110,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1111,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1110,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1111,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1114,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1115,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1114,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1115,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          776
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          776
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          777
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          777
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          778
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          778
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          779
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          779
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      }
+    ]
+  },
+  {
+    "candidate": "perf/on-z4/run-2.png",
+    "reference": "perf/off-z4/run-2.png",
+    "difference_bbox": [
+      1110,
+      772,
+      1130,
+      780
+    ],
+    "pixels": [
+      {
+        "xy": [
+          1110,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1111,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1110,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1111,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1114,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1115,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1114,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1115,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          776
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          776
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          777
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          777
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          778
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          778
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          779
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          779
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      }
+    ]
+  },
+  {
+    "candidate": "perf/on-z4/run-3.png",
+    "reference": "perf/off-z4/run-3.png",
+    "difference_bbox": [
+      1110,
+      772,
+      1130,
+      780
+    ],
+    "pixels": [
+      {
+        "xy": [
+          1110,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1111,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          772
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1110,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1111,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          773
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1114,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1115,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          774
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1112,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1113,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1114,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1115,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          775
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          776
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          776
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          777
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          777
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          778
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          778
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1128,
+          779
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      },
+      {
+        "xy": [
+          1129,
+          779
+        ],
+        "candidate_rgb": [
+          45,
+          46,
+          48
+        ],
+        "reference_rgb": [
+          115,
+          144,
+          173
+        ]
+      }
+    ]
+  }
+]

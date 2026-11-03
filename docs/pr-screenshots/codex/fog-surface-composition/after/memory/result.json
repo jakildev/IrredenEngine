@@ -1,0 +1,1 @@
+{"verdict":"CLEAN","exe":"IRFogDemo","exit":0,"signal":null,"argv":["IRFogDemo","--config-preset","/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/docs/pr-screenshots/codex/fog-surface-composition/after/memory/config.lua","--explored-decay","--auto-screenshot","10"],"at":"2026-10-25T01:00:59Z"}

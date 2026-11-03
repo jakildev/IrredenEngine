@@ -1,0 +1,22 @@
+{
+  "demo": "canvas_stress",
+  "target": "IRCanvasStress",
+  "name": "floor_selfshadow",
+  "args": [
+    "--only",
+    "floor",
+    "--debug-overlay",
+    "shadow"
+  ],
+  "warmup": 120,
+  "offset": 4,
+  "shots": [
+    "floor_selfshadow_offwide"
+  ],
+  "command": "fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow",
+  "exit": 0,
+  "clean": true,
+  "hashes": {
+    "floor_selfshadow_offwide.png": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e"
+  }
+}

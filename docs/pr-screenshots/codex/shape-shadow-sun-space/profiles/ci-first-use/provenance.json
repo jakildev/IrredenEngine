@@ -1,0 +1,52 @@
+{
+  "actions_run_id": 38161324575,
+  "actions_run_url": "https://github.com/jakildev/IrredenEngine/actions/runs/38161324575",
+  "workflow": "Perf Gate",
+  "event": "pull_request",
+  "pull_request": 4298,
+  "artifact_name": "perf-run-38161324575",
+  "artifact_run_directory": "f821a263e-ci",
+  "pr_head_sha": "fe9dfc6f01a96da441c3102f9ac317cbcac4b3c5",
+  "tested_merge_sha": "f821a263e73288f7cab7089917b97838e6d679ac",
+  "tested_merge_parents": [
+    "c08906aa46fef2be9613b9d79cd43133f0e9bd58",
+    "fe9dfc6f01a96da441c3102f9ac317cbcac4b3c5"
+  ],
+  "baseline_capture_commit": "df9a13e5d3c77b34dd3b8beb627bf4a5d9584dfc",
+  "baseline_source_tree": "docs/perf/baseline_latest/linux-x86_64-epyc-7763-64-unknown",
+  "baseline_engine_sha": "cf1d70e10bb83a9d99ad37ec2996f0842d73c881",
+  "baseline_selection": "Most recent class-matched capture; branch tip at comparison time",
+  "head_source": "Unmodified reports and manifest from the Actions artifact",
+  "baseline_source": "Unmodified git show <baseline_capture_commit>:<baseline_source_tree>/<filename> output",
+  "command": [
+    "ir-perf-grid",
+    "--quick",
+    "--frames",
+    "60",
+    "--timeout",
+    "300",
+    "--label",
+    "ci"
+  ],
+  "environment": {
+    "preset": "linux-debug",
+    "backend": "OpenGL under Xvfb; hosted Mesa/llvmpipe workflow lane",
+    "host_slug": "linux-x86_64-epyc-7763-64-unknown",
+    "renderer_string": null
+  },
+  "gate": {
+    "status": "failure",
+    "metric": "full 60-frame mean",
+    "threshold_percent": 10,
+    "comparison": "raw; class-matched history mode",
+    "regressed_zoom": 1
+  },
+  "sha256": {
+    "baseline/manifest.json": "6c2e46ff0f1df19ac9244dd79e419c2904dfedc3f4e96afa0891d9492cb9010a",
+    "baseline/target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt": "ad02743117473e25a30ea4bf0775274b8a10f1238815f88f69eb189fd4f26e14",
+    "baseline/target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt": "374cbbd7870efc3f40344eba54ece9397e1be8e8813ab5f7f51dd0659d712f97",
+    "head/manifest.json": "67a4fee1aaeb3b858f206ec67cd6f68c726eed17608450b5a2dff3309759b387",
+    "head/target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt": "97175f8ce90dcb505118f2d9da57e01be6d5ba8113a5fc18afcd13cf664c4f9a",
+    "head/target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt": "684dea02ffac9b7b6c30a981a68bc2746dc8cc318290e7926957648d455e4e95"
+  }
+}

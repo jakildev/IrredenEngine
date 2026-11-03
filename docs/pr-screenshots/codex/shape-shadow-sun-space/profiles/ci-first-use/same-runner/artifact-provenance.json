@@ -1,0 +1,19 @@
+{
+  "actions_run": "https://github.com/jakildev/IrredenEngine/actions/runs/38163751570",
+  "command": "gh workflow run perf-gate.yml --ref codex/shape-shadow-sun-space -f diagnostic_base=fe9dfc6f01a96da441c3102f9ac317cbcac4b3c5",
+  "files": {
+    "3fe9f6cd6-ci/manifest.json": "61ddf7eef0be7e1df077e20d5beec687d48621dfa0fa4f8821d3854363f43836",
+    "3fe9f6cd6-ci/target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt": "ba05109905eb20b57763a708ffe0064e8941937f8b15b96b0bf26640997b1899",
+    "3fe9f6cd6-ci/target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt": "d06f61c5a94a9a1038b8663d723c33818d22c3d0f3eda33bcafbbee4f6ddb904",
+    "3fe9f6cd6-pair-head-return/manifest.json": "d9ace12bc9be13373c0b58e160fe20ab92a1dddf76507d6e899a1890c8fc2e86",
+    "3fe9f6cd6-pair-head-return/target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt": "ef348edf908a469483008b2fa0fceb72052aba65c2d4df3718a985d97701c4bb",
+    "3fe9f6cd6-pair-head-return/target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt": "4c77f2c950b8071860768a5aa53c993bd4b115e03d40fa8eef70842152aa136b",
+    "fe9dfc6f0-pair-base/manifest.json": "2c3a9132ae7005ca512684d41b1ad692975ba3693d7eb601f79a110b17ca3d2d",
+    "fe9dfc6f0-pair-base/target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt": "9c3d2bc20ff9a7a7592a47d315e8b820eff504dea5ba9485bf83c166b8aa585d",
+    "fe9dfc6f0-pair-base/target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt": "4ae12deda9471df0a30cf49ad3e623a9d3e6a59843b7546673d88f173255efc3",
+    "paired/base-to-first-head.md": "7173443dd78362062d34a56e4d3db51567b111814d9682cf2ac9723d81f4bdfd",
+    "paired/base-to-return-head.md": "0047d846e2bb56b2018a94bfca3a7352c33ba9d0474cd700e8ef83ad53a23c42",
+    "paired/head-repeat-spread.md": "a1f4aa5f1ee82636977b600a0fc89bcfca35728968eb4355bf7f31d98110f2aa",
+    "paired/provenance.json": "7099891bae67fb05912e797b0ab0745c753fbea0c8263097665c23fd55e6163a"
+  }
+}

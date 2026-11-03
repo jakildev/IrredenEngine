@@ -1,0 +1,26 @@
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 7b3e55357..6b1536597 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -15,7 +15,7 @@
+ #include "ir_sun_shape_query.glsl"
+ 
+ #ifndef IR_SUN_FACE_OVERFLOW_REFERENCE
+-#define IR_SUN_FACE_OVERFLOW_REFERENCE 0
++#define IR_SUN_FACE_OVERFLOW_REFERENCE 1
+ #endif
+ const uint kSourceFaceOverflowReferenceBudget = 256u;
+ 
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index b5ccd61b3..2195a270b 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -17,7 +17,7 @@
+ #include "ir_sun_shape_query.metal"
+ 
+ #ifndef IR_SUN_FACE_OVERFLOW_REFERENCE
+-#define IR_SUN_FACE_OVERFLOW_REFERENCE 0
++#define IR_SUN_FACE_OVERFLOW_REFERENCE 1
+ #endif
+ constant uint kSourceFaceOverflowReferenceBudget = 256u;
+ 

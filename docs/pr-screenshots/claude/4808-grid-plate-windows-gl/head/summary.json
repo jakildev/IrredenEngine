@@ -1,0 +1,74 @@
+{
+  "normals_0": {
+    "rc": 0,
+    "missing_exposed_cells": 0,
+    "visible_cells": null,
+    "expected_cells": 145,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "error": null
+  },
+  "normals_90": {
+    "rc": 0,
+    "missing_exposed_cells": 0,
+    "visible_cells": null,
+    "expected_cells": 145,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "error": null
+  },
+  "normals_180": {
+    "rc": 0,
+    "missing_exposed_cells": 0,
+    "visible_cells": null,
+    "expected_cells": 145,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "error": null
+  },
+  "normals_270": {
+    "rc": 0,
+    "missing_exposed_cells": 0,
+    "visible_cells": null,
+    "expected_cells": 145,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "error": null
+  },
+  "beauty_0": {
+    "rc": 0,
+    "missing_exposed_cells": 0,
+    "visible_cells": null,
+    "expected_cells": 145,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "error": null
+  },
+  "beauty_90": {
+    "rc": 0,
+    "missing_exposed_cells": 0,
+    "visible_cells": null,
+    "expected_cells": 145,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "error": null
+  },
+  "beauty_180": {
+    "rc": 0,
+    "missing_exposed_cells": 0,
+    "visible_cells": null,
+    "expected_cells": 145,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "error": null
+  },
+  "beauty_270": {
+    "rc": 0,
+    "missing_exposed_cells": 0,
+    "visible_cells": null,
+    "expected_cells": 145,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "error": null
+  }
+}

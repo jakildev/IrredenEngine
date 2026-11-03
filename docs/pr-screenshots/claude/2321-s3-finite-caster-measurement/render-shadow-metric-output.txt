@@ -1,0 +1,288 @@
+== z1 yaw0 ROI 1000,520,600,340
+{
+  "image": "shadow_overlay_z1_yaw0.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "shadow_px": 15500,
+  "lit_px": 188500,
+  "hole_ratio": 0.924,
+  "components": 230,
+  "largest_frac": 0.2062,
+  "pass": true
+}
+-- z1 yaw0 whole-frame
+{
+  "image": "shadow_overlay_z1_yaw0.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 23428,
+  "lit_px": 3662972,
+  "hole_ratio": 0.9936,
+  "components": 459,
+  "largest_frac": 0.1364,
+  "pass": true
+}
+== z1 yaw30 ROI 1000,520,600,340
+{
+  "image": "shadow_overlay_z1_yaw30.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "shadow_px": 26784,
+  "lit_px": 177216,
+  "hole_ratio": 0.8687,
+  "components": 102,
+  "largest_frac": 0.226,
+  "pass": true
+}
+-- z1 yaw30 whole-frame
+{
+  "image": "shadow_overlay_z1_yaw30.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 44548,
+  "lit_px": 3639072,
+  "hole_ratio": 0.9879,
+  "components": 450,
+  "largest_frac": 0.1359,
+  "pass": true
+}
+== z1 yaw45 ROI 1000,520,600,340
+{
+  "image": "shadow_overlay_z1_yaw45.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "shadow_px": 31860,
+  "lit_px": 172140,
+  "hole_ratio": 0.8438,
+  "components": 137,
+  "largest_frac": 0.261,
+  "pass": true
+}
+-- z1 yaw45 whole-frame
+{
+  "image": "shadow_overlay_z1_yaw45.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 42236,
+  "lit_px": 3639984,
+  "hole_ratio": 0.9885,
+  "components": 509,
+  "largest_frac": 0.1969,
+  "pass": true
+}
+== z2 yaw0 ROI 800,360,1040,580
+{
+  "image": "shadow_overlay_z2_yaw0.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "shadow_px": 60096,
+  "lit_px": 543104,
+  "hole_ratio": 0.9004,
+  "components": 293,
+  "largest_frac": 0.2284,
+  "pass": true
+}
+-- z2 yaw0 whole-frame
+{
+  "image": "shadow_overlay_z2_yaw0.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 60096,
+  "lit_px": 3626304,
+  "hole_ratio": 0.9837,
+  "components": 293,
+  "largest_frac": 0.2284,
+  "pass": true
+}
+== z2 yaw30 ROI 800,360,1040,580
+{
+  "image": "shadow_overlay_z2_yaw30.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "shadow_px": 101256,
+  "lit_px": 501944,
+  "hole_ratio": 0.8321,
+  "components": 106,
+  "largest_frac": 0.2056,
+  "pass": true
+}
+-- z2 yaw30 whole-frame
+{
+  "image": "shadow_overlay_z2_yaw30.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 101256,
+  "lit_px": 3585144,
+  "hole_ratio": 0.9725,
+  "components": 106,
+  "largest_frac": 0.2056,
+  "pass": true
+}
+== z2 yaw45 ROI 800,360,1040,580
+{
+  "image": "shadow_overlay_z2_yaw45.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "shadow_px": 127472,
+  "lit_px": 475728,
+  "hole_ratio": 0.7887,
+  "components": 122,
+  "largest_frac": 0.2354,
+  "pass": true
+}
+-- z2 yaw45 whole-frame
+{
+  "image": "shadow_overlay_z2_yaw45.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 127472,
+  "lit_px": 3558928,
+  "hole_ratio": 0.9654,
+  "components": 122,
+  "largest_frac": 0.2354,
+  "pass": true
+}
+== z4 yaw0 ROI 0,0,2560,1440
+{
+  "image": "shadow_overlay_z4_yaw0.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 242076,
+  "lit_px": 3444324,
+  "hole_ratio": 0.9343,
+  "components": 137,
+  "largest_frac": 0.201,
+  "pass": true
+}
+-- z4 yaw0 whole-frame
+{
+  "image": "shadow_overlay_z4_yaw0.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 242076,
+  "lit_px": 3444324,
+  "hole_ratio": 0.9343,
+  "components": 137,
+  "largest_frac": 0.201,
+  "pass": true
+}
+== z4 yaw30 ROI 0,0,2560,1440
+{
+  "image": "shadow_overlay_z4_yaw30.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 395608,
+  "lit_px": 3290792,
+  "hole_ratio": 0.8927,
+  "components": 106,
+  "largest_frac": 0.2279,
+  "pass": true
+}
+-- z4 yaw30 whole-frame
+{
+  "image": "shadow_overlay_z4_yaw30.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 395608,
+  "lit_px": 3290792,
+  "hole_ratio": 0.8927,
+  "components": 106,
+  "largest_frac": 0.2279,
+  "pass": true
+}
+== z4 yaw45 ROI 0,0,2560,1440
+{
+  "image": "shadow_overlay_z4_yaw45.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 512356,
+  "lit_px": 3174044,
+  "hole_ratio": 0.861,
+  "components": 125,
+  "largest_frac": 0.2611,
+  "pass": true
+}
+-- z4 yaw45 whole-frame
+{
+  "image": "shadow_overlay_z4_yaw45.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "shadow_px": 512356,
+  "lit_px": 3174044,
+  "hole_ratio": 0.861,
+  "components": 125,
+  "largest_frac": 0.2611,
+  "pass": true
+}

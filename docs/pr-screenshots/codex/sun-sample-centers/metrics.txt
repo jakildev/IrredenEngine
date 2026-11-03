@@ -1,0 +1,27 @@
+yaw=0 iou=0.890 area_ratio=1.085 expected_pixels=3258 observed_pixels=3536 PASS
+yaw=90 iou=0.969 area_ratio=1.021 expected_pixels=19035 observed_pixels=19432 PASS
+yaw=180 iou=0.937 area_ratio=1.024 expected_pixels=19404 observed_pixels=19864 PASS
+yaw=270 iou=0.944 area_ratio=1.031 expected_pixels=19367 observed_pixels=19976 PASS
+exit=0
+
+yaw=0 iou=0.891 area_ratio=0.980 expected_pixels=3258 observed_pixels=3192 PASS
+yaw=90 iou=0.968 area_ratio=1.026 expected_pixels=19035 observed_pixels=19528 PASS
+yaw=180 iou=0.963 area_ratio=1.027 expected_pixels=19404 observed_pixels=19928 PASS
+yaw=270 iou=0.948 area_ratio=1.032 expected_pixels=19367 observed_pixels=19992 PASS
+exit=0
+
+capture-509.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-509.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=51 FAIL
+exit=1
+
+capture-529.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-529.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+exit=0
+
+capture-534.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-534.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+exit=0
+
+capture-537.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-537.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=1 PASS
+exit=0

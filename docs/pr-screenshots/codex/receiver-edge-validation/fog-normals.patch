@@ -1,0 +1,91 @@
+diff --git a/engine/render/src/shaders/metal/c_lighting_to_trixel_body.metal b/engine/render/src/shaders/metal/c_lighting_to_trixel_body.metal
+index f11d151cd..592808b7e 100644
+--- a/engine/render/src/shaders/metal/c_lighting_to_trixel_body.metal
++++ b/engine/render/src/shaders/metal/c_lighting_to_trixel_body.metal
+@@ -214,6 +214,10 @@ kernel void IR_LIGHTING_KERNEL_NAME(
+ #if IR_SHAPE_RECEIVER
+     worldNormal = receiverFaceNormal(canvasSunShadow.read(uint2(pixel)).a, worldNormal);
+ #endif
++    if (voxelFrameData.residualYaw != 0.0f && all(abs(sourceColor.rgb - float3(230.0f / 255.0f)) < float3(0.001f))) {
++        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(worldNormal * 0.5f + 0.5f, sourceColor.a));
++        return;
++    }
+     if (frameData.debugOverlayMode == 8) {
+         const float alpha = sourceColor.a;
+         writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(worldNormal * 0.5f + 0.5f, alpha));
+diff --git a/scripts/tests/test_render_shape_receiver.py b/scripts/tests/test_render_shape_receiver.py
+index 0c221c383..32c281b95 100644
+--- a/scripts/tests/test_render_shape_receiver.py
++++ b/scripts/tests/test_render_shape_receiver.py
+@@ -110,6 +110,7 @@ int main(){
+      boundaries+=abs(abs(local)-half[a])<1.e-4;
+      normalAxes+=abs(n[a])==1.f;
+      if(n[a]!=-1.f&&n[a]!=0.f&&n[a]!=1.f)return 13;
++     if(n[a]!=0.f&&abs(local-n[a]*half[a])>1.e-4)return 19;
+     }
+     if(!boundaries||normalAxes!=1)return 14;
+     continue;
+@@ -176,8 +177,39 @@ int main(){
+   }
+  }
+  if(!nearbyMisses)return 18;
++ // A splatted floor silhouette retains coverage outside the finite ray hit.
++ // These local iso queries straddle its +X/-Y corner at two settled yaws.
++ int floorCorners=0;
++ for(int pose=0;pose<2;++pose){
++  f={};f.smoothYawEnabled=1;f.voxelRenderOptions={1,1};
++  f.visualYaw=pose==0?1.308994f:1.0471947f;
++  shape={};shape.params.xyz={120,120,4};shape.worldPosition.xyz={0,0,4};
++  for(float dx:{0.f,.5f})for(float dy:{0.f,1.f}){
++   const vec2 relative{(pose==0?-30.75f:-59.75f)+dx,
++                       (pose==0?120.5f:108.5f)+dy};
++   const vec2 pixel=relative+vec2(0,8);
++   vec3 position,normal;
++   if(shapeBoxReceiver(shape,f,pixel,false,position,normal))return 20;
++   if(!shapeBoxReceiver(shape,f,pixel,true,position,normal))return 21;
++   if(normal.x!=0||normal.y!=-1||normal.z!=0)return 22;
++   if(abs(position.y+60)>1.e-4||position.x<59.2f||position.x>59.8f||
++      position.z<5.99f||position.z>6.0001f)return 23;
++   // The recovered point's independently intersected ray must enter -Y,
++   // rather than merely report an arbitrary axis normal on some box boundary.
++   const double c=cos(double(f.visualYaw)),s=sin(double(f.visualYaw));
++   const double vx=c*position.x+s*position.y,vy=-s*position.x+c*position.y;
++   const double ix=-vx+vy,iy=-vx-vy+2*(position.z-4);
++   double origin[]={-c*ix/2-c*iy/6-s*ix/2+s*iy/6,
++                    -s*ix/2-s*iy/6+c*ix/2-c*iy/6,iy/3};
++   double direction[]={(c-s)/3,(s+c)/3,1./3},half[]={60,60,2};
++   Hit expected=intersect(origin,direction,half);
++   if(!expected.valid||expected.face!=2)return 24;
++   ++floorCorners;
++  }
++ }
+  printf("receiver_hits=%d misses=%d recovered_hits=%d nearby_misses=%d max_shift=%.3f\n",
+-        hits,misses,recoveredHits,nearbyMisses,maxRecoveryShift);return 0;
++        hits,misses,recoveredHits,nearbyMisses,maxRecoveryShift);
++ printf("floor_corner_receivers=%d signed_normal=-Y\n",floorCorners);return 0;
+ }
+ """
+ 
+@@ -457,6 +489,12 @@ int main(){
+                 "center_anchor": re.sub(
+                     r"vec2 anchorIso = vec2\([^;]+;",
+                     "vec2 anchorIso = vec2(0.0, 0.0);", functions, count=1),
++                "reversed_recovered_normal": functions.replace(
++                    "relativeIso = recoveredIso;",
++                    "relativeIso = recoveredIso; normal = -normal;"),
++                "unrelated_recovered_normal": functions.replace(
++                    "relativeIso = recoveredIso;",
++                    "relativeIso = recoveredIso; normal = vec3(1.0, 0.0, 0.0);"),
+             }
+             for name, body in variants.items():
+                 with (
+@@ -476,7 +514,8 @@ int main(){
+                         print(suffix, run.stdout.strip())
+                     else:
+                         self.assertIn(run.returncode,
+-                                      (2, 3, 4, 9, 12, 13, 14, 15, 16, 17, 18), name)
++                                      (2, 3, 4, 9, 12, 13, 14, 15, 16, 17, 18,
++                                       19, 20, 21, 22, 23, 24), name)
+ 
+ 
+ if __name__ == "__main__":

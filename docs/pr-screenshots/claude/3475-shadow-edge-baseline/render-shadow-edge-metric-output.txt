@@ -1,0 +1,671 @@
+render-shadow-edge-metric.py — Phase-1 baseline, finite default caster
+host: macOS 26.5.2 / Apple M4 Max / Metal, 2560x1440
+engine master: 021d41f7f (2026-09-20T16:07:26-07:00)
+capture: fleet-run IRCanvasStress --auto-screenshot 6 --debug-overlay shadow --no-spin --no-ao --zoom <Z> --sweep-yaw <rad> <rad> 1
+ROIs: zoom1 1000,520,600,340 · zoom2 800,360,1040,580 · zoom4 0,0,2560,1440 (the #2321 D8 convention)
+
+== the nine captures in this directory (default --window 6) ==
+### z1 yaw0 roi=1000,520,600,340
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z1_yaw0.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "window": 6,
+  "shadow_px": 8956,
+  "boundary_px": 4123,
+  "boundary_frac": 0.4604,
+  "fitted_px": 4123,
+  "speck_frac": 0.0,
+  "roughness_px": 1.1411,
+  "roughness_p95": 2.2252,
+  "runs": 1538,
+  "mean_run_px": 3.4564,
+  "run_p90": 4.0,
+  "axis_frac": 0.5203,
+  "direction_hist": {
+    "0": 0.2515,
+    "22.5": 0.1201,
+    "45": 0.0762,
+    "67.5": 0.0597,
+    "90": 0.2687,
+    "112.5": 0.0611,
+    "135": 0.0604,
+    "157.5": 0.1024
+  },
+  "pass": true
+}
+real 1.98
+user 1.96
+sys 0.01
+### z1 yaw30 roi=1000,520,600,340
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z1_yaw30.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "window": 6,
+  "shadow_px": 19908,
+  "boundary_px": 3884,
+  "boundary_frac": 0.1951,
+  "fitted_px": 3884,
+  "speck_frac": 0.0,
+  "roughness_px": 0.9442,
+  "roughness_p95": 1.923,
+  "runs": 1224,
+  "mean_run_px": 3.8693,
+  "run_p90": 6.0,
+  "axis_frac": 0.3991,
+  "direction_hist": {
+    "0": 0.2549,
+    "22.5": 0.1269,
+    "45": 0.0996,
+    "67.5": 0.0487,
+    "90": 0.1442,
+    "112.5": 0.1318,
+    "135": 0.104,
+    "157.5": 0.0899
+  },
+  "pass": true
+}
+real 2.00
+user 1.98
+sys 0.01
+### z1 yaw45 roi=1000,520,600,340
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z1_yaw45.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "window": 6,
+  "shadow_px": 27164,
+  "boundary_px": 4245,
+  "boundary_frac": 0.1563,
+  "fitted_px": 4245,
+  "speck_frac": 0.0,
+  "roughness_px": 0.8789,
+  "roughness_p95": 1.824,
+  "runs": 1446,
+  "mean_run_px": 3.6625,
+  "run_p90": 6.0,
+  "axis_frac": 0.4547,
+  "direction_hist": {
+    "0": 0.1767,
+    "22.5": 0.1428,
+    "45": 0.0653,
+    "67.5": 0.0987,
+    "90": 0.278,
+    "112.5": 0.0702,
+    "135": 0.1185,
+    "157.5": 0.0499
+  },
+  "pass": true
+}
+real 2.00
+user 1.97
+sys 0.02
+### z2 yaw0 roi=800,360,1040,580
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z2_yaw0.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "window": 6,
+  "shadow_px": 31600,
+  "boundary_px": 8395,
+  "boundary_frac": 0.2657,
+  "fitted_px": 8395,
+  "speck_frac": 0.0,
+  "roughness_px": 1.1851,
+  "roughness_p95": 2.2768,
+  "runs": 2714,
+  "mean_run_px": 3.7642,
+  "run_p90": 4.0,
+  "axis_frac": 0.3468,
+  "direction_hist": {
+    "0": 0.2056,
+    "22.5": 0.2169,
+    "45": 0.0872,
+    "67.5": 0.0621,
+    "90": 0.1412,
+    "112.5": 0.0785,
+    "135": 0.0685,
+    "157.5": 0.1401
+  },
+  "pass": true
+}
+real 2.27
+user 2.25
+sys 0.02
+### z2 yaw30 roi=800,360,1040,580
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z2_yaw30.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "window": 6,
+  "shadow_px": 72380,
+  "boundary_px": 7271,
+  "boundary_frac": 0.1005,
+  "fitted_px": 7271,
+  "speck_frac": 0.0,
+  "roughness_px": 0.9646,
+  "roughness_p95": 2.0712,
+  "runs": 1846,
+  "mean_run_px": 4.4875,
+  "run_p90": 8.0,
+  "axis_frac": 0.3405,
+  "direction_hist": {
+    "0": 0.1828,
+    "22.5": 0.1831,
+    "45": 0.102,
+    "67.5": 0.0721,
+    "90": 0.1577,
+    "112.5": 0.1473,
+    "135": 0.071,
+    "157.5": 0.084
+  },
+  "pass": true
+}
+real 2.30
+user 2.27
+sys 0.01
+### z2 yaw45 roi=800,360,1040,580
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z2_yaw45.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "window": 6,
+  "shadow_px": 108244,
+  "boundary_px": 9421,
+  "boundary_frac": 0.087,
+  "fitted_px": 9421,
+  "speck_frac": 0.0,
+  "roughness_px": 1.185,
+  "roughness_p95": 2.0436,
+  "runs": 2354,
+  "mean_run_px": 4.6049,
+  "run_p90": 8.0,
+  "axis_frac": 0.4552,
+  "direction_hist": {
+    "0": 0.1763,
+    "22.5": 0.1316,
+    "45": 0.0982,
+    "67.5": 0.0893,
+    "90": 0.2788,
+    "112.5": 0.0895,
+    "135": 0.0668,
+    "157.5": 0.0695
+  },
+  "pass": true
+}
+real 2.34
+user 2.29
+sys 0.03
+### z4 yaw0 roi=0,0,2560,1440
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z4_yaw0.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "window": 6,
+  "shadow_px": 126520,
+  "boundary_px": 17730,
+  "boundary_frac": 0.1401,
+  "fitted_px": 17730,
+  "speck_frac": 0.0,
+  "roughness_px": 1.136,
+  "roughness_p95": 2.3928,
+  "runs": 5224,
+  "mean_run_px": 3.928,
+  "run_p90": 4.0,
+  "axis_frac": 0.1964,
+  "direction_hist": {
+    "0": 0.0766,
+    "22.5": 0.2747,
+    "45": 0.1067,
+    "67.5": 0.0422,
+    "90": 0.1199,
+    "112.5": 0.0975,
+    "135": 0.0785,
+    "157.5": 0.2041
+  },
+  "pass": true
+}
+real 4.42
+user 4.36
+sys 0.04
+### z4 yaw30 roi=0,0,2560,1440
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z4_yaw30.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "window": 6,
+  "shadow_px": 277828,
+  "boundary_px": 14719,
+  "boundary_frac": 0.053,
+  "fitted_px": 14719,
+  "speck_frac": 0.0,
+  "roughness_px": 0.7354,
+  "roughness_p95": 1.6178,
+  "runs": 3506,
+  "mean_run_px": 4.7268,
+  "run_p90": 8.0,
+  "axis_frac": 0.3485,
+  "direction_hist": {
+    "0": 0.1836,
+    "22.5": 0.1941,
+    "45": 0.1058,
+    "67.5": 0.06,
+    "90": 0.1649,
+    "112.5": 0.1377,
+    "135": 0.0573,
+    "157.5": 0.0966
+  },
+  "pass": true
+}
+real 4.43
+user 4.37
+sys 0.03
+### z4 yaw45 roi=0,0,2560,1440
+{
+  "image": "/tmp/3475-captures/shadow_overlay_z4_yaw45.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "window": 6,
+  "shadow_px": 427448,
+  "boundary_px": 19484,
+  "boundary_frac": 0.0456,
+  "fitted_px": 19484,
+  "speck_frac": 0.0,
+  "roughness_px": 0.8785,
+  "roughness_p95": 1.8804,
+  "runs": 4360,
+  "mean_run_px": 5.0275,
+  "run_p90": 8.0,
+  "axis_frac": 0.3877,
+  "direction_hist": {
+    "0": 0.2188,
+    "22.5": 0.1954,
+    "45": 0.1005,
+    "67.5": 0.0835,
+    "90": 0.1689,
+    "112.5": 0.0633,
+    "135": 0.0606,
+    "157.5": 0.109
+  },
+  "pass": true
+}
+real 4.48
+user 4.39
+sys 0.07
+
+== the nine committed #2321 captures at master 0a1747902, same oracle ==
+### z1 yaw0 roi=1000,520,600,340
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z1_yaw0.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "window": 6,
+  "shadow_px": 15500,
+  "boundary_px": 6450,
+  "boundary_frac": 0.4161,
+  "fitted_px": 6450,
+  "speck_frac": 0.0,
+  "roughness_px": 1.3793,
+  "roughness_p95": 2.4101,
+  "runs": 2548,
+  "mean_run_px": 3.1931,
+  "run_p90": 4.0,
+  "axis_frac": 0.3876,
+  "direction_hist": {
+    "0": 0.2107,
+    "22.5": 0.149,
+    "45": 0.1074,
+    "67.5": 0.0972,
+    "90": 0.1769,
+    "112.5": 0.0724,
+    "135": 0.0775,
+    "157.5": 0.1088
+  },
+  "pass": true
+}
+real 2.05
+user 2.02
+sys 0.01
+### z1 yaw30 roi=1000,520,600,340
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z1_yaw30.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "window": 6,
+  "shadow_px": 26784,
+  "boundary_px": 5251,
+  "boundary_frac": 0.196,
+  "fitted_px": 5251,
+  "speck_frac": 0.0,
+  "roughness_px": 1.255,
+  "roughness_p95": 2.325,
+  "runs": 1522,
+  "mean_run_px": 4.0552,
+  "run_p90": 8.0,
+  "axis_frac": 0.3868,
+  "direction_hist": {
+    "0": 0.2125,
+    "22.5": 0.1266,
+    "45": 0.1,
+    "67.5": 0.0933,
+    "90": 0.1743,
+    "112.5": 0.1108,
+    "135": 0.0737,
+    "157.5": 0.1087
+  },
+  "pass": true
+}
+real 2.15
+user 2.12
+sys 0.01
+### z1 yaw45 roi=1000,520,600,340
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z1_yaw45.png",
+  "roi": [
+    1000,
+    520,
+    600,
+    340
+  ],
+  "window": 6,
+  "shadow_px": 31860,
+  "boundary_px": 4817,
+  "boundary_frac": 0.1512,
+  "fitted_px": 4817,
+  "speck_frac": 0.0,
+  "roughness_px": 1.118,
+  "roughness_p95": 2.3335,
+  "runs": 1518,
+  "mean_run_px": 3.8208,
+  "run_p90": 8.0,
+  "axis_frac": 0.432,
+  "direction_hist": {
+    "0": 0.1717,
+    "22.5": 0.1368,
+    "45": 0.0754,
+    "67.5": 0.0982,
+    "90": 0.2603,
+    "112.5": 0.0768,
+    "135": 0.0999,
+    "157.5": 0.081
+  },
+  "pass": true
+}
+real 2.07
+user 2.05
+sys 0.01
+### z2 yaw0 roi=800,360,1040,580
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z2_yaw0.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "window": 6,
+  "shadow_px": 60096,
+  "boundary_px": 14367,
+  "boundary_frac": 0.2391,
+  "fitted_px": 14367,
+  "speck_frac": 0.0,
+  "roughness_px": 1.2336,
+  "roughness_p95": 2.2722,
+  "runs": 4866,
+  "mean_run_px": 3.5577,
+  "run_p90": 4.0,
+  "axis_frac": 0.292,
+  "direction_hist": {
+    "0": 0.1815,
+    "22.5": 0.2309,
+    "45": 0.1007,
+    "67.5": 0.0903,
+    "90": 0.1105,
+    "112.5": 0.0709,
+    "135": 0.0722,
+    "157.5": 0.1429
+  },
+  "pass": true
+}
+real 2.41
+user 2.37
+sys 0.01
+### z2 yaw30 roi=800,360,1040,580
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z2_yaw30.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "window": 6,
+  "shadow_px": 101256,
+  "boundary_px": 11602,
+  "boundary_frac": 0.1146,
+  "fitted_px": 11602,
+  "speck_frac": 0.0,
+  "roughness_px": 1.1855,
+  "roughness_p95": 2.3121,
+  "runs": 3292,
+  "mean_run_px": 4.0778,
+  "run_p90": 8.0,
+  "axis_frac": 0.3318,
+  "direction_hist": {
+    "0": 0.126,
+    "22.5": 0.1465,
+    "45": 0.1203,
+    "67.5": 0.1205,
+    "90": 0.2057,
+    "112.5": 0.1426,
+    "135": 0.0711,
+    "157.5": 0.0672
+  },
+  "pass": true
+}
+real 2.39
+user 2.37
+sys 0.01
+### z2 yaw45 roi=800,360,1040,580
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z2_yaw45.png",
+  "roi": [
+    800,
+    360,
+    1040,
+    580
+  ],
+  "window": 6,
+  "shadow_px": 127472,
+  "boundary_px": 12228,
+  "boundary_frac": 0.0959,
+  "fitted_px": 12228,
+  "speck_frac": 0.0,
+  "roughness_px": 1.3027,
+  "roughness_p95": 2.301,
+  "runs": 3256,
+  "mean_run_px": 4.3157,
+  "run_p90": 8.0,
+  "axis_frac": 0.4019,
+  "direction_hist": {
+    "0": 0.1607,
+    "22.5": 0.1356,
+    "45": 0.0858,
+    "67.5": 0.1085,
+    "90": 0.2412,
+    "112.5": 0.1003,
+    "135": 0.0796,
+    "157.5": 0.0882
+  },
+  "pass": true
+}
+real 2.37
+user 2.35
+sys 0.01
+### z4 yaw0 roi=0,0,2560,1440
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z4_yaw0.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "window": 6,
+  "shadow_px": 242076,
+  "boundary_px": 32007,
+  "boundary_frac": 0.1322,
+  "fitted_px": 32007,
+  "speck_frac": 0.0,
+  "roughness_px": 1.0265,
+  "roughness_p95": 2.2253,
+  "runs": 9890,
+  "mean_run_px": 3.7606,
+  "run_p90": 4.0,
+  "axis_frac": 0.2088,
+  "direction_hist": {
+    "0": 0.0922,
+    "22.5": 0.2679,
+    "45": 0.09,
+    "67.5": 0.0796,
+    "90": 0.1167,
+    "112.5": 0.0673,
+    "135": 0.0727,
+    "157.5": 0.2137
+  },
+  "pass": true
+}
+real 4.59
+user 4.56
+sys 0.01
+### z4 yaw30 roi=0,0,2560,1440
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z4_yaw30.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "window": 6,
+  "shadow_px": 395608,
+  "boundary_px": 27218,
+  "boundary_frac": 0.0688,
+  "fitted_px": 27218,
+  "speck_frac": 0.0,
+  "roughness_px": 0.8536,
+  "roughness_p95": 1.8962,
+  "runs": 6800,
+  "mean_run_px": 4.5329,
+  "run_p90": 8.0,
+  "axis_frac": 0.3398,
+  "direction_hist": {
+    "0": 0.139,
+    "22.5": 0.1902,
+    "45": 0.1113,
+    "67.5": 0.0682,
+    "90": 0.2008,
+    "112.5": 0.1124,
+    "135": 0.0709,
+    "157.5": 0.1072
+  },
+  "pass": true
+}
+real 4.63
+user 4.60
+sys 0.02
+### z4 yaw45 roi=0,0,2560,1440
+{
+  "image": "docs/pr-screenshots/claude/2321-s3-finite-caster-measurement/shadow_overlay_z4_yaw45.png",
+  "roi": [
+    0,
+    0,
+    2560,
+    1440
+  ],
+  "window": 6,
+  "shadow_px": 512356,
+  "boundary_px": 25027,
+  "boundary_frac": 0.0488,
+  "fitted_px": 25027,
+  "speck_frac": 0.0,
+  "roughness_px": 0.8317,
+  "roughness_p95": 1.8804,
+  "runs": 6138,
+  "mean_run_px": 4.6132,
+  "run_p90": 8.0,
+  "axis_frac": 0.3588,
+  "direction_hist": {
+    "0": 0.1892,
+    "22.5": 0.2146,
+    "45": 0.0774,
+    "67.5": 0.0846,
+    "90": 0.1695,
+    "112.5": 0.0612,
+    "135": 0.0681,
+    "157.5": 0.1353
+  },
+  "pass": true
+}
+real 4.55
+user 4.52
+sys 0.01
+
+== AO control at this head: --no-ao vs AO on, zoom 1/2/4 yaw 0 ==
+AO on:  z1 shadow_px=8956 roughness_px=1.1411 · z2 31600 1.1851 · z4 126520 1.1360
+--no-ao: identical on all three (the SHADOW overlay carries no AO term)
+
+== window sweep, fresh zoom2 yaw0 ==
+window=2 rough=0.2939 p95=0.5292
+window=4 rough=0.7630 p95=1.4375
+window=6 rough=1.1851 p95=2.2768
+window=8 rough=1.6032 p95=3.1619
+window=12 rough=2.1383 p95=4.1453
+
+== determinism at this head ==
+zoom2 yaw0 re-run is byte-identical: sha256 436920ae25364987

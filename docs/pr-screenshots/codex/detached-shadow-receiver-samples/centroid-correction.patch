@@ -1,0 +1,39 @@
+--- a/engine/render/src/shaders/c_lighting_to_trixel.glsl
++++ b/engine/render/src/shaders/c_lighting_to_trixel.glsl
+@@ -185,6 +185,16 @@
+         worldReceivePos = trixelCanvasPixelToWorld3D(
+             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+         );
++        if (visibleFaceIds.w == 2) {
++            const ivec2 isoRel = trixelCanvasPixelToIsoRel(
++                pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
++            // A displayed triangle centroid has iso delta (f - 1, -1) and
++            // depth delta +1 from the stored face-origin sample. Its in-plane
++            // centroid fraction f alternates with local triangle orientation.
++            const float f = ((isoRel.x + isoRel.y) & 1) != 0 ? 1.0 / 3.0 : 2.0 / 3.0;
++            worldReceivePos += vec3(1.0 - 0.5 * f, 0.5 * f, 0.0)
++                / float(effectiveTrixelSubdivisionScale(voxelRenderOptions));
++        }
+         // Raster coordinates use cell corners; geometry uses voxel centers.
+         worldReceivePos -= kVoxelRasterCellAnchor;
+         // Detached pool cells already include inverse camera rotation.
+--- a/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
++++ b/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
+@@ -128,6 +128,17 @@
+             voxelFrameData.rasterYaw
+         );
+         // Raster coordinates use cell corners; geometry uses voxel centers.
++        if (voxelFrameData.visibleFaceIds.w == 2) {
++            const int2 isoRel = trixelCanvasPixelToIsoRel(
++                pixel, voxelFrameData.trixelCanvasOffsetZ1, voxelFrameData.frameCanvasOffset,
++                voxelFrameData.voxelRenderOptions);
++            // A displayed triangle centroid has iso delta (f - 1, -1) and
++            // depth delta +1 from the stored face-origin sample. Its in-plane
++            // centroid fraction f alternates with local triangle orientation.
++            const float f = ((isoRel.x + isoRel.y) & 1) != 0 ? 1.0f / 3.0f : 2.0f / 3.0f;
++            worldReceivePos += float3(1.0f - 0.5f * f, 0.5f * f, 0.0f)
++                / float(effectiveTrixelSubdivisionScale(voxelFrameData.voxelRenderOptions));
++        }
+         worldReceivePos -= kVoxelRasterCellAnchor;
+         // Detached pool cells already include inverse camera rotation.
+         worldReceivePos = rotateByQuat(worldReceivePos, frameData.detachedViewToWorld)

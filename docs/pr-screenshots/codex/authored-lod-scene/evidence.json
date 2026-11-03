@@ -1,0 +1,395 @@
+{
+  "status": "LOD fixture witness validation; known visual observations remain",
+  "artifacts": [
+    {
+      "source": "/tmp/authored-lod-scene-origin/positive/lod_scene_coarse.png",
+      "export": "lod_scene_coarse.png",
+      "source_sha256": "e8983ee0edf4c356410069f373eaa2ed0d0218c178c5edfd94e637e77ef0db0d",
+      "export_uncompressed_sha256": "e8983ee0edf4c356410069f373eaa2ed0d0218c178c5edfd94e637e77ef0db0d",
+      "export_sha256": "e8983ee0edf4c356410069f373eaa2ed0d0218c178c5edfd94e637e77ef0db0d",
+      "source_bytes": 155128,
+      "export_bytes": 155128,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/positive/lod_scene_coarse_yaw270.png",
+      "export": "lod_scene_coarse_yaw270.png",
+      "source_sha256": "3b541e5fb01d8ad78a77176d6f45a8237b833e5c5bff7251c68a19c4fdded8a9",
+      "export_uncompressed_sha256": "3b541e5fb01d8ad78a77176d6f45a8237b833e5c5bff7251c68a19c4fdded8a9",
+      "export_sha256": "3b541e5fb01d8ad78a77176d6f45a8237b833e5c5bff7251c68a19c4fdded8a9",
+      "source_bytes": 155538,
+      "export_bytes": 155538,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/positive/lod_scene_fine_yaw90.png",
+      "export": "lod_scene_fine_yaw90.png",
+      "source_sha256": "f2118877102ab99faab76a6b8f8f8b92af6fc8a0160e2d266c8c8a57643bf641",
+      "export_uncompressed_sha256": "f2118877102ab99faab76a6b8f8f8b92af6fc8a0160e2d266c8c8a57643bf641",
+      "export_sha256": "f2118877102ab99faab76a6b8f8f8b92af6fc8a0160e2d266c8c8a57643bf641",
+      "source_bytes": 303256,
+      "export_bytes": 303256,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/positive/lod_scene_medium_yaw45.png",
+      "export": "lod_scene_medium_yaw45.png",
+      "source_sha256": "dacb26a3ca622734f6357ca60acc11a11f981f8b14953a5fa84e014e38189fb0",
+      "export_uncompressed_sha256": "dacb26a3ca622734f6357ca60acc11a11f981f8b14953a5fa84e014e38189fb0",
+      "export_sha256": "dacb26a3ca622734f6357ca60acc11a11f981f8b14953a5fa84e014e38189fb0",
+      "source_bytes": 176488,
+      "export_bytes": 176488,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/positive/lod_scene_restored.png",
+      "export": "lod_scene_restored.png",
+      "source_sha256": "e8983ee0edf4c356410069f373eaa2ed0d0218c178c5edfd94e637e77ef0db0d",
+      "export_uncompressed_sha256": "e8983ee0edf4c356410069f373eaa2ed0d0218c178c5edfd94e637e77ef0db0d",
+      "export_sha256": "e8983ee0edf4c356410069f373eaa2ed0d0218c178c5edfd94e637e77ef0db0d",
+      "source_bytes": 155128,
+      "export_bytes": 155128,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/positive/lod_scene_return_yaw180.png",
+      "export": "lod_scene_return_yaw180.png",
+      "source_sha256": "babd09b7e5145d4460974285be6c7fbcd49ccd6102551829e01f8cb9c2ae73ce",
+      "export_uncompressed_sha256": "babd09b7e5145d4460974285be6c7fbcd49ccd6102551829e01f8cb9c2ae73ce",
+      "export_sha256": "babd09b7e5145d4460974285be6c7fbcd49ccd6102551829e01f8cb9c2ae73ce",
+      "source_bytes": 186201,
+      "export_bytes": 186201,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/manifest.json",
+      "export": "capture/manifest.json.gz",
+      "source_sha256": "4629768746d4fd51418f9a427259235f035449189453bf1d07ef488db0510632",
+      "export_uncompressed_sha256": "7561785f8c47eee102557176e320a9fa9eebc6426e2e252f53e76982464b18bc",
+      "export_sha256": "2e18c9884235dabb09155923f6d660f4830eb3edb2219bd0d92d19d96db4d784",
+      "source_bytes": 38183,
+      "export_bytes": 3794,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/source.patch",
+      "export": "capture/source.patch.gz",
+      "source_sha256": "4cb30cc63ec1aec3566d56d366e97b8c1ea87fda54d06634881997451a434d50",
+      "export_uncompressed_sha256": "4cb30cc63ec1aec3566d56d366e97b8c1ea87fda54d06634881997451a434d50",
+      "export_sha256": "b80040bff673c319ea0f89ac6e318e60b5a9c314af80394139634ebb25aeecad",
+      "source_bytes": 8834,
+      "export_bytes": 3463,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/positive/run.log",
+      "export": "capture/positive/run.log.gz",
+      "source_sha256": "bad5c25b3701d7a7c3b96d0c57c47d3787ecb9632f8d107c9e3d8633240b2b54",
+      "export_uncompressed_sha256": "8490d9463797d4882eeade94b029c68a4d2374f907e5d28a247dee7cf582bb57",
+      "export_sha256": "6bca575a143e3c305b44941bd2bae72bf8c901387058786ec69d027acadc82dc",
+      "source_bytes": 55550,
+      "export_bytes": 6585,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/viewport-portrait/run.log",
+      "export": "capture/viewport-portrait.log.gz",
+      "source_sha256": "570b24a2de525f7c1132aebaa7a6c346d335a90780f1bd4a77a22b732ca53527",
+      "export_uncompressed_sha256": "d94fd5cff5746d3ceb595d4b491df08aa9bd3d7d21a8d00c74efc4dcf0aa79ff",
+      "export_sha256": "e1a1e350a426ee645d90f23002047da6075873830615acedeb8ff18f2fa2b570",
+      "source_bytes": 781,
+      "export_bytes": 447,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/ao-contact-probe/run.log",
+      "export": "capture/ao-contact-probe.log.gz",
+      "source_sha256": "98768866f00d357d8a2e6d4390bb735f4770f0b94b4f0ce2ad932eff93252ed2",
+      "export_uncompressed_sha256": "8d1801fd373fcec709ff7ceec6559634328bf6d3024bd33c1ef0738b3ccd88bd",
+      "export_sha256": "768036bcda87452db6503f9667d0533bb372190b3c0f2d354756af7db7549c4b",
+      "source_bytes": 780,
+      "export_bytes": 446,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/cull-evict-test/run.log",
+      "export": "capture/cull-evict-test.log.gz",
+      "source_sha256": "e6e902d9ca920fe6cec525dd9a49853ae9073a29457e25b1b69b7ec74f4edce7",
+      "export_uncompressed_sha256": "750e06904f5b4d8b32e3c1667d17e476e3b9b54cfe051a6fba6e175f122d794f",
+      "export_sha256": "bd0084ee619504f037d2fb1e5ff7abaf223774ab5264edf38a4e180ae40447d2",
+      "source_bytes": 779,
+      "export_bytes": 445,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/yaw-sweep/run.log",
+      "export": "capture/yaw-sweep.log.gz",
+      "source_sha256": "4c88576484f2dafaab40c1e0b52e3bc396e5aed2f291580a31b25aac7f9ec5eb",
+      "export_uncompressed_sha256": "eb08e69d07ce7708f5c19be77fea340d625554c3d06947518c7280948e789f03",
+      "export_sha256": "bee4d8ad3f2cc6b996b2c81f61c1ef48aa2100d66d84a1abb58d09c5856d64ec",
+      "source_bytes": 773,
+      "export_bytes": 441,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/exact-replay.json",
+      "export": "exact-replay.json",
+      "source_sha256": "bc602d11074c3fa9b7cd9d6a9018d2e822421dae22c56c5679952244e4f5af17",
+      "export_uncompressed_sha256": "50205f8ccaea35732cb768d447dab3beafacee4a539b2552749af46fc81860a9",
+      "export_sha256": "50205f8ccaea35732cb768d447dab3beafacee4a539b2552749af46fc81860a9",
+      "source_bytes": 661,
+      "export_bytes": 600,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/one-channel-control.json",
+      "export": "one-channel-control.json",
+      "source_sha256": "660822af87dc7e132e9bfed2158cd1ca816645079898b1fcafebe193aef0555b",
+      "export_uncompressed_sha256": "b5930a37d5975518e897d602f9decdb77f7a52868c9a66c9fbfbb1c870459597",
+      "export_sha256": "b5930a37d5975518e897d602f9decdb77f7a52868c9a66c9fbfbb1c870459597",
+      "source_bytes": 813,
+      "export_bytes": 752,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/one-channel-mutation.png",
+      "export": "controls/one-channel-mutation.png",
+      "source_sha256": "6788cd05cf277a546493fc283fd15285e2988d377cdc99d3235fdd445d7baf8b",
+      "export_uncompressed_sha256": "6788cd05cf277a546493fc283fd15285e2988d377cdc99d3235fdd445d7baf8b",
+      "export_sha256": "6788cd05cf277a546493fc283fd15285e2988d377cdc99d3235fdd445d7baf8b",
+      "source_bytes": 24930,
+      "export_bytes": 24930,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-scene-origin/one-channel-control-diff.png",
+      "export": "controls/one-channel-control-diff.png",
+      "source_sha256": "410eac222a07dd36d2faa6b51ee728e5ac3e102c6a3a55dc1581e11cb823209e",
+      "export_uncompressed_sha256": "410eac222a07dd36d2faa6b51ee728e5ac3e102c6a3a55dc1581e11cb823209e",
+      "export_sha256": "410eac222a07dd36d2faa6b51ee728e5ac3e102c6a3a55dc1581e11cb823209e",
+      "source_bytes": 17778,
+      "export_bytes": 17778,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/manifest.json",
+      "export": "source-controls/manifest.json.gz",
+      "source_sha256": "b9a9b054c4c24d5539b3d544fe5098facf69dff35b20f42bf72d299e0ee7c15d",
+      "export_uncompressed_sha256": "972351e9b8656292a2e6a091259391f0847257585f87d18916efbda83ff0cdc3",
+      "export_sha256": "afff133baae325bb73c66074e20fefcba0bf220e2a3d350d6b01d63f3ca333b1",
+      "source_bytes": 9053,
+      "export_bytes": 1252,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/residency/mutation.patch",
+      "export": "source-controls/residency/mutation.patch.gz",
+      "source_sha256": "51ba7ee277ed46403ded2b1912c3fec4a3606335735b58429e64a7e7552a908b",
+      "export_uncompressed_sha256": "51ba7ee277ed46403ded2b1912c3fec4a3606335735b58429e64a7e7552a908b",
+      "export_sha256": "76c7834644cac15d267e395b4339cfef760fd05ebc87c9f528fa71cc99690b6c",
+      "source_bytes": 455,
+      "export_bytes": 203,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/residency/build-mutated.log",
+      "export": "source-controls/residency/build-mutated.log.gz",
+      "source_sha256": "34d236d34e4d50c421b0bc808b7c2cc53a4f8b2fcefda670c12ec9c04e9e1cd7",
+      "export_uncompressed_sha256": "34d236d34e4d50c421b0bc808b7c2cc53a4f8b2fcefda670c12ec9c04e9e1cd7",
+      "export_sha256": "9ac615c90acc6e7dc7a24fbcd969a1ca62eb7fe522bb75291925d1f66287111c",
+      "source_bytes": 1026,
+      "export_bytes": 297,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/residency/run-mutated.log",
+      "export": "source-controls/residency/run-mutated.log.gz",
+      "source_sha256": "56e42e3501d2e75b4a7cb360ca28c1d435c8143775c6cb46ef4b3f6e39b9eb12",
+      "export_uncompressed_sha256": "ee4eba6f0ec06dd6ab00fa1dff013ff8a77413fe5757e10db9081685fa20d39a",
+      "export_sha256": "9bbfd0ca3a8bdd05bbb6126ef7d177043f9f349ffb86e7f2dc9c68e558c52433",
+      "source_bytes": 46930,
+      "export_bytes": 6219,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/residency/build-restored.log",
+      "export": "source-controls/residency/build-restored.log.gz",
+      "source_sha256": "94736e1cab73ee38453331be1372e50b43d77865ca75e5f09bba6a866089f797",
+      "export_uncompressed_sha256": "94736e1cab73ee38453331be1372e50b43d77865ca75e5f09bba6a866089f797",
+      "export_sha256": "2f528a8cab16760497ad24059843cbc4c2579c63f80db713bf7dd58d3c677e5f",
+      "source_bytes": 1026,
+      "export_bytes": 297,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/residency/reverse.log",
+      "export": "source-controls/residency/reverse.log.gz",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "export_uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "export_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "source_bytes": 0,
+      "export_bytes": 20,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/residency/reverse-check.log",
+      "export": "source-controls/residency/reverse-check.log.gz",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "export_uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "export_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "source_bytes": 0,
+      "export_bytes": 20,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/missing-parent/mutation.patch",
+      "export": "source-controls/missing-parent/mutation.patch.gz",
+      "source_sha256": "9b5f2d2b3369e93fb0d55e7a5c5be1437c6c7ce8516f6ebb314252e3606a6fd3",
+      "export_uncompressed_sha256": "9b5f2d2b3369e93fb0d55e7a5c5be1437c6c7ce8516f6ebb314252e3606a6fd3",
+      "export_sha256": "27ecf582d915dfc39ffbfeac66128d10abbc7de4d86df5451913dd600cbb0b1c",
+      "source_bytes": 691,
+      "export_bytes": 316,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/missing-parent/build-mutated.log",
+      "export": "source-controls/missing-parent/build-mutated.log.gz",
+      "source_sha256": "1ca099aa58434760cad712bb6271bc5f1c1e2a3dd07de5e6f2a593dadd76484b",
+      "export_uncompressed_sha256": "1ca099aa58434760cad712bb6271bc5f1c1e2a3dd07de5e6f2a593dadd76484b",
+      "export_sha256": "07a4b033356665e2b88622b7086c526bfa2e2427aee2ce44e12010f8ef33a646",
+      "source_bytes": 1308,
+      "export_bytes": 431,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/missing-parent/run-mutated.log",
+      "export": "source-controls/missing-parent/run-mutated.log.gz",
+      "source_sha256": "8bbd259a0636cf7412308f821ef289b8b4bca1373dd27222f61f7458ca49f5a4",
+      "export_uncompressed_sha256": "5d5105438039b47595685fea89fa3360e56e51e09ffd0fdcb7a235d6d76943bf",
+      "export_sha256": "98fe6b682bf0aa09353f725beeaeb37dbca48be83f116de50e8178ce6abb392e",
+      "source_bytes": 48034,
+      "export_bytes": 6255,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/missing-parent/build-restored.log",
+      "export": "source-controls/missing-parent/build-restored.log.gz",
+      "source_sha256": "f22846904dbfa705c8fbfcfb3413a2a2d60194564f897097401502cd6803b44c",
+      "export_uncompressed_sha256": "f22846904dbfa705c8fbfcfb3413a2a2d60194564f897097401502cd6803b44c",
+      "export_sha256": "a1357396ca93448bc6ba397721b4c30a2ad1a8377a088154e0c610a1e1ae0e3a",
+      "source_bytes": 1308,
+      "export_bytes": 427,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/missing-parent/reverse.log",
+      "export": "source-controls/missing-parent/reverse.log.gz",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "export_uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "export_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "source_bytes": 0,
+      "export_bytes": 20,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/missing-parent/reverse-check.log",
+      "export": "source-controls/missing-parent/reverse-check.log.gz",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "export_uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "export_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "source_bytes": 0,
+      "export_bytes": 20,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/original-source/creations/demos/shape_debug/configs/lod_resident.prefab.lua",
+      "export": "source-controls/original-source/creations/demos/shape_debug/configs/lod_resident.prefab.lua.gz",
+      "source_sha256": "d948f5a02c589ea1aa350f280ec8e6cc5a10af276adc85de5be8a78a25c1da15",
+      "export_uncompressed_sha256": "d948f5a02c589ea1aa350f280ec8e6cc5a10af276adc85de5be8a78a25c1da15",
+      "export_sha256": "1931c7b4cb98d1fac7f71e3e755b34ef3213718722d4b5b4a866a75c99a5a9fb",
+      "source_bytes": 140,
+      "export_bytes": 122,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/authored-lod-source-controls/original-source/creations/demos/shape_debug/lod_scene.hpp",
+      "export": "source-controls/original-source/creations/demos/shape_debug/lod_scene.hpp.gz",
+      "source_sha256": "dbe0fdb84bc559fd2dc489c6ab4d63a55b350402e3a1d2ce5dc4576a96c97572",
+      "export_uncompressed_sha256": "dbe0fdb84bc559fd2dc489c6ab4d63a55b350402e3a1d2ce5dc4576a96c97572",
+      "export_sha256": "c513c2a7c6ddd2a0d992fe0e16a5511b1626feac7a99ceecad00330aaf697630",
+      "source_bytes": 11008,
+      "export_bytes": 3080,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/codex-lod-scene-package/negative-camera-pose.log",
+      "export": "closed-pose/compiler.log.gz",
+      "source_sha256": "960befec2fdf5ad352aedb91ebd90e2be4ec1799cb29be672bea090f6b227f6c",
+      "export_uncompressed_sha256": "960befec2fdf5ad352aedb91ebd90e2be4ec1799cb29be672bea090f6b227f6c",
+      "export_sha256": "62a2460652014c7eadf25ef9bad879deeecafeed51ea506d09238f18939e53b7",
+      "source_bytes": 747,
+      "export_bytes": 303,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/codex-lod-scene-package/syntax-command.json",
+      "export": "closed-pose/positive-syntax-command.json.gz",
+      "source_sha256": "a4025a2f10392797b1365912d63a920ff6c20fe5bf5911cc6c868c5c8ac7ce26",
+      "export_uncompressed_sha256": "75aedd881c16962455f6093469f5d933cf66c71dae1b6e22561652719f86bf1d",
+      "export_sha256": "406142a9eb84d284ca759473cd5e30388281b96c659ce19c4d82e32c4878516b",
+      "source_bytes": 4935,
+      "export_bytes": 883,
+      "normalization": "local root prefixes normalized"
+    },
+    {
+      "source": "/tmp/codex-lod-scene-package/source-negative-controls/closed-pose.patch",
+      "export": "closed-pose/mutation.patch.gz",
+      "source_sha256": "1eeda8670fc22b3f8bf484f48c94dbbe3f7aa1a40ccf95989ec42523dea08c42",
+      "export_uncompressed_sha256": "1eeda8670fc22b3f8bf484f48c94dbbe3f7aa1a40ccf95989ec42523dea08c42",
+      "export_sha256": "27f68e61a8febf3d5de2bf078e5e67a98f4ed0d68dd867be9f4ebdbe25994685",
+      "source_bytes": 663,
+      "export_bytes": 273,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/codex-lod-scene-captures.py",
+      "export": "drivers/codex-lod-scene-captures.py",
+      "source_sha256": "8fcd58f7ed5d22de59a540090b28b715f1dae682dac79e68a6a9f1e17e8b2bc1",
+      "export_uncompressed_sha256": "8fcd58f7ed5d22de59a540090b28b715f1dae682dac79e68a6a9f1e17e8b2bc1",
+      "export_sha256": "8fcd58f7ed5d22de59a540090b28b715f1dae682dac79e68a6a9f1e17e8b2bc1",
+      "source_bytes": 11900,
+      "export_bytes": 11900,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/codex-lod-source-controls.py",
+      "export": "drivers/codex-lod-source-controls.py",
+      "source_sha256": "a1408f41229332afca6793e1ec45e25ece14f500c4e1b373cce1d82c85fbdcfa",
+      "export_uncompressed_sha256": "a1408f41229332afca6793e1ec45e25ece14f500c4e1b373cce1d82c85fbdcfa",
+      "export_sha256": "a1408f41229332afca6793e1ec45e25ece14f500c4e1b373cce1d82c85fbdcfa",
+      "source_bytes": 9582,
+      "export_bytes": 9582,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/codex-lod-scene-package/negative-camera-pose/main.cpp",
+      "export": "closed-pose/source/main.cpp.gz",
+      "source_sha256": "8f65d05e562c3d7712b8f2d544ff882b1b1249099516cf399cf6e43206a2d4d2",
+      "export_uncompressed_sha256": "8f65d05e562c3d7712b8f2d544ff882b1b1249099516cf399cf6e43206a2d4d2",
+      "export_sha256": "0078e2e3ab303dfb570c2e5f07e26a46efdfe6407517256550e02f9cf84cddc2",
+      "source_bytes": 253170,
+      "export_bytes": 69516,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/codex-lod-scene-package/negative-camera-pose/lod_scene.hpp",
+      "export": "closed-pose/source/lod_scene.hpp.gz",
+      "source_sha256": "e0e1469c069da7e69b19f21e60da3071c0293d2a36d849d6bbd9ebb9b08fca2c",
+      "export_uncompressed_sha256": "e0e1469c069da7e69b19f21e60da3071c0293d2a36d849d6bbd9ebb9b08fca2c",
+      "export_sha256": "670947a0f3669b16949dbbaed0e6049cdc05d1d991d4139f0070799015ef3708",
+      "source_bytes": 11008,
+      "export_bytes": 3079,
+      "normalization": "none"
+    }
+  ]
+}

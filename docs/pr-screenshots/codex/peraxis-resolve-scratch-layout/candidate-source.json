@@ -1,0 +1,12 @@
+{
+  "base": "edd6143ca3e8dbdc4ff0d3135ba2ead329740881",
+  "sha256": {
+    "engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp": "08c93857116e40fee1781f81489679f382d72b893d41557ad67723018dfc6314",
+    "engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp": "bf4696481cc460c2b3c59932018c065ed2baec7d3f2aaccf43a0fcb369029389",
+    "engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp": "365ab8b4a4570e69272b597768c62836df27a0189259e5278af9bfd7d14048b2",
+    "engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp": "3cee5563de2ce8d9d9614ffdc0ac9abffc63babdb22803951f1be9de6112a3cf",
+    "test/render/gpu_compute_dispatch_test.cpp": "295019f89f3dd51edeb1be4d711898c76262526c31e530c70ebb0a56228bcbc0",
+    "test/render/per_axis_canvas_lifecycle_test.cpp": "ab24ec889c702537483925c8d9580ae2fc846168ebea086fc1c446540a4dbd12"
+  },
+  "note": "Captures were taken from the dirty C++ candidate; shader-only source_dirty in capture manifests does not enumerate C++ changes."
+}

@@ -1,0 +1,98 @@
+[
+  {
+    "case": "cylinder-self",
+    "yaw": 0,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-self",
+    "yaw": 45,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-self",
+    "yaw": 90,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-self",
+    "yaw": 135,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-self",
+    "yaw": 180,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-self",
+    "yaw": 225,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-self",
+    "yaw": 270,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-self",
+    "yaw": 315,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-external",
+    "yaw": 0,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-external",
+    "yaw": 45,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-external",
+    "yaw": 90,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-external",
+    "yaw": 135,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-external",
+    "yaw": 180,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-external",
+    "yaw": 225,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-external",
+    "yaw": 270,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  },
+  {
+    "case": "cylinder-external",
+    "yaw": 315,
+    "changes_outside_blue_material": 0,
+    "blue_material_coverage_changes": 0
+  }
+]

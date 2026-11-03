@@ -1,0 +1,381 @@
+[
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_normal_pixels": 0,
+    "false_shadow_pixels": 280,
+    "missed_shadow_pixels": 139,
+    "invalid_overlay_pixels": 0,
+    "lit_interior_pixels": 20569,
+    "shadowed_interior_pixels": 2735,
+    "tested_interior_pixels": 23304,
+    "mismatched_faces": [
+      {
+        "cell": [
+          -2.5,
+          -2.5,
+          1.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -2.5,
+          -1.5,
+          2.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -1.5,
+          -2.5,
+          2.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -0.5,
+          -2.5,
+          3.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          3.5,
+          -2.5,
+          -0.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      },
+      {
+        "cell": [
+          4.5,
+          -1.5,
+          -0.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      }
+    ],
+    "boundary_tolerance_pixels": 1,
+    "shadow_bias": 0,
+    "occlusion_exercised": true,
+    "pass": false,
+    "image": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001878.png",
+    "clipped": false,
+    "scope": "source_face_sun"
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_normal_pixels": 0,
+    "false_shadow_pixels": 1745,
+    "missed_shadow_pixels": 2610,
+    "invalid_overlay_pixels": 0,
+    "lit_interior_pixels": 11783,
+    "shadowed_interior_pixels": 9491,
+    "tested_interior_pixels": 26191,
+    "mismatched_faces": [
+      {
+        "cell": [
+          -3.5,
+          -0.5,
+          2.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -2.5,
+          -2.5,
+          1.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -2.5,
+          -0.5,
+          3.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -1.5,
+          -2.5,
+          2.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -0.5,
+          -3.5,
+          2.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -0.5,
+          -2.5,
+          3.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          -0.5,
+          -1.5,
+          4.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": true
+      },
+      {
+        "cell": [
+          1.5,
+          -2.5,
+          -2.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      },
+      {
+        "cell": [
+          1.5,
+          -0.5,
+          -4.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      },
+      {
+        "cell": [
+          2.5,
+          -2.5,
+          -1.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      },
+      {
+        "cell": [
+          2.5,
+          -1.5,
+          -2.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      },
+      {
+        "cell": [
+          2.5,
+          -0.5,
+          -3.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      },
+      {
+        "cell": [
+          3.5,
+          -1.5,
+          -1.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      },
+      {
+        "cell": [
+          4.5,
+          -1.5,
+          -0.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      },
+      {
+        "cell": [
+          4.5,
+          -0.5,
+          -1.5
+        ],
+        "normal": [
+          0.31061721752604554,
+          -0.804737854124365,
+          -0.5058793634016805
+        ],
+        "visible_to_sun": false
+      }
+    ],
+    "boundary_tolerance_pixels": 1,
+    "shadow_bias": 0,
+    "occlusion_exercised": true,
+    "pass": false,
+    "image": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001879.png",
+    "clipped": false,
+    "scope": "source_face_sun"
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_normal_pixels": 0,
+    "false_shadow_pixels": 84,
+    "missed_shadow_pixels": 0,
+    "invalid_overlay_pixels": 0,
+    "lit_interior_pixels": 2586,
+    "shadowed_interior_pixels": 1577,
+    "tested_interior_pixels": 24028,
+    "mismatched_faces": [
+      {
+        "cell": [
+          1.5,
+          -2.5,
+          -2.5
+        ],
+        "normal": [
+          -0.5058793634016805,
+          0.31061721752604554,
+          -0.804737854124365
+        ],
+        "visible_to_sun": true
+      }
+    ],
+    "boundary_tolerance_pixels": 1,
+    "shadow_bias": 0,
+    "occlusion_exercised": true,
+    "pass": false,
+    "image": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001880.png",
+    "clipped": false,
+    "scope": "source_face_sun"
+  },
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_normal_pixels": 0,
+    "false_shadow_pixels": 178,
+    "missed_shadow_pixels": 0,
+    "invalid_overlay_pixels": 0,
+    "lit_interior_pixels": 11207,
+    "shadowed_interior_pixels": 9115,
+    "tested_interior_pixels": 24677,
+    "mismatched_faces": [
+      {
+        "cell": [
+          1.5,
+          -4.5,
+          -0.5
+        ],
+        "normal": [
+          -0.5058793634016805,
+          0.31061721752604554,
+          -0.804737854124365
+        ],
+        "visible_to_sun": true
+      }
+    ],
+    "boundary_tolerance_pixels": 1,
+    "shadow_bias": 0,
+    "occlusion_exercised": true,
+    "pass": false,
+    "image": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001881.png",
+    "clipped": false,
+    "scope": "source_face_sun"
+  }
+]

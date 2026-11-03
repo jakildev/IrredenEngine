@@ -1,0 +1,211 @@
+[
+  {
+    "shot": "so3_offsnap_disc",
+    "source": "820091a01d6426c01f83ef9c1d8cedda988d08de",
+    "before_sha256": "4977dd0af1742f78c429593c5879a11b3864795e27144f6843185d408cecc900",
+    "current_sha256": "1713a2f09abf562dcda22972adaad60f84208fd1c39f6d43f914959fd86c5d5d",
+    "original_comparison": {
+      "pass": false,
+      "match_pct": 99.9395,
+      "max_delta": 73,
+      "psnr_db": 58.85,
+      "reason": "max_delta 73 > 64"
+    },
+    "changed_rgb_pixels": 2984,
+    "changes": [
+      {
+        "old": [
+          124,
+          126,
+          132
+        ],
+        "new": [
+          114,
+          115,
+          121
+        ],
+        "count": 2960
+      },
+      {
+        "old": [
+          45,
+          46,
+          48
+        ],
+        "new": [
+          114,
+          115,
+          121
+        ],
+        "count": 16
+      },
+      {
+        "old": [
+          108,
+          109,
+          115
+        ],
+        "new": [
+          114,
+          115,
+          121
+        ],
+        "count": 8
+      }
+    ],
+    "reconciled_comparison": {
+      "pass": true,
+      "match_pct": 100.0,
+      "max_delta": 0,
+      "psnr_db": "inf"
+    }
+  },
+  {
+    "shot": "so3_offsnap_wide",
+    "source": "820091a01d6426c01f83ef9c1d8cedda988d08de",
+    "before_sha256": "30208e906819131085a5c8b2053d7d168de19d2cfb1d0562427479352718aa5e",
+    "current_sha256": "116d4700b6eefb6b5e7e2ad70c31f03e75d0acb97b30ad61329619dd0f5d2c6b",
+    "original_comparison": {
+      "pass": false,
+      "match_pct": 99.9403,
+      "max_delta": 73,
+      "psnr_db": 56.2,
+      "reason": "max_delta 73 > 64"
+    },
+    "changed_rgb_pixels": 2948,
+    "changes": [
+      {
+        "old": [
+          129,
+          130,
+          137
+        ],
+        "new": [
+          114,
+          115,
+          121
+        ],
+        "count": 2920
+      },
+      {
+        "old": [
+          45,
+          46,
+          48
+        ],
+        "new": [
+          114,
+          115,
+          121
+        ],
+        "count": 16
+      },
+      {
+        "old": [
+          108,
+          109,
+          115
+        ],
+        "new": [
+          114,
+          115,
+          121
+        ],
+        "count": 8
+      },
+      {
+        "old": [
+          50,
+          151,
+          94
+        ],
+        "new": [
+          53,
+          159,
+          99
+        ],
+        "count": 4
+      }
+    ],
+    "reconciled_comparison": {
+      "pass": true,
+      "match_pct": 100.0,
+      "max_delta": 0,
+      "psnr_db": "inf"
+    }
+  },
+  {
+    "shot": "fog_explored_decay_tiers_yaw",
+    "source": "820091a01d6426c01f83ef9c1d8cedda988d08de",
+    "before_sha256": "35ccefe0cd474b91a6c4675fdada75d231623e8106fd1b3a692304edf46d5047",
+    "current_sha256": "67a175a0a7e8ec6d8faac8383e8f46138d22a55be2f6f382e714c7b5d6ceeb64",
+    "original_comparison": {
+      "pass": false,
+      "match_pct": 99.999,
+      "max_delta": 138,
+      "psnr_db": 57.93,
+      "reason": "max_delta 138 > 64"
+    },
+    "changed_rgb_pixels": 144,
+    "changes": [
+      {
+        "old": [
+          89,
+          89,
+          89
+        ],
+        "new": [
+          92,
+          92,
+          92
+        ],
+        "count": 48
+      },
+      {
+        "old": [
+          31,
+          31,
+          31
+        ],
+        "new": [
+          32,
+          32,
+          32
+        ],
+        "count": 48
+      },
+      {
+        "old": [
+          230,
+          230,
+          230
+        ],
+        "new": [
+          92,
+          92,
+          92
+        ],
+        "count": 24
+      },
+      {
+        "old": [
+          81,
+          81,
+          81
+        ],
+        "new": [
+          32,
+          32,
+          32
+        ],
+        "count": 24
+      }
+    ],
+    "reconciled_comparison": {
+      "pass": true,
+      "match_pct": 100.0,
+      "max_delta": 0,
+      "psnr_db": "inf"
+    }
+  }
+]

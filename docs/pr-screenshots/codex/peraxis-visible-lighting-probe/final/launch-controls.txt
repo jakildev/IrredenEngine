@@ -1,0 +1,16 @@
+import os, subprocess, sys
+common = ["--only", "shadowocclusion,orbit,floor", "--probe-grid", "--probe-staircase", "--no-spin", "--no-auto-rotate", "--pivot-origin", "--subdivisions", "1"]
+for name, prepass, stats, repeats, extra in [
+ ("mixed", True, False, 1, ["--zoom","1","--auto-profile","--auto-screenshot","6","--sweep-yaw","0","5.10508806","5"]),
+ ("sky", True, False, 1, ["--probe-sky","--zoom","1","--auto-profile","--auto-screenshot","6","--sweep-yaw","0","5.10508806","5"]),
+ ("mixed-off", False, False, 1, ["--zoom","1","--auto-profile","--auto-screenshot","6","--sweep-yaw","0","5.10508806","5"]),
+ *[(name, enabled, False, 3, ["--zoom",zoom,"--yaw","1.276272","--auto-profile","--auto-screenshot","180","--sweep-frames","1","180"]) for zoom in ["1","4"] for name,enabled in [("off-z"+zoom,False),("on-z"+zoom,True)]],
+ ("stats", True, True, 1, ["--zoom","1","--yaw","1.276272","--auto-profile","--auto-screenshot","180","--sweep-frames","1","180"]),
+]:
+ env=os.environ.copy(); env["IR_PERAXIS_SURFACE_LIGHTING"]="1"
+ for key in ["IR_PERAXIS_VISIBILITY_PREPASS","IR_PERAXIS_VISIBILITY_STATS"]: env.pop(key,None)
+ if prepass: env["IR_PERAXIS_VISIBILITY_PREPASS"]="1"
+ if stats: env["IR_PERAXIS_VISIBILITY_STATS"]="1"
+ cmd=[sys.executable,"scripts/perf/repeat_profile.py","--target","IRCanvasStress","--output","/tmp/codex-visibility-final-"+name,"--repeats",str(repeats),"--"]+common+extra
+ print("RUN",name,flush=True)
+ subprocess.run(cmd,env=env,check=True)

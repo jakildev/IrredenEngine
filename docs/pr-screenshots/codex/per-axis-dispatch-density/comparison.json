@@ -1,0 +1,561 @@
+[
+  {
+    "before_capture": 1,
+    "after_capture": 29,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "8f34cc488c06069bc59a73129c3bcb53a034316e40fbed520e4c805af56626dd",
+    "after_scene_sha256": "8f34cc488c06069bc59a73129c3bcb53a034316e40fbed520e4c805af56626dd"
+  },
+  {
+    "before_capture": 2,
+    "after_capture": 30,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "8f9ca7953e27d68dafa2e15f0ee8fa17152ad54cb28bcb381137aceca750b2e8",
+    "after_scene_sha256": "8f9ca7953e27d68dafa2e15f0ee8fa17152ad54cb28bcb381137aceca750b2e8"
+  },
+  {
+    "before_capture": 3,
+    "after_capture": 31,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "8222cec7a67548a949f2482431199a66df53a3cc64910acdf7db4e1de93b8ee3",
+    "after_scene_sha256": "8222cec7a67548a949f2482431199a66df53a3cc64910acdf7db4e1de93b8ee3"
+  },
+  {
+    "before_capture": 4,
+    "after_capture": 32,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "4f1a177a435873e76516d0d987bd088c809769a6ec65a7c509e1f3161df70937",
+    "after_scene_sha256": "4f1a177a435873e76516d0d987bd088c809769a6ec65a7c509e1f3161df70937"
+  },
+  {
+    "before_capture": 5,
+    "after_capture": 33,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "7a402082a256bcce0bff8836125781c919f77ac8614fa556fbe9dbd1d2b9bec9",
+    "after_scene_sha256": "7a402082a256bcce0bff8836125781c919f77ac8614fa556fbe9dbd1d2b9bec9"
+  },
+  {
+    "before_capture": 6,
+    "after_capture": 34,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "4d5f7d41fdcd56e7f3b054f9302079f6133abaec64787815430b52cfe1dd512c",
+    "after_scene_sha256": "4d5f7d41fdcd56e7f3b054f9302079f6133abaec64787815430b52cfe1dd512c"
+  },
+  {
+    "before_capture": 7,
+    "after_capture": 35,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "d66651f4b9d190e0524a195e69dffac308e30a1dd78b082a7d00c83b24f2e7de",
+    "after_scene_sha256": "d66651f4b9d190e0524a195e69dffac308e30a1dd78b082a7d00c83b24f2e7de"
+  },
+  {
+    "before_capture": 8,
+    "after_capture": 36,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "eefb9fda882c1d977363cbfa8c935b334d8949f28f60148daa4b3da77104e21d",
+    "after_scene_sha256": "eefb9fda882c1d977363cbfa8c935b334d8949f28f60148daa4b3da77104e21d"
+  },
+  {
+    "before_capture": 9,
+    "after_capture": 37,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "df91ebcefcdf8d3b7acda0565ce5ce802c0c400521778169349b912b252695ed",
+    "after_scene_sha256": "df91ebcefcdf8d3b7acda0565ce5ce802c0c400521778169349b912b252695ed"
+  },
+  {
+    "before_capture": 10,
+    "after_capture": 38,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "f887768ec4238380d748d45f2fcca606ff29907d3096b875b3802397c34fd933",
+    "after_scene_sha256": "f887768ec4238380d748d45f2fcca606ff29907d3096b875b3802397c34fd933"
+  },
+  {
+    "before_capture": 11,
+    "after_capture": 39,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "578f7444a9b3af1b0afdc6636d544e962641379582822a7372c3dc86284430ad",
+    "after_scene_sha256": "578f7444a9b3af1b0afdc6636d544e962641379582822a7372c3dc86284430ad"
+  },
+  {
+    "before_capture": 12,
+    "after_capture": 40,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "d36e4018e48655aeee7700a23ea5a63412e59f38d6627442fb0a84f0b76b606b",
+    "after_scene_sha256": "d36e4018e48655aeee7700a23ea5a63412e59f38d6627442fb0a84f0b76b606b"
+  },
+  {
+    "before_capture": 13,
+    "after_capture": 41,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "ce6a70e57a3963ca63a45cbbf6e2b1a289b7352aa4fa4f45105f2867e3d47bed",
+    "after_scene_sha256": "ce6a70e57a3963ca63a45cbbf6e2b1a289b7352aa4fa4f45105f2867e3d47bed"
+  },
+  {
+    "before_capture": 14,
+    "after_capture": 42,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "5f0d59bfc4951e801f78e159af1a82d664d4c52fe4845a66fba9dd6245b57f7e",
+    "after_scene_sha256": "5f0d59bfc4951e801f78e159af1a82d664d4c52fe4845a66fba9dd6245b57f7e"
+  },
+  {
+    "before_capture": 15,
+    "after_capture": 43,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "c17a7a113c0a451bc10ece841e0ebe903c295d7d1a432aa13b8ef1b22443e663",
+    "after_scene_sha256": "c17a7a113c0a451bc10ece841e0ebe903c295d7d1a432aa13b8ef1b22443e663"
+  },
+  {
+    "before_capture": 16,
+    "after_capture": 44,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "500f166afc9e6fd7c8a21af5dbc539619820a83e98c1338a6a3a1ac6de527728",
+    "after_scene_sha256": "500f166afc9e6fd7c8a21af5dbc539619820a83e98c1338a6a3a1ac6de527728"
+  },
+  {
+    "before_capture": 17,
+    "after_capture": 45,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "560e9b97c713643800e0ec93716cd522e355703c43593e55f9b2ddb965a9bd30",
+    "after_scene_sha256": "560e9b97c713643800e0ec93716cd522e355703c43593e55f9b2ddb965a9bd30"
+  },
+  {
+    "before_capture": 18,
+    "after_capture": 46,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "9d77b04c5ced5274c30e7a69a5e57a178a7ebadb71503669f26a20c22ebaaed6",
+    "after_scene_sha256": "9d77b04c5ced5274c30e7a69a5e57a178a7ebadb71503669f26a20c22ebaaed6"
+  },
+  {
+    "before_capture": 19,
+    "after_capture": 47,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "e6236c914a317f94058d28caec6c7a83111067a3ec899fc1083592f810dfd499",
+    "after_scene_sha256": "e6236c914a317f94058d28caec6c7a83111067a3ec899fc1083592f810dfd499"
+  },
+  {
+    "before_capture": 20,
+    "after_capture": 48,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "f69f47a2b6f2e3521034bfe8333d05747259a84d5cf5121302165f0a09ad409e",
+    "after_scene_sha256": "f69f47a2b6f2e3521034bfe8333d05747259a84d5cf5121302165f0a09ad409e"
+  },
+  {
+    "before_capture": 21,
+    "after_capture": 49,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "67905ff20a72013a1136204112a8d1e3c4f8d09db74fa620bc828dd11b427cfb",
+    "after_scene_sha256": "67905ff20a72013a1136204112a8d1e3c4f8d09db74fa620bc828dd11b427cfb"
+  },
+  {
+    "before_capture": 22,
+    "after_capture": 50,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "8536bec3bbf1ce30b61da8e6093cf01ad390d3313c710fb92ca8230582bb6d52",
+    "after_scene_sha256": "8536bec3bbf1ce30b61da8e6093cf01ad390d3313c710fb92ca8230582bb6d52"
+  },
+  {
+    "before_capture": 23,
+    "after_capture": 51,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "6fb601102ede716c000a1402bb8edebc1ea8ea15756d05e5396d03a3701d2c4c",
+    "after_scene_sha256": "6fb601102ede716c000a1402bb8edebc1ea8ea15756d05e5396d03a3701d2c4c"
+  },
+  {
+    "before_capture": 24,
+    "after_capture": 52,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "e6f770a9641c8eb1d4b27b790076bb11a164cf0025dc3298a19581348afcc698",
+    "after_scene_sha256": "e6f770a9641c8eb1d4b27b790076bb11a164cf0025dc3298a19581348afcc698"
+  },
+  {
+    "before_capture": 25,
+    "after_capture": 53,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "5773c9cd8d632cd140a4a5c0e662e379f6f709a28e73007d07241bbacf023417",
+    "after_scene_sha256": "5773c9cd8d632cd140a4a5c0e662e379f6f709a28e73007d07241bbacf023417"
+  },
+  {
+    "before_capture": 26,
+    "after_capture": 54,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "5d90e3c4254f905c60fd441edb5ab7e7cc02be0210a3d901670e9eff3561f81e",
+    "after_scene_sha256": "5d90e3c4254f905c60fd441edb5ab7e7cc02be0210a3d901670e9eff3561f81e"
+  },
+  {
+    "before_capture": 27,
+    "after_capture": 55,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "7bf3a34d0a3b40eec502391a6b9832c3a6cce31fcaa85b4646bd3aee0e9ed86f",
+    "after_scene_sha256": "7bf3a34d0a3b40eec502391a6b9832c3a6cce31fcaa85b4646bd3aee0e9ed86f"
+  },
+  {
+    "before_capture": 28,
+    "after_capture": 56,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "c3478c05515f08c81641fd35d61b423bdda95ecf3a4bb9a45ab9f0e1d27e115a",
+    "after_scene_sha256": "c3478c05515f08c81641fd35d61b423bdda95ecf3a4bb9a45ab9f0e1d27e115a"
+  },
+  {
+    "before_capture": 72,
+    "after_capture": 57,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "8f34cc488c06069bc59a73129c3bcb53a034316e40fbed520e4c805af56626dd",
+    "after_scene_sha256": "8f34cc488c06069bc59a73129c3bcb53a034316e40fbed520e4c805af56626dd"
+  },
+  {
+    "before_capture": 73,
+    "after_capture": 58,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "cd46500f76f81a61dc823f3d89018338a51c949136be9dc28aa61a9597987b1e",
+    "after_scene_sha256": "cd46500f76f81a61dc823f3d89018338a51c949136be9dc28aa61a9597987b1e"
+  },
+  {
+    "before_capture": 74,
+    "after_capture": 59,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "8c410503f3aa3fb99c964a3feee154770a6c5ee38d5dd23ca85862416bab3119",
+    "after_scene_sha256": "8c410503f3aa3fb99c964a3feee154770a6c5ee38d5dd23ca85862416bab3119"
+  },
+  {
+    "before_capture": 75,
+    "after_capture": 60,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "788c3b489542e4627613394d7bf9c735d19d1a2923255a047f87c774b0ce6ca5",
+    "after_scene_sha256": "788c3b489542e4627613394d7bf9c735d19d1a2923255a047f87c774b0ce6ca5"
+  },
+  {
+    "before_capture": 76,
+    "after_capture": 61,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "7b6e26b90473a3d941ca43281f51a043e4376fe6ffabf7fd3db62cbeb15f7a36",
+    "after_scene_sha256": "7b6e26b90473a3d941ca43281f51a043e4376fe6ffabf7fd3db62cbeb15f7a36"
+  },
+  {
+    "before_capture": 77,
+    "after_capture": 62,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "f5aa3107d66b7d18a0ab5aa4c6bdb4174ff2b8989388d3bb55ef85591ca0dcd6",
+    "after_scene_sha256": "f5aa3107d66b7d18a0ab5aa4c6bdb4174ff2b8989388d3bb55ef85591ca0dcd6"
+  },
+  {
+    "before_capture": 78,
+    "after_capture": 63,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "4d5f7d41fdcd56e7f3b054f9302079f6133abaec64787815430b52cfe1dd512c",
+    "after_scene_sha256": "4d5f7d41fdcd56e7f3b054f9302079f6133abaec64787815430b52cfe1dd512c"
+  },
+  {
+    "before_capture": 79,
+    "after_capture": 64,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "f887768ec4238380d748d45f2fcca606ff29907d3096b875b3802397c34fd933",
+    "after_scene_sha256": "f887768ec4238380d748d45f2fcca606ff29907d3096b875b3802397c34fd933"
+  },
+  {
+    "before_capture": 80,
+    "after_capture": 65,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "759d8a440591022072cb603492048713df9f5eb897107df30fbe86dcf54ae51f",
+    "after_scene_sha256": "759d8a440591022072cb603492048713df9f5eb897107df30fbe86dcf54ae51f"
+  },
+  {
+    "before_capture": 81,
+    "after_capture": 66,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "c17a7a113c0a451bc10ece841e0ebe903c295d7d1a432aa13b8ef1b22443e663",
+    "after_scene_sha256": "c17a7a113c0a451bc10ece841e0ebe903c295d7d1a432aa13b8ef1b22443e663"
+  },
+  {
+    "before_capture": 82,
+    "after_capture": 67,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "e6236c914a317f94058d28caec6c7a83111067a3ec899fc1083592f810dfd499",
+    "after_scene_sha256": "e6236c914a317f94058d28caec6c7a83111067a3ec899fc1083592f810dfd499"
+  },
+  {
+    "before_capture": 83,
+    "after_capture": 68,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "4f04e4b426d34438710b6d76c4e06e7dc213070c72426fee1a7f34288633802e",
+    "after_scene_sha256": "4f04e4b426d34438710b6d76c4e06e7dc213070c72426fee1a7f34288633802e"
+  },
+  {
+    "before_capture": 84,
+    "after_capture": 69,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "e6f770a9641c8eb1d4b27b790076bb11a164cf0025dc3298a19581348afcc698",
+    "after_scene_sha256": "e6f770a9641c8eb1d4b27b790076bb11a164cf0025dc3298a19581348afcc698"
+  },
+  {
+    "before_capture": 85,
+    "after_capture": 70,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "c3478c05515f08c81641fd35d61b423bdda95ecf3a4bb9a45ab9f0e1d27e115a",
+    "after_scene_sha256": "c3478c05515f08c81641fd35d61b423bdda95ecf3a4bb9a45ab9f0e1d27e115a"
+  },
+  {
+    "before_capture": 86,
+    "after_capture": 71,
+    "scene_roi": [
+      0,
+      0,
+      1800,
+      1440
+    ],
+    "difference_bbox": null,
+    "before_scene_sha256": "40bf03dd3ca23ad410db4319c86be5d8219a1be1fd1c77d214cd24c82abc3916",
+    "after_scene_sha256": "40bf03dd3ca23ad410db4319c86be5d8219a1be1fd1c77d214cd24c82abc3916"
+  }
+]

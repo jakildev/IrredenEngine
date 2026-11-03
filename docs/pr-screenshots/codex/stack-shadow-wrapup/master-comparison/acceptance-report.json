@@ -1,0 +1,215 @@
+{
+  "comparison_method": "Exact RGB pixels; alpha ignored; same Metal host and capture recipe",
+  "heads": {
+    "master": "d29d1ccef2b791d650c6818013c89ea0c3a5007c",
+    "integrated": "e10f9fbc020b42c4fee68c4a46220aba692613a0"
+  },
+  "paths": {
+    "paired": "/private/tmp/codex-stack-default-pairs/comparison.json",
+    "shader_ab": "/private/tmp/codex-stack-default-pairs/shader-ab-comparison.json",
+    "grid_controls": "/private/tmp/codex-stack-default-pairs/grid-ray-controls",
+    "postfix_physical_review": "/private/tmp/codex-stack-default-pairs/grid-ray-after/physical-review.json"
+  },
+  "interpretation": {
+    "canvas_rgb_ref_refresh": "yes, only six main and two compare Metal RGB refs, subject to exact capture manifest and independent geometry review; do not treat as generic visual-suite green",
+    "cause": "per-axis receiver sampling in c_compute_sun_shadow_body.metal and c_light_overflow_faces.metal; old caster shader alone is inert in default fixture",
+    "camera": "requested yaw zero is followed by 60 settling frames with auto yaw enabled, yielding approximately 30 degrees at capture; the shots exercise per-axis rather than cardinal receiver",
+    "other_refs": "Fog and Perf reference failures remain inherited or separately diagnostic; do not refresh them"
+  },
+  "default_frames": [
+    {
+      "index": 0,
+      "label": "so3_smooth_sweep",
+      "integrated_vs_master_rgb_pixels": 4284,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 2972,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "53e48458dfcafca37f39607813420d0825395c410f2a926738673d8cd2bd3421",
+      "master_png_sha256": "0e2f2962b23e6fee279a01fd582f1c80a29adf764c946f16ded861dde1500fab"
+    },
+    {
+      "index": 1,
+      "label": "so3_offsnap_disc",
+      "integrated_vs_master_rgb_pixels": 2892,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 1860,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "d5d9fdf42ce299289534baac21ae9e0ea151ff768fafd4b681cf4281c6030962",
+      "master_png_sha256": "72075eb0cb9626fb9c9512fe814426c5e3a2ac9d6c044d5ddcd89b88ae22b103"
+    },
+    {
+      "index": 2,
+      "label": "so3_wide_parity",
+      "integrated_vs_master_rgb_pixels": 2724,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 1208,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "c0f4c05b1706498030ad0103a2f7a0592e94eb458036829cfea9ca53cc249e5a",
+      "master_png_sha256": "aeb671e1b6bc74df8cea4ed12b4f882c6db27a96d19599249616e9c9f2cbbba2"
+    },
+    {
+      "index": 3,
+      "label": "so3_grid_cross",
+      "integrated_vs_master_rgb_pixels": 2104,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 744,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "5c53c7694dc361a6b91cd734fba86c724ecb48eacae54e6c7177fb433815653c",
+      "master_png_sha256": "39a55c3fc0782079caa81ce75d3875ad58dc2e68074cf9fce6e4bc1ef22633f1"
+    },
+    {
+      "index": 4,
+      "label": "so3_offsnap_wide",
+      "integrated_vs_master_rgb_pixels": 3612,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 2544,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "31009087d06ff25cdf7b67641ade9b087df5e89f5d736756c543bd074c75ccd8",
+      "master_png_sha256": "1f94beb88cddc339871a35fc7973c097da533d216c517da01a65ed0af00545c7"
+    },
+    {
+      "index": 5,
+      "label": "revoxelize_solids",
+      "integrated_vs_master_rgb_pixels": 2984,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 1680,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "52c2112ecd94edf6f28e9f35f1740f8da5ef9b4d0247c476f1182d447e72e44d",
+      "master_png_sha256": "f01f3c18e5326219099de637d9031a4f808ef815f66fe215f893601231d4e76c"
+    },
+    {
+      "index": 6,
+      "label": null,
+      "integrated_vs_master_rgb_pixels": 5088,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 2704,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "4708759e0fce67ac79c0dfd5a5fff2c0fef7249d2a3eac88e6235a538b7c3680",
+      "master_png_sha256": "9de0af63673dfd7b598602311fb67e03f93d627056bf8976f31a243a8ff5ac2c"
+    },
+    {
+      "index": 7,
+      "label": null,
+      "integrated_vs_master_rgb_pixels": 3028,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 1452,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "1464174242a773c2f6560315b662e997eb41f25ba551c2d49d2d18dadf27057d",
+      "master_png_sha256": "e017432dab8a2ba60c7cbd58cbc48703546e144e57bf41984531bbe89bfe6fc0"
+    },
+    {
+      "index": 8,
+      "label": null,
+      "integrated_vs_master_rgb_pixels": 3100,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 1732,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "088307ffecdc6972a29620fe865f4aac2218392376658d0fc2177d639db92816",
+      "master_png_sha256": "eb2cb6a4dabbdf2cfa192c3fd9ce4e061dd46ec9073dfb309258fa5abe617a85"
+    },
+    {
+      "index": 9,
+      "label": null,
+      "integrated_vs_master_rgb_pixels": 2516,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 432,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "3e5d6feae96271b0ea773379421529ddf3a744f4ef0ceea42dc929cefb0b98df",
+      "master_png_sha256": "b5440453de6635bd95e442ae1cb72d43829d6f09ed348f5c29880791ed005042"
+    },
+    {
+      "index": 10,
+      "label": null,
+      "integrated_vs_master_rgb_pixels": 2524,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 1184,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "3a39e15a773d8d80fa634a7be4feae81c30346ee358497c8db6cc51882a36736",
+      "master_png_sha256": "6a7ae032ab059b06b33517e80f783376eb65618c1064d3fcadbcf959946274c6"
+    },
+    {
+      "index": 11,
+      "label": null,
+      "integrated_vs_master_rgb_pixels": 4996,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": 2840,
+      "old_caster_vs_integrated_rgb_pixels": 0,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "1071759959819568c8ddfddd507023365605a73283fa6e91aa517e6e146db52b",
+      "master_png_sha256": "04017616b059717782a5aba0abc12843decd6e14c14c4bbe81fbe309473a0a8b"
+    }
+  ],
+  "compare_gates": [
+    {
+      "index": 12,
+      "label": "compare_yaw0",
+      "integrated_vs_master_rgb_pixels": 560,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": null,
+      "old_caster_vs_integrated_rgb_pixels": null,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "bb424e690d1a25f769ff64208fa82d4800563179aaeaafec5ac760afb62b4320",
+      "master_png_sha256": "3a56ddc8b7328dfea212db046d2b372bd33fd2bb0d194089b42c98f1ea59d35c"
+    },
+    {
+      "index": 13,
+      "label": "compare_yaw_q",
+      "integrated_vs_master_rgb_pixels": 196,
+      "no_shadows_integrated_vs_master_rgb_pixels": 0,
+      "old_regular_receiver_vs_master_rgb_pixels": null,
+      "old_caster_vs_integrated_rgb_pixels": null,
+      "old_both_receivers_and_caster_vs_master_rgb_pixels": 0,
+      "integrated_png_sha256": "ff221659f804fa6bc311aacf5d26a3dd8c39caf5bbceba811623085f8c11c094",
+      "master_png_sha256": "5ecf00fbf088807e043ca9cee9266f5aac94fb10c31cffb43e6a2bb2cdc6a11b"
+    }
+  ],
+  "all_compare_frames_old_both_receivers_and_caster_vs_master_rgb_exact": true,
+  "grid_oracle": {
+    "identity_exposed_face_center_self_shadow": 0,
+    "rotation_30_deg_x_face_self_shadowed_over_exposed": [
+      60,
+      192
+    ],
+    "rotation_30_deg_y_face_self_shadowed_over_exposed": [
+      66,
+      192
+    ],
+    "source": "/private/tmp/codex-gridspin-selfshadow-oracle.py"
+  },
+  "postfix_grid_controls": {
+    "beauty_rgb_unchanged_after_overlay_fix": {
+      "default": 12,
+      "compare": 15
+    },
+    "normals_rgb_unchanged_after_overlay_fix": 2,
+    "shadow_overlay_palette": [
+      "black",
+      "magenta"
+    ],
+    "upright_rightmost_red_roi_magenta_pixels": 0,
+    "rotated_rightmost_red_roi_magenta_pixels": {
+      "negative_x": 228,
+      "negative_y": 5284,
+      "top": 0
+    },
+    "finite_face_index": {
+      "upright_records": 1728,
+      "rotated_records": 2214,
+      "max_nonempty_tile_records": 36,
+      "tile_capacity": 64,
+      "all_nonempty_tiles_complete": true
+    },
+    "limit": "Sparse frozen GRID witness; does not prove every changed default frame pixel or existing orbit banding"
+  }
+}

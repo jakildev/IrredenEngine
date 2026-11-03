@@ -1,0 +1,144 @@
+{
+  "head": "f7a5bebce92f64d91bbf9c97d283901a358badeb",
+  "changes": " M scripts/perf/repeat_profile.py\n M scripts/perf/test_repeat_profile.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "e5dee137ecfbba1cbeb0c06d6d66c6cc4e665802586e90801d5c439b1af0cc06",
+  "shader_sha256": "8b7d7b000c65f3e63412749d9d428845509b89ce83df4698c41ff9ce00dbe627",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion,orbit,floor",
+    "--probe-grid",
+    "--probe-staircase",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--zoom",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--subdivisions",
+    "2",
+    "--sweep-yaw",
+    "0",
+    "6.28318530718",
+    "9"
+  ],
+  "render_environment": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "1",
+    "IR_PERAXIS_VISIBILITY_PREPASS": null,
+    "IR_PERAXIS_VISIBILITY_STATS": null,
+    "IR_PERAXIS_OVERFLOW_DISABLE": null,
+    "IR_OVERFLOW_LIGHTING_DISABLE": null,
+    "IR_OVERFLOW_FOG_DISABLE": null,
+    "IR_OVERFLOW_COUNT_LOG": null
+  },
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-28T23:15:07Z",
+      "finished_utc": "2026-09-28T23:15:15Z",
+      "host_battery_percent": 20,
+      "host_load_1m": 8.46,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -0.0,
+      "yaw_travel_deg": 360.0,
+      "zoom_first": 1.0,
+      "zoom_last": 1.0,
+      "zoom_min": 1.0,
+      "zoom_max": 1.0,
+      "zoom_range_present": true,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 1617,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "source_manifest": "/tmp/codex-visibility-density/sub2-off/manifest.json",
+  "capture_manifest_sha256": "c7290f1dd8063f84d251a99dbeec51c8315cc2b306b551fb9f24870dee94cc37",
+  "source_log_sha256": "f0d9dc2eb8cbc3411d08ff565ce05e76c7681deb7d8cb511e60cc5c47f000240",
+  "revision_note": "Engine runtime is unchanged from the parent visibility-prepass implementation. Dirty source changes include profile-runner provenance/tests and evidence; original head/status retained. Runtime fingerprints identify what was measured.",
+  "screenshots": [
+    {
+      "source": "screenshot_003222.png",
+      "file": "sweeps/sub2-off/shot-0.png",
+      "index": 0,
+      "sha256": "3c250fb4b80f5dd44f65a70576f6fac7426e131eb55b4392e974f7cf4e960a65",
+      "capture_log_line": "[2026-09-28 16:15:08.125] [ClientLog] [info] AutoScreenshot 1/9: sweep_yaw_0 (zoom=1, cam=(0,0), yaw=0, cull=0)"
+    },
+    {
+      "source": "screenshot_003223.png",
+      "file": "sweeps/sub2-off/shot-1.png",
+      "index": 1,
+      "sha256": "2151393811a2779cf2d49975a693860cd50d3371f011d778daf90cee855ae075",
+      "capture_log_line": "[2026-09-28 16:15:08.766] [ClientLog] [info] AutoScreenshot 2/9: sweep_yaw_1 (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)"
+    },
+    {
+      "source": "screenshot_003224.png",
+      "file": "sweeps/sub2-off/shot-2.png",
+      "index": 2,
+      "sha256": "335c476d02beee15f77e177c305a66238df99278104a801fc88c9b598f49c90f",
+      "capture_log_line": "[2026-09-28 16:15:09.728] [ClientLog] [info] AutoScreenshot 3/9: sweep_yaw_2 (zoom=1, cam=(0,0), yaw=1.5707964, cull=0)"
+    },
+    {
+      "source": "screenshot_003225.png",
+      "file": "sweeps/sub2-off/shot-3.png",
+      "index": 3,
+      "sha256": "93ce80dda5126da764acd25deb004ac7f3bfec6445feeeef723f56417d47dacc",
+      "capture_log_line": "[2026-09-28 16:15:10.374] [ClientLog] [info] AutoScreenshot 4/9: sweep_yaw_3 (zoom=1, cam=(0,0), yaw=2.3561945, cull=0)"
+    },
+    {
+      "source": "screenshot_003226.png",
+      "file": "sweeps/sub2-off/shot-4.png",
+      "index": 4,
+      "sha256": "2e9aea15fb2d3cb3f7849aef6c8bd2fd38a2baf7ba028087825cac7da19ef6d7",
+      "capture_log_line": "[2026-09-28 16:15:11.230] [ClientLog] [info] AutoScreenshot 5/9: sweep_yaw_4 (zoom=1, cam=(0,0), yaw=3.1415927, cull=0)"
+    },
+    {
+      "source": "screenshot_003227.png",
+      "file": "sweeps/sub2-off/shot-5.png",
+      "index": 5,
+      "sha256": "d9e1def697f81cac3f5ade611cd5bc0caa6000c0f10a6fcae533bac92b719a48",
+      "capture_log_line": "[2026-09-28 16:15:11.873] [ClientLog] [info] AutoScreenshot 6/9: sweep_yaw_5 (zoom=1, cam=(0,0), yaw=3.926991, cull=0)"
+    },
+    {
+      "source": "screenshot_003228.png",
+      "file": "sweeps/sub2-off/shot-6.png",
+      "index": 6,
+      "sha256": "88a8eb697d44afd509ea24da35f78f8fe5bd09e842e9293220bcf346e5a77ff1",
+      "capture_log_line": "[2026-09-28 16:15:12.687] [ClientLog] [info] AutoScreenshot 7/9: sweep_yaw_6 (zoom=1, cam=(0,0), yaw=4.712389, cull=0)"
+    },
+    {
+      "source": "screenshot_003229.png",
+      "file": "sweeps/sub2-off/shot-7.png",
+      "index": 7,
+      "sha256": "513cb1f097a98c831d52a607cd50f5308fa02e4e8654f646b1cd2aa03cc005d6",
+      "capture_log_line": "[2026-09-28 16:15:13.331] [ClientLog] [info] AutoScreenshot 8/9: sweep_yaw_7 (zoom=1, cam=(0,0), yaw=5.4977875, cull=0)"
+    },
+    {
+      "source": "screenshot_003230.png",
+      "file": "sweeps/sub2-off/shot-8.png",
+      "index": 8,
+      "sha256": "3c250fb4b80f5dd44f65a70576f6fac7426e131eb55b4392e974f7cf4e960a65",
+      "capture_log_line": "[2026-09-28 16:15:14.119] [ClientLog] [info] AutoScreenshot 9/9: sweep_yaw_8 (zoom=1, cam=(0,0), yaw=6.2831855, cull=0)"
+    }
+  ]
+}

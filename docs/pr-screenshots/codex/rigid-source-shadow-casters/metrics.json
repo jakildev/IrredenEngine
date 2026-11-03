@@ -1,0 +1,65 @@
+[
+  {
+    "name": "source-visible-final",
+    "command": [
+      "python3",
+      "scripts/render-shadow-box-metric.py",
+      "--source",
+      "--box-pose",
+      "0",
+      "--iso-scale",
+      "8",
+      "4",
+      "--strict-edges",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001762.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001763.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001764.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001765.png"
+    ],
+    "exit": 1,
+    "output": "yaw=0 iou=0.840 area_ratio=0.935 expected_pixels=4955 observed_pixels=4632 PASS\n{\"missing_pixels\": 207, \"extra_pixels\": 145, \"testable_shadow_pixels\": 4139, \"testable_outside_pixels\": 878082, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001762.png\", \"yaw\": 0, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=90 iou=0.936 area_ratio=1.029 expected_pixels=19254 observed_pixels=19804 PASS\n{\"missing_pixels\": 65, \"extra_pixels\": 518, \"testable_shadow_pixels\": 18327, \"testable_outside_pixels\": 863195, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001763.png\", \"yaw\": 90, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=180 iou=0.963 area_ratio=1.027 expected_pixels=19404 observed_pixels=19928 PASS\n{\"missing_pixels\": 12, \"extra_pixels\": 266, \"testable_shadow_pixels\": 18542, \"testable_outside_pixels\": 863030, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001764.png\", \"yaw\": 180, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=270 iou=0.938 area_ratio=1.030 expected_pixels=19402 observed_pixels=19992 PASS\n{\"missing_pixels\": 96, \"extra_pixels\": 546, \"testable_shadow_pixels\": 18446, \"testable_outside_pixels\": 862932, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001765.png\", \"yaw\": 270, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\n",
+    "stderr": ""
+  },
+  {
+    "name": "pose047",
+    "command": [
+      "python3",
+      "scripts/render-shadow-box-metric.py",
+      "--source",
+      "--box-pose",
+      "0.47",
+      "--iso-scale",
+      "8",
+      "4",
+      "--strict-edges",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001706.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001707.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001708.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001709.png"
+    ],
+    "exit": 1,
+    "output": "yaw=0 iou=0.870 area_ratio=0.962 expected_pixels=6365 observed_pixels=6124 PASS\n{\"missing_pixels\": 235, \"extra_pixels\": 197, \"testable_shadow_pixels\": 5554, \"testable_outside_pixels\": 876656, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001706.png\", \"yaw\": 0, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=90 iou=0.929 area_ratio=1.020 expected_pixels=19393 observed_pixels=19784 PASS\n{\"missing_pixels\": 105, \"extra_pixels\": 496, \"testable_shadow_pixels\": 18375, \"testable_outside_pixels\": 863368, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001707.png\", \"yaw\": 90, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=180 iou=0.956 area_ratio=1.019 expected_pixels=19484 observed_pixels=19848 PASS\n{\"missing_pixels\": 30, \"extra_pixels\": 343, \"testable_shadow_pixels\": 18521, \"testable_outside_pixels\": 868237, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001708.png\", \"yaw\": 180, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=270 iou=0.937 area_ratio=1.026 expected_pixels=19393 observed_pixels=19904 PASS\n{\"missing_pixels\": 124, \"extra_pixels\": 494, \"testable_shadow_pixels\": 18375, \"testable_outside_pixels\": 862888, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001709.png\", \"yaw\": 270, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\n",
+    "stderr": ""
+  },
+  {
+    "name": "pose314",
+    "command": [
+      "python3",
+      "scripts/render-shadow-box-metric.py",
+      "--source",
+      "--box-pose",
+      "3.141592653589793",
+      "--iso-scale",
+      "8",
+      "4",
+      "--strict-edges",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001710.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001711.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001712.png",
+      "docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001713.png"
+    ],
+    "exit": 1,
+    "output": "yaw=0 iou=0.806 area_ratio=0.915 expected_pixels=3817 observed_pixels=3492 PASS\n{\"missing_pixels\": 244, \"extra_pixels\": 130, \"testable_shadow_pixels\": 3083, \"testable_outside_pixels\": 879235, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001710.png\", \"yaw\": 0, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=90 iou=0.936 area_ratio=1.026 expected_pixels=17280 observed_pixels=17728 PASS\n{\"missing_pixels\": 106, \"extra_pixels\": 463, \"testable_shadow_pixels\": 16465, \"testable_outside_pixels\": 873944, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001711.png\", \"yaw\": 90, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=180 iou=0.959 area_ratio=1.024 expected_pixels=17362 observed_pixels=17776 PASS\n{\"missing_pixels\": 32, \"extra_pixels\": 283, \"testable_shadow_pixels\": 16577, \"testable_outside_pixels\": 868702, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001712.png\", \"yaw\": 180, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\nyaw=270 iou=0.934 area_ratio=1.032 expected_pixels=17280 observed_pixels=17832 PASS\n{\"missing_pixels\": 106, \"extra_pixels\": 465, \"testable_shadow_pixels\": 16465, \"testable_outside_pixels\": 865560, \"boundary_tolerance_pixels\": 1, \"boundary_distance\": \"chebyshev\", \"clipped\": false, \"sufficient_resolution\": true, \"scope\": \"projected_box_shadow_edges\", \"passed\": false, \"image\": \"docs/pr-screenshots/codex/rigid-source-shadow-casters/screenshot_001713.png\", \"yaw\": 270, \"effective_subdivisions\": 1, \"grid\": false, \"source\": true, \"iso_scale\": [8.0, 4.0], \"screen_origin\": [1280.0, 720.0]}\n",
+    "stderr": ""
+  }
+]

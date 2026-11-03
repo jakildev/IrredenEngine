@@ -1,0 +1,13 @@
+418 vs 426: changed_pixels=0 max_channel_error=0 bbox=None
+419 vs 427: changed_pixels=0 max_channel_error=0 bbox=None
+420 vs 428: changed_pixels=0 max_channel_error=0 bbox=None
+421 vs 429: changed_pixels=0 max_channel_error=0 bbox=None
+430 vs 434: changed_pixels=0 max_channel_error=0 bbox=None
+431 vs 435: changed_pixels=0 max_channel_error=0 bbox=None
+432 vs 436: changed_pixels=0 max_channel_error=0 bbox=None
+433 vs 437: changed_pixels=0 max_channel_error=0 bbox=None
+422 vs 438: changed_pixels=0 max_channel_error=0 bbox=None
+423 vs 439: changed_pixels=1048 max_channel_error=2 bbox=(1158, 662, 1384, 776)
+424 vs 440: changed_pixels=0 max_channel_error=0 bbox=None
+425 vs 441: changed_pixels=16 max_channel_error=1 bbox=(1164, 730, 1178, 740)
+432 vs 450: changed_pixels=0 max_channel_error=0 bbox=None

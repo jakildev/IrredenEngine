@@ -1,0 +1,15 @@
+capture-314.png: yaw=0 occupied=40960 back_facing=8192 invalid_normals=0 FAIL
+capture-315.png: yaw=22.5 occupied=40960 back_facing=8192 invalid_normals=0 FAIL
+capture-316.png: yaw=45 occupied=40960 back_facing=8192 invalid_normals=0 FAIL
+capture-317.png: yaw=67.5 occupied=40960 back_facing=8192 invalid_normals=0 FAIL
+capture-318.png: yaw=90 occupied=40960 back_facing=8192 invalid_normals=0 FAIL
+capture-319.png: yaw=0 occupied=12288 back_facing=0 invalid_normals=0 PASS
+capture-320.png: yaw=22.5 occupied=11648 back_facing=0 invalid_normals=0 PASS
+capture-321.png: yaw=45 occupied=9936 back_facing=0 invalid_normals=0 PASS
+capture-322.png: yaw=67.5 occupied=11652 back_facing=0 invalid_normals=0 PASS
+capture-323.png: yaw=90 occupied=12288 back_facing=0 invalid_normals=0 PASS
+capture-324.png: yaw=0 occupied=32768 back_facing=0 invalid_normals=0 PASS
+capture-325.png: yaw=22.5 occupied=32768 back_facing=0 invalid_normals=0 PASS
+capture-326.png: yaw=45 occupied=32768 back_facing=0 invalid_normals=0 PASS
+capture-327.png: yaw=67.5 occupied=32768 back_facing=0 invalid_normals=0 PASS
+capture-328.png: yaw=90 occupied=32768 back_facing=0 invalid_normals=0 PASS

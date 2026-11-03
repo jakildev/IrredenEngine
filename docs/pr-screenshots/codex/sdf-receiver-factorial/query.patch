@@ -1,0 +1,13 @@
+--- a/engine/render/src/shaders/metal/c_compute_sun_shadow.metal
++++ b/engine/render/src/shaders/metal/c_compute_sun_shadow.metal
+@@ -123,6 +123,9 @@
+         normal = -normal;
+     }
+
+-    float factor = worldSunShadowFactor(pos3D, normal, sunFrameData, sunDepthBuf);
++    const float4 casterViewToWorld = float4(0.0, 0.0, sin(frameData.visualYaw * 0.5), cos(frameData.visualYaw * 0.5));
++    float factor = perAxis
++        ? worldSunShadowFactor(pos3D, normal, sunFrameData, sunDepthBuf)
++        : worldSurfaceSunShadowFactor(pos3D, normal, casterViewToWorld, sunFrameData, sunDepthBuf);
+     canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
+ }

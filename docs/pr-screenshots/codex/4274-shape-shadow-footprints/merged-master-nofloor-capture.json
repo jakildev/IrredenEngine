@@ -1,0 +1,17 @@
+{
+  "revision": "86bda39cd3f589cc9812fcd11ec6fddfd55fa0a7",
+  "patch": "",
+  "command": [
+    "fleet-run",
+    "IRShapeDebug",
+    "--spin-yaw",
+    "--auto-screenshot",
+    "8",
+    "--zoom",
+    "8",
+    "--no-ao",
+    "--pivot-origin",
+    "--spin-shape",
+    "torus"
+  ]
+}

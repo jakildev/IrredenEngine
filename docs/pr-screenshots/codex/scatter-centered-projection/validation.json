@@ -1,0 +1,37 @@
+{
+  "render_verify": {
+    "checks": 18,
+    "passed": 18,
+    "references_modified": false,
+    "note": "sequential rerun; prior overlapping capture excluded"
+  },
+  "tests": {
+    "orbit_geometry": 5,
+    "orbit_raster": 5,
+    "passed": 10
+  },
+  "model_vs_native_reference": {
+    "frames": 50,
+    "mismatches": 0
+  },
+  "header_checks": {
+    "headers": 602,
+    "metal_compute_kernels": 40,
+    "glsl_files": 97
+  },
+  "reviews": {
+    "focused_code_reviews": 3,
+    "actionable_findings": 0
+  },
+  "fine_sweep_remaining": {
+    "game_pixel": [
+      605,
+      454
+    ],
+    "yaw_radians": 0.38781238,
+    "new_regression": false,
+    "strict_diagnostic_pass": false
+  },
+  "windows_opengl": "pending",
+  "ruff": "pass"
+}

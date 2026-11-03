@@ -1,0 +1,91 @@
+{
+  "head": "2b9d1ae8c92b45c29fb8732671f7df425235b03a",
+  "changes": " M docs/design/rendering-audit-todo.md\n M engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp\n M engine/render/include/irreden/render/ir_render_types.hpp\n M engine/render/src/shaders/c_compute_sun_shadow_body.glsl\n M engine/render/src/shaders/c_light_overflow_faces.glsl\n M engine/render/src/shaders/ir_per_axis_lighting.glsl\n M engine/render/src/shaders/ir_sun_shadow_sample.glsl\n M engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal\n M engine/render/src/shaders/metal/c_light_overflow_faces.metal\n M engine/render/src/shaders/metal/ir_per_axis_lighting.metal\n M engine/render/src/shaders/metal/ir_sun_shadow_sample.metal\n M test/render/frame_data_sun_layout_test.cpp\n?? docs/pr-screenshots/codex/peraxis-shadow-receiver-centers/\n?? engine/render/src/shaders/ir_per_axis_shadow.glsl\n?? engine/render/src/shaders/metal/ir_per_axis_shadow.metal\n?? scripts/tests/test_render_per_axis_receiver.py\n?? scripts/tests/test_render_source_face_basis.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "66ddfc9ca20cea4fdbbcac1eb85e9733cab1397b8e2670ed5c2f1177235eede0",
+  "shader_sha256": "ade3974b45f701f25eb598cd47ac8967a3e69dac6fd95b5e5f8abc76917cef2f",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion",
+    "--probe-grid",
+    "--probe-staircase",
+    "--sun-direction",
+    "0.42",
+    "0.60",
+    "-0.55",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--pivot-origin",
+    "--zoom",
+    "2",
+    "--subdivisions",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0.39269908",
+    "5.10508806",
+    "4"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-27T23:06:01Z",
+      "finished_utc": "2026-09-27T23:06:07Z",
+      "host_battery_percent": 100,
+      "host_load_1m": 3.35,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 2.0,
+      "zoom_last": 2.0,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 122,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "captures": [
+    {
+      "file": "after-positive-stairs-q0.png",
+      "native_file": "screenshot_002968.png",
+      "sha256": "071f2e129537d2a5fbe23c784817e009b51a4b30195957832d19f53d910a33c9"
+    },
+    {
+      "file": "after-positive-stairs-q1.png",
+      "native_file": "screenshot_002969.png",
+      "sha256": "f807364e3e64dd84b11a92678400fe206eab9615b26a7f0406661a269321bd5a"
+    },
+    {
+      "file": "after-positive-stairs-q2.png",
+      "native_file": "screenshot_002970.png",
+      "sha256": "52b4ea13dea1c15b7750fc463ebeb09119293f5493f6295dd44377a69daf78aa"
+    },
+    {
+      "file": "after-positive-stairs-q3.png",
+      "native_file": "screenshot_002971.png",
+      "sha256": "c55d9c9b9268a2745b3a0fc1e1dcd649da13a128868a09366937cb26b47dd680"
+    }
+  ],
+  "note": "Final-source native rerun; RGB-identical to initial candidate captures."
+}

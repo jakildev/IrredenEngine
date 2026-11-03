@@ -1,0 +1,9 @@
+{
+  "engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl": "49d5e6d62590ecd5292ba3bba0e38e43ee1b263729ffb080d93248c34a33f27a",
+  "engine/render/src/shaders/ir_peraxis_scatter_fragment_body.glsl": "778f87925e1f572dc0a64b85faccb969f92da65624811d993c14a32ac5bf70a9",
+  "engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal": "3f91004aca53b34b6af7950fa591640f0d86795518112125e5478a5cad1e13fd",
+  "engine/render/src/shaders/metal/ir_peraxis_scatter_fragment_body.metal": "f800905601ba91beb35b42a43543a7cc6f968809f4692a64542314143043967d",
+  "engine/render/src/shaders/metal/ir_peraxis_scatter_interface.metal": "1efeb956c9dcbb1d70d36a4244bc74bcb757aa27b6cbd775de628f56686e75da",
+  "engine/render/src/shaders/metal/peraxis_scatter.metal": "21f7b5e08d95c4dbf97b1473701141e340e2b393397c3e0de976dd0ee78d573d",
+  "engine/render/src/shaders/v_peraxis_scatter.glsl": "e40abf6d9219a74421de0122cb5ded7e30859d66e92f696e1d807aef7b549044"
+}

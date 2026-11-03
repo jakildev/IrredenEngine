@@ -1,0 +1,138 @@
+{
+  "sun-face-index-0.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 1351,
+        "incomplete_tiles": 196,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 1075,
+        "incomplete_tiles": 160,
+        "max_counter": 196
+      }
+    ]
+  },
+  "sun-face-index-1.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 780,
+        "incomplete_tiles": 174,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 598,
+        "incomplete_tiles": 88,
+        "max_counter": 196
+      }
+    ]
+  },
+  "sun-face-index-2.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 780,
+        "incomplete_tiles": 174,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 598,
+        "incomplete_tiles": 88,
+        "max_counter": 196
+      }
+    ]
+  },
+  "sun-face-index-3.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 914,
+        "incomplete_tiles": 142,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 337,
+        "incomplete_tiles": 61,
+        "max_counter": 196
+      }
+    ]
+  },
+  "sun-face-index-4.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 914,
+        "incomplete_tiles": 142,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 337,
+        "incomplete_tiles": 61,
+        "max_counter": 196
+      }
+    ]
+  },
+  "sun-face-index-5.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 914,
+        "incomplete_tiles": 142,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 337,
+        "incomplete_tiles": 61,
+        "max_counter": 196
+      }
+    ]
+  },
+  "sun-face-index-6.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 555,
+        "incomplete_tiles": 153,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 410,
+        "incomplete_tiles": 62,
+        "max_counter": 196
+      }
+    ]
+  },
+  "sun-face-index-7.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 555,
+        "incomplete_tiles": 153,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 410,
+        "incomplete_tiles": 62,
+        "max_counter": 196
+      }
+    ]
+  }
+}

@@ -1,0 +1,747 @@
+{
+  "fixture": "torus yaw=0 subdivision=8 R=4 r=2 origin=0",
+  "ray_sampling": "native-gather",
+  "accepted_samples": 18406,
+  "published_texels": 18922,
+  "face_texels": {
+    "2": 7922,
+    "0": 7478,
+    "1": 3522
+  },
+  "finite_model_pixel_classifications": {
+    "publisher_face_not_on_ray": 30992,
+    "normal_matches_nearest": 83476,
+    "publisher_face_occluded": 40220,
+    "owner_ambiguous": 52376,
+    "nearest_exposed_face": 27412,
+    "normal_differs_from_nearest": 67524,
+    "outside_finite_union": 376,
+    "no_finite_hit": 376
+  },
+  "finite_union_unpublished_pixels": 952,
+  "finite_union_unpublished_example": {
+    "pixel": [
+      1246,
+      546
+    ],
+    "iso": [
+      -8.25,
+      -86.5
+    ],
+    "nearest": {
+      "sample": [
+        -8,
+        -85,
+        43
+      ],
+      "depth": 43.0,
+      "axes": [
+        2
+      ],
+      "point": [
+        32.875,
+        24.625,
+        -14.499999999999998
+      ]
+    }
+  },
+  "examples": {
+    "publisher_face_not_on_ray": {
+      "pixel": [
+        1250,
+        570
+      ],
+      "iso": [
+        -7.25,
+        -74.5
+      ],
+      "classification": "publisher_face_not_on_ray",
+      "normal_matches_nearest": false,
+      "possible_owners": [
+        {
+          "classification": "publisher_face_not_on_ray",
+          "candidate_sample": [
+            -8,
+            -74,
+            25
+          ],
+          "published_face": 2,
+          "candidate_half": 1,
+          "normal_matches_nearest": false,
+          "nearest": [
+            {
+              "sample": [
+                -8,
+                -74,
+                25
+              ],
+              "depth": 24.375,
+              "axes": [
+                0
+              ],
+              "point": [
+                24.166666666666668,
+                16.916666666666664,
+                -16.708333333333332
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -8,
+                -74,
+                25
+              ],
+              "depth": 24.375,
+              "axes": [
+                0
+              ],
+              "point": [
+                24.166666666666668,
+                16.916666666666664,
+                -16.708333333333332
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "publisher_face_occluded": {
+      "pixel": [
+        1250,
+        550
+      ],
+      "iso": [
+        -7.25,
+        -84.5
+      ],
+      "classification": "publisher_face_occluded",
+      "normal_matches_nearest": true,
+      "possible_owners": [
+        {
+          "classification": "publisher_face_occluded",
+          "candidate_sample": [
+            -7,
+            -84,
+            38
+          ],
+          "published_face": 2,
+          "candidate_half": 0,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -7,
+                -83,
+                36
+              ],
+              "depth": 36.000000000000014,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.708333333333336,
+                22.45833333333334,
+                -16.166666666666664
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -7,
+                -84,
+                38
+              ],
+              "depth": 37.0,
+              "axes": [
+                2
+              ],
+              "point": [
+                30.041666666666664,
+                22.791666666666668,
+                -15.833333333333334
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "owner_ambiguous": {
+      "pixel": [
+        1248,
+        552
+      ],
+      "iso": [
+        -7.75,
+        -83.5
+      ],
+      "classification": "owner_ambiguous",
+      "normal_matches_nearest": true,
+      "possible_owners": [
+        {
+          "classification": "publisher_face_occluded",
+          "candidate_sample": [
+            -8,
+            -83,
+            36
+          ],
+          "published_face": 2,
+          "candidate_half": 1,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -8,
+                -82,
+                34
+              ],
+              "depth": 34.0,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.125,
+                21.375,
+                -16.5
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -8,
+                -83,
+                36
+              ],
+              "depth": 35.0,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.458333333333336,
+                21.708333333333332,
+                -16.166666666666664
+              ]
+            }
+          ]
+        },
+        {
+          "classification": "publisher_face_not_on_ray",
+          "candidate_sample": [
+            -7,
+            -83,
+            36
+          ],
+          "published_face": 2,
+          "candidate_half": 0,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -8,
+                -82,
+                34
+              ],
+              "depth": 34.0,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.125,
+                21.375,
+                -16.5
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -7,
+                -83,
+                36
+              ],
+              "depth": 35.375,
+              "axes": [
+                1
+              ],
+              "point": [
+                29.583333333333336,
+                21.833333333333332,
+                -16.041666666666664
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nearest_exposed_face": {
+      "pixel": [
+        1242,
+        554
+      ],
+      "iso": [
+        -9.25,
+        -82.5
+      ],
+      "classification": "nearest_exposed_face",
+      "normal_matches_nearest": true,
+      "possible_owners": [
+        {
+          "classification": "nearest_exposed_face",
+          "candidate_sample": [
+            -9,
+            -82,
+            34
+          ],
+          "published_face": 2,
+          "candidate_half": 0,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -9,
+                -82,
+                34
+              ],
+              "depth": 33.0,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.375,
+                20.125,
+                -16.5
+              ]
+            },
+            {
+              "sample": [
+                -9,
+                -81,
+                33
+              ],
+              "depth": 33.0,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.375,
+                20.125,
+                -16.5
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -9,
+                -82,
+                34
+              ],
+              "depth": 33.0,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.375,
+                20.125,
+                -16.5
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "normal_differs_from_nearest": {
+      "pixel": [
+        1250,
+        570
+      ],
+      "iso": [
+        -7.25,
+        -74.5
+      ],
+      "classification": "publisher_face_not_on_ray",
+      "normal_matches_nearest": false,
+      "possible_owners": [
+        {
+          "classification": "publisher_face_not_on_ray",
+          "candidate_sample": [
+            -8,
+            -74,
+            25
+          ],
+          "published_face": 2,
+          "candidate_half": 1,
+          "normal_matches_nearest": false,
+          "nearest": [
+            {
+              "sample": [
+                -8,
+                -74,
+                25
+              ],
+              "depth": 24.375,
+              "axes": [
+                0
+              ],
+              "point": [
+                24.166666666666668,
+                16.916666666666664,
+                -16.708333333333332
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -8,
+                -74,
+                25
+              ],
+              "depth": 24.375,
+              "axes": [
+                0
+              ],
+              "point": [
+                24.166666666666668,
+                16.916666666666664,
+                -16.708333333333332
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "outside_finite_union": {
+      "pixel": [
+        1250,
+        714
+      ],
+      "iso": [
+        -7.25,
+        -2.5
+      ],
+      "classification": "outside_finite_union",
+      "normal_matches_nearest": null,
+      "possible_owners": [
+        {
+          "classification": "outside_finite_union",
+          "candidate_sample": [
+            -8,
+            -4,
+            41
+          ],
+          "published_face": 0,
+          "candidate_half": 1,
+          "normal_matches_nearest": null,
+          "nearest": [],
+          "owner_hits": []
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Finite unit faces at fractional samples are a representation diagnostic.",
+    "Rectangular gather is not exact triangle coverage; discrepancies are not a gate.",
+    "Image counts classify all equal-depth owners; explicit native probes are separate.",
+    "Counts use screenshot pixels; native-gather rays repeat in 2x2 blocks.",
+    "No continuous-torus gradient is used as a face-normal correctness oracle."
+  ],
+  "provenance": {
+    "source_revision": "e279638c0b2acaeb98b3b27562c03482b66c64f8",
+    "source_sha256": {
+      "engine/render/src/shaders/ir_sdf_common.glsl": "fb4f16412921743aa81f889b45a864a4e7b89e1ed921f5e6b0c7447442561958",
+      "engine/render/src/shaders/ir_iso_common.glsl": "9a4eb8a410b45761bd24ff12eb22c765745cba9101a6983a93161fc4bd2b13e3",
+      "engine/render/src/shaders/c_shapes_to_trixel_body.glsl": "196ef5107cf50b50c5d2501e96a6e9726675838d00a82290c7edc3860f0fb680",
+      "engine/render/src/shaders/metal/ir_sdf_common.metal": "d428b7ea84fb196551af4616e913d69fa4e678b2dc7523543b2f2eb6ff6d3a3c",
+      "engine/render/src/shaders/metal/ir_iso_common.metal": "ea04c296fc7c065b4b2f3caed0c88875d2e860620795e1a0fe6443f11568b1c9",
+      "engine/render/src/shaders/metal/c_shapes_to_trixel_body.metal": "b64c8935ebfda2d44566ae1a54bee4b4a4d2713b5e37b8789e06e790a42f8ff1",
+      "scripts/render_torus_surface_probe.py": "6dca37d4bc9fd33df1c0dc93375e54d707a1428f8648282a6d031eefbcc89a43"
+    },
+    "capture_fixture": "Assumed yaw=0, origin=0, zoom=8, subdiv=8, radii=(4,2); no AO/shadows",
+    "registration": "2560x1440 center=(1280,720), texel=(4,2), Z1=(-1,-1)",
+    "gather": "1284x722 buffer, 1280x720 game, nearest 2x presentation; pixel center sampling",
+    "normals_path": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/docs/pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/normals-0.png",
+    "normals_file_sha256": "8e2ee6c991467ef3ad2fca1245eda91bfe0cdb36c799c5e70296ff8b845aa6c6",
+    "native_probe_sha256": "37dc17f552ccbabe204427b10da68222ebf56f7d6b763caed1da39b0f3d54d5f"
+  },
+  "publisher_image_agreement": {
+    "matching_foreground_pixels": 151376,
+    "mismatching_foreground_pixels": 0,
+    "unexpected_foreground_pixels": 0,
+    "exact_full_image_color_counts": true,
+    "observed_colors": {
+      "(0, 0, 0)": 3535024,
+      "(128, 128, 0)": 63376,
+      "(0, 128, 128)": 59824,
+      "(128, 0, 128)": 28176
+    }
+  },
+  "explain": {
+    "pixel": [
+      1250,
+      570
+    ],
+    "iso": [
+      -7.25,
+      -74.5
+    ],
+    "candidates": [
+      [
+        202,
+        74789,
+        -8,
+        -74,
+        2,
+        1
+      ],
+      [
+        208,
+        74736,
+        -8,
+        -75,
+        0,
+        0
+      ],
+      [
+        209,
+        74744,
+        -7,
+        -75,
+        1,
+        0
+      ],
+      [
+        210,
+        74794,
+        -7,
+        -74,
+        2,
+        0
+      ],
+      [
+        216,
+        74689,
+        -8,
+        -76,
+        0,
+        1
+      ],
+      [
+        217,
+        74697,
+        -7,
+        -76,
+        1,
+        1
+      ]
+    ],
+    "geometric_hits": [
+      {
+        "sample": [
+          -8,
+          -74,
+          25
+        ],
+        "depth": 24.375,
+        "axes": [
+          0
+        ],
+        "point": [
+          24.166666666666668,
+          16.916666666666664,
+          -16.708333333333332
+        ]
+      },
+      {
+        "sample": [
+          -7,
+          -74,
+          26
+        ],
+        "depth": 24.999999999999996,
+        "axes": [
+          2
+        ],
+        "point": [
+          24.375,
+          17.125,
+          -16.5
+        ]
+      },
+      {
+        "sample": [
+          -7,
+          -73,
+          25
+        ],
+        "depth": 24.999999999999996,
+        "axes": [
+          2
+        ],
+        "point": [
+          24.375,
+          17.125,
+          -16.5
+        ]
+      },
+      {
+        "sample": [
+          -7,
+          -75,
+          26
+        ],
+        "depth": 25.125000000000007,
+        "axes": [
+          1
+        ],
+        "point": [
+          24.41666666666667,
+          17.166666666666668,
+          -16.45833333333333
+        ]
+      },
+      {
+        "sample": [
+          -8,
+          -75,
+          26
+        ],
+        "depth": 25.875,
+        "axes": [
+          0
+        ],
+        "point": [
+          24.666666666666668,
+          17.416666666666664,
+          -16.208333333333332
+        ]
+      },
+      {
+        "sample": [
+          -7,
+          -76,
+          27
+        ],
+        "depth": 26.625000000000007,
+        "axes": [
+          1
+        ],
+        "point": [
+          24.91666666666667,
+          17.666666666666668,
+          -15.95833333333333
+        ]
+      }
+    ],
+    "classification": "publisher_face_not_on_ray",
+    "normal_matches_nearest": false,
+    "possible_owners": [
+      {
+        "classification": "publisher_face_not_on_ray",
+        "candidate_sample": [
+          -8,
+          -74,
+          25
+        ],
+        "published_face": 2,
+        "candidate_half": 1,
+        "normal_matches_nearest": false,
+        "nearest": [
+          {
+            "sample": [
+              -8,
+              -74,
+              25
+            ],
+            "depth": 24.375,
+            "axes": [
+              0
+            ],
+            "point": [
+              24.166666666666668,
+              16.916666666666664,
+              -16.708333333333332
+            ]
+          }
+        ],
+        "owner_hits": [
+          {
+            "sample": [
+              -8,
+              -74,
+              25
+            ],
+            "depth": 24.375,
+            "axes": [
+              0
+            ],
+            "point": [
+              24.166666666666668,
+              16.916666666666664,
+              -16.708333333333332
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "native_owner": {
+    "pixel": [
+      1250,
+      570
+    ],
+    "iso": [
+      -7.25,
+      -74.5
+    ],
+    "native_owner_key": 127505,
+    "classification": "publisher_face_not_on_ray",
+    "candidate_sample": [
+      -8,
+      -74,
+      25
+    ],
+    "published_face": 2,
+    "candidate_half": 1,
+    "normal_matches_nearest": false,
+    "nearest": [
+      {
+        "sample": [
+          -8,
+          -74,
+          25
+        ],
+        "depth": 24.375,
+        "axes": [
+          0
+        ],
+        "point": [
+          24.166666666666668,
+          16.916666666666664,
+          -16.708333333333332
+        ]
+      }
+    ],
+    "owner_hits": [
+      {
+        "sample": [
+          -8,
+          -74,
+          25
+        ],
+        "depth": 24.375,
+        "axes": [
+          0
+        ],
+        "point": [
+          24.166666666666668,
+          16.916666666666664,
+          -16.708333333333332
+        ]
+      }
+    ]
+  }
+}

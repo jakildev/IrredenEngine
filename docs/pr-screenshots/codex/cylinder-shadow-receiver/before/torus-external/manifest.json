@@ -1,0 +1,131 @@
+{
+  "name": "torus-external",
+  "suite": "primary",
+  "shape": "torus",
+  "zoom": 6,
+  "extra": [
+    "--probe-overlapping-source"
+  ],
+  "expect_unchanged": true,
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "IRCanvasStress",
+    "--window-mode",
+    "offscreen",
+    "--only",
+    "shadowbox,floor",
+    "--probe-analytic-shape",
+    "torus",
+    "--pivot-origin",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--subdivisions",
+    "1",
+    "--zoom",
+    "6",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "5.49778714",
+    "8",
+    "--probe-overlapping-source"
+  ],
+  "expected_captures": 8,
+  "arm": "before",
+  "revision": "7df2843fde56676c1438c3c370e26ae6b387421f",
+  "build_dir": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+  "binary_sha256": "33e58f839672b5e0bec3a9108aca76b14e582aeb0a86d669ae09f7af1060f461",
+  "capture_source_patch_sha256": "ec852fd410ab7f9d493c3e32ab7fe2148559eb17ece6c03742e1f03dcdd6e933",
+  "untracked_source": [],
+  "source_stable_through_run": true,
+  "exit_code": 0,
+  "clean": true,
+  "images": [
+    {
+      "file": "yaw-000.png",
+      "source": "creations/demos/canvas_stress/save_files/screenshots/screenshot_000085.png",
+      "sha256": "3c8997c9a421138b7db77348a4ab5805cbf9977e9c8fdc000361de6daca2ae43",
+      "nominal_yaw": 0.0
+    },
+    {
+      "file": "yaw-045.png",
+      "source": "creations/demos/canvas_stress/save_files/screenshots/screenshot_000086.png",
+      "sha256": "330ec8b1aad78c8b3fef58cc25b716b74964337e513e1d0670ecf4f7cdc0ffe6",
+      "nominal_yaw": 0.7853981633974483
+    },
+    {
+      "file": "yaw-090.png",
+      "source": "creations/demos/canvas_stress/save_files/screenshots/screenshot_000087.png",
+      "sha256": "aa5fe3f199ed0318b88474c93b67528156b50c68df6a21e7b3b6e64f68d98050",
+      "nominal_yaw": 1.5707963267948966
+    },
+    {
+      "file": "yaw-135.png",
+      "source": "creations/demos/canvas_stress/save_files/screenshots/screenshot_000088.png",
+      "sha256": "b585204e31f02fbd0b9f7ff99e96d2706bfff0a2e1341170cf2b33851d679bcf",
+      "nominal_yaw": 2.356194490192345
+    },
+    {
+      "file": "yaw-180.png",
+      "source": "creations/demos/canvas_stress/save_files/screenshots/screenshot_000089.png",
+      "sha256": "87023cc9dc3e1f823addf78663046d032e69abe3affa9aa2be4e097678d29946",
+      "nominal_yaw": 3.141592653589793
+    },
+    {
+      "file": "yaw-225.png",
+      "source": "creations/demos/canvas_stress/save_files/screenshots/screenshot_000090.png",
+      "sha256": "7d7e50a5f54ade66f7a839de0092085a80450c3c07813379496aa9dfb8d69ebf",
+      "nominal_yaw": 3.9269908169872414
+    },
+    {
+      "file": "yaw-270.png",
+      "source": "creations/demos/canvas_stress/save_files/screenshots/screenshot_000091.png",
+      "sha256": "26df29e940c8db8ef41f4839b93571d6a60affbaf63d6280e6f29c96994ba762",
+      "nominal_yaw": 4.71238898038469
+    },
+    {
+      "file": "yaw-315.png",
+      "source": "creations/demos/canvas_stress/save_files/screenshots/screenshot_000092.png",
+      "sha256": "7137bb20c2e338267764f2eff32dbf374735e4317eb080c626d5b52c94bd8b85",
+      "nominal_yaw": 5.497787143782138
+    }
+  ],
+  "settled_cameras": [
+    {
+      "label": "sweep_yaw_0",
+      "state": "yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+    },
+    {
+      "label": "sweep_yaw_1",
+      "state": "yaw=0.78539824 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+    },
+    {
+      "label": "sweep_yaw_2",
+      "state": "yaw=1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+    },
+    {
+      "label": "sweep_yaw_3",
+      "state": "yaw=2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+    },
+    {
+      "label": "sweep_yaw_4",
+      "state": "yaw=-3.1414928 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+    },
+    {
+      "label": "sweep_yaw_5",
+      "state": "yaw=-2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+    },
+    {
+      "label": "sweep_yaw_6",
+      "state": "yaw=-1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+    },
+    {
+      "label": "sweep_yaw_7",
+      "state": "yaw=-0.7853987 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+    }
+  ]
+}

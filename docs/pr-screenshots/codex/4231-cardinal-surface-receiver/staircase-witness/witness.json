@@ -1,0 +1,279 @@
+{
+  "fixture": "IRCanvasStress --only impulse --no-auto-rotate; settled frame; yaw0 density4",
+  "model": "independent Rodrigues rotation and integer inverse occupancy, then unit-cube slab rays; rendered witness centers project with isoScale=(16,8), origin=(1280,720)",
+  "source_cells": 1297,
+  "turn_ticks": 123,
+  "total_turn_radians": 3.3316825905276346,
+  "sun": [
+    -0.45855791410818597,
+    -0.6550827344402657,
+    -0.6004925065702436
+  ],
+  "receiver_cell": [
+    11,
+    -17,
+    -11
+  ],
+  "first_blocker": [
+    10,
+    -18,
+    -13
+  ],
+  "first_entry_distance": 1.873462179279337,
+  "first_entry_point": [
+    9.64090909090909,
+    -18.352272727272727,
+    -12.5
+  ],
+  "exposed_source_face_cell": [
+    10,
+    -19,
+    -13
+  ],
+  "exposed_source_face": "-X",
+  "finite_source_face_distance": 2.1807496266743605,
+  "half_normal_shift": {
+    "receiver": [
+      10,
+      -17.125,
+      -11.375
+    ],
+    "all_occupancy_hit": null,
+    "limitation": "Isolates the half-voxel outward displacement; does not reproduce every legacy raster-origin recovery step."
+  },
+  "adjacent_rows": [
+    {
+      "receiver": [
+        10.5,
+        -17.125,
+        -11.375
+      ],
+      "screen": [
+        838,
+        591
+      ],
+      "hit": [
+        [
+          10,
+          -18,
+          -13
+        ],
+        1.873462179279337
+      ],
+      "before": [
+        43,
+        130,
+        130
+      ],
+      "after": [
+        21,
+        63,
+        63
+      ]
+    },
+    {
+      "receiver": [
+        10.5,
+        -17.125,
+        -11.125
+      ],
+      "screen": [
+        838,
+        595
+      ],
+      "hit": null,
+      "before": [
+        43,
+        130,
+        130
+      ],
+      "after": [
+        43,
+        130,
+        130
+      ]
+    },
+    {
+      "receiver": [
+        10.5,
+        -17.125,
+        -10.875
+      ],
+      "screen": [
+        838,
+        599
+      ],
+      "hit": null,
+      "before": [
+        43,
+        130,
+        130
+      ],
+      "after": [
+        43,
+        130,
+        130
+      ]
+    },
+    {
+      "receiver": [
+        10.5,
+        -17.125,
+        -10.625
+      ],
+      "screen": [
+        838,
+        603
+      ],
+      "hit": null,
+      "before": [
+        43,
+        130,
+        130
+      ],
+      "after": [
+        43,
+        130,
+        130
+      ]
+    }
+  ],
+  "ray_origin_policy": "No origin displacement; intervals must extend beyond 4/1024, matching the independent regression oracle.",
+  "counterfactuals": {
+    "baseline_after_sha256": "78ecc598358590b81fee5616e7f480766f672d43b8c4384e8a943f1c9f4ff360",
+    "runs": [
+      {
+        "command": [
+          "fleet-run",
+          "--timeout",
+          "300",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "6",
+          "--only",
+          "impulse",
+          "--no-auto-rotate"
+        ],
+        "arm": "full-index",
+        "source_paths": [
+          "save_files/screenshots/screenshot_000077.png",
+          "save_files/screenshots/screenshot_000078.png"
+        ],
+        "sha256": "78ecc598358590b81fee5616e7f480766f672d43b8c4384e8a943f1c9f4ff360",
+        "difference_bounds": null,
+        "exit_code": 0,
+        "result_lines": [
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ]
+      },
+      {
+        "command": [
+          "fleet-run",
+          "--timeout",
+          "300",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "6",
+          "--only",
+          "impulse",
+          "--no-auto-rotate"
+        ],
+        "arm": "no-nearest",
+        "source_paths": [
+          "save_files/screenshots/screenshot_000079.png",
+          "save_files/screenshots/screenshot_000080.png"
+        ],
+        "sha256": "78ecc598358590b81fee5616e7f480766f672d43b8c4384e8a943f1c9f4ff360",
+        "difference_bounds": null,
+        "exit_code": 0,
+        "result_lines": [
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ]
+      },
+      {
+        "command": [
+          "fleet-run",
+          "--timeout",
+          "300",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "6",
+          "--only",
+          "impulse",
+          "--no-auto-rotate"
+        ],
+        "arm": "no-pcf",
+        "source_paths": [
+          "save_files/screenshots/screenshot_000081.png",
+          "save_files/screenshots/screenshot_000082.png"
+        ],
+        "sha256": "78ecc598358590b81fee5616e7f480766f672d43b8c4384e8a943f1c9f4ff360",
+        "difference_bounds": null,
+        "exit_code": 0,
+        "result_lines": [
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ]
+      },
+      {
+        "command": [
+          "fleet-run",
+          "--timeout",
+          "300",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "6",
+          "--only",
+          "impulse",
+          "--no-auto-rotate",
+          "--no-shadows"
+        ],
+        "arm": "no-shadows",
+        "source_paths": [
+          "save_files/screenshots/screenshot_000083.png",
+          "save_files/screenshots/screenshot_000084.png"
+        ],
+        "sha256": "e9a2f2c60b14e522e09a01dbf92fea7e0ab1f0ce056da36e2b5f7b0f6a5180c2",
+        "difference_bounds": [
+          576,
+          480,
+          896,
+          658
+        ],
+        "exit_code": 0,
+        "result_lines": [
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ]
+      },
+      {
+        "command": [
+          "fleet-run",
+          "--timeout",
+          "300",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "6",
+          "--only",
+          "impulse",
+          "--no-auto-rotate"
+        ],
+        "arm": "no-exact",
+        "source_paths": [
+          "save_files/screenshots/screenshot_000085.png",
+          "save_files/screenshots/screenshot_000086.png"
+        ],
+        "sha256": "e9a2f2c60b14e522e09a01dbf92fea7e0ab1f0ce056da36e2b5f7b0f6a5180c2",
+        "difference_bounds": [
+          576,
+          480,
+          896,
+          658
+        ],
+        "exit_code": 0,
+        "result_lines": [
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ]
+      }
+    ],
+    "identity_limit": "Staged variants and commands retained; no binary digest or post-expansion shader digest was recorded. Full-frame comparisons computed on the original native captures before producing crops."
+  }
+}

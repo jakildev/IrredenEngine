@@ -1,0 +1,58 @@
+{
+  "parent/span128-count1": {
+    "steady frame avg": 9.55,
+    "steady frame p95": 8.4,
+    "GPU frame envelope": 3.819,
+    "GPU shapeCastBoxes": 0.139,
+    "GPU computeSunShadow": 0.067
+  },
+  "parent/span18-count1": {
+    "steady frame avg": 9.54,
+    "steady frame p95": 8.36,
+    "GPU frame envelope": 3.015,
+    "GPU shapeCastBoxes": 0.13,
+    "GPU computeSunShadow": 0.062
+  },
+  "parent/span18-count65": {
+    "steady frame avg": 9.56,
+    "steady frame p95": 8.39,
+    "GPU frame envelope": 4.128,
+    "GPU shapeCastBoxes": 0.486,
+    "GPU computeSunShadow": 0.061
+  },
+  "parent/span512-count1": {
+    "steady frame avg": 11.09,
+    "steady frame p95": 17.97,
+    "GPU frame envelope": 7.167,
+    "GPU shapeCastBoxes": 0.602,
+    "GPU computeSunShadow": 0.071
+  },
+  "candidate/span128-count1": {
+    "steady frame avg": 9.56,
+    "steady frame p95": 8.73,
+    "GPU frame envelope": 3.924,
+    "GPU shapeCastBoxes": 0.145,
+    "GPU computeSunShadow": 0.069
+  },
+  "candidate/span18-count1": {
+    "steady frame avg": 9.56,
+    "steady frame p95": 8.84,
+    "GPU frame envelope": 3.009,
+    "GPU shapeCastBoxes": 0.131,
+    "GPU computeSunShadow": 0.063
+  },
+  "candidate/span18-count65": {
+    "steady frame avg": 9.57,
+    "steady frame p95": 8.39,
+    "GPU frame envelope": 4.057,
+    "GPU shapeCastBoxes": 0.524,
+    "GPU computeSunShadow": 0.063
+  },
+  "candidate/span512-count1": {
+    "steady frame avg": 11.39,
+    "steady frame p95": 18.95,
+    "GPU frame envelope": 6.958,
+    "GPU shapeCastBoxes": 0.594,
+    "GPU computeSunShadow": 0.071
+  }
+}

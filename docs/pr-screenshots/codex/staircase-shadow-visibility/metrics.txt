@@ -1,0 +1,19 @@
+positive-control: exit=1
+capture-471.png blocked-floor: expected=(48, 60, 72) center=(115, 144, 173) max_error=101 FAIL
+capture-471.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+
+corrected: exit=0
+capture-475.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-475.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+
+unblocked: exit=0
+capture-472.png blocked-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-472.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-474.png blocked-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-474.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+
+default-existing-error: exit=1
+capture-487.png blocked-floor: expected=(48, 60, 72) center=(115, 144, 173) max_error=101 FAIL
+capture-487.png outside-floor: expected=(115, 144, 173) center=(92, 115, 138) max_error=58 FAIL
+capture-478.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-478.png outside-floor: expected=(115, 144, 173) center=(92, 115, 138) max_error=58 FAIL

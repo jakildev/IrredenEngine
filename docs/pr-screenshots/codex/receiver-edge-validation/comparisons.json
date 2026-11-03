@@ -1,0 +1,233 @@
+{
+  "base": "973c12a183ab0bde11fa2e037be22e79b0bb84d3",
+  "beauty_pairs": [
+    {
+      "scene": "canvas",
+      "shot": "so3_smooth_sweep",
+      "before_sha256": "9e9682eb0709de0f9471860e4483efa60ad7aee3c34ef58efd8cdcbb65899c70",
+      "after_sha256": "9e9682eb0709de0f9471860e4483efa60ad7aee3c34ef58efd8cdcbb65899c70",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "so3_offsnap_disc",
+      "before_sha256": "1713a2f09abf562dcda22972adaad60f84208fd1c39f6d43f914959fd86c5d5d",
+      "after_sha256": "1713a2f09abf562dcda22972adaad60f84208fd1c39f6d43f914959fd86c5d5d",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "so3_wide_parity",
+      "before_sha256": "bb1abd47eec78432564a0e3d2bde91effac96dd6c15800fc1242330ffd9b886e",
+      "after_sha256": "bb1abd47eec78432564a0e3d2bde91effac96dd6c15800fc1242330ffd9b886e",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "so3_grid_cross",
+      "before_sha256": "bff27f103c45f1f70155e9274d463318e94ec53a9a10eb3d67b1d80c67d8e100",
+      "after_sha256": "bff27f103c45f1f70155e9274d463318e94ec53a9a10eb3d67b1d80c67d8e100",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "so3_offsnap_wide",
+      "before_sha256": "116d4700b6eefb6b5e7e2ad70c31f03e75d0acb97b30ad61329619dd0f5d2c6b",
+      "after_sha256": "116d4700b6eefb6b5e7e2ad70c31f03e75d0acb97b30ad61329619dd0f5d2c6b",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "revoxelize_solids",
+      "before_sha256": "e181245c7dc6fd91c461d11a30b7b6b2e428734b2049f300786227400b0c556a",
+      "after_sha256": "e181245c7dc6fd91c461d11a30b7b6b2e428734b2049f300786227400b0c556a",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "extra_6",
+      "before_sha256": "4031ef0ecc6dc950385db906bce9a224a1513a6a725a808ce0e03b80ed92c159",
+      "after_sha256": "4031ef0ecc6dc950385db906bce9a224a1513a6a725a808ce0e03b80ed92c159",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "extra_7",
+      "before_sha256": "f234462870035d245c84267cd09d1d4a854617f728c268311a776aecf278acdd",
+      "after_sha256": "f234462870035d245c84267cd09d1d4a854617f728c268311a776aecf278acdd",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "extra_8",
+      "before_sha256": "11e73ad23ac91c614b4977055483bab7639dfcb29819c12881d938f79c75a23f",
+      "after_sha256": "11e73ad23ac91c614b4977055483bab7639dfcb29819c12881d938f79c75a23f",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "extra_9",
+      "before_sha256": "7654f9e01251ec1cabd2af06ffefec7c19410dc5698014b663a31259f74f69ec",
+      "after_sha256": "7654f9e01251ec1cabd2af06ffefec7c19410dc5698014b663a31259f74f69ec",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "extra_10",
+      "before_sha256": "93c42f3aadd3eb6c9827abfcc34c1ad62279920aae8ddf6a02e2ef843a424d39",
+      "after_sha256": "93c42f3aadd3eb6c9827abfcc34c1ad62279920aae8ddf6a02e2ef843a424d39",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "canvas",
+      "shot": "extra_11",
+      "before_sha256": "9c3115c74b6cfa78353625d6ae54fae1bb03e9fffa2635c5f533646b882e9ac2",
+      "after_sha256": "9c3115c74b6cfa78353625d6ae54fae1bb03e9fffa2635c5f533646b882e9ac2",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "fog",
+      "shot": "fog_explored_decay_before",
+      "before_sha256": "b7bd2ac79841b08ce3dc71225a0e7a6c75e05ab8dd706a773350a4c73594df99",
+      "after_sha256": "b7bd2ac79841b08ce3dc71225a0e7a6c75e05ab8dd706a773350a4c73594df99",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "fog",
+      "shot": "fog_explored_decay_after",
+      "before_sha256": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+      "after_sha256": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "fog",
+      "shot": "fog_explored_decay_far",
+      "before_sha256": "05147e7fd7909c9713df0d88db9372121b9df4a3f9f1c196c6862f5d4ebe9897",
+      "after_sha256": "05147e7fd7909c9713df0d88db9372121b9df4a3f9f1c196c6862f5d4ebe9897",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "fog",
+      "shot": "fog_explored_decay_return",
+      "before_sha256": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+      "after_sha256": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+      "rgb_identical": true,
+      "byte_identical": true
+    },
+    {
+      "scene": "fog",
+      "shot": "fog_explored_decay_tiers_yaw",
+      "before_sha256": "67a175a0a7e8ec6d8faac8383e8f46138d22a55be2f6f382e714c7b5d6ceeb64",
+      "after_sha256": "67a175a0a7e8ec6d8faac8383e8f46138d22a55be2f6f382e714c7b5d6ceeb64",
+      "rgb_identical": true,
+      "byte_identical": true
+    }
+  ],
+  "fog_samples": [
+    {
+      "framebuffer_pixel": [
+        554,
+        544
+      ],
+      "columns": [
+        134,
+        98,
+        255,
+        255
+      ],
+      "prefog": [
+        134,
+        98,
+        92,
+        255
+      ],
+      "normals": [
+        8,
+        84,
+        128,
+        255
+      ],
+      "receiver-query": [
+        77,
+        59,
+        0,
+        255
+      ]
+    },
+    {
+      "framebuffer_pixel": [
+        534,
+        566
+      ],
+      "columns": [
+        134,
+        95,
+        255,
+        255
+      ],
+      "prefog": [
+        134,
+        95,
+        92,
+        255
+      ],
+      "normals": [
+        8,
+        84,
+        128,
+        255
+      ],
+      "receiver-query": [
+        72,
+        70,
+        0,
+        255
+      ]
+    },
+    {
+      "framebuffer_pixel": [
+        530,
+        570
+      ],
+      "columns": [
+        134,
+        95,
+        255,
+        255
+      ],
+      "prefog": [
+        134,
+        95,
+        92,
+        255
+      ],
+      "normals": [
+        8,
+        84,
+        128,
+        255
+      ],
+      "receiver-query": [
+        71,
+        72,
+        0,
+        255
+      ]
+    }
+  ]
+}

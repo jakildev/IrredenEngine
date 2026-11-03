@@ -1,0 +1,28 @@
+Job: 20261102T030536Z-gui-verify-3ee04c
+[2026-11-01 19:06:36.430] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-11-01 19:06:36.693] [ClientLog] [info] GUI-ASSERT shot=0 label=rotation_20 kind=HOVERED_ENTITY_ID target=456 name=rotation_pick_owner result=FAIL actual=hovered=0,0,0
+[2026-11-01 19:06:36.693] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=0 label=rotation_20 assertions=1
+[2026-11-01 19:06:36.693] [ClientLog] [info] CaptureCamera: label=rotation_20 yaw=0.34906578 zoom=(16,16) effectiveIso=(-27.361609,-74.175415) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:06:36.892] [ClientLog] [info] GUI-ASSERT shot=1 label=cardinal_0 kind=HOVERED_ENTITY_ID target=456 name=rotation_pick_owner result=PASS actual=hovered=456,456,456
+[2026-11-01 19:06:36.892] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=1 label=cardinal_0 assertions=1
+[2026-11-01 19:06:36.892] [ClientLog] [info] CaptureCamera: label=cardinal_0 yaw=0 zoom=(16,16) effectiveIso=(0,-79) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:06:37.086] [ClientLog] [info] GUI-ASSERT shot=2 label=rotation_70 kind=HOVERED_ENTITY_ID target=456 name=rotation_pick_owner result=FAIL actual=hovered=0,0,0
+[2026-11-01 19:06:37.086] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=2 label=rotation_70 assertions=1
+[2026-11-01 19:06:37.086] [ClientLog] [info] CaptureCamera: label=rotation_70 yaw=1.2217305 zoom=(16,16) effectiveIso=(-75.17541,-26.36161) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:06:37.282] [ClientLog] [info] GUI-ASSERT shot=3 label=cardinal_90 kind=HOVERED_ENTITY_ID target=456 name=rotation_pick_owner result=PASS actual=hovered=456,456,456
+[2026-11-01 19:06:37.282] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=3 label=cardinal_90 assertions=1
+[2026-11-01 19:06:37.282] [ClientLog] [info] CaptureCamera: label=cardinal_90 yaw=1.5707963 zoom=(16,16) effectiveIso=(-80,0.9999924) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:06:37.477] [ClientLog] [info] GUI-ASSERT shot=4 label=rotation_160 kind=HOVERED_ENTITY_ID target=456 name=rotation_pick_owner result=FAIL actual=hovered=0,0,0
+[2026-11-01 19:06:37.477] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=4 label=rotation_160 assertions=1
+[2026-11-01 19:06:37.477] [ClientLog] [info] CaptureCamera: label=rotation_160 yaw=2.792527 zoom=(16,16) effectiveIso=(-27.361603,76.175415) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:06:37.672] [ClientLog] [info] GUI-ASSERT shot=5 label=cardinal_180 kind=HOVERED_ENTITY_ID target=456 name=rotation_pick_owner result=PASS actual=hovered=456,456,456
+[2026-11-01 19:06:37.672] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=5 label=cardinal_180 assertions=1
+[2026-11-01 19:06:37.672] [ClientLog] [info] CaptureCamera: label=cardinal_180 yaw=-3.1414928 zoom=(16,16) effectiveIso=(0.007987976,81) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:06:37.867] [ClientLog] [info] GUI-ASSERT shot=6 label=rotation_250 kind=HOVERED_ENTITY_ID target=456 name=rotation_pick_owner result=FAIL actual=hovered=0,0,0
+[2026-11-01 19:06:37.867] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=6 label=rotation_250 assertions=1
+[2026-11-01 19:06:37.867] [ClientLog] [info] CaptureCamera: label=rotation_250 yaw=-1.919862 zoom=(16,16) effectiveIso=(75.175415,28.361603) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:06:38.062] [ClientLog] [info] GUI-ASSERT shot=7 label=cardinal_270 kind=HOVERED_ENTITY_ID target=456 name=rotation_pick_owner result=PASS actual=hovered=456,456,456
+[2026-11-01 19:06:38.062] [ClientLog] [info] GUI-ASSERT-COVERAGE shot=7 label=cardinal_270 assertions=1
+[2026-11-01 19:06:38.062] [ClientLog] [info] CaptureCamera: label=cardinal_270 yaw=-1.5707963 zoom=(16,16) effectiveIso=(80,0.9999924) subdivisions=1 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
+[gui-verify] 4/8 assertions passed

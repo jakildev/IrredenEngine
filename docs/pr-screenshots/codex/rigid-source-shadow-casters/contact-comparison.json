@@ -1,0 +1,38 @@
+{
+  "10": [
+    {
+      "common_receiver_pixels": 103680,
+      "differing_pixels": 776
+    },
+    {
+      "common_receiver_pixels": 103680,
+      "differing_pixels": 1008
+    },
+    {
+      "common_receiver_pixels": 103680,
+      "differing_pixels": 1216
+    },
+    {
+      "common_receiver_pixels": 103680,
+      "differing_pixels": 1088
+    }
+  ],
+  "12": [
+    {
+      "common_receiver_pixels": 106368,
+      "differing_pixels": 688
+    },
+    {
+      "common_receiver_pixels": 106372,
+      "differing_pixels": 960
+    },
+    {
+      "common_receiver_pixels": 106372,
+      "differing_pixels": 1072
+    },
+    {
+      "common_receiver_pixels": 106372,
+      "differing_pixels": 952
+    }
+  ]
+}

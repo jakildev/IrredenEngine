@@ -1,0 +1,244 @@
+{
+  "source_head": "ffbcf2161820906760fce7299c035a141fe523b4",
+  "variants": {
+    "query-disabled": {
+      "shader_sha256": "3366067e94e878afe90dd6f0382f8ba2a2ba69b5acf3bcc56247738159e9bb39",
+      "cases": {
+        "modeswitch": {
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "IRCanvasStress",
+            "--config-preset",
+            "/tmp/shadow-hierarchy-transitions/query-disabled/modeswitch/config.lua",
+            "--auto-screenshot",
+            "12",
+            "--only",
+            "modeswitch",
+            "--no-auto-rotate",
+            "--no-spin"
+          ],
+          "result": "CLEAN",
+          "shots": [
+            {
+              "label": "modeswitch_grid",
+              "frame": "screenshot_000001.png",
+              "sha256": "bbb94a07cf29464007602385b835f58e598f662fb77aeae6facd320a599b7555",
+              "reference_changed_pixels": 740
+            },
+            {
+              "label": "modeswitch_detached",
+              "frame": "screenshot_000002.png",
+              "sha256": "c63dd74b35037641a970f255f0dc60ea688395e2d9a58a36eaaef11cb8744ac5",
+              "reference_changed_pixels": 0
+            },
+            {
+              "label": "modeswitch_revox",
+              "frame": "screenshot_000003.png",
+              "sha256": "301eab0fd6ec50ad8fc47da940e6096e151017e81f73e6491a6eedb751a7b271",
+              "reference_changed_pixels": 0
+            },
+            {
+              "label": "modeswitch_grid_return",
+              "frame": "screenshot_000004.png",
+              "sha256": "bbb94a07cf29464007602385b835f58e598f662fb77aeae6facd320a599b7555",
+              "reference_changed_pixels": 740
+            }
+          ]
+        },
+        "detach": {
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "IRCanvasStress",
+            "--config-preset",
+            "/tmp/shadow-hierarchy-transitions/query-disabled/detach/config.lua",
+            "--auto-screenshot",
+            "30",
+            "--only",
+            "detach",
+            "--no-auto-rotate",
+            "--no-spin"
+          ],
+          "result": "CLEAN",
+          "shots": [
+            {
+              "label": "detach_hosted",
+              "frame": "screenshot_000001.png",
+              "sha256": "11e5790013b4ab67251681fe3bcff4570e422296cda15ac55779ef532d67b69f",
+              "reference_changed_pixels": 0
+            },
+            {
+              "label": "detach_own_canvas",
+              "frame": "screenshot_000002.png",
+              "sha256": "5f2a3ba72ae31c368b4c6f58b1820e9afc9d046a2f54cd3f0218b6519d65bae7",
+              "reference_changed_pixels": 0
+            },
+            {
+              "label": "detach_grid",
+              "frame": "screenshot_000003.png",
+              "sha256": "55a6a4ddd60fcec1d9439ed0b5d9438f6869a357480f280add20ca6e661dae81",
+              "reference_changed_pixels": 536
+            }
+          ]
+        },
+        "impulse": {
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "IRCanvasStress",
+            "--config-preset",
+            "/tmp/shadow-hierarchy-transitions/query-disabled/impulse/config.lua",
+            "--auto-screenshot",
+            "6",
+            "--only",
+            "impulse",
+            "--no-auto-rotate"
+          ],
+          "result": "CLEAN",
+          "shots": [
+            {
+              "label": "impulse_midspin",
+              "frame": "screenshot_000001.png",
+              "sha256": "03231d6ff2de906dd75b0778e7fb5e321c558a4b4d447a655837451b05d2f0ae",
+              "reference_changed_pixels": 2024
+            },
+            {
+              "label": "impulse_settled",
+              "frame": "screenshot_000002.png",
+              "sha256": "7edd8f3d5bc4c207498bf2c3c32afc3357d053eb3b8fb294b4399494af9666cb",
+              "reference_changed_pixels": 1696
+            }
+          ]
+        }
+      }
+    },
+    "production": {
+      "shader_sha256": "805ce52affd830129b4449ff5eb841cda2947843770e6a24dd27287f0564eaf0",
+      "cases": {
+        "modeswitch": {
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "IRCanvasStress",
+            "--config-preset",
+            "/tmp/shadow-hierarchy-transitions/production/modeswitch/config.lua",
+            "--auto-screenshot",
+            "12",
+            "--only",
+            "modeswitch",
+            "--no-auto-rotate",
+            "--no-spin"
+          ],
+          "result": "CLEAN",
+          "shots": [
+            {
+              "label": "modeswitch_grid",
+              "frame": "screenshot_000001.png",
+              "sha256": "bbb94a07cf29464007602385b835f58e598f662fb77aeae6facd320a599b7555",
+              "reference_changed_pixels": 740,
+              "query_changed_pixels": 0
+            },
+            {
+              "label": "modeswitch_detached",
+              "frame": "screenshot_000002.png",
+              "sha256": "c63dd74b35037641a970f255f0dc60ea688395e2d9a58a36eaaef11cb8744ac5",
+              "reference_changed_pixels": 0,
+              "query_changed_pixels": 0
+            },
+            {
+              "label": "modeswitch_revox",
+              "frame": "screenshot_000003.png",
+              "sha256": "301eab0fd6ec50ad8fc47da940e6096e151017e81f73e6491a6eedb751a7b271",
+              "reference_changed_pixels": 0,
+              "query_changed_pixels": 0
+            },
+            {
+              "label": "modeswitch_grid_return",
+              "frame": "screenshot_000004.png",
+              "sha256": "bbb94a07cf29464007602385b835f58e598f662fb77aeae6facd320a599b7555",
+              "reference_changed_pixels": 740,
+              "query_changed_pixels": 0
+            }
+          ]
+        },
+        "detach": {
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "IRCanvasStress",
+            "--config-preset",
+            "/tmp/shadow-hierarchy-transitions/production/detach/config.lua",
+            "--auto-screenshot",
+            "30",
+            "--only",
+            "detach",
+            "--no-auto-rotate",
+            "--no-spin"
+          ],
+          "result": "CLEAN",
+          "shots": [
+            {
+              "label": "detach_hosted",
+              "frame": "screenshot_000001.png",
+              "sha256": "11e5790013b4ab67251681fe3bcff4570e422296cda15ac55779ef532d67b69f",
+              "reference_changed_pixels": 0,
+              "query_changed_pixels": 0
+            },
+            {
+              "label": "detach_own_canvas",
+              "frame": "screenshot_000002.png",
+              "sha256": "5f2a3ba72ae31c368b4c6f58b1820e9afc9d046a2f54cd3f0218b6519d65bae7",
+              "reference_changed_pixels": 0,
+              "query_changed_pixels": 0
+            },
+            {
+              "label": "detach_grid",
+              "frame": "screenshot_000003.png",
+              "sha256": "55a6a4ddd60fcec1d9439ed0b5d9438f6869a357480f280add20ca6e661dae81",
+              "reference_changed_pixels": 536,
+              "query_changed_pixels": 0
+            }
+          ]
+        },
+        "impulse": {
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "IRCanvasStress",
+            "--config-preset",
+            "/tmp/shadow-hierarchy-transitions/production/impulse/config.lua",
+            "--auto-screenshot",
+            "6",
+            "--only",
+            "impulse",
+            "--no-auto-rotate"
+          ],
+          "result": "CLEAN",
+          "shots": [
+            {
+              "label": "impulse_midspin",
+              "frame": "screenshot_000001.png",
+              "sha256": "03231d6ff2de906dd75b0778e7fb5e321c558a4b4d447a655837451b05d2f0ae",
+              "reference_changed_pixels": 2024,
+              "query_changed_pixels": 0
+            },
+            {
+              "label": "impulse_settled",
+              "frame": "screenshot_000002.png",
+              "sha256": "7edd8f3d5bc4c207498bf2c3c32afc3357d053eb3b8fb294b4399494af9666cb",
+              "reference_changed_pixels": 1696,
+              "query_changed_pixels": 0
+            }
+          ]
+        }
+      }
+    }
+  }
+}

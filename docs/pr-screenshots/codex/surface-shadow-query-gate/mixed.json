@@ -1,0 +1,96 @@
+{
+  "head": "968190473166767779ea314bd19f18fdbb8dd829",
+  "changes": " M engine/render/src/shaders/ir_world_surface_lighting.glsl\n M engine/render/src/shaders/metal/ir_world_surface_lighting.metal\n M scripts/tests/test_render_shape_surface_lighting.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "92d9c264d6e485f3bd4184c8b209bf2eea270bf7f8758e710761a8bd1bfa01e3",
+  "shader_sha256": "17016739a32ea3ce57ee5af618292f814fc24e20ea5bad3dfd8749bd0bdb303e",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion,orbit,floor",
+    "--probe-grid",
+    "--probe-staircase",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--zoom",
+    "1",
+    "--subdivisions",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "5.10508806",
+    "5"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-28T05:10:54Z",
+      "finished_utc": "2026-09-28T05:11:01Z",
+      "host_battery_percent": 29,
+      "host_load_1m": 4.88,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 1.0,
+      "zoom_last": 1.0,
+      "zoom_min": 1.0,
+      "zoom_max": 1.0,
+      "zoom_range_present": true,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 1552,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "environment": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "screenshots": [
+    {
+      "source": "screenshot_003117.png",
+      "file": "mixed-0.png",
+      "sha256": "4b2a279c41ec311e8623977a688020acdc5b2f7ea78f1cd5e89c145fb8ae8f59"
+    },
+    {
+      "source": "screenshot_003118.png",
+      "file": "mixed-1.png",
+      "sha256": "3779a3e11e137764fd645821f6ceeee42481d51a25098b5dee3eba2db09e48dc"
+    },
+    {
+      "source": "screenshot_003119.png",
+      "file": "mixed-2.png",
+      "sha256": "bedfc511e8327c2e189e49848017d6865e6f7ccc619d291b63788cdd139dd862"
+    },
+    {
+      "source": "screenshot_003120.png",
+      "file": "mixed-3.png",
+      "sha256": "3b2ad53cc8eea2728e6fc3071451fbb0c2406c3dfe3cd1e60d1be2845ab7a83f"
+    },
+    {
+      "source": "screenshot_003121.png",
+      "file": "mixed-4.png",
+      "sha256": "0405a9c25c8def07220f4381c6f66e26315bc07d8f997fc8a7ffac2fba6a1088"
+    }
+  ]
+}

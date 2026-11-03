@@ -1,0 +1,2581 @@
+{
+  "head": "0d40e0fda6560b7a20532b17e2e4a7e8d8903146",
+  "cases": [
+    {
+      "case": "positive-q0-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/positive-q0-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0.6",
+        "--probe-overlapping-source-offset",
+        "5.8",
+        "0",
+        "-8.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "positive-q0-integer/screenshot_000001.png",
+      "sha256": "75fc54f7b0de92ac3403a5ebfaf2e939c9b945a79a307c937dc69f36d8adc065",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 0.6,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        5.8,
+        0.0,
+        -8.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 4523,
+        "outside": 19728,
+        "boundary": 603,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1160.528496094038,
+            467.56659175176986
+          ],
+          [
+            1172.278432155365,
+            436.6318441382431
+          ],
+          [
+            1241.3767899756585,
+            435.33030453790514
+          ],
+          [
+            1288.2732568415847,
+            450.0056825876444
+          ],
+          [
+            1276.523320780258,
+            480.94043020117124
+          ],
+          [
+            1207.4249629599644,
+            482.24196980150913
+          ]
+        ],
+        "occluder": [
+          [
+            937.1392167631598,
+            232.33238072568832
+          ],
+          [
+            959.8155882881445,
+            182.1473881989183
+          ],
+          [
+            986.4580904346425,
+            166.89486599787483
+          ],
+          [
+            1044.6298985020794,
+            193.4434458392659
+          ],
+          [
+            1021.9535269770947,
+            243.628438366036
+          ],
+          [
+            995.3110248305966,
+            258.8809605670794
+          ]
+        ]
+      }
+    },
+    {
+      "case": "positive-q1-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/positive-q1-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "2.1707963267948966",
+        "--probe-overlapping-source-offset",
+        "5.8",
+        "0",
+        "-8.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "positive-q1-integer/screenshot_000001.png",
+      "sha256": "121a79e8ee6d15352c81235bf0fc770567f55fcec565ae5be328ac2b7208447d",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 2.1707963267948966,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        5.8,
+        0.0,
+        -8.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 23867,
+        "valid": 23867,
+        "unknown": 0,
+        "inside": 4552,
+        "outside": 18775,
+        "boundary": 540,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1175.741239383265,
+            557.821786961588
+          ],
+          [
+            1250.8208641394824,
+            357.6649422457092
+          ],
+          [
+            1384.258760616735,
+            370.178213038412
+          ],
+          [
+            1309.1791358605176,
+            570.3350577542908
+          ]
+        ],
+        "shadow": [
+          [
+            1222.6606090758103,
+            483.3116050121708
+          ],
+          [
+            1252.0113651752888,
+            459.8633715792076
+          ],
+          [
+            1313.8808604023425,
+            465.738339609871
+          ],
+          [
+            1316.4839396030184,
+            500.2875185200178
+          ],
+          [
+            1287.1331835035398,
+            523.735751952981
+          ],
+          [
+            1225.2636882764862,
+            517.8607839223175
+          ]
+        ],
+        "occluder": [
+          [
+            1174.8501024402508,
+            366.24076956042825
+          ],
+          [
+            1206.3155710982965,
+            347.97071103907797
+          ],
+          [
+            1265.3919360806187,
+            347.00630182220937
+          ],
+          [
+            1276.7015506896578,
+            402.8746728069522
+          ],
+          [
+            1245.236082031612,
+            421.14473132830244
+          ],
+          [
+            1186.1597170492896,
+            422.10914054517104
+          ]
+        ]
+      }
+    },
+    {
+      "case": "positive-q2-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/positive-q2-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "3.741592653589793",
+        "--probe-overlapping-source-offset",
+        "5.8",
+        "0",
+        "-8.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "positive-q2-integer/screenshot_000001.png",
+      "sha256": "e7a36b4e4f2a17f8299eb8924bafdf6078638b8e2086ee0a609e16343911ae6a",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 3.741592653589793,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        5.8,
+        0.0,
+        -8.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 4523,
+        "outside": 19728,
+        "boundary": 603,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1271.7267431584153,
+            477.9943174123556
+          ],
+          [
+            1283.476679219742,
+            447.0595697988288
+          ],
+          [
+            1352.5750370400356,
+            445.75803019849087
+          ],
+          [
+            1399.471503905962,
+            460.43340824823014
+          ],
+          [
+            1387.721567844635,
+            491.3681558617569
+          ],
+          [
+            1318.6232100243415,
+            492.66969546209486
+          ]
+        ],
+        "occluder": [
+          [
+            1515.3701014979206,
+            267.1278747409694
+          ],
+          [
+            1542.0126036444187,
+            223.30403195969058
+          ],
+          [
+            1600.1844117118555,
+            228.22092077634522
+          ],
+          [
+            1622.8607832368402,
+            267.0962986940763
+          ],
+          [
+            1596.218281090342,
+            310.92014147535514
+          ],
+          [
+            1538.0464730229053,
+            306.0032526587005
+          ]
+        ]
+      }
+    },
+    {
+      "case": "positive-q3-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/positive-q3-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "5.312388980384689",
+        "--probe-overlapping-source-offset",
+        "5.8",
+        "0",
+        "-8.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "positive-q3-integer/screenshot_000001.png",
+      "sha256": "9304090a5d5551b1265f54f5ce6e40a8cb342c7c41997ad29f255ac5103be073",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 5.312388980384689,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        5.8,
+        0.0,
+        -8.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 25606,
+        "valid": 25606,
+        "unknown": 0,
+        "inside": 4552,
+        "outside": 20514,
+        "boundary": 540,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1175.741239383265,
+            557.8217869615879
+          ],
+          [
+            1250.8208641394824,
+            357.6649422457092
+          ],
+          [
+            1384.258760616735,
+            370.1782130384121
+          ],
+          [
+            1309.1791358605176,
+            570.3350577542908
+          ]
+        ],
+        "shadow": [
+          [
+            1243.5160603969819,
+            427.71248147998216
+          ],
+          [
+            1272.8668164964604,
+            404.264248047019
+          ],
+          [
+            1334.7363117235138,
+            410.1392160776825
+          ],
+          [
+            1337.3393909241897,
+            444.6883949878292
+          ],
+          [
+            1307.9886348247112,
+            468.1366284207924
+          ],
+          [
+            1246.1191395976575,
+            462.26166039012895
+          ]
+        ],
+        "occluder": [
+          [
+            1283.2984493103424,
+            118.18569763754886
+          ],
+          [
+            1294.6080639193813,
+            84.99369817779063
+          ],
+          [
+            1326.0735325774272,
+            45.091948631703985
+          ],
+          [
+            1385.1498975597494,
+            72.69885999507073
+          ],
+          [
+            1373.8402829507104,
+            105.89085945482896
+          ],
+          [
+            1342.3748142926647,
+            145.7926090009156
+          ]
+        ]
+      }
+    },
+    {
+      "case": "positive-near-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/positive-near-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0.6",
+        "--probe-overlapping-source-offset",
+        "-0.2",
+        "0",
+        "-0.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "positive-near-integer/screenshot_000001.png",
+      "sha256": "04cd8524ec431bd8dcbcca5715feb63e9d4bf975639af1ad9ae7332a58b74924",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 0.6,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        -0.2,
+        0.0,
+        -0.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 4523,
+        "outside": 19728,
+        "boundary": 603,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1160.528496094038,
+            467.56659175176986
+          ],
+          [
+            1172.278432155365,
+            436.6318441382431
+          ],
+          [
+            1241.3767899756585,
+            435.33030453790514
+          ],
+          [
+            1288.273256841585,
+            450.0056825876444
+          ],
+          [
+            1276.523320780258,
+            480.94043020117124
+          ],
+          [
+            1207.4249629599644,
+            482.24196980150913
+          ]
+        ],
+        "occluder": [
+          [
+            1070.5771132404122,
+            372.84565151839115
+          ],
+          [
+            1093.253484765397,
+            322.6606589916212
+          ],
+          [
+            1119.895986911895,
+            307.4081367905777
+          ],
+          [
+            1178.067794979332,
+            333.9567166319688
+          ],
+          [
+            1155.3914234543472,
+            384.1417091587388
+          ],
+          [
+            1128.748921307849,
+            399.3942313597822
+          ]
+        ]
+      }
+    },
+    {
+      "case": "positive-fractional",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/positive-fractional/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0.6",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "0"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "positive-fractional/screenshot_000001.png",
+      "sha256": "16df0a5b51f379af385ccf5c73a24d8caa923e617c284adf4b7e8a67a6e6a5be",
+      "passed": false,
+      "coverage_valid": true,
+      "yaw": 0.6,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 4523,
+        "outside": 19728,
+        "boundary": 603,
+        "missing": 392,
+        "excess": 434
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1149.4086713876004,
+            466.5238191857113
+          ],
+          [
+            1161.1586074489273,
+            435.5890715721845
+          ],
+          [
+            1230.256965269221,
+            434.2875319718466
+          ],
+          [
+            1277.153432135147,
+            448.96291002158586
+          ],
+          [
+            1265.4034960738204,
+            479.89765763511264
+          ],
+          [
+            1196.3051382535268,
+            481.1991972354506
+          ]
+        ],
+        "occluder": [
+          [
+            1066.129183357837,
+            378.8285424919677
+          ],
+          [
+            1088.805554882822,
+            328.6435499651977
+          ],
+          [
+            1115.44805702932,
+            313.3910277641543
+          ],
+          [
+            1173.6198650967567,
+            339.93960760554535
+          ],
+          [
+            1150.9434935717723,
+            390.1246001323154
+          ],
+          [
+            1124.300991425274,
+            405.3771223333588
+          ]
+        ]
+      }
+    },
+    {
+      "case": "positive-sampled",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/positive-sampled/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0.6",
+        "--probe-overlapping-source-offset",
+        "-0.2",
+        "0",
+        "-0.4"
+      ],
+      "result": "CLEAN",
+      "surface": 0,
+      "image": "positive-sampled/screenshot_000001.png",
+      "sha256": "fb065e39aca4795cfdfa326e4e122321c84359d362aca0f5df7e8a2bd5085083",
+      "passed": false,
+      "coverage_valid": true,
+      "yaw": 0.6,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        -0.2,
+        0.0,
+        -0.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 4523,
+        "outside": 19728,
+        "boundary": 603,
+        "missing": 135,
+        "excess": 382
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1160.528496094038,
+            467.56659175176986
+          ],
+          [
+            1172.278432155365,
+            436.6318441382431
+          ],
+          [
+            1241.3767899756585,
+            435.33030453790514
+          ],
+          [
+            1288.273256841585,
+            450.0056825876444
+          ],
+          [
+            1276.523320780258,
+            480.94043020117124
+          ],
+          [
+            1207.4249629599644,
+            482.24196980150913
+          ]
+        ],
+        "occluder": [
+          [
+            1070.5771132404122,
+            372.84565151839115
+          ],
+          [
+            1093.253484765397,
+            322.6606589916212
+          ],
+          [
+            1119.895986911895,
+            307.4081367905777
+          ],
+          [
+            1178.067794979332,
+            333.9567166319688
+          ],
+          [
+            1155.3914234543472,
+            384.1417091587388
+          ],
+          [
+            1128.748921307849,
+            399.3942313597822
+          ]
+        ]
+      }
+    },
+    {
+      "case": "positive-cardinal",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/positive-cardinal/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0",
+        "--probe-overlapping-source-offset",
+        "-0.2",
+        "0",
+        "-0.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "positive-cardinal/screenshot_000001.png",
+      "sha256": "a4ad481bceda4b338e2dc1cd32a741cbe6b3b8fbedbb7889aa8b73dde59acaa6",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 0,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        -0.2,
+        0.0,
+        -0.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 25008,
+        "valid": 25008,
+        "unknown": 0,
+        "inside": 4540,
+        "outside": 19908,
+        "boundary": 560,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1088.0,
+            416.0
+          ],
+          [
+            1184.0,
+            368.0
+          ],
+          [
+            1472.0,
+            512.0
+          ],
+          [
+            1376.0,
+            560.0
+          ]
+        ],
+        "shadow": [
+          [
+            1177.3682144829695,
+            433.2142924637353
+          ],
+          [
+            1222.0,
+            411.0
+          ],
+          [
+            1280.4991447191737,
+            429.4337268472187
+          ],
+          [
+            1302.6317855170305,
+            454.78570753626474
+          ],
+          [
+            1258.0,
+            477.0
+          ],
+          [
+            1199.5008552808263,
+            458.5662731527813
+          ]
+        ],
+        "occluder": [
+          [
+            1112.6539692653812,
+            314.5715095648235
+          ],
+          [
+            1137.755475067867,
+            271.77623173144764
+          ],
+          [
+            1193.101505802486,
+            269.20472216662426
+          ],
+          [
+            1223.3460307346188,
+            309.4284904351765
+          ],
+          [
+            1198.244524932133,
+            352.22376826855236
+          ],
+          [
+            1142.898494197514,
+            354.7952778333758
+          ]
+        ]
+      }
+    },
+    {
+      "case": "negative-q0-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/negative-q0-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "-0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0.6",
+        "--probe-overlapping-source-offset",
+        "-5.8",
+        "0",
+        "-8.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "negative-q0-integer/screenshot_000001.png",
+      "sha256": "5709784659a5fe9ed23f246ed43c912475daa31fd40b1832b42c61dbf8a887e4",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 0.6,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        -0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        -5.8,
+        0.0,
+        -8.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 3740,
+        "outside": 20521,
+        "boundary": 593,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1268.2352073967181,
+            469.88558870618687
+          ],
+          [
+            1309.7702756283875,
+            441.7439713373914
+          ],
+          [
+            1379.2174248973347,
+            458.5340619456979
+          ],
+          [
+            1402.9630396676591,
+            468.54213695439887
+          ],
+          [
+            1361.4279714359898,
+            496.68375432319436
+          ],
+          [
+            1291.9808221670423,
+            479.89366371488785
+          ]
+        ],
+        "occluder": [
+          [
+            1515.3701014979206,
+            286.55655416073404
+          ],
+          [
+            1538.0464730229053,
+            236.371561633964
+          ],
+          [
+            1564.6889751694034,
+            221.1190394329206
+          ],
+          [
+            1622.8607832368402,
+            247.66761927431168
+          ],
+          [
+            1600.1844117118555,
+            297.8526118010817
+          ],
+          [
+            1573.5419095653574,
+            313.1051340021251
+          ]
+        ]
+      }
+    },
+    {
+      "case": "negative-q1-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/negative-q1-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "-0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "2.1707963267948966",
+        "--probe-overlapping-source-offset",
+        "-5.8",
+        "0",
+        "-8.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "negative-q1-integer/screenshot_000001.png",
+      "sha256": "a6d40b72920712cc34b04fd6a2f5308fca97622a4b04daf23719d73905013169",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 2.1707963267948966,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        -0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        -5.8,
+        0.0,
+        -8.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 25606,
+        "valid": 25606,
+        "unknown": 0,
+        "inside": 3776,
+        "outside": 21306,
+        "boundary": 524,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1175.741239383265,
+            557.821786961588
+          ],
+          [
+            1250.8208641394824,
+            357.6649422457092
+          ],
+          [
+            1384.258760616735,
+            370.178213038412
+          ],
+          [
+            1309.1791358605176,
+            570.3350577542908
+          ]
+        ],
+        "shadow": [
+          [
+            1235.4879426747827,
+            449.11486218580626
+          ],
+          [
+            1269.0681238913958,
+            414.3912875513326
+          ],
+          [
+            1289.0842739087977,
+            402.51848016617043
+          ],
+          [
+            1345.3675086463886,
+            423.2860142820051
+          ],
+          [
+            1311.7873274297756,
+            458.00958891647883
+          ],
+          [
+            1291.7711774123736,
+            469.88239630164094
+          ]
+        ],
+        "occluder": [
+          [
+            1283.2984493103422,
+            77.12532719304772
+          ],
+          [
+            1314.763917968388,
+            58.85526867169756
+          ],
+          [
+            1373.8402829507104,
+            57.890859454828956
+          ],
+          [
+            1385.1498975597492,
+            113.75923043957175
+          ],
+          [
+            1353.6844289017035,
+            132.02928896092203
+          ],
+          [
+            1294.6080639193813,
+            132.99369817779063
+          ]
+        ]
+      }
+    },
+    {
+      "case": "negative-q2-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/negative-q2-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "-0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "3.741592653589793",
+        "--probe-overlapping-source-offset",
+        "-5.8",
+        "0",
+        "-8.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "negative-q2-integer/screenshot_000001.png",
+      "sha256": "14a2f4ae9bfe838940d8ae81fcff0fb669c4161178a3c7a88a8de79ccf153abd",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 3.741592653589793,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        -0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        -5.8,
+        0.0,
+        -8.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 3740,
+        "outside": 20521,
+        "boundary": 593,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1157.0369603323409,
+            459.45786304560113
+          ],
+          [
+            1198.5720285640102,
+            431.31624567680564
+          ],
+          [
+            1268.0191778329577,
+            448.10633628511215
+          ],
+          [
+            1291.7647926032819,
+            458.11441129381313
+          ],
+          [
+            1250.2297243716125,
+            486.2560286626086
+          ],
+          [
+            1180.7825751026653,
+            469.4659380543021
+          ]
+        ],
+        "occluder": [
+          [
+            937.1392167631598,
+            212.90370130592368
+          ],
+          [
+            963.7817189096579,
+            169.0798585246448
+          ],
+          [
+            1021.9535269770947,
+            173.9967473412995
+          ],
+          [
+            1044.6298985020794,
+            212.8721252590306
+          ],
+          [
+            1017.9873963555813,
+            256.6959680403094
+          ],
+          [
+            959.8155882881445,
+            251.77907922365478
+          ]
+        ]
+      }
+    },
+    {
+      "case": "negative-q3-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/negative-q3-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "-0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "5.312388980384689",
+        "--probe-overlapping-source-offset",
+        "-5.8",
+        "0",
+        "-8.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "negative-q3-integer/screenshot_000001.png",
+      "sha256": "54fa35a2de8068ace5b1d9caab8f26edb4022d9b51517c0ff656bc14734a8685",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 5.312388980384689,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        -0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        -5.8,
+        0.0,
+        -8.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24024,
+        "valid": 24024,
+        "unknown": 0,
+        "inside": 3776,
+        "outside": 19724,
+        "boundary": 524,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1175.741239383265,
+            557.8217869615879
+          ],
+          [
+            1250.8208641394824,
+            357.6649422457092
+          ],
+          [
+            1384.258760616735,
+            370.1782130384121
+          ],
+          [
+            1309.1791358605176,
+            570.3350577542908
+          ]
+        ],
+        "shadow": [
+          [
+            1214.6324913536112,
+            504.7139857179949
+          ],
+          [
+            1248.2126725702244,
+            469.99041108352117
+          ],
+          [
+            1268.2288225876264,
+            458.117603698359
+          ],
+          [
+            1324.5120573252173,
+            478.88513781419374
+          ],
+          [
+            1290.9318761086042,
+            513.6087124486673
+          ],
+          [
+            1270.9157260912023,
+            525.4815198338296
+          ]
+        ],
+        "occluder": [
+          [
+            1174.8501024402506,
+            407.3011400049292
+          ],
+          [
+            1186.1597170492896,
+            374.10914054517104
+          ],
+          [
+            1217.6251857073353,
+            334.2073909990844
+          ],
+          [
+            1276.7015506896576,
+            361.8143023624512
+          ],
+          [
+            1265.3919360806187,
+            395.00630182220937
+          ],
+          [
+            1233.9264674225728,
+            434.908051368296
+          ]
+        ]
+      }
+    },
+    {
+      "case": "negative-near-integer",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/negative-near-integer/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "-0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0.6",
+        "--probe-overlapping-source-offset",
+        "0.2",
+        "0",
+        "-0.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "negative-near-integer/screenshot_000001.png",
+      "sha256": "353c6ba26d4905e70f1de01b8a6d328d16214e136984f2c64db11da35ad32ded",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 0.6,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        -0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        0.2,
+        0.0,
+        -0.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 3740,
+        "outside": 20521,
+        "boundary": 593,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1268.2352073967181,
+            469.8855887061868
+          ],
+          [
+            1309.7702756283875,
+            441.7439713373914
+          ],
+          [
+            1379.2174248973347,
+            458.5340619456979
+          ],
+          [
+            1402.9630396676591,
+            468.54213695439887
+          ],
+          [
+            1361.4279714359895,
+            496.6837543231943
+          ],
+          [
+            1291.9808221670423,
+            479.89366371488785
+          ]
+        ],
+        "occluder": [
+          [
+            1381.932205020668,
+            402.0432833680312
+          ],
+          [
+            1404.6085765456528,
+            351.8582908412612
+          ],
+          [
+            1431.251078692151,
+            336.6057686402178
+          ],
+          [
+            1489.4228867595878,
+            363.15434848160885
+          ],
+          [
+            1466.746515234603,
+            413.3393410083788
+          ],
+          [
+            1440.104013088105,
+            428.5918632094223
+          ]
+        ]
+      }
+    },
+    {
+      "case": "negative-fractional",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/negative-fractional/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "-0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0.6",
+        "--probe-overlapping-source-offset",
+        "0",
+        "0",
+        "0"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "negative-fractional/screenshot_000001.png",
+      "sha256": "3da0886927c697da7e1cb2ce85d83e4d0999bae2fb794e017d02d302795cdcf6",
+      "passed": false,
+      "coverage_valid": true,
+      "yaw": 0.6,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        -0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 3741,
+        "outside": 20521,
+        "boundary": 592,
+        "missing": 388,
+        "excess": 399
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1279.3550321031557,
+            470.9283612722454
+          ],
+          [
+            1320.890100334825,
+            442.78674390345
+          ],
+          [
+            1390.3372496037725,
+            459.57683451175643
+          ],
+          [
+            1414.0828643740967,
+            469.5849095204575
+          ],
+          [
+            1372.5477961424274,
+            497.7265268892529
+          ],
+          [
+            1303.10064687348,
+            480.9364362809464
+          ]
+        ],
+        "occluder": [
+          [
+            1386.3801349032433,
+            408.8603923944546
+          ],
+          [
+            1409.0565064282277,
+            358.6753998676846
+          ],
+          [
+            1435.699008574726,
+            343.42287766664117
+          ],
+          [
+            1493.870816642163,
+            369.97145750803224
+          ],
+          [
+            1471.194445117178,
+            420.1564500348023
+          ],
+          [
+            1444.55194297068,
+            435.4089722358457
+          ]
+        ]
+      }
+    },
+    {
+      "case": "negative-sampled",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/negative-sampled/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "-0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0.6",
+        "--probe-overlapping-source-offset",
+        "0.2",
+        "0",
+        "-0.4"
+      ],
+      "result": "CLEAN",
+      "surface": 0,
+      "image": "negative-sampled/screenshot_000001.png",
+      "sha256": "e9af41b540d33ab41d0549eedfaf9d75b97a417f29b8c26b5bdd1e9d2775cd1b",
+      "passed": false,
+      "coverage_valid": true,
+      "yaw": 0.6,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        -0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        0.2,
+        0.0,
+        -0.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24854,
+        "valid": 24854,
+        "unknown": 0,
+        "inside": 3740,
+        "outside": 20521,
+        "boundary": 593,
+        "missing": 498,
+        "excess": 134
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1067.3298844914184,
+            478.58956793025885
+          ],
+          [
+            1092.3564260768242,
+            411.87061969163256
+          ],
+          [
+            1492.6701155085816,
+            449.41043206974115
+          ],
+          [
+            1467.6435739231758,
+            516.1293803083674
+          ]
+        ],
+        "shadow": [
+          [
+            1268.2352073967181,
+            469.8855887061868
+          ],
+          [
+            1309.7702756283875,
+            441.7439713373914
+          ],
+          [
+            1379.2174248973347,
+            458.5340619456979
+          ],
+          [
+            1402.9630396676591,
+            468.54213695439887
+          ],
+          [
+            1361.4279714359895,
+            496.6837543231943
+          ],
+          [
+            1291.9808221670423,
+            479.89366371488785
+          ]
+        ],
+        "occluder": [
+          [
+            1381.932205020668,
+            402.0432833680312
+          ],
+          [
+            1404.6085765456528,
+            351.8582908412612
+          ],
+          [
+            1431.251078692151,
+            336.6057686402178
+          ],
+          [
+            1489.4228867595878,
+            363.15434848160885
+          ],
+          [
+            1466.746515234603,
+            413.3393410083788
+          ],
+          [
+            1440.104013088105,
+            428.5918632094223
+          ]
+        ]
+      }
+    },
+    {
+      "case": "negative-cardinal",
+      "command": [
+        "fleet-run",
+        "--env",
+        "IR_PERAXIS_SURFACE_LIGHTING=1",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_PREPASS=0",
+        "--env",
+        "IR_PERAXIS_VISIBILITY_STATS=0",
+        "--build-dir",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build",
+        "IRCanvasStress",
+        "--config-preset",
+        "/private/tmp/receiver-oblique-final/negative-cardinal/config.lua",
+        "--only",
+        "shadowbox,floor",
+        "--probe-grid",
+        "--probe-floor-mode",
+        "grid",
+        "--probe-floor-span",
+        "40",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "1",
+        "--no-ao",
+        "--auto-screenshot",
+        "10",
+        "--sweep-frames",
+        "1",
+        "10",
+        "--probe-overlapping-source",
+        "--sun-direction",
+        "-0.6",
+        "0",
+        "-0.8",
+        "--yaw",
+        "0",
+        "--probe-overlapping-source-offset",
+        "0.2",
+        "0",
+        "-0.4"
+      ],
+      "result": "CLEAN",
+      "surface": 1,
+      "image": "negative-cardinal/screenshot_000001.png",
+      "sha256": "2813f664a51eb34c062903361f7007f59842e926967af034ac4645a5e006c9c2",
+      "passed": true,
+      "coverage_valid": true,
+      "yaw": 0,
+      "camera_iso": [
+        0.0,
+        0.0
+      ],
+      "sun_direction": [
+        -0.5999999999999999,
+        0.0,
+        -0.8
+      ],
+      "lit_color": [
+        69,
+        103,
+        206
+      ],
+      "source_offset": [
+        0.2,
+        0.0,
+        -0.4
+      ],
+      "camera_shift_pixels": [
+        0,
+        0
+      ],
+      "tolerance_pixels": 1.0,
+      "counts": {
+        "eligible": 24967,
+        "valid": 24967,
+        "unknown": 0,
+        "inside": 3766,
+        "outside": 20659,
+        "boundary": 542,
+        "missing": 0,
+        "excess": 0
+      },
+      "polygons": {
+        "receiver": [
+          [
+            1088.0,
+            416.0
+          ],
+          [
+            1184.0,
+            368.0
+          ],
+          [
+            1472.0,
+            512.0
+          ],
+          [
+            1376.0,
+            560.0
+          ]
+        ],
+        "shadow": [
+          [
+            1263.643590933591,
+            465.5361351766778
+          ],
+          [
+            1329.703866885798,
+            454.0360879305308
+          ],
+          [
+            1368.060275952207,
+            487.499952753853
+          ],
+          [
+            1376.356409066409,
+            502.4638648233222
+          ],
+          [
+            1310.296133114202,
+            513.9639120694692
+          ],
+          [
+            1271.939724047793,
+            480.500047246147
+          ]
+        ],
+        "occluder": [
+          [
+            1336.6539692653812,
+            426.5715095648235
+          ],
+          [
+            1361.755475067867,
+            383.77623173144764
+          ],
+          [
+            1417.101505802486,
+            381.2047221666242
+          ],
+          [
+            1447.3460307346188,
+            421.4284904351765
+          ],
+          [
+            1422.244524932133,
+            464.22376826855236
+          ],
+          [
+            1366.898494197514,
+            466.79527783337574
+          ]
+        ]
+      }
+    }
+  ]
+}

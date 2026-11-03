@@ -1,0 +1,36 @@
+{
+  "rounds": 4,
+  "common": [
+    "--auto-profile",
+    "--profile-frames",
+    "2000",
+    "--only",
+    "orbit",
+    "--focus-orbit",
+    "6",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--subdivisions",
+    "1",
+    "--zoom",
+    "8",
+    "--window-mode",
+    "offscreen"
+  ],
+  "cases": {
+    "parent-plate": [
+      "--focus-exact-fit-plate"
+    ],
+    "parent-cube": [],
+    "head-plate": [
+      "--focus-exact-fit-plate"
+    ],
+    "head-cube": []
+  },
+  "target": "IRCanvasStress",
+  "builds": {
+    "parent": "<parent-worktree>/build-release",
+    "head": "build-release"
+  },
+  "order": "forward on odd rounds; reverse on even rounds"
+}

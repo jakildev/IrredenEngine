@@ -1,0 +1,771 @@
+diff --git a/creations/demos/fog_demo/main.cpp b/creations/demos/fog_demo/main.cpp
+index 9c58a12ff..141f3a68a 100644
+--- a/creations/demos/fog_demo/main.cpp
++++ b/creations/demos/fog_demo/main.cpp
+@@ -627,51 +627,6 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingPaintShots[] = {
+ constexpr IRVideo::AutoScreenshotShot kPerAxisOverflowShots[] = {
+     {9.0f, vec2(0, 0), kEdgeZCostCeilingPaintYaw, "fog_peraxis_overflow_yaw9"},
+ };
+-bool g_lightingDensityCheck = false;
+-constexpr IRVideo::AutoScreenshotShot kLightingDensityShots[] = {
+-    {4.0f, vec2(0, 0), 0.35f, "fog_lighting_density_rotated"},
+-    {4.0f, vec2(0, 0), 0.0f, "fog_lighting_density_cardinal"},
+-    {4.0f, vec2(0, 0), 0.35f, "fog_lighting_density_resumed"},
+-};
+-
+-void probeLightingDensity(int shotIndex) {
+-    const auto &shot = kLightingDensityShots[shotIndex];
+-    const bool rotated = shot.yawRadians_ != 0.0f;
+-    const int effective = IRRender::getVoxelRenderEffectiveSubdivisions();
+-    const int capped = IRPrefab::PerAxisCanvas::subdivisionDensity();
+-    const auto perAxis =
+-        IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(IRRender::getCanvas("main"));
+-    const bool live = perAxis.has_value() && perAxis.value()->isAllocated();
+-    const bool parked = perAxis.has_value() && perAxis.value()->hasParked();
+-    std::uint32_t overflow = 0;
+-    if (live) {
+-        overflow = IRPrefab::PerAxisCanvas::readOverflowInstanceCount(*perAxis.value());
+-    }
+-    const vec2 zoom = IRRender::getCameraZoom();
+-    const bool poseMatches = IRMath::abs(IRPrefab::Camera::getYaw() - shot.yawRadians_) < 0.001f &&
+-                             IRMath::abs(zoom.x - shot.zoom_) < 0.001f &&
+-                             IRMath::abs(zoom.y - shot.zoom_) < 0.001f;
+-    // A cardinal hold parks the live set; resumed rotation requires live axes.
+-    const bool valid =
+-        poseMatches && (rotated ? live && capped < effective && (!g_perAxisOverflow || overflow > 0)
+-                                : !live && parked);
+-    std::printf(
+-        "LIGHTING-DENSITY-CHECK shot=%d effective=%d capped=%d live=%d parked=%d "
+-        "overflowAvailable=%d overflow=%u %s\n",
+-        shotIndex,
+-        effective,
+-        capped,
+-        live,
+-        parked,
+-        live,
+-        overflow,
+-        valid ? "PASS" : "FAIL"
+-    );
+-    if (!valid) {
+-        std::exit(EXIT_FAILURE);
+-    }
+-}
+-
+ constexpr int kFogPaintProbeTolerance = 2;
+ IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
+ int g_fogPaintProbeFrame = 0;
+@@ -2191,11 +2146,6 @@ int main(int argc, char **argv) {
+         "--peraxis-overflow",
+         "Add the fog-hidden keep-ring overflow fixture and capture its rotated paint shot"
+     );
+-    IREngine::args().flag(
+-        "--lighting-density-check",
+-        "With --auto-screenshot and either --peraxis-overflow or --occlusion=high-ground: "
+-        "check capped density at subdivisions 8 across rotated/cardinal/resumed zoom-4 shots"
+-    );
+     IREngine::args().flag(
+         "--entity-reveal",
+         "Fog BODY subjects under the --edge-zcost-ceiling hard ceiling: untagged and "
+@@ -2306,53 +2256,6 @@ int main(int argc, char **argv) {
+     });
+     IREngine::init(argc, argv);
+     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+-    g_lightingDensityCheck = IREngine::args().getFlag("--lighting-density-check");
+-    if (g_lightingDensityCheck) {
+-        const auto &args = IREngine::args();
+-        const bool overflow = args.getFlag("--peraxis-overflow");
+-        const auto occlusion = args.getEnum("--occlusion");
+-        bool compatible = g_autoWarmupFrames > 0 && ((overflow && occlusion == "none") ||
+-                                                     (!overflow && occlusion == "high-ground"));
+-        for (const char *flag :
+-             {"--moving-observer",
+-              "--player-walk",
+-              "--edge-zoom",
+-              "--edge-sdf-blocker",
+-              "--detached-edge",
+-              "--detached-body",
+-              "--detached-body-hidden",
+-              "--detached-body-no-solid",
+-              "--detached-exempt",
+-              "--detached-field-hidden",
+-              "--edge-smooth",
+-              "--edge-yaw-sweep",
+-              "--edge-zcost",
+-              "--edge-zcost-asym",
+-              "--edge-zcost-ceiling",
+-              "--entity-reveal",
+-              "--entity-reveal-soft-edge",
+-              "--lua-fog-selftest",
+-              "--los-query-bench",
+-              "--world-pan",
+-              "--depth-slab",
+-              "--many-sources",
+-              "--channel-probe",
+-              "--explored-decay",
+-              "--auto-profile"}) {
+-            compatible = compatible && !args.wasProvided(flag);
+-        }
+-        if (!compatible) {
+-            std::fprintf(
+-                stderr,
+-                "--lighting-density-check requires --auto-screenshot and "
+-                "exactly one of --peraxis-overflow or --occlusion=high-ground, "
+-                "without another scene mode or --auto-profile\n"
+-            );
+-            return 2;
+-        }
+-        IRRender::setSubdivisionMode(IRRender::SubdivisionMode::FULL);
+-        IRRender::setVoxelRenderSubdivisions(8);
+-    }
+     g_movingObserver = IREngine::args().getFlag("--moving-observer");
+     g_playerWalk = IREngine::args().getFlag("--player-walk");
+     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
+@@ -2744,9 +2647,7 @@ void initSystems() {
+         IRVideo::AutoScreenshotConfig cfg{};
+         cfg.warmupFrames_ = g_autoWarmupFrames;
+         cfg.settleFrames_ = 3;
+-        if (g_lightingDensityCheck) {
+-            cfg.onCaptureFrame_ = &probeLightingDensity;
+-        } else if (g_worldPan) {
++        if (g_worldPan) {
+             cfg.onCaptureFrame_ = &probeWorldPan;
+         } else if (g_depthSlab) {
+             cfg.onCaptureFrame_ = &probeDepthSlab;
+@@ -2766,9 +2667,7 @@ void initSystems() {
+         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
+         // disc); --player-walk captures the walking reveal sequence; the
+         // default captures the three static fog-boundary shots.
+-        if (g_lightingDensityCheck) {
+-            IRVideo::setAutoScreenshotShots(cfg, kLightingDensityShots);
+-        } else if (g_worldPan) {
++        if (g_worldPan) {
+             IRVideo::setAutoScreenshotShots(cfg, kWorldPanShots);
+         } else if (g_depthSlab) {
+             IRVideo::setAutoScreenshotShots(cfg, kDepthSlabShots);
+diff --git a/engine/math/include/irreden/ir_math.hpp b/engine/math/include/irreden/ir_math.hpp
+index 142c899d5..cfb2dc180 100644
+--- a/engine/math/include/irreden/ir_math.hpp
++++ b/engine/math/include/irreden/ir_math.hpp
+@@ -1944,9 +1944,9 @@ inline ivec2 perAxisStoreAnchor(
+ /// CPU-side: `effSub = clamp(m_vrs × round(zoom), 1, 16)` conflates subdivision
+ /// and zoom, so a shader given only `effSub` + `canvasSize` cannot recover the
+ /// zoom-dependent on-screen extent — the host knows `zoom` and feeds the capped
+-/// value through `voxelRenderOptions.y` for store, scatter and screen-depth
+-/// resolve. Lighting recovers positions from the store frame independently of
+-/// density. Pass the same @p minOnScreenTrixelPx used to allocate the canvas
++/// value through `voxelRenderOptions.y` so the store, the framebuffer scatter,
++/// and the per-axis AO/lighting recovery all share one consistent world↔cell
++/// scale. Pass the same @p minOnScreenTrixelPx used to allocate the canvas
+ /// (e.g. `kMinOnScreenTrixelSizePx`) so the cap is sized against the actual
+ /// allocated canvas rather than the default. Returns ≥ 1.
+ inline int perAxisSubdivisionCap(
+diff --git a/engine/prefabs/irreden/render/per_axis_canvas.hpp b/engine/prefabs/irreden/render/per_axis_canvas.hpp
+index cb604184f..a7808defa 100644
+--- a/engine/prefabs/irreden/render/per_axis_canvas.hpp
++++ b/engine/prefabs/irreden/render/per_axis_canvas.hpp
+@@ -37,20 +37,6 @@ inline constexpr float kMinOnScreenTrixelSizePx = 1.0f;
+ // so a suite that alternates cardinal and rotated poses exercises the unpark.
+ inline constexpr int kParkedCardinalFrames = 120;
+ 
+-// Diagnostic readback blocks until queued GPU work completes. Requires a live
+-// allocated set; the overflow control block begins with indexed draw arguments.
+-inline std::uint32_t readOverflowInstanceCount(const IRComponents::C_PerAxisTrixelCanvases &axes) {
+-    IRRender::device()->finish();
+-    std::uint32_t count = 0;
+-    axes.winnerIds_.second->getSubData(
+-        static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t) +
+-            offsetof(IRRender::PerAxisCellDrawCommand, instanceCount),
+-        sizeof(count),
+-        &count
+-    );
+-    return count;
+-}
+-
+ // Texel size of each per-axis face store for the current main canvas.
+ inline IRMath::ivec2 storeSize() {
+     return IRMath::perAxisTrixelCanvasWorstCaseSize(
+@@ -224,9 +210,19 @@ inline void syncAllocationToCameraYaw() {
+     }
+ }
+ 
+-// Keep the subdivided voxel footprint inside the fixed-size per-axis store.
+-// Store, scatter and screen-depth resolve share this cap. Lighting-family
+-// position recovery instead uses the store frame and encoded sub-cell fraction.
++// Capped per-axis lattice density (`subPerAxis`) for the smooth-camera-Z-yaw
++// store. The per-axis face-local lattice is `world × density`; the
++// bounded canvas (perAxisTrixelCanvasWorstCaseSize) does NOT scale with the
++// subdivision factor, so a large density drives on-screen cells off the canvas
++// and they are silently dropped (the black-hole clip). This caps the density
++// to the canvas via IRMath::perAxisSubdivisionCap.
++//
++// It is a pure function of the main canvas cardinal size + camera zoom + render
++// subdivisions, so EVERY per-axis pass — the store, the per-axis AO/lighting
++// recovery (perAxisCellToWorld3D reads it via voxelRenderOptions.y), and the
++// framebuffer forward-scatter — computes the identical value and the world↔cell
++// scale stays consistent. Returns the uncapped effective subdivisions when not
++// subdividing (NONE mode) or when the cap doesn't bite.
+ inline int subdivisionDensity() {
+     const int effSub = IRRender::getVoxelRenderEffectiveSubdivisions();
+     if (IRRender::getSubdivisionMode() == IRRender::SubdivisionMode::NONE) {
+@@ -249,8 +245,13 @@ inline int subdivisionDensity() {
+     return IRMath::clamp(effSub, 1, cap);
+ }
+ 
+-// Density-dependent passes own the capped-density patch and restore the
+-// effective single-canvas density before returning.
++// Patch the shared voxel frame-data UBO's `voxelRenderOptions_.y` (the per-axis
++// `subPerAxis` density). Pass-scoped: a per-axis dispatch sets the capped
++// density before its loop and restores the uncapped `effSub` after, mirroring
++// the existing per-axis `perAxisRoute_` set/restore. AO / lighting / sun-shadow
++// only `subData` `perAxisRoute_`, so they reuse the UBO's `voxelRenderOptions_`
++// and must patch the density here for their face-local world recovery to match
++// the capped store.
+ inline void setUboSubdivisionDensity(IRRender::Buffer *frameDataUbo, int density) {
+     frameDataUbo->subData(
+         offsetof(IRRender::FrameDataVoxelToCanvas, voxelRenderOptions_) + sizeof(int),
+@@ -294,10 +295,20 @@ inline void restoreVoxelCompactionSlots(
+     );
+ }
+ 
+-// AO, sun shadow, lighting and fog use a boolean per-axis route; each cell's
+-// face id supplies its axis. Store-frame recovery is independent of density.
+-// Restore route zero, main-canvas size and borrowed voxel-compaction bindings
+-// on exit so subsequent single-canvas dispatches retain their frame state.
++// RAII scope for the per-axis lighting-family dispatches (AO / sun-shadow /
++// lighting): flips the shared voxel frame-data UBO onto the per-axis decode
++// route (perAxisRoute_ = 1 — a boolean route flag on the lighting path; the
++// shader recovers the axis per-pixel from faceId, distinct from stage-1's
++// 1/2/3 axis selector) at the capped lattice density the store wrote, with
++// canvasSizePixels_ set to the per-axis store size — the overflow-entry kernels
++// derive the store's origin anchor from it, and the cell kernels read their
++// bound image's own size instead. Restores the single-canvas state on
++// destruction: route 0, the uncapped effSub density, the main canvas size, and
++// the voxel-compaction slots 25/26 (see restoreVoxelCompactionSlots — the loop
++// below borrows them). One definition
++// of the patch/restore discipline those three dispatches each hand-rolled —
++// the FrameYawRestoreGuard idiom (system_bake_sun_shadow_map.hpp) applied to
++// the lighting family, so a new consumer cannot forget a restore.
+ class LightingRouteScope {
+   public:
+     LightingRouteScope(
+@@ -317,6 +328,7 @@ class LightingRouteScope {
+             sizeof(int),
+             &kPerAxisRoute
+         );
++        setUboSubdivisionDensity(m_frameDataUbo, subdivisionDensity());
+         setUboCanvasSize(storeCanvasSize);
+     }
+ 
+@@ -327,6 +339,7 @@ class LightingRouteScope {
+             sizeof(int),
+             &kSingleCanvasRoute
+         );
++        setUboSubdivisionDensity(m_frameDataUbo, IRRender::getVoxelRenderEffectiveSubdivisions());
+         setUboCanvasSize(m_mainCanvasSize);
+         restoreVoxelCompactionSlots(m_voxelCompactedBuf, m_voxelIndirectBuf);
+     }
+diff --git a/engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp b/engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp
+index 96059cb6a..7bd37335e 100644
+--- a/engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp
++++ b/engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp
+@@ -112,7 +112,11 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
+         }
+     }
+ 
+-    // The sun depth map and FrameDataSun stay bound across per-axis dispatches.
++    // Resolve the sun-shadow factor for each per-axis canvas. The
++    // LightingRouteScope flips the shared UBO onto the per-axis decode route
++    // (the shader reconstructs world-pos face-locally) and restores route /
++    // density / compaction slots on exit. The sun depth map (binding 28) and
++    // FrameDataSun stay bound.
+     void dispatchPerAxisSunShadow(
+         C_PerAxisTrixelCanvases &axes,
+         const C_TriangleCanvasTextures &mainTextures,
+diff --git a/engine/prefabs/irreden/render/systems/system_compute_voxel_ao.hpp b/engine/prefabs/irreden/render/systems/system_compute_voxel_ao.hpp
+index c595309cc..f6c6206a7 100644
+--- a/engine/prefabs/irreden/render/systems/system_compute_voxel_ao.hpp
++++ b/engine/prefabs/irreden/render/systems/system_compute_voxel_ao.hpp
+@@ -143,7 +143,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
+         }
+     }
+ 
+-    // The world AO band uses the store-frame position recovered for each cell.
++    // Run the AO compute over each of the three per-axis canvases. The
++    // LightingRouteScope flips the shared UBO onto the per-axis decode route
++    // (the shader reconstructs world-pos face-locally, perAxisCellToWorld3D)
++    // and restores route / density / compaction slots on exit. The world AO
++    // band is per-axis-correct because the canvas is a same-axis cardinal-iso
++    // lattice.
+     void dispatchPerAxisAO(
+         C_PerAxisTrixelCanvases &axes,
+         const C_TriangleCanvasTextures &mainTextures,
+diff --git a/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
+index 724f99ea8..fa8019716 100644
+--- a/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
+@@ -375,8 +375,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
+         const C_CanvasAOTexture &mainAO,
+         const C_CanvasSunShadow &mainShadow
+     ) {
+-        // Cell and overflow relight share per-axis frame state but have separate
+-        // GPU timing rows.
++        // The LightingRouteScope flips the shared UBO onto the per-axis decode
++        // route at the capped store density and restores route / density /
++        // compaction slots on exit; it spans the overflow relight below, which
++        // reads the same per-axis frame state. The GpuSubStageScope
++        // brackets only the 3 per-axis relight dispatches — the overflow
++        // relight owns its own row.
+         {
+             IRPrefab::PerAxisCanvas::LightingRouteScope route(
+                 voxelFrameDataBuf_,
+diff --git a/engine/render/src/shaders/c_compute_sun_shadow_body.glsl b/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
+index e7249e7c8..ec045b7bf 100644
+--- a/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
++++ b/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
+@@ -9,7 +9,6 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+ 
+ #include "ir_iso_common.glsl"
+ #include "ir_per_axis_lighting.glsl"
+-#include "ir_per_axis_cell_dispatch.glsl"
+ #if IR_SHAPE_RECEIVER
+ #include "ir_sdf_common.glsl"
+ #include "ir_shape_data.glsl"
+@@ -75,6 +74,8 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+     uint cellDrawArgs[];
+ };
++const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
++const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+ 
+ #if IR_SHAPE_RECEIVER
+ #include "ir_selected_shape_receiver.glsl"
+@@ -85,13 +86,15 @@ void main() {
+     const ivec2 size = imageSize(trixelDistances);
+     ivec2 pixel;
+     if (perAxisRoute != 0) {
+-        const uint idx = perAxisCellInvocationIndex(
+-            gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+-        );
++        // 2-D-folded indirect dispatch — recover the flat group index
++        // (matches c_per_axis_cell_finalize's capped grid + c_voxel_visibility_compact).
++        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
++        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+             return;
+         }
+-        pixel = perAxisCellPixel(compactedCells[idx], size.x);
++        const uint linearCell = compactedCells[idx];
++        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+     } else {
+         pixel = ivec2(gl_GlobalInvocationID.xy);
+         if (pixel.x >= size.x || pixel.y >= size.y) {
+diff --git a/engine/render/src/shaders/c_compute_voxel_ao_body.glsl b/engine/render/src/shaders/c_compute_voxel_ao_body.glsl
+index a9294fd63..dbc5afc06 100644
+--- a/engine/render/src/shaders/c_compute_voxel_ao_body.glsl
++++ b/engine/render/src/shaders/c_compute_voxel_ao_body.glsl
+@@ -9,7 +9,6 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+ 
+ #include "ir_iso_common.glsl"
+ #include "ir_per_axis_lighting.glsl"
+-#include "ir_per_axis_cell_dispatch.glsl"
+ 
+ // Same threshold LIGHTING_TO_TRIXEL uses for "empty pixel" — encoded
+ // distances >= 65535 mean the clear value was never overwritten.
+@@ -101,6 +100,8 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+     uint cellDrawArgs[];
+ };
++const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
++const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+ 
+ // The single canvas holds continuous-yaw SDF/text depth at a residual yaw
+ // (voxels move to the per-axis canvases), so it needs the smooth-yaw inverse,
+@@ -128,13 +129,13 @@ void main() {
+         // Indirect dispatch over the compacted occupied-cell list, folded into
+         // a capped 2-D workgroup grid by c_per_axis_cell_finalize; recover the
+         // flat group index the same way c_voxel_visibility_compact does.
+-        const uint idx = perAxisCellInvocationIndex(
+-            gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+-        );
++        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
++        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+             return;
+         }
+-        pixel = perAxisCellPixel(compactedCells[idx], size.x);
++        const uint linearCell = compactedCells[idx];
++        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+     } else {
+         pixel = ivec2(gl_GlobalInvocationID.xy);
+         if (pixel.x >= size.x || pixel.y >= size.y) {
+diff --git a/engine/render/src/shaders/c_fog_to_trixel.glsl b/engine/render/src/shaders/c_fog_to_trixel.glsl
+index 9691d6c5f..ae1be70b8 100644
+--- a/engine/render/src/shaders/c_fog_to_trixel.glsl
++++ b/engine/render/src/shaders/c_fog_to_trixel.glsl
+@@ -14,7 +14,6 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+ 
+ #include "ir_iso_common.glsl"
+ #include "ir_per_axis_lighting.glsl"
+-#include "ir_per_axis_cell_dispatch.glsl"
+ #define IR_FOG_LOS_BINDING 4
+ #include "ir_fog_common.glsl"
+ 
+@@ -63,6 +62,8 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+     uint cellDrawArgs[];
+ };
++const uint kDispatchArgsBaseUint = 8u;
++const uint kPerAxisCellComputeTile = 256u;
+ 
+ // The three pos3D-recovery shaders (AO, sun shadow, fog) must stay in
+ // lockstep with the stage-2 encoding. R(-rasterYaw) recovers world coords
+@@ -103,13 +104,13 @@ void main() {
+     const ivec2 size = imageSize(trixelColors);
+     ivec2 pixel;
+     if (perAxisRoute != 0) {
+-        const uint idx = perAxisCellInvocationIndex(
+-            gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+-        );
++        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
++        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+             return;
+         }
+-        pixel = perAxisCellPixel(compactedCells[idx], size.x);
++        const uint linearCell = compactedCells[idx];
++        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+     } else {
+         pixel = ivec2(gl_GlobalInvocationID.xy);
+         if (pixel.x >= size.x || pixel.y >= size.y) {
+diff --git a/engine/render/src/shaders/c_lighting_to_trixel_body.glsl b/engine/render/src/shaders/c_lighting_to_trixel_body.glsl
+index e3f766f74..27e10cc8d 100644
+--- a/engine/render/src/shaders/c_lighting_to_trixel_body.glsl
++++ b/engine/render/src/shaders/c_lighting_to_trixel_body.glsl
+@@ -18,7 +18,6 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+ #include "ir_receiver_face.glsl"
+ #endif
+ #include "ir_per_axis_lighting.glsl"
+-#include "ir_per_axis_cell_dispatch.glsl"
+ // Shared caster/receiver sun-space projection.
+ #include "ir_sun_projection.glsl"
+ // FrameDataSun UBO (29), sun-depth SSBO (28), and worldSunShadowFactor() — for
+@@ -113,6 +112,8 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+     uint cellDrawArgs[];
+ };
++const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
++const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+ 
+ // The light volume is camera-anchored. The CPU uploads
+ // `lightVolumeWorldOrigin` (the world voxel that maps to the volume's
+@@ -187,13 +188,17 @@ void main() {
+             }
+         }
+     } else if (perAxisRoute != 0) {
+-        const uint idx = perAxisCellInvocationIndex(
+-            gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+-        );
++        // Indirect dispatch over the compacted occupied-cell list, folded
++        // into a capped 2-D workgroup grid by c_per_axis_cell_finalize —
++        // idx = flat group index * tile + local flat index, guarded by the axis's
++        // visibleCount, then decode the pixel from its linear cell.
++        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
++        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+             return;
+         }
+-        pixel = perAxisCellPixel(compactedCells[idx], size.x);
++        const uint linearCell = compactedCells[idx];
++        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+     } else {
+         pixel = ivec2(gl_GlobalInvocationID.xy);
+         if (pixel.x >= size.x || pixel.y >= size.y) {
+diff --git a/engine/render/src/shaders/c_per_axis_cell_finalize.glsl b/engine/render/src/shaders/c_per_axis_cell_finalize.glsl
+index 4fcc3b6d1..e15ab4b52 100644
+--- a/engine/render/src/shaders/c_per_axis_cell_finalize.glsl
++++ b/engine/render/src/shaders/c_per_axis_cell_finalize.glsl
+@@ -1,7 +1,5 @@
+ #version 450 core
+ 
+-#include "ir_per_axis_cell_dispatch.glsl"
+-
+ // Per-axis compute-indirect dispatch-dim finalize. After
+ // c_per_axis_cell_compact scans the FULL per-axis grid and atomic-appends each
+ // axis's occupied cells (leaving the count in the region's instanceCount slot),
+@@ -23,6 +21,8 @@
+ layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+ 
+ const uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4
++const uint kDispatchArgsBaseUint = 8u;     // kPerAxisCellDispatchArgsOffsetBytes / 4
++const uint kPerAxisCellComputeTile = 256u; // kPerAxisCellComputeTile (16×16 threads)
+ // Cap numGroupsX and spill the remainder into numGroupsY — matching the CPU
+ // voxelDispatchGridForCount() (voxel_dispatch_grid.hpp) and the GPU-authored
+ // writeDispatchDims() in c_voxel_visibility_compact.glsl, which solve the same
+@@ -30,7 +30,7 @@ const uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes /
+ // with more than kPerAxisCellComputeTile × 65535 (≈16.7M) occupied cells — reachable
+ // at a large Lua-configured voxel-pool edge — drives numGroupsX past the
+ // GL_MAX_COMPUTE_WORK_GROUP_COUNT[0] guaranteed minimum of 65535, silently
+-// dropping/corrupting cells. The occupied-cell consumers recover the flat group
++// dropping/corrupting cells. The four consumer kernels recover the flat group
+ // index as gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x.
+ const uint kMaxDispatchGroupsX = 1024u;
+ 
+diff --git a/engine/render/src/shaders/c_resolve_per_axis_screen_depth.glsl b/engine/render/src/shaders/c_resolve_per_axis_screen_depth.glsl
+index f7e7c0173..148f90d9f 100644
+--- a/engine/render/src/shaders/c_resolve_per_axis_screen_depth.glsl
++++ b/engine/render/src/shaders/c_resolve_per_axis_screen_depth.glsl
+@@ -23,7 +23,6 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+ // perAxisSubCellFrac — the shared sub-cell frac decode this bridge composes in
+ // the VIEW frame and the per-axis RECEIVE composes in the world frame.
+ #include "ir_per_axis_lighting.glsl"
+-#include "ir_per_axis_cell_dispatch.glsl"
+ 
+ // Per-axis canvases clear to INT_MAX (the per-axis encoding's empty sentinel).
+ const int kEmptyDistanceEncoded = 0x7FFFFFFF;
+@@ -83,16 +82,21 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+     uint cellDrawArgs[];
+ };
++const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
++const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+ 
+ void main() {
+-    const uint idx = perAxisCellInvocationIndex(
+-        gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+-    );
++    // Recover the flat list index — the capped 2-D workgroup grid
++    // c_per_axis_cell_finalize wrote (kPerAxisCellComputeTile occupied cells per
++    // group) — and decode the cell from the compacted list.
++    const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
++    const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+     if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+         return;
+     }
+     const ivec2 perAxisSize = imageSize(perAxisDistances);
+-    const ivec2 cell = perAxisCellPixel(compactedCells[idx], perAxisSize.x);
++    const uint linearCell = compactedCells[idx];
++    const ivec2 cell = ivec2(int(linearCell) % perAxisSize.x, int(linearCell) / perAxisSize.x);
+ 
+     const int rawDist = imageLoad(perAxisDistances, cell).x;
+     if (rawDist >= kEmptyDistanceEncoded) {
+diff --git a/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal b/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
+index 1e792d5c7..6324d7f22 100644
+--- a/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
++++ b/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
+@@ -1,6 +1,5 @@
+ #include "ir_iso_common.metal"
+ #include "ir_per_axis_lighting.metal"
+-#include "ir_per_axis_cell_dispatch.metal"
+ #if IR_SHAPE_RECEIVER
+ #include "ir_sdf_common.metal"
+ #include "ir_shape_data.metal"
+@@ -22,6 +21,8 @@ constant int kEmptyDistanceEncoded = 65535;
+ // OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
+ // holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
+ // [kDispatchArgsBaseUint + 3]. Unused on the single-canvas 2D path.
++constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
++constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+ 
+ kernel void IR_SUN_SHADOW_KERNEL_NAME(
+ #if IR_SHAPE_RECEIVER
+@@ -48,13 +49,15 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
+     );
+     int2 pixel;
+     if (frameData.perAxisRoute != 0) {
+-        const uint idx = perAxisCellInvocationIndex(
+-            groupId.x, groupId.y, numGroups.x, localIndex
+-        );
++        // The compacted-cell dispatch is folded into a capped 2-D threadgroup
++        // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
++        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
++        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+             return;
+         }
+-        pixel = perAxisCellPixel(compactedCells[idx], size.x);
++        const uint linearCell = compactedCells[idx];
++        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+     } else {
+         pixel = int2(globalId.xy);
+         if (pixel.x >= size.x || pixel.y >= size.y) {
+diff --git a/engine/render/src/shaders/metal/c_compute_voxel_ao_body.metal b/engine/render/src/shaders/metal/c_compute_voxel_ao_body.metal
+index 92cd538b2..7801b6269 100644
+--- a/engine/render/src/shaders/metal/c_compute_voxel_ao_body.metal
++++ b/engine/render/src/shaders/metal/c_compute_voxel_ao_body.metal
+@@ -1,6 +1,5 @@
+ #include "ir_iso_common.metal"
+ #include "ir_per_axis_lighting.metal"
+-#include "ir_per_axis_cell_dispatch.metal"
+ 
+ // Mirrors shaders/c_compute_voxel_ao_body.glsl.
+ 
+@@ -17,6 +16,8 @@ constant float kAOMinDistanceSquared = 1.0e-6;
+ // the next tread (d ~ 1) works.
+ constant float kAOStaircaseStepHeight = 0.5;
+ 
++constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
++constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+ 
+ // Mirrors `FrameDataSun` from ir_render_types.hpp. Only `aoEnabled` is
+ // consumed here; the layout must match so the shared UBO at binding 29
+@@ -88,13 +89,13 @@ kernel void IR_AO_KERNEL_NAME(
+     if (frameData.perAxisRoute != 0) {
+         // The compacted-cell dispatch is folded into a capped 2-D threadgroup
+         // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
+-        const uint idx = perAxisCellInvocationIndex(
+-            groupId.x, groupId.y, numGroups.x, localIndex
+-        );
++        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
++        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+             return;
+         }
+-        pixel = perAxisCellPixel(compactedCells[idx], size.x);
++        const uint linearCell = compactedCells[idx];
++        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+     } else {
+         pixel = int2(globalId.xy);
+         if (pixel.x >= size.x || pixel.y >= size.y) {
+diff --git a/engine/render/src/shaders/metal/c_fog_to_trixel.metal b/engine/render/src/shaders/metal/c_fog_to_trixel.metal
+index eab3d830b..09bb002a7 100644
+--- a/engine/render/src/shaders/metal/c_fog_to_trixel.metal
++++ b/engine/render/src/shaders/metal/c_fog_to_trixel.metal
+@@ -1,12 +1,13 @@
+ #include "ir_iso_common.metal"
+ #include "ir_per_axis_lighting.metal"
+-#include "ir_per_axis_cell_dispatch.metal"
+ #include "ir_fog_common.metal"
+ 
+ // Mirrors shaders/c_fog_to_trixel.glsl: one kernel, main-canvas and per-axis
+ // routes, shaded by the shared reveal model (ir_fog_common.metal). A fully
+ // revealed pixel is never read or rewritten.
+ 
++constant uint kDispatchArgsBaseUint = 8u;
++constant uint kPerAxisCellComputeTile = 256u;
+ 
+ static float3 fogPixelToWorld(
+     int2 pixel,
+@@ -68,13 +69,13 @@ kernel void c_fog_to_trixel(
+     );
+     int2 pixel;
+     if (frameData.perAxisRoute != 0) {
+-        const uint idx = perAxisCellInvocationIndex(
+-            groupId.x, groupId.y, numGroups.x, localIndex
+-        );
++        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
++        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+             return;
+         }
+-        pixel = perAxisCellPixel(compactedCells[idx], size.x);
++        const uint linearCell = compactedCells[idx];
++        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+     } else {
+         pixel = int2(globalId.xy);
+         if (pixel.x >= size.x || pixel.y >= size.y) {
+diff --git a/engine/render/src/shaders/metal/c_lighting_to_trixel_body.metal b/engine/render/src/shaders/metal/c_lighting_to_trixel_body.metal
+index f11d151cd..ed1946956 100644
+--- a/engine/render/src/shaders/metal/c_lighting_to_trixel_body.metal
++++ b/engine/render/src/shaders/metal/c_lighting_to_trixel_body.metal
+@@ -3,7 +3,6 @@
+ #include "ir_receiver_face.metal"
+ #endif
+ #include "ir_per_axis_lighting.metal"
+-#include "ir_per_axis_cell_dispatch.metal"
+ // FrameDataSun + the sun-depth buffer cascade lookup (worldSunShadowFactor) —
+ // for the opt-in detached re-voxelize world-receive path. Shared with
+ // c_compute_sun_shadow.
+@@ -22,6 +21,8 @@
+ // OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
+ // holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
+ // [kDispatchArgsBaseUint + 3] for the 1-D bound guard. GLSL twin's bindings 25/26.
++constant uint kDispatchArgsBaseUint = 8u;
++constant uint kPerAxisCellComputeTile = 256u;
+ 
+ void writeLitTrixel(texture2d<float, access::read_write> canvas,
+     device SourceVoxelFaces& faces, bool sourceMode, uint index, uint2 pixel, float4 color) {
+@@ -116,13 +117,15 @@ kernel void IR_LIGHTING_KERNEL_NAME(
+             }
+         }
+     } else if (voxelFrameData.perAxisRoute != 0) {
+-        const uint idx = perAxisCellInvocationIndex(
+-            groupId.x, groupId.y, numGroups.x, localIndex
+-        );
++        // The compacted-cell dispatch is folded into a capped 2-D threadgroup
++        // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
++        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
++        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+             return;
+         }
+-        pixel = perAxisCellPixel(compactedCells[idx], size.x);
++        const uint linearCell = compactedCells[idx];
++        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+     } else {
+         pixel = int2(globalId.xy);
+         if (pixel.x >= size.x || pixel.y >= size.y) {
+diff --git a/engine/render/src/shaders/metal/c_per_axis_cell_finalize.metal b/engine/render/src/shaders/metal/c_per_axis_cell_finalize.metal
+index 1696a5ed2..7a94e3439 100644
+--- a/engine/render/src/shaders/metal/c_per_axis_cell_finalize.metal
++++ b/engine/render/src/shaders/metal/c_per_axis_cell_finalize.metal
+@@ -1,8 +1,6 @@
+ #include <metal_stdlib>
+ using namespace metal;
+ 
+-#include "ir_per_axis_cell_dispatch.metal"
+-
+ // Mirror of shaders/c_per_axis_cell_finalize.glsl. Split out of the
+ // compaction to keep that hot full-grid scan barrier-free.
+ //
+@@ -13,6 +11,8 @@ using namespace metal;
+ // bound via bindBase (the whole indirect buffer); each thread owns one axis's
+ // 256-byte region (no atomics — one writer per region).
+ constant uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4
++constant uint kDispatchArgsBaseUint = 8u;     // kPerAxisCellDispatchArgsOffsetBytes / 4
++constant uint kPerAxisCellComputeTile = 256u; // kPerAxisCellComputeTile (16×16 threads)
+ // numGroupsX is capped with the remainder spilled into numGroupsY, matching
+ // CPU voxelDispatchGridForCount() and GPU writeDispatchDims(): uncapped,
+ // >kPerAxisCellComputeTile × 65535 occupied cells overflows the X dimension.
+diff --git a/engine/render/src/shaders/metal/c_resolve_per_axis_screen_depth.metal b/engine/render/src/shaders/metal/c_resolve_per_axis_screen_depth.metal
+index 7232b9061..526b059a6 100644
+--- a/engine/render/src/shaders/metal/c_resolve_per_axis_screen_depth.metal
++++ b/engine/render/src/shaders/metal/c_resolve_per_axis_screen_depth.metal
+@@ -5,7 +5,6 @@
+ // perAxisSubCellFrac — the shared sub-cell frac decode this bridge composes in
+ // the VIEW frame and the per-axis RECEIVE composes in the world frame.
+ #include "ir_per_axis_lighting.metal"
+-#include "ir_per_axis_cell_dispatch.metal"
+ 
+ // Mirrors shaders/c_resolve_per_axis_screen_depth.glsl. The scratch is laid
+ // out exactly like the main canvas distance texture, so BAKE_SUN_SHADOW_MAP
+@@ -18,6 +17,8 @@ constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
+ // Dispatched indirectly over only this axis's OCCUPIED cells (compacted by the
+ // STAGE_1 per-axis pre-pass). compactedCells holds the occupied linear cell
+ // indices; cellDrawArgs carries visibleCount at [kDispatchArgsBaseUint + 3].
++constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
++constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+ 
+ kernel void c_resolve_per_axis_screen_depth(
+     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
+@@ -29,15 +30,17 @@ kernel void c_resolve_per_axis_screen_depth(
+     uint localIndex [[thread_index_in_threadgroup]],
+     uint3 numGroups [[threadgroups_per_grid]]
+ ) {
+-    const uint idx = perAxisCellInvocationIndex(
+-        groupId.x, groupId.y, numGroups.x, localIndex
+-    );
++    // The compacted-cell dispatch is folded into a capped 2-D threadgroup grid
++    // by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
++    const uint groupIndex = groupId.x + groupId.y * numGroups.x;
++    const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+     if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+         return;
+     }
+     const int2 perAxisSize =
+         int2(int(perAxisDistances.get_width()), int(perAxisDistances.get_height()));
+-    const int2 cell = perAxisCellPixel(compactedCells[idx], perAxisSize.x);
++    const uint linearCell = compactedCells[idx];
++    const int2 cell = int2(int(linearCell) % perAxisSize.x, int(linearCell) / perAxisSize.x);
+ 
+     const int rawDist = perAxisDistances.read(uint2(cell)).x;
+     if (rawDist >= kEmptyDistanceEncoded) {

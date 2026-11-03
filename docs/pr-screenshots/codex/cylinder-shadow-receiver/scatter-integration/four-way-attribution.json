@@ -1,0 +1,12 @@
+[
+  {
+    "name": "zoom4_pan16_yaw45_pivot",
+    "cylinder_delta_pixels": 472,
+    "nonadditive_pixels": 0
+  },
+  {
+    "name": "zoom4_yaw45_inter_cardinal",
+    "cylinder_delta_pixels": 472,
+    "nonadditive_pixels": 0
+  }
+]

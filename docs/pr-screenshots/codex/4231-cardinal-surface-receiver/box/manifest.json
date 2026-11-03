@@ -1,0 +1,50 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRCanvasStress",
+    "--only",
+    "shadowbox,floor",
+    "--probe-source-box",
+    "--pivot-origin",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--subdivisions",
+    "1",
+    "--zoom",
+    "0.4",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "4.71238898",
+    "4"
+  ],
+  "clean": true,
+  "images": [
+    {
+      "file": "0.png",
+      "source": "save_files/screenshots/screenshot_000423.png",
+      "sha256": "4a5618a7209b06441b6ee106dd91ff911e14d55af928a20b9e895f8eddb510b3"
+    },
+    {
+      "file": "1.png",
+      "source": "save_files/screenshots/screenshot_000424.png",
+      "sha256": "6a5bdec344aa081077fd1c14f3fa3c1b6896be12fb74f7b2263c6b98ecc85502"
+    },
+    {
+      "file": "2.png",
+      "source": "save_files/screenshots/screenshot_000425.png",
+      "sha256": "96db14d43b54e3d87bd66062bdd96ba4374b79362c773490e82d43910051e7e4"
+    },
+    {
+      "file": "3.png",
+      "source": "save_files/screenshots/screenshot_000426.png",
+      "sha256": "d9a2580f09e955534dca1baf56dcea1bba60bab220181e7a79e9d7fabef4699a"
+    }
+  ],
+  "revision": "1ee1ef91b81494b7084a2c4a491db36dd667ed94",
+  "patch_sha256": "ba377eccdf76caa12825eb8c79efdede1033f7833e860f80cd005dc99cc89970"
+}

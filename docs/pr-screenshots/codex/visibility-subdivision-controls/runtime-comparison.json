@@ -1,0 +1,30 @@
+{
+  "cases": [
+    "perf/sub2-off",
+    "perf/sub4-off",
+    "perf/sub4-on",
+    "perf/sub2-on",
+    "perf/sub8-off",
+    "perf/sub8-on",
+    "transitions/park-off",
+    "transitions/park-on",
+    "transitions/release-on",
+    "transitions/release-off",
+    "sweeps/sub2-off",
+    "sweeps/sub4-off",
+    "sweeps/sub4-on",
+    "sweeps/sub2-on",
+    "sweeps/sub8-off",
+    "sweeps/sub8-on"
+  ],
+  "all_runtime_hashes_match": true,
+  "runtime_fingerprints": {
+    "binary_sha256": "e5dee137ecfbba1cbeb0c06d6d66c6cc4e665802586e90801d5c439b1af0cc06",
+    "shader_sha256": "8b7d7b000c65f3e63412749d9d428845509b89ce83df4698c41ff9ce00dbe627",
+    "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b"
+  },
+  "source_base": [
+    "f7a5bebce92f64d91bbf9c97d283901a358badeb"
+  ],
+  "render_environment_recorded_by_runner": true
+}

@@ -1,0 +1,153 @@
+[
+  {
+    "revision": "ad85ada530a2ab20badd1cb4611161fb3db081aa",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "30",
+      "--no-auto-rotate",
+      "--no-spin",
+      "--only",
+      "revox",
+      "--focus-revox",
+      "1",
+      "--pivot-origin",
+      "--no-ao",
+      "--no-shadows",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--debug-overlay",
+      "normals",
+      "--sweep-yaw",
+      "0",
+      "0.7853981634",
+      "3"
+    ],
+    "fixture": "revox-normals",
+    "clean_exit": true,
+    "images": [
+      {
+        "path": "revox-normals-yaw0.png",
+        "yaw": 0,
+        "sha256": "2521561389e1cab103b7ab086ee2d6486d7c33a7a84f304cd56bd17c0d727490",
+        "matches_prior_stack_capture": true
+      },
+      {
+        "path": "revox-normals-yaw22.5.png",
+        "yaw": 22.5,
+        "sha256": "2fbec4eae369f2dfe90b3e932c262ec3777ad89de047e87f110b0185a2d6b4dd",
+        "matches_prior_stack_capture": true
+      },
+      {
+        "path": "revox-normals-yaw45.png",
+        "yaw": 45,
+        "sha256": "f008e2b430e17e82fba6afc95d4f2c9bc0074b3eec84e0017140778532cb5830",
+        "matches_prior_stack_capture": true
+      }
+    ]
+  },
+  {
+    "revision": "ad85ada530a2ab20badd1cb4611161fb3db081aa",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "30",
+      "--no-auto-rotate",
+      "--no-spin",
+      "--only",
+      "revox",
+      "--focus-revox",
+      "1",
+      "--probe-upright",
+      "--pivot-origin",
+      "--no-ao",
+      "--no-shadows",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--debug-overlay",
+      "normals",
+      "--sweep-yaw",
+      "0",
+      "0.7853981634",
+      "3"
+    ],
+    "fixture": "revox-upright",
+    "clean_exit": true,
+    "images": [
+      {
+        "path": "revox-upright-yaw0.png",
+        "yaw": 0,
+        "sha256": "d125e3caa0e5afe03fc24b2e974b80cad2f6c4fd53c26bc5f9de2b8a5730c8b6",
+        "matches_prior_stack_capture": true
+      },
+      {
+        "path": "revox-upright-yaw22.5.png",
+        "yaw": 22.5,
+        "sha256": "1ac1a04eff5e8251917e2eb86c826cd4227f557b3a09e3de59e3ef2546bb2ac9",
+        "matches_prior_stack_capture": true
+      },
+      {
+        "path": "revox-upright-yaw45.png",
+        "yaw": 45,
+        "sha256": "1a11452ec1877eff87ff990e43d8ec72c8b3383c49989c0cb0ef1fb0fa2eb63e",
+        "matches_prior_stack_capture": true
+      }
+    ]
+  },
+  {
+    "revision": "ad85ada530a2ab20badd1cb4611161fb3db081aa",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "30",
+      "--no-auto-rotate",
+      "--no-spin",
+      "--only",
+      "orbit",
+      "--focus-orbit",
+      "6",
+      "--pivot-origin",
+      "--no-ao",
+      "--no-shadows",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--debug-overlay",
+      "normals",
+      "--sweep-yaw",
+      "0",
+      "0.7853981634",
+      "3"
+    ],
+    "fixture": "orbit-grid6",
+    "clean_exit": true,
+    "images": [
+      {
+        "path": "orbit-grid6-yaw0.png",
+        "yaw": 0,
+        "sha256": "a06f74579f66d59dae111429d749f73bb1e7810902f37ea0972546e234877917",
+        "matches_prior_stack_capture": true
+      },
+      {
+        "path": "orbit-grid6-yaw22.5.png",
+        "yaw": 22.5,
+        "sha256": "b2f3d15711901291d52be6930cba172fa2c3215199519459a7fbd26bd2365e7a",
+        "matches_prior_stack_capture": true
+      },
+      {
+        "path": "orbit-grid6-yaw45.png",
+        "yaw": 45,
+        "sha256": "8c48e7a6bf3063f9abc6528221de5103e66c9a5dff6533535be1064586d6bd28",
+        "matches_prior_stack_capture": true
+      }
+    ]
+  }
+]

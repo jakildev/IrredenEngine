@@ -1,0 +1,30 @@
+diff --git a/engine/render/src/shaders/metal/c_lighting_to_trixel.metal b/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
+index 512fd3f54..badd9eef7 100644
+--- a/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
++++ b/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
+@@ -220,6 +220,25 @@ kernel void c_lighting_to_trixel(
+     } else {
+         shadow = detachedCanvas ? 1.0f : canvasSunShadow.read(uint2(pixel)).r;
+     }
++    if (sourceMode && worldReceive) {
++        const float4 inverseRotation = float4(-0.2209423827, -0.2209423827, -0.2209423827, 0.9238795325);
++        const float3 direction = rotateByQuat(sunFrameData.sunDirection.xyz, inverseRotation);
++        const float3 point = rotateByQuat(worldReceivePos, inverseRotation) + direction * 0.0001;
++        shadow = 1.0;
++        if (dot(worldNormal, sunFrameData.sunDirection.xyz) > 0.0) {
++            for (int z = 0; z < 10; ++z) for (int y = 0; y < 10; ++y) for (int x = 0; x < 10; ++x) {
++                const float3 center = float3(x, y, z) - 4.5;
++                const int edges = int(abs(center.x) >= 5.5) + int(abs(center.y) >= 5.5) + int(abs(center.z) >= 5.5);
++                if (abs(center.x) + abs(center.y) + abs(center.z) > 6.75) continue;
++                const float3 a = (center - 0.5 - point) / direction;
++                const float3 b = (center + 0.5 - point) / direction;
++                const float3 nearAxis = min(a, b), farAxis = max(a, b);
++                const float nearHit = max(max(nearAxis.x, nearAxis.y), nearAxis.z);
++                const float farHit = min(min(farAxis.x, farAxis.y), farAxis.z);
++                if (farHit > max(nearHit, 0.0) + 0.00001) shadow = 0.0;
++            }
++        }
++    }
+     const float4 src    = sourceColor;
+ 
+     if (frameData.debugOverlayMode != 0) {

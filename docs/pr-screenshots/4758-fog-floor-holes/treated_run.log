@@ -1,0 +1,17 @@
+ir-run: <repo>/engine/tools/bin/ir-acquire gpu -- <IRFogDemo> --config-preset <capture dir>/config.lua --occlusion=high-ground --los-softness=1 --reveal-treatment --auto-screenshot 10 (window mode: offscreen)
+[2026-10-29 00:41:28.874] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=430
+[2026-10-29 00:41:28.874] [ClientLog] [info] FOG-WINDOW edge=1152 canvas=642x722 coveredRadius=543
+[2026-10-29 00:41:29.067] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_high_ground_soft canvas=642x722 slabTexels=2944 hidden=2368 lit=417 gpuPartial=1043 partialBand=159 dissolved=39 retained=120 capToned=66 disagreements=0 bandMin=304,352 bandMax=323,371
+[2026-10-29 00:41:29.067] [ClientLog] [info] FOG-LOS-PROBE near=1 far=0
+[2026-10-29 00:41:29.074] [ClientLog] [info] AutoScreenshot 1/1: fog_occlusion_high_ground_soft_treated (zoom=6, cam=(0,0), yaw=0, cull=0)
+[2026-10-29 00:41:29.103] [ClientLog] [info] CaptureCamera: label=fog_occlusion_high_ground_soft_treated yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE hole=(-3,-7,4) clearance=0.646 hash=0.950 keep<=0.856 kept=(-3,-6,4) clearance=0.646 hash=0.180 keep<=0.856
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE hole=(7,-6,4) clearance=0.120 hash=0.605 keep<=0.520 kept=(7,-7,4) clearance=0.120 hash=0.035 keep<=0.520
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE hole=(7,-5,4) clearance=0.120 hash=0.861 keep<=0.520 kept=(8,-5,4) clearance=0.304 hash=0.212 keep<=0.611
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE scale=8 ridge=x[-0.5,1.5] y[-7.5,8.5] top=-0.5 slabTop=36502 band=18817 expectedHoles=4477.9 treatedHoles=3759 holeKeys=25 graded=27349 gradedBand=13514 seam=3636 seamMisses=0 holesOutsideDissolve=0 controlRemoved=0 holesUnlitBefore=0
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE policy=authored misses=0
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE policy=losIgnored misses=11483
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE policy=hardLos misses=3697
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE policy=admissionInverted misses=13514
+[2026-10-29 00:41:29.107] [ClientLog] [info] FOG-HOLE-ORACLE policy=keyShifted misses=3886
+ir-run: RESULT=CLEAN exe=IRFogDemo exit=0

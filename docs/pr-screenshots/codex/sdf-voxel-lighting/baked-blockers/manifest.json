@@ -1,0 +1,44 @@
+{
+  "source": {
+    "head": "085da98d0eafaf29faaac234d7c1174a2087301d",
+    "hashes": {
+      "creations/demos/shape_debug/main.cpp": "55291230fa4cceba64161b34c62b0db683ebb138dada149861ae9ee3cba918d9",
+      "creations/demos/shape_debug/sdf_voxel_scene.hpp": "e3f8bea63e772043736c9230b6e6919ee3830b7a8b3f8203138a6f632bff8f88",
+      "engine/prefabs/irreden/voxel/sdf_bake.hpp": "35c93963c89cc190cfd543c5fed1e72cc8244990b8cc1fefad691da9c8247690",
+      "build/creations/demos/shape_debug/IRShapeDebug": "2c1191e824b4f542eecf05ab97252ec4927eceb827f66903c54435eeb58da3e2"
+    }
+  },
+  "name": "baked-blockers",
+  "images": [
+    {
+      "label": "sdf_voxel_yaw0",
+      "original": "save_files/screenshots/screenshot_000004.png",
+      "sha256": "3b4dcff790e3b5cd373a81e0491ec794358aec7fd831d9f0ec864426e2cc459c"
+    },
+    {
+      "label": "sdf_voxel_yaw45",
+      "original": "save_files/screenshots/screenshot_000005.png",
+      "sha256": "28e62c32dc5f33290421a1376203f84d478528e0075da4785531e506710a4baa"
+    },
+    {
+      "label": "sdf_voxel_yaw90",
+      "original": "save_files/screenshots/screenshot_000006.png",
+      "sha256": "c4b4cf0680e4bde067f897698b1fc9df8b8449bdeca3d556da3728fa300a157e"
+    },
+    {
+      "label": "sdf_voxel_yaw180",
+      "original": "save_files/screenshots/screenshot_000007.png",
+      "sha256": "54950006f7ec4235fd8ca093e41ab6a49bbf274c95df884e7b230a840b982620"
+    },
+    {
+      "label": "sdf_voxel_yaw270",
+      "original": "save_files/screenshots/screenshot_000008.png",
+      "sha256": "74b2fda922107cef547d8e76f793a164b3dc064a1cbdcc667fdb922bf2f5a1c8"
+    },
+    {
+      "label": "sdf_voxel_zoom2",
+      "original": "save_files/screenshots/screenshot_000009.png",
+      "sha256": "05b25be67b7f118aaad06d15fe051a341152fe3e86ed34c814fc48915adcebb9"
+    }
+  ]
+}

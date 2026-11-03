@@ -1,0 +1,16 @@
+{
+  "command": [
+    "fleet-run",
+    "IRFogDemo",
+    "--auto-screenshot",
+    "10",
+    "--explored-decay"
+  ],
+  "hashes": {
+    "0.png": "b7bd2ac79841b08ce3dc71225a0e7a6c75e05ab8dd706a773350a4c73594df99",
+    "1.png": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+    "2.png": "05147e7fd7909c9713df0d88db9372121b9df4a3f9f1c196c6862f5d4ebe9897",
+    "3.png": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+    "4.png": "0194d441f552d7e9306c5a9c9a1789baaf0cff6b67258910f4d1bdae5fdd4323"
+  }
+}

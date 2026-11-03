@@ -1,0 +1,262 @@
+{
+  "before": [
+    {
+      "capture": 1458,
+      "fixture": "grounded",
+      "yaw": 0,
+      "false": 2352,
+      "missed": 0,
+      "clearance": 0.014
+    },
+    {
+      "capture": 1459,
+      "fixture": "grounded",
+      "yaw": 45,
+      "false": 10192,
+      "missed": 392,
+      "clearance": 0.333
+    },
+    {
+      "capture": 1460,
+      "fixture": "grounded",
+      "yaw": 90,
+      "false": 784,
+      "missed": 0,
+      "clearance": 0.082
+    },
+    {
+      "capture": 1461,
+      "fixture": "grounded",
+      "yaw": 135,
+      "false": 392,
+      "missed": 392,
+      "clearance": 0.667
+    },
+    {
+      "capture": 1462,
+      "fixture": "grounded",
+      "yaw": 180,
+      "false": 392,
+      "missed": 392,
+      "clearance": 0.109
+    },
+    {
+      "capture": 1463,
+      "fixture": "grounded",
+      "yaw": 225,
+      "false": 784,
+      "missed": 0,
+      "clearance": 0.099
+    },
+    {
+      "capture": 1464,
+      "fixture": "grounded",
+      "yaw": 270,
+      "false": 392,
+      "missed": 13328,
+      "clearance": 0.041
+    },
+    {
+      "capture": 1465,
+      "fixture": "grounded",
+      "yaw": 315,
+      "false": 1568,
+      "missed": 4704,
+      "clearance": 0.099
+    },
+    {
+      "capture": 1466,
+      "fixture": "cube",
+      "yaw": 0,
+      "false": 3136,
+      "missed": 0,
+      "clearance": 0.014
+    },
+    {
+      "capture": 1467,
+      "fixture": "cube",
+      "yaw": 45,
+      "false": 7448,
+      "missed": 0,
+      "clearance": 0.333
+    },
+    {
+      "capture": 1468,
+      "fixture": "cube",
+      "yaw": 90,
+      "false": 4704,
+      "missed": 0,
+      "clearance": 0.125
+    },
+    {
+      "capture": 1469,
+      "fixture": "cube",
+      "yaw": 135,
+      "false": 1568,
+      "missed": 784,
+      "clearance": 0.333
+    },
+    {
+      "capture": 1470,
+      "fixture": "cube",
+      "yaw": 180,
+      "false": 0,
+      "missed": 392,
+      "clearance": 0.0
+    },
+    {
+      "capture": 1471,
+      "fixture": "cube",
+      "yaw": 225,
+      "false": 0,
+      "missed": 0,
+      "clearance": 0.0
+    },
+    {
+      "capture": 1472,
+      "fixture": "cube",
+      "yaw": 270,
+      "false": 784,
+      "missed": 2744,
+      "clearance": 0.041
+    },
+    {
+      "capture": 1473,
+      "fixture": "cube",
+      "yaw": 315,
+      "false": 0,
+      "missed": 3528,
+      "clearance": 0.0
+    }
+  ],
+  "after": [
+    {
+      "capture": 1476,
+      "fixture": "grounded",
+      "yaw": 0,
+      "false": 2352,
+      "missed": 0,
+      "clearance": 0.014
+    },
+    {
+      "capture": 1477,
+      "fixture": "grounded",
+      "yaw": 45,
+      "false": 0,
+      "missed": 392,
+      "clearance": 0.0
+    },
+    {
+      "capture": 1478,
+      "fixture": "grounded",
+      "yaw": 90,
+      "false": 784,
+      "missed": 0,
+      "clearance": 0.082
+    },
+    {
+      "capture": 1479,
+      "fixture": "grounded",
+      "yaw": 135,
+      "false": 0,
+      "missed": 392,
+      "clearance": 0.0
+    },
+    {
+      "capture": 1480,
+      "fixture": "grounded",
+      "yaw": 180,
+      "false": 392,
+      "missed": 392,
+      "clearance": 0.109
+    },
+    {
+      "capture": 1481,
+      "fixture": "grounded",
+      "yaw": 225,
+      "false": 784,
+      "missed": 0,
+      "clearance": 0.099
+    },
+    {
+      "capture": 1482,
+      "fixture": "grounded",
+      "yaw": 270,
+      "false": 392,
+      "missed": 13328,
+      "clearance": 0.041
+    },
+    {
+      "capture": 1483,
+      "fixture": "grounded",
+      "yaw": 315,
+      "false": 1568,
+      "missed": 4704,
+      "clearance": 0.099
+    },
+    {
+      "capture": 1484,
+      "fixture": "cube",
+      "yaw": 0,
+      "false": 3136,
+      "missed": 0,
+      "clearance": 0.014
+    },
+    {
+      "capture": 1485,
+      "fixture": "cube",
+      "yaw": 45,
+      "false": 0,
+      "missed": 0,
+      "clearance": 0.0
+    },
+    {
+      "capture": 1486,
+      "fixture": "cube",
+      "yaw": 90,
+      "false": 4704,
+      "missed": 0,
+      "clearance": 0.125
+    },
+    {
+      "capture": 1487,
+      "fixture": "cube",
+      "yaw": 135,
+      "false": 0,
+      "missed": 784,
+      "clearance": 0.0
+    },
+    {
+      "capture": 1488,
+      "fixture": "cube",
+      "yaw": 180,
+      "false": 0,
+      "missed": 392,
+      "clearance": 0.0
+    },
+    {
+      "capture": 1489,
+      "fixture": "cube",
+      "yaw": 225,
+      "false": 0,
+      "missed": 0,
+      "clearance": 0.0
+    },
+    {
+      "capture": 1490,
+      "fixture": "cube",
+      "yaw": 270,
+      "false": 784,
+      "missed": 2744,
+      "clearance": 0.041
+    },
+    {
+      "capture": 1491,
+      "fixture": "cube",
+      "yaw": 315,
+      "false": 0,
+      "missed": 3528,
+      "clearance": 0.0
+    }
+  ]
+}

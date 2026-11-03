@@ -1,0 +1,45 @@
+interior: exit=0
+capture-432.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-432.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-432.png wall-away-from-sun: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-436.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-436.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-436.png wall-away-from-sun: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-444.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-444.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-444.png wall-away-from-sun: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-448.png blocked-floor: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-448.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-448.png wall-away-from-sun: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+
+unblocked: exit=0
+capture-440.png blocked-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-440.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+
+positive-control: exit=1
+capture-420.png blocked-floor: expected=(48, 60, 72) center=(78, 98, 117) max_error=45 FAIL
+capture-420.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-420.png wall-away-from-sun: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+capture-428.png blocked-floor: expected=(48, 60, 72) center=(78, 98, 117) max_error=45 FAIL
+capture-428.png outside-floor: expected=(115, 144, 173) center=(115, 144, 173) max_error=0 PASS
+capture-428.png wall-away-from-sun: expected=(48, 60, 72) center=(48, 60, 72) max_error=0 PASS
+
+box: exit=0
+yaw=0 iou=0.802 area_ratio=0.959 expected_pixels=1335 observed_pixels=1280 PASS
+yaw=90 iou=0.945 area_ratio=1.002 expected_pixels=4912 observed_pixels=4924 PASS
+yaw=180 iou=0.906 area_ratio=1.024 expected_pixels=4992 observed_pixels=5112 PASS
+yaw=270 iou=0.878 area_ratio=1.013 expected_pixels=4977 observed_pixels=5040 PASS
+
+no-shadows Lambert control: exit=0
+yaw=0 face=left actual=(61, 91, 182) expected=(61, 91, 182) max_error=0 PASS
+yaw=0 face=right actual=(50, 75, 149) expected=(50, 75, 149) max_error=0 PASS
+yaw=0 face=top actual=(58, 86, 173) expected=(58, 86, 173) max_error=0 PASS
+yaw=90 face=left actual=(24, 36, 72) expected=(24, 36, 72) max_error=0 PASS
+yaw=90 face=right actual=(61, 91, 182) expected=(61, 91, 182) max_error=0 PASS
+yaw=90 face=top actual=(58, 86, 173) expected=(58, 86, 173) max_error=0 PASS
+yaw=180 face=left actual=(24, 36, 72) expected=(24, 36, 72) max_error=0 PASS
+yaw=180 face=right actual=(24, 36, 72) expected=(24, 36, 72) max_error=0 PASS
+yaw=180 face=top actual=(58, 86, 173) expected=(58, 86, 173) max_error=0 PASS
+yaw=270 face=left actual=(50, 75, 149) expected=(50, 75, 149) max_error=0 PASS
+yaw=270 face=right actual=(24, 36, 72) expected=(24, 36, 72) max_error=0 PASS
+yaw=270 face=top actual=(58, 86, 173) expected=(58, 86, 173) max_error=0 PASS

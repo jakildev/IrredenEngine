@@ -1,0 +1,179 @@
+{
+  "baseline_revision": "acc9e9191804d890d67e5c4e3a69e6fc52ed0e75",
+  "backend": "macOS Metal",
+  "baseline_build": "Parent executable built before backend edits; not rebuilt until both baseline capture runs completed.",
+  "candidate_build": "Same parent plus the Metal clear-source implementation in this PR.",
+  "scope": "Frozen CanvasStress captures prove unchanged output for these runs, not general artifact freedom or performance.",
+  "modes": {
+    "modern-beauty": {
+      "command": [
+        "fleet-run",
+        "IRCanvasStress",
+        "--auto-screenshot",
+        "120",
+        "--no-auto-rotate",
+        "--no-spin"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "before_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "after_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "identical": true
+        },
+        {
+          "index": 1,
+          "before_sha256": "0a007b4b30c3901be1b80da83089114c4d27f36397d505805d0d850f4699741e",
+          "after_sha256": "0a007b4b30c3901be1b80da83089114c4d27f36397d505805d0d850f4699741e",
+          "identical": true
+        },
+        {
+          "index": 2,
+          "before_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "after_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "identical": true
+        },
+        {
+          "index": 3,
+          "before_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "after_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "identical": true
+        },
+        {
+          "index": 4,
+          "before_sha256": "5106319650cc61139b32623160e93f0fdd69d20965d57a8b543e3fbc1e2ac077",
+          "after_sha256": "5106319650cc61139b32623160e93f0fdd69d20965d57a8b543e3fbc1e2ac077",
+          "identical": true
+        },
+        {
+          "index": 5,
+          "before_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "after_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "identical": true
+        },
+        {
+          "index": 6,
+          "before_sha256": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129",
+          "after_sha256": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129",
+          "identical": true
+        },
+        {
+          "index": 7,
+          "before_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "after_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "identical": true
+        },
+        {
+          "index": 8,
+          "before_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "after_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "identical": true
+        },
+        {
+          "index": 9,
+          "before_sha256": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129",
+          "after_sha256": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129",
+          "identical": true
+        },
+        {
+          "index": 10,
+          "before_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "after_sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+          "identical": true
+        },
+        {
+          "index": 11,
+          "before_sha256": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129",
+          "after_sha256": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129",
+          "identical": true
+        }
+      ]
+    },
+    "modern-shadow": {
+      "command": [
+        "fleet-run",
+        "IRCanvasStress",
+        "--auto-screenshot",
+        "120",
+        "--no-auto-rotate",
+        "--no-spin",
+        "--debug-overlay",
+        "shadow"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "before_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "after_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "identical": true
+        },
+        {
+          "index": 1,
+          "before_sha256": "6d40f2d8b852f83a8a96e358cfa826a9e184f35d6569651ee2f7bd1a53f6e040",
+          "after_sha256": "6d40f2d8b852f83a8a96e358cfa826a9e184f35d6569651ee2f7bd1a53f6e040",
+          "identical": true
+        },
+        {
+          "index": 2,
+          "before_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "after_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "identical": true
+        },
+        {
+          "index": 3,
+          "before_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "after_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "identical": true
+        },
+        {
+          "index": 4,
+          "before_sha256": "fb0e6762e66748b6c7c784168eeb7dbb24fbd656a9f8c8878ae2046c77bfb1cd",
+          "after_sha256": "fb0e6762e66748b6c7c784168eeb7dbb24fbd656a9f8c8878ae2046c77bfb1cd",
+          "identical": true
+        },
+        {
+          "index": 5,
+          "before_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "after_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "identical": true
+        },
+        {
+          "index": 6,
+          "before_sha256": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "after_sha256": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "identical": true
+        },
+        {
+          "index": 7,
+          "before_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "after_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "identical": true
+        },
+        {
+          "index": 8,
+          "before_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "after_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "identical": true
+        },
+        {
+          "index": 9,
+          "before_sha256": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "after_sha256": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "identical": true
+        },
+        {
+          "index": 10,
+          "before_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "after_sha256": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "identical": true
+        },
+        {
+          "index": 11,
+          "before_sha256": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "after_sha256": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "identical": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+import os, subprocess, sys
+common=["--only","shadowocclusion,orbit,floor","--probe-grid","--probe-staircase","--no-spin","--no-auto-rotate","--pivot-origin","--zoom","4","--subdivisions","1","--yaw","1.57059632679","--auto-profile","--auto-screenshot","6","--sweep-yaw","1.57059632679","1.57099632679","3"]
+for release in [False,True]:
+ for enabled in [False,True]:
+  name=("release" if release else "park")+("-on" if enabled else "-off")
+  env=os.environ.copy();env["IR_PERAXIS_SURFACE_LIGHTING"]="1";env.pop("IR_PERAXIS_VISIBILITY_STATS",None);env.pop("IR_PERAXIS_VISIBILITY_PREPASS",None)
+  if enabled: env["IR_PERAXIS_VISIBILITY_PREPASS"]="1"
+  cmd=[sys.executable,"scripts/perf/repeat_profile.py","--target","IRCanvasStress","--output","/tmp/codex-visibility-transitions/"+name,"--repeats","1","--"]+common
+  if release: cmd += ["--sweep-frames","1","130"]
+  print("RUN",name,flush=True);subprocess.run(cmd,env=env,check=True)

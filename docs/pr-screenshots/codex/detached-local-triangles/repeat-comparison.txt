@@ -1,0 +1,5 @@
+386 vs 376: changed_pixels=952 bounds=(1232, 734, 1328, 812)
+387 vs 377: changed_pixels=232 bounds=(1322, 726, 1394, 796)
+388 vs 378: changed_pixels=304 bounds=(1390, 702, 1462, 768)
+389 vs 379: changed_pixels=240 bounds=(1466, 662, 1510, 732)
+390 vs 380: changed_pixels=104 bounds=(1470, 652, 1530, 704)

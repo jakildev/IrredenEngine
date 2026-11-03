@@ -1,0 +1,9 @@
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/shape_debug/IRShapeDebug --spin-yaw --auto-screenshot 1 --zoom 8 --no-ao --pivot-origin --spin-shape torus --no-shadows --debug-overlay normals --shape-sample-probe 1253 569 --shape-sample-probe-output /tmp/shape-owner-1253-569.json (window mode: offscreen)
+[2026-10-11 15:54:19.048] [ClientLog] [info] Spin-yaw: warmup reset to 10 frames (--auto-screenshot value 1 reinterpreted as shot count)
+[2026-10-11 15:54:19.223] [ClientLog] [info] CaptureCamera: label=spin_yaw_000_of_002 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)
+[2026-10-11 15:54:19.226] [ClientLog] [info] [shape-sample-probe] status=ok written=true path=/tmp/shape-owner-1253-569.json
+[2026-10-11 15:54:19.347] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000052.png
+[2026-10-11 15:54:19.403] [ClientLog] [info] CaptureCamera: label=spin_yaw_001_of_002 yaw=-3.1414928 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)
+[2026-10-11 15:54:19.514] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000053.png
+[2026-10-11 15:54:19.554] [EngineLog] [info] Clean shutdown complete.
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0

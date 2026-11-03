@@ -1,0 +1,24 @@
+[
+  {
+    "name": "zoom4_pan16_yaw45_pivot",
+    "pixels": 472,
+    "max": 55,
+    "bbox": [
+      634,
+      416,
+      1390,
+      942
+    ]
+  },
+  {
+    "name": "zoom4_yaw45_inter_cardinal",
+    "pixels": 472,
+    "max": 55,
+    "bbox": [
+      250,
+      423,
+      1006,
+      949
+    ]
+  }
+]

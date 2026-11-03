@@ -1,0 +1,314 @@
+{
+  "before": {
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "120",
+      "IRCanvasStress",
+      "--only",
+      "shadowbox,floor",
+      "--probe-analytic-sphere",
+      "--probe-overlapping-source",
+      "--pivot-origin",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "6",
+      "--auto-screenshot",
+      "6",
+      "--sweep-yaw",
+      "0",
+      "5.49778714",
+      "8"
+    ],
+    "revision": "72c6e5218ae9e217813a08b63cfac3336cb54017",
+    "exit_code": 0,
+    "clean": true,
+    "images": [
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000247.png",
+        "file": "0.png",
+        "sha256": "25556bd4ad24dd2c33d8756f2c5dfc364037a06090c37ac2e0bda33845a1416b"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000248.png",
+        "file": "1.png",
+        "sha256": "834cb1d6a278ae7b016157e81adca5a75636794ab8c9f10132fd593240784804"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000249.png",
+        "file": "2.png",
+        "sha256": "7fc430d735a8d426a6bd3b3386fc44354e5b266efd8f2bdc25c3029e9c875c08"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000250.png",
+        "file": "3.png",
+        "sha256": "4a69f829608257e31a3574dbb9bd06b48be1bd3a37cba92bdcd13870ea6aee8d"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000251.png",
+        "file": "4.png",
+        "sha256": "2c0d138c03283da8fb7b355898d5fecfb50179fd576f3d078930ef8468c0ef3e"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000252.png",
+        "file": "5.png",
+        "sha256": "786e0f5fd9b6ecd129a770da6de84684f407cec665a7c67a7b9054f1a595c757"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000253.png",
+        "file": "6.png",
+        "sha256": "5dc1aec102bb8d95e2db60d1e3340bf5a2967b09ad1ee6e863212215d713051e"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000254.png",
+        "file": "7.png",
+        "sha256": "94b96784455408bb65ee3545fa5ac0238139cf18536a7e7f12db77e9a3efed0a"
+      }
+    ]
+  },
+  "after": {
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "120",
+      "IRCanvasStress",
+      "--only",
+      "shadowbox,floor",
+      "--probe-analytic-sphere",
+      "--probe-overlapping-source",
+      "--pivot-origin",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "6",
+      "--auto-screenshot",
+      "6",
+      "--sweep-yaw",
+      "0",
+      "5.49778714",
+      "8"
+    ],
+    "revision": "72c6e5218ae9e217813a08b63cfac3336cb54017",
+    "exit_code": 0,
+    "clean": true,
+    "images": [
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000271.png",
+        "file": "0.png",
+        "sha256": "d05f9e5b44a8b3511456f0f41d7473fb59b2f407fb126f6b8c230e956194e47e"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000272.png",
+        "file": "1.png",
+        "sha256": "ad22501e04647fc1bfc35980fb039246a8f787af134a894e4e08c060e6ad1c6a"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000273.png",
+        "file": "2.png",
+        "sha256": "1e71770166ee373f4e9b57a41d868f7d938b35b11c8ca5cda176793e2787e26e"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000274.png",
+        "file": "3.png",
+        "sha256": "12633e16575823d76e66a96abc3b7be9c7ad8499eae9e096e998db83ff625645"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000275.png",
+        "file": "4.png",
+        "sha256": "a770a6ccc9001990431e3105215663f018494f05223e53fc538c6c9026e4dabf"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000276.png",
+        "file": "5.png",
+        "sha256": "3c2ac0a4dccd40ebca7f6369745f901ff9f5f5e5723f57176853bf082c049723"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000277.png",
+        "file": "6.png",
+        "sha256": "f951bc44da98871454078f884ca806b4e84ec1e97c738ae8ddaaedbb9b3a45f2"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000278.png",
+        "file": "7.png",
+        "sha256": "a35666a782a4ecce54de8d3f02700c21f299b74af51ac2629daf16a1959c5043"
+      }
+    ],
+    "shader_sha256": {
+      "engine/render/src/shaders/c_compute_sun_shadow_body.glsl": "0ffd2c69a974fde835031568056cf33f1cf06d4b6a8b19bc7173174a284b01ec",
+      "engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal": "2cc0af6c1cf889f231125eb9eed0b55b5e2abb83587a6b3e39bdedd882e74cfb",
+      "engine/render/src/shaders/ir_shape_receiver.glsl": "792bb03a62dbc078b4a961493a33885cee7f87e9afdbec8e6782941bfb99d76d",
+      "engine/render/src/shaders/metal/ir_shape_receiver.metal": "9d634fcfc3956331d435a22b44b490047de5771279cb537dd402c1ee60f1d83a",
+      "engine/render/src/shaders/ir_shape_shadow_receiver.glsl": "9d3372128e48c976773dea9a4321658c31066c5ab6d6cdf4c59f66bb585343e1",
+      "engine/render/src/shaders/metal/ir_shape_shadow_receiver.metal": "f8ab72266872470a66bd630d09a8f6439088e0c375376afa4197cc7531aca525"
+    }
+  },
+  "no-shadows": {
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "120",
+      "IRCanvasStress",
+      "--only",
+      "shadowbox,floor",
+      "--probe-analytic-sphere",
+      "--probe-overlapping-source",
+      "--pivot-origin",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "6",
+      "--auto-screenshot",
+      "6",
+      "--sweep-yaw",
+      "0",
+      "5.49778714",
+      "8",
+      "--no-shadows"
+    ],
+    "revision": "72c6e5218ae9e217813a08b63cfac3336cb54017",
+    "exit_code": 0,
+    "clean": true,
+    "images": [
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000255.png",
+        "file": "0.png",
+        "sha256": "2af107bc9bb03e00699da3b3df4d7c34522e0d8157f1f4817356e446ee34849b"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000256.png",
+        "file": "1.png",
+        "sha256": "35ffc9521d04f1c31dfbc927f3af70c88354e4b7c07d50c527ba461b918c5f76"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000257.png",
+        "file": "2.png",
+        "sha256": "fec698214d2cf3a6b5eeb7b1e9009a64189e6300f8f83c25bb6e42f64d2d35aa"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000258.png",
+        "file": "3.png",
+        "sha256": "057e1c23087558f183ce4fc37426d768aad1d9d654a761489231eb35cfe4b0e7"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000259.png",
+        "file": "4.png",
+        "sha256": "7dea0d0a132328b922fb5f75a89817881cd96e46028fc64b9487f9ecb6d25f01"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000260.png",
+        "file": "5.png",
+        "sha256": "64731121965d209590982d219571562848504ab98157d50aa13cd2a57dccb75d"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000261.png",
+        "file": "6.png",
+        "sha256": "81623c06d68c9cff88773d64c4c29417ede3602a1eb9151e681f9e5fa1a5c1bd"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000262.png",
+        "file": "7.png",
+        "sha256": "38b5457b223bd1e5dcc0958c630721df9c74ddb89e303f41f524a003da61c99c"
+      }
+    ]
+  },
+  "no_shadows_after": {
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "120",
+      "IRCanvasStress",
+      "--only",
+      "shadowbox,floor",
+      "--probe-analytic-sphere",
+      "--probe-overlapping-source",
+      "--pivot-origin",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "6",
+      "--auto-screenshot",
+      "6",
+      "--sweep-yaw",
+      "0",
+      "5.49778714",
+      "8",
+      "--no-shadows"
+    ],
+    "revision": "72c6e5218ae9e217813a08b63cfac3336cb54017",
+    "exit_code": 0,
+    "clean": true,
+    "images": [
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000279.png",
+        "file": "0.png",
+        "sha256": "2af107bc9bb03e00699da3b3df4d7c34522e0d8157f1f4817356e446ee34849b"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000280.png",
+        "file": "1.png",
+        "sha256": "35ffc9521d04f1c31dfbc927f3af70c88354e4b7c07d50c527ba461b918c5f76"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000281.png",
+        "file": "2.png",
+        "sha256": "fec698214d2cf3a6b5eeb7b1e9009a64189e6300f8f83c25bb6e42f64d2d35aa"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000282.png",
+        "file": "3.png",
+        "sha256": "057e1c23087558f183ce4fc37426d768aad1d9d654a761489231eb35cfe4b0e7"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000283.png",
+        "file": "4.png",
+        "sha256": "7dea0d0a132328b922fb5f75a89817881cd96e46028fc64b9487f9ecb6d25f01"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000284.png",
+        "file": "5.png",
+        "sha256": "64731121965d209590982d219571562848504ab98157d50aa13cd2a57dccb75d"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000285.png",
+        "file": "6.png",
+        "sha256": "81623c06d68c9cff88773d64c4c29417ede3602a1eb9151e681f9e5fa1a5c1bd"
+      },
+      {
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000286.png",
+        "file": "7.png",
+        "sha256": "38b5457b223bd1e5dcc0958c630721df9c74ddb89e303f41f524a003da61c99c"
+      }
+    ],
+    "shader_sha256": {
+      "engine/render/src/shaders/c_compute_sun_shadow_body.glsl": "0ffd2c69a974fde835031568056cf33f1cf06d4b6a8b19bc7173174a284b01ec",
+      "engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal": "2cc0af6c1cf889f231125eb9eed0b55b5e2abb83587a6b3e39bdedd882e74cfb",
+      "engine/render/src/shaders/ir_shape_receiver.glsl": "792bb03a62dbc078b4a961493a33885cee7f87e9afdbec8e6782941bfb99d76d",
+      "engine/render/src/shaders/metal/ir_shape_receiver.metal": "9d634fcfc3956331d435a22b44b490047de5771279cb537dd402c1ee60f1d83a",
+      "engine/render/src/shaders/ir_shape_shadow_receiver.glsl": "9d3372128e48c976773dea9a4321658c31066c5ab6d6cdf4c59f66bb585343e1",
+      "engine/render/src/shaders/metal/ir_shape_shadow_receiver.metal": "f8ab72266872470a66bd630d09a8f6439088e0c375376afa4197cc7531aca525"
+    },
+    "rgb_equal_to_control": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  }
+}

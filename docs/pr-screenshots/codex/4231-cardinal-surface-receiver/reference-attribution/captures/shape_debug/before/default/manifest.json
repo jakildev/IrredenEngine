@@ -1,0 +1,70 @@
+{
+  "arm": "before",
+  "case": "default",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRShapeDebug",
+    "--auto-screenshot",
+    "120"
+  ],
+  "labels": [
+    "zoom1_origin",
+    "zoom2_origin",
+    "zoom4_origin",
+    "zoom1_odd_offset",
+    "zoom8_origin",
+    "zoom4_offset_3_5",
+    "zoom16_lod_fine_sphere",
+    "lod_swap_zoom1_cube",
+    "lod_swap_zoom2_cube",
+    "lod_swap_zoom4_cone",
+    "lod_swap_zoom8_cone",
+    "lod_swap_zoom16_sphere",
+    "zoom4_yaw90",
+    "zoom4_yaw180",
+    "zoom4_yaw270",
+    "zoom4_yaw45_inter_cardinal",
+    "zoom8_yaw180",
+    "zoom4_pan16_yaw0_pivot",
+    "zoom4_pan16_yaw90_pivot",
+    "zoom4_pan16_yaw180_pivot",
+    "zoom4_pan16_yaw45_pivot"
+  ],
+  "sources": [
+    "save_files/screenshots/screenshot_000002.png",
+    "save_files/screenshots/screenshot_000003.png",
+    "save_files/screenshots/screenshot_000004.png",
+    "save_files/screenshots/screenshot_000005.png",
+    "save_files/screenshots/screenshot_000006.png",
+    "save_files/screenshots/screenshot_000007.png",
+    "save_files/screenshots/screenshot_000008.png",
+    "save_files/screenshots/screenshot_000009.png",
+    "save_files/screenshots/screenshot_000010.png",
+    "save_files/screenshots/screenshot_000011.png",
+    "save_files/screenshots/screenshot_000012.png",
+    "save_files/screenshots/screenshot_000013.png",
+    "save_files/screenshots/screenshot_000014.png",
+    "save_files/screenshots/screenshot_000015.png",
+    "save_files/screenshots/screenshot_000016.png",
+    "save_files/screenshots/screenshot_000017.png",
+    "save_files/screenshots/screenshot_000018.png",
+    "save_files/screenshots/screenshot_000019.png",
+    "save_files/screenshots/screenshot_000020.png",
+    "save_files/screenshots/screenshot_000021.png",
+    "save_files/screenshots/screenshot_000022.png"
+  ],
+  "shader_hashes": {
+    "c_compute_sun_shadow_body.glsl": "0ffd2c69a974fde835031568056cf33f1cf06d4b6a8b19bc7173174a284b01ec",
+    "metal/c_compute_sun_shadow_body.metal": "2cc0af6c1cf889f231125eb9eed0b55b5e2abb83587a6b3e39bdedd882e74cfb"
+  },
+  "clean": true,
+  "exit_code": 0,
+  "exit_evidence": "Capture driver rejects nonzero process return, missing RESULT=CLEAN, or insufficient screenshot count.",
+  "binary_sha256": null,
+  "binary_identity_limit": "Executable digest was not recorded; driver performed no builds between arms and changed only the staged compute bodies.",
+  "result_lines": [
+    "ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0"
+  ]
+}

@@ -1,0 +1,13 @@
+diff --git a/engine/render/src/shaders/metal/ir_cardinal_voxel_receiver.metal b/engine/render/src/shaders/metal/ir_cardinal_voxel_receiver.metal
+index 6b79dccb1..70b7ce107 100644
+--- a/engine/render/src/shaders/metal/ir_cardinal_voxel_receiver.metal
++++ b/engine/render/src/shaders/metal/ir_cardinal_voxel_receiver.metal
+@@ -43,6 +43,8 @@ inline float3 cardinalVoxelSurfacePoint(
+     float3 point = isoPositionToPos3D(iso, 0.0);
+     const float3 axis = faceOutOfPlaneUnitAxis(decodeSlot(encoded));
+     point += float3(dot(center - point, axis));
++    const float3 halfExtent = 0.5 / density * (float3(1.0) - axis);
++    point = center + clamp(point - center, -halfExtent, halfExtent);
+     return rotateCardinalZInv(point, cardinalIndex);
+ }
+ 

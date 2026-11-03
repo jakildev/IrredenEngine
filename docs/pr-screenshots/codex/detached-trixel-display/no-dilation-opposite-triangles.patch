@@ -1,0 +1,128 @@
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
+@@ -421,7 +421,7 @@
+     // footprint — byte-identical to master.
+     ivec2 su = ivec2(0);
+     ivec2 sv = ivec2(0);
+-    if (reVoxelize) {
++    if (false) {
+         faceInPlaneIsoSteps(faceId, su, sv);
+     }
+     for (int sy = 0; sy < n; ++sy) {
+@@ -430,7 +430,7 @@
+             ivec2 p = base + roundHalfUp(D * src);
+ #if IR_STORE_WINNER_ELECTION
+             resolveWinnerTap(p, voxelDistance, voxelIndex);
+-            if (reVoxelize) {
++            if (false) {
+                 resolveWinnerTap(p + su, voxelDistance, voxelIndex);
+                 resolveWinnerTap(p - su, voxelDistance, voxelIndex);
+                 resolveWinnerTap(p + sv, voxelDistance, voxelIndex);
+@@ -438,7 +438,7 @@
+             }
+ #else
+             writeDistanceTap(p, voxelDistance);
+-            if (reVoxelize) {
++            if (false) {
+                 writeDistanceTap(p + su, voxelDistance);
+                 writeDistanceTap(p - su, voxelDistance);
+                 writeDistanceTap(p + sv, voxelDistance);
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+@@ -252,7 +252,7 @@
+     // the occlusion-winning face per pixel, so gaps get the correct colour.
+     ivec2 su = ivec2(0);
+     ivec2 sv = ivec2(0);
+-    if (reVoxelize) {
++    if (false) {
+         faceInPlaneIsoSteps(faceId, su, sv);
+     }
+     for (int sy = 0; sy < n; ++sy) {
+@@ -261,7 +261,7 @@
+             ivec2 p = base + roundHalfUp(D * src);
+ #if IR_STORE_WINNER_ELECTION
+             writeColorTapCardinalWinner(p, voxelDistance, voxelColor, packedEntityId, voxelIndex);
+-            if (reVoxelize) {
++            if (false) {
+                 writeColorTapCardinalWinner(
+                     p + su, voxelDistance, voxelColor, packedEntityId, voxelIndex
+                 );
+@@ -277,7 +277,7 @@
+             }
+ #else
+             writeColorTap(p, voxelDistance, voxelColor, packedEntityId);
+-            if (reVoxelize) {
++            if (false) {
+                 writeColorTap(p + su, voxelDistance, voxelColor, packedEntityId);
+                 writeColorTap(p - su, voxelDistance, voxelColor, packedEntityId);
+                 writeColorTap(p + sv, voxelDistance, voxelColor, packedEntityId);
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal
+@@ -277,7 +277,7 @@
+     // the occlusion winner; stage 2's depth re-test paints the matching colour).
+     int2 su = int2(0);
+     int2 sv = int2(0);
+-    if (reVoxelize) {
++    if (false) {
+         faceInPlaneIsoSteps(faceId, su, sv);
+     }
+     for (int sy = 0; sy < n; ++sy) {
+@@ -286,7 +286,7 @@
+             const int2 p = base + roundHalfUp(D * src);
+ #if IR_STORE_WINNER_ELECTION
+             resolveWinnerTap(p, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+-            if (reVoxelize) {
++            if (false) {
+                 resolveWinnerTap(p + su, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+                 resolveWinnerTap(p - su, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+                 resolveWinnerTap(p + sv, voxelDistance, voxelIndex, distanceScratch, perAxisWinnerIds, canvasSize);
+@@ -294,7 +294,7 @@
+             }
+ #else
+             writeDistanceTap(p, voxelDistance, distanceScratch, canvasSize);
+-            if (reVoxelize) {
++            if (false) {
+                 writeDistanceTap(p + su, voxelDistance, distanceScratch, canvasSize);
+                 writeDistanceTap(p - su, voxelDistance, distanceScratch, canvasSize);
+                 writeDistanceTap(p + sv, voxelDistance, distanceScratch, canvasSize);
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+@@ -179,7 +179,7 @@
+     // tap claimed; writeColorTap's depth re-test paints only the occlusion winner.
+     int2 su = int2(0);
+     int2 sv = int2(0);
+-    if (reVoxelize) {
++    if (false) {
+         faceInPlaneIsoSteps(faceId, su, sv);
+     }
+     for (int sy = 0; sy < n; ++sy) {
+@@ -192,7 +192,7 @@
+                 distanceScratch, perAxisWinnerIds, triangleCanvasColors,
+                 triangleCanvasDistances, triangleCanvasEntityIds
+             );
+-            if (reVoxelize) {
++            if (false) {
+                 writeColorTapCardinalWinner(
+                     p + su, voxelDistance, voxelColor, packedEntityId, voxelIndex, canvasSize,
+                     distanceScratch, perAxisWinnerIds, triangleCanvasColors,
+@@ -220,7 +220,7 @@
+                 distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                 triangleCanvasEntityIds
+             );
+-            if (reVoxelize) {
++            if (false) {
+                 writeColorTap(
+                     p + su, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                     distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+--- a/engine/render/src/shaders/metal/trixel_to_framebuffer.metal
++++ b/engine/render/src/shaders/metal/trixel_to_framebuffer.metal
+@@ -109,7 +109,8 @@
+     const float2 originShifted =
+         trixelFramebufferSamplePosition(originRaw, originModifier);
+
+-    const uint2 sampleCoord = trixelCanvasReadCoord(originRaw, textureSize);
++    const float2 displayOrigin = frameData.effectiveSubdivisionsForHover.y > 0.0f ? trixelFramebufferSamplePosition(originRaw, (z1.x + z1.y + 1) & 1) : originRaw;
++    const uint2 sampleCoord = trixelCanvasReadCoord(displayOrigin, textureSize);
+     const uint2 hoverCoord = trixelCanvasReadCoord(originShifted, textureSize);
+
+     float4 color = triangleColors.read(sampleCoord);

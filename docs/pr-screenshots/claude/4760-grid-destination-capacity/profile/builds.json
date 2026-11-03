@@ -1,0 +1,19 @@
+{
+  "parent": {
+    "commit": "46940203476d9e6399801e2520ad8f23cbe08952",
+    "build_type": "Release",
+    "binary_sha256": "bf5e0d883d8299dfbf7f6af507348096aa703e253c22118228468934feecff0b",
+    "shader_sha256": "70da9f852c7e7129b220fedbcedfbfcf8c07200d7799b2d792f9a07005fa83e9",
+    "host_power": "AC Power",
+    "runs": 8,
+    "changes": "creations/demos/canvas_stress/main.cpp (the --focus-exact-fit-plate fixture only)"
+  },
+  "head": {
+    "commit": "3decc0f559fea9b6de359eaa6f6ebc7fd5c04833",
+    "build_type": "Release",
+    "binary_sha256": "b990f6eb8a8238fbe27d9e69a877fc139f1f11873a79bcb5d037ad0e7893ee1b",
+    "shader_sha256": "70da9f852c7e7129b220fedbcedfbfcf8c07200d7799b2d792f9a07005fa83e9",
+    "host_power": "AC Power",
+    "runs": 8
+  }
+}

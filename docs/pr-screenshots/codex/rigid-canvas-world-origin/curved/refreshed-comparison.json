@@ -1,0 +1,130 @@
+[
+  {
+    "case": "upright-authored",
+    "angle": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "upright-authored",
+    "angle": 45,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "upright-authored",
+    "angle": 90,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "upright-authored",
+    "angle": 135,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "upright-authored",
+    "angle": 180,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "upright-authored",
+    "angle": 225,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "upright-authored",
+    "angle": 270,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "upright-authored",
+    "angle": 315,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "pitched-authored",
+    "angle": 0,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "pitched-authored",
+    "angle": 45,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "pitched-authored",
+    "angle": 90,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "pitched-authored",
+    "angle": 135,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "pitched-authored",
+    "angle": 180,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "pitched-authored",
+    "angle": 225,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "pitched-authored",
+    "angle": 270,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  },
+  {
+    "case": "pitched-authored",
+    "angle": 315,
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  }
+]

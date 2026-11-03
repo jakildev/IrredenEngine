@@ -1,0 +1,536 @@
+ir-run: running debug tree C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4/build
+ir-run: /c/Users/evinj/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4/build/IrredenEngineTest.exe --gtest_filter=Fog*:SurfaceFogRoute.*:PerAxisSurfaceLighting* (timeout: 1800s) (window mode: background)
+Note: Google Test filter = Fog*:SurfaceFogRoute.*:PerAxisSurfaceLighting*
+[==========] Running 235 tests from 28 test suites.
+[----------] Global test environment set-up.
+[----------] 15 tests from FogWorldFieldTest
+[ RUN      ] FogWorldFieldTest.ExploredStateRoundTripsThroughEvictionAndReload
+[       OK ] FogWorldFieldTest.ExploredStateRoundTripsThroughEvictionAndReload (10 ms)
+[ RUN      ] FogWorldFieldTest.RegionIsProbedOnce
+[       OK ] FogWorldFieldTest.RegionIsProbedOnce (23 ms)
+[ RUN      ] FogWorldFieldTest.HotFarRegionSurvivesEviction
+[       OK ] FogWorldFieldTest.HotFarRegionSurvivesEviction (9 ms)
+[ RUN      ] FogWorldFieldTest.WriteToAnEvictedRegionLoadsItFirst
+[       OK ] FogWorldFieldTest.WriteToAnEvictedRegionLoadsItFirst (14 ms)
+[ RUN      ] FogWorldFieldTest.ClearRemovesPersistedState
+[       OK ] FogWorldFieldTest.ClearRemovesPersistedState (10 ms)
+[ RUN      ] FogWorldFieldTest.SetPersistenceRefusesAPopulatedField
+[       OK ] FogWorldFieldTest.SetPersistenceRefusesAPopulatedField (0 ms)
+[ RUN      ] FogWorldFieldTest.CoordinatesFarOutsideTheLegacyWindow
+[       OK ] FogWorldFieldTest.CoordinatesFarOutsideTheLegacyWindow (9 ms)
+[ RUN      ] FogWorldFieldTest.WindowExpansionUsesTheToroidalLayout
+[       OK ] FogWorldFieldTest.WindowExpansionUsesTheToroidalLayout (12 ms)
+[ RUN      ] FogWorldFieldTest.ColdWholeWindowGather
+[       OK ] FogWorldFieldTest.ColdWholeWindowGather (751 ms)
+[ RUN      ] FogWorldFieldTest.SourcesPastTheCapRevealThroughTheField
+[       OK ] FogWorldFieldTest.SourcesPastTheCapRevealThroughTheField (0 ms)
+[ RUN      ] FogWorldFieldTest.FieldTierDiscMatchesRevealRadius
+[       OK ] FogWorldFieldTest.FieldTierDiscMatchesRevealRadius (0 ms)
+[ RUN      ] FogWorldFieldTest.FieldTierDiscReachesTheWindowGather
+[       OK ] FogWorldFieldTest.FieldTierDiscReachesTheWindowGather (0 ms)
+[ RUN      ] FogWorldFieldTest.FieldTierStampsAreNotPersisted
+[       OK ] FogWorldFieldTest.FieldTierStampsAreNotPersisted (9 ms)
+[ RUN      ] FogWorldFieldTest.MovingFieldTierAllocatesNothingOnceWarm
+[       OK ] FogWorldFieldTest.MovingFieldTierAllocatesNothingOnceWarm (27 ms)
+[ RUN      ] FogWorldFieldTest.RegionTouchOffTheMainThreadAssertsBeforeProbing
+[       OK ] FogWorldFieldTest.RegionTouchOffTheMainThreadAssertsBeforeProbing (1 ms)
+[----------] 15 tests from FogWorldFieldTest (884 ms total)
+[----------] 5 tests from FogWindowGatherTest
+[ RUN      ] FogWindowGatherTest.NothingPendingPlansNothing
+[       OK ] FogWindowGatherTest.NothingPendingPlansNothing (0 ms)
+[ RUN      ] FogWindowGatherTest.PendingOutsideTheWindowPlansNothing
+[       OK ] FogWindowGatherTest.PendingOutsideTheWindowPlansNothing (0 ms)
+[ RUN      ] FogWindowGatherTest.OnePendingChunkPlansItsSquare
+[       OK ] FogWindowGatherTest.OnePendingChunkPlansItsSquare (0 ms)
+[ RUN      ] FogWindowGatherTest.AdjacentChunksInARowCoalesce
+[       OK ] FogWindowGatherTest.AdjacentChunksInARowCoalesce (0 ms)
+[ RUN      ] FogWindowGatherTest.UnsetPreviousOriginPlansTheWholeWindowInStrips
+[       OK ] FogWindowGatherTest.UnsetPreviousOriginPlansTheWholeWindowInStrips (0 ms)
+[----------] 5 tests from FogWindowGatherTest (0 ms total)
+[----------] 4 tests from FogWindowTest
+[ RUN      ] FogWindowTest.EdgeTable
+[       OK ] FogWindowTest.EdgeTable (0 ms)
+[ RUN      ] FogWindowTest.CentreRoundTrips
+[       OK ] FogWindowTest.CentreRoundTrips (0 ms)
+[ RUN      ] FogWindowTest.StripPlan
+[       OK ] FogWindowTest.StripPlan (0 ms)
+[ RUN      ] FogWindowTest.CrossingProbeBound
+[       OK ] FogWindowTest.CrossingProbeBound (2 ms)
+[----------] 4 tests from FogWindowTest (3 ms total)
+[----------] 19 tests from FogWorldFieldDecayTest
+[ RUN      ] FogWorldFieldDecayTest.ExploredMemoryExpiresAtExactlyTheDuration
+[       OK ] FogWorldFieldDecayTest.ExploredMemoryExpiresAtExactlyTheDuration (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.ExploringAgainRefreshesTheDeadline
+[       OK ] FogWorldFieldDecayTest.ExploringAgainRefreshesTheDeadline (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.ClockAndPolicyRejectInvalidTransitionsWithoutMutation
+[       OK ] FogWorldFieldDecayTest.ClockAndPolicyRejectInvalidTransitionsWithoutMutation (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.CellChannelsCarryEveryBitAndDefaultWhenAbsent
+[       OK ] FogWorldFieldDecayTest.CellChannelsCarryEveryBitAndDefaultWhenAbsent (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.RevealAndExploreRadiusAdmitOnlyIntersectingCells
+[       OK ] FogWorldFieldDecayTest.RevealAndExploreRadiusAdmitOnlyIntersectingCells (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.MaskEditsResolveExpiryUnderTheOldMaskFirst
+[       OK ] FogWorldFieldDecayTest.MaskEditsResolveExpiryUnderTheOldMaskFirst (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.TransientUnionsAreAdmittedPerCellMask
+[       OK ] FogWorldFieldDecayTest.TransientUnionsAreAdmittedPerCellMask (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.ExpiredMemoryUnderALiveSourceDoesNotResurrect
+[       OK ] FogWorldFieldDecayTest.ExpiredMemoryUnderALiveSourceDoesNotResurrect (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.MatchingSourceRevealsOnBothSidesOfTierBoundary
+[       OK ] FogWorldFieldDecayTest.MatchingSourceRevealsOnBothSidesOfTierBoundary (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.EvictedCellExpiresOnReload
+[       OK ] FogWorldFieldDecayTest.EvictedCellExpiresOnReload (9 ms)
+[ RUN      ] FogWorldFieldDecayTest.StationaryExpiryUploadsOnlyAtTheDeadline
+[       OK ] FogWorldFieldDecayTest.StationaryExpiryUploadsOnlyAtTheDeadline (0 ms)
+[ RUN      ] FogWorldFieldDecayTest.SaveRoundTripsMasksAndExplorationTimes
+[       OK ] FogWorldFieldDecayTest.SaveRoundTripsMasksAndExplorationTimes (28 ms)
+[ RUN      ] FogWorldFieldDecayTest.LegacySaveImportsWithTheRestoredClock
+[       OK ] FogWorldFieldDecayTest.LegacySaveImportsWithTheRestoredClock (23 ms)
+[ RUN      ] FogWorldFieldDecayTest.FutureTimestampReadsTheRegionAsEmpty
+[       OK ] FogWorldFieldDecayTest.FutureTimestampReadsTheRegionAsEmpty (9 ms)
+[ RUN      ] FogWorldFieldDecayTest.PersistentPolicyWritesNoAgePayloadAndDefaultMasksNoMaskPayload
+[       OK ] FogWorldFieldDecayTest.PersistentPolicyWritesNoAgePayloadAndDefaultMasksNoMaskPayload (19 ms)
+[ RUN      ] FogWorldFieldDecayTest.CrossingsAndTeleportsExpireConsistently
+[       OK ] FogWorldFieldDecayTest.CrossingsAndTeleportsExpireConsistently (23 ms)
+[ RUN      ] FogWorldFieldDecayTest.ClockAdvanceOffTheMainThreadAssertsBeforeExpiring
+[       OK ] FogWorldFieldDecayTest.ClockAdvanceOffTheMainThreadAssertsBeforeExpiring (1 ms)
+[ RUN      ] FogWorldFieldDecayTest.ColdWholeWindowGatherWithMetadata
+[       OK ] FogWorldFieldDecayTest.ColdWholeWindowGatherWithMetadata (1783 ms)
+[ RUN      ] FogWorldFieldDecayTest.MovingChannelledFieldTierAllocatesNothingOnceWarm
+[       OK ] FogWorldFieldDecayTest.MovingChannelledFieldTierAllocatesNothingOnceWarm (32 ms)
+[----------] 19 tests from FogWorldFieldDecayTest (1939 ms total)
+[----------] 2 tests from PerAxisSurfaceLightingTest
+[ RUN      ] PerAxisSurfaceLightingTest.OffUntilEnabledAndReadsBack
+[       OK ] PerAxisSurfaceLightingTest.OffUntilEnabledAndReadsBack (0 ms)
+[ RUN      ] PerAxisSurfaceLightingTest.SurvivesSceneTransition
+[       OK ] PerAxisSurfaceLightingTest.SurvivesSceneTransition (0 ms)
+[----------] 2 tests from PerAxisSurfaceLightingTest (0 ms total)
+[----------] 7 tests from SurfaceFogRoute
+[ RUN      ] SurfaceFogRoute.PipelineWithoutAFogPassRunsUnfogged
+[       OK ] SurfaceFogRoute.PipelineWithoutAFogPassRunsUnfogged (0 ms)
+[ RUN      ] SurfaceFogRoute.FogPipelineKeepsComputeUntilOptedIn
+[       OK ] SurfaceFogRoute.FogPipelineKeepsComputeUntilOptedIn (0 ms)
+[ RUN      ] SurfaceFogRoute.MixedCanvasesLeaveAFoglessMainCanvasUnfogged
+[       OK ] SurfaceFogRoute.MixedCanvasesLeaveAFoglessMainCanvasUnfogged (0 ms)
+[ RUN      ] SurfaceFogRoute.UngatedSourcesCompose
+[       OK ] SurfaceFogRoute.UngatedSourcesCompose (0 ms)
+[ RUN      ] SurfaceFogRoute.AnyGatedSourceFallsBack
+[       OK ] SurfaceFogRoute.AnyGatedSourceFallsBack (0 ms)
+[ RUN      ] SurfaceFogRoute.ActiveGlitchPresentationFallsBack
+[       OK ] SurfaceFogRoute.ActiveGlitchPresentationFallsBack (0 ms)
+[ RUN      ] SurfaceFogRoute.RouteFollowsEachFramesObserversAcrossChangesAndTeardown
+[       OK ] SurfaceFogRoute.RouteFollowsEachFramesObserversAcrossChangesAndTeardown (0 ms)
+[----------] 7 tests from SurfaceFogRoute (0 ms total)
+[----------] 3 tests from FogSurfaceComposition
+[ RUN      ] FogSurfaceComposition.GlslFragmentsDeclareTheSnapshotAndTexturesAtTheBoundSlots
+[       OK ] FogSurfaceComposition.GlslFragmentsDeclareTheSnapshotAndTexturesAtTheBoundSlots (307 ms)
+[ RUN      ] FogSurfaceComposition.MetalFragmentsTakeEachFogSlotOnce
+[       OK ] FogSurfaceComposition.MetalFragmentsTakeEachFogSlotOnce (264 ms)
+[ RUN      ] FogSurfaceComposition.PreservingKernelSkipsExactlyTheSamplesTheCompositeFogs
+[       OK ] FogSurfaceComposition.PreservingKernelSkipsExactlyTheSamplesTheCompositeFogs (7 ms)
+[----------] 3 tests from FogSurfaceComposition (579 ms total)
+[----------] 13 tests from FogSubjectAdoptTest
+[ RUN      ] FogSubjectAdoptTest.UntaggedSetOnAVisibleCellIsAShownBodyAfterOneFrame
+[       OK ] FogSubjectAdoptTest.UntaggedSetOnAVisibleCellIsAShownBodyAfterOneFrame (1 ms)
+[ RUN      ] FogSubjectAdoptTest.UntaggedSetOnAnUnexploredCellIsAHiddenBodyWithItsMaskCleared
+[       OK ] FogSubjectAdoptTest.UntaggedSetOnAnUnexploredCellIsAHiddenBodyWithItsMaskCleared (0 ms)
+[ RUN      ] FogSubjectAdoptTest.AdoptionRunsOnceAndEvalOwnsTheBodyAfterwards
+[       OK ] FogSubjectAdoptTest.AdoptionRunsOnceAndEvalOwnsTheBodyAfterwards (0 ms)
+[ RUN      ] FogSubjectAdoptTest.FieldTaggedSetIsNeverVisited
+[       OK ] FogSubjectAdoptTest.FieldTaggedSetIsNeverVisited (1 ms)
+[ RUN      ] FogSubjectAdoptTest.ConstructionTimeExemptMarkerIsRealizedAt255WithoutBodyState
+[       OK ] FogSubjectAdoptTest.ConstructionTimeExemptMarkerIsRealizedAt255WithoutBodyState (1 ms)
+[ RUN      ] FogSubjectAdoptTest.SetterExemptStampsSynchronouslyAndStaysUnadopted
+[       OK ] FogSubjectAdoptTest.SetterExemptStampsSynchronouslyAndStaysUnadopted (1 ms)
+[ RUN      ] FogSubjectAdoptTest.ReclassifyingAHiddenBodyToFieldClearsItsCarrierAndRestoresItsMask
+[       OK ] FogSubjectAdoptTest.ReclassifyingAHiddenBodyToFieldClearsItsCarrierAndRestoresItsMask (1 ms)
+[ RUN      ] FogSubjectAdoptTest.SynchronousBodyAdoptionThroughTheSetterStartsHidden
+[       OK ] FogSubjectAdoptTest.SynchronousBodyAdoptionThroughTheSetterStartsHidden (1 ms)
+[ RUN      ] FogSubjectAdoptTest.GoverningAnAuthoredBodyPreservesItsFogSeams
+[       OK ] FogSubjectAdoptTest.GoverningAnAuthoredBodyPreservesItsFogSeams (0 ms)
+[ RUN      ] FogSubjectAdoptTest.GoverningTaggedBodiesPreservesAuthoredFogSeams
+[       OK ] FogSubjectAdoptTest.GoverningTaggedBodiesPreservesAuthoredFogSeams (1 ms)
+[ RUN      ] FogSubjectAdoptTest.SetsOffTheFogCanvasAreLeftAlone
+[       OK ] FogSubjectAdoptTest.SetsOffTheFogCanvasAreLeftAlone (0 ms)
+[ RUN      ] FogSubjectAdoptTest.NothingIsAdoptedWhileTheCanvasCarriesNoFog
+[       OK ] FogSubjectAdoptTest.NothingIsAdoptedWhileTheCanvasCarriesNoFog (0 ms)
+[ RUN      ] FogSubjectAdoptTest.PersistedFarVisibleCellRevealsABodyOnItsFirstFrame
+[       OK ] FogSubjectAdoptTest.PersistedFarVisibleCellRevealsABodyOnItsFirstFrame (13 ms)
+[----------] 13 tests from FogSubjectAdoptTest (26 ms total)
+[----------] 1 test from FogSubjectAdoptPipelineTest
+[ RUN      ] FogSubjectAdoptPipelineTest.RevealSystemsSpliceAdoptsWhilePipelineWithoutItDoesNot
+[       OK ] FogSubjectAdoptPipelineTest.RevealSystemsSpliceAdoptsWhilePipelineWithoutItDoesNot (1 ms)
+[----------] 1 test from FogSubjectAdoptPipelineTest (1 ms total)
+[----------] 2 tests from FogSubjectParallelPersistedTest
+[ RUN      ] FogSubjectParallelPersistedTest.BothSystemsReadPersistedCellsFromWorkers
+[       OK ] FogSubjectParallelPersistedTest.BothSystemsReadPersistedCellsFromWorkers (35 ms)
+[ RUN      ] FogSubjectParallelPersistedTest.ForeignCanvasBodiesLoadNoRegion
+[       OK ] FogSubjectParallelPersistedTest.ForeignCanvasBodiesLoadNoRegion (16 ms)
+[----------] 2 tests from FogSubjectParallelPersistedTest (52 ms total)
+[----------] 5 tests from FogSeamsTest
+[ RUN      ] FogSeamsTest.ChannelsFilterCirclesButNotTheGridTerm
+[       OK ] FogSeamsTest.ChannelsFilterCirclesButNotTheGridTerm (0 ms)
+[ RUN      ] FogSeamsTest.ClearingVisionCirclesRestoresDefaultChannelLanes
+[       OK ] FogSeamsTest.ClearingVisionCirclesRestoresDefaultChannelLanes (0 ms)
+[ RUN      ] FogSeamsTest.VoxelEvaluatorAppliesOverridesImmediatelyAndNoneUsesTheField
+[       OK ] FogSeamsTest.VoxelEvaluatorAppliesOverridesImmediatelyAndNoneUsesTheField (0 ms)
+[ RUN      ] FogSeamsTest.ShapeEvaluatorHonoursOverridesAndChannels
+[       OK ] FogSeamsTest.ShapeEvaluatorHonoursOverridesAndChannels (0 ms)
+[ RUN      ] FogSeamsTest.CanvasEvaluatorHonoursOverridesAndChannels
+[       OK ] FogSeamsTest.CanvasEvaluatorHonoursOverridesAndChannels (0 ms)
+[----------] 5 tests from FogSeamsTest (1 ms total)
+[----------] 3 tests from FogRevealEvalShapeTest
+[ RUN      ] FogRevealEvalShapeTest.MirrorsTheSharedCurveAndHysteresis
+[       OK ] FogRevealEvalShapeTest.MirrorsTheSharedCurveAndHysteresis (0 ms)
+[ RUN      ] FogRevealEvalShapeTest.FogVerdictNeverReenablesAuthorVisibility
+[       OK ] FogRevealEvalShapeTest.FogVerdictNeverReenablesAuthorVisibility (0 ms)
+[ RUN      ] FogRevealEvalShapeTest.RasterGateSkipsBothFogAndAuthorHiddenShapes
+[       OK ] FogRevealEvalShapeTest.RasterGateSkipsBothFogAndAuthorHiddenShapes (0 ms)
+[----------] 3 tests from FogRevealEvalShapeTest (0 ms total)
+[----------] 7 tests from FogRevealEvalShapeAdoptTest
+[ RUN      ] FogRevealEvalShapeAdoptTest.AdoptsAnUntaggedShapeButNotAFieldTwin
+[       OK ] FogRevealEvalShapeAdoptTest.AdoptsAnUntaggedShapeButNotAFieldTwin (1 ms)
+[ RUN      ] FogRevealEvalShapeAdoptTest.PersistedFarVisibleCellRevealsAShapeOnItsFirstFrame
+[       OK ] FogRevealEvalShapeAdoptTest.PersistedFarVisibleCellRevealsAShapeOnItsFirstFrame (7 ms)
+[ RUN      ] FogRevealEvalShapeAdoptTest.PersistedFarVisibleCellReevaluatesAShapeOnItsFirstFrame
+[       OK ] FogRevealEvalShapeAdoptTest.PersistedFarVisibleCellReevaluatesAShapeOnItsFirstFrame (7 ms)
+[ RUN      ] FogRevealEvalShapeAdoptTest.SynchronousGovernanceStartsHiddenThenEvaluates
+[       OK ] FogRevealEvalShapeAdoptTest.SynchronousGovernanceStartsHiddenThenEvaluates (0 ms)
+[ RUN      ] FogRevealEvalShapeAdoptTest.SynchronousGovernanceRejectsAnotherCanvas
+[       OK ] FogRevealEvalShapeAdoptTest.SynchronousGovernanceRejectsAnotherCanvas (1 ms)
+[ RUN      ] FogRevealEvalShapeAdoptTest.EngineOverlaysStayExemptFromAdoption
+[       OK ] FogRevealEvalShapeAdoptTest.EngineOverlaysStayExemptFromAdoption (0 ms)
+[ RUN      ] FogRevealEvalShapeAdoptTest.PickingExcludesAFogHiddenShape
+[       OK ] FogRevealEvalShapeAdoptTest.PickingExcludesAFogHiddenShape (1 ms)
+[----------] 7 tests from FogRevealEvalShapeAdoptTest (19 ms total)
+[----------] 1 test from FogSubjectExemptShapeTest
+[ RUN      ] FogSubjectExemptShapeTest.MarkerAndSetterRealizeTheShapeCarrier
+[       OK ] FogSubjectExemptShapeTest.MarkerAndSetterRealizeTheShapeCarrier (1 ms)
+[----------] 1 test from FogSubjectExemptShapeTest (1 ms total)
+[----------] 2 tests from FogRevealEvalCanvasTest
+[ RUN      ] FogRevealEvalCanvasTest.OwnerVerdictDrivesIndependentFogState
+[       OK ] FogRevealEvalCanvasTest.OwnerVerdictDrivesIndependentFogState (1 ms)
+[ RUN      ] FogRevealEvalCanvasTest.FogHiddenCanvasDoesNotCastWorldShadow
+[       OK ] FogRevealEvalCanvasTest.FogHiddenCanvasDoesNotCastWorldShadow (0 ms)
+[----------] 2 tests from FogRevealEvalCanvasTest (1 ms total)
+[----------] 2 tests from FogRevealEvalCanvasAdoptTest
+[ RUN      ] FogRevealEvalCanvasAdoptTest.AdoptsWorldPlacedCanvasAndStampsItsPrivatePool
+[       OK ] FogRevealEvalCanvasAdoptTest.AdoptsWorldPlacedCanvasAndStampsItsPrivatePool (1 ms)
+[ RUN      ] FogRevealEvalCanvasAdoptTest.FieldAndScreenLockedCanvasesStayOutsideBodyAdoption
+[       OK ] FogRevealEvalCanvasAdoptTest.FieldAndScreenLockedCanvasesStayOutsideBodyAdoption (1 ms)
+[----------] 2 tests from FogRevealEvalCanvasAdoptTest (2 ms total)
+[----------] 3 tests from FogSubjectExemptCanvasTest
+[ RUN      ] FogSubjectExemptCanvasTest.PolicyCoversLaterAllocationReuseAndSeed
+[       OK ] FogSubjectExemptCanvasTest.PolicyCoversLaterAllocationReuseAndSeed (1 ms)
+[ RUN      ] FogSubjectExemptCanvasTest.CombinedDetachedOwnerSetterClassifiesTheCanvas
+[       OK ] FogSubjectExemptCanvasTest.CombinedDetachedOwnerSetterClassifiesTheCanvas (1 ms)
+[ RUN      ] FogSubjectExemptCanvasTest.SetterLeavesNonDetachedPoolsUnmanaged
+[       OK ] FogSubjectExemptCanvasTest.SetterLeavesNonDetachedPoolsUnmanaged (0 ms)
+[----------] 3 tests from FogSubjectExemptCanvasTest (3 ms total)
+[----------] 4 tests from FogRevealEvalCanvasPromotionTest
+[ RUN      ] FogRevealEvalCanvasPromotionTest.PromotedBodyPolicyCoversLaterCanvasParts
+[       OK ] FogRevealEvalCanvasPromotionTest.PromotedBodyPolicyCoversLaterCanvasParts (1 ms)
+[ RUN      ] FogRevealEvalCanvasPromotionTest.PromotionRepairsPolicyBeforeGateMismatchBypassesCadence
+[       OK ] FogRevealEvalCanvasPromotionTest.PromotionRepairsPolicyBeforeGateMismatchBypassesCadence (1 ms)
+[ RUN      ] FogRevealEvalCanvasPromotionTest.GhostPromotionUsesTheSameMismatchRepair
+[       OK ] FogRevealEvalCanvasPromotionTest.GhostPromotionUsesTheSameMismatchRepair (1 ms)
+[ RUN      ] FogRevealEvalCanvasPromotionTest.ExistingAndExcludedPoolPoliciesStayUnchanged
+[       OK ] FogRevealEvalCanvasPromotionTest.ExistingAndExcludedPoolPoliciesStayUnchanged (1 ms)
+[----------] 4 tests from FogRevealEvalCanvasPromotionTest (5 ms total)
+[----------] 46 tests from FogRevealEvalTest
+[ RUN      ] FogRevealEvalTest.MirrorsDiscHeightPenaltyAndSoftEdge
+[       OK ] FogRevealEvalTest.MirrorsDiscHeightPenaltyAndSoftEdge (0 ms)
+[ RUN      ] FogRevealEvalTest.GridAwareVerdictTakesTheMaxOfVisibleCellAndCircleTerm
+[       OK ] FogRevealEvalTest.GridAwareVerdictTakesTheMaxOfVisibleCellAndCircleTerm (0 ms)
+[ RUN      ] FogRevealEvalTest.GridTermReadsTheWorldFieldAtAFarColumn
+[       OK ] FogRevealEvalTest.GridTermReadsTheWorldFieldAtAFarColumn (0 ms)
+[ RUN      ] FogRevealEvalTest.QuantizedFactorRoundsHalfUpAndPinsTheEnds
+[       OK ] FogRevealEvalTest.QuantizedFactorRoundsHalfUpAndPinsTheEnds (0 ms)
+[ RUN      ] FogRevealEvalTest.RejectsOutsideBoundingRadiusBeforeExactCurve
+[       OK ] FogRevealEvalTest.RejectsOutsideBoundingRadiusBeforeExactCurve (0 ms)
+[ RUN      ] FogRevealEvalTest.OccludedSampleIsUnrevealedRegardlessOfCost
+[       OK ] FogRevealEvalTest.OccludedSampleIsUnrevealedRegardlessOfCost (0 ms)
+[ RUN      ] FogRevealEvalTest.OffOriginOccluderHidesInTheWindowAnchoredField
+[       OK ] FogRevealEvalTest.OffOriginOccluderHidesInTheWindowAnchoredField (1 ms)
+[ RUN      ] FogRevealEvalTest.UnoccludedSampleTakesTheCostCurve
+[       OK ] FogRevealEvalTest.UnoccludedSampleTakesTheCostCurve (0 ms)
+[ RUN      ] FogRevealEvalTest.SoftenedSourceScalesItsReveal
+[       OK ] FogRevealEvalTest.SoftenedSourceScalesItsReveal (0 ms)
+[ RUN      ] FogRevealEvalTest.UnpublishedFieldRevealsNothingThroughAGatedSource
+[       OK ] FogRevealEvalTest.UnpublishedFieldRevealsNothingThroughAGatedSource (0 ms)
+[ RUN      ] FogRevealEvalTest.SnapshotPairsPublishedSourcesWithTheirField
+[       OK ] FogRevealEvalTest.SnapshotPairsPublishedSourcesWithTheirField (0 ms)
+[ RUN      ] FogRevealEvalTest.SourcesOccludeIndependently
+[       OK ] FogRevealEvalTest.SourcesOccludeIndependently (0 ms)
+[ RUN      ] FogRevealEvalTest.ShapeEvaluatorReadsItsOwnRouteCache
+[       OK ] FogRevealEvalTest.ShapeEvaluatorReadsItsOwnRouteCache (0 ms)
+[ RUN      ] FogRevealEvalTest.BodyVerdictBehindARidgeFromAGatedSourceIsZero
+[       OK ] FogRevealEvalTest.BodyVerdictBehindARidgeFromAGatedSourceIsZero (0 ms)
+[ RUN      ] FogRevealEvalTest.HysteresisAndStaggerControlEntityVerdict
+[       OK ] FogRevealEvalTest.HysteresisAndStaggerControlEntityVerdict (0 ms)
+[ RUN      ] FogRevealEvalTest.MissingPoolDoesNotLatchAnUnappliedTransition
+[       OK ] FogRevealEvalTest.MissingPoolDoesNotLatchAnUnappliedTransition (0 ms)
+[ RUN      ] FogRevealEvalTest.UnexploredColorDefaultsToBlackAtItsStd140Offset
+[       OK ] FogRevealEvalTest.UnexploredColorDefaultsToBlackAtItsStd140Offset (0 ms)
+[ RUN      ] FogRevealEvalTest.SetUnexploredColorWritesTheNormalizedAnchor
+[       OK ] FogRevealEvalTest.SetUnexploredColorWritesTheNormalizedAnchor (0 ms)
+[ RUN      ] FogRevealEvalTest.SetUnexploredColorWithoutAnActiveCanvasIsANoOp
+[       OK ] FogRevealEvalTest.SetUnexploredColorWithoutAnActiveCanvasIsANoOp (0 ms)
+[ RUN      ] FogRevealEvalTest.HardCeilingHidesCentreAndRimAtTheSameHeight
+[       OK ] FogRevealEvalTest.HardCeilingHidesCentreAndRimAtTheSameHeight (0 ms)
+[ RUN      ] FogRevealEvalTest.CeilingFadeIsOneAtThePlaneAndZeroExactlyAtItsEnd
+[       OK ] FogRevealEvalTest.CeilingFadeIsOneAtThePlaneAndZeroExactlyAtItsEnd (0 ms)
+[ RUN      ] FogRevealEvalTest.CeilingShadowUsesStaticRetainedSetAndCellAdmission
+[       OK ] FogRevealEvalTest.CeilingShadowUsesStaticRetainedSetAndCellAdmission (0 ms)
+[ RUN      ] FogRevealEvalTest.CeilingEnvelopesKeepFlickerAndInteriorNeighbourCaps
+[       OK ] FogRevealEvalTest.CeilingEnvelopesKeepFlickerAndInteriorNeighbourCaps (0 ms)
+[ RUN      ] FogRevealEvalTest.CeilingMultipliesTheAdditiveHeightCostCurve
+[       OK ] FogRevealEvalTest.CeilingMultipliesTheAdditiveHeightCostCurve (0 ms)
+[ RUN      ] FogRevealEvalTest.CeilingScalesItsOwnSourceBeforeTheMaximum
+[       OK ] FogRevealEvalTest.CeilingScalesItsOwnSourceBeforeTheMaximum (0 ms)
+[ RUN      ] FogRevealEvalTest.LineOfSightAndCeilingFactorsMultiplyPerSource
+[       OK ] FogRevealEvalTest.LineOfSightAndCeilingFactorsMultiplyPerSource (0 ms)
+[ RUN      ] FogRevealEvalTest.TreatmentStylesOnlyARetainedPartialWinner
+[       OK ] FogRevealEvalTest.TreatmentStylesOnlyARetainedPartialWinner (0 ms)
+[ RUN      ] FogRevealEvalTest.ColumnTopRevealsAWallItsOwnSourceCannotSee
+[       OK ] FogRevealEvalTest.ColumnTopRevealsAWallItsOwnSourceCannotSee (0 ms)
+[ RUN      ] FogRevealEvalTest.ColumnTopIsTheMaximumWithTheSamplesOwnVerdict
+[       OK ] FogRevealEvalTest.ColumnTopIsTheMaximumWithTheSamplesOwnVerdict (0 ms)
+[ RUN      ] FogRevealEvalTest.ColumnTopIsHiddenFromBelowAndGrazedFromItsOwnHeight
+[       OK ] FogRevealEvalTest.ColumnTopIsHiddenFromBelowAndGrazedFromItsOwnHeight (0 ms)
+[ RUN      ] FogRevealEvalTest.ColumnTopNeedsAPublishedFieldAVerticalFaceAndATopAbove
+[       OK ] FogRevealEvalTest.ColumnTopNeedsAPublishedFieldAVerticalFaceAndATopAbove (0 ms)
+[ RUN      ] FogRevealEvalTest.CardinalColumnPointLandsInsideTheDrawnCell
+[       OK ] FogRevealEvalTest.CardinalColumnPointLandsInsideTheDrawnCell (0 ms)
+[ RUN      ] FogRevealEvalTest.ColumnTopBeatsAStyledOwnBandToBandZero
+[       OK ] FogRevealEvalTest.ColumnTopBeatsAStyledOwnBandToBandZero (0 ms)
+[ RUN      ] FogRevealEvalTest.RevealSurfaceHashIsVoxelStableAndUniform
+[       OK ] FogRevealEvalTest.RevealSurfaceHashIsVoxelStableAndUniform (0 ms)
+[ RUN      ] FogRevealEvalTest.CeilingAndTreatmentLanesAppendAfterTheChannelMasks
+[       OK ] FogRevealEvalTest.CeilingAndTreatmentLanesAppendAfterTheChannelMasks (0 ms)
+[ RUN      ] FogRevealEvalTest.CeilingSlotsResetWithTheSourceAndRefuseUnregisteredSlots
+[       OK ] FogRevealEvalTest.CeilingSlotsResetWithTheSourceAndRefuseUnregisteredSlots (0 ms)
+[ RUN      ] FogRevealEvalTest.RevealColourMirrorsFollowTheStateCurveAndTheCapBlend
+[       OK ] FogRevealEvalTest.RevealColourMirrorsFollowTheStateCurveAndTheCapBlend (0 ms)
+[ RUN      ] FogRevealEvalTest.ActiveMaskHideAndRestoreAreAlphaPreserving
+[       OK ] FogRevealEvalTest.ActiveMaskHideAndRestoreAreAlphaPreserving (0 ms)
+[ RUN      ] FogRevealEvalTest.ShownBodyRestampsItsCarrierOnlyWhenTheFactorMoves
+[       OK ] FogRevealEvalTest.ShownBodyRestampsItsCarrierOnlyWhenTheFactorMoves (0 ms)
+[ RUN      ] FogRevealEvalTest.PreparedRevealMatchesTheScalarComposition
+[       OK ] FogRevealEvalTest.PreparedRevealMatchesTheScalarComposition (44 ms)
+[ RUN      ] FogRevealEvalTest.PreparedRevealHonoursChannelMasks
+[       OK ] FogRevealEvalTest.PreparedRevealHonoursChannelMasks (6 ms)
+[ RUN      ] FogRevealEvalTest.PreparedRevealTakesNoRoutesWithoutAHardGate
+[       OK ] FogRevealEvalTest.PreparedRevealTakesNoRoutesWithoutAHardGate (0 ms)
+[ RUN      ] FogRevealEvalTest.LanePressureMarchesThenGrowsAndStaysAllocationFree
+[       OK ] FogRevealEvalTest.LanePressureMarchesThenGrowsAndStaysAllocationFree (5 ms)
+[ RUN      ] FogRevealEvalTest.CeilingAdmissionContainsAaAndIgnoresHeightCostAndLos
+[       OK ] FogRevealEvalTest.CeilingAdmissionContainsAaAndIgnoresHeightCostAndLos (1 ms)
+[ RUN      ] FogRevealEvalTest.RandomizedCeilingBoundsContainTopContributorsAndEveryCutAxis
+[       OK ] FogRevealEvalTest.RandomizedCeilingBoundsContainTopContributorsAndEveryCutAxis (3 ms)
+[ RUN      ] FogRevealEvalTest.VoxelPaintKeepsCeilingBandWhileAnalyticPaintStillDissolves
+[       OK ] FogRevealEvalTest.VoxelPaintKeepsCeilingBandWhileAnalyticPaintStillDissolves (0 ms)
+[----------] 46 tests from FogRevealEvalTest (74 ms total)
+[----------] 2 tests from FogRouteFanOutTest
+[ RUN      ] FogRouteFanOutTest.EachRouteIsBuiltOnceAcrossWorkers
+[       OK ] FogRouteFanOutTest.EachRouteIsBuiltOnceAcrossWorkers (25 ms)
+[ RUN      ] FogRouteFanOutTest.AReaderWaitsForTheElectedBuilder
+[       OK ] FogRouteFanOutTest.AReaderWaitsForTheElectedBuilder (9 ms)
+[----------] 2 tests from FogRouteFanOutTest (34 ms total)
+[----------] 7 tests from FogModeSwitchTest
+[ RUN      ] FogModeSwitchTest.HiddenWorldBodyRepairsItsPrivatePoolAndCanvasOnPromotion
+[       OK ] FogModeSwitchTest.HiddenWorldBodyRepairsItsPrivatePoolAndCanvasOnPromotion (1 ms)
+[ RUN      ] FogModeSwitchTest.GhostPolicyRepairsVoxelGatesAcrossPromotionAndDemotion
+[       OK ] FogModeSwitchTest.GhostPolicyRepairsVoxelGatesAcrossPromotionAndDemotion (1 ms)
+[ RUN      ] FogModeSwitchTest.HiddenDetachedOwnerRepairsItsWorldGateOnDemotion
+[       OK ] FogModeSwitchTest.HiddenDetachedOwnerRepairsItsWorldGateOnDemotion (1 ms)
+[ RUN      ] FogModeSwitchTest.ShownPromotedBodyRepairsItsWorldGateOnDemotion
+[       OK ] FogModeSwitchTest.ShownPromotedBodyRepairsItsWorldGateOnDemotion (1 ms)
+[ RUN      ] FogModeSwitchTest.HostedPartRepairsItsGateInTheHostAndAfterRelease
+[       OK ] FogModeSwitchTest.HostedPartRepairsItsGateInTheHostAndAfterRelease (1 ms)
+[ RUN      ] FogModeSwitchTest.GateMismatchesBypassTheStagger
+[       OK ] FogModeSwitchTest.GateMismatchesBypassTheStagger (1 ms)
+[ RUN      ] FogModeSwitchTest.MatchingWorldGateKeepsTheStaggerAndSameCanvasReseedStaysHidden
+[       OK ] FogModeSwitchTest.MatchingWorldGateKeepsTheStaggerAndSameCanvasReseedStaysHidden (1 ms)
+[----------] 7 tests from FogModeSwitchTest (12 ms total)
+[----------] 16 tests from FogLineOfSightTest
+[ RUN      ] FogLineOfSightTest.FlatGroundRemainsVisible
+[       OK ] FogLineOfSightTest.FlatGroundRemainsVisible (206 ms)
+[ RUN      ] FogLineOfSightTest.EyeCellNeverOccludes
+[       OK ] FogLineOfSightTest.EyeCellNeverOccludes (0 ms)
+[ RUN      ] FogLineOfSightTest.SameCellOutOfFieldAndUnpublishedAreClear
+[       OK ] FogLineOfSightTest.SameCellOutOfFieldAndUnpublishedAreClear (0 ms)
+[ RUN      ] FogLineOfSightTest.RidgeHidesWhatIsBehindItFromTheGround
+[       OK ] FogLineOfSightTest.RidgeHidesWhatIsBehindItFromTheGround (7 ms)
+[ RUN      ] FogLineOfSightTest.FieldAnchorsOnTheWindowCentre
+[       OK ] FogLineOfSightTest.FieldAnchorsOnTheWindowCentre (0 ms)
+[ RUN      ] FogLineOfSightTest.OffOriginRidgeOccludesInTheWindowAnchoredField
+[       OK ] FogLineOfSightTest.OffOriginRidgeOccludesInTheWindowAnchoredField (11 ms)
+[ RUN      ] FogLineOfSightTest.ShadowEdgesAreExactLines
+[       OK ] FogLineOfSightTest.ShadowEdgesAreExactLines (5 ms)
+[ RUN      ] FogLineOfSightTest.SoftnessGradesTheFarEdgeOnly
+[       OK ] FogLineOfSightTest.SoftnessGradesTheFarEdgeOnly (4 ms)
+[ RUN      ] FogLineOfSightTest.AnchorsBelowTheirSurfaceAreLifted
+[       OK ] FogLineOfSightTest.AnchorsBelowTheirSurfaceAreLifted (5 ms)
+[ RUN      ] FogLineOfSightTest.VoxelBoxesFollowTheRasterLattice
+[       OK ] FogLineOfSightTest.VoxelBoxesFollowTheRasterLattice (3 ms)
+[ RUN      ] FogLineOfSightTest.EightSourcesUseIndependentParams
+[       OK ] FogLineOfSightTest.EightSourcesUseIndependentParams (5 ms)
+[ RUN      ] FogLineOfSightTest.ReachCoversTheShaderRimFade
+[       OK ] FogLineOfSightTest.ReachCoversTheShaderRimFade (0 ms)
+[ RUN      ] FogLineOfSightTest.InteriorCellVisitorMatchesBruteForce
+[       OK ] FogLineOfSightTest.InteriorCellVisitorMatchesBruteForce (4 ms)
+[ RUN      ] FogLineOfSightTest.HardRouteSummaryMatchesTheMarchAtEveryHeight
+[       OK ] FogLineOfSightTest.HardRouteSummaryMatchesTheMarchAtEveryHeight (41 ms)
+[ RUN      ] FogLineOfSightTest.HardRouteSummaryMatchesTheMarchOffOrigin
+[       OK ] FogLineOfSightTest.HardRouteSummaryMatchesTheMarchOffOrigin (37 ms)
+[ RUN      ] FogLineOfSightTest.HardRouteSummaryConstantVerdicts
+[       OK ] FogLineOfSightTest.HardRouteSummaryConstantVerdicts (6 ms)
+[----------] 16 tests from FogLineOfSightTest (343 ms total)
+[----------] 7 tests from FogLineOfSightEcsTest
+[ RUN      ] FogLineOfSightEcsTest.ShapeOccludesOnlyWhenFlagged
+[       OK ] FogLineOfSightEcsTest.ShapeOccludesOnlyWhenFlagged (1 ms)
+[ RUN      ] FogLineOfSightEcsTest.ShapeFootprintFollowsTheSubdivision
+[       OK ] FogLineOfSightEcsTest.ShapeFootprintFollowsTheSubdivision (0 ms)
+[ RUN      ] FogLineOfSightEcsTest.BlockerChangesLeaveNoStaleOcclusion
+[       OK ] FogLineOfSightEcsTest.BlockerChangesLeaveNoStaleOcclusion (1 ms)
+[ RUN      ] FogLineOfSightEcsTest.PoolVoxelsOccludeExceptCarvedAndGoverned
+[       OK ] FogLineOfSightEcsTest.PoolVoxelsOccludeExceptCarvedAndGoverned (0 ms)
+[ RUN      ] FogLineOfSightEcsTest.RasterFillsTheWindowAnchoredField
+[       OK ] FogLineOfSightEcsTest.RasterFillsTheWindowAnchoredField (0 ms)
+[ RUN      ] FogLineOfSightEcsTest.CapturedViewMatchesPerCallAndIsASnapshot
+[       OK ] FogLineOfSightEcsTest.CapturedViewMatchesPerCallAndIsASnapshot (4 ms)
+[ RUN      ] FogLineOfSightEcsTest.CapturedViewRasterizesOncePerCapture
+[       OK ] FogLineOfSightEcsTest.CapturedViewRasterizesOncePerCapture (23 ms)
+[----------] 7 tests from FogLineOfSightEcsTest (33 ms total)
+[----------] 2 tests from FogVisionSlotTest
+[ RUN      ] FogVisionSlotTest.SlotsStartUngatedAndClearDropsGates
+[       OK ] FogVisionSlotTest.SlotsStartUngatedAndClearDropsGates (0 ms)
+[ RUN      ] FogVisionSlotTest.GatingAnUnregisteredSlotIsRejected
+[       OK ] FogVisionSlotTest.GatingAnUnregisteredSlotIsRejected (0 ms)
+[----------] 2 tests from FogVisionSlotTest (0 ms total)
+[----------] 16 tests from FogGhostPolicyTest
+[ RUN      ] FogGhostPolicyTest.CapturesHoldsRefreshesAndDiscards
+[       OK ] FogGhostPolicyTest.CapturesHoldsRefreshesAndDiscards (0 ms)
+[ RUN      ] FogGhostPolicyTest.PolicyAndOverridesCannotCreateGhostsFromInvalidPose
+[       OK ] FogGhostPolicyTest.PolicyAndOverridesCannotCreateGhostsFromInvalidPose (0 ms)
+[ RUN      ] FogGhostPolicyTest.StaggeredCaptureMakesOnlyTheFollowingHideEligible
+[       OK ] FogGhostPolicyTest.StaggeredCaptureMakesOnlyTheFollowingHideEligible (0 ms)
+[ RUN      ] FogGhostPolicyTest.EvaluatorFreezesLastShownPoseAcrossCadencesAndHiddenMoves
+[       OK ] FogGhostPolicyTest.EvaluatorFreezesLastShownPoseAcrossCadencesAndHiddenMoves (0 ms)
+[ RUN      ] FogGhostPolicyTest.ReclassificationDropsGhostAndBodyPreservesPolicy
+[       OK ] FogGhostPolicyTest.ReclassificationDropsGhostAndBodyPreservesPolicy (0 ms)
+[ RUN      ] FogGhostPolicyTest.StructuralPolicySelectorRestoresHideStateSynchronously
+[       OK ] FogGhostPolicyTest.StructuralPolicySelectorRestoresHideStateSynchronously (0 ms)
+[ RUN      ] FogGhostPolicyTest.HideOnlyPopulationNeverMatchesGhostEvaluators
+[       OK ] FogGhostPolicyTest.HideOnlyPopulationNeverMatchesGhostEvaluators (0 ms)
+[ RUN      ] FogGhostPolicyTest.ReshowRefreshesPoseAndForceHiddenDiscardsIt
+[       OK ] FogGhostPolicyTest.ReshowRefreshesPoseAndForceHiddenDiscardsIt (0 ms)
+[ RUN      ] FogGhostPolicyTest.VoxelRouteRetainsAlphaMaskAndExploredCarrier
+[       OK ] FogGhostPolicyTest.VoxelRouteRetainsAlphaMaskAndExploredCarrier (0 ms)
+[ RUN      ] FogGhostPolicyTest.HeldGpuVoxelTransformRemainsInsideUploadRangeAndFrozen
+[       OK ] FogGhostPolicyTest.HeldGpuVoxelTransformRemainsInsideUploadRangeAndFrozen (0 ms)
+[ RUN      ] FogGhostPolicyTest.HeldSkeletonRetainsJointBlockWhileLiveSiblingUpdates
+[       OK ] FogGhostPolicyTest.HeldSkeletonRetainsJointBlockWhileLiveSiblingUpdates (0 ms)
+[ RUN      ] FogGhostPolicyTest.ShapeRoutePublishesFrozenPoseAndExploredFactor
+[       OK ] FogGhostPolicyTest.ShapeRoutePublishesFrozenPoseAndExploredFactor (0 ms)
+[ RUN      ] FogGhostPolicyTest.CanvasRoutePublishesFrozenPoseAndExploredFactor
+[       OK ] FogGhostPolicyTest.CanvasRoutePublishesFrozenPoseAndExploredFactor (0 ms)
+[ RUN      ] FogGhostPolicyTest.ShapeRasterAndPickingConsumeFrozenPose
+[       OK ] FogGhostPolicyTest.ShapeRasterAndPickingConsumeFrozenPose (0 ms)
+[ RUN      ] FogGhostPolicyTest.CanvasRouteStampsPlacementFromPublishedFrozenPose
+[       OK ] FogGhostPolicyTest.CanvasRouteStampsPlacementFromPublishedFrozenPose (0 ms)
+[ RUN      ] FogGhostPolicyTest.WarmHeldLifecycleIsAllocationFreeAndLinear
+[       OK ] FogGhostPolicyTest.WarmHeldLifecycleIsAllocationFreeAndLinear (4 ms)
+[----------] 16 tests from FogGhostPolicyTest (7 ms total)
+[----------] 25 tests from FogCrossSectionShaderParity
+[ RUN      ] FogCrossSectionShaderParity.ClipConstantsAgreeAcrossBackends
+[       OK ] FogCrossSectionShaderParity.ClipConstantsAgreeAcrossBackends (26 ms)
+[ RUN      ] FogCrossSectionShaderParity.WindowTexelMappingIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.WindowTexelMappingIsIdenticalAcrossBackends (43 ms)
+[ RUN      ] FogCrossSectionShaderParity.VisionCircleRevealCurveIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.VisionCircleRevealCurveIsIdenticalAcrossBackends (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.DiscRevealIsOneStrictDefinitionOnBothBackends
+[       OK ] FogCrossSectionShaderParity.DiscRevealIsOneStrictDefinitionOnBothBackends (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.ColumnRevealAccumulationsAreIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.ColumnRevealAccumulationsAreIdenticalAcrossBackends (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.StageOneDropExpressionsAreIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.StageOneDropExpressionsAreIdenticalAcrossBackends (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.UnexploredColourAnchorIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.UnexploredColourAnchorIsIdenticalAcrossBackends (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.CommonFogShadingIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.CommonFogShadingIsIdenticalAcrossBackends (6 ms)
+[ RUN      ] FogCrossSectionShaderParity.ChannelSourceSkipIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.ChannelSourceSkipIsIdenticalAcrossBackends (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.IntegerFogWindowReadsAreIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.IntegerFogWindowReadsAreIdenticalAcrossBackends (17 ms)
+[ RUN      ] FogCrossSectionShaderParity.DetachedCanvasCompositeIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.DetachedCanvasCompositeIsIdenticalAcrossBackends (1 ms)
+[ RUN      ] FogCrossSectionShaderParity.FullyRevealedSamplesSkipTheColourWrite
+[       OK ] FogCrossSectionShaderParity.FullyRevealedSamplesSkipTheColourWrite (1 ms)
+[ RUN      ] FogCrossSectionShaderParity.OverflowFogClassEncodingIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.OverflowFogClassEncodingIsIdenticalAcrossBackends (1 ms)
+[ RUN      ] FogCrossSectionShaderParity.LosGateIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.LosGateIsIdenticalAcrossBackends (14 ms)
+[ RUN      ] FogCrossSectionShaderParity.ColumnTopTermIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.ColumnTopTermIsIdenticalAcrossBackends (15 ms)
+[ RUN      ] FogCrossSectionShaderParity.RevealSurfaceHelpersAreIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.RevealSurfaceHelpersAreIdenticalAcrossBackends (2 ms)
+[ RUN      ] FogCrossSectionShaderParity.CeilingScalesEachSourceBeforeTheMaximumOnBothBackends
+[       OK ] FogCrossSectionShaderParity.CeilingScalesEachSourceBeforeTheMaximumOnBothBackends (5 ms)
+[ RUN      ] FogCrossSectionShaderParity.CeilingRetentionAndOverflowKeysAgree
+[       OK ] FogCrossSectionShaderParity.CeilingRetentionAndOverflowKeysAgree (46 ms)
+[ RUN      ] FogCrossSectionShaderParity.CeilingSelectionBindingsAndCapSitesArePresentOnBothBackends
+[       OK ] FogCrossSectionShaderParity.CeilingSelectionBindingsAndCapSitesArePresentOnBothBackends (46 ms)
+[ RUN      ] FogCrossSectionShaderParity.CompactObserverBlockIsAPrefixMirrorWithoutTheCeilingPass
+[       OK ] FogCrossSectionShaderParity.CompactObserverBlockIsAPrefixMirrorWithoutTheCeilingPass (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.CeilingShadowCasterPolicyAndBakeRoutesStayBackendSymmetric
+[       OK ] FogCrossSectionShaderParity.CeilingShadowCasterPolicyAndBakeRoutesStayBackendSymmetric (2 ms)
+[ RUN      ] FogCrossSectionShaderParity.FogPassBodyBranchIsIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.FogPassBodyBranchIsIdenticalAcrossBackends (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.FogBodyCarrierTwinsAreIdenticalAcrossBackends
+[       OK ] FogCrossSectionShaderParity.FogBodyCarrierTwinsAreIdenticalAcrossBackends (10 ms)
+[ RUN      ] FogCrossSectionShaderParity.ShapeRasterFoldsBodyClassAndFactorAcrossBackends
+[       OK ] FogCrossSectionShaderParity.ShapeRasterFoldsBodyClassAndFactorAcrossBackends (0 ms)
+[ RUN      ] FogCrossSectionShaderParity.CutFaceRuleSkipsBodyVoxelsOnBothBackends
+[       OK ] FogCrossSectionShaderParity.CutFaceRuleSkipsBodyVoxelsOnBothBackends (0 ms)
+[----------] 25 tests from FogCrossSectionShaderParity (247 ms total)
+[----------] 11 tests from FogCrossSectionTest
+[ RUN      ] FogCrossSectionTest.GridTapFollowsTheWindowOrigin
+[       OK ] FogCrossSectionTest.GridTapFollowsTheWindowOrigin (381 ms)
+[ RUN      ] FogCrossSectionTest.PartiallyRevealedColumnsAreNeverDropped
+[       OK ] FogCrossSectionTest.PartiallyRevealedColumnsAreNeverDropped (110 ms)
+[ RUN      ] FogCrossSectionTest.CentreOnlyClipWouldDropReachedColumns
+[       OK ] FogCrossSectionTest.CentreOnlyClipWouldDropReachedColumns (106 ms)
+[ RUN      ] FogCrossSectionTest.RevealIsContinuousUnderAnObserverSweep
+[       OK ] FogCrossSectionTest.RevealIsContinuousUnderAnObserverSweep (126 ms)
+[ RUN      ] FogCrossSectionTest.KeptColumnsFormAHoleFreeRadialRegion
+[       OK ] FogCrossSectionTest.KeptColumnsFormAHoleFreeRadialRegion (107 ms)
+[ RUN      ] FogCrossSectionTest.ObjectClipAndFloorRevealTraceOneCurve
+[       OK ] FogCrossSectionTest.ObjectClipAndFloorRevealTraceOneCurve (108 ms)
+[ RUN      ] FogCrossSectionTest.RevealMidpointSitsOnTheCircleRadius
+[       OK ] FogCrossSectionTest.RevealMidpointSitsOnTheCircleRadius (114 ms)
+[ RUN      ] FogCrossSectionTest.GpuRevealMatchesTheCpuOracle
+[       OK ] FogCrossSectionTest.GpuRevealMatchesTheCpuOracle (108 ms)
+[ RUN      ] FogCrossSectionTest.HardDiscHidesColumnsExactlyOnTheRim
+[       OK ] FogCrossSectionTest.HardDiscHidesColumnsExactlyOnTheRim (110 ms)
+[ RUN      ] FogCrossSectionTest.GpuOcclusionMatchesTheCpuOracle
+[       OK ] FogCrossSectionTest.GpuOcclusionMatchesTheCpuOracle (255 ms)
+[ RUN      ] FogCrossSectionTest.GpuRevealSurfaceMatchesTheCpuOracle
+[       OK ] FogCrossSectionTest.GpuRevealSurfaceMatchesTheCpuOracle (331 ms)
+[----------] 11 tests from FogCrossSectionTest (1862 ms total)
+[----------] 5 tests from FogCarrierPolicyTest
+[ RUN      ] FogCarrierPolicyTest.RebuildWritesTheManagedCarrierOnEveryArm
+[       OK ] FogCarrierPolicyTest.RebuildWritesTheManagedCarrierOnEveryArm (2 ms)
+[ RUN      ] FogCarrierPolicyTest.LeavingABodyHostClearsTheCarrierUntilAdoption
+[       OK ] FogCarrierPolicyTest.LeavingABodyHostClearsTheCarrierUntilAdoption (1 ms)
+[ RUN      ] FogCarrierPolicyTest.FieldPartStaysClearAfterLeavingABodyHost
+[       OK ] FogCarrierPolicyTest.FieldPartStaysClearAfterLeavingABodyHost (1 ms)
+[ RUN      ] FogCarrierPolicyTest.HostLeavingRevoxelizeClearsReleasedPartCarriers
+[       OK ] FogCarrierPolicyTest.HostLeavingRevoxelizeClearsReleasedPartCarriers (1 ms)
+[ RUN      ] FogCarrierPolicyTest.UnmanagedSourcesKeepTheirCarrierAcrossRestaging
+[       OK ] FogCarrierPolicyTest.UnmanagedSourcesKeepTheirCarrierAcrossRestaging (1 ms)
+[----------] 5 tests from FogCarrierPolicyTest (9 ms total)
+[----------] Global test environment tear-down
+[==========] 235 tests from 28 test suites ran. (6150 ms total)
+[  PASSED  ] 235 tests.
+ir-run: IrredenEngineTest exited cleanly after 16s
+ir-run: RESULT=CLEAN exe=IrredenEngineTest exit=0

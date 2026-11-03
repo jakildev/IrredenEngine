@@ -1,0 +1,39 @@
+"""matrix.py <out> [variant,...] [--fog 16|0,16]: placements x fog x opt-in x variants (resumable)."""
+import json, sys, time
+from pathlib import Path
+sys.path.insert(0, r"C:/msys64/tmp/p4813")
+from cap import capture
+from matrix_defs import PLACEMENTS, VARIANTS
+
+out = Path(sys.argv[1])
+args = sys.argv[2:]
+fogs = ('16',)
+if '--fog' in args:
+    i = args.index('--fog'); fogs = tuple(args[i + 1].split(',')); del args[i:i + 2]
+prefixes = None
+if '--placements' in args:
+    i = args.index('--placements'); prefixes = tuple(args[i + 1].split(',')); del args[i:i + 2]
+only = args[0].split(',') if args else None
+if prefixes:
+    PLACEMENTS = [p for p in PLACEMENTS if p[0].startswith(prefixes)]
+for variant, flags in VARIANTS:
+    if only and variant not in only:
+        continue
+    for label, camera, yaw in PLACEMENTS:
+        for fog in fogs:
+            for surface in ('1', '0'):
+                folder = out / variant / f'{label}-fog{fog}-surface{surface}'
+                done = folder / 'capture.json'
+                if done.exists():
+                    try:
+                        prior = json.loads(done.read_text())
+                    except ValueError:
+                        prior = {}
+                    if (prior.get('result') not in (None, 'LOCK-FAILED') and prior.get('routes')
+                            and len(prior.get('frames', ())) == 1):
+                        continue
+                t = time.time()
+                rec = capture(folder, yaw, fog, surface, [*camera, *flags])
+                print(f'{variant}/{folder.name} rc={rec["returncode"]} {rec["result"]} {rec["routes"]} '
+                      f'frames={len(rec["frames"])} glerr={len(rec["gl_error_lines"])} {time.time() - t:.0f}s',
+                      flush=True)

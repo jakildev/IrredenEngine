@@ -1,0 +1,49 @@
+# Executed from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render
+# python3 /tmp/codex-stack-wrapup-visual.py
+
+import json, os, re, shutil, subprocess, sys
+from pathlib import Path
+root=Path.cwd()
+out=Path('/tmp/codex-stack-wrapup-visual')
+common=['--no-spin','--no-auto-rotate','--pivot-origin','--auto-profile','--auto-screenshot','6']
+mixed=['--only','shadowocclusion,orbit,floor','--probe-grid','--probe-staircase','--zoom','1','--subdivisions','1']
+quadrants=['--sweep-yaw','0.39269908','5.10508806','4']
+sweep=['--sweep-yaw','0','5.10508806','5']
+cases=[]
+for enabled in [False,True]:
+ cases.append(('frame-'+str(int(enabled)), enabled, enabled, ['--only','orbit','--focus-orbit','7','--focus-identity','--probe-grid','--no-ao','--zoom','4','--subdivisions','1']+quadrants))
+for shape,idx in [('frame','7'),('octa','3')]:
+ for overlay in ['shadow','normals']:
+  cases.append((shape+'-'+overlay,False,False,['--only','orbit','--focus-orbit',idx,'--no-ao','--zoom','4','--debug-overlay',overlay,'--sweep-yaw','0','4.71238898','4']))
+for name,extra in [('mixed',[]),('no-shadows',['--no-shadows']),('sky',['--probe-sky'])]:
+ for light,pre in ([(False,False),(True,False),(True,True)] if name=='mixed' else [(False,False),(True,True)]):
+  cases.append((name+'-'+str(int(light))+str(int(pre)),light,pre,mixed+extra+sweep))
+for pre in [False,True]:
+ cases.append(('sub8-'+str(int(pre)),True,pre,[*mixed[:-1],'8','--sweep-yaw','0','6.28318530718','9']))
+ for name,extra in [('park',[]),('release',['--sweep-frames','1','130'])]:
+  args=['--only','shadowocclusion,orbit,floor','--probe-grid','--probe-staircase','--zoom','4','--subdivisions','1','--yaw','1.57059632679','--sweep-yaw','1.57059632679','1.57099632679','3']+extra
+  cases.append((name+'-'+str(int(pre)),True,pre,args))
+for name,light,pre,args in cases:
+ dest=out/name
+ env=os.environ.copy()
+ for k in ['IR_PERAXIS_SURFACE_LIGHTING','IR_PERAXIS_VISIBILITY_PREPASS','IR_PERAXIS_VISIBILITY_STATS']:env.pop(k,None)
+ if light:env['IR_PERAXIS_SURFACE_LIGHTING']='1'
+ if pre:env['IR_PERAXIS_VISIBILITY_PREPASS']='1'
+ cmd=[sys.executable,'scripts/perf/repeat_profile.py','--target','IRCanvasStress','--output',str(dest),'--repeats','1','--']+common+args
+ print('RUN',name,flush=True)
+ subprocess.run(cmd,env=env,check=True)
+ manifest=json.loads((dest/'manifest.json').read_text())
+ build=(root/manifest['build_dir']).resolve()
+ log=(dest/'run-1.log').read_text()
+ shots=re.findall(r'Saved screenshot: ([^\r\n]+)',log)
+ if not shots:raise RuntimeError('No screenshots for '+name)
+ mapping=[]
+ for i,shot in enumerate(shots):
+  shot=re.sub(r'\x1b\[[0-9;]*m','',shot).strip()
+  src=Path(shot)
+  if not src.is_absolute():src=build/'creations/demos/canvas_stress'/src
+  target=dest/('shot-'+str(i)+'.png')
+  shutil.copy2(src,target)
+  mapping.append({'source':str(src),'capture':target.name})
+ (dest/'screenshots.json').write_text(json.dumps(mapping,indent=2)+'\n')
+ print('CAPTURED',name,len(mapping),flush=True)

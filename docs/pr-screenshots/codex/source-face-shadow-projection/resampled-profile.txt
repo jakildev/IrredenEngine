@@ -1,0 +1,43 @@
+=== PROFILE REPORT (243 frames) ===
+Frame time:   avg=8.94ms   p50=8.32ms   p95=8.70ms   p99=16.74ms   min=3.56ms   max=135.62ms
+Update ticks: avg=1.0/frame  max=1
+Entity count: 182 (45 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities
+INPUT    InputKeyMouse                              1.32     0.005     0.002     0.012     243      30375
+INPUT    CameraScrollZoom                           0.21     0.001     0.000     0.002     243          0
+UPDATE   RebuildDetachedVoxels                     57.45     0.236     0.159     0.310     243        972
+UPDATE   RebuildGridVoxelsImplicit                 37.71     0.155     0.141     0.179     243        729
+UPDATE   PropagateTransform                        10.55     0.043     0.037     0.075     243      34020
+UPDATE   UpdateVoxelSetChildren                     2.87     0.012     0.009     0.017     243        729
+UPDATE   PropagateCanvasRotation                    1.35     0.006     0.004     0.008     243        729
+UPDATE   AutoSpinLocalTransform                     0.73     0.003     0.002     0.005     243        729
+UPDATE   LodUpdate                                  0.72     0.003     0.001     0.019     243        243
+UPDATE   RebuildGridVoxels                          0.23     0.001     0.001     0.001     243          0
+UPDATE   Lifetime                                   0.09     0.000     0.000     0.001     243          0
+RENDER   ShapesToTrixel                            79.09     0.325     0.273     0.699     243        243
+RENDER   SingleVoxelToCanvasFirst                  51.31     0.211     0.130     6.678     243        972
+RENDER   BuildLightOcclusionGrid                   20.96     0.086     0.079     0.198     243        972
+RENDER   CanvasToFramebuffer                       17.30     0.071     0.048     0.513     243        729
+RENDER   LightingToTrixel                          10.77     0.044     0.040     0.087     243        972
+RENDER   ComputeVoxelAO                            10.16     0.042     0.037     0.081     243        972
+RENDER   EntityCanvasToFramebuffer                  8.15     0.034     0.029     0.080     243        729
+RENDER   FramebufferToScreen                        3.85     0.016     0.013     0.096     243        243
+RENDER   BakeSunShadowMap                           3.05     0.013     0.011     0.017     243        243
+RENDER   ResolvePerAxisScreenDepth                  2.20     0.009     0.008     0.012     243       1215
+RENDER   ComputeLightVolume                         2.12     0.009     0.007     0.034     243        243
+RENDER   ComputeSunShadow                           1.67     0.007     0.006     0.043     243        243
+RENDER   CameraMousePan                             1.33     0.005     0.002     0.015     243        243
+RENDER   CameraKeyDragPan                           0.57     0.002     0.002     0.003     243        243
+RENDER   CameraMouseRotate                          0.46     0.002     0.001     0.003     243        243
+RENDER   CameraKeyDragRotate                        0.37     0.002     0.001     0.002     243        243
+RENDER   AutoScreenshot                             0.17     0.001     0.000     0.028     243          0
+
+--- CPU phase timing ---
+Phase                                  Avg(ms)   Max(ms) Samples
+ComputeLightVolume::Clear                0.002     0.022     243
+ComputeLightVolume::Populate             0.000     0.001     243
+ComputeLightVolume::Upload               0.003     0.006     243
+
+=== END REPORT ===

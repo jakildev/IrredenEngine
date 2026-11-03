@@ -1,0 +1,22 @@
+--- a/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
++++ b/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
+@@ -116,7 +116,7 @@
+         const float3 projectedU = sunSpaceProject(edgeU, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+         const float3 projectedV = sunSpaceProject(edgeV, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
+         if (rigidSource) indexSourceSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame);
+-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, sunWriteIsSourceFace(faceMarker) ? int(kSourceFaceFallbackOffset) : 0, faceMarker);
+-        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount + (sunWriteIsSourceFace(faceMarker) ? int(kSourceFaceFallbackOffset) : 0), faceMarker);
++        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_0, sunFrame.cascadeTexelSize_0, 0, faceMarker);
++        rasterSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame.cascadeOriginUV_1, sunFrame.cascadeTexelSize_1, kCascadeTexelCount + (0), faceMarker);
+     }
+ }
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -83,6 +83,7 @@
+             if (layer == 1 && sourceQueryComplete) continue;
+             uint nearest = sunDepthBuf[bufferOffset + nearestPixel.y * kSunShadowMapDim + nearestPixel.x
+                 + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
++            if (sunWriteIsSourceFace(nearest)) continue;
+             if (sunWriteIsSurface(nearest)) {
+                 float facing = dot(normal, sunDir);
+                 if (facing <= 0.0) return 0.0;

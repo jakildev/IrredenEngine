@@ -1,0 +1,16 @@
+{
+  "command": [
+    "fleet-run",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "120",
+    "--only",
+    "compare"
+  ],
+  "revision": "9256ac0473584699c98de0e1f470378224f7fff0",
+  "binary_sha256": "53ead647acac0b2d1c82088a4a6ba81b03444b008eb67d3383aa14c42dcba1b4",
+  "images": {
+    "compare_yaw0": "160ac611707a5ae136e66b0774c7acd55d0dba6510ffc3134486e542ac1ad94f",
+    "compare_yaw_q": "ea2069ebdcfd3f9d45af1f3ea0a3d22b9c0d230aa1b86316c989763bfdc59c6e"
+  }
+}

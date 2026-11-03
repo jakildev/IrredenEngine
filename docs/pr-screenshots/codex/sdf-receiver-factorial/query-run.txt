@@ -1,0 +1,14 @@
+[2026-09-21 20:10:31.020] [EngineLog] [info] Discovered 1 display monitors
+[2026-09-21 20:10:31.822] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-09-21 20:10:32.006] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=421
+[2026-09-21 20:10:32.022] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-09-21 20:10:32.211] [ClientLog] [info] AutoScreenshot 1/4: sweep_yaw_0 (zoom=2, cam=(0,0), yaw=0, cull=0)
+[2026-09-21 20:10:32.854] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_002031.png
+[2026-09-21 20:10:32.861] [ClientLog] [info] AutoScreenshot 2/4: sweep_yaw_1 (zoom=2, cam=(0,0), yaw=1.5707964, cull=0)
+[2026-09-21 20:10:33.633] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_002032.png
+[2026-09-21 20:10:33.638] [ClientLog] [info] AutoScreenshot 3/4: sweep_yaw_2 (zoom=2, cam=(0,0), yaw=3.1415927, cull=0)
+[2026-09-21 20:10:34.292] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_002033.png
+[2026-09-21 20:10:34.298] [ClientLog] [info] AutoScreenshot 4/4: sweep_yaw_3 (zoom=2, cam=(0,0), yaw=4.712389, cull=0)
+[2026-09-21 20:10:34.942] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_002034.png
+[2026-09-21 20:10:34.956] [EngineLog] [info] Clean shutdown complete.
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

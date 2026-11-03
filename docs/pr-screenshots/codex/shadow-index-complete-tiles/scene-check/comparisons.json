@@ -1,0 +1,68 @@
+{
+  "so3_smooth_sweep": {
+    "parent": "2dfef2925a347c122a816d8645ba4e8e2b58b9df247320083495c3908948cc1e",
+    "candidate-native": "3c5eff1bc822d86e43f9c2f61abf9148c3ea4438eb6e10c4caf467ed8294030f",
+    "candidate-repeat": "3c5eff1bc822d86e43f9c2f61abf9148c3ea4438eb6e10c4caf467ed8294030f",
+    "global-reference": "3c5eff1bc822d86e43f9c2f61abf9148c3ea4438eb6e10c4caf467ed8294030f"
+  },
+  "so3_offsnap_disc": {
+    "parent": "9f292c6fcc601770f1406c030cad2b2fd67b0777fb133e3bfce628f3421ed6a1",
+    "candidate-native": "95b9c1f264f85910a12655c1a8bc95c05846a2cd09d577c46ae09d52b6f9e3c0",
+    "candidate-repeat": "95b9c1f264f85910a12655c1a8bc95c05846a2cd09d577c46ae09d52b6f9e3c0",
+    "global-reference": "95b9c1f264f85910a12655c1a8bc95c05846a2cd09d577c46ae09d52b6f9e3c0"
+  },
+  "so3_wide_parity": {
+    "parent": "fec4d3d4b9ba17681dd86c461cbc161a67032c895a9ba0032743d94261960d79",
+    "candidate-native": "d5b513118fa54eb769b35b7aac56fb25a2f848428122f136e10de11ec3825615",
+    "candidate-repeat": "d5b513118fa54eb769b35b7aac56fb25a2f848428122f136e10de11ec3825615",
+    "global-reference": "d5b513118fa54eb769b35b7aac56fb25a2f848428122f136e10de11ec3825615"
+  },
+  "so3_grid_cross": {
+    "parent": "8dbaf076ff4b05e074dfbc61cff375c8a03647e6ae8c24b815bbeee85343dae0",
+    "candidate-native": "cf9a9f9e712f39631f583eb1ffe8000a229fc468159420aab49f478e56d05085",
+    "candidate-repeat": "cf9a9f9e712f39631f583eb1ffe8000a229fc468159420aab49f478e56d05085",
+    "global-reference": "cf9a9f9e712f39631f583eb1ffe8000a229fc468159420aab49f478e56d05085"
+  },
+  "so3_offsnap_wide": {
+    "parent": "122d395fe001f762413bcedbc1e32b3af130874cea9571fb5e3a4d774efe0824",
+    "candidate-native": "826f501f79087573352aafef681b69c9019fc6a91b678b6ea3bc43de10e26394",
+    "candidate-repeat": "826f501f79087573352aafef681b69c9019fc6a91b678b6ea3bc43de10e26394",
+    "global-reference": "826f501f79087573352aafef681b69c9019fc6a91b678b6ea3bc43de10e26394"
+  },
+  "revoxelize_solids": {
+    "parent": "27439dcf167a6405e5d3573c5774c3e1e853ca12b78fb4e0800e57982eaad24f",
+    "candidate-native": "fb8416fa86f02e9939b6b2bffbe6806b007425803f1467b233304f6b8ee51834",
+    "candidate-repeat": "fb8416fa86f02e9939b6b2bffbe6806b007425803f1467b233304f6b8ee51834",
+    "global-reference": "fb8416fa86f02e9939b6b2bffbe6806b007425803f1467b233304f6b8ee51834"
+  },
+  "sharedparts_spin_a": {
+    "parent": "0ccd46b1dbe0039c17f185c1c7a8b91ddbfe9344c607a8bd21dbd7e9c4e369b4",
+    "candidate-native": "0ccd46b1dbe0039c17f185c1c7a8b91ddbfe9344c607a8bd21dbd7e9c4e369b4",
+    "candidate-repeat": "0ccd46b1dbe0039c17f185c1c7a8b91ddbfe9344c607a8bd21dbd7e9c4e369b4",
+    "global-reference": "0ccd46b1dbe0039c17f185c1c7a8b91ddbfe9344c607a8bd21dbd7e9c4e369b4"
+  },
+  "sharedparts_spin_b": {
+    "parent": "88073428f7e5b54e5796084c4062868361b889b539f6d2cd1231f7dd20537f33",
+    "candidate-native": "88073428f7e5b54e5796084c4062868361b889b539f6d2cd1231f7dd20537f33",
+    "candidate-repeat": "88073428f7e5b54e5796084c4062868361b889b539f6d2cd1231f7dd20537f33",
+    "global-reference": "88073428f7e5b54e5796084c4062868361b889b539f6d2cd1231f7dd20537f33"
+  },
+  "sharedparts_yaw": {
+    "parent": "09591dd96c94187b8bb794e32e7ab3f7f835970a6c338f582fb5e1432054aad0",
+    "candidate-native": "9fdc0c0ad55354f2fec74deebdf6cb44790a3315c217fc12e2f2aa31cb42e03c",
+    "candidate-repeat": "9fdc0c0ad55354f2fec74deebdf6cb44790a3315c217fc12e2f2aa31cb42e03c",
+    "global-reference": "9fdc0c0ad55354f2fec74deebdf6cb44790a3315c217fc12e2f2aa31cb42e03c"
+  },
+  "compare_yaw0": {
+    "parent": "fc800f0addd1b067118fb567b7f2e1f111d8276e9048c49f0b427511fc4382b6",
+    "candidate-native": "160ac611707a5ae136e66b0774c7acd55d0dba6510ffc3134486e542ac1ad94f",
+    "candidate-repeat": "160ac611707a5ae136e66b0774c7acd55d0dba6510ffc3134486e542ac1ad94f",
+    "global-reference": "160ac611707a5ae136e66b0774c7acd55d0dba6510ffc3134486e542ac1ad94f"
+  },
+  "compare_yaw_q": {
+    "parent": "ea2069ebdcfd3f9d45af1f3ea0a3d22b9c0d230aa1b86316c989763bfdc59c6e",
+    "candidate-native": "ea2069ebdcfd3f9d45af1f3ea0a3d22b9c0d230aa1b86316c989763bfdc59c6e",
+    "candidate-repeat": "ea2069ebdcfd3f9d45af1f3ea0a3d22b9c0d230aa1b86316c989763bfdc59c6e",
+    "global-reference": "ea2069ebdcfd3f9d45af1f3ea0a3d22b9c0d230aa1b86316c989763bfdc59c6e"
+  }
+}

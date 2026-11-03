@@ -1,0 +1,161 @@
+{
+  "rigid": {
+    "revision": "72c6e5218ae9e217813a08b63cfac3336cb54017",
+    "clean": true,
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "120",
+      "IRCanvasStress",
+      "--only",
+      "shadowbox,floor",
+      "--probe-source-box",
+      "--frozen-pose",
+      "0.6",
+      "--pivot-origin",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "3",
+      "--auto-screenshot",
+      "6",
+      "--sweep-yaw",
+      "0",
+      "5.49778714",
+      "8",
+      "--sun-face-index-probe"
+    ],
+    "images": [
+      {
+        "file": "rigid-0.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000239.png",
+        "sha256": "654da62635de97b93892109bf25968dd2c327c985fd9175b4f5c4015b33e5b6f",
+        "maximum_tile_records": 11
+      },
+      {
+        "file": "rigid-1.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000240.png",
+        "sha256": "0ae6f0d36456e48b5633380b4a7db0dfeed94d878005614f3816a409212b45fd",
+        "maximum_tile_records": 17
+      },
+      {
+        "file": "rigid-2.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000241.png",
+        "sha256": "8f10daf447bbfac574e49b4301d528573dda66ed19f7b47b0e2ed2ac04ae26b8",
+        "maximum_tile_records": 17
+      },
+      {
+        "file": "rigid-3.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000242.png",
+        "sha256": "5e6f34341d9c140f5d1e931fd27614a31fdcc463275c52715f2651a67f5f821c",
+        "maximum_tile_records": 23
+      },
+      {
+        "file": "rigid-4.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000243.png",
+        "sha256": "190cb72b8adec11868eec42918bcd022492d4b825d3a40792d2a8507265c04a5",
+        "maximum_tile_records": 23
+      },
+      {
+        "file": "rigid-5.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000244.png",
+        "sha256": "dc716db70325aa9f5bd0d661d380d5845954b5b9116f2c4afbf9c1c22fb2b4c4",
+        "maximum_tile_records": 23
+      },
+      {
+        "file": "rigid-6.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000245.png",
+        "sha256": "22d99898518291ee00e5297642c385a09ef0d11a3a2046dc7179d96a5a327b50",
+        "maximum_tile_records": 21
+      },
+      {
+        "file": "rigid-7.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000246.png",
+        "sha256": "f9beb93f9cd2c538d90d40bbd271a218688d7a479dde57ebea0ada09252cbbd1",
+        "maximum_tile_records": 21
+      }
+    ]
+  },
+  "revoxelized": {
+    "revision": "72c6e5218ae9e217813a08b63cfac3336cb54017",
+    "clean": true,
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "120",
+      "IRCanvasStress",
+      "--only",
+      "shadowbox,floor",
+      "--frozen-pose",
+      "0.6",
+      "--pivot-origin",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "3",
+      "--auto-screenshot",
+      "6",
+      "--sweep-yaw",
+      "0",
+      "5.49778714",
+      "8",
+      "--sun-face-index-probe"
+    ],
+    "images": [
+      {
+        "file": "revoxelized-0.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000263.png",
+        "sha256": "a500456f19933576c0535b57008e4b24ebe1f52579c23dc4c1cc9ef47df1d7c7",
+        "maximum_tile_records": 18
+      },
+      {
+        "file": "revoxelized-1.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000264.png",
+        "sha256": "51317c8cca48f6806050dedd2b35192ec737332484233fdd87ed4b5d2ec8bcd6",
+        "maximum_tile_records": 30
+      },
+      {
+        "file": "revoxelized-2.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000265.png",
+        "sha256": "287534554193fa2a874fe00da9c437b0023d8c2e227337a77a3a48fa0df39b7c",
+        "maximum_tile_records": 28
+      },
+      {
+        "file": "revoxelized-3.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000266.png",
+        "sha256": "7d70649f8bf20f849ed4dbc15784766338e5342ab2106d4c56a7b0efd7dcdb47",
+        "maximum_tile_records": 39
+      },
+      {
+        "file": "revoxelized-4.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000267.png",
+        "sha256": "5c8a8d9b0aea05dc969bca50e7f8277e9576b7b9a91fa9f9b4c292b6f1c9fe67",
+        "maximum_tile_records": 32
+      },
+      {
+        "file": "revoxelized-5.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000268.png",
+        "sha256": "843897043861060e370d705a9ba51aab6f8ef1435544898b8b89f1432c354442",
+        "maximum_tile_records": 39
+      },
+      {
+        "file": "revoxelized-6.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000269.png",
+        "sha256": "10729a10b3d7484a059df31e0399cb26d8da5a4c579edaf9d293c5115df361ea",
+        "maximum_tile_records": 28
+      },
+      {
+        "file": "revoxelized-7.png",
+        "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000270.png",
+        "sha256": "3ed18f4308faf5caa1c357b0cc7e3c5bf0c66c137a295f8e2d53aae73ca0a2da",
+        "maximum_tile_records": 38
+      }
+    ]
+  }
+}

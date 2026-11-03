@@ -1,0 +1,62 @@
+{
+  "park": {
+    "off": {
+      "Allocate": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Allocate                  1.716     1.716       1"
+      },
+      "Park": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Park                      0.000     0.000       1"
+      },
+      "Unpark": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Unpark                    0.000     0.000       1"
+      }
+    },
+    "on": {
+      "Allocate": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Allocate                  1.542     1.542       1"
+      },
+      "Park": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Park                      0.000     0.000       1"
+      },
+      "Unpark": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Unpark                    0.000     0.000       1"
+      }
+    }
+  },
+  "release": {
+    "off": {
+      "Allocate": {
+        "calls": 2,
+        "report_line": "PerAxisCanvas::Allocate                  1.518     1.658       2"
+      },
+      "Release": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Release                   0.594     0.594       1"
+      },
+      "Park": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Park                      0.000     0.000       1"
+      }
+    },
+    "on": {
+      "Allocate": {
+        "calls": 2,
+        "report_line": "PerAxisCanvas::Allocate                  1.538     1.568       2"
+      },
+      "Release": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Release                   0.572     0.572       1"
+      },
+      "Park": {
+        "calls": 1,
+        "report_line": "PerAxisCanvas::Park                      0.000     0.000       1"
+      }
+    }
+  }
+}

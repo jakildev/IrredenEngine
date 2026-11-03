@@ -1,0 +1,239 @@
+{
+  "source": "Rounded summary.md values from three fixed-pose runs per configuration, stats unset. Moving sweeps and lifecycle captures excluded.",
+  "configurations": {
+    "sub2-off": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 13.663,
+          "min_ms": 13.64,
+          "max_ms": 13.71
+        },
+        "GPU frame envelope": {
+          "mean_ms": 9.873,
+          "min_ms": 9.859,
+          "max_ms": 9.89
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 5.254,
+          "min_ms": 5.238,
+          "max_ms": 5.262
+        }
+      },
+      "host_load_1m": [
+        13.62,
+        12.93,
+        12.34
+      ],
+      "host_battery_percent": [
+        14,
+        13,
+        13
+      ],
+      "overflow_max_entries": [
+        1533,
+        1533,
+        1533
+      ],
+      "overflow_max_dropped": [
+        0,
+        0,
+        0
+      ]
+    },
+    "sub2-on": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 12.39,
+          "min_ms": 12.3,
+          "max_ms": 12.49
+        },
+        "GPU frame envelope": {
+          "mean_ms": 8.622,
+          "min_ms": 8.563,
+          "max_ms": 8.685
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 4.024,
+          "min_ms": 4.011,
+          "max_ms": 4.045
+        }
+      },
+      "host_load_1m": [
+        11.36,
+        11.01,
+        10.48
+      ],
+      "host_battery_percent": [
+        13,
+        13,
+        12
+      ],
+      "overflow_max_entries": [
+        1533,
+        1533,
+        1533
+      ],
+      "overflow_max_dropped": [
+        0,
+        0,
+        0
+      ]
+    },
+    "sub4-off": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 13.89,
+          "min_ms": 13.88,
+          "max_ms": 13.91
+        },
+        "GPU frame envelope": {
+          "mean_ms": 10.059,
+          "min_ms": 10.027,
+          "max_ms": 10.089
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 5.493,
+          "min_ms": 5.458,
+          "max_ms": 5.512
+        }
+      },
+      "host_load_1m": [
+        9.48,
+        10.8,
+        10.53
+      ],
+      "host_battery_percent": [
+        12,
+        12,
+        12
+      ],
+      "overflow_max_entries": [
+        1533,
+        1533,
+        1533
+      ],
+      "overflow_max_dropped": [
+        0,
+        0,
+        0
+      ]
+    },
+    "sub4-on": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 12.663,
+          "min_ms": 12.64,
+          "max_ms": 12.7
+        },
+        "GPU frame envelope": {
+          "mean_ms": 8.772,
+          "min_ms": 8.735,
+          "max_ms": 8.816
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 4.188,
+          "min_ms": 4.154,
+          "max_ms": 4.205
+        }
+      },
+      "host_load_1m": [
+        9.93,
+        9.53,
+        9.14
+      ],
+      "host_battery_percent": [
+        12,
+        11,
+        11
+      ],
+      "overflow_max_entries": [
+        1533,
+        1533,
+        1533
+      ],
+      "overflow_max_dropped": [
+        0,
+        0,
+        0
+      ]
+    },
+    "sub8-off": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 14.467,
+          "min_ms": 14.36,
+          "max_ms": 14.65
+        },
+        "GPU frame envelope": {
+          "mean_ms": 10.474,
+          "min_ms": 10.416,
+          "max_ms": 10.572
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 5.916,
+          "min_ms": 5.894,
+          "max_ms": 5.941
+        }
+      },
+      "host_load_1m": [
+        8.67,
+        8.62,
+        8.33
+      ],
+      "host_battery_percent": [
+        11,
+        10,
+        10
+      ],
+      "overflow_max_entries": [
+        1533,
+        1533,
+        1533
+      ],
+      "overflow_max_dropped": [
+        0,
+        0,
+        0
+      ]
+    },
+    "sub8-on": {
+      "measurements": {
+        "steady frame avg": {
+          "mean_ms": 12.627,
+          "min_ms": 12.32,
+          "max_ms": 13.18
+        },
+        "GPU frame envelope": {
+          "mean_ms": 8.88,
+          "min_ms": 8.613,
+          "max_ms": 9.213
+        },
+        "GPU perAxisScatter": {
+          "mean_ms": 4.357,
+          "min_ms": 4.307,
+          "max_ms": 4.403
+        }
+      },
+      "host_load_1m": [
+        7.84,
+        7.85,
+        7.23
+      ],
+      "host_battery_percent": [
+        10,
+        10,
+        10
+      ],
+      "overflow_max_entries": [
+        1533,
+        1533,
+        1533
+      ],
+      "overflow_max_dropped": [
+        0,
+        0,
+        0
+      ]
+    }
+  }
+}

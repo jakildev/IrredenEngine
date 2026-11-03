@@ -1,0 +1,228 @@
+{
+  "source_base": "e279638c0b2acaeb98b3b27562c03482b66c64f8",
+  "source_state": "uncommitted diagnostic delta; per-file hashes identify captured implementation",
+  "backend": "Metal Apple M4 Max",
+  "source_sha256": {
+    "creations/demos/shape_debug/main.cpp": "5433d2755897c8d84c077fb149298f47c04530971e61b652d2f0d5bd815aba1f",
+    "engine/prefabs/irreden/render/components/canvas_shape_geometry.hpp": "f3c836c11452e6790ea4eb329256ec69f9232417034240fbe637515be72dfef5",
+    "engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp": "63cd63714512591e103fce73ea8b9eca7c333685c8ec8b174efa9b6ab2b73ee7",
+    "scripts/render_torus_surface_probe.py": "6dca37d4bc9fd33df1c0dc93375e54d707a1428f8648282a6d031eefbcc89a43",
+    "scripts/tests/test_render_canvas_shape_geometry.py": "e2b390ffc9fa807c783be8bc02e2a16633e7335bd5121e5ab2afe63075c7d74d",
+    "scripts/tests/test_render_torus_surface_probe.py": "a8535e19e2fa1d1b110734402f801cf719054781e01d6a97875257d3dee72e2b",
+    "test/render/gpu_compute_dispatch_test.cpp": "ec2e419561ddb889b7cd848645a00179da1d841035e0d3587342b23784dfeb2e",
+    "engine/prefabs/irreden/render/shape_sample_probe.hpp": "3d975d4629ecd9a838c3aae648a36e2a09e7a9bfe040480630c1ac8142f7e20a",
+    "test/render/shape_sample_probe_test.cpp": "cf40bebfee3687d286756055037cff6a2b80f41e48974360c288bfdab88ecd5b"
+  },
+  "runs": [
+    {
+      "command": [
+        "fleet-run",
+        "IRShapeDebug",
+        "--spin-yaw",
+        "--auto-screenshot",
+        "1",
+        "--zoom",
+        "8",
+        "--no-ao",
+        "--pivot-origin",
+        "--spin-shape",
+        "torus",
+        "--no-shadows",
+        "--debug-overlay",
+        "normals",
+        "--shape-sample-probe",
+        "1250",
+        "570",
+        "--shape-sample-probe-output",
+        "/tmp/shape-owner-1250-570.json"
+      ],
+      "exit_code": 0,
+      "wrapper_result": "CLEAN",
+      "capture_note": "Spin mode clamps requested count to two; owner probe runs on first capture only.",
+      "log_excerpt": "owner-1250-run.txt",
+      "owner_file": "owner-1250-570.json",
+      "owner_sha256": "37dc17f552ccbabe204427b10da68222ebf56f7d6b763caed1da39b0f3d54d5f",
+      "classification": {
+        "pixel": [
+          1250,
+          570
+        ],
+        "iso": [
+          -7.25,
+          -74.5
+        ],
+        "native_owner_key": 127505,
+        "classification": "publisher_face_not_on_ray",
+        "candidate_sample": [
+          -8,
+          -74,
+          25
+        ],
+        "published_face": 2,
+        "candidate_half": 1,
+        "normal_matches_nearest": false,
+        "nearest": [
+          {
+            "sample": [
+              -8,
+              -74,
+              25
+            ],
+            "depth": 24.375,
+            "axes": [
+              0
+            ],
+            "point": [
+              24.166666666666668,
+              16.916666666666664,
+              -16.708333333333332
+            ]
+          }
+        ],
+        "owner_hits": [
+          {
+            "sample": [
+              -8,
+              -74,
+              25
+            ],
+            "depth": 24.375,
+            "axes": [
+              0
+            ],
+            "point": [
+              24.166666666666668,
+              16.916666666666664,
+              -16.708333333333332
+            ]
+          }
+        ]
+      },
+      "images": [
+        {
+          "shot": 0,
+          "dimensions": [
+            2560,
+            1440
+          ],
+          "rgb_sha256": "d33b11614ff94c86dcbe8a0bab20c326cd1ae1677e40c1ee5b831d12335bb7f7",
+          "matches_prior_yaw_index": 0
+        },
+        {
+          "shot": 1,
+          "dimensions": [
+            2560,
+            1440
+          ],
+          "rgb_sha256": "15ff1a2a8c8753dc853954f11e35c47e2931abf49164b2cd9a18151df5895b2e",
+          "matches_prior_yaw_index": 4
+        }
+      ]
+    },
+    {
+      "command": [
+        "fleet-run",
+        "IRShapeDebug",
+        "--spin-yaw",
+        "--auto-screenshot",
+        "1",
+        "--zoom",
+        "8",
+        "--no-ao",
+        "--pivot-origin",
+        "--spin-shape",
+        "torus",
+        "--no-shadows",
+        "--debug-overlay",
+        "normals",
+        "--shape-sample-probe",
+        "1253",
+        "569",
+        "--shape-sample-probe-output",
+        "/tmp/shape-owner-1253-569.json"
+      ],
+      "exit_code": 0,
+      "wrapper_result": "CLEAN",
+      "capture_note": "Spin mode clamps requested count to two; owner probe runs on first capture only.",
+      "log_excerpt": "owner-1253-run.txt",
+      "owner_file": "owner-1253-569.json",
+      "owner_sha256": "8978585573f86cdb6273ae3f100d9fd45e915547f85dc2925c5c730fcc9a3192",
+      "classification": {
+        "pixel": [
+          1253,
+          569
+        ],
+        "iso": [
+          -6.75,
+          -75.5
+        ],
+        "native_owner_key": 116711,
+        "classification": "nearest_exposed_face",
+        "candidate_sample": [
+          -7,
+          -75,
+          26
+        ],
+        "published_face": 2,
+        "candidate_half": 1,
+        "normal_matches_nearest": true,
+        "nearest": [
+          {
+            "sample": [
+              -7,
+              -75,
+              26
+            ],
+            "depth": 25.000000000000007,
+            "axes": [
+              2
+            ],
+            "point": [
+              24.29166666666667,
+              17.54166666666667,
+              -16.833333333333332
+            ]
+          }
+        ],
+        "owner_hits": [
+          {
+            "sample": [
+              -7,
+              -75,
+              26
+            ],
+            "depth": 25.000000000000007,
+            "axes": [
+              2
+            ],
+            "point": [
+              24.29166666666667,
+              17.54166666666667,
+              -16.833333333333332
+            ]
+          }
+        ]
+      },
+      "images": [
+        {
+          "shot": 0,
+          "dimensions": [
+            2560,
+            1440
+          ],
+          "rgb_sha256": "d33b11614ff94c86dcbe8a0bab20c326cd1ae1677e40c1ee5b831d12335bb7f7",
+          "matches_prior_yaw_index": 0
+        },
+        {
+          "shot": 1,
+          "dimensions": [
+            2560,
+            1440
+          ],
+          "rgb_sha256": "15ff1a2a8c8753dc853954f11e35c47e2931abf49164b2cd9a18151df5895b2e",
+          "matches_prior_yaw_index": 4
+        }
+      ]
+    }
+  ]
+}

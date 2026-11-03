@@ -1,0 +1,691 @@
+ir-run: running debug tree C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4/build
+ir-run: /c/Users/evinj/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/IRCanvasStress.exe --config-preset C:/msys64/tmp/p4813/poly/default/origin-yaw0-fog16-surface0/config.lua --only shadowbox,floor --probe-grid --probe-floor-mode grid --probe-floor-span 40 --no-spin --no-auto-rotate --pivot-origin --zoom 4 --subdivisions 1 --no-ao --auto-screenshot 10 --sweep-frames 1 10 --probe-overlapping-source --sun-direction 0 0 -1 --yaw 0 --fog-reveal 16 (timeout: 240s) (window mode: offscreen)
+[2026-10-31 14:48:12.836] [ClientLog] [info] Starting creation: canvas_stress
+[2026-10-31 14:48:12.838] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-31 14:48:12.838] [EngineLog] [info] Lua script loaded successfully: C:\Users\evinj\src\IrredenEngine\.claude\worktrees\pool-4\build\creations\demos\canvas_stress\scripts\config.lua
+[2026-10-31 14:48:12.838] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-31 14:48:12.839] [EngineLog] [info] Lua script loaded successfully: C:/msys64/tmp/p4813/poly/default/origin-yaw0-fog16-surface0/config.lua
+[2026-10-31 14:48:12.839] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-31 14:48:12.839] [EngineLog] [info] Lua script loaded successfully: C:\Users\evinj\src\IrredenEngine\.claude\worktrees\pool-4\build\creations\demos\canvas_stress\scripts\config.lua
+[2026-10-31 14:48:12.839] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-31 14:48:12.839] [EngineLog] [info] Lua script loaded successfully: C:/msys64/tmp/p4813/poly/default/origin-yaw0-fog16-surface0/config.lua
+[2026-10-31 14:48:12.839] [EngineLog] [info] Config preset overlay: C:/msys64/tmp/p4813/poly/default/origin-yaw0-fog16-surface0/config.lua
+[2026-10-31 14:48:12.839] [EngineLog] [info] --window-mode / IR_WINDOW_MODE override: window_mode = offscreen
+[2026-10-31 14:48:12.945] [EngineLog] [info] Discovered 3 display monitors
+[2026-10-31 14:48:12.945] [EngineLog] [info] Monitor 0: 'Generic PnP Monitor' @ (0, 0), mode=2560x1440 165Hz
+[2026-10-31 14:48:12.945] [EngineLog] [info] Monitor 1: 'Generic PnP Monitor' @ (-2560, 0), mode=2560x1440 165Hz
+[2026-10-31 14:48:12.945] [EngineLog] [info] Monitor 2: 'Generic PnP Monitor' @ (2560, 0), mode=2560x1440 165Hz
+[2026-10-31 14:48:13.144] [EngineLog] [info] Created IRGLFWWindow (window mode: offscreen).
+[2026-10-31 14:48:13.144] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-31 14:48:13.144] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-31 14:48:13.144] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-31 14:48:13.144] [EngineLog] [info] Created SystemManager
+[2026-10-31 14:48:13.145] [EngineLog] [info] JobManager: started with 30 worker threads
+[2026-10-31 14:48:13.145] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-31 14:48:13.145] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-31 14:48:13.145] [EngineLog] [info] Regestered component type=N12IRComponents16C_KeyMouseButtonE, sizeof=4 with id=258
+[2026-10-31 14:48:13.145] [EngineLog] [info] Regestered component type=N12IRComponents11C_KeyStatusE, sizeof=12 with id=259
+[2026-10-31 14:48:13.145] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-31 14:48:13.145] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-31 14:48:13.145] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-31 14:48:13.145] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 0 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 1 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 2 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 3 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 4 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 5 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 6 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 7 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 8 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 9 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 10 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 11 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 12 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 13 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 14 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Joystick 15 not present
+[2026-10-31 14:48:13.146] [EngineLog] [info] Created InputManager
+[2026-10-31 14:48:13.146] [EngineLog] [info] Created CommandManager
+[2026-10-31 14:48:13.146] [EngineLog] [info] Creating an resource id pool. idCapacity=1048575
+[2026-10-31 14:48:13.148] [EngineLog] [info] Registered resource type N8IRRender11ShaderStageE with ID=0
+[2026-10-31 14:48:13.148] [EngineLog] [info] Registered resource type N8IRRender9Texture2DE with ID=1
+[2026-10-31 14:48:13.148] [EngineLog] [info] Registered resource type N8IRRender9Texture3DE with ID=2
+[2026-10-31 14:48:13.148] [EngineLog] [info] Registered resource type N8IRRender11FramebufferE with ID=3
+[2026-10-31 14:48:13.148] [EngineLog] [info] Registered resource type N8IRRender14ShaderPipelineE with ID=4
+[2026-10-31 14:48:13.148] [EngineLog] [info] Registered resource type N8IRRender6BufferE with ID=5
+[2026-10-31 14:48:13.148] [EngineLog] [info] Registered resource type N8IRRender12VertexLayoutE with ID=6
+[2026-10-31 14:48:13.148] [EngineLog] [info] Created RenderingResourceManager
+[2026-10-31 14:48:13.148] [ClientLog] [info] Initalizing OpenGL render implementation.
+[2026-10-31 14:48:13.148] [EngineLog] [info] Created GL buffer: 1
+[2026-10-31 14:48:13.150] [EngineLog] [info] Created ResourceId=0, type=3
+[2026-10-31 14:48:13.150] [EngineLog] [info] Regestered component type=N12IRComponents6C_NameE, sizeof=32 with id=385
+[2026-10-31 14:48:13.150] [EngineLog] [info] Regestered component type=N12IRComponents25C_TrixelCanvasFramebufferE, sizeof=16 with id=386
+[2026-10-31 14:48:13.150] [EngineLog] [info] Regestered component type=N12IRComponents30C_FrameDataTrixelToFramebufferE, sizeof=256 with id=387
+[2026-10-31 14:48:13.150] [EngineLog] [info] Regestered component type=N12IRComponents11C_ZoomLevelE, sizeof=8 with id=388
+[2026-10-31 14:48:13.150] [EngineLog] [info] Created archetype node with components: [ 256 257 385 ], id=5
+[2026-10-31 14:48:13.150] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 ], id=6
+[2026-10-31 14:48:13.150] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 ], id=7
+[2026-10-31 14:48:13.150] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 ], id=8
+[2026-10-31 14:48:13.150] [EngineLog] [info] Regestered component type=N12IRComponents23C_VoxelPoolTeardownHookE, sizeof=4 with id=389
+[2026-10-31 14:48:13.150] [EngineLog] [info] Created archetype node with components: [ 389 ], id=9
+[2026-10-31 14:48:13.150] [EngineLog] [info] Created ResourceId=1, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=2, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=3, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=4, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=5, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=6, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=7, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=8, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=9, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=10, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=11, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=12, type=1
+[2026-10-31 14:48:13.151] [EngineLog] [info] Created ResourceId=13, type=1
+[2026-10-31 14:48:13.155] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=600 with id=392
+[2026-10-31 14:48:13.155] [EngineLog] [info] Regestered component type=N12IRComponents15C_SizeTrianglesE, sizeof=8 with id=393
+[2026-10-31 14:48:13.155] [EngineLog] [info] Regestered component type=N12IRComponents24C_TriangleCanvasTexturesE, sizeof=488 with id=394
+[2026-10-31 14:48:13.155] [EngineLog] [info] Regestered component type=N12IRComponents21C_CanvasLocalRotationE, sizeof=44 with id=395
+[2026-10-31 14:48:13.155] [EngineLog] [info] Regestered component type=N12IRComponents23C_PerAxisTrixelCanvasesE, sizeof=1368 with id=396
+[2026-10-31 14:48:13.155] [EngineLog] [info] Regestered component type=N12IRComponents26C_DetachedRevoxelizeBufferE, sizeof=96 with id=397
+[2026-10-31 14:48:13.155] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 ], id=10
+[2026-10-31 14:48:13.155] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 ], id=11
+[2026-10-31 14:48:13.155] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 ], id=12
+[2026-10-31 14:48:13.155] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 ], id=13
+[2026-10-31 14:48:13.155] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 ], id=14
+[2026-10-31 14:48:13.155] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 ], id=15
+[2026-10-31 14:48:13.159] [EngineLog] [info] Regestered relation type=1 id=398 related to entity=384
+[2026-10-31 14:48:13.159] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 ], id=16
+[2026-10-31 14:48:13.159] [EngineLog] [info] Created voxel pool canvas 391 with framebuffer parent 384, size 642,722
+[2026-10-31 14:48:13.159] [EngineLog] [info] Created ResourceId=14, type=1
+[2026-10-31 14:48:13.159] [EngineLog] [info] Created ResourceId=15, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=16, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=17, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=18, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=19, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=20, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=21, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=22, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=23, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=24, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=25, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=26, type=1
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 ], id=17
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 ], id=18
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 ], id=19
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created trixel canvas 399 with framebuffer parent 384, size 642,722
+[2026-10-31 14:48:13.160] [EngineLog] [info] Created ResourceId=27, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=28, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=29, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=30, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=31, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=32, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=33, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=34, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=35, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=36, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=37, type=1
+[2026-10-31 14:48:13.161] [EngineLog] [info] Created ResourceId=38, type=1
+[2026-10-31 14:48:13.162] [EngineLog] [info] Created ResourceId=39, type=1
+[2026-10-31 14:48:13.162] [EngineLog] [info] Created trixel canvas 400 with framebuffer parent 384, size 642,722
+[2026-10-31 14:48:13.162] [EngineLog] [info] Regestered component type=N12IRComponents8C_CameraE, sizeof=1 with id=402
+[2026-10-31 14:48:13.162] [EngineLog] [info] Regestered component type=N12IRComponents15C_Position2DIsoE, sizeof=8 with id=403
+[2026-10-31 14:48:13.162] [EngineLog] [info] Regestered component type=N12IRComponents15C_Velocity2DIsoE, sizeof=8 with id=404
+[2026-10-31 14:48:13.162] [EngineLog] [info] Regestered component type=N12IRComponents22C_CameraZoomFrameStateE, sizeof=64 with id=405
+[2026-10-31 14:48:13.162] [EngineLog] [info] Created archetype node with components: [ 256 257 388 ], id=20
+[2026-10-31 14:48:13.162] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 ], id=21
+[2026-10-31 14:48:13.162] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 ], id=22
+[2026-10-31 14:48:13.162] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 ], id=23
+[2026-10-31 14:48:13.162] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 405 ], id=24
+[2026-10-31 14:48:13.162] [EngineLog] [info] Fit mode: 1
+[2026-10-31 14:48:13.162] [EngineLog] [info] Voxel pool: edge=64 (262144 voxels)
+[2026-10-31 14:48:13.162] [EngineLog] [info] Initializing OpenGL renderer implementation.
+[2026-10-31 14:48:13.164] [EngineLog] [info] OpenGL offscreen screen target attached (1280x720).
+[2026-10-31 14:48:13.164] [EngineLog] [info] Regestered component type=N12IRComponents12C_PersistentE, sizeof=1 with id=406
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 405 406 ], id=25
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 406 ], id=26
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 ], id=27
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 ], id=28
+[2026-10-31 14:48:13.164] [EngineLog] [info] Regestered component type=N12IRComponents11C_GuiCanvasE, sizeof=1 with id=407
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 407 ], id=29
+[2026-10-31 14:48:13.164] [EngineLog] [info] Regestered component type=N12IRComponents28C_TrixelCanvasRenderBehaviorE, sizeof=24 with id=408
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 406 407 408 ], id=30
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created GL buffer: 2
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created ResourceId=40, type=5
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created GL buffer: 3
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created ResourceId=41, type=5
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created ResourceId=42, type=6
+[2026-10-31 14:48:13.164] [EngineLog] [info]  Resource 42 named QuadVAO
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created GL buffer: 4
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created ResourceId=43, type=5
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created ResourceId=44, type=6
+[2026-10-31 14:48:13.164] [EngineLog] [info]  Resource 44 named QuadVAOArrays
+[2026-10-31 14:48:13.164] [EngineLog] [info] Created renderer.
+[2026-10-31 14:48:13.203] [EngineLog] [info] Number of devices found: 28
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 05-06 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 05 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 1
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: Microphone (2- Razer Kiyo Pro)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] This is default input device
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 01-02 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 08 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 1
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 04 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 1
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 03-04 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 01-08 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 8
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 02 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 1
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 09-10 (SPDIF) (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 01 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 1
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 03 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 1
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 06 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 1
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 07-08 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: IN 07 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Input channels: 1
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: ROG XG27AQ (NVIDIA High Definition Audio)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: OUT 11-12 (SPDIF) (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: Pixio PX277P (NVIDIA High Definition Audio)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: Pixio PX277P (NVIDIA High Definition Audio)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: Digital Audio (S/PDIF) (High Definition Audio Device)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: OUT 05-06 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: OUT 09-10 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: Speakers (Steam Streaming Speakers)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: OUT 03-04 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: OUT 01-10 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 10
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: OUT 01-02 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] This is default output device
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: OUT 07-08 (BEHRINGER UMC 1820)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.203] [EngineLog] [info] Device: Speakers (Steam Streaming Microphone)
+[2026-10-31 14:48:13.203] [EngineLog] [info] Output channels: 2
+[2026-10-31 14:48:13.203] [EngineLog] [info] Native formats: 16
+[2026-10-31 14:48:13.203] [EngineLog] [info] Sample rates: [4000, 5512, 8000, 9600, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+[2026-10-31 14:48:13.203] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-31 14:48:13.262] [EngineLog] [info] Created MidiIn
+[2026-10-31 14:48:13.262] [EngineLog] [info] Created MidiOut
+[2026-10-31 14:48:13.407] [EngineLog] [info] AudioPlayback: file playback engine up (5 buses)
+[2026-10-31 14:48:13.407] [EngineLog] [info] Created AudioManager
+[2026-10-31 14:48:13.407] [EngineLog] [info] TimeManager initalized
+[2026-10-31 14:48:13.407] [EngineLog] [info] Created VideoRecorder instance.
+[2026-10-31 14:48:13.407] [EngineLog] [info] Regestered component type=N12IRComponents18C_GuiCanvasDisplayE, sizeof=1 with id=409
+[2026-10-31 14:48:13.407] [EngineLog] [info] Created archetype node with components: [ 409 ], id=31
+[2026-10-31 14:48:13.413] [EngineLog] [info] Loaded image width=1024, height=1053, channels=4
+[2026-10-31 14:48:13.414] [EngineLog] [info] Freeing image data
+[2026-10-31 14:48:13.442] [EngineLog] [info] Maximum nr of vertex attributes supported: 16
+[2026-10-31 14:48:13.442] [EngineLog] [info] Max 3d texture size: 16384
+[2026-10-31 14:48:13.442] [EngineLog] [info] Max uniform block size: 65536
+[2026-10-31 14:48:13.442] [EngineLog] [info] Regestered component type=N12IRComponents21C_EntityEventHandlersE, sizeof=104 with id=411
+[2026-10-31 14:48:13.442] [EngineLog] [info] Created archetype node with components: [ 411 ], id=32
+[2026-10-31 14:48:13.442] [EngineLog] [info] Initalized game world
+[2026-10-31 14:48:13.443] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-31 14:48:13.443] [EngineLog] [info] Lua script loaded successfully: C:\Users\evinj\src\IrredenEngine\.claude\worktrees\pool-4\build\creations\demos\canvas_stress\scripts\config.lua
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents16C_ActiveLodLevelE, sizeof=4 with id=413
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents10C_AutoSpinE, sizeof=16 with id=414
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents17C_AngularVelocityE, sizeof=20 with id=415
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12_GLOBAL__N_113C_ImpulseKickE, sizeof=20 with id=416
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=200 with id=417
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents14C_RotationModeE, sizeof=1 with id=418
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=419
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents10C_LifetimeE, sizeof=4 with id=420
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents10C_HitBox2DE, sizeof=32 with id=421
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N8IRSystem22C_EntityHoverDetectTagE, sizeof=1 with id=422
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents13C_MouseScrollE, sizeof=16 with id=423
+[2026-10-31 14:48:13.443] [EngineLog] [info] Created GL buffer: 5
+[2026-10-31 14:48:13.443] [EngineLog] [info] Created ResourceId=45, type=5
+[2026-10-31 14:48:13.443] [EngineLog] [info]  Resource 45 named LightOcclusionGridBuffer
+[2026-10-31 14:48:13.443] [EngineLog] [info] Regestered component type=N12IRComponents14C_CanvasCameraE, sizeof=32 with id=424
+[2026-10-31 14:48:13.451] [EngineLog] [info] Created ResourceId=46, type=4
+[2026-10-31 14:48:13.451] [EngineLog] [info]  Resource 46 named VoxelCompactProgram
+[2026-10-31 14:48:13.458] [EngineLog] [info] Created ResourceId=47, type=4
+[2026-10-31 14:48:13.458] [EngineLog] [info]  Resource 47 named VoxelCompactCeilingProgram
+[2026-10-31 14:48:13.469] [EngineLog] [info] Created ResourceId=48, type=4
+[2026-10-31 14:48:13.469] [EngineLog] [info]  Resource 48 named SingleVoxelProgram1
+[2026-10-31 14:48:13.481] [EngineLog] [info] Created ResourceId=49, type=4
+[2026-10-31 14:48:13.481] [EngineLog] [info]  Resource 49 named SingleVoxelProgram1Feeder
+[2026-10-31 14:48:13.496] [EngineLog] [info] Created ResourceId=50, type=4
+[2026-10-31 14:48:13.496] [EngineLog] [info]  Resource 50 named SingleVoxel2
+[2026-10-31 14:48:13.508] [EngineLog] [info] Created ResourceId=51, type=4
+[2026-10-31 14:48:13.508] [EngineLog] [info]  Resource 51 named SingleVoxelWinnerResolve
+[2026-10-31 14:48:13.522] [EngineLog] [info] Created ResourceId=52, type=4
+[2026-10-31 14:48:13.522] [EngineLog] [info]  Resource 52 named SingleVoxel2Winner
+[2026-10-31 14:48:13.523] [EngineLog] [info] Created ResourceId=53, type=4
+[2026-10-31 14:48:13.523] [EngineLog] [info]  Resource 53 named ChunkOcclusionProgram
+[2026-10-31 14:48:13.524] [EngineLog] [info] Created ResourceId=54, type=4
+[2026-10-31 14:48:13.524] [EngineLog] [info]  Resource 54 named PerAxisCellCompactProgram
+[2026-10-31 14:48:13.526] [EngineLog] [info] Created ResourceId=55, type=4
+[2026-10-31 14:48:13.526] [EngineLog] [info]  Resource 55 named PerAxisCellFinalizeProgram
+[2026-10-31 14:48:13.530] [EngineLog] [info] Created ResourceId=56, type=4
+[2026-10-31 14:48:13.530] [EngineLog] [info]  Resource 56 named PerAxisOverflowSortProgram
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=57, type=4
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 57 named RevoxelizeDetachedProgram
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 6
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=58, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 58 named RevoxelizeDetachedParamsBuffer
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 7
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=59, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 59 named SingleVoxelFrameData
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 8
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=60, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 60 named PerAxisWinnerPlaceholder
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 9
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=61, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 61 named OverflowSortArgs
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 10
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=62, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 62 named OverflowSortArgsCopy
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 11
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=63, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 63 named VoxelPositionBuffer
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 12
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=64, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 64 named VoxelColorBuffer
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 13
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=65, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 65 named VoxelActiveMaskBuffer
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 14
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=66, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 66 named VoxelEntityIdBuffer
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 15
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=67, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 67 named ChunkVisibilityBuffer
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 16
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=68, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 68 named CompactedVoxelIndices
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 17
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=69, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 69 named IndirectDispatchParams
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 18
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=70, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 70 named IndirectDispatchArgs
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 19
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=71, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 71 named PerAxisIndirectDispatchArgs
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 20
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=72, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 72 named PerAxisCompactedVoxelIndices
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 21
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=73, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 73 named PerAxisIndirectDispatchParams
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=74, type=1
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 74 named FogCullVisiblePlaceholder
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 22
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=75, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 75 named FogCullObservers
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created GL buffer: 23
+[2026-10-31 14:48:13.534] [EngineLog] [info] Created ResourceId=76, type=5
+[2026-10-31 14:48:13.534] [EngineLog] [info]  Resource 76 named ChunkOcclusionQueryBuffer
+[2026-10-31 14:48:13.548] [EngineLog] [info] Created ResourceId=77, type=4
+[2026-10-31 14:48:13.548] [EngineLog] [info]  Resource 77 named ShapesToTrixelDepthProgram
+[2026-10-31 14:48:13.563] [EngineLog] [info] Created ResourceId=78, type=4
+[2026-10-31 14:48:13.563] [EngineLog] [info]  Resource 78 named ShapesToTrixelPublishProgram
+[2026-10-31 14:48:13.578] [EngineLog] [info] Created ResourceId=79, type=4
+[2026-10-31 14:48:13.578] [EngineLog] [info]  Resource 79 named ShapesToTrixelCasterProgram
+[2026-10-31 14:48:13.591] [EngineLog] [info] Created ResourceId=80, type=4
+[2026-10-31 14:48:13.591] [EngineLog] [info]  Resource 80 named ShapesToTrixelOwnerProgram
+[2026-10-31 14:48:13.592] [EngineLog] [info] Created GL buffer: 24
+[2026-10-31 14:48:13.592] [EngineLog] [info] Created ResourceId=81, type=5
+[2026-10-31 14:48:13.592] [EngineLog] [info]  Resource 81 named ShapesFrameDataBuffer
+[2026-10-31 14:48:13.592] [EngineLog] [info] Created GL buffer: 25
+[2026-10-31 14:48:13.592] [EngineLog] [info] Created ResourceId=82, type=5
+[2026-10-31 14:48:13.592] [EngineLog] [info]  Resource 82 named JointTransformBuffer
+[2026-10-31 14:48:13.592] [EngineLog] [info] Created GL buffer: 26
+[2026-10-31 14:48:13.592] [EngineLog] [info] Created ResourceId=83, type=5
+[2026-10-31 14:48:13.592] [EngineLog] [info]  Resource 83 named AnimationParamsBuffer
+[2026-10-31 14:48:13.592] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=425
+[2026-10-31 14:48:13.599] [EngineLog] [info] Created ResourceId=84, type=4
+[2026-10-31 14:48:13.599] [EngineLog] [info]  Resource 84 named ComputeVoxelAOProgram
+[2026-10-31 14:48:13.607] [EngineLog] [info] Created ResourceId=85, type=4
+[2026-10-31 14:48:13.607] [EngineLog] [info]  Resource 85 named ComputeVoxelAOShapesProgram
+[2026-10-31 14:48:13.615] [EngineLog] [info] Created ResourceId=86, type=4
+[2026-10-31 14:48:13.615] [EngineLog] [info]  Resource 86 named ComputeVoxelAOSmoothYawProgram
+[2026-10-31 14:48:13.622] [EngineLog] [info] Created ResourceId=87, type=4
+[2026-10-31 14:48:13.622] [EngineLog] [info]  Resource 87 named ComputeVoxelAOShapesSmoothYawProgram
+[2026-10-31 14:48:13.623] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasAOTextureE, sizeof=16 with id=426
+[2026-10-31 14:48:13.629] [EngineLog] [info] Created ResourceId=88, type=4
+[2026-10-31 14:48:13.629] [EngineLog] [info]  Resource 88 named ResolvePerAxisScreenDepthProgram
+[2026-10-31 14:48:13.630] [EngineLog] [info] Created ResourceId=89, type=4
+[2026-10-31 14:48:13.630] [EngineLog] [info]  Resource 89 named ResolvePerAxisBlitProgram
+[2026-10-31 14:48:13.633] [EngineLog] [info] Created ResourceId=90, type=4
+[2026-10-31 14:48:13.633] [EngineLog] [info]  Resource 90 named ClearSunShadowMapProgram
+[2026-10-31 14:48:13.638] [EngineLog] [info] Created ResourceId=91, type=4
+[2026-10-31 14:48:13.638] [EngineLog] [info]  Resource 91 named BakeSunShadowMapProgram
+[2026-10-31 14:48:13.644] [EngineLog] [info] Created ResourceId=92, type=4
+[2026-10-31 14:48:13.644] [EngineLog] [info]  Resource 92 named ResolveWorldPlacedDepthProgram
+[2026-10-31 14:48:13.645] [EngineLog] [info] Created ResourceId=93, type=4
+[2026-10-31 14:48:13.645] [EngineLog] [info]  Resource 93 named WorldPlacedDepthBlitProgram
+[2026-10-31 14:48:13.645] [EngineLog] [info] Created GL buffer: 27
+[2026-10-31 14:48:13.645] [EngineLog] [info] Created ResourceId=94, type=5
+[2026-10-31 14:48:13.645] [EngineLog] [info]  Resource 94 named SunShadowDepthMap
+[2026-10-31 14:48:13.645] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasSunShadowE, sizeof=16 with id=427
+[2026-10-31 14:48:13.645] [EngineLog] [info] Created GL buffer: 28
+[2026-10-31 14:48:13.645] [EngineLog] [info] Created ResourceId=95, type=5
+[2026-10-31 14:48:13.645] [EngineLog] [info]  Resource 95 named AnalyticCasterFrameBuffer
+[2026-10-31 14:48:13.665] [EngineLog] [info] Created ResourceId=96, type=4
+[2026-10-31 14:48:13.665] [EngineLog] [info]  Resource 96 named BoxSunShadowProgram
+[2026-10-31 14:48:13.678] [EngineLog] [info] Created ResourceId=97, type=4
+[2026-10-31 14:48:13.678] [EngineLog] [info]  Resource 97 named SunHierarchyProgram
+[2026-10-31 14:48:13.678] [EngineLog] [info] Created GL buffer: 29
+[2026-10-31 14:48:13.678] [EngineLog] [info] Created ResourceId=98, type=5
+[2026-10-31 14:48:13.678] [EngineLog] [info]  Resource 98 named SunHierarchyFrameBuffer0
+[2026-10-31 14:48:13.678] [EngineLog] [info] Created GL buffer: 30
+[2026-10-31 14:48:13.678] [EngineLog] [info] Created ResourceId=99, type=5
+[2026-10-31 14:48:13.678] [EngineLog] [info]  Resource 99 named SunHierarchyFrameBuffer1
+[2026-10-31 14:48:13.689] [EngineLog] [info] Created ResourceId=100, type=4
+[2026-10-31 14:48:13.689] [EngineLog] [info]  Resource 100 named VoxelSunFacesProgram
+[2026-10-31 14:48:13.689] [EngineLog] [info] Created GL buffer: 31
+[2026-10-31 14:48:13.690] [EngineLog] [info] Created ResourceId=101, type=5
+[2026-10-31 14:48:13.690] [EngineLog] [info]  Resource 101 named VoxelSunFaceFrameBuffer
+[2026-10-31 14:48:13.690] [EngineLog] [info] Created GL buffer: 32
+[2026-10-31 14:48:13.690] [EngineLog] [info] Created ResourceId=102, type=5
+[2026-10-31 14:48:13.690] [EngineLog] [info]  Resource 102 named DetachedShadowFrameBuffer
+[2026-10-31 14:48:13.690] [EngineLog] [info] Created GL buffer: 33
+[2026-10-31 14:48:13.690] [EngineLog] [info] Created ResourceId=103, type=5
+[2026-10-31 14:48:13.690] [EngineLog] [info]  Resource 103 named SunShadowFogObservers
+[2026-10-31 14:48:13.725] [EngineLog] [info] Created ResourceId=104, type=4
+[2026-10-31 14:48:13.725] [EngineLog] [info]  Resource 104 named ComputeSunShadowProgram
+[2026-10-31 14:48:13.771] [EngineLog] [info] Created ResourceId=105, type=4
+[2026-10-31 14:48:13.771] [EngineLog] [info]  Resource 105 named ComputeSunShadowShapesProgram
+[2026-10-31 14:48:13.771] [EngineLog] [info] Created GL buffer: 34
+[2026-10-31 14:48:13.771] [EngineLog] [info] Created ResourceId=106, type=5
+[2026-10-31 14:48:13.771] [EngineLog] [info]  Resource 106 named ComputeSunShadowFrameData
+[2026-10-31 14:48:13.771] [EngineLog] [info] Created GL buffer: 35
+[2026-10-31 14:48:13.771] [EngineLog] [info] Created ResourceId=107, type=5
+[2026-10-31 14:48:13.771] [EngineLog] [info]  Resource 107 named ShapeReceiverFrameData
+[2026-10-31 14:48:13.771] [EngineLog] [info] Created GL buffer: 36
+[2026-10-31 14:48:13.771] [EngineLog] [info] Created ResourceId=108, type=5
+[2026-10-31 14:48:13.771] [EngineLog] [info]  Resource 108 named ShapeReceiverFallback
+[2026-10-31 14:48:13.773] [EngineLog] [info] Created ResourceId=109, type=4
+[2026-10-31 14:48:13.773] [EngineLog] [info]  Resource 109 named ClearLightVolumeProgram
+[2026-10-31 14:48:13.776] [EngineLog] [info] Created ResourceId=110, type=4
+[2026-10-31 14:48:13.776] [EngineLog] [info]  Resource 110 named SeedLightVolumeProgram
+[2026-10-31 14:48:13.778] [EngineLog] [info] Created ResourceId=111, type=4
+[2026-10-31 14:48:13.778] [EngineLog] [info]  Resource 111 named PropagateLightVolumeProgram
+[2026-10-31 14:48:13.778] [EngineLog] [info] Created GL buffer: 37
+[2026-10-31 14:48:13.778] [EngineLog] [info] Created ResourceId=112, type=5
+[2026-10-31 14:48:13.778] [EngineLog] [info]  Resource 112 named LightSourceBuffer
+[2026-10-31 14:48:13.778] [EngineLog] [info] Created GL buffer: 38
+[2026-10-31 14:48:13.778] [EngineLog] [info] Created ResourceId=113, type=5
+[2026-10-31 14:48:13.778] [EngineLog] [info]  Resource 113 named LightVolumeParamsBuffer
+[2026-10-31 14:48:13.778] [EngineLog] [info] Regestered component type=N12IRComponents19C_CanvasLightVolumeE, sizeof=80 with id=428
+[2026-10-31 14:48:13.811] [EngineLog] [info] Created ResourceId=114, type=4
+[2026-10-31 14:48:13.812] [EngineLog] [info]  Resource 114 named LightingToTrixelProgram
+[2026-10-31 14:48:13.845] [EngineLog] [info] Created ResourceId=115, type=4
+[2026-10-31 14:48:13.845] [EngineLog] [info]  Resource 115 named LightingToTrixelShapesProgram
+[2026-10-31 14:48:13.876] [EngineLog] [info] Created ResourceId=116, type=4
+[2026-10-31 14:48:13.876] [EngineLog] [info]  Resource 116 named LightOverflowFacesProgram
+[2026-10-31 14:48:13.876] [EngineLog] [info] Created GL buffer: 39
+[2026-10-31 14:48:13.876] [EngineLog] [info] Created ResourceId=117, type=5
+[2026-10-31 14:48:13.876] [EngineLog] [info]  Resource 117 named LightingToTrixelFrameData
+[2026-10-31 14:48:13.876] [EngineLog] [info] Created ResourceId=118, type=1
+[2026-10-31 14:48:13.876] [EngineLog] [info]  Resource 118 named PaletteLUT_Nearest
+[2026-10-31 14:48:13.876] [EngineLog] [info] Created ResourceId=119, type=1
+[2026-10-31 14:48:13.876] [EngineLog] [info]  Resource 119 named PaletteLUT_Linear
+[2026-10-31 14:48:13.876] [EngineLog] [info] Regestered component type=N12IRComponents24C_PerAxisSurfaceLightingE, sizeof=1 with id=429
+[2026-10-31 14:48:13.876] [EngineLog] [info] Created archetype node with components: [ 429 ], id=33
+[2026-10-31 14:48:13.876] [EngineLog] [info] Created GL buffer: 40
+[2026-10-31 14:48:13.876] [EngineLog] [info] Created ResourceId=120, type=5
+[2026-10-31 14:48:13.876] [EngineLog] [info]  Resource 120 named FogSurfaceObservers
+[2026-10-31 14:48:13.891] [EngineLog] [info] Created ResourceId=121, type=4
+[2026-10-31 14:48:13.891] [EngineLog] [info]  Resource 121 named FogToTrixelProgram
+[2026-10-31 14:48:13.904] [EngineLog] [info] Created ResourceId=122, type=4
+[2026-10-31 14:48:13.904] [EngineLog] [info]  Resource 122 named FogOverflowFacesProgram
+[2026-10-31 14:48:13.904] [EngineLog] [info] Created GL buffer: 41
+[2026-10-31 14:48:13.904] [EngineLog] [info] Created ResourceId=123, type=5
+[2026-10-31 14:48:13.904] [EngineLog] [info]  Resource 123 named FogObserverData
+[2026-10-31 14:48:13.904] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=431
+[2026-10-31 14:48:13.947] [EngineLog] [info] Created ResourceId=124, type=4
+[2026-10-31 14:48:13.947] [EngineLog] [info]  Resource 124 named CanvasCardinalLightingProgram
+[2026-10-31 14:48:14.000] [EngineLog] [info] Created ResourceId=125, type=4
+[2026-10-31 14:48:14.000] [EngineLog] [info]  Resource 125 named CanvasShapeLightingProgram
+[2026-10-31 14:48:14.034] [EngineLog] [info] Created ResourceId=126, type=4
+[2026-10-31 14:48:14.034] [EngineLog] [info]  Resource 126 named CanvasToFramebufferProgram
+[2026-10-31 14:48:14.079] [EngineLog] [info] Created ResourceId=127, type=4
+[2026-10-31 14:48:14.079] [EngineLog] [info]  Resource 127 named CanvasSurfaceShadowProbeProgram
+[2026-10-31 14:48:14.091] [EngineLog] [info] Created ResourceId=128, type=4
+[2026-10-31 14:48:14.091] [EngineLog] [info]  Resource 128 named PerAxisScatterProgram
+[2026-10-31 14:48:14.121] [EngineLog] [info] Created ResourceId=129, type=4
+[2026-10-31 14:48:14.121] [EngineLog] [info]  Resource 129 named PerAxisSurfaceShadowProbeProgram
+[2026-10-31 14:48:14.160] [EngineLog] [info] Created ResourceId=130, type=4
+[2026-10-31 14:48:14.160] [EngineLog] [info]  Resource 130 named PerAxisSurfaceLightingProgram
+[2026-10-31 14:48:14.201] [EngineLog] [info] Created ResourceId=131, type=4
+[2026-10-31 14:48:14.201] [EngineLog] [info]  Resource 131 named PerAxisVisibleLightingProgram
+[2026-10-31 14:48:14.201] [EngineLog] [info] Created GL buffer: 42
+[2026-10-31 14:48:14.202] [EngineLog] [info] Created ResourceId=132, type=5
+[2026-10-31 14:48:14.202] [EngineLog] [info]  Resource 132 named TrixelToFramebufferFrameData
+[2026-10-31 14:48:14.202] [EngineLog] [info] Created GL buffer: 43
+[2026-10-31 14:48:14.202] [EngineLog] [info] Created ResourceId=133, type=5
+[2026-10-31 14:48:14.202] [EngineLog] [info]  Resource 133 named HoveredEntityIdBuffer
+[2026-10-31 14:48:14.202] [EngineLog] [info] Created GL buffer: 44
+[2026-10-31 14:48:14.202] [EngineLog] [info] Created ResourceId=134, type=5
+[2026-10-31 14:48:14.202] [EngineLog] [info]  Resource 134 named HoveredEntityIdReset
+[2026-10-31 14:48:14.202] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=432
+[2026-10-31 14:48:14.233] [EngineLog] [info] Created ResourceId=135, type=4
+[2026-10-31 14:48:14.233] [EngineLog] [info]  Resource 135 named SourceFaceScatterProgram
+[2026-10-31 14:48:14.261] [EngineLog] [info] Created ResourceId=136, type=4
+[2026-10-31 14:48:14.261] [EngineLog] [info]  Resource 136 named SourceFaceScatterEarlyProgram
+[2026-10-31 14:48:14.263] [EngineLog] [info] Created ResourceId=137, type=4
+[2026-10-31 14:48:14.263] [EngineLog] [info]  Resource 137 named FramebufferToScreenProgram
+[2026-10-31 14:48:14.263] [EngineLog] [info] Created GL buffer: 45
+[2026-10-31 14:48:14.263] [EngineLog] [info] Created ResourceId=138, type=5
+[2026-10-31 14:48:14.263] [EngineLog] [info]  Resource 138 named FramebufferToScreenFrameData
+[2026-10-31 14:48:14.267] [EngineLog] [info] Created ResourceId=139, type=4
+[2026-10-31 14:48:14.267] [EngineLog] [info]  Resource 139 named GuiCanvasToScreenProgram
+[2026-10-31 14:48:14.267] [EngineLog] [info] Created GL buffer: 46
+[2026-10-31 14:48:14.267] [EngineLog] [info] Created ResourceId=140, type=5
+[2026-10-31 14:48:14.267] [EngineLog] [info]  Resource 140 named GuiCanvasToScreenFrameData
+[2026-10-31 14:48:14.267] [EngineLog] [warning] tagGpuStage: unknown stage name "guiToScreen" — stage will not be timed. Check gpuStageRegistry() for the registered name.
+[2026-10-31 14:48:14.267] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=433
+[2026-10-31 14:48:14.267] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 ], id=34
+[2026-10-31 14:48:14.268] [ClientLog] [info] FOG-WINDOW edge=1152 canvas=642x722 coveredRadius=543
+[2026-10-31 14:48:14.268] [EngineLog] [info] Created ResourceId=141, type=1
+[2026-10-31 14:48:14.268] [EngineLog] [info] Created ResourceId=142, type=1
+[2026-10-31 14:48:14.268] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 431 ], id=35
+[2026-10-31 14:48:14.269] [EngineLog] [info] Created ResourceId=143, type=1
+[2026-10-31 14:48:14.269] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 ], id=36
+[2026-10-31 14:48:14.269] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 431 ], id=37
+[2026-10-31 14:48:14.269] [EngineLog] [info] Created ResourceId=144, type=1
+[2026-10-31 14:48:14.269] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 427 ], id=38
+[2026-10-31 14:48:14.269] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 427 431 ], id=39
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=145, type=2
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=146, type=2
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=147, type=2
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=148, type=2
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 427 428 ], id=40
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 408 426 427 428 431 ], id=41
+[2026-10-31 14:48:14.270] [ClientLog] [info] LIGHTING-PROBE sun=(0,0,-1) ambient=0.3 shadows=true ao=false
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created archetype node with components: [ 256 257 417 ], id=42
+[2026-10-31 14:48:14.270] [EngineLog] [info] Regestered component type=N12IRComponents26C_EntityCanvasTeardownHookE, sizeof=4 with id=435
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created archetype node with components: [ 435 ], id=43
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=149, type=1
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=150, type=1
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=151, type=1
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=152, type=1
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=153, type=1
+[2026-10-31 14:48:14.270] [EngineLog] [info] Created ResourceId=154, type=1
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created ResourceId=155, type=1
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created ResourceId=156, type=1
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created ResourceId=157, type=1
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created voxel pool canvas 437 with framebuffer parent 0, size 64,64
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 432 ], id=44
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 408 ], id=45
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 408 432 ], id=46
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created ResourceId=158, type=1
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 408 426 ], id=47
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 408 426 432 ], id=48
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 256 257 418 ], id=49
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 256 257 418 419 ], id=50
+[2026-10-31 14:48:14.271] [EngineLog] [info] Regestered component type=N12IRComponents12C_Velocity3DE, sizeof=12 with id=440
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 256 257 418 419 440 ], id=51
+[2026-10-31 14:48:14.271] [ClientLog] [info] canvas_stress: main grid 0x0 (0 cubes), 0 GRID-spin cubes, 0 detached canvases, 2 detached re-voxelize solids (L + cube), 0 orbit-ring shapes
+[2026-10-31 14:48:14.271] [EngineLog] [info] Regestered component type=N12IRComponents15C_GuiHoverStateE, sizeof=8 with id=442
+[2026-10-31 14:48:14.271] [EngineLog] [info] Regestered component type=N12IRComponents13C_HitBox2DGuiE, sizeof=20 with id=443
+[2026-10-31 14:48:14.271] [EngineLog] [info] Created archetype node with components: [ 413 ], id=52
+[2026-10-31 14:48:14.271] [EngineLog] [info] Regestered component type=N12IRComponents16C_ResolvedFieldsE, sizeof=72 with id=445
+[2026-10-31 14:48:14.271] [EngineLog] [info] Regestered component type=N12IRComponents11C_ModifiersE, sizeof=72 with id=446
+[2026-10-31 14:48:14.272] [EngineLog] [info] Regestered component type=N12IRComponents14C_LightBlockerE, sizeof=8 with id=447
+[2026-10-31 14:48:14.274] [EngineLog] [info] Regestered component type=N12IRComponents13C_LightSourceE, sizeof=36 with id=448
+[2026-10-31 14:48:14.274] [EngineLog] [info] Regestered component type=N12IRComponents26C_TriangleCanvasBackgroundE, sizeof=240 with id=449
+[2026-10-31 14:48:14.279] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.296] [EngineLog] [info] Created GL buffer: 47
+[2026-10-31 14:48:14.296] [EngineLog] [info] Created ResourceId=159, type=5
+[2026-10-31 14:48:14.313] [EngineLog] [info] Created GL buffer: 48
+[2026-10-31 14:48:14.313] [EngineLog] [info] Created ResourceId=160, type=5
+[2026-10-31 14:48:14.313] [EngineLog] [info] Created GL buffer: 49
+[2026-10-31 14:48:14.313] [EngineLog] [info] Created ResourceId=161, type=5
+[2026-10-31 14:48:14.313] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.323] [EngineLog] [info] Regestered component type=N12IRComponents17C_LodTierOverrideE, sizeof=4 with id=450
+[2026-10-31 14:48:14.340] [ClientLog] [info] SURFACE-ROUTE cardinal=0 perAxis=0 fog=fallback fogComposed=0
+[2026-10-31 14:48:14.349] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.349] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.354] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.354] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.357] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.358] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.360] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.360] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.364] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.365] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.368] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.368] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.371] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.371] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.374] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.375] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.377] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.378] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.380] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.381] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.382] [ClientLog] [info] AutoScreenshot 1/1: sweep_frame_0 (zoom=4, cam=(0,0), yaw=0, cull=0)
+[2026-10-31 14:48:14.384] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.384] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.386] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.387] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.389] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.389] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.392] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.392] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.394] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.394] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.397] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.397] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.399] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.400] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.402] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.402] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.404] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.405] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.407] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.407] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.408] [ClientLog] [info] CaptureCamera: label=sweep_frame_0 yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-31 14:48:14.408] [ClientLog] [info] PROBE-DRIFT shot=0 offset=(0,0,0)
+[2026-10-31 14:48:14.462] [EngineLog] [info] Saved screenshot: C:/msys64/tmp/p4813/poly/default/origin-yaw0-fog16-surface0\screenshot_000001.png
+[2026-10-31 14:48:14.464] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.464] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.467] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-31 14:48:14.467] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=1
+[2026-10-31 14:48:14.473] [EngineLog] [info] Clean shutdown complete.
+ir-run: IRCanvasStress exited cleanly after 2s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

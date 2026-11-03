@@ -1,0 +1,1 @@
+config={window_mode="offscreen",init_window_width=1280,init_window_height=720,game_resolution_width=1280,game_resolution_height=720,screenshot_output_dir="/private/tmp/rigid-origin-curved-controls/pitched-authored"}

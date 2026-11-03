@@ -1,0 +1,130 @@
+[
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001908.png",
+      "--shape",
+      "octahedron",
+      "--yaw",
+      "0",
+      "--shadow-overlay"
+    ],
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 20569,
+      "shadowed_interior_pixels": 2735,
+      "tested_interior_pixels": 23304,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001908.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    },
+    "exit": 0
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001909.png",
+      "--shape",
+      "octahedron",
+      "--yaw",
+      "90",
+      "--shadow-overlay"
+    ],
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 11783,
+      "shadowed_interior_pixels": 9491,
+      "tested_interior_pixels": 26191,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001909.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    },
+    "exit": 0
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001910.png",
+      "--shape",
+      "octahedron",
+      "--yaw",
+      "180",
+      "--shadow-overlay"
+    ],
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 2586,
+      "shadowed_interior_pixels": 1577,
+      "tested_interior_pixels": 24028,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001910.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    },
+    "exit": 0
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-source-occlusion-metric.py",
+      "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001911.png",
+      "--shape",
+      "octahedron",
+      "--yaw",
+      "270",
+      "--shadow-overlay"
+    ],
+    "result": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_normal_pixels": 0,
+      "false_shadow_pixels": 0,
+      "missed_shadow_pixels": 0,
+      "invalid_overlay_pixels": 0,
+      "lit_interior_pixels": 11207,
+      "shadowed_interior_pixels": 9115,
+      "tested_interior_pixels": 24677,
+      "mismatched_faces": [],
+      "boundary_tolerance_pixels": 1,
+      "shadow_bias": 0,
+      "occlusion_exercised": true,
+      "pass": true,
+      "image": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_001911.png",
+      "clipped": false,
+      "scope": "source_face_sun"
+    },
+    "exit": 0
+  }
+]

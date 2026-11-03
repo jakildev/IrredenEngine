@@ -1,0 +1,123 @@
+[
+  {
+    "fixture": "cube",
+    "yaw": 0,
+    "parent": "parent/cube-shadow-yaw0.png",
+    "head": "head/cube-shadow-yaw0.png",
+    "parent_sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
+    "head_sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
+    "grade": "byte-identical",
+    "passed": true
+  },
+  {
+    "fixture": "cube",
+    "yaw": 90,
+    "parent": "parent/cube-shadow-yaw90.png",
+    "head": "head/cube-shadow-yaw90.png",
+    "parent_sha256": "d82db542c4d7a7af9c6231b6b467fd0838c8064789a8a988b5c8d1817e89af5b",
+    "head_sha256": "d82db542c4d7a7af9c6231b6b467fd0838c8064789a8a988b5c8d1817e89af5b",
+    "grade": "byte-identical",
+    "passed": true
+  },
+  {
+    "fixture": "cube",
+    "yaw": 180,
+    "parent": "parent/cube-shadow-yaw180.png",
+    "head": "head/cube-shadow-yaw180.png",
+    "parent_sha256": "96beac96e94387091f3f464d38835a3380fb6fed30754e48824190aad5d35f70",
+    "head_sha256": "96beac96e94387091f3f464d38835a3380fb6fed30754e48824190aad5d35f70",
+    "grade": "byte-identical",
+    "passed": true
+  },
+  {
+    "fixture": "cube",
+    "yaw": 270,
+    "parent": "parent/cube-shadow-yaw270.png",
+    "head": "head/cube-shadow-yaw270.png",
+    "parent_sha256": "6caab51f3d469e704036ad6cd346269a445476e10f22d24785f239f8fe6c4797",
+    "head_sha256": "6caab51f3d469e704036ad6cd346269a445476e10f22d24785f239f8fe6c4797",
+    "grade": "byte-identical",
+    "passed": true
+  },
+  {
+    "fixture": "plate",
+    "yaw": 0,
+    "parent": "parent/plate-shadow-yaw0.png",
+    "head": "head/plate-shadow-yaw0.png",
+    "parent_sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
+    "head_sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
+    "grade": "byte-identical",
+    "passed": true
+  },
+  {
+    "fixture": "plate",
+    "yaw": 90,
+    "parent": "parent/plate-shadow-yaw90.png",
+    "head": "head/plate-shadow-yaw90.png",
+    "parent_sha256": "60328b49df4c2c9fa5aa5c6f3d7f712a15c8af9c1fa376ab17980379ead2efe8",
+    "head_sha256": "60328b49df4c2c9fa5aa5c6f3d7f712a15c8af9c1fa376ab17980379ead2efe8",
+    "grade": "byte-identical",
+    "passed": true
+  },
+  {
+    "fixture": "plate",
+    "yaw": 180,
+    "parent": "parent/plate-shadow-yaw180.png",
+    "head": "head/plate-shadow-yaw180.png",
+    "parent_sha256": "e2e4177dde534dbf15b368caa23e106a2c015d8a86ca72dc9cc13cf76a2f5c9f",
+    "head_sha256": "e2e4177dde534dbf15b368caa23e106a2c015d8a86ca72dc9cc13cf76a2f5c9f",
+    "grade": "byte-identical",
+    "passed": true
+  },
+  {
+    "fixture": "plate",
+    "yaw": 270,
+    "parent": "parent/plate-shadow-yaw270.png",
+    "head": "head/plate-shadow-yaw270.png",
+    "parent_sha256": "0528de3768d39758ec5e2a2af8f422d92fcfdf73848b4bbd98f7cee80794c504",
+    "head_sha256": "08dbe4fabf91a3d2c31b39a2a6fd2a9ed8e5a18c5a7aa303af6db8e244af07ff",
+    "grade": "gained-cell containment",
+    "command": [
+      "python3",
+      "scripts/render-grid-cell-metric.py",
+      "head/plate-shadow-yaw270.png",
+      "--fixture",
+      "plate",
+      "--yaw",
+      "270",
+      "--zoom",
+      "8",
+      "--regression-parent",
+      "parent/plate-shadow-yaw270.png",
+      "--gained-from",
+      "parent/plate-normals-yaw270.png"
+    ],
+    "result": {
+      "scope": "grid_cell_regression",
+      "image": "head/plate-shadow-yaw270.png",
+      "parent": "parent/plate-shadow-yaw270.png",
+      "gained_from": "parent/plate-normals-yaw270.png",
+      "fixture": "plate",
+      "yaw": 270.0,
+      "iso_scale": [
+        32.0,
+        16.0
+      ],
+      "gained_cells": [
+        [
+          0,
+          1,
+          8
+        ]
+      ],
+      "footprint_pixels": 1536,
+      "dilated_footprint_pixels": 1762,
+      "differing_pixels": 224,
+      "outside_footprint_pixels": 0,
+      "clipped": false,
+      "tie_cells": 0,
+      "pass": true
+    },
+    "passed": true
+  }
+]

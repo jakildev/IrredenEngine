@@ -1,0 +1,51 @@
+{
+  "arm": "before",
+  "case": "compare",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "120",
+    "--only",
+    "compare"
+  ],
+  "labels": [
+    "compare_yaw0",
+    "compare_yaw_q"
+  ],
+  "sources": [
+    "save_files/screenshots/screenshot_000017.png",
+    "save_files/screenshots/screenshot_000018.png"
+  ],
+  "capture_offset": -3,
+  "all_sources": [
+    "save_files/screenshots/screenshot_000005.png",
+    "save_files/screenshots/screenshot_000006.png",
+    "save_files/screenshots/screenshot_000007.png",
+    "save_files/screenshots/screenshot_000008.png",
+    "save_files/screenshots/screenshot_000009.png",
+    "save_files/screenshots/screenshot_000010.png",
+    "save_files/screenshots/screenshot_000011.png",
+    "save_files/screenshots/screenshot_000012.png",
+    "save_files/screenshots/screenshot_000013.png",
+    "save_files/screenshots/screenshot_000014.png",
+    "save_files/screenshots/screenshot_000015.png",
+    "save_files/screenshots/screenshot_000016.png",
+    "save_files/screenshots/screenshot_000017.png",
+    "save_files/screenshots/screenshot_000018.png",
+    "save_files/screenshots/screenshot_000019.png"
+  ],
+  "shader_hashes": {
+    "c_compute_sun_shadow_body.glsl": "0ffd2c69a974fde835031568056cf33f1cf06d4b6a8b19bc7173174a284b01ec",
+    "metal/c_compute_sun_shadow_body.metal": "2cc0af6c1cf889f231125eb9eed0b55b5e2abb83587a6b3e39bdedd882e74cfb"
+  },
+  "clean": true,
+  "exit_code": 0,
+  "result_lines": [
+    "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+  ],
+  "binary_sha256": null,
+  "binary_identity_limit": "No binary digest was recorded; neither arm builds or replaces the executable."
+}

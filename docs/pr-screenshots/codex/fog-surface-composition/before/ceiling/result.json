@@ -1,0 +1,1 @@
+{"verdict":"CLEAN","exe":"IRFogDemo","exit":0,"signal":null,"argv":["IRFogDemo","--config-preset","/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/docs/pr-screenshots/codex/fog-surface-composition/before/ceiling/config.lua","--ceiling-treatment","--reveal-treatment","--auto-screenshot","10"],"at":"2026-10-25T00:58:51Z"}

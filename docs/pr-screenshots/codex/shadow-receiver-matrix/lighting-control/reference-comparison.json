@@ -1,0 +1,37 @@
+[
+  {
+    "pass": true,
+    "match_pct": 99.5167,
+    "max_delta": 123,
+    "psnr_db": 34.19,
+    "era": "parent",
+    "label": "domain_z4_yaw0_band"
+  },
+  {
+    "pass": false,
+    "match_pct": 99.4838,
+    "max_delta": 123,
+    "psnr_db": 33.82,
+    "reason": "match_pct 99.484% < 99.5%",
+    "era": "head",
+    "label": "domain_z4_yaw0_band"
+  },
+  {
+    "pass": false,
+    "match_pct": 99.4701,
+    "max_delta": 90,
+    "psnr_db": 36.77,
+    "reason": "match_pct 99.470% < 99.5%",
+    "era": "parent",
+    "label": "domain_z8_yaw0_inwin"
+  },
+  {
+    "pass": false,
+    "match_pct": 99.3638,
+    "max_delta": 91,
+    "psnr_db": 35.27,
+    "reason": "match_pct 99.364% < 99.5%",
+    "era": "head",
+    "label": "domain_z8_yaw0_inwin"
+  }
+]

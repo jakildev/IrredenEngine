@@ -1,0 +1,110 @@
+[
+  {
+    "missing_pixels": 0,
+    "extra_pixels": 0,
+    "wrong_face_pixels": 0,
+    "expected_pixels": 12288,
+    "observed_pixels": 12288,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 11780,
+    "face_interior_pixels": [
+      3782,
+      3782,
+      3720
+    ],
+    "sufficient_resolution": true,
+    "pass": true,
+    "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1296.png",
+    "scope": "source_geometry",
+    "clipped": false,
+    "normal_faces_checked": true
+  },
+  {
+    "missing_pixels": 112,
+    "extra_pixels": 2184,
+    "wrong_face_pixels": 2349,
+    "expected_pixels": 9888,
+    "observed_pixels": 12288,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 9376,
+    "face_interior_pixels": [
+      1379,
+      6287,
+      1211
+    ],
+    "sufficient_resolution": true,
+    "pass": false,
+    "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1304.png",
+    "scope": "source_geometry",
+    "clipped": false,
+    "normal_faces_checked": true
+  },
+  {
+    "missing_pixels": 2730,
+    "extra_pixels": 2370,
+    "wrong_face_pixels": null,
+    "expected_pixels": 97866,
+    "observed_pixels": 97536,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 93532,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": false,
+    "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1277.png",
+    "scope": "source_geometry",
+    "clipped": false,
+    "normal_faces_checked": false
+  },
+  {
+    "missing_pixels": 2684,
+    "extra_pixels": 2686,
+    "wrong_face_pixels": null,
+    "expected_pixels": 391444,
+    "observed_pixels": 391600,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 382780,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": false,
+    "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1302.png",
+    "scope": "source_geometry",
+    "clipped": false,
+    "normal_faces_checked": false
+  },
+  {
+    "missing_pixels": 772,
+    "extra_pixels": 618,
+    "wrong_face_pixels": null,
+    "expected_pixels": 36626,
+    "observed_pixels": 36352,
+    "boundary_tolerance_pixels": 1,
+    "registration_pixels": [
+      0,
+      0
+    ],
+    "testable_interior_pixels": 35524,
+    "face_interior_pixels": null,
+    "sufficient_resolution": true,
+    "pass": false,
+    "image": "docs/pr-screenshots/codex/detached-display-artifacts/capture-1287.png",
+    "scope": "source_geometry",
+    "clipped": false,
+    "normal_faces_checked": false
+  }
+]

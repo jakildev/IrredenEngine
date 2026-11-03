@@ -1,0 +1,68 @@
+{
+  "original_log_lines": 1243,
+  "selected_log_lines": 733,
+  "messages": [
+    {
+      "message": "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 1 --auto-profile --yaw 1.276272 --auto-screenshot 180 --subdivisions 2 --sweep-frames 1 180 (timeout: 120s)",
+      "count": 1,
+      "first_line": "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 1 --auto-profile --yaw 1.276272 --auto-screenshot 180 --subdivisions 2 --sweep-frames 1 180 (timeout: 120s)",
+      "last_line": "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 1 --auto-profile --yaw 1.276272 --auto-screenshot 180 --subdivisions 2 --sweep-frames 1 180 (timeout: 120s)"
+    },
+    {
+      "message": "Metal device: Apple M4 Max",
+      "count": 1,
+      "first_line": "[2026-09-28 16:20:05.908] [EngineLog] [info] Metal device: Apple M4 Max",
+      "last_line": "[2026-09-28 16:20:05.908] [EngineLog] [info] Metal device: Apple M4 Max"
+    },
+    {
+      "message": "REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run",
+      "count": 1,
+      "first_line": "[2026-09-28 16:20:05.986] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run",
+      "last_line": "[2026-09-28 16:20:05.986] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run"
+    },
+    {
+      "message": "Voxel render mode=2, base_subdivisions=2, zoom_scale=1, effective_subdivisions=2",
+      "count": 363,
+      "first_line": "[2026-09-28 16:20:05.995] [EngineLog] [info] Voxel render mode=2, base_subdivisions=2, zoom_scale=1, effective_subdivisions=2",
+      "last_line": "[2026-09-28 16:20:10.969] [EngineLog] [info] Voxel render mode=2, base_subdivisions=2, zoom_scale=1, effective_subdivisions=2"
+    },
+    {
+      "message": "Voxel render mode=2, base_subdivisions=2, zoom_scale=1, effective_subdivisions=1",
+      "count": 363,
+      "first_line": "[2026-09-28 16:20:06.034] [EngineLog] [info] Voxel render mode=2, base_subdivisions=2, zoom_scale=1, effective_subdivisions=1",
+      "last_line": "[2026-09-28 16:20:10.969] [EngineLog] [info] Voxel render mode=2, base_subdivisions=2, zoom_scale=1, effective_subdivisions=1"
+    },
+    {
+      "message": "AutoScreenshot 1/1: sweep_frame_0 (zoom=1, cam=(0,0), yaw=1.276272, cull=0)",
+      "count": 1,
+      "first_line": "[2026-09-28 16:20:08.437] [ClientLog] [info] AutoScreenshot 1/1: sweep_frame_0 (zoom=1, cam=(0,0), yaw=1.276272, cull=0)",
+      "last_line": "[2026-09-28 16:20:08.437] [ClientLog] [info] AutoScreenshot 1/1: sweep_frame_0 (zoom=1, cam=(0,0), yaw=1.276272, cull=0)"
+    },
+    {
+      "message": "Saved screenshot: save_files/screenshots/screenshot_003292.png",
+      "count": 1,
+      "first_line": "[2026-09-28 16:20:10.941] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003292.png",
+      "last_line": "[2026-09-28 16:20:10.941] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003292.png"
+    },
+    {
+      "message": "ir-run: IRCanvasStress exited cleanly after 6s",
+      "count": 1,
+      "first_line": "ir-run: IRCanvasStress exited cleanly after 6s",
+      "last_line": "ir-run: IRCanvasStress exited cleanly after 6s"
+    },
+    {
+      "message": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+      "count": 1,
+      "first_line": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0",
+      "last_line": "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+    }
+  ],
+  "profile_witness_lines": [
+    "PerAxisCanvas::Allocate                  1.606     1.606       1",
+    "Camera yaw: first=73.125deg last=73.125deg travel=0.000deg samples=363",
+    "Camera zoom: first=1.000 last=1.000",
+    "Camera zoom range: min=1.000 max=1.000",
+    "Camera pivot: explicit focus on 0 of 363 frames",
+    "Per-axis overflow: maxEntries=1533 maxDropped=0 cap=1048576 samples=363"
+  ]
+}

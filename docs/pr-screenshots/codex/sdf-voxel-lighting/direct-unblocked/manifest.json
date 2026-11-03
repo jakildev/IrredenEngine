@@ -1,0 +1,44 @@
+{
+  "source": {
+    "head": "085da98d0eafaf29faaac234d7c1174a2087301d",
+    "hashes": {
+      "creations/demos/shape_debug/main.cpp": "55291230fa4cceba64161b34c62b0db683ebb138dada149861ae9ee3cba918d9",
+      "creations/demos/shape_debug/sdf_voxel_scene.hpp": "e3f8bea63e772043736c9230b6e6919ee3830b7a8b3f8203138a6f632bff8f88",
+      "engine/prefabs/irreden/voxel/sdf_bake.hpp": "35c93963c89cc190cfd543c5fed1e72cc8244990b8cc1fefad691da9c8247690",
+      "build/creations/demos/shape_debug/IRShapeDebug": "2c1191e824b4f542eecf05ab97252ec4927eceb827f66903c54435eeb58da3e2"
+    }
+  },
+  "name": "direct-unblocked",
+  "images": [
+    {
+      "label": "sdf_voxel_yaw0",
+      "original": "save_files/screenshots/screenshot_000022.png",
+      "sha256": "3bca4580d4092be19a2c6d10038a8d2dfc99f2494d1f330d011fd4d1fbc3b518"
+    },
+    {
+      "label": "sdf_voxel_yaw45",
+      "original": "save_files/screenshots/screenshot_000023.png",
+      "sha256": "3a02edf3cf113da95b06b09c0bf844ca710f87a9a341f1518607e1438dd12cba"
+    },
+    {
+      "label": "sdf_voxel_yaw90",
+      "original": "save_files/screenshots/screenshot_000024.png",
+      "sha256": "87873c2693fac231977d1c04b199c9b35080216ce46c69d2844b4087776b6e5f"
+    },
+    {
+      "label": "sdf_voxel_yaw180",
+      "original": "save_files/screenshots/screenshot_000025.png",
+      "sha256": "dcffe4146c2b68c70d7d8a51a9b2e0a72fb24bcd797433118bb26b28a91b44cb"
+    },
+    {
+      "label": "sdf_voxel_yaw270",
+      "original": "save_files/screenshots/screenshot_000026.png",
+      "sha256": "8115f1edc9a30b2fe751cb09c31e857564900b07e6acf4f4abec393af0a5cc67"
+    },
+    {
+      "label": "sdf_voxel_zoom2",
+      "original": "save_files/screenshots/screenshot_000027.png",
+      "sha256": "d30dd4627a520232f2f8455c8fcfce1869c382fe5940da2f04c030ca64cdffd9"
+    }
+  ]
+}

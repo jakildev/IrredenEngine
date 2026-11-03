@@ -1,0 +1,28 @@
+# Exact selected first-occurrence log lines; repeated messages are counted below.
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 4 --subdivisions 1 --yaw 1.57059632679 --auto-profile --auto-screenshot 6 --sweep-yaw 1.57059632679 1.57099632679 3 --sweep-frames 1 130 (timeout: 120s)
+[2026-09-28 16:19:21.402] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-09-28 16:19:21.477] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) — new high-water for this run
+[2026-09-28 16:19:21.487] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=4, effective_subdivisions=4
+# 535 occurrences total; final occurrence: [2026-09-28 16:19:26.546] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=4, effective_subdivisions=4
+[2026-09-28 16:19:21.525] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=4, effective_subdivisions=1
+# 535 occurrences total; final occurrence: [2026-09-28 16:19:26.546] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=4, effective_subdivisions=1
+[2026-09-28 16:19:21.605] [ClientLog] [info] AutoScreenshot 1/4: sweep_yaw_0 (zoom=4, cam=(0,0), yaw=1.5705963, cull=0)
+[2026-09-28 16:19:22.822] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003286.png
+[2026-09-28 16:19:22.839] [ClientLog] [info] AutoScreenshot 2/4: sweep_yaw_1 (zoom=4, cam=(0,0), yaw=1.5707963, cull=0)
+[2026-09-28 16:19:24.045] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003287.png
+[2026-09-28 16:19:24.054] [ClientLog] [info] AutoScreenshot 3/4: sweep_yaw_2 (zoom=4, cam=(0,0), yaw=1.5709963, cull=0)
+[2026-09-28 16:19:25.302] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003288.png
+[2026-09-28 16:19:25.321] [ClientLog] [info] AutoScreenshot 4/4: sweep_frame_0 (zoom=4, cam=(0,0), yaw=1.5705963, cull=0)
+[2026-09-28 16:19:26.531] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003289.png
+ir-run: IRCanvasStress exited cleanly after 6s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+
+# Exact profile-report lifecycle/camera/overflow witnesses:
+PerAxisCanvas::Allocate                  1.538     1.568       2
+PerAxisCanvas::Release                   0.572     0.572       1
+PerAxisCanvas::Park                      0.000     0.000       1
+Camera yaw: first=89.989deg last=89.989deg travel=0.046deg samples=535
+Camera zoom: first=4.000 last=4.000
+Camera zoom range: min=4.000 max=4.000
+Camera pivot: explicit focus on 0 of 535 frames
+Per-axis overflow: maxEntries=112 maxDropped=0 cap=1048576 samples=403

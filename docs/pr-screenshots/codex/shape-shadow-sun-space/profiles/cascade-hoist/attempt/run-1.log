@@ -1,0 +1,4 @@
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire benchmark -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/perf_grid/IRPerfGrid --auto-profile 300 --zoom 1 --yaw 0 (timeout: 120s) (window mode: offscreen)
+ir-acquire: QUIET-REFUSED cf1fdf86-de99-425e-a411-97becf392212 pid=32036 state=busy age=2723s
+ir-run: QUIET=refused exe=IRPerfGrid
+ir-run: RESULT=HOST-NOT-QUIET exe=IRPerfGrid exit=75

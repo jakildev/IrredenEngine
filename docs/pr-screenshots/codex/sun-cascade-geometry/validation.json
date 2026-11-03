@@ -1,0 +1,30 @@
+[
+  {
+    "yaw": 0,
+    "rgb_equal": true,
+    "probe_csv_equal": true,
+    "before_png_sha256": "37bda32a19029b68d0e88a14c80e9d914a0619f4286094b5b8d9d5d735eb6920",
+    "after_png_sha256": "37bda32a19029b68d0e88a14c80e9d914a0619f4286094b5b8d9d5d735eb6920"
+  },
+  {
+    "yaw": 90,
+    "rgb_equal": true,
+    "probe_csv_equal": true,
+    "before_png_sha256": "a15c29d737685d21a6db1cc4776c465b218a4ff8130ead09cc5ab8c3578afa3e",
+    "after_png_sha256": "a15c29d737685d21a6db1cc4776c465b218a4ff8130ead09cc5ab8c3578afa3e"
+  },
+  {
+    "yaw": 180,
+    "rgb_equal": true,
+    "probe_csv_equal": true,
+    "before_png_sha256": "b075282cd9e61f5ee026e0c8e90cf350a65a3d2a1c22a6272ac1a55acd65bba5",
+    "after_png_sha256": "b075282cd9e61f5ee026e0c8e90cf350a65a3d2a1c22a6272ac1a55acd65bba5"
+  },
+  {
+    "yaw": 270,
+    "rgb_equal": true,
+    "probe_csv_equal": true,
+    "before_png_sha256": "63eb4a3d5f0a1604939cdbc270dd9f1958a4307f1bcea3340bd08ceb6691aad5",
+    "after_png_sha256": "63eb4a3d5f0a1604939cdbc270dd9f1958a4307f1bcea3340bd08ceb6691aad5"
+  }
+]

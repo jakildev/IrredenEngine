@@ -1,0 +1,356 @@
+{
+  "baseline_revision": "a82a66f2bcd12f6987c90d3a111bf8fb398a57dc",
+  "staged_shader_hashes": {
+    "before": {
+      "c_bake_sun_shadow_map.glsl": "fb5bd006c1238f281b3a4a18e24ff154709526b6231c8278a78af0fba0bfcfe9",
+      "ir_per_axis_lighting.glsl": "31d050766b6a23e488efc2ed8bf92c8b4c83c492a8d2a6396a126e6ee17e1cf8",
+      "ir_source_face_lighting.glsl": "3b2af182878e6a7302321d8290c89507a16ecc851bb46d78afce77599afbe9c5",
+      "metal/c_bake_sun_shadow_map.metal": "f479d501be534c8e399e46ff93e31b0953f9f51f6e248a22d8e09ec752802964",
+      "metal/ir_per_axis_lighting.metal": "aa179fd5d11b9b97f74709b6f757d1ad123def3b5d2e35c0d7bd0f861daf64c5",
+      "metal/ir_source_face_lighting.metal": "73f2c8ebb8229d748d04cfcd5768752d8d6ad08fb04b65df73c05fc515844d7c"
+    },
+    "after": {
+      "c_bake_sun_shadow_map.glsl": "9c4ed3d237052c7bbceaefef4147d902a1fbb611af08db36de4ab6707b691a57",
+      "ir_per_axis_lighting.glsl": "f99bb5183b3b5e57d84aefe4563f5e346fdf27e2e449b43703e9291da1e5e799",
+      "ir_source_face_lighting.glsl": "5911e18caee6255d1191b9eb3c771c5c8b9c3e8edbc6e68e470368998c285ad3",
+      "metal/c_bake_sun_shadow_map.metal": "1b9312690bd8ba11be47895e83abda43eaae15c9789938513861e67c0a652188",
+      "metal/ir_per_axis_lighting.metal": "7495e95ee25d9d75b457d75ae1966f12bdae0ee0f90f222bdf0c5cd69223c194",
+      "metal/ir_source_face_lighting.metal": "3a648349bf17ee510d4d1f6a9a4f185698aea76e873cc5749e4a141aacaa9428"
+    }
+  },
+  "runs": [
+    {
+      "mode": "legacy-beauty",
+      "before": {
+        "revision": "a82a66f2bcd12f6987c90d3a111bf8fb398a57dc",
+        "command": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--legacy-depth-shadows"
+        ],
+        "hashes": {
+          "0.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "1.png": "23011be322e0fddc093bb785b7775f2dd2db58f4042537c7ef90f493a13d2627",
+          "2.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "3.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "4.png": "e1045df21c583d56df6577b791591c98b114d47cd3dda5f0348c894077d99e5f",
+          "5.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "6.png": "bb54471fb1ab646401c118cdf308d5dfd61f00bc2c34cae3706914bda68af7ae",
+          "7.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "8.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "9.png": "bb54471fb1ab646401c118cdf308d5dfd61f00bc2c34cae3706914bda68af7ae",
+          "10.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "11.png": "bb54471fb1ab646401c118cdf308d5dfd61f00bc2c34cae3706914bda68af7ae"
+        },
+        "camera": [
+          "label=so3_smooth_sweep yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_disc yaw=0.78539824 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_wide_parity yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_grid_cross yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_wide yaw=0.5235989 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids_zoom yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=orbit_overview yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=shadow_overlay_floor yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revox_coverage yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=smallzoom_low yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=smallzoom_high yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)"
+        ],
+        "backend": "Metal",
+        "resolution": [
+          2560,
+          1440
+        ],
+        "result": "CLEAN"
+      },
+      "after": {
+        "revision": "a82a66f2bcd12f6987c90d3a111bf8fb398a57dc",
+        "command": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--legacy-depth-shadows"
+        ],
+        "hashes": {
+          "0.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "1.png": "23011be322e0fddc093bb785b7775f2dd2db58f4042537c7ef90f493a13d2627",
+          "2.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "3.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "4.png": "e1045df21c583d56df6577b791591c98b114d47cd3dda5f0348c894077d99e5f",
+          "5.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "6.png": "bb54471fb1ab646401c118cdf308d5dfd61f00bc2c34cae3706914bda68af7ae",
+          "7.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "8.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "9.png": "bb54471fb1ab646401c118cdf308d5dfd61f00bc2c34cae3706914bda68af7ae",
+          "10.png": "3262a94a5e60ff09191f5ee76acf78ed2c8a3b3a7a5dee24ff6e49737ea92ffb",
+          "11.png": "bb54471fb1ab646401c118cdf308d5dfd61f00bc2c34cae3706914bda68af7ae"
+        },
+        "camera": [
+          "label=so3_smooth_sweep yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_disc yaw=0.78539824 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_wide_parity yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_grid_cross yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_wide yaw=0.5235989 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids_zoom yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=orbit_overview yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=shadow_overlay_floor yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revox_coverage yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=smallzoom_low yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=smallzoom_high yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)"
+        ],
+        "backend": "Metal",
+        "resolution": [
+          2560,
+          1440
+        ],
+        "result": "CLEAN"
+      },
+      "byte_identical": {
+        "0.png": true,
+        "1.png": true,
+        "2.png": true,
+        "3.png": true,
+        "4.png": true,
+        "5.png": true,
+        "6.png": true,
+        "7.png": true,
+        "8.png": true,
+        "9.png": true,
+        "10.png": true,
+        "11.png": true
+      }
+    },
+    {
+      "mode": "legacy-shadow",
+      "before": {
+        "revision": "a82a66f2bcd12f6987c90d3a111bf8fb398a57dc",
+        "command": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--legacy-depth-shadows",
+          "--debug-overlay",
+          "shadow"
+        ],
+        "hashes": {
+          "0.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "1.png": "8ad55a4c80e0e7195de5e5b3cb0689f0e402bcadfaf52f60e66839506e1fe682",
+          "2.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "3.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "4.png": "26d1a5ff7f07413a239decc760c502d86c1fe86f12213aaf05916ac5e2bc5860",
+          "5.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "6.png": "1bcb23cd653ead8d05d9c40012c5a7868a70776dfc1bc8cc625868e2b9eb97e1",
+          "7.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "8.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "9.png": "1bcb23cd653ead8d05d9c40012c5a7868a70776dfc1bc8cc625868e2b9eb97e1",
+          "10.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "11.png": "1bcb23cd653ead8d05d9c40012c5a7868a70776dfc1bc8cc625868e2b9eb97e1"
+        },
+        "camera": [
+          "label=so3_smooth_sweep yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_disc yaw=0.78539824 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_wide_parity yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_grid_cross yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_wide yaw=0.5235989 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids_zoom yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=orbit_overview yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=shadow_overlay_floor yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revox_coverage yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=smallzoom_low yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=smallzoom_high yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)"
+        ],
+        "backend": "Metal",
+        "resolution": [
+          2560,
+          1440
+        ],
+        "result": "CLEAN"
+      },
+      "after": {
+        "revision": "a82a66f2bcd12f6987c90d3a111bf8fb398a57dc",
+        "command": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--legacy-depth-shadows",
+          "--debug-overlay",
+          "shadow"
+        ],
+        "hashes": {
+          "0.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "1.png": "8ad55a4c80e0e7195de5e5b3cb0689f0e402bcadfaf52f60e66839506e1fe682",
+          "2.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "3.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "4.png": "26d1a5ff7f07413a239decc760c502d86c1fe86f12213aaf05916ac5e2bc5860",
+          "5.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "6.png": "1bcb23cd653ead8d05d9c40012c5a7868a70776dfc1bc8cc625868e2b9eb97e1",
+          "7.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "8.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "9.png": "1bcb23cd653ead8d05d9c40012c5a7868a70776dfc1bc8cc625868e2b9eb97e1",
+          "10.png": "f72a652e3373e083bcb2b2f3325ed20192bff6c34b2cbce0d3f7b632274d6afe",
+          "11.png": "1bcb23cd653ead8d05d9c40012c5a7868a70776dfc1bc8cc625868e2b9eb97e1"
+        },
+        "camera": [
+          "label=so3_smooth_sweep yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_disc yaw=0.78539824 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_wide_parity yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_grid_cross yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_wide yaw=0.5235989 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids_zoom yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=orbit_overview yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=shadow_overlay_floor yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revox_coverage yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=smallzoom_low yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=smallzoom_high yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)"
+        ],
+        "backend": "Metal",
+        "resolution": [
+          2560,
+          1440
+        ],
+        "result": "CLEAN"
+      },
+      "byte_identical": {
+        "0.png": true,
+        "1.png": true,
+        "2.png": true,
+        "3.png": true,
+        "4.png": true,
+        "5.png": true,
+        "6.png": true,
+        "7.png": true,
+        "8.png": true,
+        "9.png": true,
+        "10.png": true,
+        "11.png": true
+      }
+    },
+    {
+      "mode": "modern-shadow",
+      "before": {
+        "revision": "a82a66f2bcd12f6987c90d3a111bf8fb398a57dc",
+        "command": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--debug-overlay",
+          "shadow"
+        ],
+        "hashes": {
+          "0.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "1.png": "6d40f2d8b852f83a8a96e358cfa826a9e184f35d6569651ee2f7bd1a53f6e040",
+          "2.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "3.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "4.png": "fb0e6762e66748b6c7c784168eeb7dbb24fbd656a9f8c8878ae2046c77bfb1cd",
+          "5.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "6.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "7.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "8.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "9.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "10.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "11.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f"
+        },
+        "camera": [
+          "label=so3_smooth_sweep yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_disc yaw=0.78539824 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_wide_parity yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_grid_cross yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_wide yaw=0.5235989 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids_zoom yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=orbit_overview yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=shadow_overlay_floor yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revox_coverage yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=smallzoom_low yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=smallzoom_high yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)"
+        ],
+        "backend": "Metal",
+        "resolution": [
+          2560,
+          1440
+        ],
+        "result": "CLEAN"
+      },
+      "after": {
+        "revision": "a82a66f2bcd12f6987c90d3a111bf8fb398a57dc",
+        "command": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--debug-overlay",
+          "shadow"
+        ],
+        "hashes": {
+          "0.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "1.png": "6d40f2d8b852f83a8a96e358cfa826a9e184f35d6569651ee2f7bd1a53f6e040",
+          "2.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "3.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "4.png": "fb0e6762e66748b6c7c784168eeb7dbb24fbd656a9f8c8878ae2046c77bfb1cd",
+          "5.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "6.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "7.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "8.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "9.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+          "10.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+          "11.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f"
+        },
+        "camera": [
+          "label=so3_smooth_sweep yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_disc yaw=0.78539824 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_wide_parity yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_grid_cross yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=so3_offsnap_wide yaw=0.5235989 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revoxelize_solids_zoom yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=orbit_overview yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=shadow_overlay_floor yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=revox_coverage yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+          "label=smallzoom_low yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+          "label=smallzoom_high yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)"
+        ],
+        "backend": "Metal",
+        "resolution": [
+          2560,
+          1440
+        ],
+        "result": "CLEAN"
+      },
+      "byte_identical": {
+        "0.png": true,
+        "1.png": true,
+        "2.png": true,
+        "3.png": true,
+        "4.png": true,
+        "5.png": true,
+        "6.png": true,
+        "7.png": true,
+        "8.png": true,
+        "9.png": true,
+        "10.png": true,
+        "11.png": true
+      }
+    }
+  ]
+}

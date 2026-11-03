@@ -1,0 +1,72 @@
+[
+  {
+    "image": "frame-0.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-frame-0.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "frame-1.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-frame-1.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "frame-2.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-frame-2.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "frame-3.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-frame-3.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "mixed-0.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-mixed-0.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "mixed-1.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-mixed-1.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "mixed-2.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-mixed-2.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "mixed-3.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-mixed-3.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "mixed-4.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-mixed-4.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "sky-0.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-sky-0.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "sky-1.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-sky-1.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "sky-2.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-sky-2.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "sky-3.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-sky-3.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "image": "sky-4.png",
+    "baseline": "docs/pr-screenshots/codex/peraxis-surface-lighting/final-sky-4.png",
+    "changed_rgb_pixels": 0
+  }
+]

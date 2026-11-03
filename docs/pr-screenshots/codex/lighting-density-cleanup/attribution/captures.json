@@ -1,0 +1,313 @@
+{
+  "candidate": {
+    "canvas": {
+      "command": [
+        "fleet-run",
+        "IRCanvasStress",
+        "--auto-screenshot",
+        "120"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "ecf41fdd958dc619eb8c0acde47551182c0290b2d1d7053889e1d63d36b6de8f",
+      "captures": {
+        "so3_smooth_sweep": {
+          "sha256": "9e9682eb0709de0f9471860e4483efa60ad7aee3c34ef58efd8cdcbb65899c70",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 99.9372,
+            "max_delta": 40,
+            "psnr_db": 50.14
+          }
+        },
+        "so3_offsnap_disc": {
+          "sha256": "1713a2f09abf562dcda22972adaad60f84208fd1c39f6d43f914959fd86c5d5d",
+          "reference_comparison": {
+            "pass": false,
+            "match_pct": 99.9395,
+            "max_delta": 73,
+            "psnr_db": 58.85,
+            "reason": "max_delta 73 > 64"
+          }
+        },
+        "so3_wide_parity": {
+          "sha256": "bb1abd47eec78432564a0e3d2bde91effac96dd6c15800fc1242330ffd9b886e",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 99.9372,
+            "max_delta": 40,
+            "psnr_db": 50.14
+          }
+        },
+        "so3_grid_cross": {
+          "sha256": "bff27f103c45f1f70155e9274d463318e94ec53a9a10eb3d67b1d80c67d8e100",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 99.9372,
+            "max_delta": 40,
+            "psnr_db": 50.14
+          }
+        },
+        "so3_offsnap_wide": {
+          "sha256": "116d4700b6eefb6b5e7e2ad70c31f03e75d0acb97b30ad61329619dd0f5d2c6b",
+          "reference_comparison": {
+            "pass": false,
+            "match_pct": 99.9403,
+            "max_delta": 73,
+            "psnr_db": 56.2,
+            "reason": "max_delta 73 > 64"
+          }
+        },
+        "revoxelize_solids": {
+          "sha256": "e181245c7dc6fd91c461d11a30b7b6b2e428734b2049f300786227400b0c556a",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 99.9372,
+            "max_delta": 40,
+            "psnr_db": 50.14
+          }
+        },
+        "extra_6": {
+          "sha256": "4031ef0ecc6dc950385db906bce9a224a1513a6a725a808ce0e03b80ed92c159"
+        },
+        "extra_7": {
+          "sha256": "f234462870035d245c84267cd09d1d4a854617f728c268311a776aecf278acdd"
+        },
+        "extra_8": {
+          "sha256": "11e73ad23ac91c614b4977055483bab7639dfcb29819c12881d938f79c75a23f"
+        },
+        "extra_9": {
+          "sha256": "7654f9e01251ec1cabd2af06ffefec7c19410dc5698014b663a31259f74f69ec"
+        },
+        "extra_10": {
+          "sha256": "93c42f3aadd3eb6c9827abfcc34c1ad62279920aae8ddf6a02e2ef843a424d39"
+        },
+        "extra_11": {
+          "sha256": "9c3115c74b6cfa78353625d6ae54fae1bb03e9fffa2635c5f533646b882e9ac2"
+        }
+      }
+    },
+    "fog": {
+      "command": [
+        "fleet-run",
+        "IRFogDemo",
+        "--auto-screenshot",
+        "10",
+        "--explored-decay"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "621537f6bf10c24da36f9cbb5aa9e2efc248cfa726fdf8048e87c10ce8e52e14",
+      "captures": {
+        "fog_explored_decay_before": {
+          "sha256": "b7bd2ac79841b08ce3dc71225a0e7a6c75e05ab8dd706a773350a4c73594df99",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 100.0,
+            "max_delta": 0,
+            "psnr_db": "inf"
+          }
+        },
+        "fog_explored_decay_after": {
+          "sha256": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 100.0,
+            "max_delta": 0,
+            "psnr_db": "inf"
+          }
+        },
+        "fog_explored_decay_far": {
+          "sha256": "05147e7fd7909c9713df0d88db9372121b9df4a3f9f1c196c6862f5d4ebe9897",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 100.0,
+            "max_delta": 0,
+            "psnr_db": "inf"
+          }
+        },
+        "fog_explored_decay_return": {
+          "sha256": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 100.0,
+            "max_delta": 0,
+            "psnr_db": "inf"
+          }
+        },
+        "fog_explored_decay_tiers_yaw": {
+          "sha256": "67a175a0a7e8ec6d8faac8383e8f46138d22a55be2f6f382e714c7b5d6ceeb64",
+          "reference_comparison": {
+            "pass": false,
+            "match_pct": 99.999,
+            "max_delta": 138,
+            "psnr_db": 57.93,
+            "reason": "max_delta 138 > 64"
+          }
+        }
+      }
+    }
+  },
+  "master": {
+    "canvas": {
+      "command": [
+        "fleet-run",
+        "IRCanvasStress",
+        "--auto-screenshot",
+        "120"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "8f93d1e30a874ade080e24195cdd996df8925a710ce1474f24be4bd1772784d2",
+      "captures": {
+        "so3_smooth_sweep": {
+          "sha256": "9e9682eb0709de0f9471860e4483efa60ad7aee3c34ef58efd8cdcbb65899c70",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 99.9372,
+            "max_delta": 40,
+            "psnr_db": 50.14
+          },
+          "candidate_byte_identical": true
+        },
+        "so3_offsnap_disc": {
+          "sha256": "1713a2f09abf562dcda22972adaad60f84208fd1c39f6d43f914959fd86c5d5d",
+          "reference_comparison": {
+            "pass": false,
+            "match_pct": 99.9395,
+            "max_delta": 73,
+            "psnr_db": 58.85,
+            "reason": "max_delta 73 > 64"
+          },
+          "candidate_byte_identical": true
+        },
+        "so3_wide_parity": {
+          "sha256": "bb1abd47eec78432564a0e3d2bde91effac96dd6c15800fc1242330ffd9b886e",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 99.9372,
+            "max_delta": 40,
+            "psnr_db": 50.14
+          },
+          "candidate_byte_identical": true
+        },
+        "so3_grid_cross": {
+          "sha256": "bff27f103c45f1f70155e9274d463318e94ec53a9a10eb3d67b1d80c67d8e100",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 99.9372,
+            "max_delta": 40,
+            "psnr_db": 50.14
+          },
+          "candidate_byte_identical": true
+        },
+        "so3_offsnap_wide": {
+          "sha256": "116d4700b6eefb6b5e7e2ad70c31f03e75d0acb97b30ad61329619dd0f5d2c6b",
+          "reference_comparison": {
+            "pass": false,
+            "match_pct": 99.9403,
+            "max_delta": 73,
+            "psnr_db": 56.2,
+            "reason": "max_delta 73 > 64"
+          },
+          "candidate_byte_identical": true
+        },
+        "revoxelize_solids": {
+          "sha256": "e181245c7dc6fd91c461d11a30b7b6b2e428734b2049f300786227400b0c556a",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 99.9372,
+            "max_delta": 40,
+            "psnr_db": 50.14
+          },
+          "candidate_byte_identical": true
+        },
+        "extra_6": {
+          "sha256": "4031ef0ecc6dc950385db906bce9a224a1513a6a725a808ce0e03b80ed92c159",
+          "candidate_byte_identical": true
+        },
+        "extra_7": {
+          "sha256": "f234462870035d245c84267cd09d1d4a854617f728c268311a776aecf278acdd",
+          "candidate_byte_identical": true
+        },
+        "extra_8": {
+          "sha256": "11e73ad23ac91c614b4977055483bab7639dfcb29819c12881d938f79c75a23f",
+          "candidate_byte_identical": true
+        },
+        "extra_9": {
+          "sha256": "7654f9e01251ec1cabd2af06ffefec7c19410dc5698014b663a31259f74f69ec",
+          "candidate_byte_identical": true
+        },
+        "extra_10": {
+          "sha256": "93c42f3aadd3eb6c9827abfcc34c1ad62279920aae8ddf6a02e2ef843a424d39",
+          "candidate_byte_identical": true
+        },
+        "extra_11": {
+          "sha256": "9c3115c74b6cfa78353625d6ae54fae1bb03e9fffa2635c5f533646b882e9ac2",
+          "candidate_byte_identical": true
+        }
+      }
+    },
+    "fog": {
+      "command": [
+        "fleet-run",
+        "IRFogDemo",
+        "--auto-screenshot",
+        "10",
+        "--explored-decay"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "f13632ea3913587a83ff13e4e5bd598b6a66341dc40e78fedd7d1d2c4c0e9173",
+      "captures": {
+        "fog_explored_decay_before": {
+          "sha256": "b7bd2ac79841b08ce3dc71225a0e7a6c75e05ab8dd706a773350a4c73594df99",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 100.0,
+            "max_delta": 0,
+            "psnr_db": "inf"
+          },
+          "candidate_byte_identical": true
+        },
+        "fog_explored_decay_after": {
+          "sha256": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 100.0,
+            "max_delta": 0,
+            "psnr_db": "inf"
+          },
+          "candidate_byte_identical": true
+        },
+        "fog_explored_decay_far": {
+          "sha256": "05147e7fd7909c9713df0d88db9372121b9df4a3f9f1c196c6862f5d4ebe9897",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 100.0,
+            "max_delta": 0,
+            "psnr_db": "inf"
+          },
+          "candidate_byte_identical": true
+        },
+        "fog_explored_decay_return": {
+          "sha256": "fecdc7aee56321dc366f84db1cb553da9022914c86fc225a5a3419e9e5e45f04",
+          "reference_comparison": {
+            "pass": true,
+            "match_pct": 100.0,
+            "max_delta": 0,
+            "psnr_db": "inf"
+          },
+          "candidate_byte_identical": true
+        },
+        "fog_explored_decay_tiers_yaw": {
+          "sha256": "67a175a0a7e8ec6d8faac8383e8f46138d22a55be2f6f382e714c7b5d6ceeb64",
+          "reference_comparison": {
+            "pass": false,
+            "match_pct": 99.999,
+            "max_delta": 138,
+            "psnr_db": 57.93,
+            "reason": "max_delta 138 > 64"
+          },
+          "candidate_byte_identical": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "command": [
+    "fleet-run",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "10",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--zoom",
+    "1",
+    "--subdivisions",
+    "1",
+    "--sweep-yaw",
+    "0",
+    "0.7853981633974483",
+    "2"
+  ],
+  "head": "31d4382bd7b050b79961f4093dd60cbe7aa55665",
+  "binary_sha256": "a1a3b7f01bcd3e39fe01447b25f660f89ef130fef40ad76596a2ca45ed8ddb7b",
+  "captures": {
+    "cardinal": {
+      "sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+      "reference": "cardinal-before.png",
+      "byte_identical": true
+    },
+    "rotated": {
+      "sha256": "697db5d9ad9bb2b3c1ed69c52bbd218301306d6107af8a284cb0230cf77b2af9",
+      "reference": "rotated-before.png",
+      "byte_identical": true
+    }
+  }
+}

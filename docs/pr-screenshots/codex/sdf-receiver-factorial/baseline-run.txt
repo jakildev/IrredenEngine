@@ -1,0 +1,10 @@
+[2026-09-21 20:09:23.429] [ClientLog] [info] AutoScreenshot 1/4: sweep_yaw_0 (zoom=2, cam=(0,0), yaw=0, cull=0)
+[2026-09-21 20:09:24.079] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_002023.png
+[2026-09-21 20:09:24.088] [ClientLog] [info] AutoScreenshot 2/4: sweep_yaw_1 (zoom=2, cam=(0,0), yaw=1.5707964, cull=0)
+[2026-09-21 20:09:24.719] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_002024.png
+[2026-09-21 20:09:24.727] [ClientLog] [info] AutoScreenshot 3/4: sweep_yaw_2 (zoom=2, cam=(0,0), yaw=3.1415927, cull=0)
+[2026-09-21 20:09:25.431] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_002025.png
+[2026-09-21 20:09:25.438] [ClientLog] [info] AutoScreenshot 4/4: sweep_yaw_3 (zoom=2, cam=(0,0), yaw=4.712389, cull=0)
+[2026-09-21 20:09:26.069] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_002026.png
+[2026-09-21 20:09:26.097] [EngineLog] [info] Clean shutdown complete.
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

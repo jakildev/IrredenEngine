@@ -1,0 +1,62 @@
+[
+  {
+    "control": "normal",
+    "shot": 0,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "normal",
+    "shot": 1,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "normal",
+    "shot": 2,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "normal",
+    "shot": 3,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "normal",
+    "shot": 4,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "sky-",
+    "shot": 0,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "sky-",
+    "shot": 1,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "sky-",
+    "shot": 2,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "sky-",
+    "shot": 3,
+    "changed_bbox": null,
+    "pixel_identical": true
+  },
+  {
+    "control": "sky-",
+    "shot": 4,
+    "changed_bbox": null,
+    "pixel_identical": true
+  }
+]

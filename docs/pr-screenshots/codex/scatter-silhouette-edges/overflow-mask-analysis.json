@@ -1,0 +1,789 @@
+{
+  "fixture": "orbit6-grid-45y-camera-292.5-zoom4-base-sub2",
+  "game_resolution": [
+    1280,
+    720
+  ],
+  "occupancy_count": 1740,
+  "mask_depth_epsilon_steps": 8,
+  "results": [
+    {
+      "game_pixel": [
+        726,
+        307
+      ],
+      "finite_ray_owner": {
+        "cell": [
+          4,
+          6,
+          -5
+        ],
+        "face": "Z_NEG",
+        "world_point": [
+          4.314065,
+          6.488585,
+          -5.5
+        ],
+        "face_uv": [
+          0.814065,
+          0.988585
+        ]
+      },
+      "same_voxel_y_pos_uv": [
+        0.786507,
+        -0.021092
+      ],
+      "cardinal_iso": [
+        2,
+        -20
+      ],
+      "z_coset_near_to_far": [
+        {
+          "raw_depth": -4,
+          "cell": [
+            1,
+            3,
+            -8
+          ]
+        },
+        {
+          "raw_depth": -1,
+          "cell": [
+            2,
+            4,
+            -7
+          ]
+        },
+        {
+          "raw_depth": 2,
+          "cell": [
+            3,
+            5,
+            -6
+          ]
+        },
+        {
+          "raw_depth": 5,
+          "cell": [
+            4,
+            6,
+            -5
+          ]
+        }
+      ],
+      "yawed_face_anchor": [
+        9.080283,
+        -12.596392
+      ],
+      "face_key_hex": "0x3fffffc1",
+      "mask_probe_winners": [
+        {
+          "mask_pixel": [
+            9,
+            -13
+          ],
+          "key_hex": "0x3fffff6f",
+          "winner_cell": [
+            2,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -13
+          ],
+          "key_hex": "0x3fffff93",
+          "winner_cell": [
+            3,
+            6,
+            -6
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            9,
+            -12
+          ],
+          "key_hex": "0x3fffff5a",
+          "winner_cell": [
+            1,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -12
+          ],
+          "key_hex": "0x3fffffb8",
+          "winner_cell": [
+            4,
+            6,
+            -5
+          ],
+          "winner_face": "Y_POS"
+        }
+      ],
+      "max_mask_key_hex": "0x3fffffb8",
+      "face_key_minus_epsilon_hex": "0x3fffffb9",
+      "overflow_mask_rejects": true
+    },
+    {
+      "game_pixel": [
+        725,
+        308
+      ],
+      "finite_ray_owner": {
+        "cell": [
+          4,
+          6,
+          -5
+        ],
+        "face": "Z_NEG",
+        "world_point": [
+          4.116919,
+          6.474574,
+          -5.5
+        ],
+        "face_uv": [
+          0.616919,
+          0.974574
+        ]
+      },
+      "same_voxel_y_pos_uv": [
+        0.555537,
+        -0.04698
+      ],
+      "cardinal_iso": [
+        2,
+        -20
+      ],
+      "z_coset_near_to_far": [
+        {
+          "raw_depth": -4,
+          "cell": [
+            1,
+            3,
+            -8
+          ]
+        },
+        {
+          "raw_depth": -1,
+          "cell": [
+            2,
+            4,
+            -7
+          ]
+        },
+        {
+          "raw_depth": 2,
+          "cell": [
+            3,
+            5,
+            -6
+          ]
+        },
+        {
+          "raw_depth": 5,
+          "cell": [
+            4,
+            6,
+            -5
+          ]
+        }
+      ],
+      "yawed_face_anchor": [
+        9.080283,
+        -12.596392
+      ],
+      "face_key_hex": "0x3fffffc1",
+      "mask_probe_winners": [
+        {
+          "mask_pixel": [
+            9,
+            -13
+          ],
+          "key_hex": "0x3fffff6f",
+          "winner_cell": [
+            2,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -13
+          ],
+          "key_hex": "0x3fffff93",
+          "winner_cell": [
+            3,
+            6,
+            -6
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            9,
+            -12
+          ],
+          "key_hex": "0x3fffff5a",
+          "winner_cell": [
+            1,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -12
+          ],
+          "key_hex": "0x3fffffb8",
+          "winner_cell": [
+            4,
+            6,
+            -5
+          ],
+          "winner_face": "Y_POS"
+        }
+      ],
+      "max_mask_key_hex": "0x3fffffb8",
+      "face_key_minus_epsilon_hex": "0x3fffffb9",
+      "overflow_mask_rejects": true
+    },
+    {
+      "game_pixel": [
+        724,
+        309
+      ],
+      "finite_ray_owner": {
+        "cell": [
+          4,
+          6,
+          -5
+        ],
+        "face": "Z_NEG",
+        "world_point": [
+          3.919774,
+          6.460564,
+          -5.5
+        ],
+        "face_uv": [
+          0.419774,
+          0.960564
+        ]
+      },
+      "same_voxel_y_pos_uv": [
+        0.324567,
+        -0.072869
+      ],
+      "cardinal_iso": [
+        2,
+        -20
+      ],
+      "z_coset_near_to_far": [
+        {
+          "raw_depth": -4,
+          "cell": [
+            1,
+            3,
+            -8
+          ]
+        },
+        {
+          "raw_depth": -1,
+          "cell": [
+            2,
+            4,
+            -7
+          ]
+        },
+        {
+          "raw_depth": 2,
+          "cell": [
+            3,
+            5,
+            -6
+          ]
+        },
+        {
+          "raw_depth": 5,
+          "cell": [
+            4,
+            6,
+            -5
+          ]
+        }
+      ],
+      "yawed_face_anchor": [
+        9.080283,
+        -12.596392
+      ],
+      "face_key_hex": "0x3fffffc1",
+      "mask_probe_winners": [
+        {
+          "mask_pixel": [
+            9,
+            -13
+          ],
+          "key_hex": "0x3fffff6f",
+          "winner_cell": [
+            2,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -13
+          ],
+          "key_hex": "0x3fffff93",
+          "winner_cell": [
+            3,
+            6,
+            -6
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            9,
+            -12
+          ],
+          "key_hex": "0x3fffff5a",
+          "winner_cell": [
+            1,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -12
+          ],
+          "key_hex": "0x3fffffb8",
+          "winner_cell": [
+            4,
+            6,
+            -5
+          ],
+          "winner_face": "Y_POS"
+        }
+      ],
+      "max_mask_key_hex": "0x3fffffb8",
+      "face_key_minus_epsilon_hex": "0x3fffffb9",
+      "overflow_mask_rejects": true
+    },
+    {
+      "game_pixel": [
+        731,
+        309
+      ],
+      "finite_ray_owner": {
+        "cell": [
+          5,
+          6,
+          -4
+        ],
+        "face": "Z_NEG",
+        "world_point": [
+          5.463111,
+          6.490989,
+          -4.5
+        ],
+        "face_uv": [
+          0.963111,
+          0.990989
+        ]
+      },
+      "same_voxel_y_pos_uv": [
+        0.941356,
+        -0.01665
+      ],
+      "cardinal_iso": [
+        1,
+        -19
+      ],
+      "z_coset_near_to_far": [
+        {
+          "raw_depth": -5,
+          "cell": [
+            1,
+            2,
+            -8
+          ]
+        },
+        {
+          "raw_depth": -2,
+          "cell": [
+            2,
+            3,
+            -7
+          ]
+        },
+        {
+          "raw_depth": 1,
+          "cell": [
+            3,
+            4,
+            -6
+          ]
+        },
+        {
+          "raw_depth": 4,
+          "cell": [
+            4,
+            5,
+            -5
+          ]
+        },
+        {
+          "raw_depth": 7,
+          "cell": [
+            5,
+            6,
+            -4
+          ]
+        }
+      ],
+      "yawed_face_anchor": [
+        9.621479,
+        -11.902955
+      ],
+      "face_key_hex": "0x3fffffe6",
+      "mask_probe_winners": [
+        {
+          "mask_pixel": [
+            9,
+            -12
+          ],
+          "key_hex": "0x3fffff5a",
+          "winner_cell": [
+            1,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -12
+          ],
+          "key_hex": "0x3fffffb8",
+          "winner_cell": [
+            4,
+            6,
+            -5
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            9,
+            -11
+          ],
+          "key_hex": "0x3fffff7f",
+          "winner_cell": [
+            2,
+            6,
+            -6
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -11
+          ],
+          "key_hex": "0x3fffffa3",
+          "winner_cell": [
+            3,
+            6,
+            -5
+          ],
+          "winner_face": "Y_POS"
+        }
+      ],
+      "max_mask_key_hex": "0x3fffffb8",
+      "face_key_minus_epsilon_hex": "0x3fffffde",
+      "overflow_mask_rejects": true
+    },
+    {
+      "game_pixel": [
+        723,
+        310
+      ],
+      "finite_ray_owner": {
+        "cell": [
+          4,
+          6,
+          -5
+        ],
+        "face": "Z_NEG",
+        "world_point": [
+          3.722629,
+          6.446553,
+          -5.5
+        ],
+        "face_uv": [
+          0.222629,
+          0.946553
+        ]
+      },
+      "same_voxel_y_pos_uv": [
+        0.093597,
+        -0.098757
+      ],
+      "cardinal_iso": [
+        2,
+        -20
+      ],
+      "z_coset_near_to_far": [
+        {
+          "raw_depth": -4,
+          "cell": [
+            1,
+            3,
+            -8
+          ]
+        },
+        {
+          "raw_depth": -1,
+          "cell": [
+            2,
+            4,
+            -7
+          ]
+        },
+        {
+          "raw_depth": 2,
+          "cell": [
+            3,
+            5,
+            -6
+          ]
+        },
+        {
+          "raw_depth": 5,
+          "cell": [
+            4,
+            6,
+            -5
+          ]
+        }
+      ],
+      "yawed_face_anchor": [
+        9.080283,
+        -12.596392
+      ],
+      "face_key_hex": "0x3fffffc1",
+      "mask_probe_winners": [
+        {
+          "mask_pixel": [
+            9,
+            -13
+          ],
+          "key_hex": "0x3fffff6f",
+          "winner_cell": [
+            2,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -13
+          ],
+          "key_hex": "0x3fffff93",
+          "winner_cell": [
+            3,
+            6,
+            -6
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            9,
+            -12
+          ],
+          "key_hex": "0x3fffff5a",
+          "winner_cell": [
+            1,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -12
+          ],
+          "key_hex": "0x3fffffb8",
+          "winner_cell": [
+            4,
+            6,
+            -5
+          ],
+          "winner_face": "Y_POS"
+        }
+      ],
+      "max_mask_key_hex": "0x3fffffb8",
+      "face_key_minus_epsilon_hex": "0x3fffffb9",
+      "overflow_mask_rejects": true
+    },
+    {
+      "game_pixel": [
+        730,
+        310
+      ],
+      "finite_ray_owner": {
+        "cell": [
+          5,
+          6,
+          -4
+        ],
+        "face": "Z_NEG",
+        "world_point": [
+          5.265965,
+          6.476978,
+          -4.5
+        ],
+        "face_uv": [
+          0.765965,
+          0.976978
+        ]
+      },
+      "same_voxel_y_pos_uv": [
+        0.710386,
+        -0.042538
+      ],
+      "cardinal_iso": [
+        1,
+        -19
+      ],
+      "z_coset_near_to_far": [
+        {
+          "raw_depth": -5,
+          "cell": [
+            1,
+            2,
+            -8
+          ]
+        },
+        {
+          "raw_depth": -2,
+          "cell": [
+            2,
+            3,
+            -7
+          ]
+        },
+        {
+          "raw_depth": 1,
+          "cell": [
+            3,
+            4,
+            -6
+          ]
+        },
+        {
+          "raw_depth": 4,
+          "cell": [
+            4,
+            5,
+            -5
+          ]
+        },
+        {
+          "raw_depth": 7,
+          "cell": [
+            5,
+            6,
+            -4
+          ]
+        }
+      ],
+      "yawed_face_anchor": [
+        9.621479,
+        -11.902955
+      ],
+      "face_key_hex": "0x3fffffe6",
+      "mask_probe_winners": [
+        {
+          "mask_pixel": [
+            9,
+            -12
+          ],
+          "key_hex": "0x3fffff5a",
+          "winner_cell": [
+            1,
+            6,
+            -7
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -12
+          ],
+          "key_hex": "0x3fffffb8",
+          "winner_cell": [
+            4,
+            6,
+            -5
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            9,
+            -11
+          ],
+          "key_hex": "0x3fffff7f",
+          "winner_cell": [
+            2,
+            6,
+            -6
+          ],
+          "winner_face": "Y_POS"
+        },
+        {
+          "mask_pixel": [
+            10,
+            -11
+          ],
+          "key_hex": "0x3fffffa3",
+          "winner_cell": [
+            3,
+            6,
+            -5
+          ],
+          "winner_face": "Y_POS"
+        }
+      ],
+      "max_mask_key_hex": "0x3fffffb8",
+      "face_key_minus_epsilon_hex": "0x3fffffde",
+      "overflow_mask_rejects": true
+    }
+  ]
+}

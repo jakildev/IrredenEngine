@@ -1,0 +1,42 @@
+[
+  {
+    "image": "0.png",
+    "rgb_equal": true,
+    "index_equal": true
+  },
+  {
+    "image": "1.png",
+    "rgb_equal": true,
+    "index_equal": true
+  },
+  {
+    "image": "2.png",
+    "rgb_equal": true,
+    "index_equal": true
+  },
+  {
+    "image": "3.png",
+    "rgb_equal": true,
+    "index_equal": true
+  },
+  {
+    "image": "4.png",
+    "rgb_equal": true,
+    "index_equal": true
+  },
+  {
+    "image": "5.png",
+    "rgb_equal": true,
+    "index_equal": true
+  },
+  {
+    "image": "6.png",
+    "rgb_equal": true,
+    "index_equal": true
+  },
+  {
+    "image": "7.png",
+    "rgb_equal": true,
+    "index_equal": true
+  }
+]

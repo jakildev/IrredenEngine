@@ -1,0 +1,266 @@
+[
+  [
+    "SCATTER-INPUT yaw=0.379999876 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.380781174 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.381562471 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.382343769 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.383125067 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.383906126 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.384687424 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.385468721 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.386250019 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.387031317 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.387812376 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.388593674 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.389374971 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.390156269 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.390937567 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.391718626 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.392499924 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.393281221 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.394062519 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.394843817 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.395624876 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.396406174 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.397187471 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.397968769 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.398750067 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.399531126 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.400312424 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.401093721 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.401875019 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.402656317 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.403437376 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.404218674 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ],
+  [
+    "SCATTER-INPUT yaw=0.404999971 canvas=1284,1364 main=642,722 fb=1284,722 base=641,681 camera=0,0",
+    "SCATTER-MATRIX column=0 values=15.999999,0,0,0",
+    "SCATTER-MATRIX column=1 values=0,15.1135731,0,0",
+    "SCATTER-MATRIX column=2 values=0,0,-0.00990098994,0",
+    "SCATTER-MATRIX column=3 values=-5.96046448e-08,0,0.00990098994,1",
+    "SCATTER-FACE ij=635,701 encoded=148001"
+  ]
+]

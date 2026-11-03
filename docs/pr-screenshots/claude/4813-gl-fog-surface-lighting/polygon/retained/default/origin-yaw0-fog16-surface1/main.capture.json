@@ -1,0 +1,58 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "IRCanvasStress",
+    "--config-preset",
+    "C:/msys64/tmp/p4813/poly/default/origin-yaw0-fog16-surface1/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-grid",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--zoom",
+    "4",
+    "--subdivisions",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--probe-overlapping-source",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--yaw",
+    "0",
+    "--fog-reveal",
+    "16"
+  ],
+  "env": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "lock_failed_retries": 0,
+  "routes": [
+    "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "probes": [
+    "[ClientLog] [info] LIGHTING-PROBE sun=(0,0,-1) ambient=0.3 shadows=true ao=false"
+  ],
+  "gl_error_lines": [],
+  "frames": [
+    "screenshot_000001.png"
+  ],
+  "sha256": [
+    "e9e0113500d776e49c2ea0399ea8d5517610dfc24e280e064e836eb1ce533abd"
+  ]
+}

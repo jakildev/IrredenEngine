@@ -1,0 +1,16 @@
+{
+  "head": "e10f9fbc020b42c4fee68c4a46220aba692613a0",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "120",
+    "--only",
+    "compare"
+  ],
+  "clean": true,
+  "count": 15,
+  "binary_sha256": "95adbc973009cf393a65ee224cc2644307300e2ae0e151bc040f8ea25cd5e8dc"
+}

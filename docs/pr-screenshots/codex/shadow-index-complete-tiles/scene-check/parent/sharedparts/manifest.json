@@ -1,0 +1,18 @@
+{
+  "command": [
+    "fleet-run",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "30",
+    "--only",
+    "sharedparts",
+    "--no-auto-rotate"
+  ],
+  "revision": "90503255f84bf5046b04fc9a31788bc17c2447ed",
+  "binary_sha256": "58cb6c197edfa92f666e6c4825a846a3e1133cadc3f8fa53feb069a27fdead2e",
+  "images": {
+    "sharedparts_spin_a": "0ccd46b1dbe0039c17f185c1c7a8b91ddbfe9344c607a8bd21dbd7e9c4e369b4",
+    "sharedparts_spin_b": "88073428f7e5b54e5796084c4062868361b889b539f6d2cd1231f7dd20537f33",
+    "sharedparts_yaw": "09591dd96c94187b8bb794e32e7ab3f7f835970a6c338f582fb5e1432054aad0"
+  }
+}

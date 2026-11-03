@@ -1,0 +1,213 @@
+{
+  "before": {
+    "overflow": {
+      "command": [
+        "fleet-run",
+        "IRFogDemo",
+        "--auto-screenshot",
+        "10",
+        "--lighting-density-check",
+        "--peraxis-overflow"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "b00ecf905c066a38ea7667bb38d70c7270e0b4c916f6eae226e0d0d529448424",
+      "captures": {
+        "rotated": {
+          "sha256": "6aa3a9d59169140216477d0cfaf6437f47eba13fa4ada054ae0b2acfbd4fcf59"
+        },
+        "cardinal": {
+          "sha256": "d8decfe5df2d09adb2f5c1a28385e2646d08497ae99a19a210c0fb033b860c22"
+        },
+        "resumed": {
+          "sha256": "5f62a92387482c551c81ec10a3521488e09b0e258e90cd51fdb4ad4bd4afe9f2"
+        }
+      },
+      "probes": [
+        "[2026-10-06 09:29:58.469] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_rotated yaw=0.3499999 zoom=(4,4) effectiveIso=(-1.343016,0.23745704) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=0 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=39 PASS",
+        "[2026-10-06 09:29:58.691] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_cardinal yaw=0 zoom=(4,4) effectiveIso=(0.025707364,0.004545212) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=1 effective=16 capped=8 live=0 parked=1 overflowAvailable=0 overflow=0 PASS",
+        "[2026-10-06 09:29:58.917] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_resumed yaw=0.3499999 zoom=(4,4) effectiveIso=(-1.3469226,0.2381475) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=2 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=39 PASS"
+      ]
+    },
+    "los": {
+      "command": [
+        "fleet-run",
+        "IRFogDemo",
+        "--auto-screenshot",
+        "10",
+        "--lighting-density-check",
+        "--occlusion=high-ground"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "b00ecf905c066a38ea7667bb38d70c7270e0b4c916f6eae226e0d0d529448424",
+      "captures": {
+        "rotated": {
+          "sha256": "37447299e098c25613208f9d6d9451d907ccfa14df8e9d5088463dbbdd140d8c"
+        },
+        "cardinal": {
+          "sha256": "167710d41d2824eca4db3d7c1147188544329f26ca89377d26f89e6af56c65df"
+        },
+        "resumed": {
+          "sha256": "5791d49ef01888e4e1c354f7d50b75b9aee568eb3efaf589bfd1bfa91f21f3b4"
+        }
+      },
+      "probes": [
+        "[2026-10-06 09:30:29.585] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_rotated yaw=0.3499999 zoom=(4,4) effectiveIso=(-0.60007095,0.1060977) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=0 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=32 PASS",
+        "[2026-10-06 09:30:29.802] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_cardinal yaw=0 zoom=(4,4) effectiveIso=(0.05282867,0.009340644) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=1 effective=16 capped=8 live=0 parked=1 overflowAvailable=0 overflow=0 PASS",
+        "[2026-10-06 09:30:30.022] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_resumed yaw=0.3499999 zoom=(4,4) effectiveIso=(-0.62081456,0.10976541) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=2 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=32 PASS"
+      ]
+    },
+    "mixed": {
+      "command": [
+        "fleet-run",
+        "IRCanvasStress",
+        "--auto-screenshot",
+        "10",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "8",
+        "--sweep-yaw",
+        "-0.35",
+        "0.35",
+        "3"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "49f99226b01447f80b3d1834437d53f5eff7973d2248e04818e419ba2a19d335",
+      "captures": {
+        "negative": {
+          "sha256": "8a264c2c099b66f640ec42f66e039c055e08a4f793a09dde5e232727fd417cc2"
+        },
+        "cardinal": {
+          "sha256": "85508a940af961a0c80ceba38904c3e7d07769a31c216d8a9b325b4e1b3c48df"
+        },
+        "positive": {
+          "sha256": "52baf4405aae4acf3833b5d69725daab39d2c82ffe42b7e176eaf7223bc9735c"
+        }
+      },
+      "probes": [
+        "[2026-10-06 09:31:19.597] [ClientLog] [info] CaptureCamera: label=sweep_yaw_0 yaw=-0.3499999 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)",
+        "[2026-10-06 09:31:21.115] [ClientLog] [info] CaptureCamera: label=sweep_yaw_1 yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)",
+        "[2026-10-06 09:31:22.648] [ClientLog] [info] CaptureCamera: label=sweep_yaw_2 yaw=0.3499999 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)"
+      ]
+    }
+  },
+  "after": {
+    "overflow": {
+      "command": [
+        "fleet-run",
+        "IRFogDemo",
+        "--auto-screenshot",
+        "10",
+        "--lighting-density-check",
+        "--peraxis-overflow"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "621537f6bf10c24da36f9cbb5aa9e2efc248cfa726fdf8048e87c10ce8e52e14",
+      "captures": {
+        "rotated": {
+          "sha256": "6aa3a9d59169140216477d0cfaf6437f47eba13fa4ada054ae0b2acfbd4fcf59",
+          "byte_identical": true
+        },
+        "cardinal": {
+          "sha256": "d8decfe5df2d09adb2f5c1a28385e2646d08497ae99a19a210c0fb033b860c22",
+          "byte_identical": true
+        },
+        "resumed": {
+          "sha256": "5f62a92387482c551c81ec10a3521488e09b0e258e90cd51fdb4ad4bd4afe9f2",
+          "byte_identical": true
+        }
+      },
+      "probes": [
+        "[2026-10-06 09:32:39.446] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_rotated yaw=0.3499999 zoom=(4,4) effectiveIso=(-1.343016,0.23745704) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=0 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=39 PASS",
+        "[2026-10-06 09:32:39.654] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_cardinal yaw=0 zoom=(4,4) effectiveIso=(0.025707364,0.004545212) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=1 effective=16 capped=8 live=0 parked=1 overflowAvailable=0 overflow=0 PASS",
+        "[2026-10-06 09:32:39.874] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_resumed yaw=0.3499999 zoom=(4,4) effectiveIso=(-1.3469226,0.2381475) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=2 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=39 PASS"
+      ]
+    },
+    "los": {
+      "command": [
+        "fleet-run",
+        "IRFogDemo",
+        "--auto-screenshot",
+        "10",
+        "--lighting-density-check",
+        "--occlusion=high-ground"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "621537f6bf10c24da36f9cbb5aa9e2efc248cfa726fdf8048e87c10ce8e52e14",
+      "captures": {
+        "rotated": {
+          "sha256": "37447299e098c25613208f9d6d9451d907ccfa14df8e9d5088463dbbdd140d8c",
+          "byte_identical": true
+        },
+        "cardinal": {
+          "sha256": "167710d41d2824eca4db3d7c1147188544329f26ca89377d26f89e6af56c65df",
+          "byte_identical": true
+        },
+        "resumed": {
+          "sha256": "5791d49ef01888e4e1c354f7d50b75b9aee568eb3efaf589bfd1bfa91f21f3b4",
+          "byte_identical": true
+        }
+      },
+      "probes": [
+        "[2026-10-06 09:33:05.957] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_rotated yaw=0.3499999 zoom=(4,4) effectiveIso=(-0.60007095,0.1060977) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=0 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=32 PASS",
+        "[2026-10-06 09:33:06.169] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_cardinal yaw=0 zoom=(4,4) effectiveIso=(0.05282867,0.009340644) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=1 effective=16 capped=8 live=0 parked=1 overflowAvailable=0 overflow=0 PASS",
+        "[2026-10-06 09:33:06.387] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_resumed yaw=0.3499999 zoom=(4,4) effectiveIso=(-0.62081456,0.10976541) subdivisions=16 gameResolution=(1280,720)",
+        "LIGHTING-DENSITY-CHECK shot=2 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=32 PASS"
+      ]
+    },
+    "mixed": {
+      "command": [
+        "fleet-run",
+        "IRCanvasStress",
+        "--auto-screenshot",
+        "10",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "4",
+        "--subdivisions",
+        "8",
+        "--sweep-yaw",
+        "-0.35",
+        "0.35",
+        "3"
+      ],
+      "head": "774d19ceede5544aaa727f6f4ae585e88d09489e",
+      "binary_sha256": "ecf41fdd958dc619eb8c0acde47551182c0290b2d1d7053889e1d63d36b6de8f",
+      "captures": {
+        "negative": {
+          "sha256": "8a264c2c099b66f640ec42f66e039c055e08a4f793a09dde5e232727fd417cc2",
+          "byte_identical": true
+        },
+        "cardinal": {
+          "sha256": "85508a940af961a0c80ceba38904c3e7d07769a31c216d8a9b325b4e1b3c48df",
+          "byte_identical": true
+        },
+        "positive": {
+          "sha256": "52baf4405aae4acf3833b5d69725daab39d2c82ffe42b7e176eaf7223bc9735c",
+          "byte_identical": true
+        }
+      },
+      "probes": [
+        "[2026-10-06 09:33:42.353] [ClientLog] [info] CaptureCamera: label=sweep_yaw_0 yaw=-0.3499999 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)",
+        "[2026-10-06 09:33:43.958] [ClientLog] [info] CaptureCamera: label=sweep_yaw_1 yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)",
+        "[2026-10-06 09:33:45.567] [ClientLog] [info] CaptureCamera: label=sweep_yaw_2 yaw=0.3499999 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)"
+      ]
+    }
+  }
+}

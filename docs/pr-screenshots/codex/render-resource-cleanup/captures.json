@@ -1,0 +1,96 @@
+[
+  {
+    "file": "on-cardinal.png",
+    "sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "10",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--zoom",
+      "1",
+      "--subdivisions",
+      "1",
+      "--sweep-yaw",
+      "0",
+      "0.7853981633974483",
+      "2",
+      "--auto-profile"
+    ],
+    "binary_sha256": "5cfdf4ff79451e1891f1bc223d658d889106e4eb169d3527028c720fa2eb9c44",
+    "head": "6a7f8d76865764a4ec1cdfe3ee57ec4292b836f0"
+  },
+  {
+    "file": "on-rotated.png",
+    "sha256": "697db5d9ad9bb2b3c1ed69c52bbd218301306d6107af8a284cb0230cf77b2af9",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "10",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--zoom",
+      "1",
+      "--subdivisions",
+      "1",
+      "--sweep-yaw",
+      "0",
+      "0.7853981633974483",
+      "2",
+      "--auto-profile"
+    ],
+    "binary_sha256": "5cfdf4ff79451e1891f1bc223d658d889106e4eb169d3527028c720fa2eb9c44",
+    "head": "6a7f8d76865764a4ec1cdfe3ee57ec4292b836f0"
+  },
+  {
+    "file": "off-cardinal.png",
+    "sha256": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "10",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--zoom",
+      "1",
+      "--subdivisions",
+      "1",
+      "--sweep-yaw",
+      "0",
+      "0.7853981633974483",
+      "2"
+    ],
+    "binary_sha256": "5cfdf4ff79451e1891f1bc223d658d889106e4eb169d3527028c720fa2eb9c44",
+    "head": "6a7f8d76865764a4ec1cdfe3ee57ec4292b836f0"
+  },
+  {
+    "file": "off-rotated.png",
+    "sha256": "697db5d9ad9bb2b3c1ed69c52bbd218301306d6107af8a284cb0230cf77b2af9",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "10",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--zoom",
+      "1",
+      "--subdivisions",
+      "1",
+      "--sweep-yaw",
+      "0",
+      "0.7853981633974483",
+      "2"
+    ],
+    "binary_sha256": "5cfdf4ff79451e1891f1bc223d658d889106e4eb169d3527028c720fa2eb9c44",
+    "head": "6a7f8d76865764a4ec1cdfe3ee57ec4292b836f0"
+  }
+]

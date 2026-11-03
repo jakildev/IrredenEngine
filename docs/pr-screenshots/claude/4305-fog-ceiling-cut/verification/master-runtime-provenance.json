@@ -1,0 +1,7 @@
+{
+  "source_head": "8a1bc317a11218c27f46cd3c55080635fdb95397",
+  "build_job": "20261014T000738Z-build-e6c255",
+  "binary_sha256": "67afd8ba9715adde0b11a806b7637ac98c2ce46826142a7989d0c2b489a51b9b",
+  "shader_tree_sha256": "3840cfbde023b7f3937086ea22694dd54ef32f37ae4878a3f3cc9924a7aeadef",
+  "shader_hash_method": "sha256 of sorted relative UTF-8 path, NUL, file bytes, NUL for every shader file"
+}

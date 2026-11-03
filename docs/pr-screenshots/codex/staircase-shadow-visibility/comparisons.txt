@@ -1,0 +1,12 @@
+471 vs 475: changed_pixels=1936 bbox=(1276, 750, 1396, 798)
+472 vs 474: changed_pixels=0 bbox=None
+473 vs 475: changed_pixels=0 bbox=None
+485 vs 476: changed_pixels=0 bbox=None
+486 vs 477: changed_pixels=2368 bbox=(1080, 694, 1544, 912)
+487 vs 478: changed_pixels=3160 bbox=(1020, 750, 1368, 912)
+488 vs 479: changed_pixels=0 bbox=None
+489 vs 480: changed_pixels=72 bbox=(1440, 638, 1496, 722)
+490 vs 481: changed_pixels=0 bbox=None
+491 vs 482: changed_pixels=0 bbox=None
+492 vs 483: changed_pixels=0 bbox=None
+493 vs 484: changed_pixels=168 bbox=(1252, 550, 1288, 610)

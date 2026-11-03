@@ -1,0 +1,21 @@
+{
+  "head": "d29d1ccef2b791d650c6818013c89ea0c3a5007c",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--auto-screenshot",
+    "10",
+    "--mode",
+    "voxel_set",
+    "--no-overlay",
+    "--wave-amplitude",
+    "0",
+    "--subdivision-mode",
+    "none"
+  ],
+  "clean": true,
+  "count": 7,
+  "binary_sha256": "29bddfb42e166856d59400731efd3929946755d5465f20286cab4fb4555facfb"
+}

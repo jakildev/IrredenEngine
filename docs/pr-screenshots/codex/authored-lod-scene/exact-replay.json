@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "${WORKTREE}/scripts/render-compare.py",
+    "/private/tmp/authored-lod-scene-origin/positive/lod_scene_restored.png",
+    "/private/tmp/authored-lod-scene-origin/positive/lod_scene_coarse.png",
+    "--per-pixel-tol",
+    "0",
+    "--threshold-match-pct",
+    "100",
+    "--threshold-max-delta",
+    "0",
+    "--json",
+    "--diff-out",
+    "/private/tmp/authored-lod-scene-origin/exact-replay-diff.png"
+  ],
+  "exit_code": 0,
+  "metric": {
+    "pass": true,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": "inf"
+  }
+}

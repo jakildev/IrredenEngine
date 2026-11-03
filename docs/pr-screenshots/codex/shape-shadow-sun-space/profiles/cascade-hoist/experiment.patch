@@ -1,0 +1,90 @@
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 7b3e55357..a32403b2b 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -238,19 +238,24 @@ float worldSunShadowFactorImpl(vec3 pos3D, vec3 normal, float isoDepth, bool sur
+             blend = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
+         }
+     }
++    vec2 origin = sunBufferOriginUV;
++    vec2 texelSize = sunBufferTexelSize;
++    int bufferOffset = firstCascade * kCascadeTexelCount;
++    if (cascadeCount > 1) {
++        origin = firstCascade == 0 ? cascadeOriginUV_0 : cascadeOriginUV_1;
++        texelSize = firstCascade == 0 ? cascadeTexelSize_0 : cascadeTexelSize_1;
++    }
+     // Keep cascade selection at one exact-query call site.
+     float shadowAccum = 0.0;
+     for (int sampleIndex = 0; sampleIndex < cascadeSamples; ++sampleIndex) {
+-        const int cascade = firstCascade + sampleIndex;
+-        vec2 origin = sunBufferOriginUV;
+-        vec2 texelSize = sunBufferTexelSize;
+-        if (cascadeCount > 1) {
+-            origin = cascade == 0 ? cascadeOriginUV_0 : cascadeOriginUV_1;
+-            texelSize = cascade == 0 ? cascadeTexelSize_0 : cascadeTexelSize_1;
++        if (sampleIndex != 0) {
++            origin = cascadeOriginUV_1;
++            texelSize = cascadeTexelSize_1;
++            bufferOffset = kCascadeTexelCount;
+         }
+         const float shadow = sampleCascadeShadow(
+             sunUV, sunZ, normal, sunDir, uHat, vHat,
+-            origin, texelSize, cascade * kCascadeTexelCount, sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
++            origin, texelSize, bufferOffset, sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
+             pcfOffset
+         );
+         shadowAccum = sampleIndex == 0 ? shadow : mix(shadowAccum, shadow, blend);
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index b5ccd61b3..4d68624f6 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -234,19 +234,24 @@ inline float worldSunShadowFactorImpl(
+             blend = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
+         }
+     }
++    float2 origin = sun.sunBufferOriginUV;
++    float2 texelSize = sun.sunBufferTexelSize;
++    int bufferOffset = firstCascade * kCascadeTexelCount;
++    if (sun.cascadeCount > 1) {
++        origin = firstCascade == 0 ? sun.cascadeOriginUV_0 : sun.cascadeOriginUV_1;
++        texelSize = firstCascade == 0 ? sun.cascadeTexelSize_0 : sun.cascadeTexelSize_1;
++    }
+     // Keep cascade selection at one exact-query call site.
+     float shadowAccum = 0.0;
+     for (int sampleIndex = 0; sampleIndex < cascadeSamples; ++sampleIndex) {
+-        const int cascade = firstCascade + sampleIndex;
+-        float2 origin = sun.sunBufferOriginUV;
+-        float2 texelSize = sun.sunBufferTexelSize;
+-        if (sun.cascadeCount > 1) {
+-            origin = cascade == 0 ? sun.cascadeOriginUV_0 : sun.cascadeOriginUV_1;
+-            texelSize = cascade == 0 ? sun.cascadeTexelSize_0 : sun.cascadeTexelSize_1;
++        if (sampleIndex != 0) {
++            origin = sun.cascadeOriginUV_1;
++            texelSize = sun.cascadeTexelSize_1;
++            bufferOffset = kCascadeTexelCount;
+         }
+         const float shadow = sampleCascadeShadow(
+             sunUV, sunZ, normal, sunDir, uHat, vHat,
+-            origin, texelSize, cascade * kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
++            origin, texelSize, bufferOffset, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
+             pcfOffset
+         );
+         shadowAccum = sampleIndex == 0 ? shadow : mix(shadowAccum, shadow, blend);
+diff --git a/scripts/tests/test_render_sun_cascade_routing.py b/scripts/tests/test_render_sun_cascade_routing.py
+index 675ae2c14..aca873da8 100644
+--- a/scripts/tests/test_render_sun_cascade_routing.py
++++ b/scripts/tests/test_render_sun_cascade_routing.py
+@@ -123,7 +123,12 @@ class SunCascadeRoutingTest(unittest.TestCase):
+                     r"return 1\.0f? - shadowAccum;", "return NAN;", body),
+                 "lost_covering_cascade": body.replace("!nearInterior || ", ""),
+                 "lost_blend_sample": body.replace("cascadeSamples = 2", "cascadeSamples = 1"),
+-                "wrong_far_offset": body.replace("cascade * kCascadeTexelCount", "0"),
++                "wrong_initial_far_offset": body.replace(
++                    "int bufferOffset = firstCascade * kCascadeTexelCount;",
++                    "int bufferOffset = 0;"),
++                "lost_blend_hop": body.replace("if (sampleIndex != 0)", "if (false)"),
++                "wrong_blend_far_offset": body.replace(
++                    "bufferOffset = kCascadeTexelCount;", "bufferOffset = 0;"),
+                 "reversed_blend": body.replace("mix(shadowAccum, shadow, blend)",
+                                                "mix(shadow, shadowAccum, blend)"),
+                 "near_boundary_single": body.replace("distToSplit < -", "distToSplit <= -"),

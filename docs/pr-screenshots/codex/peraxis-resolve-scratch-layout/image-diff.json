@@ -1,0 +1,137 @@
+[
+  {
+    "case": "default",
+    "shot": "shot-0.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-1.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-10.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-11.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-2.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-3.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-4.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-5.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-6.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-7.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-8.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "default",
+    "shot": "shot-9.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-0.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-1.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-10.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-11.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-12.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-13.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-14.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-2.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-3.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-4.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-5.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-6.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-7.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-8.png",
+    "changed_pixels": 0
+  },
+  {
+    "case": "compare",
+    "shot": "shot-9.png",
+    "changed_pixels": 0
+  }
+]

@@ -1,0 +1,93 @@
+{
+  "head": "4e6216bb43636881577b3797371c7f829e42bbb5",
+  "changes": "",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "a0d6f486956be168a909d47a609e583603936f158f234afdd38619a66c241950",
+  "shader_sha256": "154748434436bf4f6bca5e9f9c1010f985aa5ae4e1c364dc0ecedff954aa0d4b",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion,orbit,floor",
+    "--probe-grid",
+    "--probe-staircase",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--zoom",
+    "1",
+    "--subdivisions",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "5.10508806",
+    "5"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-28T03:58:30Z",
+      "finished_utc": "2026-09-28T03:58:36Z",
+      "host_battery_percent": 100,
+      "host_load_1m": 2.81,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 1.0,
+      "zoom_last": 1.0,
+      "zoom_min": 1.0,
+      "zoom_max": 1.0,
+      "zoom_range_present": true,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 1552,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "captures": [
+    {
+      "file": "before-0.png",
+      "native_file": "screenshot_003014.png",
+      "sha256": "4b2a279c41ec311e8623977a688020acdc5b2f7ea78f1cd5e89c145fb8ae8f59"
+    },
+    {
+      "file": "before-1.png",
+      "native_file": "screenshot_003015.png",
+      "sha256": "c1a1f408502987323d6d91965936d02e9d09a0c09b17d19d0b05dda14d5e8c29"
+    },
+    {
+      "file": "before-2.png",
+      "native_file": "screenshot_003016.png",
+      "sha256": "d566c6dbccf34175a539bd16d12a6f0858d1cdfd57b74ae6bd238af68de3d7d1"
+    },
+    {
+      "file": "before-3.png",
+      "native_file": "screenshot_003017.png",
+      "sha256": "d2f684df844bdeb448a2d4b6f2c1c2aacc1191f17a84f576a98a600ff370497b"
+    },
+    {
+      "file": "before-4.png",
+      "native_file": "screenshot_003018.png",
+      "sha256": "b675815942df4cf7b0119843764ebd8553a51d9b4c4508c98509606659f2dd10"
+    }
+  ]
+}

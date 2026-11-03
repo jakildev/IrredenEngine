@@ -1,0 +1,17 @@
+{
+  "demo": "analytic_oracle",
+  "target": "IRAnalyticOracle",
+  "name": "default",
+  "args": [],
+  "warmup": 20,
+  "offset": 0,
+  "shots": [
+    "oracle_box_zoom"
+  ],
+  "command": "fleet-run --timeout 60 IRAnalyticOracle --auto-screenshot 20 ",
+  "exit": 0,
+  "clean": true,
+  "hashes": {
+    "oracle_box_zoom.png": "c439c54d858d454dc33178fb22b48da09e9a8eaeb809ebcab88f65f83f51b540"
+  }
+}

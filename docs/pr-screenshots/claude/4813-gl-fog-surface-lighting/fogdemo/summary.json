@@ -1,0 +1,543 @@
+{
+ "default": {
+  "command_on": [
+   "fleet-run",
+   "--timeout",
+   "900",
+   "IRFogDemo",
+   "--auto-screenshot",
+   "30"
+  ],
+  "routes_off": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "result_off": "CLEAN",
+  "result_on": "CLEAN",
+  "gl_error_lines": [],
+  "shots_off_on_changed_px_le2lsb_maxdelta": [
+   [
+    "screenshot_000001.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000002.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000003.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ]
+  ],
+  "sha256_on": [
+   "6c419c0ed56b4d2ed05640c7abaca6c244a6a61714a7362aa0bd7c00aea1ba7a",
+   "34b1cbab64e614780779e9ece046b7ddcaeb13155d1c9fdc367d672fda12a115",
+   "d3c0894e42b4fe2f2795bcf9f90ac25ceb06d5715c0cc433250ebe556fc4a6c6"
+  ],
+  "metal_routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "metal_shots": [
+   [
+    "screenshot_000007.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000008.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000009.png",
+    0,
+    0
+   ]
+  ],
+  "routes_match_metal": true,
+  "shot_count_match": true
+ },
+ "body": {
+  "command_on": [
+   "fleet-run",
+   "--timeout",
+   "900",
+   "IRFogDemo",
+   "--entity-reveal-soft-edge",
+   "--auto-screenshot",
+   "30"
+  ],
+  "routes_off": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "result_off": "CLEAN",
+  "result_on": "CLEAN",
+  "gl_error_lines": [],
+  "shots_off_on_changed_px_le2lsb_maxdelta": [
+   [
+    "screenshot_000001.png",
+    [
+     1280,
+     720
+    ],
+    1828,
+    1530,
+    72
+   ]
+  ],
+  "sha256_on": [
+   "260fa123f7835e8ab3a85faa3af699a7cec077ec106b5b375ec222f9b5d495a4"
+  ],
+  "metal_routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "metal_shots": [
+   [
+    "screenshot_000011.png",
+    10256,
+    72
+   ]
+  ],
+  "routes_match_metal": true,
+  "shot_count_match": true
+ },
+ "zcost": {
+  "command_on": [
+   "fleet-run",
+   "--timeout",
+   "900",
+   "IRFogDemo",
+   "--edge-zcost",
+   "--auto-screenshot",
+   "30"
+  ],
+  "routes_off": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "result_off": "CLEAN",
+  "result_on": "CLEAN",
+  "gl_error_lines": [],
+  "shots_off_on_changed_px_le2lsb_maxdelta": [
+   [
+    "screenshot_000001.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000002.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ]
+  ],
+  "sha256_on": [
+   "12497518d16f4359ded6fd247aa2abaf0b06d6cc6f829df4ef8554af1d29d673",
+   "d411a133ba08534baaab9fd3c5c277778910ef927417d0d0b5f922e4dfea766d"
+  ],
+  "metal_routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "metal_shots": [
+   [
+    "screenshot_000014.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000015.png",
+    0,
+    0
+   ]
+  ],
+  "routes_match_metal": true,
+  "shot_count_match": true
+ },
+ "moving": {
+  "command_on": [
+   "fleet-run",
+   "--timeout",
+   "900",
+   "IRFogDemo",
+   "--moving-observer",
+   "--auto-screenshot",
+   "30"
+  ],
+  "routes_off": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "result_off": "CLEAN",
+  "result_on": "CLEAN",
+  "gl_error_lines": [],
+  "shots_off_on_changed_px_le2lsb_maxdelta": [
+   [
+    "screenshot_000001.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000002.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000003.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ]
+  ],
+  "sha256_on": [
+   "74750706a33f605c9862f455dd86b07026f32031be40850b344e5fa6e4b13525",
+   "36512c64f459089a4e816b5d17168cebe6042872eadd271640fff76d4d432880",
+   "e757f9af764e17419eb7cfe526ccde78730cbd13fd34a1c592eec5dd0634bc54"
+  ],
+  "metal_routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1"
+  ],
+  "metal_shots": [
+   [
+    "screenshot_000037.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000038.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000039.png",
+    0,
+    0
+   ]
+  ],
+  "routes_match_metal": true,
+  "shot_count_match": true
+ },
+ "ceiling": {
+  "command_on": [
+   "fleet-run",
+   "--timeout",
+   "900",
+   "IRFogDemo",
+   "--ceiling-treatment",
+   "--reveal-treatment",
+   "--auto-screenshot",
+   "30"
+  ],
+  "routes_off": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1",
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "result_off": "CLEAN",
+  "result_on": "CLEAN",
+  "gl_error_lines": [],
+  "shots_off_on_changed_px_le2lsb_maxdelta": [
+   [
+    "screenshot_000001.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000002.png",
+    [
+     1280,
+     720
+    ],
+    255,
+    255,
+    1
+   ]
+  ],
+  "sha256_on": [
+   "dcceee5b3320797756b68cdaaa9a0259b3bf65e91bd94fd33060407e0fe89718",
+   "e6c9841782cd823c0471faa6c463cbced9e7f2a632ef3551c2675ea2526bb594"
+  ],
+  "metal_routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1",
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "metal_shots": [
+   [
+    "screenshot_000018.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000019.png",
+    0,
+    0
+   ]
+  ],
+  "routes_match_metal": true,
+  "shot_count_match": true
+ },
+ "overflow": {
+  "command_on": [
+   "fleet-run",
+   "--timeout",
+   "900",
+   "IRFogDemo",
+   "--peraxis-overflow",
+   "--auto-screenshot",
+   "30"
+  ],
+  "routes_off": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1",
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "result_off": "CLEAN",
+  "result_on": "CLEAN",
+  "gl_error_lines": [],
+  "shots_off_on_changed_px_le2lsb_maxdelta": [
+   [
+    "screenshot_000001.png",
+    [
+     1280,
+     720
+    ],
+    1250,
+    0,
+    72
+   ]
+  ],
+  "sha256_on": [
+   "bd94207cb0a0dee9501440150c97a6ecfe5db8b61f1b27f0f44bf54f81a727d7"
+  ],
+  "metal_routes_on": [
+   "cardinal=1 perAxis=0 fog=compose fogComposed=1",
+   "cardinal=0 perAxis=1 fog=compose fogComposed=1"
+  ],
+  "metal_shots": [
+   [
+    "screenshot_000031.png",
+    4992,
+    72
+   ]
+  ],
+  "routes_match_metal": true,
+  "shot_count_match": true
+ },
+ "los": {
+  "command_on": [
+   "fleet-run",
+   "--timeout",
+   "900",
+   "IRFogDemo",
+   "--occlusion=high-ground",
+   "--los-softness=1",
+   "--auto-screenshot",
+   "30"
+  ],
+  "routes_off": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "routes_on": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "result_off": "CLEAN",
+  "result_on": "CLEAN",
+  "gl_error_lines": [],
+  "shots_off_on_changed_px_le2lsb_maxdelta": [
+   [
+    "screenshot_000001.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ]
+  ],
+  "sha256_on": [
+   "10d8090af2ed066ce9fc694c7b557c20f5c0dc38eadf1f64e54f163b163cbb08"
+  ],
+  "metal_routes_on": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "metal_shots": [
+   [
+    "screenshot_000033.png",
+    0,
+    0
+   ]
+  ],
+  "routes_match_metal": true,
+  "shot_count_match": true
+ },
+ "memory": {
+  "command_on": [
+   "fleet-run",
+   "--timeout",
+   "900",
+   "IRFogDemo",
+   "--explored-decay",
+   "--auto-screenshot",
+   "30"
+  ],
+  "routes_off": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "routes_on": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "result_off": "CLEAN",
+  "result_on": "CLEAN",
+  "gl_error_lines": [],
+  "shots_off_on_changed_px_le2lsb_maxdelta": [
+   [
+    "screenshot_000001.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000002.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000003.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000004.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ],
+   [
+    "screenshot_000005.png",
+    [
+     1280,
+     720
+    ],
+    0,
+    0,
+    0
+   ]
+  ],
+  "sha256_on": [
+   "7b2df5ab358316897896ca06410885cd371c589fef0cb714e642809e7dd8c210",
+   "5afad3b171d614f38854d38cf0668c8dae4133d90bfdd5bc2f37e752164703d5",
+   "c849341f1e34b9a1b8cf265b3f76578afb9d0a9e508573de0f1f2cd177cfeed0",
+   "5afad3b171d614f38854d38cf0668c8dae4133d90bfdd5bc2f37e752164703d5",
+   "8d3daaf2c5ae5c73a30d7854984e2b68cda1679183e94cbf1ff0e251dda48874"
+  ],
+  "metal_routes_on": [
+   "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "metal_shots": [
+   [
+    "screenshot_000025.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000026.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000027.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000028.png",
+    0,
+    0
+   ],
+   [
+    "screenshot_000029.png",
+    0,
+    0
+   ]
+  ],
+  "routes_match_metal": true,
+  "shot_count_match": true
+ }
+}

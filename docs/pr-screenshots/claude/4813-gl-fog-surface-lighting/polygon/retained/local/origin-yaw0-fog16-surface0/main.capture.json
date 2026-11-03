@@ -1,0 +1,63 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "240",
+    "IRCanvasStress",
+    "--config-preset",
+    "C:/msys64/tmp/p4813/poly/local/origin-yaw0-fog16-surface0/config.lua",
+    "--only",
+    "shadowbox,floor",
+    "--probe-grid",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--zoom",
+    "4",
+    "--subdivisions",
+    "1",
+    "--no-ao",
+    "--auto-screenshot",
+    "10",
+    "--sweep-frames",
+    "1",
+    "10",
+    "--probe-overlapping-source",
+    "--sun-direction",
+    "0",
+    "0",
+    "-1",
+    "--yaw",
+    "0",
+    "--fog-reveal",
+    "16",
+    "--probe-local-light",
+    "8",
+    "0",
+    "-20"
+  ],
+  "env": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "0"
+  },
+  "returncode": 0,
+  "result": "CLEAN",
+  "lock_failed_retries": 0,
+  "routes": [
+    "cardinal=0 perAxis=0 fog=fallback fogComposed=0"
+  ],
+  "probes": [
+    "[ClientLog] [info] LIGHTING-PROBE sun=(0,0,-1) ambient=0.3 shadows=true ao=false",
+    "[ClientLog] [info] LOCAL-LIGHT-PROBE position=(8,0,-20) intensity=1 radius=24"
+  ],
+  "gl_error_lines": [],
+  "frames": [
+    "screenshot_000001.png"
+  ],
+  "sha256": [
+    "fac2df9b8fd577b76a5f7419e2d6617128bf5a086a3b96f64d2366f0f4f9a88f"
+  ]
+}

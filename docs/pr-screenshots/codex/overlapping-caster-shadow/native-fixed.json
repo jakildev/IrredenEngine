@@ -1,0 +1,34 @@
+{
+  "device": "Apple M4 Max",
+  "rounds": 0,
+  "measurement": false,
+  "dispatches_per_sample": 1,
+  "queries": 256,
+  "samples": [],
+  "warmup_seconds": 0,
+  "warmup_elapsed_seconds": 0,
+  "warmup_rounds": 0,
+  "compile_options": "nil (runtime default)",
+  "diagnostic_all_receivers_validated": true,
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "head": "726a8fcc01359bb3bd70d3bd445c150968d48144",
+  "command": [
+    "docs/pr-screenshots/codex/overlapping-caster-shadow/native_control.py",
+    "--output",
+    "/tmp/overlapping-caster/native-fixed-final",
+    "--validate-only",
+    "--queries",
+    "256"
+  ],
+  "changes": " M docs/design/sun-face-index-capacity.md\n M engine/render/src/shaders/ir_sun_shadow_sample.glsl\n M engine/render/src/shaders/metal/ir_sun_shadow_sample.metal\n M scripts/tests/test_render_source_face_overflow.py\n?? docs/pr-screenshots/codex/overlapping-caster-shadow/\n?? scripts/tests/test_render_shadow_layer_union.py\n",
+  "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+  "host_power_before": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t100%; charged; 0:00 remaining present: true",
+  "host_power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t100%; charged; 0:00 remaining present: true",
+  "hashes": {
+    "timed.metal": "107dff6d39ccfc90915b0c2f179ad7755fab1327d4894114bd553b8cebe6b4ac",
+    "diagnostic.metal": "83ba6a10ccd432c2a6381cdd186d49200b4f9b79cbdfe71153abe0f141733554",
+    "native.mm": "e9ef535c034926b1a9d7a241041df4e70221e86c0ab6cce07f770c2f8277ad09",
+    "native": "7242e089752f1c77450279ddefd23965fb592b17c3a12d0485737f88b7f40662"
+  },
+  "summary": []
+}

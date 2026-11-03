@@ -1,0 +1,447 @@
+[
+  {
+    "phase": "before",
+    "index": 0,
+    "yaw_radians": 0.0,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 1,
+    "yaw_radians": 0.392699,
+    "game_mismatches": 2,
+    "output_mismatches": 8,
+    "examples": [
+      {
+        "game_x": 701,
+        "game_y": 301,
+        "observed": [
+          128,
+          128,
+          0
+        ],
+        "reference": [
+          0,
+          128,
+          128
+        ]
+      },
+      {
+        "game_x": 701,
+        "game_y": 309,
+        "observed": [
+          0,
+          128,
+          128
+        ],
+        "reference": [
+          128,
+          128,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 2,
+    "yaw_radians": 0.78539824,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 3,
+    "yaw_radians": 1.178097,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 4,
+    "yaw_radians": 1.5707963,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 5,
+    "yaw_radians": 1.9634955,
+    "game_mismatches": 3,
+    "output_mismatches": 12,
+    "examples": [
+      {
+        "game_x": 670,
+        "game_y": 307,
+        "observed": [
+          255,
+          128,
+          128
+        ],
+        "reference": [
+          128,
+          128,
+          0
+        ]
+      },
+      {
+        "game_x": 670,
+        "game_y": 315,
+        "observed": [
+          128,
+          128,
+          0
+        ],
+        "reference": [
+          255,
+          128,
+          128
+        ]
+      },
+      {
+        "game_x": 670,
+        "game_y": 443,
+        "observed": [
+          0,
+          0,
+          0
+        ],
+        "reference": [
+          255,
+          128,
+          128
+        ]
+      }
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 6,
+    "yaw_radians": 2.3561947,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 7,
+    "yaw_radians": 2.748894,
+    "game_mismatches": 3,
+    "output_mismatches": 12,
+    "examples": [
+      {
+        "game_x": 609,
+        "game_y": 307,
+        "observed": [
+          255,
+          128,
+          128
+        ],
+        "reference": [
+          128,
+          128,
+          0
+        ]
+      },
+      {
+        "game_x": 609,
+        "game_y": 315,
+        "observed": [
+          128,
+          128,
+          0
+        ],
+        "reference": [
+          255,
+          128,
+          128
+        ]
+      },
+      {
+        "game_x": 609,
+        "game_y": 443,
+        "observed": [
+          0,
+          0,
+          0
+        ],
+        "reference": [
+          255,
+          128,
+          128
+        ]
+      }
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 8,
+    "yaw_radians": -3.1414928,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 9,
+    "yaw_radians": -2.748894,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 10,
+    "yaw_radians": -2.3561947,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 11,
+    "yaw_radians": -1.9634955,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 12,
+    "yaw_radians": -1.5707963,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 13,
+    "yaw_radians": -1.178097,
+    "game_mismatches": 2,
+    "output_mismatches": 8,
+    "examples": [
+      {
+        "game_x": 670,
+        "game_y": 323,
+        "observed": [
+          0,
+          128,
+          128
+        ],
+        "reference": [
+          128,
+          128,
+          0
+        ]
+      },
+      {
+        "game_x": 670,
+        "game_y": 331,
+        "observed": [
+          128,
+          128,
+          0
+        ],
+        "reference": [
+          0,
+          128,
+          128
+        ]
+      }
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 14,
+    "yaw_radians": -0.78539777,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 15,
+    "yaw_radians": -0.39269948,
+    "game_mismatches": 2,
+    "output_mismatches": 8,
+    "examples": [
+      {
+        "game_x": 609,
+        "game_y": 323,
+        "observed": [
+          0,
+          128,
+          128
+        ],
+        "reference": [
+          128,
+          128,
+          0
+        ]
+      },
+      {
+        "game_x": 609,
+        "game_y": 331,
+        "observed": [
+          128,
+          128,
+          0
+        ],
+        "reference": [
+          0,
+          128,
+          128
+        ]
+      }
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 16,
+    "yaw_radians": -2.3841858e-07,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 0,
+    "yaw_radians": 0.0,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 1,
+    "yaw_radians": 0.392699,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 2,
+    "yaw_radians": 0.78539824,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 3,
+    "yaw_radians": 1.178097,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 4,
+    "yaw_radians": 1.5707963,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 5,
+    "yaw_radians": 1.9634955,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 6,
+    "yaw_radians": 2.3561947,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 7,
+    "yaw_radians": 2.748894,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 8,
+    "yaw_radians": -3.1414928,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 9,
+    "yaw_radians": -2.748894,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 10,
+    "yaw_radians": -2.3561947,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 11,
+    "yaw_radians": -1.9634955,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 12,
+    "yaw_radians": -1.5707963,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 13,
+    "yaw_radians": -1.178097,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 14,
+    "yaw_radians": -0.78539777,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 15,
+    "yaw_radians": -0.39269948,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 16,
+    "yaw_radians": -2.3841858e-07,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  }
+]

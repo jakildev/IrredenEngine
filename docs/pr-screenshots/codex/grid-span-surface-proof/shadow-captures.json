@@ -1,0 +1,218 @@
+[
+  {
+    "revision": "9dbe0fd441104ae366d1ff3862a6b13cc3433d91",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "30",
+      "--no-auto-rotate",
+      "--no-spin",
+      "--only",
+      "revox",
+      "--focus-revox",
+      "1",
+      "--pivot-origin",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--debug-overlay",
+      "shadow",
+      "--sweep-yaw",
+      "0",
+      "0.7853981634",
+      "3"
+    ],
+    "fixture": "revox-shadow-current",
+    "clean_exit": true,
+    "images": [
+      {
+        "path": "revox-shadow-yaw0.png",
+        "yaw": 0,
+        "sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e"
+      },
+      {
+        "path": "revox-shadow-yaw22.5.png",
+        "yaw": 22.5,
+        "sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e"
+      },
+      {
+        "path": "revox-shadow-yaw45.png",
+        "yaw": 45,
+        "sha256": "00e187d5da178fbebc234b3d604e644ebbf50f326ab0ac07a07efad2a78fd251"
+      }
+    ]
+  },
+  {
+    "revision": "9dbe0fd441104ae366d1ff3862a6b13cc3433d91",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "30",
+      "--no-auto-rotate",
+      "--no-spin",
+      "--only",
+      "revox",
+      "--focus-revox",
+      "1",
+      "--probe-upright",
+      "--pivot-origin",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--debug-overlay",
+      "shadow",
+      "--sweep-yaw",
+      "0",
+      "0.7853981634",
+      "3"
+    ],
+    "fixture": "revox-shadow-upright-current",
+    "clean_exit": true,
+    "images": [
+      {
+        "path": "revox-upright-shadow-yaw0.png",
+        "yaw": 0,
+        "sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e"
+      },
+      {
+        "path": "revox-upright-shadow-yaw22.5.png",
+        "yaw": 22.5,
+        "sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e"
+      },
+      {
+        "path": "revox-upright-shadow-yaw45.png",
+        "yaw": 45,
+        "sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e"
+      }
+    ]
+  },
+  {
+    "revision": "9dbe0fd441104ae366d1ff3862a6b13cc3433d91",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "30",
+      "--no-auto-rotate",
+      "--no-spin",
+      "--only",
+      "revox",
+      "--focus-revox",
+      "1",
+      "--pivot-origin",
+      "--no-ao",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--debug-overlay",
+      "shadow",
+      "--sweep-yaw",
+      "1.5707963268",
+      "5.497787144",
+      "6"
+    ],
+    "fixture": "revox-shadow-quadrants",
+    "clean_exit": true,
+    "images": [
+      {
+        "path": "revox-shadow-yaw90.png",
+        "yaw": 90,
+        "sha256": "006e806c6733eb75f4dc95cc8dbc3e35bd0b2d979b21d15899000806629756c0"
+      },
+      {
+        "path": "revox-shadow-yaw135.png",
+        "yaw": 135,
+        "sha256": "44f97bb637bc0406f37ff1ff33ef9f8cf4d8f4234ce614082eacad2e561deae6"
+      },
+      {
+        "path": "revox-shadow-yaw180.png",
+        "yaw": 180,
+        "sha256": "97ffcdec27679e12e52acec7ba5157ebef704cbd5635faacdc26b8a7091f5d60"
+      },
+      {
+        "path": "revox-shadow-yaw225.png",
+        "yaw": 225,
+        "sha256": "c54b1c793d9e76a16343372e8960516f84c438be5e88711df59992879c20bb6e"
+      },
+      {
+        "path": "revox-shadow-yaw270.png",
+        "yaw": 270,
+        "sha256": "c61693aaad3e7ecf2fa9d73d9d6f4ca1a96f28de4de09697cc77c03f97a43656"
+      },
+      {
+        "path": "revox-shadow-yaw315.png",
+        "yaw": 315,
+        "sha256": "dd1aae49a1c72a6c7ad7ba427a1c73683d093a4b189f7aa364094417a74be4d8"
+      }
+    ]
+  },
+  {
+    "revision": "9dbe0fd441104ae366d1ff3862a6b13cc3433d91",
+    "command": [
+      "fleet-run",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "30",
+      "--no-auto-rotate",
+      "--no-spin",
+      "--only",
+      "revox",
+      "--focus-revox",
+      "1",
+      "--pivot-origin",
+      "--no-ao",
+      "--no-shadows",
+      "--subdivisions",
+      "1",
+      "--zoom",
+      "8",
+      "--debug-overlay",
+      "normals",
+      "--sweep-yaw",
+      "1.5707963268",
+      "5.497787144",
+      "6"
+    ],
+    "fixture": "revox-normal-quadrants",
+    "clean_exit": true,
+    "images": [
+      {
+        "path": "revox-normals-yaw90.png",
+        "yaw": 90,
+        "sha256": "651dcca6c6dd80cab2beabbd0aa8b320ce65bac495c3d4d6f622185085926a5e"
+      },
+      {
+        "path": "revox-normals-yaw135.png",
+        "yaw": 135,
+        "sha256": "d230820449a81536cc3dabea987e6f51bbe010aabd31d7b04b3ff9016ff385da"
+      },
+      {
+        "path": "revox-normals-yaw180.png",
+        "yaw": 180,
+        "sha256": "1568e6a334ee96daf56c7ff2b73931dba2f0cf5dc9fd253ce0c6715fac3854cc"
+      },
+      {
+        "path": "revox-normals-yaw225.png",
+        "yaw": 225,
+        "sha256": "6074538f2aeca857a39bf3c040ea0595188b20ce4f4b1b1f1add3c5744bd0679"
+      },
+      {
+        "path": "revox-normals-yaw270.png",
+        "yaw": 270,
+        "sha256": "c67cd474f25a4a1e45bdc045a91284b5e9da209fe8a7b16d84d63638d5d54f6d"
+      },
+      {
+        "path": "revox-normals-yaw315.png",
+        "yaw": 315,
+        "sha256": "8e2e836ecdbd354f43f1f0ce5986f6d0ebeccaa16cfc06b166baa7365b0ae6e9"
+      }
+    ]
+  }
+]

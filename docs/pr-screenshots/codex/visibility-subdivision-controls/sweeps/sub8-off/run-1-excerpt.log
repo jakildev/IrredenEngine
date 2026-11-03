@@ -1,0 +1,39 @@
+# Exact selected first-occurrence log lines; repeated messages are counted below.
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --only shadowocclusion,orbit,floor --probe-grid --probe-staircase --no-spin --no-auto-rotate --pivot-origin --zoom 1 --auto-profile --auto-screenshot 6 --subdivisions 8 --sweep-yaw 0 6.28318530718 9 (timeout: 120s)
+[2026-09-28 16:15:41.997] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-09-28 16:15:42.098] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) — new high-water for this run
+[2026-09-28 16:15:42.107] [EngineLog] [info] Voxel render mode=2, base_subdivisions=8, zoom_scale=1, effective_subdivisions=8
+# 565 occurrences total; final occurrence: [2026-09-28 16:15:49.327] [EngineLog] [info] Voxel render mode=2, base_subdivisions=8, zoom_scale=1, effective_subdivisions=8
+[2026-09-28 16:15:42.108] [EngineLog] [info] Voxel render mode=2, base_subdivisions=8, zoom_scale=1, effective_subdivisions=1
+# 565 occurrences total; final occurrence: [2026-09-28 16:15:49.328] [EngineLog] [info] Voxel render mode=2, base_subdivisions=8, zoom_scale=1, effective_subdivisions=1
+[2026-09-28 16:15:42.198] [ClientLog] [info] AutoScreenshot 1/9: sweep_yaw_0 (zoom=1, cam=(0,0), yaw=0, cull=0)
+[2026-09-28 16:15:42.867] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003258.png
+[2026-09-28 16:15:42.886] [ClientLog] [info] AutoScreenshot 2/9: sweep_yaw_1 (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)
+[2026-09-28 16:15:42.896] [EngineLog] [info] Per-axis Z-yaw store: subdivision density capped 8 -> 2 so on-screen voxel faces aren't clipped by the bounded per-axis canvas (#1431); sub-voxel detail reduced while rotating only.
+[2026-09-28 16:15:43.895] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003259.png
+[2026-09-28 16:15:43.912] [ClientLog] [info] AutoScreenshot 3/9: sweep_yaw_2 (zoom=1, cam=(0,0), yaw=1.5707964, cull=0)
+[2026-09-28 16:15:44.555] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003260.png
+[2026-09-28 16:15:44.567] [ClientLog] [info] AutoScreenshot 4/9: sweep_yaw_3 (zoom=1, cam=(0,0), yaw=2.3561945, cull=0)
+[2026-09-28 16:15:45.476] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003261.png
+[2026-09-28 16:15:45.504] [ClientLog] [info] AutoScreenshot 5/9: sweep_yaw_4 (zoom=1, cam=(0,0), yaw=3.1415927, cull=0)
+[2026-09-28 16:15:46.140] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003262.png
+[2026-09-28 16:15:46.159] [ClientLog] [info] AutoScreenshot 6/9: sweep_yaw_5 (zoom=1, cam=(0,0), yaw=3.926991, cull=0)
+[2026-09-28 16:15:47.068] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003263.png
+[2026-09-28 16:15:47.101] [ClientLog] [info] AutoScreenshot 7/9: sweep_yaw_6 (zoom=1, cam=(0,0), yaw=4.712389, cull=0)
+[2026-09-28 16:15:47.763] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003264.png
+[2026-09-28 16:15:47.783] [ClientLog] [info] AutoScreenshot 8/9: sweep_yaw_7 (zoom=1, cam=(0,0), yaw=5.4977875, cull=0)
+[2026-09-28 16:15:48.647] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003265.png
+[2026-09-28 16:15:48.670] [ClientLog] [info] AutoScreenshot 9/9: sweep_yaw_8 (zoom=1, cam=(0,0), yaw=6.2831855, cull=0)
+[2026-09-28 16:15:49.311] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_003266.png
+ir-run: IRCanvasStress exited cleanly after 8s
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
+
+# Exact profile-report lifecycle/camera/overflow witnesses:
+PerAxisCanvas::Allocate                  1.835     1.835       1
+PerAxisCanvas::Park                      0.000     0.000       4
+PerAxisCanvas::Unpark                    0.000     0.000       3
+Camera yaw: first=0.000deg last=-0.000deg travel=360.000deg samples=565
+Camera zoom: first=1.000 last=1.000
+Camera zoom range: min=1.000 max=1.000
+Camera pivot: explicit focus on 0 of 565 frames
+Per-axis overflow: maxEntries=1617 maxDropped=0 cap=1048576 samples=248

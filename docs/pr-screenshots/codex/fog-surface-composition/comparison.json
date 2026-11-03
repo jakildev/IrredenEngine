@@ -1,0 +1,182 @@
+[
+  {
+    "image": "body/screenshot_000001.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "body/screenshot_000001_fog_entity_reveal_soft__crop_exempt_pillar.png",
+    "size": [
+      265,
+      700
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "body/screenshot_000001_fog_entity_reveal_soft__crop_field_column.png",
+    "size": [
+      262,
+      700
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "body/screenshot_000001_fog_entity_reveal_soft__crop_flagged_shape.png",
+    "size": [
+      300,
+      680
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "body/screenshot_000001_fog_entity_reveal_soft__crop_governed_pillar.png",
+    "size": [
+      300,
+      680
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "body/screenshot_000001_fog_entity_reveal_soft__crop_governed_rim_pillar.png",
+    "size": [
+      360,
+      720
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "body/screenshot_000001_fog_entity_reveal_soft__crop_unflagged_shape.png",
+    "size": [
+      300,
+      680
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "body/screenshot_000001_fog_entity_reveal_soft__crop_untagged_pillar.png",
+    "size": [
+      300,
+      680
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "ceiling/screenshot_000001.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "ceiling/screenshot_000002.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "los/screenshot_000001.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "memory/screenshot_000001.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "memory/screenshot_000002.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "memory/screenshot_000003.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "memory/screenshot_000004.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "memory/screenshot_000005.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "overflow/screenshot_000001.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "soft-rim/screenshot_000001.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "soft-rim/screenshot_000002.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  },
+  {
+    "image": "soft-rim/screenshot_000003.png",
+    "size": [
+      2560,
+      1440
+    ],
+    "changed_pixels": 0,
+    "max_delta": 0
+  }
+]

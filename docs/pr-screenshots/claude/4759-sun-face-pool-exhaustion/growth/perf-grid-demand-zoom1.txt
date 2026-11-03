@@ -1,0 +1,22 @@
+# active=1
+# face_records_requested=786432
+# face_record_capacity=1048576
+# face_record_capacity_word=1048576
+# face_record_ceiling=1048576
+# record_capacity_changes=1
+# record_demand_peak=786432
+# record_demand_sampled_frame=59
+# record_exhausted_samples=1
+# spill_nodes_requested=166030
+# spill_node_capacity=262144
+# hierarchy_needed=1
+# hierarchy_ready_leaves=131072
+# tile_inline_capacity=64
+# buffer_bytes=77856788
+# tile_capacity=256
+# tiles_per_axis=128
+# cascade_count=2
+# basis_u=0.912873328,-0.211593375,0.349128276
+# basis_v=0.211593375,-0.486130327,-0.847882986
+[2026-10-30 23:12:17.491] [ClientLog] [info] SUN-RECORD-POOL grown 65536 -> 1048576 records (77856788 bytes) requested=786432 sampled_frame=1 applied_frame=2
+ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0

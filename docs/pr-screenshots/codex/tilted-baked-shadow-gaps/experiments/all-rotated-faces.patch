@@ -1,0 +1,11 @@
+--- a/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
++++ b/engine/render/src/shaders/metal/c_bake_voxel_sun_faces.metal
+@@ -78,7 +78,7 @@
+         const float3 worldAxis = rotateByQuat(normal, faceFrame.viewToWorld);
+         const bool positive = dot(worldAxis, sunFrame.sunDirection.xyz) > 0.0;
+         const int faceId = axis * 2 + (positive ? 1 : 0);
+-        if (!faceIsExposed(flags, faceId)) {
++        if (!faceIsExposed(flags, faceId) && (voxels[index].reserved & 4u) == 0u) {
+             if (fogBody || sunFrame.fogCeilingEnabled.x == 0 || fogObservers.visionCircleCount == 0) continue;
+             const float3 neighbor = worldCenter + (positive ? worldAxis : -worldAxis);
+             if (!fogVoxelFaceCastsSunShadow(false, worldCenter, positive ? worldAxis : -worldAxis,

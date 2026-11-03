@@ -1,0 +1,502 @@
+[
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-0.png",
+    "yaw_radians": 0.0,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-1.png",
+    "yaw_radians": 0.392699,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-2.png",
+    "yaw_radians": 0.78539824,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-3.png",
+    "yaw_radians": 1.178097,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-4.png",
+    "yaw_radians": 1.5707963,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-5.png",
+    "yaw_radians": 1.9634955,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-6.png",
+    "yaw_radians": 2.3561947,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-7.png",
+    "yaw_radians": 2.748894,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-8.png",
+    "yaw_radians": -3.1414928,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-9.png",
+    "yaw_radians": -2.748894,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-10.png",
+    "yaw_radians": -2.3561947,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-11.png",
+    "yaw_radians": -1.9634955,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-12.png",
+    "yaw_radians": -1.5707963,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-13.png",
+    "yaw_radians": -1.178097,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-14.png",
+    "yaw_radians": -0.78539777,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-15.png",
+    "yaw_radians": -0.39269948,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/coarse/reference/shot-16.png",
+    "yaw_radians": -2.3841858e-07,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-0.png",
+    "yaw_radians": 0.37999988,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-1.png",
+    "yaw_radians": 0.38078117,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-2.png",
+    "yaw_radians": 0.38156247,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-3.png",
+    "yaw_radians": 0.38234377,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-4.png",
+    "yaw_radians": 0.38312507,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-5.png",
+    "yaw_radians": 0.38390613,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-6.png",
+    "yaw_radians": 0.38468742,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-7.png",
+    "yaw_radians": 0.38546872,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-8.png",
+    "yaw_radians": 0.38625002,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-9.png",
+    "yaw_radians": 0.38703132,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-10.png",
+    "yaw_radians": 0.38781238,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-11.png",
+    "yaw_radians": 0.38859367,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-12.png",
+    "yaw_radians": 0.38937497,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-13.png",
+    "yaw_radians": 0.39015627,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-14.png",
+    "yaw_radians": 0.39093757,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-15.png",
+    "yaw_radians": 0.39171863,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-16.png",
+    "yaw_radians": 0.39249992,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-17.png",
+    "yaw_radians": 0.39328122,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-18.png",
+    "yaw_radians": 0.39406252,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-19.png",
+    "yaw_radians": 0.39484382,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-20.png",
+    "yaw_radians": 0.39562488,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-21.png",
+    "yaw_radians": 0.39640617,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-22.png",
+    "yaw_radians": 0.39718747,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-23.png",
+    "yaw_radians": 0.39796877,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-24.png",
+    "yaw_radians": 0.39875007,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-25.png",
+    "yaw_radians": 0.39953113,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-26.png",
+    "yaw_radians": 0.40031242,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-27.png",
+    "yaw_radians": 0.40109372,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-28.png",
+    "yaw_radians": 0.40187502,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-29.png",
+    "yaw_radians": 0.40265632,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-30.png",
+    "yaw_radians": 0.40343738,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-31.png",
+    "yaw_radians": 0.40421867,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  },
+  {
+    "image": "docs/pr-screenshots/codex/scatter-centered-projection/fine/reference/shot-32.png",
+    "yaw_radians": 0.40499997,
+    "subpixel_bits": 8,
+    "pixels": 921600,
+    "mismatches": 0,
+    "counts": {},
+    "examples": [],
+    "pass": true
+  }
+]

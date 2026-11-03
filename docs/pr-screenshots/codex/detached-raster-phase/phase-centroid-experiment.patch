@@ -1,0 +1,226 @@
+diff --git a/docs/design/detached-shadow-receiver-samples.md b/docs/design/detached-shadow-receiver-samples.md
+index a533f10ae..3e85b3845 100644
+--- a/docs/design/detached-shadow-receiver-samples.md
++++ b/docs/design/detached-shadow-receiver-samples.md
+@@ -1,7 +1,9 @@
+ # Detached shadow receiver sample positions
+
+ The `receiver_position` diagnostic displays the actual world-space lighting
+-sample relative to its detached owner: `RGB = position / 4 + 0.5`. Values
++sample relative to its detached canvas raster origin: `RGB = position / 4 + 0.5`.
++That origin includes the raster-phase correction when present; it equals the
++owner position in the isolated unit-voxel fixture. Values
+ outside [-2,2] saturate in the color target, so the numerical oracle uses the
+ isolated unit voxel. Main/per-axis regular samples are black in this diagnostic;
+ overflow faces retain their existing albedo behavior. This is not a general
+diff --git a/engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp b/engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp
+index 3329cf575..28fe6a3ba 100644
+--- a/engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp
++++ b/engine/prefabs/irreden/render/components/component_triangle_canvas_textures.hpp
+@@ -110,6 +110,9 @@ struct C_TriangleCanvasTextures {
+     // the canvas did not raster a voxel pool this frame (pure SDF / text
+     // overlay) — the composite then keeps the pre-#1624 raw offset.
+     int renderedSubdivisions_ = 0;
++    // View-local offset from rounded raster centers to resampled cell centers.
++    // Placement, depth, lighting and resampled casting consume the same phase.
++    vec3 renderedCellOffset_{0.0f};
+
+     // Detached voxel display reconstructs undilated local triangle footprints.
+     // RECTANGULAR is a raw-trixel debug override for that producer. Do not
+diff --git a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+index 736a081be..261bc8c2b 100644
+--- a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
++++ b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+@@ -649,7 +649,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+                 if (!rot.worldPlaced_ || !rot.reVoxelize_ || !rot.isDetached()) {
+                     continue;
+                 }
+-                worldPlacedCasters_.push_back({textures.value(), rot.worldCellOffset_});
++                worldPlacedCasters_.push_back({
++                    textures.value(),
++                    rot.worldCellOffset_ + IRMath::rotateVectorByQuat(
++                        textures.value()->renderedCellOffset_, IRPrefab::Camera::getRotationQuat()
++                    )
++                });
+             }
+         }
+     }
+@@ -859,7 +864,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+         int count,
+         int subdivisions,
+         const C_CanvasLocalRotation &rotation,
+-        const C_DetachedRevoxelizeBuffer *source
++        const C_DetachedRevoxelizeBuffer *source,
++        vec3 rasterCellOffset = vec3(0.0f)
+     ) {
+         if (frameData_.shadowsEnabled_ == 0 || count == 0 ||
+             (rotation.isDetached() && (!rotation.worldPlaced_ || !rotation.reVoxelize_))) {
+@@ -882,7 +888,13 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+             orientation = IRMath::quatMul(orientation, rotation.rotation_);
+         }
+         const VoxelSunFaceFrame params{
+-            vec4(rotation.isDetached() ? rotation.worldCellOffset_ : vec3(0.0f), 0.0f),
++            vec4(
++                rotation.isDetached()
++                    ? rotation.worldCellOffset_ +
++                          (useSource ? vec3(0.0f) : IRMath::rotateVectorByQuat(rasterCellOffset, orientation))
++                    : vec3(0.0f),
++                0.0f
++            ),
+             orientation,
+             ivec4(count, grid.x, subdivisions, useSource ? 1 : 0),
+             ivec4(useSource ? source->sourceGridMin_ : ivec3(0), 0),
+diff --git a/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp b/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
+index b3861f160..674e70308 100644
+--- a/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
++++ b/engine/prefabs/irreden/render/systems/system_entity_canvas_to_framebuffer.hpp
+@@ -148,7 +148,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+         // offset). The two coincide at yaw == 0, so cardinal frames stay
+         // byte-identical.
+         vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
+-        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_);
++        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_) +
++                                  pos3DtoPos2DIso(canvasTextures->renderedCellOffset_);
+
+         ivec2 mainCanvasSizeI = ivec2(mainCanvasSize_);
+         vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
+@@ -305,6 +306,12 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+                 );
+                 compositeDistanceOffset =
+                     (cubeSub >= 1) ? worldDepth * effectiveSub_ * kDepthEncodeShift : worldDepth;
++                if (cubeSub >= 1) {
++                    const vec3 phase = canvasTextures->renderedCellOffset_;
++                    compositeDistanceOffset += IRMath::pos3DtoDistanceYawed(
++                        phase * static_cast<float>(effectiveSub_ * kDepthEncodeShift), 0.0f
++                    );
++                }
+             }
+         }
+         fd.distanceOffset_ = compositeDistanceOffset;
+diff --git a/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
+index 6f16d3ac3..80e81b5b7 100644
+--- a/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
+@@ -1320,6 +1320,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+             clearCanvasAndDistances(entity, triangleCanvasTextures);
+             triangleCanvasTextures.renderedSampleLayout_ = TrixelSampleLayout::RECTANGULAR;
+             triangleCanvasTextures.renderedSubdivisions_ = 0;
++            triangleCanvasTextures.renderedCellOffset_ = vec3(0.0f);
+         }
+
+         // Fog-of-war column cull (#2008): resolve this canvas's optional fog
+@@ -1424,6 +1425,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+
+         const int renderMode = frameData_.voxelRenderOptions_.x;
+         const int effectiveSub = frameData_.voxelRenderOptions_.y;
++        if (canvasLocalRotation.isDetached() && revoxBuffer != nullptr) {
++            const float density = static_cast<float>(renderMode == 0 ? 1 : effectiveSub);
++            const vec3 anchor = revoxBuffer->anchor_;
++            triangleCanvasTextures.renderedCellOffset_ =
++                anchor - vec3(roundVec3HalfUp(anchor * density)) / density;
++        }
++
+         if (renderMode != previousRenderMode_ || effectiveSub != previousEffectiveSubdivisions_) {
+             const vec2 zoom = IRRender::getCameraZoom();
+             IRE_LOG_INFO(
+@@ -1696,7 +1704,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+                 effectiveVoxelCount,
+                 renderMode == 0 ? 1 : effectiveSub,
+                 canvasLocalRotation,
+-                revoxBuffer
++                revoxBuffer,
++                triangleCanvasTextures.renderedCellOffset_
+             );
+             winnerPlaceholderBuf_->bindBase(
+                 BufferTarget::SHADER_STORAGE,
+diff --git a/engine/prefabs/irreden/render/voxel_frame_data.hpp b/engine/prefabs/irreden/render/voxel_frame_data.hpp
+index 8860cff26..cd4069e6a 100644
+--- a/engine/prefabs/irreden/render/voxel_frame_data.hpp
++++ b/engine/prefabs/irreden/render/voxel_frame_data.hpp
+@@ -134,7 +134,11 @@ inline void buildVoxelFrameData(
+         // octahedral-snap / per-face-deform DETACHED branch below recovers pos
+         // differently (residual face skew), so it is not world-receive-capable.
+         frameData.detachedWorldReceive_ =
+-            vec4(canvasRotation.worldCellOffset_, canvasRotation.worldPlaced_ ? 1.0f : 0.0f);
++            vec4(
++                canvasRotation.worldCellOffset_ +
++                    IRMath::rotateVectorByQuat(canvas.renderedCellOffset_, IRPrefab::Camera::getRotationQuat()),
++                canvasRotation.worldPlaced_ ? 1.0f : 0.0f
++            );
+         return;
+     }
+     if (detachedCanvas) {
+diff --git a/engine/render/include/irreden/render/ir_render_enums.hpp b/engine/render/include/irreden/render/ir_render_enums.hpp
+index b2ae319ab..0ba6e58a0 100644
+--- a/engine/render/include/irreden/render/ir_render_enums.hpp
++++ b/engine/render/include/irreden/render/ir_render_enums.hpp
+@@ -142,7 +142,7 @@ enum class DebugOverlayMode : std::uint8_t {
+     UNLIT = 6,
+     PER_AXIS_MARGIN = 7,
+     NORMALS = 8,
+-    // Detached world receiver relative to its owner: RGB = position / 4 + 0.5.
++    // Detached world receiver relative to its raster origin: RGB = position / 4 + 0.5.
+     RECEIVER_POSITION = 9
+ };
+
+diff --git a/engine/render/src/shaders/c_lighting_to_trixel.glsl b/engine/render/src/shaders/c_lighting_to_trixel.glsl
+index 2bdd3e725..4544d8f04 100644
+--- a/engine/render/src/shaders/c_lighting_to_trixel.glsl
++++ b/engine/render/src/shaders/c_lighting_to_trixel.glsl
+@@ -185,6 +185,16 @@ void main() {
+         worldReceivePos = trixelCanvasPixelToWorld3D(
+             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+         );
++        if (visibleFaceIds.w == 2) {
++            const ivec2 isoRel = trixelCanvasPixelToIsoRel(
++                pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
++            // A displayed triangle centroid has iso delta (f - 1, -1) and
++            // depth delta +1 from the stored face-origin sample. Its in-plane
++            // centroid fraction f alternates with local triangle orientation.
++            const float f = ((isoRel.x + isoRel.y) & 1) != 0 ? 1.0 / 3.0 : 2.0 / 3.0;
++            worldReceivePos += vec3(1.0 - 0.5 * f, 0.5 * f, 0.0)
++                / float(effectiveTrixelSubdivisionScale(voxelRenderOptions));
++        }
+         // Raster coordinates use cell corners; geometry uses voxel centers.
+         worldReceivePos -= kVoxelRasterCellAnchor;
+         // Detached pool cells already include inverse camera rotation.
+@@ -193,7 +203,7 @@ void main() {
+         worldNormal = rotateByQuat(worldNormal, detachedViewToWorld);
+     }
+
+-    // World-space receiver relative to its owner, encoded over [-2, 2].
++    // World receiver relative to its canvas raster origin, encoded over [-2, 2].
+     if (debugOverlayMode == 9) {
+         const vec4 src = imageLoad(trixelColors, pixel);
+         const vec3 positionColor = worldReceive
+diff --git a/engine/render/src/shaders/metal/c_lighting_to_trixel.metal b/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
+index 636b69670..c6818ebcf 100644
+--- a/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
++++ b/engine/render/src/shaders/metal/c_lighting_to_trixel.metal
+@@ -128,6 +128,17 @@ kernel void c_lighting_to_trixel(
+             voxelFrameData.rasterYaw
+         );
+         // Raster coordinates use cell corners; geometry uses voxel centers.
++        if (voxelFrameData.visibleFaceIds.w == 2) {
++            const int2 isoRel = trixelCanvasPixelToIsoRel(
++                pixel, voxelFrameData.trixelCanvasOffsetZ1, voxelFrameData.frameCanvasOffset,
++                voxelFrameData.voxelRenderOptions);
++            // A displayed triangle centroid has iso delta (f - 1, -1) and
++            // depth delta +1 from the stored face-origin sample. Its in-plane
++            // centroid fraction f alternates with local triangle orientation.
++            const float f = ((isoRel.x + isoRel.y) & 1) != 0 ? 1.0f / 3.0f : 2.0f / 3.0f;
++            worldReceivePos += float3(1.0f - 0.5f * f, 0.5f * f, 0.0f)
++                / float(effectiveTrixelSubdivisionScale(voxelFrameData.voxelRenderOptions));
++        }
+         worldReceivePos -= kVoxelRasterCellAnchor;
+         // Detached pool cells already include inverse camera rotation.
+         worldReceivePos = rotateByQuat(worldReceivePos, frameData.detachedViewToWorld)
+@@ -135,7 +146,7 @@ kernel void c_lighting_to_trixel(
+         worldNormal = rotateByQuat(worldNormal, frameData.detachedViewToWorld);
+     }
+
+-    // World-space receiver relative to its owner, encoded over [-2, 2].
++    // World receiver relative to its canvas raster origin, encoded over [-2, 2].
+     if (frameData.debugOverlayMode == 9) {
+         const float4 src = trixelColors.read(uint2(pixel));
+         const float3 positionColor = worldReceive

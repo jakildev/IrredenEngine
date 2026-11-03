@@ -1,0 +1,88 @@
+{
+  "baseline_revision": "72c6e5218ae9e217813a08b63cfac3336cb54017",
+  "baseline_asset_method": "Four modified shader assets read from HEAD into the demo asset tree; source and executable unchanged; final source assets restored afterward.",
+  "baseline_default_rgb_exact_to_references": 21,
+  "baseline_flower_comparison": {
+    "match_pct": 99.9028,
+    "max_delta": 56,
+    "result": "PASS"
+  },
+  "original_after_gate": {
+    "checks": 44,
+    "failures": 5
+  },
+  "thresholds_changed": false,
+  "review": "Independent visual and source review accepts intended sphere self-occlusion; existing surface reconstruction artifacts are not certified.",
+  "images": [
+    {
+      "label": "zoom8_origin",
+      "old_reference_sha256": "33e61b72bad20960d556bb06dadfb4dd1de3346a3de457f6324df32789fd2852",
+      "baseline_sha256": "33e61b72bad20960d556bb06dadfb4dd1de3346a3de457f6324df32789fd2852",
+      "after_sha256": "9f7ed23ced1512efdacea34eaca3136b28c98aa0b507a33124cc28be17772319",
+      "baseline_vs_old_reference_bbox": null,
+      "after_vs_baseline_bbox": [
+        968,
+        178,
+        1288,
+        270
+      ]
+    },
+    {
+      "label": "zoom16_lod_fine_sphere",
+      "old_reference_sha256": "5384960564aa942db233f2acfe21fd4e24463fb0709ea51d16b3e433f133481b",
+      "baseline_sha256": "5384960564aa942db233f2acfe21fd4e24463fb0709ea51d16b3e433f133481b",
+      "after_sha256": "bb6dad8a19387c0a35fdcde94ff1bee3bf2ad78625253d283567cce7b8bee6bd",
+      "baseline_vs_old_reference_bbox": null,
+      "after_vs_baseline_bbox": [
+        0,
+        1048,
+        536,
+        1226
+      ]
+    },
+    {
+      "label": "lod_swap_zoom16_sphere",
+      "old_reference_sha256": "f5e3020930d1c848f7a7c1e7a67a207dcc583ac2b65af57709046c65bf30ca23",
+      "baseline_sha256": "f5e3020930d1c848f7a7c1e7a67a207dcc583ac2b65af57709046c65bf30ca23",
+      "after_sha256": "ceda112675419727ec208c2b117f4b20094b9acca0e744a14baad7027928a9d7",
+      "baseline_vs_old_reference_bbox": null,
+      "after_vs_baseline_bbox": [
+        916,
+        536,
+        1560,
+        714
+      ]
+    },
+    {
+      "label": "zoom4_yaw270",
+      "old_reference_sha256": "64355a61a85623dee75a87d6271746d3893575b1547eb871bc0f449eff13dabe",
+      "baseline_sha256": "64355a61a85623dee75a87d6271746d3893575b1547eb871bc0f449eff13dabe",
+      "after_sha256": "1d2a225872fa4e200397be9e5213363f8305b9c1d377dfacb01a2424a1811abc",
+      "baseline_vs_old_reference_bbox": null,
+      "after_vs_baseline_bbox": [
+        1888,
+        730,
+        1980,
+        894
+      ]
+    },
+    {
+      "label": "prefab_flower_z16",
+      "old_reference_sha256": "913632f5f76d16cb9c376c40ad35186ff4c12047440b9ec937db1f78056d44d8",
+      "baseline_sha256": "9f5f51b4f54e5c815df3613924b544127ead9eb2651ea48e9898c270d2f0f1ee",
+      "after_sha256": "0d4c4a24133ead973df890efa0285197c79d0c87f92fd31ff100376fdcd93ca9",
+      "baseline_vs_old_reference_bbox": [
+        1080,
+        194,
+        1380,
+        420
+      ],
+      "after_vs_baseline_bbox": [
+        1140,
+        138,
+        1388,
+        204
+      ]
+    }
+  ]
+}

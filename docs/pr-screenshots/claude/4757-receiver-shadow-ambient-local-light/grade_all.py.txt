@@ -1,0 +1,59 @@
+"""Grade the matrix: grade_all.py <final-dir> -> <final-dir>/results.json + summary table."""
+import glob, json, sys
+from collections import defaultdict
+from pathlib import Path
+from PIL import Image
+sys.path.insert(0, '/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/scripts')
+import render_receiver_shadow_polygon as oracle
+final = Path(sys.argv[1])
+def arg(command, flag, n):
+    if flag not in command: return None
+    i = command.index(flag); return [float(v) for v in command[i + 1:i + 1 + n]]
+def frame(folder):
+    return Image.open(sorted(glob.glob(str(folder / '*.png')))[-1])
+results = {}
+for variant in ('ambient0.15', 'ambient0.55', 'local'):
+    for folder in sorted((final / variant).iterdir()):
+        cap = json.loads((folder / 'capture.json').read_text())
+        command = cap['command']
+        yaw = arg(command, '--yaw', 1)[0]
+        camera = arg(command, '--camera-iso', 2) or [0.0, 0.0]
+        ambient = (arg(command, '--sun-ambient', 1) or [oracle.DEFAULT_AMBIENT])[0]
+        row = {'command': command, 'env': cap['env'], 'result': cap['result'], 'routes': cap['routes'],
+               'probes': cap['probes'], 'frame_sha256': cap['sha256']}
+        references = None
+        if variant == 'local':
+            refs = {}
+            for kind in ('lit', 'dark'):
+                ref = final / f'local-{kind}' / folder.name
+                rc = json.loads((ref / 'capture.json').read_text())
+                refs[kind] = {'command': rc['command'], 'result': rc['result'], 'routes': rc['routes'],
+                              'probes': rc['probes'], 'frame_sha256': rc['sha256']}
+            row['references'] = refs
+            references = (frame(final / 'local-lit' / folder.name), frame(final / 'local-dark' / folder.name))
+        try:
+            graded = oracle.check_image(frame(folder), yaw, camera, ambient=ambient, references=references)
+            row.update(passed=graded['passed'], coverage_valid=graded['coverage_valid'],
+                       counts=graded['counts'], shadow_color=graded['shadow_color'],
+                       sun_ambient=ambient, palette=graded['palette'])
+        except ValueError as error:
+            row.update(passed=False, error=str(error))
+        row.update(yaw=yaw, camera_iso=camera)
+        results[f'{variant}/{folder.name}'] = row
+(final / 'results.json').write_text(json.dumps(results, indent=1) + '\n')
+table = defaultdict(list)
+for key, row in results.items():
+    variant, name = key.split('/')
+    arm = name.split('-fog')[1]  # e.g. 16-surface1
+    c = row.get('counts', {})
+    table[(variant, arm)].append((name.split('-fog')[0], row['passed'], c.get('missing'), c.get('excess'),
+                                  c.get('unknown'), c.get('eligible'), c.get('local_light'), row['result'],
+                                  row.get('error')))
+for (variant, arm), rows in sorted(table.items()):
+    passed = sum(r[1] for r in rows)
+    clean = all(r[7] == 'CLEAN' for r in rows)
+    errs = [r for r in rows if r[8]]
+    mins = min((r[5] or 0) for r in rows)
+    fails = sorted({(r[2], r[3], r[4]) for r in rows if not r[1]})
+    ll = min((r[6] or 0) for r in rows) if variant == 'local' else '-'
+    print(f'{variant:12} fog{arm:12} pass {passed}/{len(rows)} clean={clean} min_eligible={mins} min_local={ll} fails(m/e/u)={fails} errors={len(errs)}')

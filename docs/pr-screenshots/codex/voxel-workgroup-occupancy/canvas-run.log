@@ -1,0 +1,1107 @@
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 120
+[2026-10-03 09:27:05.250] [ClientLog] [info] Starting creation: canvas_stress
+[2026-10-03 09:27:05.253] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:27:05.254] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/scripts/config.lua
+[2026-10-03 09:27:05.254] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:27:05.254] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/scripts/config.lua
+[2026-10-03 09:27:05.296] [EngineLog] [info] Discovered 1 display monitors
+[2026-10-03 09:27:05.296] [EngineLog] [info] Monitor 0: 'Built-in Retina Display' @ (0, 0), mode=1800x1169 120Hz
+[2026-10-03 09:27:05.348] [EngineLog] [info] Created IRGLFWWindow.
+[2026-10-03 09:27:05.348] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:27:05.398] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-03 09:27:05.398] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-03 09:27:05.398] [EngineLog] [info] Created SystemManager
+[2026-10-03 09:27:05.398] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-10-03 09:27:05.398] [EngineLog] [info] JobManager: started with 10 worker threads
+[2026-10-03 09:27:05.398] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-03 09:27:05.399] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-03 09:27:05.399] [EngineLog] [info] Regestered component type=N12IRComponents16C_KeyMouseButtonE, sizeof=4 with id=258
+[2026-10-03 09:27:05.399] [EngineLog] [info] Regestered component type=N12IRComponents11C_KeyStatusE, sizeof=12 with id=259
+[2026-10-03 09:27:05.399] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-03 09:27:05.399] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-03 09:27:05.399] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-03 09:27:05.399] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 0 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 1 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 2 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 3 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 4 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 5 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 6 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 7 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 8 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 9 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 10 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 11 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 12 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 13 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 14 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Joystick 15 not present
+[2026-10-03 09:27:05.399] [EngineLog] [info] Created InputManager
+[2026-10-03 09:27:05.399] [EngineLog] [info] Created CommandManager
+[2026-10-03 09:27:05.399] [EngineLog] [info] Creating an resource id pool. idCapacity=1048575
+[2026-10-03 09:27:05.400] [EngineLog] [info] Registered resource type N8IRRender11ShaderStageE with ID=0
+[2026-10-03 09:27:05.400] [EngineLog] [info] Registered resource type N8IRRender9Texture2DE with ID=1
+[2026-10-03 09:27:05.400] [EngineLog] [info] Registered resource type N8IRRender9Texture3DE with ID=2
+[2026-10-03 09:27:05.400] [EngineLog] [info] Registered resource type N8IRRender11FramebufferE with ID=3
+[2026-10-03 09:27:05.400] [EngineLog] [info] Registered resource type N8IRRender14ShaderPipelineE with ID=4
+[2026-10-03 09:27:05.400] [EngineLog] [info] Registered resource type N8IRRender6BufferE with ID=5
+[2026-10-03 09:27:05.400] [EngineLog] [info] Registered resource type N8IRRender12VertexLayoutE with ID=6
+[2026-10-03 09:27:05.400] [EngineLog] [info] Created RenderingResourceManager
+[2026-10-03 09:27:05.400] [EngineLog] [info] Initializing Metal render implementation.
+[2026-10-03 09:27:05.401] [EngineLog] [info] Created ResourceId=0, type=3
+[2026-10-03 09:27:05.401] [EngineLog] [info] Regestered component type=N12IRComponents6C_NameE, sizeof=24 with id=385
+[2026-10-03 09:27:05.401] [EngineLog] [info] Regestered component type=N12IRComponents25C_TrixelCanvasFramebufferE, sizeof=16 with id=386
+[2026-10-03 09:27:05.401] [EngineLog] [info] Regestered component type=N12IRComponents30C_FrameDataTrixelToFramebufferE, sizeof=224 with id=387
+[2026-10-03 09:27:05.401] [EngineLog] [info] Regestered component type=N12IRComponents11C_ZoomLevelE, sizeof=8 with id=388
+[2026-10-03 09:27:05.401] [EngineLog] [info] Created archetype node with components: [ 256 257 385 ], id=5
+[2026-10-03 09:27:05.401] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 ], id=6
+[2026-10-03 09:27:05.401] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 ], id=7
+[2026-10-03 09:27:05.401] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 ], id=8
+[2026-10-03 09:27:05.401] [EngineLog] [info] Regestered component type=N12IRComponents23C_VoxelPoolTeardownHookE, sizeof=4 with id=389
+[2026-10-03 09:27:05.401] [EngineLog] [info] Created archetype node with components: [ 389 ], id=9
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=1, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=2, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=3, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=4, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=5, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=6, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=7, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=8, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=9, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=10, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=11, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=12, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Created ResourceId=13, type=1
+[2026-10-03 09:27:05.402] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=504 with id=392
+[2026-10-03 09:27:05.403] [EngineLog] [info] Regestered component type=N12IRComponents15C_SizeTrianglesE, sizeof=8 with id=393
+[2026-10-03 09:27:05.403] [EngineLog] [info] Regestered component type=N12IRComponents24C_TriangleCanvasTexturesE, sizeof=400 with id=394
+[2026-10-03 09:27:05.403] [EngineLog] [info] Regestered component type=N12IRComponents21C_CanvasLocalRotationE, sizeof=32 with id=395
+[2026-10-03 09:27:05.403] [EngineLog] [info] Regestered component type=N12IRComponents23C_PerAxisTrixelCanvasesE, sizeof=696 with id=396
+[2026-10-03 09:27:05.403] [EngineLog] [info] Regestered component type=N12IRComponents26C_DetachedRevoxelizeBufferE, sizeof=96 with id=397
+[2026-10-03 09:27:05.403] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 ], id=10
+[2026-10-03 09:27:05.403] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 ], id=11
+[2026-10-03 09:27:05.403] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 ], id=12
+[2026-10-03 09:27:05.403] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 ], id=13
+[2026-10-03 09:27:05.403] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 ], id=14
+[2026-10-03 09:27:05.403] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 ], id=15
+[2026-10-03 09:27:05.404] [EngineLog] [info] Regestered relation type=1 id=398 related to entity=384
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 ], id=16
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created voxel pool canvas 391 with framebuffer parent 384, size 642,722
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=14, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=15, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=16, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=17, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=18, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=19, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=20, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=21, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=22, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=23, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=24, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=25, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=26, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 ], id=17
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 ], id=18
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 ], id=19
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created trixel canvas 399 with framebuffer parent 384, size 642,722
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=27, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=28, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=29, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=30, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=31, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=32, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=33, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=34, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=35, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=36, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=37, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=38, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created ResourceId=39, type=1
+[2026-10-03 09:27:05.404] [EngineLog] [info] Created trixel canvas 400 with framebuffer parent 384, size 642,722
+[2026-10-03 09:27:05.404] [EngineLog] [info] Regestered component type=N12IRComponents8C_CameraE, sizeof=1 with id=402
+[2026-10-03 09:27:05.404] [EngineLog] [info] Regestered component type=N12IRComponents15C_Position2DIsoE, sizeof=8 with id=403
+[2026-10-03 09:27:05.405] [EngineLog] [info] Regestered component type=N12IRComponents15C_Velocity2DIsoE, sizeof=8 with id=404
+[2026-10-03 09:27:05.405] [EngineLog] [info] Created archetype node with components: [ 256 257 388 ], id=20
+[2026-10-03 09:27:05.405] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 ], id=21
+[2026-10-03 09:27:05.405] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 ], id=22
+[2026-10-03 09:27:05.405] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 ], id=23
+[2026-10-03 09:27:05.405] [EngineLog] [info] Fit mode: 1
+[2026-10-03 09:27:05.405] [EngineLog] [info] Voxel pool: edge=64 (262144 voxels)
+[2026-10-03 09:27:05.406] [EngineLog] [info] Metal surface attached to window.
+[2026-10-03 09:27:05.406] [EngineLog] [info] Regestered component type=N12IRComponents12C_PersistentE, sizeof=1 with id=405
+[2026-10-03 09:27:05.406] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 405 ], id=24
+[2026-10-03 09:27:05.406] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 405 ], id=25
+[2026-10-03 09:27:05.406] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 ], id=26
+[2026-10-03 09:27:05.406] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 405 ], id=27
+[2026-10-03 09:27:05.407] [EngineLog] [info] Regestered component type=N12IRComponents28C_TrixelCanvasRenderBehaviorE, sizeof=24 with id=406
+[2026-10-03 09:27:05.407] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 405 406 ], id=28
+[2026-10-03 09:27:05.407] [EngineLog] [info] Created ResourceId=40, type=5
+[2026-10-03 09:27:05.407] [EngineLog] [info] Created ResourceId=41, type=5
+[2026-10-03 09:27:05.407] [EngineLog] [info] Created ResourceId=42, type=6
+[2026-10-03 09:27:05.407] [EngineLog] [info]  Resource 42 named QuadVAO
+[2026-10-03 09:27:05.407] [EngineLog] [info] Created ResourceId=43, type=5
+[2026-10-03 09:27:05.407] [EngineLog] [info] Created ResourceId=44, type=6
+[2026-10-03 09:27:05.407] [EngineLog] [info]  Resource 44 named QuadVAOArrays
+[2026-10-03 09:27:05.407] [EngineLog] [info] Created renderer.
+[2026-10-03 09:27:05.435] [EngineLog] [info] Number of devices found: 2
+[2026-10-03 09:27:05.435] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Speakers
+[2026-10-03 09:27:05.435] [EngineLog] [info] Output channels: 2
+[2026-10-03 09:27:05.435] [EngineLog] [info] This is default output device
+[2026-10-03 09:27:05.435] [EngineLog] [info] Native formats: 16
+[2026-10-03 09:27:05.435] [EngineLog] [info] Sample rates:
+[2026-10-03 09:27:05.435] [EngineLog] [info] 44100, 48000, 88200, 96000,
+[2026-10-03 09:27:05.435] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-03 09:27:05.435] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Microphone
+[2026-10-03 09:27:05.435] [EngineLog] [info] Input channels: 1
+[2026-10-03 09:27:05.435] [EngineLog] [info] This is default input device
+[2026-10-03 09:27:05.435] [EngineLog] [info] Native formats: 16
+[2026-10-03 09:27:05.435] [EngineLog] [info] Sample rates:
+[2026-10-03 09:27:05.435] [EngineLog] [info] 44100, 48000, 88200, 96000,
+[2026-10-03 09:27:05.435] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-03 09:27:06.021] [EngineLog] [info] Descovered 0 MIDI input sources
+[2026-10-03 09:27:06.021] [EngineLog] [info] Created MidiIn
+[2026-10-03 09:27:06.022] [EngineLog] [info] Descovered 0 MIDI output sources
+[2026-10-03 09:27:06.022] [EngineLog] [info] Created MidiOut
+[2026-10-03 09:27:06.062] [EngineLog] [info] AudioPlayback: file playback engine up (5 buses)
+[2026-10-03 09:27:06.062] [EngineLog] [info] Created AudioManager
+[2026-10-03 09:27:06.062] [EngineLog] [info] TimeManager initalized
+[2026-10-03 09:27:06.062] [EngineLog] [info] Created VideoRecorder instance.
+[2026-10-03 09:27:06.066] [EngineLog] [info] Loaded image width=1024, height=1053, channels=4
+[2026-10-03 09:27:06.066] [EngineLog] [info] Freeing image data
+[2026-10-03 09:27:06.067] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents21C_EntityEventHandlersE, sizeof=104 with id=407
+[2026-10-03 09:27:06.067] [EngineLog] [info] Created archetype node with components: [ 407 ], id=29
+[2026-10-03 09:27:06.067] [EngineLog] [info] Initalized game world
+[2026-10-03 09:27:06.067] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:27:06.067] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/scripts/config.lua
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents16C_ActiveLodLevelE, sizeof=4 with id=409
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents10C_AutoSpinE, sizeof=16 with id=410
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents17C_AngularVelocityE, sizeof=20 with id=411
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12_GLOBAL__N_113C_ImpulseKickE, sizeof=20 with id=412
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=413
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents14C_RotationModeE, sizeof=1 with id=414
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=24 with id=415
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents10C_LifetimeE, sizeof=4 with id=416
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents10C_HitBox2DE, sizeof=32 with id=417
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N8IRSystem22C_EntityHoverDetectTagE, sizeof=1 with id=418
+[2026-10-03 09:27:06.067] [EngineLog] [info] Regestered component type=N12IRComponents13C_MouseScrollE, sizeof=16 with id=419
+[2026-10-03 09:27:06.068] [EngineLog] [info] Created ResourceId=45, type=5
+[2026-10-03 09:27:06.068] [EngineLog] [info]  Resource 45 named LightOcclusionGridBuffer
+[2026-10-03 09:27:06.074] [EngineLog] [info] Created ResourceId=46, type=4
+[2026-10-03 09:27:06.074] [EngineLog] [info]  Resource 46 named VoxelCompactProgram
+[2026-10-03 09:27:06.075] [EngineLog] [info] Created ResourceId=47, type=4
+[2026-10-03 09:27:06.075] [EngineLog] [info]  Resource 47 named SingleVoxelProgram1
+[2026-10-03 09:27:06.077] [EngineLog] [info] Created ResourceId=48, type=4
+[2026-10-03 09:27:06.077] [EngineLog] [info]  Resource 48 named SingleVoxelProgram1Feeder
+[2026-10-03 09:27:06.079] [EngineLog] [info] Created ResourceId=49, type=4
+[2026-10-03 09:27:06.079] [EngineLog] [info]  Resource 49 named SingleVoxel2
+[2026-10-03 09:27:06.080] [EngineLog] [info] Created ResourceId=50, type=4
+[2026-10-03 09:27:06.080] [EngineLog] [info]  Resource 50 named SingleVoxelWinnerResolve
+[2026-10-03 09:27:06.081] [EngineLog] [info] Created ResourceId=51, type=4
+[2026-10-03 09:27:06.081] [EngineLog] [info]  Resource 51 named SingleVoxel2Winner
+[2026-10-03 09:27:06.082] [EngineLog] [info] Created ResourceId=52, type=4
+[2026-10-03 09:27:06.082] [EngineLog] [info]  Resource 52 named ChunkOcclusionProgram
+[2026-10-03 09:27:06.082] [EngineLog] [info] Created ResourceId=53, type=4
+[2026-10-03 09:27:06.082] [EngineLog] [info]  Resource 53 named PerAxisCellCompactProgram
+[2026-10-03 09:27:06.083] [EngineLog] [info] Created ResourceId=54, type=4
+[2026-10-03 09:27:06.083] [EngineLog] [info]  Resource 54 named PerAxisCellFinalizeProgram
+[2026-10-03 09:27:06.084] [EngineLog] [info] Created ResourceId=55, type=4
+[2026-10-03 09:27:06.084] [EngineLog] [info]  Resource 55 named PerAxisOverflowSortProgram
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=56, type=4
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 56 named RevoxelizeDetachedProgram
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=57, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 57 named RevoxelizeDetachedParamsBuffer
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=58, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 58 named SingleVoxelFrameData
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=59, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 59 named PerAxisWinnerPlaceholder
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=60, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 60 named VoxelPositionBuffer
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=61, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 61 named VoxelColorBuffer
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=62, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 62 named VoxelActiveMaskBuffer
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=63, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 63 named VoxelEntityIdBuffer
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=64, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 64 named ChunkVisibilityBuffer
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=65, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 65 named CompactedVoxelIndices
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=66, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 66 named IndirectDispatchParams
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=67, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 67 named PerAxisCompactedVoxelIndices
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=68, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 68 named PerAxisIndirectDispatchParams
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=69, type=1
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 69 named FogCullVisiblePlaceholder
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=70, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 70 named FogCullObservers
+[2026-10-03 09:27:06.085] [EngineLog] [info] Created ResourceId=71, type=5
+[2026-10-03 09:27:06.085] [EngineLog] [info]  Resource 71 named ChunkOcclusionQueryBuffer
+[2026-10-03 09:27:06.088] [EngineLog] [info] Created ResourceId=72, type=4
+[2026-10-03 09:27:06.088] [EngineLog] [info]  Resource 72 named ShapesToTrixelDepthProgram
+[2026-10-03 09:27:06.089] [EngineLog] [info] Created ResourceId=73, type=4
+[2026-10-03 09:27:06.089] [EngineLog] [info]  Resource 73 named ShapesToTrixelPublishProgram
+[2026-10-03 09:27:06.091] [EngineLog] [info] Created ResourceId=74, type=4
+[2026-10-03 09:27:06.091] [EngineLog] [info]  Resource 74 named ShapesToTrixelCasterProgram
+[2026-10-03 09:27:06.092] [EngineLog] [info] Created ResourceId=75, type=4
+[2026-10-03 09:27:06.092] [EngineLog] [info]  Resource 75 named ShapesToTrixelOwnerProgram
+[2026-10-03 09:27:06.092] [EngineLog] [info] Created ResourceId=76, type=5
+[2026-10-03 09:27:06.092] [EngineLog] [info]  Resource 76 named ShapesFrameDataBuffer
+[2026-10-03 09:27:06.092] [EngineLog] [info] Created ResourceId=77, type=5
+[2026-10-03 09:27:06.092] [EngineLog] [info]  Resource 77 named JointTransformBuffer
+[2026-10-03 09:27:06.092] [EngineLog] [info] Created ResourceId=78, type=5
+[2026-10-03 09:27:06.092] [EngineLog] [info]  Resource 78 named AnimationParamsBuffer
+[2026-10-03 09:27:06.092] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=420
+[2026-10-03 09:27:06.094] [EngineLog] [info] Created ResourceId=79, type=4
+[2026-10-03 09:27:06.094] [EngineLog] [info]  Resource 79 named ComputeVoxelAOProgram
+[2026-10-03 09:27:06.094] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasAOTextureE, sizeof=16 with id=421
+[2026-10-03 09:27:06.095] [EngineLog] [info] Created ResourceId=80, type=4
+[2026-10-03 09:27:06.095] [EngineLog] [info]  Resource 80 named ResolvePerAxisScreenDepthProgram
+[2026-10-03 09:27:06.095] [EngineLog] [info] Created ResourceId=81, type=4
+[2026-10-03 09:27:06.095] [EngineLog] [info]  Resource 81 named ResolvePerAxisBlitProgram
+[2026-10-03 09:27:06.096] [EngineLog] [info] Created ResourceId=82, type=4
+[2026-10-03 09:27:06.096] [EngineLog] [info]  Resource 82 named ClearSunShadowMapProgram
+[2026-10-03 09:27:06.098] [EngineLog] [info] Created ResourceId=83, type=4
+[2026-10-03 09:27:06.098] [EngineLog] [info]  Resource 83 named BakeSunShadowMapProgram
+[2026-10-03 09:27:06.099] [EngineLog] [info] Created ResourceId=84, type=4
+[2026-10-03 09:27:06.099] [EngineLog] [info]  Resource 84 named ResolveWorldPlacedDepthProgram
+[2026-10-03 09:27:06.099] [EngineLog] [info] Created ResourceId=85, type=4
+[2026-10-03 09:27:06.099] [EngineLog] [info]  Resource 85 named WorldPlacedDepthBlitProgram
+[2026-10-03 09:27:06.099] [EngineLog] [info] Created ResourceId=86, type=5
+[2026-10-03 09:27:06.099] [EngineLog] [info]  Resource 86 named SunShadowDepthMap
+[2026-10-03 09:27:06.099] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasSunShadowE, sizeof=16 with id=422
+[2026-10-03 09:27:06.099] [EngineLog] [info] Created ResourceId=87, type=5
+[2026-10-03 09:27:06.099] [EngineLog] [info]  Resource 87 named AnalyticCasterFrameBuffer
+[2026-10-03 09:27:06.101] [EngineLog] [info] Created ResourceId=88, type=4
+[2026-10-03 09:27:06.101] [EngineLog] [info]  Resource 88 named BoxSunShadowProgram
+[2026-10-03 09:27:06.102] [EngineLog] [info] Created ResourceId=89, type=4
+[2026-10-03 09:27:06.102] [EngineLog] [info]  Resource 89 named VoxelSunFacesProgram
+[2026-10-03 09:27:06.102] [EngineLog] [info] Created ResourceId=90, type=5
+[2026-10-03 09:27:06.102] [EngineLog] [info]  Resource 90 named VoxelSunFaceFrameBuffer
+[2026-10-03 09:27:06.102] [EngineLog] [info] Created ResourceId=91, type=5
+[2026-10-03 09:27:06.102] [EngineLog] [info]  Resource 91 named DetachedShadowFrameBuffer
+[2026-10-03 09:27:06.105] [EngineLog] [info] Created ResourceId=92, type=4
+[2026-10-03 09:27:06.105] [EngineLog] [info]  Resource 92 named ComputeSunShadowProgram
+[2026-10-03 09:27:06.107] [EngineLog] [info] Created ResourceId=93, type=4
+[2026-10-03 09:27:06.107] [EngineLog] [info]  Resource 93 named ComputeSunShadowShapesProgram
+[2026-10-03 09:27:06.107] [EngineLog] [info] Created ResourceId=94, type=5
+[2026-10-03 09:27:06.107] [EngineLog] [info]  Resource 94 named ComputeSunShadowFrameData
+[2026-10-03 09:27:06.107] [EngineLog] [info] Created ResourceId=95, type=5
+[2026-10-03 09:27:06.107] [EngineLog] [info]  Resource 95 named ShapeReceiverFrameData
+[2026-10-03 09:27:06.107] [EngineLog] [info] Created ResourceId=96, type=5
+[2026-10-03 09:27:06.107] [EngineLog] [info]  Resource 96 named ShapeReceiverFallback
+[2026-10-03 09:27:06.107] [EngineLog] [info] Created ResourceId=97, type=4
+[2026-10-03 09:27:06.107] [EngineLog] [info]  Resource 97 named ClearLightVolumeProgram
+[2026-10-03 09:27:06.108] [EngineLog] [info] Created ResourceId=98, type=4
+[2026-10-03 09:27:06.108] [EngineLog] [info]  Resource 98 named SeedLightVolumeProgram
+[2026-10-03 09:27:06.109] [EngineLog] [info] Created ResourceId=99, type=4
+[2026-10-03 09:27:06.109] [EngineLog] [info]  Resource 99 named PropagateLightVolumeProgram
+[2026-10-03 09:27:06.109] [EngineLog] [info] Created ResourceId=100, type=5
+[2026-10-03 09:27:06.109] [EngineLog] [info]  Resource 100 named LightSourceBuffer
+[2026-10-03 09:27:06.109] [EngineLog] [info] Created ResourceId=101, type=5
+[2026-10-03 09:27:06.109] [EngineLog] [info]  Resource 101 named LightVolumeParamsBuffer
+[2026-10-03 09:27:06.109] [EngineLog] [info] Regestered component type=N12IRComponents19C_CanvasLightVolumeE, sizeof=80 with id=423
+[2026-10-03 09:27:06.111] [EngineLog] [info] Created ResourceId=102, type=4
+[2026-10-03 09:27:06.111] [EngineLog] [info]  Resource 102 named LightingToTrixelProgram
+[2026-10-03 09:27:06.113] [EngineLog] [info] Created ResourceId=103, type=4
+[2026-10-03 09:27:06.113] [EngineLog] [info]  Resource 103 named LightingToTrixelShapesProgram
+[2026-10-03 09:27:06.115] [EngineLog] [info] Created ResourceId=104, type=4
+[2026-10-03 09:27:06.115] [EngineLog] [info]  Resource 104 named LightOverflowFacesProgram
+[2026-10-03 09:27:06.115] [EngineLog] [info] Created ResourceId=105, type=5
+[2026-10-03 09:27:06.115] [EngineLog] [info]  Resource 105 named LightingToTrixelFrameData
+[2026-10-03 09:27:06.115] [EngineLog] [info] Created ResourceId=106, type=1
+[2026-10-03 09:27:06.115] [EngineLog] [info]  Resource 106 named PaletteLUT_Nearest
+[2026-10-03 09:27:06.115] [EngineLog] [info] Created ResourceId=107, type=1
+[2026-10-03 09:27:06.115] [EngineLog] [info]  Resource 107 named PaletteLUT_Linear
+[2026-10-03 09:27:06.119] [EngineLog] [info] Created ResourceId=108, type=4
+[2026-10-03 09:27:06.119] [EngineLog] [info]  Resource 108 named CanvasShapeLightingProgram
+[2026-10-03 09:27:06.119] [EngineLog] [info] Created ResourceId=109, type=4
+[2026-10-03 09:27:06.119] [EngineLog] [info]  Resource 109 named CanvasToFramebufferProgram
+[2026-10-03 09:27:06.121] [EngineLog] [info] Created ResourceId=110, type=4
+[2026-10-03 09:27:06.121] [EngineLog] [info]  Resource 110 named CanvasSurfaceShadowProbeProgram
+[2026-10-03 09:27:06.123] [EngineLog] [info] Created ResourceId=111, type=4
+[2026-10-03 09:27:06.123] [EngineLog] [info]  Resource 111 named PerAxisScatterProgram
+[2026-10-03 09:27:06.124] [EngineLog] [info] Created ResourceId=112, type=4
+[2026-10-03 09:27:06.124] [EngineLog] [info]  Resource 112 named PerAxisSurfaceShadowProbeProgram
+[2026-10-03 09:27:06.125] [EngineLog] [info] Created ResourceId=113, type=4
+[2026-10-03 09:27:06.125] [EngineLog] [info]  Resource 113 named PerAxisSurfaceLightingProgram
+[2026-10-03 09:27:06.127] [EngineLog] [info] Created ResourceId=114, type=4
+[2026-10-03 09:27:06.127] [EngineLog] [info]  Resource 114 named PerAxisVisibleLightingProgram
+[2026-10-03 09:27:06.127] [EngineLog] [info] Created ResourceId=115, type=5
+[2026-10-03 09:27:06.127] [EngineLog] [info]  Resource 115 named TrixelToFramebufferFrameData
+[2026-10-03 09:27:06.127] [EngineLog] [info] Created ResourceId=116, type=5
+[2026-10-03 09:27:06.127] [EngineLog] [info]  Resource 116 named HoveredEntityIdBuffer
+[2026-10-03 09:27:06.127] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=424
+[2026-10-03 09:27:06.128] [EngineLog] [info] Created ResourceId=117, type=4
+[2026-10-03 09:27:06.128] [EngineLog] [info]  Resource 117 named SourceFaceScatterProgram
+[2026-10-03 09:27:06.129] [EngineLog] [info] Created ResourceId=118, type=4
+[2026-10-03 09:27:06.129] [EngineLog] [info]  Resource 118 named FramebufferToScreenProgram
+[2026-10-03 09:27:06.129] [EngineLog] [info] Created ResourceId=119, type=5
+[2026-10-03 09:27:06.129] [EngineLog] [info]  Resource 119 named FramebufferToScreenFrameData
+[2026-10-03 09:27:06.129] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=425
+[2026-10-03 09:27:06.129] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 ], id=30
+[2026-10-03 09:27:06.131] [EngineLog] [info] Created ResourceId=120, type=1
+[2026-10-03 09:27:06.131] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 421 ], id=31
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created ResourceId=121, type=1
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 421 422 ], id=32
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created ResourceId=122, type=2
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created ResourceId=123, type=2
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created ResourceId=124, type=2
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created ResourceId=125, type=2
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 421 422 423 ], id=33
+[2026-10-03 09:27:06.132] [ClientLog] [info] LIGHTING-PROBE sun=(-0.4585579,-0.65508276,-0.60049254) shadows=true ao=true
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created archetype node with components: [ 256 257 420 ], id=34
+[2026-10-03 09:27:06.132] [EngineLog] [info] Regestered component type=N12IRComponents14C_LightBlockerE, sizeof=8 with id=427
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created archetype node with components: [ 256 257 420 427 ], id=35
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created archetype node with components: [ 256 257 413 ], id=36
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created archetype node with components: [ 256 257 410 ], id=37
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created archetype node with components: [ 256 257 410 413 ], id=38
+[2026-10-03 09:27:06.132] [EngineLog] [info] Created archetype node with components: [ 256 257 410 413 414 ], id=39
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=126, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=127, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=128, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=129, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=130, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=131, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=132, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=133, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=134, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=135, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created voxel pool canvas 457 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 424 ], id=40
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 ], id=41
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 424 ], id=42
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=136, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 421 ], id=43
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 406 421 424 ], id=44
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created archetype node with components: [ 256 257 410 414 ], id=45
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created archetype node with components: [ 256 257 410 414 415 ], id=46
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created archetype node with components: [ 256 257 410 414 415 417 ], id=47
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=137, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=138, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=139, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=140, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=141, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=142, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=143, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=144, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=145, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=146, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created voxel pool canvas 460 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=147, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=148, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=149, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=150, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=151, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=152, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=153, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=154, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=155, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=156, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=157, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created voxel pool canvas 463 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=158, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=159, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=160, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=161, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=162, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=163, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=164, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=165, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=166, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=167, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=168, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created voxel pool canvas 466 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=169, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=170, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=171, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=172, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=173, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=174, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=175, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=176, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=177, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=178, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=179, type=1
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created voxel pool canvas 469 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.133] [EngineLog] [info] Created ResourceId=180, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=181, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=182, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=183, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=184, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=185, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=186, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=187, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=188, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=189, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=190, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created voxel pool canvas 472 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=191, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=192, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=193, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=194, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=195, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=196, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=197, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=198, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=199, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=200, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=201, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created voxel pool canvas 475 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=202, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=203, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=204, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=205, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=206, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=207, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=208, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=209, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=210, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=211, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=212, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created voxel pool canvas 478 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=213, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=214, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=215, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=216, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=217, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=218, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=219, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=220, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=221, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=222, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=223, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created voxel pool canvas 481 with framebuffer parent 0, size 128,128
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=224, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=225, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=226, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=227, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=228, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=229, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=230, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=231, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=232, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=233, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=234, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=235, type=1
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created voxel pool canvas 484 with framebuffer parent 0, size 140,140
+[2026-10-03 09:27:06.134] [EngineLog] [info] Created ResourceId=236, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=237, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=238, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=239, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=240, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=241, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=242, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=243, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=244, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=245, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=246, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=247, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created voxel pool canvas 487 with framebuffer parent 0, size 140,140
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=248, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=249, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=250, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=251, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=252, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=253, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=254, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=255, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=256, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=257, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=258, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=259, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created voxel pool canvas 490 with framebuffer parent 0, size 140,140
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=260, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=261, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=262, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=263, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=264, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=265, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=266, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=267, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=268, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=269, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=270, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=271, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created voxel pool canvas 494 with framebuffer parent 0, size 168,168
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=272, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=273, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=274, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=275, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=276, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=277, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=278, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=279, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=280, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=281, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=282, type=1
+[2026-10-03 09:27:06.135] [EngineLog] [info] Created ResourceId=283, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created voxel pool canvas 497 with framebuffer parent 0, size 156,156
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=284, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=285, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=286, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=287, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=288, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=289, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=290, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=291, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=292, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=293, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=294, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created voxel pool canvas 500 with framebuffer parent 0, size 120,120
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=295, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=296, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=297, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=298, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=299, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=300, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=301, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=302, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=303, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=304, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=305, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=306, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created voxel pool canvas 504 with framebuffer parent 0, size 180,180
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=307, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=308, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=309, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=310, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=311, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=312, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=313, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=314, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=315, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=316, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=317, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created ResourceId=318, type=1
+[2026-10-03 09:27:06.136] [EngineLog] [info] Created voxel pool canvas 508 with framebuffer parent 0, size 168,168
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=319, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=320, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=321, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=322, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=323, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=324, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=325, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=326, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=327, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=328, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=329, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=330, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created voxel pool canvas 511 with framebuffer parent 0, size 192,192
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=331, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=332, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=333, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=334, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=335, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=336, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=337, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=338, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=339, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=340, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=341, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=342, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created voxel pool canvas 515 with framebuffer parent 0, size 156,156
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=343, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=344, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=345, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=346, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=347, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=348, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=349, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=350, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=351, type=1
+[2026-10-03 09:27:06.137] [EngineLog] [info] Created ResourceId=352, type=1
+[2026-10-03 09:27:06.138] [EngineLog] [info] Created ResourceId=353, type=1
+[2026-10-03 09:27:06.138] [EngineLog] [info] Created ResourceId=354, type=1
+[2026-10-03 09:27:06.138] [EngineLog] [info] Created voxel pool canvas 518 with framebuffer parent 0, size 144,144
+[2026-10-03 09:27:06.138] [EngineLog] [info] Created ResourceId=355, type=1
+[2026-10-03 09:27:06.138] [ClientLog] [info] canvas_stress: main grid 5x5 (25 cubes), 4 GRID-spin cubes, 9 detached canvases, 2 detached re-voxelize solids (L + cube), 12 orbit-ring shapes
+[2026-10-03 09:27:06.159] [EngineLog] [info] Regestered component type=N12IRComponents13C_HitBox2DGuiE, sizeof=12 with id=521
+[2026-10-03 09:27:06.159] [EngineLog] [info] Created archetype node with components: [ 409 ], id=48
+[2026-10-03 09:27:06.159] [EngineLog] [info] Regestered component type=N12IRComponents16C_ResolvedFieldsE, sizeof=72 with id=523
+[2026-10-03 09:27:06.159] [EngineLog] [info] Regestered component type=N12IRComponents11C_ModifiersE, sizeof=72 with id=524
+[2026-10-03 09:27:06.159] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) — new high-water for this run
+[2026-10-03 09:27:06.162] [EngineLog] [info] Regestered component type=N12IRComponents13C_LightSourceE, sizeof=36 with id=525
+[2026-10-03 09:27:06.164] [EngineLog] [info] Regestered component type=N12IRComponents26C_TriangleCanvasBackgroundE, sizeof=240 with id=526
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=356, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=357, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=358, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=359, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=360, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=361, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=362, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=363, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=364, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=365, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=366, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=367, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=368, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=369, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=370, type=1
+[2026-10-03 09:27:06.164] [EngineLog] [info] Created ResourceId=371, type=1
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=372, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=373, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=374, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=375, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=376, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=377, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=378, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=379, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=380, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=381, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=382, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=383, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=384, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=385, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=386, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=387, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=388, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=389, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=390, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=391, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=392, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=393, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=394, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=395, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=396, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=397, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=398, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=399, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=400, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=401, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=402, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=403, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=404, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=405, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Created ResourceId=406, type=5
+[2026-10-03 09:27:06.166] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=960 with id=527
+[2026-10-03 09:27:06.171] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=1, effective_subdivisions=1
+[2026-10-03 09:27:06.217] [EngineLog] [info] Created ResourceId=407, type=5
+[2026-10-03 09:27:06.217] [EngineLog] [info] Created ResourceId=408, type=5
+[2026-10-03 09:27:06.219] [EngineLog] [info] Created ResourceId=409, type=5
+[2026-10-03 09:27:06.219] [EngineLog] [info] Created ResourceId=410, type=5
+[2026-10-03 09:27:06.220] [EngineLog] [info] Created ResourceId=411, type=5
+[2026-10-03 09:27:06.220] [EngineLog] [info] Created ResourceId=412, type=5
+[2026-10-03 09:27:06.221] [EngineLog] [info] Created ResourceId=413, type=5
+[2026-10-03 09:27:06.221] [EngineLog] [info] Created ResourceId=414, type=5
+[2026-10-03 09:27:06.221] [EngineLog] [info] Regestered component type=N12IRComponents17C_LodTierOverrideE, sizeof=4 with id=528
+[2026-10-03 09:27:06.221] [EngineLog] [info] Created ResourceId=415, type=5
+[2026-10-03 09:27:06.221] [EngineLog] [info] Created ResourceId=416, type=5
+[2026-10-03 09:27:06.221] [EngineLog] [info] Created ResourceId=417, type=5
+[2026-10-03 09:27:06.224] [EngineLog] [info] Created ResourceId=418, type=5
+[2026-10-03 09:27:06.712] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 24 of 1752 covered dest cells (span=1728, surface=692) — new high-water for this run
+[2026-10-03 09:27:06.926] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 48 of 1776 covered dest cells (span=1728, surface=736) — new high-water for this run
+[2026-10-03 09:27:07.776] [ClientLog] [info] AutoScreenshot 1/12: so3_smooth_sweep (zoom=1, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:08.387] [ClientLog] [info] CaptureCamera: label=so3_smooth_sweep yaw=0.5235958 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:08.503] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000005.png
+[2026-10-03 09:27:08.526] [ClientLog] [info] AutoScreenshot 2/12: so3_offsnap_disc (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)
+[2026-10-03 09:27:09.157] [ClientLog] [info] CaptureCamera: label=so3_offsnap_disc yaw=1.308994 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:09.273] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000006.png
+[2026-10-03 09:27:09.294] [ClientLog] [info] AutoScreenshot 3/12: so3_wide_parity (zoom=0.65, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:09.959] [ClientLog] [info] CaptureCamera: label=so3_wide_parity yaw=0.5235958 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:10.074] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000007.png
+[2026-10-03 09:27:10.094] [ClientLog] [info] AutoScreenshot 4/12: so3_grid_cross (zoom=0.45, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:10.769] [ClientLog] [info] CaptureCamera: label=so3_grid_cross yaw=0.5235958 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:10.884] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000008.png
+[2026-10-03 09:27:10.904] [ClientLog] [info] AutoScreenshot 5/12: so3_offsnap_wide (zoom=0.65, cam=(0,0), yaw=0.5235988, cull=0)
+[2026-10-03 09:27:11.563] [ClientLog] [info] CaptureCamera: label=so3_offsnap_wide yaw=1.0471947 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:11.693] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000009.png
+[2026-10-03 09:27:11.712] [ClientLog] [info] AutoScreenshot 6/12: revoxelize_solids (zoom=1, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:12.309] [ClientLog] [info] CaptureCamera: label=revoxelize_solids yaw=0.5235958 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:12.424] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000010.png
+[2026-10-03 09:27:12.447] [ClientLog] [info] AutoScreenshot 7/12: revoxelize_solids_zoom (zoom=2.2, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:12.455] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.456] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.457] [EngineLog] [info] Created ResourceId=419, type=5
+[2026-10-03 09:27:12.464] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.465] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.473] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.474] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.482] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.483] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.491] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.491] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.500] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.500] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.508] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.509] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.517] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.517] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.526] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.526] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.535] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.535] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.544] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.545] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.554] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.554] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.563] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.563] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.572] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.573] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.582] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.583] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.592] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.593] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.602] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.602] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.612] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.612] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.622] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.622] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.632] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.632] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.642] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.643] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.652] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.653] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.663] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.663] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.673] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.674] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.684] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.684] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.695] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.695] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.706] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.706] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.717] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.718] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.729] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.729] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.741] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.741] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.753] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.754] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.765] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.766] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.777] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.778] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.788] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.789] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.799] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.799] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.810] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.810] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.820] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.820] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.831] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.831] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.841] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.841] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.852] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.852] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.862] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.862] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.872] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.873] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.883] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.884] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.894] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.894] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.904] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.904] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.915] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.915] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.925] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.926] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.936] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.937] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.947] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.948] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.959] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.959] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.971] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.971] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.982] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.982] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:12.994] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:12.994] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.005] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.005] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.016] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.017] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.027] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.028] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.038] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.038] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.049] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.050] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.060] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.061] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.071] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.072] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.074] [ClientLog] [info] CaptureCamera: label=revoxelize_solids_zoom yaw=0.5235958 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)
+[2026-10-03 09:27:13.192] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000011.png
+[2026-10-03 09:27:13.194] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.194] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.210] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:13.210] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:13.212] [ClientLog] [info] AutoScreenshot 8/12: orbit_overview (zoom=0.32, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:13.857] [ClientLog] [info] CaptureCamera: label=orbit_overview yaw=0.5235958 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:13.975] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000012.png
+[2026-10-03 09:27:13.997] [ClientLog] [info] AutoScreenshot 9/12: shadow_overlay_floor (zoom=0.55, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:14.674] [ClientLog] [info] CaptureCamera: label=shadow_overlay_floor yaw=0.5235958 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:14.793] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000013.png
+[2026-10-03 09:27:14.815] [ClientLog] [info] AutoScreenshot 10/12: revox_coverage (zoom=2.4, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:14.824] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.824] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.832] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.833] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.841] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.842] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.850] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.851] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.859] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.860] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.868] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.868] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.876] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.877] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.885] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.885] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.894] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.895] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.904] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.904] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.913] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.914] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.923] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.923] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.932] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.933] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.942] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.943] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.952] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.953] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.962] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.963] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.972] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.973] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.983] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.983] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:14.993] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:14.994] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.003] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.004] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.014] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.014] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.025] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.025] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.036] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.036] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.046] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.047] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.058] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.058] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.069] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.070] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.081] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.081] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.092] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.093] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.105] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.105] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.117] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.117] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.129] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.130] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.142] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.142] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.155] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.155] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.166] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.167] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.177] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.178] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.188] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.188] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.199] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.199] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.209] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.210] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.220] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.220] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.230] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.231] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.241] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.241] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.251] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.252] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.261] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.262] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.272] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.272] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.282] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.282] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.292] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.293] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.302] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.303] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.312] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.313] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.322] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.323] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.333] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.334] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.344] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.344] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.353] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.354] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.363] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.364] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.374] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.374] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.384] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.384] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.395] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.395] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.405] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.406] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.416] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.417] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.427] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.427] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.438] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.438] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.440] [ClientLog] [info] CaptureCamera: label=revox_coverage yaw=0.5235958 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)
+[2026-10-03 09:27:15.560] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000014.png
+[2026-10-03 09:27:15.562] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.562] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.578] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:15.578] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:15.580] [ClientLog] [info] AutoScreenshot 11/12: smallzoom_low (zoom=0.5, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:16.232] [ClientLog] [info] CaptureCamera: label=smallzoom_low yaw=0.5235958 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-03 09:27:16.351] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000015.png
+[2026-10-03 09:27:16.373] [ClientLog] [info] AutoScreenshot 12/12: smallzoom_high (zoom=2, cam=(0,0), yaw=0, cull=0)
+[2026-10-03 09:27:16.382] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.382] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.394] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.394] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.402] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.403] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.411] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.412] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.420] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.420] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.428] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.429] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.437] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.438] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.447] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.447] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.457] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.457] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.467] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.467] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.477] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.477] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.486] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.486] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.495] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.496] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.506] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.506] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.516] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.516] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.525] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.526] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.536] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.536] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.546] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.547] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.556] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.557] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.567] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.568] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.577] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.578] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.588] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.589] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.599] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.600] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.611] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.611] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.621] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.622] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.631] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.632] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.642] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.642] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.652] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.652] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.661] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.662] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.671] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.672] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.681] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.681] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.691] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.692] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.701] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.701] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.710] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.711] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.720] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.720] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.730] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.730] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.740] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.741] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.750] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.751] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.760] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.761] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.770] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.771] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.781] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.781] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.791] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.791] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.802] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.802] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.813] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.813] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.824] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.824] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.835] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.835] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.846] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.846] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.857] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.858] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.869] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.869] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.880] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.880] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.891] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.892] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.903] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.904] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.914] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.915] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.927] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.928] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.938] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.938] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.949] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.949] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.959] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.960] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.970] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.970] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.980] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.981] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.991] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:16.991] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:16.993] [ClientLog] [info] CaptureCamera: label=smallzoom_high yaw=0.5235958 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)
+[2026-10-03 09:27:17.113] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000016.png
+[2026-10-03 09:27:17.115] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:17.115] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:17.129] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=2
+[2026-10-03 09:27:17.130] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom_scale=2, effective_subdivisions=1
+[2026-10-03 09:27:17.141] [EngineLog] [info] Clean shutdown complete.
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

@@ -1,0 +1,5 @@
+Hardware identity checked on the capture machine while packaging evidence:
+Model: MacBook Pro (Mac16,6)
+Chip: Apple M4 Max
+CPU cores: 14 (10 performance, 4 efficiency)
+Memory: 36 GB

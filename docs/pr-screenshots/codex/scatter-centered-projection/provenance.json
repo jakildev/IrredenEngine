@@ -1,0 +1,10 @@
+{
+  "base": "09b3d080bf6d7d81422345911884285148795096",
+  "candidate_shader_sha256": {
+    "engine/render/src/shaders/v_peraxis_scatter.glsl": "4c43da03b6bb42fbde9fa040a3221e37390d2bbb51b27cad092d641dfdc3b040",
+    "engine/render/src/shaders/metal/peraxis_scatter.metal": "cd2bb1c5332d0bdaa77e3d0d27edf0ee5a5a8477835a5d56f5d05b8cc7b19247"
+  },
+  "native_reference_sha256": "af17f8995f80582111c29b9a1dc813b48060161cc925864199de9d5ca4eca89b",
+  "native_reference_binary_sha256": "9bedb5137b1256a7a602f2bb6ee4c8d18d344444569348891d6fb165fa1a0ea3",
+  "note": "Coarse before capture predates scratch cleanup; shaders are identical to its parent. Fine before/after captures were run sequentially on this base. The overlapping exploratory capture and render run are excluded."
+}

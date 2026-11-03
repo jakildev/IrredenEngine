@@ -1,0 +1,22 @@
+[
+  {
+    "quadrant": 0,
+    "changed_pixels": 128,
+    "magenta_removed": 4
+  },
+  {
+    "quadrant": 1,
+    "changed_pixels": 996,
+    "magenta_removed": 0
+  },
+  {
+    "quadrant": 2,
+    "changed_pixels": 1608,
+    "magenta_removed": 392
+  },
+  {
+    "quadrant": 3,
+    "changed_pixels": 1004,
+    "magenta_removed": 572
+  }
+]

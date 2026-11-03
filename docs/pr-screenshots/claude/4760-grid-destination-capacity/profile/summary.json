@@ -1,0 +1,50 @@
+[
+  {
+    "case": "parent-plate",
+    "runs": 4,
+    "frame_mean_ms": 8.355,
+    "steady_mean_ms": 8.331957666666666,
+    "steady_p95_ms": 8.866,
+    "steady_p99_ms": 9.34,
+    "system_mean_ms": 0.02675,
+    "system_min_ms": 0.005,
+    "system_max_ms": 0.783,
+    "min_steady_update_ticks": 750
+  },
+  {
+    "case": "parent-cube",
+    "runs": 4,
+    "frame_mean_ms": 8.4,
+    "steady_mean_ms": 8.3321,
+    "steady_p95_ms": 9.111,
+    "steady_p99_ms": 9.318,
+    "system_mean_ms": 0.12475,
+    "system_min_ms": 0.025,
+    "system_max_ms": 0.43,
+    "min_steady_update_ticks": 750
+  },
+  {
+    "case": "head-plate",
+    "runs": 4,
+    "frame_mean_ms": 8.365,
+    "steady_mean_ms": 8.331851166666667,
+    "steady_p95_ms": 9.101,
+    "steady_p99_ms": 9.373,
+    "system_mean_ms": 0.02775,
+    "system_min_ms": 0.005,
+    "system_max_ms": 0.144,
+    "min_steady_update_ticks": 750
+  },
+  {
+    "case": "head-cube",
+    "runs": 4,
+    "frame_mean_ms": 8.370000000000001,
+    "steady_mean_ms": 8.335257666666667,
+    "steady_p95_ms": 9.073,
+    "steady_p99_ms": 9.331,
+    "system_mean_ms": 0.12475,
+    "system_min_ms": 0.025,
+    "system_max_ms": 0.354,
+    "min_steady_update_ticks": 750
+  }
+]

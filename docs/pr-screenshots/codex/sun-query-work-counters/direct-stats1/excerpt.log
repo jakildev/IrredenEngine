@@ -1,0 +1,15 @@
+[2026-10-16 14:06:41.864] [EngineLog] [warning] tagGpuStage: unknown stage name "guiToScreen" — stage will not be timed. Check gpuStageRegistry() for the registered name.
+[2026-10-16 14:06:41.864] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=447
+[2026-10-16 14:06:42.057] [ClientLog] [info] AutoScreenshot 1/6: sdf_voxel_yaw0 (zoom=4, cam=(0,0), yaw=0, cull=0)
+[2026-10-16 14:06:42.082] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw0 yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-16 14:06:42.234] [ClientLog] [info] AutoScreenshot 2/6: sdf_voxel_yaw45 (zoom=4, cam=(0,0), yaw=0.7853982, cull=0)
+[2026-10-16 14:06:42.324] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw45 yaw=0.78539824 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-16 14:06:42.472] [ClientLog] [info] AutoScreenshot 3/6: sdf_voxel_yaw90 (zoom=4, cam=(0,0), yaw=1.5707964, cull=0)
+[2026-10-16 14:06:42.496] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw90 yaw=1.5707963 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-16 14:06:42.627] [ClientLog] [info] AutoScreenshot 4/6: sdf_voxel_yaw180 (zoom=4, cam=(0,0), yaw=3.1415927, cull=0)
+[2026-10-16 14:06:42.652] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw180 yaw=-3.1414928 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-16 14:06:42.783] [ClientLog] [info] AutoScreenshot 5/6: sdf_voxel_yaw270 (zoom=4, cam=(0,0), yaw=4.712389, cull=0)
+[2026-10-16 14:06:42.808] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw270 yaw=-1.5707963 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-16 14:06:42.938] [ClientLog] [info] AutoScreenshot 6/6: sdf_voxel_zoom2 (zoom=2, cam=(0,0), yaw=0.7853982, cull=0)
+[2026-10-16 14:06:42.963] [ClientLog] [info] CaptureCamera: label=sdf_voxel_zoom2 yaw=0.78539824 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0

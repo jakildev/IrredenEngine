@@ -1,0 +1,52 @@
+{
+  "analytic_oracle-default/oracle_box_zoom.png": {
+    "master_sha256": "c439c54d858d454dc33178fb22b48da09e9a8eaeb809ebcab88f65f83f51b540",
+    "head_sha256": "c439c54d858d454dc33178fb22b48da09e9a8eaeb809ebcab88f65f83f51b540",
+    "byte_identical": true
+  },
+  "canvas_stress-floor_selfshadow/floor_selfshadow_offwide.png": {
+    "master_sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
+    "head_sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
+    "byte_identical": true
+  },
+  "canvas_stress-grid_orbit_cardinals/grid_orbit_cardinal_0.png": {
+    "master_sha256": "c8a6fa771795b47b99f0e529f936548f1dd32d11d375cf051ffe800dd611ff34",
+    "head_sha256": "c8a6fa771795b47b99f0e529f936548f1dd32d11d375cf051ffe800dd611ff34",
+    "byte_identical": true
+  },
+  "canvas_stress-grid_orbit_cardinals/grid_orbit_cardinal_90.png": {
+    "master_sha256": "04d8309fca683dfb05f41cc9b839f12a37fc12d79500aceb6733fdbbad5c0a19",
+    "head_sha256": "04d8309fca683dfb05f41cc9b839f12a37fc12d79500aceb6733fdbbad5c0a19",
+    "byte_identical": true
+  },
+  "canvas_stress-grid_orbit_cardinals/grid_orbit_cardinal_180.png": {
+    "master_sha256": "cf384cace28ab1860436c60158d473afef8044c594d70fd6ac11f82aa6202234",
+    "head_sha256": "cf384cace28ab1860436c60158d473afef8044c594d70fd6ac11f82aa6202234",
+    "byte_identical": true
+  },
+  "canvas_stress-grid_orbit_cardinals/grid_orbit_cardinal_270.png": {
+    "master_sha256": "c5f4fa304eff6391bb1c289c19ae58e777afb094fe38677ff8efbfbead23eb6a",
+    "head_sha256": "c5f4fa304eff6391bb1c289c19ae58e777afb094fe38677ff8efbfbead23eb6a",
+    "byte_identical": true
+  },
+  "canvas_stress-grid_orbit_facing/grid_orbit_facing.png": {
+    "master_sha256": "96b5945fb08ce970eca356eaf7a0bb4e379b6165e0ef2699d8222f3df668a8bf",
+    "head_sha256": "96b5945fb08ce970eca356eaf7a0bb4e379b6165e0ef2699d8222f3df668a8bf",
+    "byte_identical": true
+  },
+  "canvas_stress-gridspin_shadow_palette/gridspin_shadow_palette.png": {
+    "master_sha256": "8033e9fde522345e538dda387236d626922e41ce80c3fee7be1c7b64d70e57f0",
+    "head_sha256": "8033e9fde522345e538dda387236d626922e41ce80c3fee7be1c7b64d70e57f0",
+    "byte_identical": true
+  },
+  "canvas_stress-shadow_overlay_floor/shadow_overlay_floor.png": {
+    "master_sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
+    "head_sha256": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e",
+    "byte_identical": true
+  },
+  "canvas_stress-world_placed_cast/shadow_overlay_floor.png": {
+    "master_sha256": "c31d71938628a9736c6a2e171d99f0648ef024cc33ad2724c099be88efb11e96",
+    "head_sha256": "c31d71938628a9736c6a2e171d99f0648ef024cc33ad2724c099be88efb11e96",
+    "byte_identical": true
+  }
+}

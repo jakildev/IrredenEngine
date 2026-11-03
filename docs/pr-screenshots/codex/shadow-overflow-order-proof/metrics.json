@@ -1,0 +1,582 @@
+{
+  "baseline": [
+    {
+      "missing_pixels": 27,
+      "extra_pixels": 28,
+      "testable_shadow_pixels": 14839,
+      "testable_outside_pixels": 337139,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": false,
+      "image": "baseline/0.png",
+      "yaw": 0.0,
+      "geometry": {
+        "camera_yaw": 0.0,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 37,
+      "extra_pixels": 51,
+      "testable_shadow_pixels": 34421,
+      "testable_outside_pixels": 320699,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": false,
+      "image": "baseline/1.png",
+      "yaw": 45.00000438900292,
+      "geometry": {
+        "camera_yaw": 0.78539824,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 82,
+      "extra_pixels": 62,
+      "testable_shadow_pixels": 36367,
+      "testable_outside_pixels": 299380,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": false,
+      "image": "baseline/2.png",
+      "yaw": 89.99999846476551,
+      "geometry": {
+        "camera_yaw": 1.5707963,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 73,
+      "extra_pixels": 124,
+      "testable_shadow_pixels": 36614,
+      "testable_outside_pixels": 321627,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": false,
+      "image": "baseline/3.png",
+      "yaw": 135.00001202109314,
+      "geometry": {
+        "camera_yaw": 2.3561947,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 90,
+      "extra_pixels": 140,
+      "testable_shadow_pixels": 36651,
+      "testable_outside_pixels": 314699,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": false,
+      "image": "baseline/4.png",
+      "yaw": -179.9942788107356,
+      "geometry": {
+        "camera_yaw": -3.1414928,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 59,
+      "extra_pixels": 91,
+      "testable_shadow_pixels": 36378,
+      "testable_outside_pixels": 318339,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": false,
+      "image": "baseline/5.png",
+      "yaw": -135.00001202109314,
+      "geometry": {
+        "camera_yaw": -2.3561947,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 107,
+      "extra_pixels": 122,
+      "testable_shadow_pixels": 36367,
+      "testable_outside_pixels": 299380,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": false,
+      "image": "baseline/6.png",
+      "yaw": -89.99999846476551,
+      "geometry": {
+        "camera_yaw": -1.5707963,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 117,
+      "extra_pixels": 86,
+      "testable_shadow_pixels": 36614,
+      "testable_outside_pixels": 321627,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": false,
+      "image": "baseline/7.png",
+      "yaw": -45.00003074506149,
+      "geometry": {
+        "camera_yaw": -0.7853987,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    }
+  ],
+  "complete": [
+    {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "testable_shadow_pixels": 14839,
+      "testable_outside_pixels": 337139,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": true,
+      "image": "complete/0.png",
+      "yaw": 0.0,
+      "geometry": {
+        "camera_yaw": 0.0,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "testable_shadow_pixels": 34421,
+      "testable_outside_pixels": 320699,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": true,
+      "image": "complete/1.png",
+      "yaw": 45.00000438900292,
+      "geometry": {
+        "camera_yaw": 0.78539824,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "testable_shadow_pixels": 36367,
+      "testable_outside_pixels": 299380,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": true,
+      "image": "complete/2.png",
+      "yaw": 89.99999846476551,
+      "geometry": {
+        "camera_yaw": 1.5707963,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "testable_shadow_pixels": 36614,
+      "testable_outside_pixels": 321627,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": true,
+      "image": "complete/3.png",
+      "yaw": 135.00001202109314,
+      "geometry": {
+        "camera_yaw": 2.3561947,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "testable_shadow_pixels": 36651,
+      "testable_outside_pixels": 314699,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": true,
+      "image": "complete/4.png",
+      "yaw": -179.9942788107356,
+      "geometry": {
+        "camera_yaw": -3.1414928,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "testable_shadow_pixels": 36378,
+      "testable_outside_pixels": 318339,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": true,
+      "image": "complete/5.png",
+      "yaw": -135.00001202109314,
+      "geometry": {
+        "camera_yaw": -2.3561947,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "testable_shadow_pixels": 36367,
+      "testable_outside_pixels": 299380,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": true,
+      "image": "complete/6.png",
+      "yaw": -89.99999846476551,
+      "geometry": {
+        "camera_yaw": -1.5707963,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    },
+    {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "testable_shadow_pixels": 36614,
+      "testable_outside_pixels": 321627,
+      "boundary_tolerance_pixels": 1,
+      "boundary_distance": "chebyshev",
+      "clipped": false,
+      "sufficient_resolution": true,
+      "scope": "projected_box_shadow_edges",
+      "passed": true,
+      "image": "complete/7.png",
+      "yaw": -45.00003074506149,
+      "geometry": {
+        "camera_yaw": -0.7853987,
+        "floor_top": 2.375,
+        "floor_half_span": 19.625,
+        "box_half_extents": [
+          8.625,
+          2.625,
+          3.625
+        ]
+      },
+      "effective_subdivisions": 1,
+      "grid": false,
+      "source": true,
+      "iso_scale": [
+        16.0,
+        8.0
+      ],
+      "screen_origin": [
+        1280.0,
+        720.0
+      ],
+      "capture_effective_subdivisions": 4
+    }
+  ]
+}

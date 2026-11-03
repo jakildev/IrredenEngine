@@ -1,0 +1,487 @@
+{
+  "scope": "post-merge native Metal sun-face-index capture-only audit",
+  "limits": [
+    "counter reservations are not receiver hits",
+    "oblique sun direction is a separate startup run, not a temporal light transition",
+    "probe readbacks stall GPU and are not performance samples"
+  ],
+  "cases": {
+    "closed64": {
+      "head": "0ac961ac2b48dfe2ac3495a01ab2c3fc97111ac7",
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "120",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-analytic-box",
+        "--analytic-box-yaw",
+        "0.785398163",
+        "--analytic-box-step",
+        "0.03125",
+        "0",
+        "0",
+        "--analytic-box-yaw-step",
+        "0.001",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "3",
+        "--subdivisions",
+        "1",
+        "--auto-screenshot",
+        "6",
+        "--auto-profile",
+        "--sun-face-index-probe",
+        "--analytic-box-count",
+        "63",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--sweep-yaw",
+        "1.570796327",
+        "1.570796327",
+        "1"
+      ],
+      "binary_sha256": "95adbc973009cf393a65ee224cc2644307300e2ae0e151bc040f8ea25cd5e8dc",
+      "shader_sha256": "c59a5a27a20051f8940a7e33bb4e12756baee2fcac23b7bc9d200a9f6874e14d",
+      "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+      "run_clean": true,
+      "exit_code": 0,
+      "fresh_report": true,
+      "probe_written_shots": [
+        0
+      ],
+      "pngs": [
+        {
+          "file": "shot-0.png",
+          "sha256": "583c73c90da7846bdb3d1ded1d256526595481e6f33baed6d2c21c243dd67d91"
+        }
+      ],
+      "shots": [
+        {
+          "file": "sun-face-index-0.csv",
+          "sha256": "82ecbdd83e12474c247ca8d964e760f5ba6fa528a049693f29685d545c7863d1",
+          "modified_utc": "2026-09-30T05:23:08.535371+00:00",
+          "fresh_in_run_window": true,
+          "active": "1",
+          "basis_u": "1,-0,0",
+          "basis_v": "0,-1,-0",
+          "face_records_requested": 64,
+          "face_record_capacity": 65536,
+          "tile_capacity": 64,
+          "cascades": [
+            {
+              "occupied_tiles": 4970,
+              "incomplete_tiles": 0,
+              "max_counter": 64
+            },
+            {
+              "occupied_tiles": 3025,
+              "incomplete_tiles": 0,
+              "max_counter": 64
+            }
+          ],
+          "origin_tiles": [
+            {
+              "cascade": 0,
+              "x": 27,
+              "y": 27,
+              "counter": 64,
+              "complete": true
+            },
+            {
+              "cascade": 1,
+              "x": 64,
+              "y": 63,
+              "counter": 64,
+              "complete": true
+            }
+          ]
+        }
+      ],
+      "all_csv_hashes_distinct": true
+    },
+    "overflow65": {
+      "head": "0ac961ac2b48dfe2ac3495a01ab2c3fc97111ac7",
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "120",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-analytic-box",
+        "--analytic-box-yaw",
+        "0.785398163",
+        "--analytic-box-step",
+        "0.03125",
+        "0",
+        "0",
+        "--analytic-box-yaw-step",
+        "0.001",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "3",
+        "--subdivisions",
+        "1",
+        "--auto-screenshot",
+        "6",
+        "--auto-profile",
+        "--sun-face-index-probe",
+        "--analytic-box-count",
+        "64",
+        "--sun-direction",
+        "0",
+        "0",
+        "-1",
+        "--sweep-yaw",
+        "0",
+        "4.71238898",
+        "4"
+      ],
+      "binary_sha256": "95adbc973009cf393a65ee224cc2644307300e2ae0e151bc040f8ea25cd5e8dc",
+      "shader_sha256": "c59a5a27a20051f8940a7e33bb4e12756baee2fcac23b7bc9d200a9f6874e14d",
+      "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+      "run_clean": true,
+      "exit_code": 0,
+      "fresh_report": true,
+      "probe_written_shots": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "pngs": [
+        {
+          "file": "shot-0.png",
+          "sha256": "4762e1950d642745efe206aa07df697e7108ca51548f01100354dbd1516ec949"
+        },
+        {
+          "file": "shot-1.png",
+          "sha256": "ded52abb5deb6b4cce249a426ea7ba240acd1fc4a23d9a502f08aa5d581f4289"
+        },
+        {
+          "file": "shot-2.png",
+          "sha256": "e012055d5ac360ce44d0cf84ac580ad03f7bae56b95151d209abf7a922b34692"
+        },
+        {
+          "file": "shot-3.png",
+          "sha256": "a93038d9ecbc54e9bd931f1f9691ea4e5e92e020a0c37557babb52ca2f55f387"
+        }
+      ],
+      "shots": [
+        {
+          "file": "sun-face-index-0.csv",
+          "sha256": "7866b39e21347ae5a19fc94b01ab352cd036e690fd0a719fc70af15bf5c3ef6b",
+          "modified_utc": "2026-09-30T05:23:43.127324+00:00",
+          "fresh_in_run_window": true,
+          "active": "1",
+          "basis_u": "1,-0,0",
+          "basis_v": "0,-1,-0",
+          "face_records_requested": 65,
+          "face_record_capacity": 65536,
+          "tile_capacity": 64,
+          "cascades": [
+            {
+              "occupied_tiles": 4970,
+              "incomplete_tiles": 132,
+              "max_counter": 65
+            },
+            {
+              "occupied_tiles": 3025,
+              "incomplete_tiles": 56,
+              "max_counter": 65
+            }
+          ],
+          "origin_tiles": [
+            {
+              "cascade": 0,
+              "x": 100,
+              "y": 27,
+              "counter": 65,
+              "complete": false
+            },
+            {
+              "cascade": 1,
+              "x": 64,
+              "y": 64,
+              "counter": 65,
+              "complete": false
+            }
+          ]
+        },
+        {
+          "file": "sun-face-index-1.csv",
+          "sha256": "a8fca89e25d495340607cc81327b45bc71026fd795b494edee757d8930ce54d1",
+          "modified_utc": "2026-09-30T05:23:43.902088+00:00",
+          "fresh_in_run_window": true,
+          "active": "1",
+          "basis_u": "1,-0,0",
+          "basis_v": "0,-1,-0",
+          "face_records_requested": 65,
+          "face_record_capacity": 65536,
+          "tile_capacity": 64,
+          "cascades": [
+            {
+              "occupied_tiles": 4970,
+              "incomplete_tiles": 132,
+              "max_counter": 65
+            },
+            {
+              "occupied_tiles": 3025,
+              "incomplete_tiles": 56,
+              "max_counter": 65
+            }
+          ],
+          "origin_tiles": [
+            {
+              "cascade": 0,
+              "x": 27,
+              "y": 27,
+              "counter": 65,
+              "complete": false
+            },
+            {
+              "cascade": 1,
+              "x": 64,
+              "y": 63,
+              "counter": 65,
+              "complete": false
+            }
+          ]
+        },
+        {
+          "file": "sun-face-index-2.csv",
+          "sha256": "d973a4bbe88b21c6a2c7d8712f47cdb9dce9560dfa4544242ca232d3260d491f",
+          "modified_utc": "2026-09-30T05:23:44.709687+00:00",
+          "fresh_in_run_window": true,
+          "active": "1",
+          "basis_u": "1,-0,0",
+          "basis_v": "0,-1,-0",
+          "face_records_requested": 65,
+          "face_record_capacity": 65536,
+          "tile_capacity": 64,
+          "cascades": [
+            {
+              "occupied_tiles": 4970,
+              "incomplete_tiles": 120,
+              "max_counter": 65
+            },
+            {
+              "occupied_tiles": 3025,
+              "incomplete_tiles": 56,
+              "max_counter": 65
+            }
+          ],
+          "origin_tiles": [
+            {
+              "cascade": 0,
+              "x": 27,
+              "y": 100,
+              "counter": 65,
+              "complete": false
+            },
+            {
+              "cascade": 1,
+              "x": 63,
+              "y": 63,
+              "counter": 65,
+              "complete": false
+            }
+          ]
+        },
+        {
+          "file": "sun-face-index-3.csv",
+          "sha256": "748f3f4b4cedaf4164487dc20f8f8aa48f099458dcf9cb990cd75ff1f8d34471",
+          "modified_utc": "2026-09-30T05:23:45.486410+00:00",
+          "fresh_in_run_window": true,
+          "active": "1",
+          "basis_u": "1,-0,0",
+          "basis_v": "0,-1,-0",
+          "face_records_requested": 65,
+          "face_record_capacity": 65536,
+          "tile_capacity": 64,
+          "cascades": [
+            {
+              "occupied_tiles": 4970,
+              "incomplete_tiles": 120,
+              "max_counter": 65
+            },
+            {
+              "occupied_tiles": 3025,
+              "incomplete_tiles": 56,
+              "max_counter": 65
+            }
+          ],
+          "origin_tiles": [
+            {
+              "cascade": 0,
+              "x": 100,
+              "y": 100,
+              "counter": 65,
+              "complete": false
+            },
+            {
+              "cascade": 1,
+              "x": 63,
+              "y": 64,
+              "counter": 65,
+              "complete": false
+            }
+          ]
+        }
+      ],
+      "all_csv_hashes_distinct": true
+    },
+    "oblique65": {
+      "head": "0ac961ac2b48dfe2ac3495a01ab2c3fc97111ac7",
+      "command": [
+        "fleet-run",
+        "--timeout",
+        "120",
+        "IRCanvasStress",
+        "--only",
+        "shadowbox,floor",
+        "--probe-analytic-box",
+        "--analytic-box-yaw",
+        "0.785398163",
+        "--analytic-box-step",
+        "0.03125",
+        "0",
+        "0",
+        "--analytic-box-yaw-step",
+        "0.001",
+        "--no-spin",
+        "--no-auto-rotate",
+        "--pivot-origin",
+        "--zoom",
+        "3",
+        "--subdivisions",
+        "1",
+        "--auto-screenshot",
+        "6",
+        "--auto-profile",
+        "--sun-face-index-probe",
+        "--analytic-box-count",
+        "64",
+        "--sun-direction",
+        "-0.4",
+        "-0.3",
+        "-0.8660254",
+        "--sweep-yaw",
+        "0",
+        "1.570796327",
+        "2"
+      ],
+      "binary_sha256": "95adbc973009cf393a65ee224cc2644307300e2ae0e151bc040f8ea25cd5e8dc",
+      "shader_sha256": "c59a5a27a20051f8940a7e33bb4e12756baee2fcac23b7bc9d200a9f6874e14d",
+      "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+      "run_clean": true,
+      "exit_code": 0,
+      "fresh_report": true,
+      "probe_written_shots": [
+        0,
+        1
+      ],
+      "pngs": [
+        {
+          "file": "shot-0.png",
+          "sha256": "34c2db93b06628e09d1895367033c2d965e66a012908ffc0c15bac6b081b9e34"
+        },
+        {
+          "file": "shot-1.png",
+          "sha256": "e7bf0ae3c8c1496dc6279b1d8606c80230e616f9ac4e72e3e2654da8168b02af"
+        }
+      ],
+      "shots": [
+        {
+          "file": "sun-face-index-0.csv",
+          "sha256": "c71dda97339f0980969f7f9a8bef76da7b8a5415dd41ebcd9a4fa96f62926a08",
+          "modified_utc": "2026-09-30T05:24:23.930289+00:00",
+          "fresh_in_run_window": true,
+          "active": "1",
+          "basis_u": "0.914256215,-0.0643078163,-0.400000036",
+          "basis_v": "0.0643078163,-0.951769114,0.300000012",
+          "face_records_requested": 195,
+          "face_record_capacity": 65536,
+          "tile_capacity": 64,
+          "cascades": [
+            {
+              "occupied_tiles": 8355,
+              "incomplete_tiles": 164,
+              "max_counter": 193
+            },
+            {
+              "occupied_tiles": 5171,
+              "incomplete_tiles": 96,
+              "max_counter": 193
+            }
+          ],
+          "origin_tiles": [
+            {
+              "cascade": 0,
+              "x": 82,
+              "y": 41,
+              "counter": 145,
+              "complete": false
+            },
+            {
+              "cascade": 1,
+              "x": 64,
+              "y": 64,
+              "counter": 177,
+              "complete": false
+            }
+          ]
+        },
+        {
+          "file": "sun-face-index-1.csv",
+          "sha256": "97767ee2b09d56c0a77b419627d3c8a874370118894660eb79cf6bb3be30929f",
+          "modified_utc": "2026-09-30T05:24:24.699214+00:00",
+          "fresh_in_run_window": true,
+          "active": "1",
+          "basis_u": "0.914256215,-0.0643078163,-0.400000036",
+          "basis_v": "0.0643078163,-0.951769114,0.300000012",
+          "face_records_requested": 195,
+          "face_record_capacity": 65536,
+          "tile_capacity": 64,
+          "cascades": [
+            {
+              "occupied_tiles": 4565,
+              "incomplete_tiles": 155,
+              "max_counter": 193
+            },
+            {
+              "occupied_tiles": 3182,
+              "incomplete_tiles": 66,
+              "max_counter": 193
+            }
+          ],
+          "origin_tiles": [
+            {
+              "cascade": 0,
+              "x": 10,
+              "y": 35,
+              "counter": 146,
+              "complete": false
+            },
+            {
+              "cascade": 1,
+              "x": 64,
+              "y": 63,
+              "counter": 193,
+              "complete": false
+            }
+          ]
+        }
+      ],
+      "all_csv_hashes_distinct": true
+    }
+  }
+}

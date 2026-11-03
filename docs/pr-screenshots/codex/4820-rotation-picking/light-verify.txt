@@ -1,0 +1,100 @@
+Job: 20261102T032057Z-light-verify-f12cb5
+[2026-11-01 19:22:11.250] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-11-01 19:22:13.053] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw0_inwin yaw=0 zoom=(1,1) effectiveIso=(18,30) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:13.223] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw0_band yaw=0 zoom=(1,1) effectiveIso=(88,100) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:13.392] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw0_beyond yaw=0 zoom=(1,1) effectiveIso=(128,140) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:13.679] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw30_inwin yaw=0.5235989 zoom=(1,1) effectiveIso=(20.588455,19.660252) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:13.891] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw30_band yaw=0.5235989 zoom=(1,1) effectiveIso=(92.87691,51.534164) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:14.080] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw30_beyond yaw=0.5235989 zoom=(1,1) effectiveIso=(134.18457,69.74783) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:14.251] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw45_inwin yaw=0.78539824 zoom=(1,1) effectiveIso=(19.798988,14.343143) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:14.458] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw45_band yaw=0.78539824 zoom=(1,1) effectiveIso=(85.79562,28.01149) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:14.631] [ClientLog] [info] CaptureCamera: label=domain_z1_yaw45_beyond yaw=0.78539824 zoom=(1,1) effectiveIso=(123.50798,35.821976) subdivisions=1 gameResolution=(1280,720)
+[2026-11-01 19:22:14.801] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw0_inwin yaw=0 zoom=(2,2) effectiveIso=(18,30) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:14.969] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw0_band yaw=0 zoom=(2,2) effectiveIso=(88,100) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:15.137] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw0_beyond yaw=0 zoom=(2,2) effectiveIso=(128,140) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:15.324] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw30_inwin yaw=0.5235989 zoom=(2,2) effectiveIso=(20.588455,19.660252) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:15.535] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw30_band yaw=0.5235989 zoom=(2,2) effectiveIso=(92.87691,51.534164) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:15.726] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw30_beyond yaw=0.5235989 zoom=(2,2) effectiveIso=(134.18457,69.74783) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:15.896] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw45_inwin yaw=0.78539824 zoom=(2,2) effectiveIso=(19.798988,14.343143) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:16.106] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw45_band yaw=0.78539824 zoom=(2,2) effectiveIso=(85.79562,28.01149) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:16.295] [ClientLog] [info] CaptureCamera: label=domain_z2_yaw45_beyond yaw=0.78539824 zoom=(2,2) effectiveIso=(123.50798,35.821976) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:22:16.464] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw0_inwin yaw=0 zoom=(4,4) effectiveIso=(18,30) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:16.649] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw0_band yaw=0 zoom=(4,4) effectiveIso=(88,100) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:16.818] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw0_beyond yaw=0 zoom=(4,4) effectiveIso=(128,140) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:17.006] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw30_inwin yaw=0.5235989 zoom=(4,4) effectiveIso=(20.588455,19.660252) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:17.224] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw30_band yaw=0.5235989 zoom=(4,4) effectiveIso=(92.87691,51.534164) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:17.415] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw30_beyond yaw=0.5235989 zoom=(4,4) effectiveIso=(134.18457,69.74783) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:17.607] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw45_inwin yaw=0.78539824 zoom=(4,4) effectiveIso=(19.798988,14.343143) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:17.820] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw45_band yaw=0.78539824 zoom=(4,4) effectiveIso=(85.79562,28.01149) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:18.010] [ClientLog] [info] CaptureCamera: label=domain_z4_yaw45_beyond yaw=0.78539824 zoom=(4,4) effectiveIso=(123.50798,35.821976) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:22:18.221] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw0_inwin yaw=0 zoom=(8,8) effectiveIso=(18,30) subdivisions=8 gameResolution=(1280,720)
+[2026-11-01 19:22:18.413] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw0_band yaw=0 zoom=(8,8) effectiveIso=(88,100) subdivisions=8 gameResolution=(1280,720)
+[2026-11-01 19:22:18.583] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw0_beyond yaw=0 zoom=(8,8) effectiveIso=(128,140) subdivisions=8 gameResolution=(1280,720)
+[2026-11-01 19:22:18.763] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw30_inwin yaw=0.5235989 zoom=(8,8) effectiveIso=(20.588455,19.660252) subdivisions=8 gameResolution=(1280,720)
+[2026-11-01 19:22:18.947] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw30_band yaw=0.5235989 zoom=(8,8) effectiveIso=(92.87691,51.534164) subdivisions=8 gameResolution=(1280,720)
+[2026-11-01 19:22:19.139] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw30_beyond yaw=0.5235989 zoom=(8,8) effectiveIso=(134.18457,69.74783) subdivisions=8 gameResolution=(1280,720)
+[2026-11-01 19:22:19.334] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw45_inwin yaw=0.78539824 zoom=(8,8) effectiveIso=(19.798988,14.343143) subdivisions=8 gameResolution=(1280,720)
+[2026-11-01 19:22:19.515] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw45_band yaw=0.78539824 zoom=(8,8) effectiveIso=(85.79562,28.01149) subdivisions=8 gameResolution=(1280,720)
+[2026-11-01 19:22:19.698] [ClientLog] [info] CaptureCamera: label=domain_z8_yaw45_beyond yaw=0.78539824 zoom=(8,8) effectiveIso=(123.50798,35.821976) subdivisions=8 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRLightingEmissive exit=0
+[light-verify] --light-domain-matrix: 1/36 domain_z1_yaw0_inwin PASS
+[light-verify] --light-domain-matrix: 2/36 domain_z1_yaw30_inwin PASS
+[light-verify] --light-domain-matrix: 3/36 domain_z1_yaw0_band PASS
+[light-verify] --light-domain-matrix: 4/36 domain_z1_yaw0_beyond PASS
+[light-verify] --light-domain-matrix: 5/36 domain_z1_yaw30_band PASS
+[light-verify] --light-domain-matrix: 6/36 domain_z1_yaw45_inwin PASS
+[light-verify] --light-domain-matrix: 7/36 domain_z1_yaw30_beyond PASS
+[light-verify] --light-domain-matrix: 8/36 domain_z1_yaw45_band PASS
+[light-verify] --light-domain-matrix: 9/36 domain_z2_yaw0_inwin PASS
+[light-verify] --light-domain-matrix: 10/36 domain_z1_yaw45_beyond PASS
+[light-verify] --light-domain-matrix: 11/36 domain_z2_yaw0_band PASS
+[light-verify] --light-domain-matrix: 12/36 domain_z2_yaw0_beyond PASS
+[light-verify] --light-domain-matrix: 13/36 domain_z2_yaw45_inwin PASS
+[light-verify] --light-domain-matrix: 14/36 domain_z2_yaw30_inwin PASS
+[light-verify] --light-domain-matrix: 15/36 domain_z2_yaw30_band PASS
+[light-verify] --light-domain-matrix: 16/36 domain_z2_yaw30_beyond PASS
+[light-verify] --light-domain-matrix: 17/36 domain_z2_yaw45_beyond PASS
+[light-verify] --light-domain-matrix: 18/36 domain_z4_yaw0_inwin PASS
+[light-verify] --light-domain-matrix: 19/36 domain_z2_yaw45_band PASS
+[light-verify] --light-domain-matrix: 20/36 domain_z4_yaw0_band PASS
+[light-verify] --light-domain-matrix: 21/36 domain_z4_yaw30_inwin PASS
+[light-verify] --light-domain-matrix: 22/36 domain_z4_yaw0_beyond PASS
+[light-verify] --light-domain-matrix: 23/36 domain_z4_yaw30_beyond PASS
+[light-verify] --light-domain-matrix: 24/36 domain_z4_yaw30_band PASS
+[light-verify] --light-domain-matrix: 25/36 domain_z4_yaw45_inwin PASS
+[light-verify] --light-domain-matrix: 26/36 domain_z4_yaw45_band PASS
+[light-verify] --light-domain-matrix: 27/36 domain_z4_yaw45_beyond PASS
+[light-verify] --light-domain-matrix: 28/36 domain_z8_yaw0_inwin PASS
+[light-verify] --light-domain-matrix: 29/36 domain_z8_yaw0_beyond PASS
+[light-verify] --light-domain-matrix: 30/36 domain_z8_yaw0_band PASS
+[light-verify] --light-domain-matrix: 31/36 domain_z8_yaw30_inwin PASS
+[light-verify] --light-domain-matrix: 32/36 domain_z8_yaw30_band PASS
+[light-verify] --light-domain-matrix: 33/36 domain_z8_yaw30_beyond PASS
+[light-verify] --light-domain-matrix: 34/36 domain_z8_yaw45_inwin PASS
+[light-verify] --light-domain-matrix: 35/36 domain_z8_yaw45_band PASS
+[light-verify] --light-domain-matrix: 36/36 domain_z8_yaw45_beyond PASS
+[2026-11-01 19:23:09.912] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-11-01 19:23:10.114] [ClientLog] [info] CaptureCamera: label=light_boundary_d000 yaw=0 zoom=(2,2) effectiveIso=(18,30) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:23:10.287] [ClientLog] [info] CaptureCamera: label=light_boundary_d040 yaw=0 zoom=(2,2) effectiveIso=(58,70) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:23:10.456] [ClientLog] [info] CaptureCamera: label=light_boundary_d070 yaw=0 zoom=(2,2) effectiveIso=(88,100) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:23:10.624] [ClientLog] [info] CaptureCamera: label=light_boundary_d088 yaw=0 zoom=(2,2) effectiveIso=(106,118) subdivisions=2 gameResolution=(1280,720)
+[2026-11-01 19:23:10.791] [ClientLog] [info] CaptureCamera: label=light_boundary_d110 yaw=0 zoom=(2,2) effectiveIso=(128,140) subdivisions=2 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRLightingEmissive exit=0
+[light-verify] --light-boundary-sweep: 1/5 light_boundary_d000 PASS
+[light-verify] --light-boundary-sweep: 2/5 light_boundary_d040 PASS
+[light-verify] --light-boundary-sweep: 3/5 light_boundary_d070 PASS
+[light-verify] --light-boundary-sweep: 4/5 light_boundary_d088 PASS
+[light-verify] --light-boundary-sweep: 5/5 light_boundary_d110 PASS
+[2026-11-01 19:23:23.274] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-11-01 19:23:23.479] [ClientLog] [info] CaptureCamera: label=hover_h000 yaw=0 zoom=(4,4) effectiveIso=(-14,-2) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:23:23.683] [ClientLog] [info] CaptureCamera: label=hover_h008 yaw=0 zoom=(4,4) effectiveIso=(-14,-2) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:23:23.860] [ClientLog] [info] CaptureCamera: label=hover_h016 yaw=0 zoom=(4,4) effectiveIso=(-14,-2) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:23:24.034] [ClientLog] [info] CaptureCamera: label=hover_h024 yaw=0 zoom=(4,4) effectiveIso=(-14,-2) subdivisions=4 gameResolution=(1280,720)
+[2026-11-01 19:23:24.222] [ClientLog] [info] CaptureCamera: label=hover_h032 yaw=0 zoom=(4,4) effectiveIso=(-14,-2) subdivisions=4 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRLightingEmissive exit=0
+[light-verify] --hover-sweep: 1/5 hover_h016 PASS
+[light-verify] --hover-sweep: 2/5 hover_h008 PASS
+[light-verify] --hover-sweep: 3/5 hover_h024 PASS
+[light-verify] --hover-sweep: 4/5 hover_h000 PASS
+[light-verify] --hover-sweep: 5/5 hover_h032 PASS
+[light-verify] all checks PASS

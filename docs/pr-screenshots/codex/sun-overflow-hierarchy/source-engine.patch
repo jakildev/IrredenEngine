@@ -1,0 +1,499 @@
+diff --git a/engine/prefabs/irreden/render/sun_face_query_layout.hpp b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+index 441bdde17..5750a45a9 100644
+--- a/engine/prefabs/irreden/render/sun_face_query_layout.hpp
++++ b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+@@ -32,8 +32,17 @@ constexpr std::uint32_t kSourceFaceSpillCounterOffset =
+ constexpr std::uint32_t kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
+ constexpr std::uint32_t kSourceFaceSpillNodeOffset =
+     kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
+-constexpr std::uint32_t kSourceFaceBufferWords =
+-    kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
++constexpr std::uint32_t kSourceFaceHierarchyNeededOffset = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
++constexpr std::uint32_t kSourceFaceHierarchyReadyOffset = kSourceFaceHierarchyNeededOffset + 1u;
++constexpr std::uint32_t kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
++constexpr std::uint32_t kSourceFaceHierarchyLeafSize = 8u;
++constexpr std::uint32_t kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
++constexpr std::uint32_t kSourceFaceHierarchyNodeWords = 8u;
++constexpr std::uint32_t kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
++
++constexpr int kSourceFaceHierarchyLevels = 14;
++static_assert(kSourceFaceCapacity % kSourceFaceHierarchyLeafSize == 0u);
++static_assert(kSourceFaceHierarchyMaxLeaves == (1u << (kSourceFaceHierarchyLevels - 1)));
+ 
+ static_assert(
+     kSourceFaceTileQueryCapacity > kSourceFaceTileCapacity,
+diff --git a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+index 7b08e3f87..fd46d4622 100644
+--- a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
++++ b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+@@ -43,6 +43,8 @@
+ #include <irreden/render/voxel_frame_data.hpp>
+ #include <irreden/render/voxel_dispatch_grid.hpp>
+ 
++#include <array>
++#include <string>
+ #include <utility>
+ 
+ #include <cstddef>
+@@ -162,6 +164,8 @@ struct VoxelSunFaceFrame {
+ static_assert(sizeof(VoxelSunFaceFrame) == 48, "Voxel sun-face frame must match the shader UBO");
+ 
+ template <> struct System<BAKE_SUN_SHADOW_MAP> {
++    ShaderProgram *hierarchyProgram_ = nullptr;
++    std::array<Buffer *, IRPrefab::SunShadow::kSourceFaceHierarchyLevels> hierarchyFrames_{};
+     bool voxelFaceCoverage_ = true;
+     bool coverageFrameOpen_ = false;
+     bool frameUsesFiniteCoverage_ = false;
+@@ -727,9 +731,26 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+     }
+ 
+     void endTick() {
++        if (frameUsesFiniteCoverage_ && frameData_.shadowsEnabled_ != 0) {
++            buildOverflowHierarchy();
++        }
+         coverageFrameOpen_ = false;
+     }
+ 
++    void buildOverflowHierarchy() {
++        using namespace IRPrefab::SunShadow;
++        hierarchyProgram_->use();
++        sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
++        // Immutable level parameters avoid Metal subData orphaning between dispatches.
++        for (int pass = 0; pass < kSourceFaceHierarchyLevels; ++pass) {
++            const int count = kSourceFaceHierarchyMaxLeaves >> pass;
++            hierarchyFrames_[pass]->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
++            IRRender::device()->dispatchCompute(IRMath::divCeil(count, 64), 1, 1);
++            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
++        }
++        revoxelizeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
++    }
++
+     void beginTick() {
+         beginVoxelFaceCoverage();
+         if (sunShadowFrameDataBuf_ == nullptr) {
+@@ -1033,6 +1054,18 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+                 "BoxSunShadowProgram",
+                 std::vector{ShaderStage{IRRender::kFileCompBakeBoxSunShadow, ShaderType::COMPUTE}}
+             ).second;
++        p->hierarchyProgram_ = IRRender::createNamedResource<ShaderProgram>(
++            "SunHierarchyProgram",
++            std::vector{ShaderStage{IRRender::kFileCompBuildSunHierarchy, ShaderType::COMPUTE}}
++        ).second;
++        for (int pass = 0; pass < IRPrefab::SunShadow::kSourceFaceHierarchyLevels; ++pass) {
++            const ivec4 params(pass == 0 ? 0 : IRPrefab::SunShadow::kSourceFaceHierarchyMaxLeaves >> pass,
++                               0, 0, 0);
++            p->hierarchyFrames_[pass] = IRRender::createNamedResource<Buffer>(
++                "SunHierarchyFrameBuffer" + std::to_string(pass), &params, sizeof(params),
++                BUFFER_STORAGE_DYNAMIC, BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams
++            ).second;
++        }
+         p->voxelFaceProgram_ =
+             IRRender::createNamedResource<ShaderProgram>(
+                 "VoxelSunFacesProgram",
+diff --git a/engine/render/include/irreden/render/shader_names.hpp b/engine/render/include/irreden/render/shader_names.hpp
+index 84a9d078c..378e51753 100644
+--- a/engine/render/include/irreden/render/shader_names.hpp
++++ b/engine/render/include/irreden/render/shader_names.hpp
+@@ -134,6 +134,7 @@ const char *const kFileCompResolvePerAxisBlit = "shaders/c_resolve_per_axis_blit
+ // metal/c_resolve_world_placed_depth.metal.
+ const char *const kFileCompResolveWorldPlacedDepth = "shaders/c_resolve_world_placed_depth.glsl";
+ const char *const kFileCompClearSunShadowMap = "shaders/c_clear_sun_shadow_map.glsl";
++const char *const kFileCompBuildSunHierarchy = "shaders/c_build_sun_hierarchy.glsl";
+ const char *const kFileCompBakeVoxelSunFaces = "shaders/c_bake_voxel_sun_faces.glsl";
+ const char *const kFileCompBakeBoxSunShadow = "shaders/c_bake_box_sun_shadow.glsl";
+ const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.glsl";
+diff --git a/engine/render/src/metal/metal_pipeline.cpp b/engine/render/src/metal/metal_pipeline.cpp
+index e2dd854ba..2b6905aed 100644
+--- a/engine/render/src/metal/metal_pipeline.cpp
++++ b/engine/render/src/metal/metal_pipeline.cpp
+@@ -58,7 +58,8 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+         functionName == "c_render_stateless_particles_to_trixel" ||
+         functionName == "c_light_overflow_faces" ||
+         functionName == "c_fog_overflow_faces" ||
+-        functionName == "c_bake_voxel_sun_faces") {
++        functionName == "c_bake_voxel_sun_faces" ||
++        functionName == "c_build_sun_hierarchy") {
+         return MTL::Size(64, 1, 1);
+     }
+     // Overflow canonical sort uses 256 threads over a 2048-element fused slab
+diff --git a/engine/render/src/shaders/c_clear_sun_shadow_map.glsl b/engine/render/src/shaders/c_clear_sun_shadow_map.glsl
+index 98602eb19..a5f8d861b 100644
+--- a/engine/render/src/shaders/c_clear_sun_shadow_map.glsl
++++ b/engine/render/src/shaders/c_clear_sun_shadow_map.glsl
+@@ -22,6 +22,8 @@ void main() {
+     }
+     if (linearIdx == 0) sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))] = 0u;
+     if (linearIdx == 0) sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))] = 0u;
++    if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))] = 0u;
++    if (linearIdx == 0) sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] = 0u;
+     if (uint(linearIdx) < kSourceFaceTileCount) {
+         sunDepthBuf[sourceFaceTileBase(uint(linearIdx))] = 0u;
+         sunDepthBuf[kSourceFaceSpillHeadOffset + uint(linearIdx)] = 0xFFFFFFFFu;
+diff --git a/engine/render/src/shaders/ir_sun_face_index.glsl b/engine/render/src/shaders/ir_sun_face_index.glsl
+index 92e0b36e3..f8aef5c1c 100644
+--- a/engine/render/src/shaders/ir_sun_face_index.glsl
++++ b/engine/render/src/shaders/ir_sun_face_index.glsl
+@@ -59,10 +59,12 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
+                 continue;
+             }
+             const uint slot = atomicAdd(sunDepthBuf[base], 1u);
++            if (slot == kSourceFaceTileQueryCapacity) atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))], 1u);
+             if (slot < kSourceFaceTileCapacity) {
+                 sunDepthBuf[base + 1u + slot] = faceIndex;
+             } else if (slot < kSourceFaceTileQueryCapacity) {
+                 const uint spill = atomicAdd(sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))], 1u);
++                if (spill == kSourceFaceSpillCapacity) atomicExchange(sunDepthBuf[sourceFaceHierarchyNeededIndex(uint(sunDepthBuf.length()))], 1u);
+                 if (spill < kSourceFaceSpillCapacity) {
+                     const uint node = kSourceFaceSpillNodeOffset + spill * kSourceFaceSpillNodeWords;
+                     sunDepthBuf[node] = faceIndex;
+diff --git a/engine/render/src/shaders/ir_sun_face_query_layout.glsl b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+index 5f958df5d..869921e59 100644
+--- a/engine/render/src/shaders/ir_sun_face_query_layout.glsl
++++ b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+@@ -21,7 +21,13 @@ const uint kSourceFaceRecordOffset = kSourceFaceTileOffset + kSourceFaceTileCoun
+ const uint kSourceFaceSpillCounterOffset = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
+ const uint kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
+ const uint kSourceFaceSpillNodeOffset = kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
+-const uint kSourceFaceBufferWords = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
++const uint kSourceFaceHierarchyNeededOffset = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
++const uint kSourceFaceHierarchyReadyOffset = kSourceFaceHierarchyNeededOffset + 1u;
++const uint kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
++const uint kSourceFaceHierarchyLeafSize = 8u;
++const uint kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
++const uint kSourceFaceHierarchyNodeWords = 8u;
++const uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+ 
+ // Every header access passes `uint(sunDepthBuf.length())`: NVIDIA's cold link
+ // time grows with a compile-time-constant SSBO index, and this one costs minutes
+@@ -37,6 +43,14 @@ uint sourceFaceSpillCounterIndex(uint boundWords) {
+     return boundWords - (kSourceFaceBufferWords - kSourceFaceSpillCounterOffset);
+ }
+ 
++uint sourceFaceHierarchyNeededIndex(uint boundWords) {
++    return boundWords - (kSourceFaceBufferWords - kSourceFaceHierarchyNeededOffset);
++}
++
++uint sourceFaceHierarchyReadyIndex(uint boundWords) {
++    return boundWords - (kSourceFaceBufferWords - kSourceFaceHierarchyReadyOffset);
++}
++
+ uint sourceFaceTileBase(uint tileIndex) {
+     return kSourceFaceTileOffset + tileIndex * (kSourceFaceTileCapacity + 1u);
+ }
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 02dc3b57e..79bc672ae 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -54,6 +54,71 @@ layout(std430, binding = 28) readonly buffer SunShadowDepthMap {
+     uint sunDepthBuf[];
+ };
+ 
++#include "ir_sun_geometry_storage.glsl"
++
++float sourceSunGeometrySeparation(uint faceIndex, vec2 sunUV, float sunZ
++#if IR_SUN_QUERY_STATS
++    , inout SunQueryStats sunQueryStats
++#endif
++) {
++    const SourceSunGeometry geometry = readSourceSunGeometry(faceIndex);
++#if IR_SUN_QUERY_STATS
++    if (geometry.type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
++#endif
++    return geometry.type == 0u
++        ? sourceFaceRaySeparation(sunUV, sunZ, geometry.corner, geometry.edgeU, geometry.edgeV
++#if IR_SUN_QUERY_STATS
++            , sunQueryStats
++#endif
++        )
++        : sourceShapeRaySeparation(sunUV, sunZ, geometry.type, geometry.corner, geometry.edgeU, geometry.edgeV);
++}
++
++bool sourceSunHierarchyBlocks(uint leaves, uint records,
++    vec2 sunUV, float sunZ, float maxShadowThrow
++#if IR_SUN_QUERY_STATS
++    , inout SunQueryStats sunQueryStats
++#endif
++) {
++    uint node = 1u;
++#if IR_SUN_QUERY_STATS
++    uint visited = 0u;
++#endif
++    while (true) {
++        if (sourceSunBoundsOverlap(readSourceSunBounds(node), sunUV, sunZ,
++                                   kShadowBiasQuantNoise, maxShadowThrow)) {
++            if (node < leaves) { node *= 2u; continue; }
++            const uint first = (node - leaves) * kSourceFaceHierarchyLeafSize;
++            for (uint i = first; i < min(records, first + kSourceFaceHierarchyLeafSize); ++i) {
++#if IR_SUN_QUERY_STATS
++                ++visited;
++                sunQueryStats.counts[kSunQueryCandidates] += 1u;
++#endif
++                const float separation = sourceSunGeometrySeparation(i, sunUV, sunZ
++#if IR_SUN_QUERY_STATS
++                    , sunQueryStats
++#endif
++                );
++                if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
++#if IR_SUN_QUERY_STATS
++                    sunQueryStats.counts[kSunQueryBlocked] += 1u;
++                    sunQueryStats.counts[kSunQueryFirstBlockerVisits] += visited;
++#endif
++                    return true;
++                }
++            }
++        }
++        // Skip completed right subtrees; no fixed traversal budget can certify a miss.
++        while (node > 1u && (node & 1u) != 0u) node /= 2u;
++        if (node == 1u) break;
++        ++node;
++    }
++#if IR_SUN_QUERY_STATS
++    sunQueryStats.counts[kSunQueryExhausted] += 1u;
++#endif
++    return false;
++}
++
+ float sampleCascadeShadow(
+     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
+     vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver, vec4 casterViewToWorld,
+@@ -77,6 +142,23 @@ float sampleCascadeShadow(
+             const uint count = sunDepthBuf[tileBase];
+             sourceQueryComplete = sourceFaceQueryComplete(count)
+                 && (count <= kSourceFaceTileCapacity || sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))] <= kSourceFaceSpillCapacity);
++            const uint hierarchyLeaves = !sourceQueryComplete ? sunDepthBuf[sourceFaceHierarchyReadyIndex(uint(sunDepthBuf.length()))] : 0u;
++            const bool queryHierarchy = !sourceQueryComplete && sourceFaceCount <= kSourceFaceCapacity &&
++                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(sourceFaceCount);
++            if (queryHierarchy) {
++                sourceQueryComplete = true;
++                if (dot(normal, sunDir) > 0.0) {
++#if IR_SUN_QUERY_STATS
++                    sunQueryStats.counts[kSunQueryIndexed] += 1u;
++#endif
++                    if (sourceSunHierarchyBlocks(hierarchyLeaves, sourceFaceCount,
++                                                 sunUV, sunZ, maxShadowThrow
++#if IR_SUN_QUERY_STATS
++                        , sunQueryStats
++#endif
++                    )) return 1.0;
++                }
++            }
+             // A complete small record pool is an exact reference for an incomplete tile.
+             const bool queryAllFaces = IR_SUN_FACE_OVERFLOW_REFERENCE != 0
+                 && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
+@@ -86,7 +168,7 @@ float sampleCascadeShadow(
+             if (!sourceQueryComplete) sunQueryStats.counts[kSunQueryIncomplete] += 1u;
+ #endif
+             const uint candidateCount = queryAllFaces ? sourceFaceCount : count;
+-            if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {
++            if (!queryHierarchy && sourceQueryComplete && dot(normal, sunDir) > 0.0) {
+ #if IR_SUN_QUERY_STATS
+                 sunQueryStats.counts[kSunQueryIndexed] += 1u;
+ #endif
+@@ -106,21 +188,11 @@ float sampleCascadeShadow(
+                         faceIndex = sunDepthBuf[node];
+                         spill = sunDepthBuf[node + 1u];
+                     }
+-                    const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * faceIndex;
+-                    const vec3 corner = vec3(uintBitsToFloat(sunDepthBuf[record]), uintBitsToFloat(sunDepthBuf[record+1u]), uintBitsToFloat(sunDepthBuf[record+2u]));
+-                    const vec3 edgeU = vec3(uintBitsToFloat(sunDepthBuf[record+3u]), uintBitsToFloat(sunDepthBuf[record+4u]), uintBitsToFloat(sunDepthBuf[record+5u]));
+-                    const vec3 edgeV = vec3(uintBitsToFloat(sunDepthBuf[record+6u]), uintBitsToFloat(sunDepthBuf[record+7u]), uintBitsToFloat(sunDepthBuf[record+8u]));
+-                    const uint type = sunDepthBuf[record + 9u];
+-#if IR_SUN_QUERY_STATS
+-                    if (type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
+-#endif
+-                    const float separation = type == 0u
+-                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV
++                    const float separation = sourceSunGeometrySeparation(faceIndex, sunUV, sunZ
+ #if IR_SUN_QUERY_STATS
+-                            , sunQueryStats
++                        , sunQueryStats
+ #endif
+-                        )
+-                        : sourceShapeRaySeparation(sunUV, sunZ, type, corner, edgeU, edgeV);
++                    );
+                     if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
+ #if IR_SUN_QUERY_STATS
+                         sunQueryStats.counts[kSunQueryBlocked] += 1u;
+diff --git a/engine/render/src/shaders/metal/c_clear_sun_shadow_map.metal b/engine/render/src/shaders/metal/c_clear_sun_shadow_map.metal
+index a0db3bd00..31bfc1952 100644
+--- a/engine/render/src/shaders/metal/c_clear_sun_shadow_map.metal
++++ b/engine/render/src/shaders/metal/c_clear_sun_shadow_map.metal
+@@ -20,6 +20,8 @@ kernel void c_clear_sun_shadow_map(
+     }
+     if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 0u, memory_order_relaxed);
+     if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceSpillCounterOffset], 0u, memory_order_relaxed);
++    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 0u, memory_order_relaxed);
++    if (linearIdx == 0) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyReadyOffset], 0u, memory_order_relaxed);
+     if (uint(linearIdx) < kSourceFaceTileCount) {
+         atomic_store_explicit(&sunDepthBuf[sourceFaceTileBase(uint(linearIdx))], 0u, memory_order_relaxed);
+         atomic_store_explicit(&sunDepthBuf[kSourceFaceSpillHeadOffset + uint(linearIdx)], 0xFFFFFFFFu, memory_order_relaxed);
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_index.metal b/engine/render/src/shaders/metal/ir_sun_face_index.metal
+index 7b60f7850..11edfb96c 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_index.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_index.metal
+@@ -62,10 +62,12 @@ inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corne
+                 continue;
+             }
+             const uint slot = atomic_fetch_add_explicit(&sunDepthBuf[base], 1u, memory_order_relaxed);
++            if (slot == kSourceFaceTileQueryCapacity) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 1u, memory_order_relaxed);
+             if (slot < kSourceFaceTileCapacity) {
+                 atomic_store_explicit(&sunDepthBuf[base + 1u + slot], faceIndex, memory_order_relaxed);
+             } else if (slot < kSourceFaceTileQueryCapacity) {
+                 const uint spill = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceSpillCounterOffset], 1u, memory_order_relaxed);
++                if (spill == kSourceFaceSpillCapacity) atomic_store_explicit(&sunDepthBuf[kSourceFaceHierarchyNeededOffset], 1u, memory_order_relaxed);
+                 if (spill < kSourceFaceSpillCapacity) {
+                     const uint node = kSourceFaceSpillNodeOffset + spill * kSourceFaceSpillNodeWords;
+                     atomic_store_explicit(&sunDepthBuf[node], faceIndex, memory_order_relaxed);
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+index 8004ed210..e7dfb8603 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+@@ -21,7 +21,13 @@ constant uint kSourceFaceRecordOffset = kSourceFaceTileOffset + kSourceFaceTileC
+ constant uint kSourceFaceSpillCounterOffset = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
+ constant uint kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
+ constant uint kSourceFaceSpillNodeOffset = kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
+-constant uint kSourceFaceBufferWords = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
++constant uint kSourceFaceHierarchyNeededOffset = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
++constant uint kSourceFaceHierarchyReadyOffset = kSourceFaceHierarchyNeededOffset + 1u;
++constant uint kSourceFaceHierarchyOffset = kSourceFaceHierarchyReadyOffset + 1u;
++constant uint kSourceFaceHierarchyLeafSize = 8u;
++constant uint kSourceFaceHierarchyMaxLeaves = kSourceFaceCapacity / kSourceFaceHierarchyLeafSize;
++constant uint kSourceFaceHierarchyNodeWords = 8u;
++constant uint kSourceFaceBufferWords = kSourceFaceHierarchyOffset + 2u * kSourceFaceHierarchyMaxLeaves * kSourceFaceHierarchyNodeWords;
+ 
+ inline uint sourceFaceTileBase(uint tileIndex) {
+     return kSourceFaceTileOffset + tileIndex * (kSourceFaceTileCapacity + 1u);
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index f3033cabc..fcbfb4c7e 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -52,6 +52,71 @@ struct FrameDataSun {
+     int4 fogCeilingEnabled;
+ };
+ 
++#include "ir_sun_geometry_storage.metal"
++
++inline float sourceSunGeometrySeparation(device const uint* sunDepthBuf, uint faceIndex, float2 sunUV, float sunZ
++#if IR_SUN_QUERY_STATS
++    , thread SunQueryStats &sunQueryStats
++#endif
++) {
++    const SourceSunGeometry geometry = readSourceSunGeometry(sunDepthBuf, faceIndex);
++#if IR_SUN_QUERY_STATS
++    if (geometry.type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
++#endif
++    return geometry.type == 0u
++        ? sourceFaceRaySeparation(sunUV, sunZ, geometry.corner, geometry.edgeU, geometry.edgeV
++#if IR_SUN_QUERY_STATS
++            , sunQueryStats
++#endif
++        )
++        : sourceShapeRaySeparation(sunUV, sunZ, geometry.type, geometry.corner, geometry.edgeU, geometry.edgeV);
++}
++
++inline bool sourceSunHierarchyBlocks(device const uint* sunDepthBuf, uint leaves, uint records,
++    float2 sunUV, float sunZ, float maxShadowThrow
++#if IR_SUN_QUERY_STATS
++    , thread SunQueryStats &sunQueryStats
++#endif
++) {
++    uint node = 1u;
++#if IR_SUN_QUERY_STATS
++    uint visited = 0u;
++#endif
++    while (true) {
++        if (sourceSunBoundsOverlap(readSourceSunBounds(sunDepthBuf, node), sunUV, sunZ,
++                                   kShadowBiasQuantNoise, maxShadowThrow)) {
++            if (node < leaves) { node *= 2u; continue; }
++            const uint first = (node - leaves) * kSourceFaceHierarchyLeafSize;
++            for (uint i = first; i < min(records, first + kSourceFaceHierarchyLeafSize); ++i) {
++#if IR_SUN_QUERY_STATS
++                ++visited;
++                sunQueryStats.counts[kSunQueryCandidates] += 1u;
++#endif
++                const float separation = sourceSunGeometrySeparation(sunDepthBuf, i, sunUV, sunZ
++#if IR_SUN_QUERY_STATS
++                    , sunQueryStats
++#endif
++                );
++                if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
++#if IR_SUN_QUERY_STATS
++                    sunQueryStats.counts[kSunQueryBlocked] += 1u;
++                    sunQueryStats.counts[kSunQueryFirstBlockerVisits] += visited;
++#endif
++                    return true;
++                }
++            }
++        }
++        // Skip completed right subtrees; no fixed traversal budget can certify a miss.
++        while (node > 1u && (node & 1u) != 0u) node /= 2u;
++        if (node == 1u) break;
++        ++node;
++    }
++#if IR_SUN_QUERY_STATS
++    sunQueryStats.counts[kSunQueryExhausted] += 1u;
++#endif
++    return false;
++}
++
+ inline float sampleCascadeShadow(
+     float2 sunUV, float sunZ, float3 normal, float3 sunDir, float3 uHat, float3 vHat,
+     float2 origin, float2 texelSz, int bufferOffset,
+@@ -76,6 +141,23 @@ inline float sampleCascadeShadow(
+             const uint count = sunDepthBuf[tileBase];
+             sourceQueryComplete = sourceFaceQueryComplete(count)
+                 && (count <= kSourceFaceTileCapacity || sunDepthBuf[kSourceFaceSpillCounterOffset] <= kSourceFaceSpillCapacity);
++            const uint hierarchyLeaves = !sourceQueryComplete ? sunDepthBuf[kSourceFaceHierarchyReadyOffset] : 0u;
++            const bool queryHierarchy = !sourceQueryComplete && sourceFaceCount <= kSourceFaceCapacity &&
++                hierarchyLeaves != 0u && hierarchyLeaves == sourceSunHierarchyLeafCount(sourceFaceCount);
++            if (queryHierarchy) {
++                sourceQueryComplete = true;
++                if (dot(normal, sunDir) > 0.0) {
++#if IR_SUN_QUERY_STATS
++                    sunQueryStats.counts[kSunQueryIndexed] += 1u;
++#endif
++                    if (sourceSunHierarchyBlocks(sunDepthBuf, hierarchyLeaves, sourceFaceCount,
++                                                 sunUV, sunZ, maxShadowThrow
++#if IR_SUN_QUERY_STATS
++                        , sunQueryStats
++#endif
++                    )) return 1.0;
++                }
++            }
+             // A complete small record pool is an exact reference for an incomplete tile.
+             const bool queryAllFaces = IR_SUN_FACE_OVERFLOW_REFERENCE != 0
+                 && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
+@@ -85,7 +167,7 @@ inline float sampleCascadeShadow(
+             if (!sourceQueryComplete) sunQueryStats.counts[kSunQueryIncomplete] += 1u;
+ #endif
+             const uint candidateCount = queryAllFaces ? sourceFaceCount : count;
+-            if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {
++            if (!queryHierarchy && sourceQueryComplete && dot(normal, sunDir) > 0.0) {
+ #if IR_SUN_QUERY_STATS
+                 sunQueryStats.counts[kSunQueryIndexed] += 1u;
+ #endif
+@@ -105,21 +187,11 @@ inline float sampleCascadeShadow(
+                         faceIndex = sunDepthBuf[node];
+                         spill = sunDepthBuf[node + 1u];
+                     }
+-                    const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * faceIndex;
+-                    const float3 corner = float3(as_type<float>(sunDepthBuf[record]), as_type<float>(sunDepthBuf[record+1u]), as_type<float>(sunDepthBuf[record+2u]));
+-                    const float3 edgeU = float3(as_type<float>(sunDepthBuf[record+3u]), as_type<float>(sunDepthBuf[record+4u]), as_type<float>(sunDepthBuf[record+5u]));
+-                    const float3 edgeV = float3(as_type<float>(sunDepthBuf[record+6u]), as_type<float>(sunDepthBuf[record+7u]), as_type<float>(sunDepthBuf[record+8u]));
+-                    const uint type = sunDepthBuf[record + 9u];
+-#if IR_SUN_QUERY_STATS
+-                    if (type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
+-#endif
+-                    const float separation = type == 0u
+-                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV
++                    const float separation = sourceSunGeometrySeparation(sunDepthBuf, faceIndex, sunUV, sunZ
+ #if IR_SUN_QUERY_STATS
+-                            , sunQueryStats
++                        , sunQueryStats
+ #endif
+-                        )
+-                        : sourceShapeRaySeparation(sunUV, sunZ, type, corner, edgeU, edgeV);
++                    );
+                     if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
+ #if IR_SUN_QUERY_STATS
+                         sunQueryStats.counts[kSunQueryBlocked] += 1u;

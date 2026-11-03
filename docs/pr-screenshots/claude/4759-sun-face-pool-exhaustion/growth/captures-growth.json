@@ -1,0 +1,5747 @@
+{
+  "head": "a6b9953c3eb8743a5c5b8c05889a3bdb9c7bb8ae",
+  "parent": "a6b9953c3eb8743a5c5b8c05889a3bdb9c7bb8ae",
+  "binary_sha256": "736106226edc7df5e210d8a7c90f369528521dd9dfff5c5679531e145508e201",
+  "crop": [
+    1100,
+    600,
+    1460,
+    840
+  ],
+  "band_px": 2,
+  "extra": [],
+  "variants": {
+    "head": {
+      "shader_sha256": {
+        "ir_sun_face_query_layout.metal": "f1c9b471bfe3328545c4886b98fb9d2dcff249cb1bc3e1d6a63ff98daaeaaec2",
+        "ir_sun_face_index.metal": "f9a9edb23c25870c26f6a2cc754467e48b923373351294982131f3006e3b497f",
+        "c_build_sun_hierarchy.metal": "5986b1cebe347f945326f7a5c2baf725a575f442ad96e2beca9ec157e9f93976",
+        "ir_sun_shadow_sample.metal": "8017ea3a61477fc3cd1070af936dac5067d1b02a359469581444c30c9d87b140"
+      },
+      "cases": {
+        "lower": {
+          "name": "lower",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 0,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": null,
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/lower/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "8dfac42472a12fb9f726b486c93d90f82fc11bcd7a1c710bfff266f319a01949",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": null,
+          "index": {
+            "face_records_requested": 1708,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 0,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 0,
+            "hierarchy_ready_leaves": 0
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 50
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 60
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128": {
+          "name": "far-128",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "7c865d0eefd246da12c52050ad18fdec76572b3dcb9fdcccc688141af0732900",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "lower-filler-last": {
+          "name": "lower-filler-last",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 0,
+          "height": -60,
+          "filler": 300,
+          "order": "last",
+          "control": "lower",
+          "analytic": false,
+          "offset": null,
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/lower-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "2ef3b747c30d2519b25d95130cb4cb1b2111ac80554555ee2cef4d8be3b0f4dd",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": null,
+          "index": {
+            "face_records_requested": 68014,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 0,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 0,
+            "hierarchy_ready_leaves": 0
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 50
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 60
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "lower-filler-first": {
+          "name": "lower-filler-first",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 0,
+          "height": -60,
+          "filler": 300,
+          "order": "first",
+          "control": "lower",
+          "analytic": false,
+          "offset": null,
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/lower-filler-first/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "2ef3b747c30d2519b25d95130cb4cb1b2111ac80554555ee2cef4d8be3b0f4dd",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": null,
+          "index": {
+            "face_records_requested": 68014,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 0,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 0,
+            "hierarchy_ready_leaves": 0
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 50
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 60
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-filler-last": {
+          "name": "far-128-filler-last",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": "last",
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 71470,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-filler-first": {
+          "name": "far-128-filler-first",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": "first",
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128-filler-first/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "469f4408aea3cec8244adcb56f92e3b16f3292cd7528f02137808b8eef60b93f",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 71470,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-h30": {
+          "name": "far-128-h30",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -30,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -30
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128-h30/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-30"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "afe8dc8744a71656b8fa4290c32e8dcbcd748b3bd0f4ff5c854c05c334d849f8",
+          "receiver": "receiver.png",
+          "receiver_sha256": "41108c8337f1450ff1b294480c10b33edea5f6a5ae298c6cf0cf650e827a6b64",
+          "pose": [
+            0.0,
+            0.0,
+            -30.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 208,
+            "changed_outside_band": 200,
+            "excess_shadow_outside_band": 200,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-h30-filler-last": {
+          "name": "far-128-h30-filler-last",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -30,
+          "filler": 300,
+          "order": "last",
+          "control": "far-128-h30",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -30
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128-h30-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-30",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "06e72204b60c32dc8c497d2850b0db760cf2bb829fca43d4ab05d126997417af",
+          "receiver": "receiver.png",
+          "receiver_sha256": "41108c8337f1450ff1b294480c10b33edea5f6a5ae298c6cf0cf650e827a6b64",
+          "pose": [
+            0.0,
+            0.0,
+            -30.0
+          ],
+          "index": {
+            "face_records_requested": 71470,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-h90": {
+          "name": "far-128-h90",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -90,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -90
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128-h90/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-90"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "8875fbc5bfe2cd9c8ee9ed505f4a63a3e181223306c463d65f98e0ca10f7a0b2",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -90.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-h90-filler-last": {
+          "name": "far-128-h90-filler-last",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -90,
+          "filler": 300,
+          "order": "last",
+          "control": "far-128-h90",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -90
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128-h90-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-90",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "ee97cda5f5066acd0fc5614b8032949ba6cd03ddaaca042a757fc262594cd2f0",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -90.0
+          ],
+          "index": {
+            "face_records_requested": 71470,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-filler-first-270": {
+          "name": "far-128-filler-first-270",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 270,
+          "order": "first",
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128-filler-first-270/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "270",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "9d7bc3722573fe945a672490186f6407196988c1a8448c303319578494f8b330",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 63970,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 8192
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2256,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 2691,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "far-128-filler-first-280": {
+          "name": "far-128-filler-first-280",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 280,
+          "order": "first",
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/far-128-filler-first-280/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "280",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "522ce08dc72d04bd8d0ebd3ed5849b0af3cbea51cd84f88b4afd1fdce2d5b593",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 66420,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2415,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2610
+            },
+            {
+              "occupied_tiles": 2794,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2744
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-lower": {
+          "name": "oblique-lower",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 0,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": null,
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-lower/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "76655dc422ce2f5d5b76ae3afe7147b66ff21721556fbf647345cd50e1a1bb7a",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": null,
+          "index": {
+            "face_records_requested": 2220,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 128,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 0,
+            "hierarchy_ready_leaves": 0
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 160,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 69
+            },
+            {
+              "occupied_tiles": 99,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 94
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-aligned-128": {
+          "name": "oblique-aligned-128",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            18,
+            24,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-aligned-128/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "18",
+            "24",
+            "-60"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "062237fee7239098abcae6399ff16c8605e3ea5cb1694895ab8831a6e868296c",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            18.0,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5676,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1603,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 160,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 1955
+            },
+            {
+              "occupied_tiles": 99,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2649
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-aligned-128-filler-last": {
+          "name": "oblique-aligned-128-filler-last",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 340,
+          "order": "last",
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            18,
+            24,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-aligned-128-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "18",
+            "24",
+            "-60",
+            "--probe-record-pool-filler",
+            "340",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "feaa6cbecb64c7638755d271343ab947dbbc7e85a8e17d8736d9daf6c8346bed",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            18.0,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 72188,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1603,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2897,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 1955
+            },
+            {
+              "occupied_tiles": 3230,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2649
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-aligned-128-filler-first": {
+          "name": "oblique-aligned-128-filler-first",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 340,
+          "order": "first",
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            18,
+            24,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-aligned-128-filler-first/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "18",
+            "24",
+            "-60",
+            "--probe-record-pool-filler",
+            "340",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "feaa6cbecb64c7638755d271343ab947dbbc7e85a8e17d8736d9daf6c8346bed",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            18.0,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 72188,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1603,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2897,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 1955
+            },
+            {
+              "occupied_tiles": 3230,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2649
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-lower": {
+          "name": "analytic-lower",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 0,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "analytic-lower",
+          "analytic": true,
+          "offset": null,
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/analytic-lower/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "c0a947b3944dbc70fa239bda9296482a37ffa8d9df1b5dbc908aa528c4636424",
+          "receiver": "receiver.png",
+          "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+          "pose": null,
+          "index": {
+            "face_records_requested": 1601,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 0,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 0,
+            "hierarchy_ready_leaves": 0
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 26
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 37
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-far-128": {
+          "name": "analytic-far-128",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "analytic-lower",
+          "analytic": true,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/analytic-far-128/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "d3d85ce1dfdcb945c3af0302b8d6dc480a1cca49f0741be3b0eaf15142d1785a",
+          "receiver": "receiver.png",
+          "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5057,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2586
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2719
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-far-128-filler-last": {
+          "name": "analytic-far-128-filler-last",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": "last",
+          "control": "analytic-lower",
+          "analytic": true,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/analytic-far-128-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+          "receiver": "receiver.png",
+          "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 71363,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2586
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2719
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-far-128-filler-first": {
+          "name": "analytic-far-128-filler-first",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": "first",
+          "control": "analytic-lower",
+          "analytic": true,
+          "offset": [
+            0,
+            0,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/analytic-far-128-filler-first/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-analytic-sphere",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "0",
+            "0",
+            "-60",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "1c2a8fd4988e37c7a7fbf913c0d61178a8466070f77a9cf9df4fdfdc97db2975",
+          "receiver": "receiver.png",
+          "receiver_sha256": "30b3e102f2faad19653bcfbbd5b74a6d830d60a1ea4b58b64552e07aae7d45b7",
+          "pose": [
+            0.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 71363,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2656,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2586
+            },
+            {
+              "occupied_tiles": 3006,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2719
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-oblique-lower": {
+          "name": "analytic-oblique-lower",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 0,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "analytic-oblique-lower",
+          "analytic": true,
+          "offset": null,
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/analytic-oblique-lower/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-analytic-sphere"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "cabdf3b46f0f4392567612787486b0000fd4ee606b9872980bb2acc075d99c60",
+          "receiver": "receiver.png",
+          "receiver_sha256": "9d67a901ac64028f2ed9d609b98add1015e09b3e2b4ac3b9e6bcfe69fcd30504",
+          "pose": null,
+          "index": {
+            "face_records_requested": 1921,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 0,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 0,
+            "hierarchy_ready_leaves": 0
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 160,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 35
+            },
+            {
+              "occupied_tiles": 100,
+              "incomplete_tiles": 0,
+              "record_lost_tiles": 0,
+              "max_counter": 48
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "analytic-oblique-aligned-128-filler-last": {
+          "name": "analytic-oblique-aligned-128-filler-last",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 340,
+          "order": "last",
+          "control": "analytic-oblique-lower",
+          "analytic": true,
+          "offset": [
+            18,
+            24,
+            -60
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/analytic-oblique-aligned-128-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "2",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-analytic-sphere",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "18",
+            "24",
+            "-60",
+            "--probe-record-pool-filler",
+            "340",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "c19b094d713f1bd62c261ca5c5d5a132c291aa5be6e1fc118a09808a33232885",
+          "receiver": "receiver.png",
+          "receiver_sha256": "9d67a901ac64028f2ed9d609b98add1015e09b3e2b4ac3b9e6bcfe69fcd30504",
+          "pose": [
+            18.0,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 71889,
+            "face_record_capacity": 131072,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 33816596,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 16384
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 2897,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 1946
+            },
+            {
+              "occupied_tiles": 3231,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2597
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "moving-128": {
+          "name": "moving-128",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": null,
+          "analytic": false,
+          "offset": [
+            -100,
+            0,
+            -60
+          ],
+          "velocity": [
+            120,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "8ffdfab9831c915d8959366dae69c5fdb36ed0520952a8008866919048ac1189",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -62.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 125,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 94,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-0",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "36f17f8069aa8801bec181c5b6b5a1b0573671b98775405fb28ac2ee55528f66",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -42.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1088,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 125,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 93,
+                  "incomplete_tiles": 2,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-1",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "65a45a62d782033858396d168a508a00f63284436f64de047fa6e3bb2095c61c",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -22.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1310,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 125,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 92,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-2",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "86ba46a4ec6294c136f97ba9f2aafc39ca218fe67030c484c292797ec5cb4556",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -2.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1443,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 121,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3506
+                },
+                {
+                  "occupied_tiles": 90,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2236
+                }
+              ],
+              "control": "moving-128-pose-3",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "5e8e4433ab739b7e6eefe32017101fe4289e0ce91b59387abc5ba1d51786cc48",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                18.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1433,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 121,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3481
+                },
+                {
+                  "occupied_tiles": 90,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2066
+                }
+              ],
+              "control": "moving-128-pose-4",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "0e91d2d9a8f27787f8bba8931731644c9fe26447119ef9ac649e9d1f140c0b85",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                38.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 125,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 94,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2432
+                }
+              ],
+              "control": "moving-128-pose-5",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "d8525c9fd5507900d2e7ba3e47c3d7a0fa4f769cfda3e4bbfc8caa9e84d1faf5",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                58.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5164,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 125,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 94,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-6",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "poses": "moving-128-pose",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "7",
+            "8",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-100",
+            "0",
+            "-60",
+            "--probe-overlapping-source-velocity",
+            "120",
+            "0",
+            "0"
+          ],
+          "result": "CLEAN"
+        },
+        "moving-128-pose-0": {
+          "name": "moving-128-pose-0",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            -62.0,
+            0.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-pose-0/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-62.0",
+            "0.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "8ffdfab9831c915d8959366dae69c5fdb36ed0520952a8008866919048ac1189",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            -62.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1408,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 125,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 3456
+            },
+            {
+              "occupied_tiles": 94,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 2688
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "moving-128-pose-1": {
+          "name": "moving-128-pose-1",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            -42.0,
+            0.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-pose-1/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-42.0",
+            "0.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "36f17f8069aa8801bec181c5b6b5a1b0573671b98775405fb28ac2ee55528f66",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            -42.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1088,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 125,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 3456
+            },
+            {
+              "occupied_tiles": 93,
+              "incomplete_tiles": 2,
+              "record_lost_tiles": 0,
+              "max_counter": 2688
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "moving-128-pose-2": {
+          "name": "moving-128-pose-2",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            -22.0,
+            0.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-pose-2/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-22.0",
+            "0.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "65a45a62d782033858396d168a508a00f63284436f64de047fa6e3bb2095c61c",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            -22.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1310,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 125,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 3456
+            },
+            {
+              "occupied_tiles": 92,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 2688
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "moving-128-pose-3": {
+          "name": "moving-128-pose-3",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            -2.0,
+            0.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-pose-3/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-2.0",
+            "0.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "86ba46a4ec6294c136f97ba9f2aafc39ca218fe67030c484c292797ec5cb4556",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            -2.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1443,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 3506
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2236
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "moving-128-pose-4": {
+          "name": "moving-128-pose-4",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            18.0,
+            0.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-pose-4/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "18.0",
+            "0.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "5e8e4433ab739b7e6eefe32017101fe4289e0ce91b59387abc5ba1d51786cc48",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            18.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1433,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 121,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 3481
+            },
+            {
+              "occupied_tiles": 90,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2066
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "moving-128-pose-5": {
+          "name": "moving-128-pose-5",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            38.0,
+            0.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-pose-5/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "38.0",
+            "0.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "0e91d2d9a8f27787f8bba8931731644c9fe26447119ef9ac649e9d1f140c0b85",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            38.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1408,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 125,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 3456
+            },
+            {
+              "occupied_tiles": 94,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2432
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "moving-128-pose-6": {
+          "name": "moving-128-pose-6",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "lower",
+          "analytic": false,
+          "offset": [
+            58.0,
+            0.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-pose-6/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "58.0",
+            "0.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "d8525c9fd5507900d2e7ba3e47c3d7a0fa4f769cfda3e4bbfc8caa9e84d1faf5",
+          "receiver": "receiver.png",
+          "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+          "pose": [
+            58.0,
+            0.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5164,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1408,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 125,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 3456
+            },
+            {
+              "occupied_tiles": 94,
+              "incomplete_tiles": 3,
+              "record_lost_tiles": 0,
+              "max_counter": 2688
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "moving-128-filler-last": {
+          "name": "moving-128-filler-last",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": "last",
+          "control": null,
+          "analytic": false,
+          "offset": [
+            -100,
+            0,
+            -60
+          ],
+          "velocity": [
+            120,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "efcaa701aee68e494292ae0a791d0c969da9b855f271c0fbcac3b9c6cfb9fb51",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -62.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3010,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-0",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "1c99d9eb65585edb927828009e30936e21c50b20a22c9f9f07f8253786771a7b",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -42.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1088,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3009,
+                  "incomplete_tiles": 2,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-1",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "ec9a51ad31aa71bdeef3938b1226d382bbbe3725d03a302d7716d513c1118130",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -22.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1310,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3008,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-2",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "c41b3d115163637db80b58eefa93631c91da65aef9dff719e1bfc13bb236b4cf",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -2.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1443,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3506
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2236
+                }
+              ],
+              "control": "moving-128-pose-3",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "21949ee8fc446c2f85aa5a589c2e324e56cad732c123593812ef27d948351bcf",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                18.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1433,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3481
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2066
+                }
+              ],
+              "control": "moving-128-pose-4",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "698f2516726cf2c1cdf18b9754e8df2337a59a17dd64d6a6158dd54dd1c00575",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                38.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3010,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2432
+                }
+              ],
+              "control": "moving-128-pose-5",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "854e683782a5b7d37f331483663abf99d65332861bfa73caa08505f5fa783bc2",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                58.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3010,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-6",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "poses": "moving-128-pose",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "7",
+            "8",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-100",
+            "0",
+            "-60",
+            "--probe-overlapping-source-velocity",
+            "120",
+            "0",
+            "0",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN"
+        },
+        "moving-128-filler-first": {
+          "name": "moving-128-filler-first",
+          "sun": [
+            0,
+            0,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 300,
+          "order": "first",
+          "control": null,
+          "analytic": false,
+          "offset": [
+            -100,
+            0,
+            -60
+          ],
+          "velocity": [
+            120,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "efcaa701aee68e494292ae0a791d0c969da9b855f271c0fbcac3b9c6cfb9fb51",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -62.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3010,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-0",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "1c99d9eb65585edb927828009e30936e21c50b20a22c9f9f07f8253786771a7b",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -42.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1088,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3009,
+                  "incomplete_tiles": 2,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-1",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "ec9a51ad31aa71bdeef3938b1226d382bbbe3725d03a302d7716d513c1118130",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -22.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1310,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3008,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-2",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "c41b3d115163637db80b58eefa93631c91da65aef9dff719e1bfc13bb236b4cf",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                -2.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1443,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3506
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2236
+                }
+              ],
+              "control": "moving-128-pose-3",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "21949ee8fc446c2f85aa5a589c2e324e56cad732c123593812ef27d948351bcf",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                18.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1433,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2656,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3481
+                },
+                {
+                  "occupied_tiles": 3006,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2066
+                }
+              ],
+              "control": "moving-128-pose-4",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "698f2516726cf2c1cdf18b9754e8df2337a59a17dd64d6a6158dd54dd1c00575",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                38.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3010,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2432
+                }
+              ],
+              "control": "moving-128-pose-5",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "854e683782a5b7d37f331483663abf99d65332861bfa73caa08505f5fa783bc2",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "c19db2db25aab5b179180af025c29bda874e30b9056f6a1d7426199514ebf48a",
+              "pose": [
+                58.0,
+                0.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 71470,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1408,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2660,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                },
+                {
+                  "occupied_tiles": 3010,
+                  "incomplete_tiles": 3,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                }
+              ],
+              "control": "moving-128-pose-6",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "poses": "moving-128-pose",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/moving-128-filler-first/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "7",
+            "8",
+            "--sun-direction",
+            "0",
+            "0",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-100",
+            "0",
+            "-60",
+            "--probe-overlapping-source-velocity",
+            "120",
+            "0",
+            "0",
+            "--probe-record-pool-filler",
+            "300",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0"
+          ],
+          "result": "CLEAN"
+        },
+        "oblique-moving-128": {
+          "name": "oblique-moving-128",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": null,
+          "analytic": false,
+          "offset": [
+            -82,
+            24,
+            -60
+          ],
+          "velocity": [
+            120,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "481df22dba426d3cb025afba37b592f842da6af9d8d15fc0df958708e2ea8510",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                -43.9999962,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5676,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1856,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 165,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2304
+                },
+                {
+                  "occupied_tiles": 103,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2560
+                }
+              ],
+              "control": "oblique-moving-128-pose-0",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "86077445e1eeb5631204bb6ec941ce39a6c0bee04bb60819cf805ddfba5d4395",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                -23.9999981,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5676,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1280,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 164,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                },
+                {
+                  "occupied_tiles": 101,
+                  "incomplete_tiles": 2,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                }
+              ],
+              "control": "oblique-moving-128-pose-1",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "cff15772a8084d311db993622f54f2de24df30fb464ad5ba2ed9972f4d5d7c1f",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                -3.99999762,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5676,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1664,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 164,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                },
+                {
+                  "occupied_tiles": 103,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3072
+                }
+              ],
+              "control": "oblique-moving-128-pose-2",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "ae3958069ace8636b8e918f957e48d016ba40d4d43fd1a351827dd5cdfd1299b",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                16.0000019,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5676,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1603,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 160,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 1988
+                },
+                {
+                  "occupied_tiles": 99,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2009
+                }
+              ],
+              "control": "oblique-moving-128-pose-3",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "5adad585c0fb62249223188558b08445ae4bc619506001675e10683d69dcd3df",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                36.0000038,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5676,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1856,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 160,
+                  "incomplete_tiles": 5,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2965
+                },
+                {
+                  "occupied_tiles": 99,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2466
+                }
+              ],
+              "control": "oblique-moving-128-pose-4",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "a367bfeeb128c70977e035b9fc424503fe60f63c442092c2cf8f6ece2d707f44",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                56.0000038,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5676,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1536,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 166,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3072
+                },
+                {
+                  "occupied_tiles": 101,
+                  "incomplete_tiles": 2,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                }
+              ],
+              "control": "oblique-moving-128-pose-5",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "96e2801dbe87ef19a0d5afed4ae70fc410203c838ee761e416d023c060c0c64f",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                76.0,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 5676,
+                "face_record_capacity": 65536,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 30670868,
+                "spill_nodes_requested": 1664,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 1024
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 164,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 1792
+                },
+                {
+                  "occupied_tiles": 103,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2432
+                }
+              ],
+              "control": "oblique-moving-128-pose-6",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "poses": "oblique-moving-128-pose",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "7",
+            "8",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-82",
+            "24",
+            "-60",
+            "--probe-overlapping-source-velocity",
+            "120",
+            "0",
+            "0"
+          ],
+          "result": "CLEAN"
+        },
+        "oblique-moving-128-pose-0": {
+          "name": "oblique-moving-128-pose-0",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            -43.9999962,
+            24.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128-pose-0/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-43.9999962",
+            "24.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "481df22dba426d3cb025afba37b592f842da6af9d8d15fc0df958708e2ea8510",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            -43.9999962,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5676,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1856,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 165,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2304
+            },
+            {
+              "occupied_tiles": 103,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2560
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-moving-128-pose-1": {
+          "name": "oblique-moving-128-pose-1",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            -23.9999981,
+            24.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128-pose-1/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-23.9999981",
+            "24.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "86077445e1eeb5631204bb6ec941ce39a6c0bee04bb60819cf805ddfba5d4395",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            -23.9999981,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5676,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1280,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 164,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2688
+            },
+            {
+              "occupied_tiles": 101,
+              "incomplete_tiles": 2,
+              "record_lost_tiles": 0,
+              "max_counter": 3456
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-moving-128-pose-2": {
+          "name": "oblique-moving-128-pose-2",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            -3.99999762,
+            24.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128-pose-2/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-3.99999762",
+            "24.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "cff15772a8084d311db993622f54f2de24df30fb464ad5ba2ed9972f4d5d7c1f",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            -3.99999762,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5676,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1664,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 164,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2688
+            },
+            {
+              "occupied_tiles": 103,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 3072
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-moving-128-pose-3": {
+          "name": "oblique-moving-128-pose-3",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            16.0000019,
+            24.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128-pose-3/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "16.0000019",
+            "24.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "ae3958069ace8636b8e918f957e48d016ba40d4d43fd1a351827dd5cdfd1299b",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            16.0000019,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5676,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1603,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 160,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 1988
+            },
+            {
+              "occupied_tiles": 99,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2009
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-moving-128-pose-4": {
+          "name": "oblique-moving-128-pose-4",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            36.0000038,
+            24.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128-pose-4/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "36.0000038",
+            "24.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "5adad585c0fb62249223188558b08445ae4bc619506001675e10683d69dcd3df",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            36.0000038,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5676,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1856,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 160,
+              "incomplete_tiles": 5,
+              "record_lost_tiles": 0,
+              "max_counter": 2965
+            },
+            {
+              "occupied_tiles": 99,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2466
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-moving-128-pose-5": {
+          "name": "oblique-moving-128-pose-5",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            56.0000038,
+            24.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128-pose-5/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "56.0000038",
+            "24.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "a367bfeeb128c70977e035b9fc424503fe60f63c442092c2cf8f6ece2d707f44",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            56.0000038,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5676,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1536,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 166,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 3072
+            },
+            {
+              "occupied_tiles": 101,
+              "incomplete_tiles": 2,
+              "record_lost_tiles": 0,
+              "max_counter": 3456
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-moving-128-pose-6": {
+          "name": "oblique-moving-128-pose-6",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 0,
+          "order": null,
+          "control": "oblique-lower",
+          "analytic": false,
+          "offset": [
+            76.0,
+            24.0,
+            -60.0
+          ],
+          "velocity": null,
+          "shots": 1,
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128-pose-6/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "1",
+            "10",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "76.0",
+            "24.0",
+            "-60.0"
+          ],
+          "result": "CLEAN",
+          "frame": "screenshot_000001.png",
+          "frame_sha256": "96e2801dbe87ef19a0d5afed4ae70fc410203c838ee761e416d023c060c0c64f",
+          "receiver": "receiver.png",
+          "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+          "pose": [
+            76.0,
+            24.0,
+            -60.0
+          ],
+          "index": {
+            "face_records_requested": 5676,
+            "face_record_capacity": 65536,
+            "tile_capacity": 256,
+            "tile_inline_capacity": 64,
+            "buffer_bytes": 30670868,
+            "spill_nodes_requested": 1664,
+            "spill_node_capacity": 262144,
+            "hierarchy_needed": 1,
+            "hierarchy_ready_leaves": 1024
+          },
+          "cascades": [
+            {
+              "occupied_tiles": 164,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 1792
+            },
+            {
+              "occupied_tiles": 103,
+              "incomplete_tiles": 4,
+              "record_lost_tiles": 0,
+              "max_counter": 2432
+            }
+          ],
+          "versus_control": {
+            "changed": 0,
+            "changed_outside_band": 0,
+            "excess_shadow_outside_band": 0,
+            "missing_shadow_outside_band": 0
+          }
+        },
+        "oblique-moving-128-filler-last": {
+          "name": "oblique-moving-128-filler-last",
+          "sun": [
+            0.3,
+            0.4,
+            -1
+          ],
+          "casters": 128,
+          "height": -60,
+          "filler": 340,
+          "order": "last",
+          "control": null,
+          "analytic": false,
+          "offset": [
+            -82,
+            24,
+            -60
+          ],
+          "velocity": [
+            120,
+            0,
+            0
+          ],
+          "shots": [
+            {
+              "frame": "screenshot_000001.png",
+              "frame_sha256": "3963030d29394a49224695b661b943201cd2bc481f10c615337bdf9ea22c784c",
+              "receiver": "receiver-0.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                -43.9999962,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 72188,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1856,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2902,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2304
+                },
+                {
+                  "occupied_tiles": 3234,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2560
+                }
+              ],
+              "control": "oblique-moving-128-pose-0",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000002.png",
+              "frame_sha256": "7da1758e68af9cfcb14ec1f17a7453edebcbf3d3ee013f85fd3ea3a01922298b",
+              "receiver": "receiver-1.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                -23.9999981,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 72188,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1280,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2901,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                },
+                {
+                  "occupied_tiles": 3232,
+                  "incomplete_tiles": 2,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                }
+              ],
+              "control": "oblique-moving-128-pose-1",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000003.png",
+              "frame_sha256": "04252ae31c863e95d01bfcbde0bfa6bd0fc913b998b9e98610e75f4644e49abd",
+              "receiver": "receiver-2.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                -3.99999762,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 72188,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1664,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2901,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2688
+                },
+                {
+                  "occupied_tiles": 3234,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3072
+                }
+              ],
+              "control": "oblique-moving-128-pose-2",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000004.png",
+              "frame_sha256": "a2a7e37575bc8beea4cbc9d633b82aedeefc7a8624966c8615f8cac3e476e2a1",
+              "receiver": "receiver-3.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                16.0000019,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 72188,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1603,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2897,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 1988
+                },
+                {
+                  "occupied_tiles": 3230,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2009
+                }
+              ],
+              "control": "oblique-moving-128-pose-3",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000005.png",
+              "frame_sha256": "6b21848f361de7c049c14e73dd0c03329b467525944dbb8ba3b989d85f400e63",
+              "receiver": "receiver-4.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                36.0000038,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 72188,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1856,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2897,
+                  "incomplete_tiles": 5,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2965
+                },
+                {
+                  "occupied_tiles": 3230,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2466
+                }
+              ],
+              "control": "oblique-moving-128-pose-4",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000006.png",
+              "frame_sha256": "2e0e9105062139b8326c3f9d28cb6b976bd84d88406a78e989f9ee834442d230",
+              "receiver": "receiver-5.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                56.0000038,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 72188,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1536,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2903,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3072
+                },
+                {
+                  "occupied_tiles": 3232,
+                  "incomplete_tiles": 2,
+                  "record_lost_tiles": 0,
+                  "max_counter": 3456
+                }
+              ],
+              "control": "oblique-moving-128-pose-5",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            },
+            {
+              "frame": "screenshot_000007.png",
+              "frame_sha256": "f89042cca76118553aa42ef74f1474999265734191f190ac5eb840c18abcfc8d",
+              "receiver": "receiver-6.png",
+              "receiver_sha256": "e64bfd08f4a75b7abdd2fe64febf41fa81b59bdfcf42f978b1332c9ddd1765ce",
+              "pose": [
+                76.0,
+                24.0,
+                -60.0
+              ],
+              "index": {
+                "face_records_requested": 72188,
+                "face_record_capacity": 131072,
+                "tile_capacity": 256,
+                "tile_inline_capacity": 64,
+                "buffer_bytes": 33816596,
+                "spill_nodes_requested": 1664,
+                "spill_node_capacity": 262144,
+                "hierarchy_needed": 1,
+                "hierarchy_ready_leaves": 16384
+              },
+              "cascades": [
+                {
+                  "occupied_tiles": 2901,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 1792
+                },
+                {
+                  "occupied_tiles": 3234,
+                  "incomplete_tiles": 4,
+                  "record_lost_tiles": 0,
+                  "max_counter": 2432
+                }
+              ],
+              "control": "oblique-moving-128-pose-6",
+              "versus_control": {
+                "changed": 0,
+                "changed_outside_band": 0,
+                "excess_shadow_outside_band": 0,
+                "missing_shadow_outside_band": 0
+              }
+            }
+          ],
+          "poses": "oblique-moving-128-pose",
+          "command": [
+            "fleet-run",
+            "--timeout",
+            "180",
+            "--build-dir",
+            "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build",
+            "IRCanvasStress",
+            "--config-preset",
+            "/private/tmp/pool4-4798/cand-growth/head/oblique-moving-128-filler-last/config.lua",
+            "--only",
+            "shadowbox,floor",
+            "--probe-source-box",
+            "--probe-floor-mode",
+            "grid",
+            "--probe-floor-span",
+            "40",
+            "--no-spin",
+            "--no-auto-rotate",
+            "--pivot-origin",
+            "--yaw",
+            "0",
+            "--zoom",
+            "1",
+            "--no-ao",
+            "--auto-screenshot",
+            "10",
+            "--sun-face-index-probe",
+            "--subdivisions",
+            "1",
+            "--sweep-frames",
+            "7",
+            "8",
+            "--sun-direction",
+            "0.3",
+            "0.4",
+            "-1",
+            "--probe-overlapping-source",
+            "--probe-overlapping-source-count",
+            "128",
+            "--probe-overlapping-source-offset",
+            "-82",
+            "24",
+            "-60",
+            "--probe-overlapping-source-velocity",
+            "120",
+            "0",
+            "0",
+            "--probe-record-pool-filler",
+            "340",
+            "--probe-record-pool-filler-offset",
+            "200",
+            "-200",
+            "0",
+            "--probe-record-pool-filler-last"
+          ],
+          "result": "CLEAN"
+        }
+      }
+    }
+  }
+}

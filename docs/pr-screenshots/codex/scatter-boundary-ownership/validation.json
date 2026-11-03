@@ -1,0 +1,22 @@
+{
+  "render_verify": {
+    "command": "python3 scripts/render-verify.py --target IRCanvasStress --no-build --timeout 120",
+    "checks_passed": 18,
+    "rgb_comparisons": 8,
+    "minimum_match_percent": 100,
+    "maximum_channel_delta": 0
+  },
+  "gui_verify": {
+    "command": "python3 scripts/gui-verify.py IRShapeDebug --no-build -- --gui-test",
+    "assertions_passed": 33
+  },
+  "header_checks": true,
+  "ruff": true,
+  "native_backend": "Metal",
+  "native_OpenGL": "pending",
+  "render_harness_tests": {
+    "command": "bash scripts/tests/run_all.sh",
+    "suites_passed": 61,
+    "suites_failed": 0
+  }
+}

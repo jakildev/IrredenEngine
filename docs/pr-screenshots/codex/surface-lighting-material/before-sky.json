@@ -1,0 +1,94 @@
+{
+  "head": "4e6216bb43636881577b3797371c7f829e42bbb5",
+  "changes": "?? docs/pr-screenshots/codex/surface-lighting-material/\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "a0d6f486956be168a909d47a609e583603936f158f234afdd38619a66c241950",
+  "shader_sha256": "154748434436bf4f6bca5e9f9c1010f985aa5ae4e1c364dc0ecedff954aa0d4b",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion,orbit,floor",
+    "--probe-grid",
+    "--probe-staircase",
+    "--probe-sky",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--zoom",
+    "1",
+    "--subdivisions",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "5.10508806",
+    "5"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-28T03:59:39Z",
+      "finished_utc": "2026-09-28T03:59:45Z",
+      "host_battery_percent": 100,
+      "host_load_1m": 3.17,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 1.0,
+      "zoom_last": 1.0,
+      "zoom_min": 1.0,
+      "zoom_max": 1.0,
+      "zoom_range_present": true,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 1552,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "captures": [
+    {
+      "file": "before-sky-0.png",
+      "native_file": "screenshot_003019.png",
+      "sha256": "423858b83e171ffdb57c2d9aacea6573b7d7a0eb9eef36f08ead6f5e70245923"
+    },
+    {
+      "file": "before-sky-1.png",
+      "native_file": "screenshot_003020.png",
+      "sha256": "c0e75a67d1f49ac645daf2078d989d2d43bd55abd2d81b8bd2fd6d7548bf18ca"
+    },
+    {
+      "file": "before-sky-2.png",
+      "native_file": "screenshot_003021.png",
+      "sha256": "5a64f0ef581070708f9cc00a7517681d02fd437c1d546aa83710725eab365e5f"
+    },
+    {
+      "file": "before-sky-3.png",
+      "native_file": "screenshot_003022.png",
+      "sha256": "f8bc8e94905cab2b696b2268b43069efae2d0c11fc44fe8b3ae3c1a271f5cf7b"
+    },
+    {
+      "file": "before-sky-4.png",
+      "native_file": "screenshot_003023.png",
+      "sha256": "1f60da96816e73a5a494b3f49fae484a49f8543d1cab4ef1fb089be9a6ae3c21"
+    }
+  ]
+}

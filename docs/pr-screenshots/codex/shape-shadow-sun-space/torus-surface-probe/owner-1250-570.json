@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "screenshot_pixel": [
+    1250,
+    570
+  ],
+  "render_tick": 14,
+  "publication_tick": 14,
+  "viewport_size": [
+    2560,
+    1440
+  ],
+  "output_scale": [
+    2,
+    2
+  ],
+  "main_framebuffer_size": [
+    1284,
+    722
+  ],
+  "pre_upscale_position": [
+    627.25,
+    286.25
+  ],
+  "main_framebuffer_pixel": [
+    627,
+    286
+  ],
+  "canvas_size": [
+    642,
+    722
+  ],
+  "logical_canvas_size": [
+    642,
+    722
+  ],
+  "canvas_origin_raw": [
+    313.75,
+    286.5
+  ],
+  "canvas_pixel": [
+    313,
+    286
+  ],
+  "gather_translation": [
+    0,
+    0
+  ],
+  "canvas_zoom": [
+    1,
+    1
+  ],
+  "projection": {
+    "camera_trixel_offset": [
+      0,
+      0
+    ],
+    "trixel_canvas_offset_z1": [
+      320,
+      360
+    ],
+    "canvas_size": [
+      642,
+      722
+    ],
+    "shape_count": 1,
+    "finite_coverage": 1,
+    "voxel_render_options": [
+      2,
+      8
+    ],
+    "cull_iso_min": [
+      -44,
+      -49
+    ],
+    "cull_iso_max": [
+      46,
+      51
+    ],
+    "visual_yaw": 0,
+    "raster_yaw": 0,
+    "residual_yaw": 0,
+    "tile_grid_x": 1024,
+    "smooth_yaw_enabled": 0,
+    "lattice_shapes": 0,
+    "face_deform": [
+      [
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        -0,
+        0,
+        1
+      ]
+    ]
+  },
+  "owner_key": 127505,
+  "published_entity_id": 443,
+  "raw_depth": 298,
+  "stored_depth": 37,
+  "rgba": [
+    128,
+    128,
+    0,
+    255
+  ],
+  "tile_index": 332,
+  "lane": 2,
+  "face": 2,
+  "half": 1,
+  "tile": {
+    "shape_index": 0,
+    "iso_origin": [
+      -10,
+      -74
+    ]
+  },
+  "sample_iso": [
+    -8,
+    -74
+  ],
+  "shape": {
+    "world_position": [
+      0,
+      0,
+      0,
+      1
+    ],
+    "params": [
+      4,
+      2,
+      0,
+      0
+    ],
+    "rotation": [
+      0,
+      0,
+      0,
+      1
+    ],
+    "shape_type": 9,
+    "flags": 8,
+    "entity_id": 443,
+    "joint_index": 0
+  },
+  "surface_depth": 25,
+  "status": "ok"
+}

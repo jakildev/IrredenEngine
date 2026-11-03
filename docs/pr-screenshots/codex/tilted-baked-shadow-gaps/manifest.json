@@ -1,0 +1,82 @@
+{
+  "parent_commit": "a941ec514083026509a5a0b1d78e1a04c43d0ff5",
+  "host": "macOS Apple M4 Max Metal Debug",
+  "capture_source_state": "uncommitted source identified by fingerprints",
+  "source_sha256": {
+    "creations/demos/shape_debug/main.cpp": "e4dca171d89731a28f6777409a1cd38bdadb7903ec7afac13d5c0707a2040f21",
+    "creations/demos/shape_debug/sdf_voxel_scene.hpp": "ba6f61e223f38c4ea077b57a1f5d3e3e9d0150342d829c310b32a93829e65f4b",
+    "test/ecs/sdf_bake_test.cpp": "1b4ad83bcec2dcc05b425411909d53332b0c7988a24866917471ca522c258224",
+    "build/creations/demos/shape_debug/IRShapeDebug": "3d917d81b082f6f1a263baff59e5f29b93b1bc4390b06c30de2cc5921f844a84"
+  },
+  "framebuffer": [
+    2560,
+    1440
+  ],
+  "game_resolution": [
+    1280,
+    720
+  ],
+  "sun_direction_unnormalized": [
+    0.35,
+    0.85,
+    -0.4
+  ],
+  "final_captures": {
+    "subjects": 4,
+    "blockers": 4,
+    "floor": 1,
+    "local_lights": 0,
+    "ao": false
+  },
+  "all_records_changed_rgb_pixels": {
+    "yaw0": 0,
+    "yaw45": 0,
+    "yaw90": 0,
+    "yaw180": 0,
+    "yaw270": 0,
+    "zoom2": 0
+  },
+  "experiments": "Source patches are rejected diagnostics, not shipping shader changes. exp1 also applied the identical GLSL face-gate edit; only Metal executed.",
+  "images_sha256": {
+    "experiments/all-records-yaw45.png": "26d8130287390de7ec58fc63192472e77b3d0fc37a429c2ea6756f5540cdd3ac",
+    "experiments/all-rotated-faces-yaw45.png": "db26142fc775a6846406529467bfdd77d92b4435f596c9fb6f810d4e61388a82",
+    "experiments/edge-slack-yaw45.png": "26d8130287390de7ec58fc63192472e77b3d0fc37a429c2ea6756f5540cdd3ac",
+    "face-sun/yaw0.png": "50ad83927f6abdd0cb4c8a0e9fb770e14a3e4fb410e8d9269372bd845ca85c14",
+    "face-sun/yaw180.png": "d8900b0fc1f6779aeb370fbaa6e9aeb0a5e2e8b49406a2c38a0cb7c22021f2e5",
+    "face-sun/yaw270.png": "cf952d87cce42317497a0b50df05abdd1e78b730ca449ac674bbf031ee5d2623",
+    "face-sun/yaw45.png": "f7524c3212d460dbb1fc72217d773ec997e91d6aca16bf9f58eabe77e815099f",
+    "face-sun/yaw90.png": "0b5cb056bdb29e3ed41d325d6b10dd6193886b1d4ef9ece12913c9ad8fa4e8e2",
+    "face-sun/zoom2.png": "4f15985ab5d28a9dd3e0d2649444d877540ba72d52aad3248192aa7a0592c30d",
+    "face-sun-detail.png": "46b7b850bcded2c06733853dc5a24194d26ec684d99f18377800c010f1fc7285",
+    "no-shadow/yaw0.png": "8bc37c0f7d701f80ffb9db36ae379e701ee7bfd23885415bb99586eea93de622",
+    "no-shadow/yaw180.png": "bd90647b3cbdf06e12e1504c4a1723db935cfc97666af4b811277904f80c1785",
+    "no-shadow/yaw270.png": "b3e306055f7fa9cf6743e9a066b63a2f63ac602b1f3a0d991eaca37413346757",
+    "no-shadow/yaw45.png": "50e73238d22add28a873e3fe777aa35de5b3d11c8f1a246598202464086ee9b3",
+    "no-shadow/yaw90.png": "1c0b038a50f9f1c37e1eb01fe06f5d174a745a342f1b0795a8084cdb068465bb",
+    "no-shadow/zoom2.png": "72cc3164b1311dd74d8b8790045cc2a36e4d36dcd8fb029bbe607aec6326942b",
+    "surface-sun/yaw0.png": "50ad83927f6abdd0cb4c8a0e9fb770e14a3e4fb410e8d9269372bd845ca85c14",
+    "surface-sun/yaw180.png": "d8900b0fc1f6779aeb370fbaa6e9aeb0a5e2e8b49406a2c38a0cb7c22021f2e5",
+    "surface-sun/yaw270.png": "cf952d87cce42317497a0b50df05abdd1e78b730ca449ac674bbf031ee5d2623",
+    "surface-sun/yaw45.png": "8eb763a6873fc74282ec7aa23dca34bcf84f88ced63e6699a0e2a0c886888b64",
+    "surface-sun/yaw90.png": "0b5cb056bdb29e3ed41d325d6b10dd6193886b1d4ef9ece12913c9ad8fa4e8e2",
+    "surface-sun/zoom2.png": "38605cfd96bdfe50cc637cf12b66e896590b979967ccfa88a22234513f11e04c",
+    "surface-sun-detail.png": "3b14fda95b06915a141d76aea8f3446c0242f093672c435fab33046ee808efba"
+  },
+  "commands": [
+    "fleet-run IRShapeDebug --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers --no-local-lights --no-ao --auto-screenshot 10",
+    "fleet-run IRShapeDebug --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers --surface-lighting --no-local-lights --no-ao --auto-screenshot 10",
+    "fleet-run IRShapeDebug --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers --surface-lighting --no-local-lights --no-ao --no-shadows --auto-screenshot 10"
+  ],
+  "validation": {
+    "render_verify_job": "20261016T044835Z-render-verify-b8fded",
+    "render_checks_passed": 80,
+    "new_surface_references_exact": 6,
+    "existing_pose_references_exact": 12,
+    "sdf_bake_and_grid_tests_passed": 12,
+    "python_sdf_controls_tests_passed": 2,
+    "header_shader_checks": "passed",
+    "comment_reference_lint": "passed",
+    "runtime": "macOS Metal Debug",
+    "windows_run": false
+  }
+}

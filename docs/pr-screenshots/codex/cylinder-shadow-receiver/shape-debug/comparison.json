@@ -1,0 +1,740 @@
+[
+  {
+    "label": "zoom1_origin",
+    "parent_vs_reference": {
+      "changed_pixels": 16,
+      "pixels_over8": 16,
+      "max_channel_delta": 53,
+      "bbox": [
+        1196,
+        674,
+        1204,
+        676
+      ]
+    },
+    "after_vs_reference": {
+      "changed_pixels": 16,
+      "pixels_over8": 16,
+      "max_channel_delta": 53,
+      "bbox": [
+        1196,
+        674,
+        1204,
+        676
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    }
+  },
+  {
+    "label": "zoom2_origin",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 504,
+      "pixels_over8": 504,
+      "max_channel_delta": 55,
+      "bbox": [
+        648,
+        516,
+        1148,
+        724
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 504,
+      "pixels_over8": 504,
+      "max_channel_delta": 55,
+      "bbox": [
+        648,
+        516,
+        1148,
+        724
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        128,
+        120,
+        128,
+        128
+      ]
+    }
+  },
+  {
+    "label": "zoom4_origin",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 704,
+      "pixels_over8": 704,
+      "max_channel_delta": 55,
+      "bbox": [
+        24,
+        316,
+        984,
+        728
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 704,
+      "pixels_over8": 704,
+      "max_channel_delta": 55,
+      "bbox": [
+        24,
+        316,
+        984,
+        728
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        152,
+        152,
+        152,
+        248
+      ]
+    }
+  },
+  {
+    "label": "zoom1_odd_offset",
+    "parent_vs_reference": {
+      "changed_pixels": 16,
+      "pixels_over8": 16,
+      "max_channel_delta": 53,
+      "bbox": [
+        1200,
+        674,
+        1208,
+        676
+      ]
+    },
+    "after_vs_reference": {
+      "changed_pixels": 16,
+      "pixels_over8": 16,
+      "max_channel_delta": 53,
+      "bbox": [
+        1200,
+        674,
+        1208,
+        676
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    }
+  },
+  {
+    "label": "zoom8_origin",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 392,
+      "pixels_over8": 392,
+      "max_channel_delta": 55,
+      "bbox": [
+        136,
+        624,
+        448,
+        698
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 392,
+      "pixels_over8": 392,
+      "max_channel_delta": 55,
+      "bbox": [
+        136,
+        624,
+        448,
+        698
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        392
+      ]
+    }
+  },
+  {
+    "label": "zoom4_offset_3_5",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 704,
+      "pixels_over8": 704,
+      "max_channel_delta": 55,
+      "bbox": [
+        72,
+        356,
+        1032,
+        768
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 704,
+      "pixels_over8": 704,
+      "max_channel_delta": 55,
+      "bbox": [
+        72,
+        356,
+        1032,
+        768
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        152,
+        152,
+        152,
+        248
+      ]
+    }
+  },
+  {
+    "label": "zoom16_lod_fine_sphere",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_parent": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    }
+  },
+  {
+    "label": "lod_swap_zoom1_cube",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_parent": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    }
+  },
+  {
+    "label": "lod_swap_zoom2_cube",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 504,
+      "pixels_over8": 504,
+      "max_channel_delta": 55,
+      "bbox": [
+        776,
+        452,
+        1276,
+        660
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 504,
+      "pixels_over8": 504,
+      "max_channel_delta": 55,
+      "bbox": [
+        776,
+        452,
+        1276,
+        660
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        128,
+        120,
+        128,
+        128
+      ]
+    }
+  },
+  {
+    "label": "lod_swap_zoom4_cone",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 704,
+      "pixels_over8": 704,
+      "max_channel_delta": 55,
+      "bbox": [
+        280,
+        188,
+        1240,
+        600
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 704,
+      "pixels_over8": 704,
+      "max_channel_delta": 55,
+      "bbox": [
+        280,
+        188,
+        1240,
+        600
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        152,
+        152,
+        152,
+        248
+      ]
+    }
+  },
+  {
+    "label": "lod_swap_zoom8_cone",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 392,
+      "pixels_over8": 392,
+      "max_channel_delta": 55,
+      "bbox": [
+        648,
+        368,
+        960,
+        442
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 392,
+      "pixels_over8": 392,
+      "max_channel_delta": 55,
+      "bbox": [
+        648,
+        368,
+        960,
+        442
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        392
+      ]
+    }
+  },
+  {
+    "label": "lod_swap_zoom16_sphere",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 784,
+      "pixels_over8": 784,
+      "max_channel_delta": 55,
+      "bbox": [
+        20,
+        8,
+        596,
+        164
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 784,
+      "pixels_over8": 784,
+      "max_channel_delta": 55,
+      "bbox": [
+        20,
+        8,
+        596,
+        164
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        784
+      ]
+    }
+  },
+  {
+    "label": "zoom4_yaw90",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 4632,
+      "pixels_over8": 4632,
+      "max_channel_delta": 55,
+      "bbox": [
+        287,
+        950,
+        1171,
+        1440
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 4632,
+      "pixels_over8": 4632,
+      "max_channel_delta": 55,
+      "bbox": [
+        287,
+        950,
+        1171,
+        1440
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        1888,
+        1216,
+        312,
+        1216
+      ]
+    }
+  },
+  {
+    "label": "zoom4_yaw180",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 3728,
+      "pixels_over8": 3688,
+      "max_channel_delta": 117,
+      "bbox": [
+        1640,
+        830,
+        2536,
+        1384
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 3728,
+      "pixels_over8": 3688,
+      "max_channel_delta": 117,
+      "bbox": [
+        1640,
+        830,
+        2536,
+        1384
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        2360,
+        456,
+        456,
+        456
+      ]
+    }
+  },
+  {
+    "label": "zoom4_yaw270",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 3752,
+      "pixels_over8": 3632,
+      "max_channel_delta": 117,
+      "bbox": [
+        1388,
+        184,
+        2224,
+        778
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 3752,
+      "pixels_over8": 3632,
+      "max_channel_delta": 117,
+      "bbox": [
+        1388,
+        184,
+        2224,
+        778
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        2072,
+        560,
+        560,
+        560
+      ]
+    }
+  },
+  {
+    "label": "zoom4_yaw45_inter_cardinal",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 472,
+      "pixels_over8": 472,
+      "max_channel_delta": 55,
+      "bbox": [
+        250,
+        423,
+        1006,
+        949
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 472,
+      "pixels_over8": 472,
+      "max_channel_delta": 55,
+      "bbox": [
+        250,
+        423,
+        1006,
+        949
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        96,
+        96,
+        96,
+        184
+      ]
+    }
+  },
+  {
+    "label": "zoom8_yaw180",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 7080,
+      "pixels_over8": 6968,
+      "max_channel_delta": 117,
+      "bbox": [
+        1568,
+        963,
+        1936,
+        1427
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 7080,
+      "pixels_over8": 6968,
+      "max_channel_delta": 117,
+      "bbox": [
+        1568,
+        963,
+        1936,
+        1427
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        7080
+      ]
+    }
+  },
+  {
+    "label": "zoom4_pan16_yaw0_pivot",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 704,
+      "pixels_over8": 704,
+      "max_channel_delta": 55,
+      "bbox": [
+        523,
+        372,
+        1483,
+        784
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 704,
+      "pixels_over8": 704,
+      "max_channel_delta": 55,
+      "bbox": [
+        523,
+        372,
+        1483,
+        784
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        152,
+        152,
+        152,
+        248
+      ]
+    }
+  },
+  {
+    "label": "zoom4_pan16_yaw90_pivot",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 5536,
+      "pixels_over8": 5536,
+      "max_channel_delta": 55,
+      "bbox": [
+        497,
+        651,
+        1381,
+        1231
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 5536,
+      "pixels_over8": 5536,
+      "max_channel_delta": 55,
+      "bbox": [
+        497,
+        651,
+        1381,
+        1231
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        1888,
+        1216,
+        1216,
+        1216
+      ]
+    }
+  },
+  {
+    "label": "zoom4_pan16_yaw180_pivot",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 3728,
+      "pixels_over8": 3664,
+      "max_channel_delta": 117,
+      "bbox": [
+        1138,
+        677,
+        2034,
+        1231
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 3728,
+      "pixels_over8": 3664,
+      "max_channel_delta": 117,
+      "bbox": [
+        1138,
+        677,
+        2034,
+        1231
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        2360,
+        456,
+        456,
+        456
+      ]
+    }
+  },
+  {
+    "label": "zoom4_pan16_yaw45_pivot",
+    "parent_vs_reference": {
+      "changed_pixels": 0,
+      "pixels_over8": 0,
+      "max_channel_delta": 0,
+      "bbox": null
+    },
+    "after_vs_reference": {
+      "changed_pixels": 472,
+      "pixels_over8": 472,
+      "max_channel_delta": 55,
+      "bbox": [
+        634,
+        416,
+        1390,
+        942
+      ]
+    },
+    "after_vs_parent": {
+      "changed_pixels": 472,
+      "pixels_over8": 472,
+      "max_channel_delta": 55,
+      "bbox": [
+        634,
+        416,
+        1390,
+        942
+      ],
+      "outside_cylinder_rois": 0,
+      "per_cylinder_roi": [
+        96,
+        96,
+        96,
+        184
+      ]
+    }
+  }
+]
