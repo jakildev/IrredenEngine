@@ -5,6 +5,8 @@
 #include "recipes_panel.hpp"
 #include "session_builder.hpp"
 #include "screen_alignment.hpp"
+#include "camera_gestures.hpp"
+#include "shadow_rotation.hpp"
 #include "sculpt_panel.hpp"
 #include "hierarchy_panel.hpp"
 
@@ -23,7 +25,7 @@
 // the live editable set's occupancy after each. The entity sessions (rock,
 // mushroom, ant, bird, tree) land on this same spine.
 //
-// `place_below` is the proof for the Alt (far-side) place modifier: it builds a
+// `place_below` is the proof for the I (far-side) place modifier: it builds a
 // cantilever and places the one cell underneath its tip, which no plain gesture
 // can reach at any camera yaw (docs/design/editor-authoring-friction.md §2g
 // F-2g-1). It is the only session that exercises `clickBelow`.
@@ -143,6 +145,8 @@ enum class Id {
     FILL_GHOST,
     FACE_PICK,
     SCREEN_ALIGNMENT,
+    CAMERA_GESTURES,
+    SHADOW_ROTATION,
     ROCK,
     MUSHROOM,
     ANT,
@@ -262,8 +266,12 @@ inline Id idFromName(const std::string &name) {
         return Id::PLACE_BELOW;
     if (name == "fill_ghost")
         return Id::FILL_GHOST;
+    if (name == "camera_gestures")
+        return Id::CAMERA_GESTURES;
     if (name == "screen_alignment")
         return Id::SCREEN_ALIGNMENT;
+    if (name == "shadow_rotation")
+        return Id::SHADOW_ROTATION;
     if (name == "face_pick")
         return Id::FACE_PICK;
     if (name == "rock")
@@ -574,7 +582,7 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
     return builder.finish();
 }
 
-// The Alt (far-side) place modifier, on the one fixture that can only be built
+// The I (far-side) place modifier, on the one fixture that can only be built
 // with it: a cantilever, and the cell directly under its tip.
 //
 // The fixture is the whole argument. `below`'s three plain-place anchors are its
@@ -587,7 +595,7 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
 //
 // Sequence: (1) stack a three-tier column off the seeded ground, (2) grow a
 // two-cell arm out of its top in -x, (3) arm the assertion that `below` is
-// still empty and the arm tip still stands, (4) Alt+click `below`.
+// still empty and the arm tip still stands, (4) I+click `below`.
 inline Recipe buildPlaceBelow(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     Builder builder("place_below", sceneSize, sceneOrigin);
 
@@ -2090,8 +2098,12 @@ inline Recipe build(
     const ModuleSessionView *moduleView
 ) {
     switch (id) {
+    case Id::CAMERA_GESTURES:
+        return buildCameraGestures();
     case Id::SCREEN_ALIGNMENT:
         return buildScreenAlignment();
+    case Id::SHADOW_ROTATION:
+        return buildShadowRotation();
     case Id::WORKAREA_FOCUS: {
         Builder builder("workarea_focus", sceneSize, sceneOrigin);
         const IRMath::vec2 focus(580, 87);

@@ -28,12 +28,9 @@ namespace IRSystem {
 // Yields to CAMERA_KEY_DRAG_ROTATE when Alt is also held at press time
 // (Space+Alt → rotate wins, same as Ctrl-gating in CAMERA_MOUSE_PAN).
 //
-// Note: Space-down at left-press will engage camera pan AND fall
-// through to whichever left-click consumers also fire (widget input,
-// gizmo drag, voxel picking) — those systems do not check for Space.
-// The convention matches Photoshop/Figma: hold Space FIRST as a
-// mode-modal hand-tool gesture, in screen area clear of widgets and
-// hovered gizmo handles.
+// Raw-input tools use Camera::GestureOwnership in INPUT to reserve the drag
+// before this RENDER system runs; GIZMO_DRAG already does so. Widget ownership
+// remains separate, so start navigation outside interactive GUI controls.
 template <> struct System<CAMERA_KEY_DRAG_PAN> {
     bool dragging_ = false;
     vec2 dragStartMouse_ = vec2(0.0f);

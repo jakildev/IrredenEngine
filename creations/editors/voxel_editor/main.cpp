@@ -73,6 +73,7 @@
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/render/camera_gesture.hpp>
 #include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
@@ -247,7 +248,14 @@ struct WorkspaceMember {
 };
 
 struct EditorState {
+    bool shadowRotationSeeded_ = false;
+    AuthoredVoxelFingerprint shadowRotationFingerprint_;
     ScreenAlignmentProbe alignmentProbe_;
+    int cameraGestureShot_ = -1;
+    AuthoredVoxelFingerprint cameraGestureBaseline_;
+    AuthoredVoxelFingerprint cameraGestureHeld_;
+    AuthoredVoxelFingerprint cameraGestureExpected_;
+    bool cameraGestureHistory_ = false;
     int alignmentShot_ = -1;
     unsigned alignmentSamplesSeen_ = 0;
     bool alignmentSamplesMatch_ = true;
@@ -471,7 +479,7 @@ struct FillToolState {
     bool ghostVisible_ = false;
     FillGhostBox ghostBox_{};
     ivec3 lastEndWorld_ = {};
-    // Alt (place on the far side of the hit face) latched at PRESS, so letting
+    // Far-side placement is latched at PRESS, so letting
     // the modifier go mid-drag cannot resolve the stroke's start and end cells
     // in two different frames — see editTargetCell.
     bool dragInverted_ = false;
@@ -483,6 +491,8 @@ enum class SculptTool { BRUSH, PAINT, BOX, LINE };
 struct SculptState {
     SculptTool tool_ = SculptTool::BOX;
     bool referenceScene_ = false;
+    IRPrefab::Camera::GestureOwnership cameraGesture_;
+    bool cameraInputBlocked_ = false;
     bool showGrid_ = false;
     bool dragging_ = false;
     bool erase_ = false;
@@ -1011,12 +1021,18 @@ bool evaluatePanThenCtrlBalanced(const void *, std::string &actual) {
 // event phase on the same tick, so the scheduled MOVE injects the fresh pixel
 // (same ordering the probe-map shots rely on).
 void prepareScreenAlignment(int shotIndex);
+void prepareCameraGestures(int shotIndex);
+void prepareShadowRotation(int shotIndex);
 
 void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= static_cast<int>(g_session.segments_.size()))
         return;
+    if (g_sessionId == Session::Id::CAMERA_GESTURES)
+        prepareCameraGestures(shotIndex);
     if (g_sessionId == Session::Id::SCREEN_ALIGNMENT)
         prepareScreenAlignment(shotIndex);
+    if (g_sessionId == Session::Id::SHADOW_ROTATION)
+        prepareShadowRotation(shotIndex);
     Session::Segment &segment = g_session.segments_[shotIndex];
     for (const Session::AimFixup &aim : segment.aims_) {
         segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
@@ -2165,7 +2181,7 @@ bool worldVoxelToLocal(
 // Which cell a left-click gesture edits, given the face it picked.
 //
 // Erase acts on the hit voxel itself. Place normally lands in FRONT of the hit
-// face (`voxelPos_ + faceNormal_`); with Alt held the normal inverts, so the
+// face (`voxelPos_ + faceNormal_`); with I held the normal inverts, so the
 // voxel lands on the FAR side of the picked face instead. That inversion is the
 // only gesture that reaches a cell *below* standing geometry: the picker exposes
 // a voxel's -x, -y and -z faces only, so every un-inverted placement grows
@@ -2382,6 +2398,33 @@ void finishSculptStroke() {
     hideSculptGhost();
 }
 
+// Camera controls run in RENDER, after sculpt INPUT. Claim the chord from raw
+// input before either consumer runs, and retain it through the left release.
+bool updateCameraGestureOwnership() {
+    const auto active = [](IRInput::KeyMouseButtons button) {
+        return IRInput::checkKeyMouseButton(button, IRInput::PRESSED) ||
+               IRInput::checkKeyMouseButton(button, IRInput::HELD) ||
+               IRInput::checkKeyMouseButton(button, IRInput::RELEASED);
+    };
+    const bool customCameraInput = active(IRInput::kMouseButtonRight) ||
+                                   active(IRInput::kKeyButtonQ) || active(IRInput::kKeyButtonE);
+    IRSystem::getSystemParams<IRSystem::System<IRSystem::GIZMO_DRAG>>(g_gizmoDragSystem)
+        ->queueCameraInput(customCameraInput);
+    g_sculpt.cameraInputBlocked_ = g_sculpt.cameraGesture_.poll(customCameraInput);
+    if (g_sculpt.cameraInputBlocked_) {
+        // Live brush cells remain one completed stroke. Deferred tools have
+        // authored nothing yet, so orbit cancels their pending release commit.
+        finishSculptStroke();
+        g_fillTool.dragging_ = false;
+        hideSculptGhost();
+    }
+    return g_sculpt.cameraInputBlocked_;
+}
+
+bool farSidePlacementHeld() {
+    return IRInput::checkKeyMouseButton(IRInput::kKeyButtonI, IRInput::HELD);
+}
+
 struct SculptTarget {
     ivec3 local_{};
     ivec3 world_{};
@@ -2497,9 +2540,68 @@ void prepareScreenAlignment(int shotIndex) {
     }
 }
 
+void prepareCameraGestures(int shotIndex) {
+    if (g_editor.cameraGestureShot_ == shotIndex)
+        return;
+    g_editor.cameraGestureShot_ = shotIndex;
+    const auto &test = Session::kCameraGestureCases[shotIndex / 4];
+    const int phase = shotIndex % 4;
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    const auto source = screenAlignmentSourceCell();
+    if (phase == 0) {
+        set.deactivateAll();
+        auto records = set.mutableAuthoredRecords();
+        for (auto &record : records)
+            record = C_Voxel{Color{0, 0, 0, 0}};
+        records[IRMath::index3DtoIndex1D(source, set.size_)] = C_Voxel{Color{224, 64, 32, 255}};
+        set.resyncAfterAuthoredEdits();
+        IRPrefab::Undo::clear();
+        g_editor.cameraGestureBaseline_ = authoredVoxelFingerprint(set);
+        g_editor.cameraGestureExpected_ = g_editor.cameraGestureBaseline_;
+        if (test.interrupt_ && test.tool_ == Session::CameraGestureTool::BRUSH) {
+            std::vector<C_Voxel> expected(records.begin(), records.end());
+            expected[IRMath::index3DtoIndex1D(source + ivec3(0, 0, -1), set.size_)] =
+                C_Voxel{kPaletteColors[4]};
+            g_editor.cameraGestureExpected_ = authoredVoxelFingerprint(expected);
+        }
+        g_sculpt.tool_ = static_cast<SculptTool>(test.tool_);
+        g_editor.activeSwatchIdx_ = 4;
+        g_eraseMode = false;
+        g_sculpt.showGrid_ = true;
+        IRRender::setDebugOverlay(IRRender::DebugOverlayMode::UNLIT);
+    }
+    const auto &world = IREntity::getComponent<C_WorldTransform>(g_editor.editableVoxelSet_);
+    const vec3 point = vec3(voxelSetCellOrigin(set, world) + source) + vec3(0, 0, -0.5f);
+    const ivec2 cursor = IRRender::worldPos3DToMouseScreenPxExact(point);
+    for (auto &event : g_session.segments_[shotIndex].events_) {
+        if (event.type_ == IRVideo::GuiInputEvent::Type::MOVE)
+            event.screenPx_ = cursor + (event.frameOffset_ == 0 ? ivec2(0) : ivec2(80, 0));
+    }
+}
+
+void prepareShadowRotation(int shotIndex) {
+    if (!g_editor.shadowRotationSeeded_) {
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        g_editor.shadowRotationSeeded_ = seedShadowRotationScene(set);
+        g_editor.shadowRotationFingerprint_ = authoredVoxelFingerprint(set);
+        IRRender::setRotationPivotMode(IRRender::RotationPivotMode::ORIGIN);
+        IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+        IRRender::setSunIntensity(1.0f);
+        IRRender::setSunAmbient(0.2f);
+        IRRender::setAOEnabled(false);
+    }
+    g_sculpt.showGrid_ = false;
+    hideSculptGhost();
+    IRRender::setDebugOverlay(IRRender::DebugOverlayMode::NONE);
+    IRRender::setSunShadowsEnabled(shadowRotationShadowsEnabled(shotIndex));
+    IREntity::forEachComponent<C_Widget>([](IREntity::EntityId id, C_Widget &) {
+        IRPrefab::Widget::setVisible(id, false);
+    });
+}
+
 void drawAuthoringPrimitives() {
     if (g_bonePaint.active_ || g_classPaintMode || g_loftTool.active_ ||
-        authoringInteractionBlocked())
+        authoringInteractionBlocked() || g_sculpt.cameraInputBlocked_)
         hideSculptGhost();
     auto &lines = g_editor.authoringLines_;
     auto &triangles = g_editor.authoringTriangles_;
@@ -2509,11 +2611,8 @@ void drawAuthoringPrimitives() {
     // Camera controls run after INPUT; refresh an idle hover against the view
     // that this render pass presents, without applying another edit.
     if (g_fillTool.ghostVisible_ && !g_fillTool.dragging_ && !g_sculpt.dragging_) {
-        const auto target = sculptTarget(
-            g_eraseMode,
-            g_sculpt.tool_ == SculptTool::PAINT,
-            IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt, 0u)
-        );
+        const auto target =
+            sculptTarget(g_eraseMode, g_sculpt.tool_ == SculptTool::PAINT, farSidePlacementHeld());
         if (target)
             updateGhostShape(target->world_, target->world_, false);
         else
@@ -3563,6 +3662,11 @@ void applyRecipeHandleDrag() {
 // Runs every frame after GIZMO_HOVER: a press on a hovered recipe handle in
 // transform mode starts a drag, which lasts while the button is held.
 void updateRecipeHandleDrag() {
+    if (g_sculpt.cameraInputBlocked_) {
+        endRecipeHandleDrag();
+        placeRecipeHandles();
+        return;
+    }
     RecipeHandleState &state = g_recipeHandles;
     // A turn, a scale or a mode switch can start or stop the selected part's
     // handles with no selection or binding change to refresh them.
@@ -4951,6 +5055,62 @@ void updateWorkspaces() {
 
 namespace Session {
 
+bool evaluateCameraGestureCheck(const void *context, std::string &actual) {
+    const int shot = *static_cast<const int *>(context);
+    const int phase = shot % 4;
+    const auto &test = kCameraGestureCases[shot / 4];
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    const auto fingerprint = authoredVoxelFingerprint(set);
+    const bool interruptedBrush =
+        test.interrupt_ && test.tool_ == Session::CameraGestureTool::BRUSH;
+    const std::size_t heldCount = interruptedBrush ? 2u : 1u;
+    const bool undo = IRPrefab::Undo::canUndo();
+    bool passed = true;
+    if (phase == 0) {
+        const bool cameraMoved = test.cameraButton_ == IRInput::kKeyButtonSpace
+                                     ? IRMath::length(IRRender::getCameraPosition2DIso()) > 0.01f
+                                     : IRMath::abs(IRPrefab::Camera::getYaw()) > 0.01f;
+        passed = cameraMoved && !g_fillTool.ghostVisible_ && fingerprint.active_ == heldCount &&
+                 undo == interruptedBrush && fingerprint == g_editor.cameraGestureExpected_;
+        g_editor.cameraGestureHeld_ = fingerprint;
+        g_editor.cameraGestureHistory_ = undo;
+    } else if (phase == 1) {
+        passed = fingerprint == g_editor.cameraGestureHeld_ &&
+                 undo == g_editor.cameraGestureHistory_ && !g_sculpt.dragging_ &&
+                 !g_fillTool.dragging_;
+    } else if (phase == 2) {
+        passed =
+            fingerprint.active_ == (test.tool_ == CameraGestureTool::PAINT ? 1u : heldCount + 1u) &&
+            fingerprint != g_editor.cameraGestureHeld_ && undo;
+    } else {
+        passed = fingerprint == g_editor.cameraGestureHeld_ && undo == interruptedBrush &&
+                 IRPrefab::Undo::canRedo();
+    }
+    actual = "cells=" + std::to_string(fingerprint.active_) +
+             " yaw=" + std::to_string(IRPrefab::Camera::getYaw()) +
+             " undo=" + std::to_string(undo) +
+             " ghost=" + std::to_string(g_fillTool.ghostVisible_) +
+             " hash=" + std::to_string(fingerprint.hash_);
+    return passed;
+}
+
+bool evaluateShadowRotationCheck(const void *context, std::string &actual) {
+    const int shot = *static_cast<const int *>(context);
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    const auto fingerprint = authoredVoxelFingerprint(set);
+    const float yaw = IRPrefab::Camera::getYaw();
+    const float expectedYaw = shadowRotationYawDegrees(shot) * IRMath::kPi / 180.0f;
+    actual = "active=" + std::to_string(fingerprint.active_) +
+             " hash=" + std::to_string(fingerprint.hash_) + " yaw=" + std::to_string(yaw) +
+             " shadows=" + std::to_string(IRRender::getSunShadowsEnabled()) +
+             " surface=" + std::to_string(IRPrefab::PerAxisSurfaceLighting::isEnabled());
+    return g_editor.shadowRotationSeeded_ && fingerprint.active_ == 219 &&
+           fingerprint == g_editor.shadowRotationFingerprint_ &&
+           IRMath::abs(IRMath::wrapAnglePi(yaw - expectedYaw)) < 0.0001f &&
+           IRRender::getSunShadowsEnabled() == shadowRotationShadowsEnabled(shot) &&
+           !IRRender::getAOEnabled();
+}
+
 bool evaluateScreenAlignmentCheck(const void *context, std::string &actual) {
     const int shot = *static_cast<const int *>(context);
     const auto framebuffer = IRRender::getViewport();
@@ -6335,9 +6495,9 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Shift + left-drag: line-fill along dominant axis");
     IR_LOG_INFO("  Ctrl + left-click: face-fill (flood-fill axis-plane of hit face)");
     IR_LOG_INFO("  Left-click (no drag): place single voxel adjacent to hit face");
-    IR_LOG_INFO("  Alt + any place gesture: place on the FAR side of the hit face");
+    IR_LOG_INFO("  I + any place gesture: place on the FAR side of the hit face");
     IR_LOG_INFO("    (on a top face that is BELOW it — the only way to grow downward)");
-    IR_LOG_INFO("  Right-drag: rotate camera; use ERASE or V to remove voxels");
+    IR_LOG_INFO("  Right-drag / Alt+left-drag: rotate; I+left: place inward; ERASE or V: remove");
     IR_LOG_INFO("  V: toggle erase-fill mode (left-click place/box/line/face gestures erase)");
     IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
@@ -6365,7 +6525,8 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
-        "fill_ghost | face_pick | screen_alignment | rock | mushroom | ant | bird | tree | "
+        "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | rock | "
+        "mushroom | ant | bird | tree | "
         "parts_roundtrip | "
         "tier_scrub | remove_part | undo_history | animation_boundary | sculpt_workflow | "
         "sculpt_single_save | local_canvas | workarea_focus | motion_preview | "
@@ -6382,6 +6543,8 @@ int main(int argc, char **argv) {
          "fill_ghost",
          "face_pick",
          "screen_alignment",
+         "camera_gestures",
+         "shadow_rotation",
          "rock",
          "mushroom",
          "ant",
@@ -6587,6 +6750,11 @@ int main(int argc, char **argv) {
                 IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
                     static_cast<float>(IRVoxelEditor::screenAlignmentCase(shot).yawDegrees_) *
                     IRMath::kPi / 180.0f;
+        }
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SHADOW_ROTATION) {
+            for (int shot = 0; shot < IRVoxelEditor::kShadowRotationShotCount; ++shot)
+                IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
+                    IRVoxelEditor::shadowRotationYawDegrees(shot) * IRMath::kPi / 180.0f;
         }
         IR_LOG_INFO(
             "Authoring session '{}': {} segments, {} occupancy checks",
@@ -6915,7 +7083,7 @@ void initSystems() {
     //   Shift + left-drag       → line-fill along the dominant axis
     //   left-drag (no modifier) → AABB box-fill
     //   left-click (no drag)    → single-voxel place (same as original behavior)
-    // Alt modifies any of the place gestures: the hit face's normal inverts, so
+    // I modifies any of the place gestures: the hit face's normal inverts, so
     // the edit lands on the far side of the clicked face (editTargetCell).
     // Right-drag belongs to camera orbit.
     auto placeEraseSystem = IRSystem::createSystem<C_GuiElement>(
@@ -6924,7 +7092,8 @@ void initSystems() {
         []() {},
         []() {
             IRVoxelEditor::updateWorkspaces();
-            if (IRVoxelEditor::authoringInteractionBlocked())
+            const bool cameraOwnsGesture = IRVoxelEditor::updateCameraGestureOwnership();
+            if (cameraOwnsGesture || IRVoxelEditor::authoringInteractionBlocked())
                 return;
             // All 3D editing is suppressed in loft mode — the loft input system
             // handles mouse events over the mask panels instead.
@@ -6971,11 +7140,10 @@ void initSystems() {
                 if (IRVoxelEditor::g_editor.editableVoxelSet_ != IREntity::kNullEntity &&
                     !IRVoxelEditor::isEditable(IRVoxelEditor::g_editor.editableVoxelSet_))
                     status += " | PART NEEDS LOCAL EDIT VIEW";
-                // Alt inverts the hit-face normal on every place gesture, so the
+                // I inverts the hit-face normal on every place gesture, so the
                 // edit lands on the far side of the clicked face (below it, for
                 // the -z face). Erase has no far side to invert onto.
-                if (!IRVoxelEditor::g_eraseMode &&
-                    IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt, 0u)) {
+                if (!IRVoxelEditor::g_eraseMode && IRVoxelEditor::farSidePlacementHeld()) {
                     status += " BELOW";
                 }
                 const auto &sym = IRVoxelEditor::g_symmetry;
@@ -7063,9 +7231,9 @@ void initSystems() {
 
             // Ctrl + left-click: face-fill (immediate, no drag).
             const bool ctrlDown = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
-            // Alt: place on the far side of the hit face (editTargetCell). Read
+            // I: place on the far side of the hit face (editTargetCell). Read
             // live here; the drag path latches it at PRESS instead.
-            const bool altDown = IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt, 0u);
+            const bool farSideDown = IRVoxelEditor::farSidePlacementHeld();
             const bool leftPressedNow =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
             if (!overWidget && ctrlDown && leftPressedNow) {
@@ -7075,11 +7243,11 @@ void initSystems() {
                     auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
                     // Erase mode floods the hit voxel's own face plane (removing
                     // the exposed layer); place mode floods the empty plane in
-                    // front of the hit face, or behind it under Alt. The flood
+                    // front of the hit face, or behind it with I held. The flood
                     // axis stays the hit normal's axis either way — only which
                     // plane along it the flood starts in moves.
                     const bool erase = IRVoxelEditor::g_eraseMode;
-                    const ivec3 faceStart = IRVoxelEditor::editTargetCell(*hit, erase, altDown);
+                    const ivec3 faceStart = IRVoxelEditor::editTargetCell(*hit, erase, farSideDown);
                     IRVoxelEditor::applyFillFace(
                         hit->entity_,
                         set,
@@ -7102,7 +7270,7 @@ void initSystems() {
                     overWidget || ctrlDown,
                     placeColor,
                     placeBoneId,
-                    altDown
+                    farSideDown
                 );
                 return;
             }
@@ -7116,15 +7284,15 @@ void initSystems() {
                 const auto hit = IRVoxelEditor::pickEditable();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     // Erase drags target the hit voxels themselves; place drags
-                    // target the cells adjacent to the hit face. Latch Alt here
+                    // target the cells adjacent to the hit face. Latch the inward key here
                     // so the HELD end cell resolves in the same frame's sense.
-                    IRVoxelEditor::g_fillTool.dragInverted_ = altDown;
+                    IRVoxelEditor::g_fillTool.dragInverted_ = farSideDown;
                     const ivec3 startPos = IRVoxelEditor::classPaintAppliesTo(hit->entity_)
                                                ? hit->voxelPos_
                                                : IRVoxelEditor::editTargetCell(
                                                      *hit,
                                                      IRVoxelEditor::g_eraseMode,
-                                                     altDown
+                                                     farSideDown
                                                  );
                     IRVoxelEditor::g_fillTool.dragging_ = true;
                     IRVoxelEditor::g_fillTool.dragStartWorld_ = startPos;
@@ -9037,7 +9205,8 @@ void initEntities() {
         (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE &&
          !IRVoxelEditor::g_sculpt.referenceScene_) ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCULPT_WORKFLOW ||
-        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCREEN_ALIGNMENT;
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCREEN_ALIGNMENT ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CAMERA_GESTURES;
     IRVoxelEditor::g_sculpt.tool_ =
         ordinaryWorkspace ? IRVoxelEditor::SculptTool::BRUSH : IRVoxelEditor::SculptTool::BOX;
     IRVoxelEditor::g_sculpt.showGrid_ = ordinaryWorkspace;

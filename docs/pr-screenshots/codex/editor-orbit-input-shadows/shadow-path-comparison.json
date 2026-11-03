@@ -1,0 +1,96 @@
+{
+  "path_differences": [
+    {
+      "pose": 0,
+      "lit_changed": 0,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 1,
+      "lit_changed": 4996,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 2,
+      "lit_changed": 6360,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 3,
+      "lit_changed": 7156,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 4,
+      "lit_changed": 7128,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 5,
+      "lit_changed": 7104,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 6,
+      "lit_changed": 5972,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 7,
+      "lit_changed": 4084,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 8,
+      "lit_changed": 0,
+      "unshadowed_changed": 0
+    },
+    {
+      "pose": 9,
+      "lit_changed": 4092,
+      "unshadowed_changed": 0
+    }
+  ],
+  "near_cardinal_mask_changes": [
+    {
+      "poses": [
+        0,
+        1
+      ],
+      "default": 5772,
+      "surface": 1240
+    },
+    {
+      "poses": [
+        3,
+        4
+      ],
+      "default": 692,
+      "surface": 640
+    },
+    {
+      "poses": [
+        4,
+        5
+      ],
+      "default": 1024,
+      "surface": 1216
+    },
+    {
+      "poses": [
+        7,
+        8
+      ],
+      "default": 4572,
+      "surface": 832
+    },
+    {
+      "poses": [
+        8,
+        9
+      ],
+      "default": 4708,
+      "surface": 928
+    }
+  ]
+}

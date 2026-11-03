@@ -11,6 +11,7 @@
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/camera_gesture.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/render/gizmo_drag_math.hpp>
 
@@ -93,6 +94,29 @@ template <> struct System<GIZMO_DRAG> {
     IRMath::vec3 accumScalePerAxis_ = IRMath::vec3(1.0f);
 
     bool enabled_ = true;
+    IRPrefab::Camera::GestureOwnership cameraGestureOwnership_;
+    bool cameraGestureOwned_ = false;
+    bool extraCameraInput_ = false;
+
+    // Submit custom navigation before this system's INPUT beginTick. Claims
+    // accumulate for one tick; the gesture owner retains any left-button tail.
+    void queueCameraInput(bool active = true) {
+        extraCameraInput_ = extraCameraInput_ || active;
+    }
+
+    void updateCameraGesture(
+        const IRPrefab::Camera::GestureInput &input,
+        const IRPrefab::Camera::GestureControls &controls
+    ) {
+        claimCameraGesture(cameraGestureOwnership_.update(input, controls, extraCameraInput_));
+        extraCameraInput_ = false;
+    }
+
+    void claimCameraGesture(bool claimed) {
+        cameraGestureOwned_ = claimed;
+        if (claimed)
+            dragHandle_ = IREntity::kNullEntity;
+    }
 
     // Per-frame input state.
     bool mouseLeftPressedThisFrame_ = false;
@@ -117,6 +141,10 @@ template <> struct System<GIZMO_DRAG> {
     IREntity::EntityId prevDragHandle_ = IREntity::kNullEntity;
 
     void beginTick() {
+        updateCameraGesture(
+            IRPrefab::Camera::gestureInput(),
+            IRPrefab::Camera::registeredGestureControls()
+        );
         mouseLeftPressedThisFrame_ = IRInput::checkKeyMouseButton(
             IRInput::KeyMouseButtons::kMouseButtonLeft,
             IRInput::ButtonStatuses::PRESSED
@@ -149,7 +177,7 @@ template <> struct System<GIZMO_DRAG> {
     }
 
     void tick(IREntity::EntityId id, IRComponents::C_GizmoHandle &handle) {
-        if (!enabled_)
+        if (!enabled_ || cameraGestureOwned_)
             return;
         // 1) Drag-start: this handle is hovered + mouse just pressed + no other drag.
         if (dragHandle_ == IREntity::kNullEntity && mouseLeftPressedThisFrame_ && handle.hover_ &&

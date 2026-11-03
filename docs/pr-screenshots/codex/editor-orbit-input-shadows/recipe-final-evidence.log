@@ -1,0 +1,46 @@
+[2026-11-02 21:47:10.201] [ClientLog] [info] GUI-ASSERT shot=0 label=test_recipe_handle_gizmo_baseline kind=PREDICATE target=0 name=part_gizmo_before_any_handle result=PASS actual=texels=998
+[2026-11-02 21:47:10.201] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_gizmo_baseline yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:10.396] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001451.png
+[2026-11-02 21:47:10.556] [ClientLog] [info] GUI-ASSERT shot=1 label=test_recipe_handle_apply kind=PREDICATE target=0 name=applied_height result=PASS actual=test_column.height=3.000000 want=3.000000
+[2026-11-02 21:47:10.556] [ClientLog] [info] GUI-ASSERT shot=1 label=test_recipe_handle_apply kind=PREDICATE target=0 name=applied_cells_match result=PASS actual=cells=3
+[2026-11-02 21:47:10.556] [ClientLog] [info] GUI-ASSERT shot=1 label=test_recipe_handle_apply kind=PREDICATE target=0 name=no_handle_outside_transform_mode result=PASS actual=texels=0 want=none
+[2026-11-02 21:47:10.557] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_apply yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:10.747] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001452.png
+[2026-11-02 21:47:10.817] [ClientLog] [info] GUI-ASSERT shot=2 label=test_recipe_handle_handle_drawn kind=PREDICATE target=0 name=handle_drawn_in_transform_mode result=PASS actual=texels=46 want=drawn
+[2026-11-02 21:47:10.817] [ClientLog] [info] GUI-ASSERT shot=2 label=test_recipe_handle_handle_drawn kind=PREDICATE target=0 name=cell_above_tip_empty_before_drag result=PASS actual=part=0 cell=(8,8,11) occupied=no want=no
+[2026-11-02 21:47:10.817] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_handle_drawn yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:11.010] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001453.png
+[2026-11-02 21:47:11.103] [ClientLog] [info] GUI-ASSERT shot=3 label=test_recipe_handle_lengthen kind=PREDICATE target=0 name=lengthened_height result=PASS actual=test_column.height=4.000000 want=4.000000
+[2026-11-02 21:47:11.103] [ClientLog] [info] GUI-ASSERT shot=3 label=test_recipe_handle_lengthen kind=PREDICATE target=0 name=lengthened_cells_match result=PASS actual=cells=4
+[2026-11-02 21:47:11.103] [ClientLog] [info] GUI-ASSERT shot=3 label=test_recipe_handle_lengthen kind=PREDICATE target=0 name=cell_above_old_tip_filled result=PASS actual=part=0 cell=(8,8,11) occupied=yes want=yes
+[2026-11-02 21:47:11.104] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_lengthen yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:11.300] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001454.png
+[2026-11-02 21:47:11.394] [ClientLog] [info] GUI-ASSERT shot=4 label=test_recipe_handle_shorten kind=PREDICATE target=0 name=shortened_height result=PASS actual=test_column.height=1.000000 want=1.000000
+[2026-11-02 21:47:11.394] [ClientLog] [info] GUI-ASSERT shot=4 label=test_recipe_handle_shorten kind=PREDICATE target=0 name=shortened_cells_match result=PASS actual=cells=1
+[2026-11-02 21:47:11.394] [ClientLog] [info] GUI-ASSERT shot=4 label=test_recipe_handle_shorten kind=PREDICATE target=0 name=cell_the_drag_filled_cleared result=PASS actual=part=0 cell=(8,8,11) occupied=no want=no
+[2026-11-02 21:47:11.394] [ClientLog] [info] GUI-ASSERT shot=4 label=test_recipe_handle_shorten kind=PREDICATE target=0 name=cell_apply_filled_cleared result=PASS actual=part=0 cell=(8,8,12) occupied=no want=no
+[2026-11-02 21:47:11.394] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_shorten yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:11.587] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001455.png
+[2026-11-02 21:47:11.723] [ClientLog] [info] GUI-ASSERT shot=5 label=test_recipe_handle_hole kind=PREDICATE target=0 name=tip_hole_carved result=PASS actual=part=0 cell=(8,8,14) occupied=no want=no
+[2026-11-02 21:47:11.723] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_hole yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:11.913] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001456.png
+[2026-11-02 21:47:12.024] [ClientLog] [info] GUI-ASSERT shot=6 label=test_recipe_handle_past_max kind=PREDICATE target=0 name=height_clamped_to_max result=PASS actual=test_column.height=8.000000 want=8.000000
+[2026-11-02 21:47:12.024] [ClientLog] [info] GUI-ASSERT shot=6 label=test_recipe_handle_past_max kind=PREDICATE target=0 name=clamped_cells_match result=PASS actual=cells=7
+[2026-11-02 21:47:12.024] [ClientLog] [info] GUI-ASSERT shot=6 label=test_recipe_handle_past_max kind=PREDICATE target=0 name=drag_keeps_the_hole result=PASS actual=part=0 cell=(8,8,14) occupied=no want=no
+[2026-11-02 21:47:12.025] [ClientLog] [info] GUI-ASSERT shot=6 label=test_recipe_handle_past_max kind=PREDICATE target=0 name=handle_drawn_under_the_gizmo result=PASS actual=texels=4 want=drawn
+[2026-11-02 21:47:12.025] [ClientLog] [info] GUI-ASSERT shot=6 label=test_recipe_handle_past_max kind=PREDICATE target=0 name=handle_steals_no_gizmo_pixel result=PASS actual=texels=998 baseline=998
+[2026-11-02 21:47:12.025] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_past_max yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:12.210] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001457.png
+[2026-11-02 21:47:12.304] [ClientLog] [info] GUI-ASSERT shot=7 label=test_recipe_handle_undo kind=PREDICATE target=0 name=undo_restores_height result=PASS actual=test_column.height=1.000000 want=1.000000
+[2026-11-02 21:47:12.304] [ClientLog] [info] GUI-ASSERT shot=7 label=test_recipe_handle_undo kind=PREDICATE target=0 name=undo_restores_cells result=PASS actual=cells=0
+[2026-11-02 21:47:12.304] [ClientLog] [info] GUI-ASSERT shot=7 label=test_recipe_handle_undo kind=PREDICATE target=0 name=undo_clears_dragged_cell result=PASS actual=part=0 cell=(8,8,10) occupied=no want=no
+[2026-11-02 21:47:12.304] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_undo yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:12.488] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001458.png
+[2026-11-02 21:47:12.582] [ClientLog] [info] GUI-ASSERT shot=8 label=test_recipe_handle_redo kind=PREDICATE target=0 name=redo_restores_height result=PASS actual=test_column.height=8.000000 want=8.000000
+[2026-11-02 21:47:12.582] [ClientLog] [info] GUI-ASSERT shot=8 label=test_recipe_handle_redo kind=PREDICATE target=0 name=redo_restores_cells result=PASS actual=cells=7
+[2026-11-02 21:47:12.582] [ClientLog] [info] GUI-ASSERT shot=8 label=test_recipe_handle_redo kind=PREDICATE target=0 name=redo_refills_dragged_cell result=PASS actual=part=0 cell=(8,8,10) occupied=yes want=yes
+[2026-11-02 21:47:12.582] [ClientLog] [info] CaptureCamera: label=test_recipe_handle_redo yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:12.767] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001459.png
+ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0
+[gui-verify] 25/25 assertions passed
+[gui-verify] 0 layout finding(s) over 9 shot(s)

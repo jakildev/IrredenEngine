@@ -7,7 +7,7 @@ Design log, findings and the authoring-session history:
 ## Validators
 
 - `python3 scripts/gui-verify.py IRVoxelEditor` — blank-grid sculpt workflow; `-- --gui-layout-check` also fails layout findings. Add `--reference-scene` for the diagnostic furniture/legacy shot table.
-- `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` runs a named scripted session; `sessions.hpp` owns the complete registry. Core authoring flows are `sculpt_workflow`, `hierarchy_workflow`, `animation_boundary`, `sculpt_single_save`, `local_canvas`, `document_workflow`, `workarea_focus` and `motion_preview`. Include `--gui-layout-check` to gate reachability/layout. `face_pick` compares actual rendered faces with picking at yaw zero, and `text_input_command_capture` checks editor shortcuts under text focus.
+- `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` runs a named scripted session; `sessions.hpp` owns the complete registry. Core authoring flows are `sculpt_workflow`, `hierarchy_workflow`, `animation_boundary`, `sculpt_single_save`, `local_canvas`, `document_workflow`, `workarea_focus` and `motion_preview`. Include `--gui-layout-check` to gate reachability/layout. `camera_gestures` checks camera chords, modifier-first release, interrupted strokes, fresh editing and undo. `place_below` validates inward placement. `face_pick` compares actual rendered faces with picking at yaw zero, and `text_input_command_capture` checks editor shortcuts under text focus.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
@@ -54,7 +54,7 @@ from an edit path.
   joint placement and FK posing need it too). Outside it they draw dimmed and a
   click on one edits the scene beneath. In it a handle owns exactly the pixels
   it is drawn on (`cursorOnGizmoHandle()`, the GPU entity-id readback).
-- A voxel's underside is never visible from the iso camera; Alt places on the
+- A voxel's underside is never visible from the iso camera; I places on the
   far side of the picked face. That is a fact of the view, not of the pick.
 
 The cardinal executor for "the face drawn under the cursor" is `face_pick`'s
@@ -70,7 +70,7 @@ from displayed albedo/normal pixels at seven angles, including 30° and 67°;
   panel's W / H / D (initially `--scene-size`); Ctrl+Shift+P adds the
   BAKE panel's selected SDF primitive. Tab/Shift+Tab select parts. Ctrl+S and
   Ctrl+O write/read the prefab manifest plus one `.vxs` per voxel part (v3 for nested parents, v2 for flat scenes).
-- Ordinary launch opens a blank grid in Sculpt and fits it into visible free viewport space; FOCUS fits the selected part/local canvas without changing camera yaw. `workarea_focus` validates rotated-child and local-canvas framing around module panels; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. Right-drag orbits the camera. Grid lines sit on the bottom support plane and share voxel depth; the preview is a full translucent cell. F12 saves the composite view to `save_files/screenshots` beside the executable.
+- Ordinary launch opens a blank grid in Sculpt and fits it into visible free viewport space; FOCUS fits the selected part/local canvas without changing camera yaw. `workarea_focus` validates rotated-child and local-canvas framing around module panels; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. Right-drag or Alt+left-drag orbits the camera; Ctrl+middle-drag also orbits, and Space+left-drag pans. Camera gestures own the pointer through release, suppress sculpt previews, and cancel pending BOX/LINE commits. I+left places inward on the far side of a picked face. Grid lines sit on the bottom support plane and share voxel depth; the preview is a full translucent cell. F12 saves the composite view to `save_files/screenshots` beside the executable.
 - Assemble exposes hierarchy/LOD/components/arrays; Generate exposes recipes/bake/module panels; Animate exposes single-asset frames/rig tools. Hidden widgets retain state and neither draw nor intercept input. ALL exposes the diagnostic layout.
 - BAKE reads the radius the P1 slider holds, and a scripted drag leaves that
   within `kBakeParamSliderDragDrift` of the request. `bakeSphere` models the

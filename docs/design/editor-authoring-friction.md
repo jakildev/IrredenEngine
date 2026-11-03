@@ -1021,3 +1021,37 @@ measurements on macOS / Metal; none of them is a proposal.
   releases at the set-local (11.979, 8.021, 3.042), read through the part's
   inverse turn. A control build that maps the handle by the part's translation
   alone leaves the length at 2 and the new end cell empty.
+
+## Orbit input and shadow follow-up
+
+Alt+left was both a standard camera orbit chord and the editor's inward-placement
+gesture. Sculpt INPUT ran before camera RENDER, so both acted on the same click.
+The editor now reserves navigation gestures through their release, ends a live
+brush stroke once, and cancels deferred BOX/LINE commits. Inward placement uses
+I+left; `Builder::clickBelow` keeps its API and emits the new binding. Shared
+gizmos and editor recipe handles also defer to camera ownership. The reusable
+contract is [camera gesture ownership](camera-gesture-ownership.md).
+
+The separate shadow investigation reproduced a pre-existing sampling switch:
+settled cardinal beauty uses per-fragment surface lighting, while non-cardinal
+beauty uses face-center visibility unless `IR_PERAXIS_SURFACE_LIGHTING=1` is set.
+Moving from 0 to 0.25 degrees changed diagonal shadow boundaries into whole-cell
+steps. The existing opt-in preserved the diagonal boundaries. All paired
+shadows-disabled images were RGB-identical between those paths, isolating the
+difference to shadows in this fixture.
+
+`shadow_rotation` holds 219 authored cells unchanged and captures shadows on/off
+at 20 poses, including 30 and 67 degrees, both sides of the 45-degree rebracket,
+both sides of 90 degrees, and exact return poses. Both paths passed 40 assertions
+and restored every repeated pose pixel-for-pixel in the measured world region.
+This did not reproduce persistent shadow state after an exact return. Accidental
+painting and returning near, rather than exactly to, a cardinal are separate
+ways a manual orbit can appear not to restore; neither is inferred from stills
+alone.
+
+Production shadow defaults are unchanged. The existing continuous receiver is
+still opt-in because its [wider-scene cost and remaining acceptance gates](
+../pr-screenshots/codex/peraxis-surface-lighting/README.md#measured-cost-and-decision)
+are unresolved. The new diagnostic measures repeatability and isolates a
+contribution; it is not a physical shadow oracle, a dense-scene benchmark, or a
+claim that the general rotation work tracked by issues 1271 and 4231 is finished.

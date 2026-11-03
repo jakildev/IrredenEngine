@@ -69,6 +69,56 @@ TEST_F(GizmoDragResetTest, UnrelatedEntityDestructionLeavesDragStateIntact) {
            "match, not on any destruction";
 }
 
+TEST_F(GizmoDragResetTest, CameraOwnedPressCannotStartHoveredHandleDrag) {
+    const auto anchor = IREntity::createEntity();
+    const auto handleEntity = IREntity::createEntity();
+    IRComponents::C_GizmoHandle handle;
+    handle.hover_ = true;
+    handle.anchorEntity_ = anchor;
+    IRSystem::System<IRSystem::GIZMO_DRAG> drag;
+    drag.mouseLeftPressedThisFrame_ = true;
+    drag.mouseLeftDown_ = true;
+    drag.claimCameraGesture(true);
+    drag.tick(handleEntity, handle);
+    EXPECT_EQ(drag.dragHandle_, IREntity::kNullEntity);
+}
+
+TEST_F(GizmoDragResetTest, CameraAcquisitionEndsDragWithoutDiscardingHistoryCapture) {
+    IRSystem::System<IRSystem::GIZMO_DRAG> drag;
+    drag.dragHandle_ = IREntity::createEntity();
+    drag.dragAnchor_ = IREntity::createEntity();
+    drag.dragStartAnchorPos_ = IRMath::vec3(1.0f, 2.0f, 3.0f);
+    const auto anchor = drag.dragAnchor_;
+    drag.claimCameraGesture(true);
+    EXPECT_EQ(drag.dragHandle_, IREntity::kNullEntity);
+    EXPECT_EQ(drag.dragAnchor_, anchor);
+    EXPECT_EQ(drag.dragStartAnchorPos_, IRMath::vec3(1.0f, 2.0f, 3.0f));
+}
+
+TEST(GizmoDragGestureTest, CustomNavigationClaimIsConsumedButOwnsRemainingLeftGesture) {
+    IRSystem::System<IRSystem::GIZMO_DRAG> drag;
+    IRPrefab::Camera::GestureInput input;
+    input.left_ = {true, true, false};
+    drag.queueCameraInput();
+    drag.queueCameraInput(false);
+    drag.updateCameraGesture(input, {});
+    EXPECT_TRUE(drag.cameraGestureOwned_);
+    EXPECT_FALSE(drag.extraCameraInput_);
+    input.left_ = {false, true, false};
+    drag.updateCameraGesture(input, {});
+    EXPECT_TRUE(drag.cameraGestureOwned_);
+    input.left_ = {false, false, true};
+    drag.updateCameraGesture(input, {});
+    EXPECT_TRUE(drag.cameraGestureOwned_);
+    drag.updateCameraGesture({}, {});
+    EXPECT_FALSE(drag.cameraGestureOwned_);
+    drag.queueCameraInput();
+    drag.updateCameraGesture({}, {});
+    EXPECT_TRUE(drag.cameraGestureOwned_);
+    drag.updateCameraGesture({}, {});
+    EXPECT_FALSE(drag.cameraGestureOwned_);
+}
+
 TEST(GizmoDragTransformTest, RotatedRootArrowUsesItsVisibleWorldAxis) {
     IRComponents::C_WorldTransform anchor;
     anchor.rotation_ = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), IRMath::kPi * 0.5f);

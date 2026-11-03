@@ -1,0 +1,18 @@
+[2026-11-02 21:47:07.700] [ClientLog] [info] GUI-ASSERT shot=0 label=place_below_column kind=PREDICATE target=0 name=column_top_placed result=PASS actual=cell=(8,8,12) occupied=yes want=yes
+[2026-11-02 21:47:07.700] [ClientLog] [info] CaptureCamera: label=place_below_column yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:07.896] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001447.png
+[2026-11-02 21:47:07.997] [ClientLog] [info] GUI-ASSERT shot=1 label=place_below_cantilever kind=PREDICATE target=0 name=arm_tip_placed result=PASS actual=cell=(6,8,12) occupied=yes want=yes
+[2026-11-02 21:47:07.998] [ClientLog] [info] CaptureCamera: label=place_below_cantilever yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:08.189] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001448.png
+[2026-11-02 21:47:08.240] [ClientLog] [info] GUI-ASSERT shot=2 label=place_below_below_arm kind=PREDICATE target=0 name=below_starts_empty result=PASS actual=cell=(6,8,13) occupied=no want=no
+[2026-11-02 21:47:08.240] [ClientLog] [info] GUI-ASSERT shot=2 label=place_below_below_arm kind=PREDICATE target=0 name=untouched_starts_empty result=PASS actual=cell=(6,11,14) occupied=no want=no
+[2026-11-02 21:47:08.240] [ClientLog] [info] CaptureCamera: label=place_below_below_arm yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:08.434] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001449.png
+[2026-11-02 21:47:08.535] [ClientLog] [info] GUI-ASSERT shot=3 label=place_below_below kind=PREDICATE target=0 name=voxel_placed_below result=PASS actual=cell=(6,8,13) occupied=yes want=yes
+[2026-11-02 21:47:08.535] [ClientLog] [info] GUI-ASSERT shot=3 label=place_below_below kind=PREDICATE target=0 name=arm_tip_survives result=PASS actual=cell=(6,8,12) occupied=yes want=yes
+[2026-11-02 21:47:08.535] [ClientLog] [info] GUI-ASSERT shot=3 label=place_below_below kind=PREDICATE target=0 name=untouched_stays_empty result=PASS actual=cell=(6,11,14) occupied=no want=no
+[2026-11-02 21:47:08.536] [ClientLog] [info] CaptureCamera: label=place_below_below yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1600,900)
+[2026-11-02 21:47:08.728] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001450.png
+ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0
+[gui-verify] 7/7 assertions passed
+[gui-verify] 0 layout finding(s) over 4 shot(s)
