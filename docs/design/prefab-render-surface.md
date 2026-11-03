@@ -264,34 +264,51 @@ help overlay's shape and sentinel.
 
 ## Cursor-latched rotation pivot
 
-`resolveFocusWorld` returns the world point under the cursor at its true
-surface depth through `IRPrefab::Picking::castVoxelRay`; CPU picking never
-applied the raster's anchor shift, so it already agrees with the raster at
-every cardinal and a picking-side compensation would be wrong. On a
-background click `System<CAMERA_MOUSE_ROTATE>` sets no explicit focus, so the
-mode degrades to the default pivot, which acquires the surface under the
-crosshair on the drag's first yaw-delta frame.
+Ctrl+middle and Alt+left orbit about the clicked surface by default. Shift
+inverts the policy for one gesture; `Camera::setCursorPivotByDefault(false)`
+makes the center policy the default for both registered systems. Settings
+apply at the next press, so changing policy cannot move the current view.
 
-The indicator is spawned lazily on the first cursor-pivot drag so a creation
-that never uses the mode keeps its entity-id layout and captures; it is then
-re-hidden, never destroyed. It sets `canvasEntity_ = kNullEntity` so
-`SHAPES_TO_TRIXEL` resolves the canvas at RENDER time: `C_ShapeDescriptor`'s
-constructor snapshot of the active canvas is right for a scene-setup spawn,
-but an entity built mid-frame from a per-frame system would snapshot
-whichever canvas the last pass left active.
+`CursorPivot::OrbitAnchor` resolves once per press with `Picking::SCREEN_PIXEL`
+through the two-argument `resolveFocusWorld(excluded, options)`. The one-argument
+compatibility overload retains iso-column picking and default-focus-on-miss behavior.
+A miss intersects the exact cursor ray with the world-Z plane at the current
+reference height. `FocusOptions` allows a custom surface resolver and floor
+height; authoring tools with transformed private canvases must provide the
+same resolver they use for their editable geometry. Generic CPU picking does
+not reconstruct arbitrary private-canvas transformations or GPU deformation.
 
-A marker spawned from a hook that runs after `SHAPES_TO_TRIXEL` never
-renders — the pass is done for the frame and the new entity reaches no
-archetype it reads. What decides this is the spawner's order relative to
-`SHAPES_TO_TRIXEL`, not which pipeline it lives in: `CAMERA_MOUSE_ROTATE`
-(spliced by `standardControlSystems()`) is a RENDER-pipeline system ahead of
-it, while the capture-frame hooks are past it, which is why the
-`--pivot-verify cursor-latch` harness spawns its marker at scene setup.
-`CAMERA_MOUSE_ROTATE` carries the `IRSystem::MainThread` tag because the lazy
-spawn is an eager `createEntity` followed by `getComponent`, both
-main-thread-only; a multi-system pipeline group dispatches every member onto
-a worker, and the tag turns that wiring mistake into a boot-time FATAL in
-`validateAllPipelineGroups`.
+Acquiring an anchor switches interactive orbit to `CAMERA_CENTER`, sets an
+explicit focus and compensates raw camera translation by the difference
+between the old and new effective camera. Even acquiring from `ORIGIN` or
+reanchoring at nonzero yaw leaves the view fixed. Programmatic `ORIGIN`
+rotation without an input gesture remains available. The center policy
+acquires a world point on the current screen-center ray at reference height,
+with the same compensation. Release retains the explicit focus and hides the
+marker; a subsequent pan uses the fixed-focus identity mapping. This avoids
+an inverse live-center transition, which is singular at yaw 120° and 240°.
+
+The warm-yellow cross stays at the original press position in logical window
+points, with a six-point radius independent of world zoom or yaw. The
+`C_ScreenSpaceMarker` component is runtime-only, omitted from snapshots;
+`DEBUG_OVERLAY` reads visible marker state during its late flush after screen
+composition. Reading live state makes press-and-release within one frame
+invisible, rather than leaving a queued marker after release. The existing
+screen primitives handle framebuffer scaling and bottom-up Y conversion.
+
+Stable marker rendering requires `DEBUG_OVERLAY` after `FRAMEBUFFER_TO_SCREEN`.
+Without that registered system the controller falls back to an inverse-zoom
+SDF sphere displaced toward the viewer along the yawed iso-depth ray. That
+fallback has the voxel/SDF raster's sampling precision; it is not a screen-pixel
+stability guarantee. Legacy `createIndicator`/`showIndicator` calls retain their
+SDF behavior. A screen marker keeps its SDF representation hidden, including
+in snapshots, so loading cannot revive stale visible geometry.
+
+Both orbit systems carry `MainThread` because acquisition eagerly creates the
+owned marker entity. A custom gesture owns an `OrbitAnchor`, invokes
+`begin`/`end` and `updateIndicator` after held yaw writes before rendering,
+and forwards entity pre-destroy notifications through `onEntityDestroyed`.
+The standard systems cancel their active drag when its marker is destroyed.
 
 ## Widget framework
 

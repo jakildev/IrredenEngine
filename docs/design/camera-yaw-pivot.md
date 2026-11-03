@@ -250,12 +250,14 @@ helper.
    reads `getEffectiveCameraIso()` for its screen placement too
    (`system_entity_canvas_to_framebuffer.hpp`); its de-tile gather parity stays on
    the entity's fixed world iso. Detached + GRID now share one pivot.
-2. **Cursor (`Ctrl+Shift+middle-drag`).** `System<CAMERA_MOUSE_ROTATE>` picks
-   the surface under the cursor at drag start (`IRPrefab::Picking::castVoxelRay`)
-   and sets it as an explicit focus via `IRRender::setRotationPivotFocus`. A
-   click over background sets no focus: the drag runs on the screen-center
-   default, whose latch acquires the surface under the crosshair on the drag's
-   first yaw-delta frame. The drag reverts to the default on release.
+2. **Cursor (`Ctrl+middle` or `Alt+left`).** Shared camera controls default
+   to the clicked `SCREEN_PIXEL` surface; a miss uses the exact cursor ray at
+   the current reference world-Z height. Acquisition compensates the raw
+   camera so reanchoring at nonzero yaw does not move the view. Release hides
+   the marker and retains the explicit focus. Shift reverses the configured
+   policy for a gesture; `Camera::setCursorPivotByDefault(false)` selects the
+   center policy. The [cursor orbit contract](prefab-render-surface.md#cursor-latched-rotation-pivot)
+   describes custom geometry resolvers, floor fallback, and lifecycle.
 
 `RotationPivotMode::ORIGIN` skips the correction (offset == `cameraIso`); Z-yaw
 pivots about the world origin.

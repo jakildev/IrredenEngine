@@ -71,6 +71,13 @@ template <> struct System<DEBUG_OVERLAY> {
             [](const C_Name &) {},
             nullptr,
             []() {
+                const auto viewport = IRMath::vec2(IRRender::getViewport());
+                const auto framebufferScale = IRRender::windowPointsToFramebufferPx(vec2(1.0f));
+                IREntity::forEachComponent<IRComponents::C_ScreenSpaceMarker>(
+                    [&](IREntity::EntityId, const IRComponents::C_ScreenSpaceMarker &marker) {
+                        IRDebug::drawScreenMarker(marker, viewport, framebufferScale);
+                    }
+                );
                 auto &lines = IRDebug::getLines();
                 auto &circles = IRDebug::getCircles();
                 auto &triangles = IRDebug::getTriangles();
