@@ -659,6 +659,9 @@ DECLINE_TRANSIENT_TTL_SECONDS = 30 * 60
 DECLINE_TRANSIENT_RE = re.compile(
     r"HTTP 401|Bad credentials|HTTP 5\d\d|rate limit|API rate|timed out|Could not resolve host",
     re.IGNORECASE)
+HOST_SCOPED_DECLINE_RE = re.compile(
+    r"fleet:needs-(?:gl|macos|windows)-host|\*\*Host:\*\*|fleet-claim host=",
+    re.IGNORECASE)
 
 
 def _declined_dir():
@@ -748,7 +751,8 @@ def _shadow_number(record):
 def _shadowed_closeout(record):
     """Validated durable merged-delivery evidence plus a substantive worker decline."""
     metadata = _decline_metadata("task", record, "worker")
-    if metadata is None or metadata["transient"]:
+    if (metadata is None or metadata["transient"]
+            or HOST_SCOPED_DECLINE_RE.search(metadata["reason"])):
         return None
     shadow = metadata["shadow_merged_pr"] or _shadow_number(record)
     if shadow is None:
