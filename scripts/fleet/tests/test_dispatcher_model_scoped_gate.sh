@@ -24,7 +24,8 @@
 #   - at the Fable wall a fleet:fable feedback fix resolves and is claimed as
 #     opus work
 #   - the family breaker: a fresh rejection seen by a Fable session holds
-#     fable with no live window behind it, and lets go after LIMIT_DELAY
+#     fable with no live window behind it, and lets go after LIMIT_DELAY or
+#     once a reset it predates has passed
 #   - controls: with no wall latched the fable class is served as fable; an
 #     opus sidecar, or a sidecar the wrapper would not resume, launches
 
@@ -66,6 +67,8 @@ export FLEET_MODEL_FABLE='claude-fable-5[1m]'
 export FLEET_MODEL_OPUS='claude-opus-4-8[1m]'
 export FLEET_MODEL_SONNET='sonnet'
 export FLEET_CONCURRENCY_MODEL_FABLE=2
+# The family breaker's window (T5d derives its ages from it).
+export FLEET_DISPATCHER_LIMIT_DELAY=900
 
 export FLEET_CLAIM_LOG="$TMPROOT/fleet-claim.log"
 STUB_BIN="$TMPROOT/bin"; mkdir -p "$STUB_BIN"
@@ -185,10 +188,10 @@ assert_eq "$(resolve worker)" \
 assert_eq "$(assign worker)" "target=feedback:engine:4867" "and the opus pick walk claims it"
 
 echo "T5d: the family breaker holds the family a fresh rejection hit"
-breaker_wall() { # $1 = type, $2 = observing model, $3 = age in seconds
+breaker_wall() { # $1 = type, $2 = observing model, $3 = age, $4 = seconds since its reset (7200)
     local now; now=$(date +%s)
     printf '{"rateLimitType":"%s","utilization":1.0,"resetsAt":%s,"observed_at":%s,"status":"rejected","model":"%s"}\n' \
-        "$1" "$(( now - 7200 ))" "$(( now - $3 ))" "$2" > "$FLEET_STATE_DIR/usage/$1.rejected.json"
+        "$1" "$(( now - ${4:-7200} ))" "$(( now - $3 ))" "$2" > "$FLEET_STATE_DIR/usage/$1.rejected.json"
 }
 clear_walls
 breaker_wall some_new_window claude-fable-5-1 30
@@ -202,11 +205,16 @@ write_slice worker "$OPUS_TASK"
 assert_eq "$(assign worker)" "target=task:engine:11" "and the opus task"
 unset FLEET_RUNTIMES
 clear_walls
-breaker_wall some_new_window claude-fable-5-1 1000
+breaker_wall some_new_window claude-fable-5-1 $(( FLEET_DISPATCHER_LIMIT_DELAY + 100 ))
 write_slice worker "$FABLE_ONLY"
 assert_eq "$(resolve worker)" \
     "class=fable model=claude-fable-5[1m] effort=high more=0 defer=0 count=1 plan=0" \
     "control: a rejection older than the breaker window lets one fable launch probe"
+clear_walls
+breaker_wall some_new_window claude-fable-5-1 800 700
+assert_eq "$(resolve worker)" \
+    "class=fable model=claude-fable-5[1m] effort=high more=0 defer=0 count=1 plan=0" \
+    "a rejection seen before its own reset lets go once that reset plus grace passes"
 clear_walls
 
 echo "T6: a reserved Claude worker is gated on the model it resumes"

@@ -14,7 +14,11 @@ Covers:
     unless the wording says weekly, suffixed with a family the wording names)
     that the event's record supersedes; newer "reached your usage limit"
     wordings match; an ordinary error result is neither
-  - a rejected event with no rateLimitType still latches, as untyped
+  - a family is read only from the words qualifying the limit, and a family
+    wall is its own wall.<family>.rejected.json beside the account one
+  - the API's per-minute "exceeded your … rate limit" 429s are not the wall
+  - a rejected event with no rateLimitType still latches, as untyped with no
+    resetsAt, and leaves the result-text fallback free to scope
 """
 import importlib.machinery
 import importlib.util
@@ -295,15 +299,39 @@ class QuotaFlag(unittest.TestCase):
             self.assertTrue(self._flag.exists(), text)
 
     def test_wording_that_names_a_family_scopes_the_record(self):
+        for text, family, rl_type in (
+            ("You've hit your Fable weekly limit · resets 8am", "fable", "seven_day_fable"),
+            ("You've hit your Opus limit · resets 3:30am", "opus", "five_hour_opus"),
+        ):
+            self._feed(
+                {"type": "result", "subtype": "success", "is_error": True, "result": text}
+            )
+            data = self._read(f"wall.{family}.rejected")
+            self.assertIsNotNone(data, text)
+            self.assertEqual(data["rateLimitType"], rl_type, text)
+        self.assertIsNone(self._read("wall.rejected"),
+                          "a family wall never writes the account-wide record")
+
+    def test_family_named_outside_the_limit_phrase_is_not_read(self):
         for text, rl_type in (
-            ("You've hit your Fable weekly limit · resets 8am", "seven_day_fable"),
-            ("You've hit your Opus limit · resets 3:30am", "five_hour_opus"),
+            ("You've hit your weekly limit · resets 8am, or switch to Sonnet", "seven_day"),
+            ("You've hit your limit · try Opus with /model", "five_hour"),
         ):
             (self._mod.USAGE_DIR / "wall.rejected.json").unlink(missing_ok=True)
             self._feed(
                 {"type": "result", "subtype": "success", "is_error": True, "result": text}
             )
             self.assertEqual(self._read("wall.rejected")["rateLimitType"], rl_type, text)
+
+    def test_family_wall_does_not_overwrite_an_account_wall(self):
+        self._feed(
+            {"type": "result", "subtype": "success", "is_error": True,
+             "result": "You've hit your limit · resets 4:40pm"},
+            {"type": "result", "subtype": "success", "is_error": True,
+             "result": "You've hit your Fable weekly limit · resets 8am"},
+        )
+        self.assertEqual(self._read("wall.rejected")["rateLimitType"], "five_hour")
+        self.assertEqual(self._read("wall.fable.rejected")["rateLimitType"], "seven_day_fable")
 
     def test_untyped_rejection_still_latches_the_wall(self):
         self._feed(
@@ -313,8 +341,19 @@ class QuotaFlag(unittest.TestCase):
         self.assertTrue(self._flag.exists())
         data = self._read("untyped.rejected")
         self.assertIsNotNone(data, "a rejection with no rateLimitType is still the wall")
+        self.assertEqual(data["rateLimitType"], "untyped")
         self.assertEqual(data["utilization"], 1.0)
-        self.assertEqual(data["resetsAt"], 1778629200)
+        self.assertIsNone(data["resetsAt"],
+                          "an account-wide hold on an unknown wall ages out, not at its reset")
+
+    def test_untyped_rejection_leaves_the_text_fallback_free_to_scope(self):
+        self._feed(
+            {"type": "rate_limit_event",
+             "rate_limit_info": {"status": "rejected", "resetsAt": 1778629200}},
+            {"type": "result", "subtype": "success", "is_error": True,
+             "result": "You've hit your Fable weekly limit · resets 8am"},
+        )
+        self.assertEqual(self._read("wall.fable.rejected")["rateLimitType"], "seven_day_fable")
 
     def test_other_error_results_do_not(self):
         self._feed(
@@ -329,6 +368,11 @@ class QuotaFlag(unittest.TestCase):
             }
         )
         self.assertFalse(self._flag.exists(), "a 429 throttle result is not the wall")
+        for text in ("Number of request tokens has exceeded your per-minute rate limit",
+                     "Number of concurrent connections has exceeded your rate limit."):
+            self._feed({"type": "result", "subtype": "error_during_execution",
+                        "is_error": True, "api_error_status": 429, "result": text})
+            self.assertFalse(self._flag.exists(), f"an API per-minute 429 is not the wall: {text}")
         self.assertFalse(
             (self._mod.USAGE_DIR / "wall.rejected.json").exists(),
             "and latches no gate record",

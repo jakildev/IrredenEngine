@@ -482,11 +482,16 @@ read_dispatch_mode() {
 # the wall itself and binds whatever its type's threshold, so a threshold
 # above 1.0 means "never pre-empt", not "launch into the wall".
 #
-# The family breaker covers a wall the tables cannot name: a `rejected`
-# record observed within the last LIMIT_DELAY seconds holds launches on the
-# family of the session that hit it (its `model`), whatever the type's name,
-# scope or reset. An unrecognised type still scopes `account` by name; the
-# breaker is what stops the observing family re-launching into it.
+# The family breaker: a `rejected` record observed within the last
+# LIMIT_DELAY seconds holds launches on the family of the session that hit it
+# (its `model`), whatever the type's name or scope. It binds where the
+# type-level record does not: a rejection that arrived carrying an
+# already-passed resetsAt (the window reopened on paper but still rejects),
+# or a type whose name scopes it to a family other than the one it rejected.
+# A rejection observed before its own reset lets go once that reset (plus
+# grace) passes. While an account-scoped record is itself binding it holds
+# every family, so a model-less `scoped` read leaves its breaker out and the
+# account wall is not logged as a one-family hold.
 #
 # Conservative against staleness, but resetsAt is authoritative: an
 # observation whose resetsAt + RESET_GRACE_SECONDS is in the past is
@@ -2119,6 +2124,18 @@ def family_token(rate_limit_type):
     return ""
 
 
+def resets_epoch(resets_at):
+    """resetsAt (ISO-8601 string or Unix epoch) as epoch seconds, else None."""
+    if isinstance(resets_at, (int, float)):
+        return float(resets_at)
+    if isinstance(resets_at, str):
+        try:
+            return datetime.fromisoformat(resets_at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+    return None
+
+
 def threshold_for(rate_limit_type):
     """(threshold, from_fallback) for one observation type.
 
@@ -2185,9 +2202,17 @@ for path in sorted(usage_dir.glob("*.json")):
     if data.get("status") == "rejected" and scope in ("claude", "scoped"):
         hit_family = family_of_model(data.get("model"))
         observed_at = data.get("observed_at")
-        if (hit_family and isinstance(observed_at, (int, float))
-                and (hit_family == want_family or (not want_family and scope == "scoped"))
-                and 0 <= now - int(observed_at) < breaker_s):
+        reset_s = resets_epoch(data.get("resetsAt"))
+        observed = isinstance(observed_at, (int, float))
+        account_wall = scope_of(raw_type) == "account" and (
+            reset_s + reset_grace_s > now if reset_s is not None
+            else observed and now - int(observed_at) <= stale_s)
+        if (hit_family and observed
+                and (hit_family == want_family
+                     or (not want_family and scope == "scoped" and not account_wall))
+                and 0 <= now - int(observed_at) < breaker_s
+                and not (reset_s is not None and observed_at <= reset_s
+                         and reset_s + reset_grace_s <= now)):
             age = now - int(observed_at)
             if breaker is None or age < breaker[0]:
                 breaker = (age, raw_type, hit_family)

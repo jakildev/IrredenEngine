@@ -342,12 +342,12 @@ the window resets (gate thresholds and the per-pane cooldown:
 [`FLEET.md § Rate-limit handling`](FLEET.md)):
 
 - `fleet-claude-stream` latches the `status:"rejected"` event at 100 % (its
-  own `<type>.rejected.json`, `untyped.rejected.json` when the event names
-  no type, so a later warning from another pane cannot reopen the gate
+  own `<type>.rejected.json` — `untyped.rejected.json`, without its
+  `resetsAt`, when the event names no type — so a later warning from another pane cannot reopen the gate
   early) and flags the wrapper; the wall's result text ("hit your … limit",
   "reached your usage limit") flags the wrapper too, and on its own — no
-  event seen — latches `wall.rejected.json` with no `resetsAt` (its type
-  suffixed with any model family the wording names), so the gate holds
+  event seen — latches `wall.rejected.json` with no `resetsAt` (or
+  `wall.<family>.rejected.json` when "your <Family> … limit" names one), so the gate holds
   for the observed-at cutoff rather than reopening on a released idle
   claim. The wrapper writes the pane's cooldown marker (`claude` exits 1 at
   the wall; the legacy exit 2 is honored too) and re-arms the role trigger
