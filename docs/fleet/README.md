@@ -97,7 +97,7 @@ language `description` field that doubles as the human cheat sheet.
 | [`render-trixel-pipeline`](../../.claude/skills/render-trixel-pipeline/SKILL.md) | Touching the voxel-to-trixel pipeline, canvases, framebuffer compositing, camera, or coordinate systems. Reference for invariants and the pipeline order. |
 | [`render-debug-loop`](../../.claude/skills/render-debug-loop/SKILL.md) | Iterating on a render bug. Build → run → capture → diagnose → fix → repeat, against a topic-indexed reference table for trixel/SDF shapes, lighting, and parity. |
 | [`render-verify`](../../.claude/skills/render-verify/SKILL.md) | After a render-pipeline change, or as a sanity pass before a release. Pass/fail regression harness — runs a demo with `--auto-screenshot` and compares against committed reference images. |
-| [`attach-screenshots`](../../.claude/skills/attach-screenshots/SKILL.md) | A render PR is about to open. Captures before/after screenshots from `origin/master` vs the dirty tree, commits them under `docs/pr-screenshots/<branch>/`, and prints the markdown for the PR body. |
+| [`attach-screenshots`](../../.claude/skills/attach-screenshots/SKILL.md) | A render PR is about to open. Captures before/after screenshots from `origin/master` vs the dirty tree, publishes them from the gitignored `docs/pr-screenshots/<branch>/` to the orphan `media` branch, and prints the SHA-pinned markdown for the PR body. |
 | [`backend-parity`](../../.claude/skills/backend-parity/SKILL.md) | "metal parity", "port to metal", "sync the backends". Audits OpenGL ↔ Metal drift and ports the missing side. Runs on the host that lacks the feature. |
 
 ### Performance

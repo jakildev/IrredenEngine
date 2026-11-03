@@ -48,7 +48,7 @@ it contributes no timing evidence.
   with only a GPU frame envelope; stage-off rejects sampled stage rows.
 - IRShapeDebug builds natively. A separate six-shot baked fixture capture
   exited cleanly and every image is byte-identical to the parent capture.
-  [Images and hashes](../../pr-screenshots/codex/sdf-profile-controls/README.md).
+  [Images and hashes](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-profile-controls/README.md).
 - The profiling review caught and corrected the CPU-control description:
   off disables easy_profiler and GPU stage timestamps, while auto-profile
   retains frame/system timers and the Debug CPU histogram. CPU profiler
@@ -63,7 +63,7 @@ subjects and shared floor are not a large-entity performance workload. The
 earlier rounded-edge miss has a
 [closed-boundary fix](../../design/surface-shadow-sampling.md#rounded-finite-face-boundaries).
 The distinct apparent gap in the tilted fixture is a
-[verified clear channel](../../pr-screenshots/codex/tilted-baked-shadow-gaps/README.md).
+[verified clear channel](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/tilted-baked-shadow-gaps/README.md).
 Neither attribution closes all voxel shadow defects.
 
 The [AC Release qualification slice](ac-release-qualification/README.md)
@@ -71,7 +71,7 @@ retains matched density, 16-copy overlap and moving-transform measurements. It
 records an overlap-specific baked cost increase; the later memory slice closes
 its process/Metal-residency gap while leaving Windows/OpenGL explicitly open.
 
-The [native presentation qualification](../../pr-screenshots/claude/4762-sdf-presentation-qualification/README.md)
+The [native presentation qualification](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4762-sdf-presentation-qualification/README.md)
 crosses moving root/parent transforms with GRID, rigid DETACHED source faces and
 detached revoxelization. GRID retains lit coloured subjects and isolated local
 lighting; both detached routes currently lose their subject presentation in the

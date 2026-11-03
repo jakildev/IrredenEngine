@@ -98,8 +98,8 @@ capture 636 uses the same two-shot 180/225-degree recipe and is RGB pixel-identi
 to capture 610 after removing the experimental correction. The diagnostic-only
 change therefore preserves this ordinary rendering case.
 
-![Original receiver diagnostic at 45 degrees](../pr-screenshots/codex/detached-shadow-receiver-samples/capture-620.png)
+![Original receiver diagnostic at 45 degrees](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-shadow-receiver-samples/capture-620.png)
 
-![Experimental centroid diagnostic at 45 degrees](../pr-screenshots/codex/detached-shadow-receiver-samples/capture-625.png)
+![Experimental centroid diagnostic at 45 degrees](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-shadow-receiver-samples/capture-625.png)
 
-![Experimental analytic roof at 225 degrees, still incorrect](../pr-screenshots/codex/detached-shadow-receiver-samples/capture-630.png)
+![Experimental analytic roof at 225 degrees, still incorrect](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-shadow-receiver-samples/capture-630.png)

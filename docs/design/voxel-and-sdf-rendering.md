@@ -97,7 +97,7 @@ The qualification fixture also exposes independent workload controls:
   rigid DETACHED source faces, or DETACHED_REVOXELIZE. It is rejected for direct
   SDF because those modes describe occupancy presentation, not analytic shapes.
 
-The [macOS/Metal presentation qualification](../pr-screenshots/claude/4762-sdf-presentation-qualification/README.md)
+The [macOS/Metal presentation qualification](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4762-sdf-presentation-qualification/README.md)
 crosses those routes with moving root/parent transforms and full-light versus
 local-light-only controls. GRID retains its coloured subjects and local-light
 response. Both detached routes currently lose the subjects when sun and AO are
@@ -124,7 +124,7 @@ continuous per-axis receiver. It changes where an eligible face samples lighting
 not its caster geometry, and cardinal/fog/debug paths keep their existing
 eligibility rules. Face-center sampling can turn a narrow real opening between
 two projected solids into an isolated lit cell. The
-[tilted-shape attribution](../pr-screenshots/codex/tilted-baked-shadow-gaps/README.md)
+[tilted-shape attribution](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/tilted-baked-shadow-gaps/README.md)
 checks such a ray against rebuilt occupancy instead of filling it by appearance.
 The continuous path remains opt-in because its wider-view cost is unresolved.
 
@@ -242,7 +242,7 @@ retained sample depth and selecting the entry of its connected occupied interval
 not merely the first root or a root in the preceding integer step. That work
 must retain native owner/depth controls and bounded query cost.
 
-The [torus ownership probe](../pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
+The [torus ownership probe](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
 retains the unresolved face-coverage evidence. An explicit finite-face display
 contract must precede changes to those bands; normal averaging is not a repair.
 

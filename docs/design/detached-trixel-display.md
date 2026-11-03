@@ -34,7 +34,7 @@ Metal, Apple M4 Max, 2560×1440, subdivisions 1. Every experimental run exited
 cleanly. These are diagnostic captures of temporary shader changes, not shipped
 behavior. All experimental shader edits were restored afterward.
 
-![Upright comparison](../pr-screenshots/codex/detached-trixel-display/upright-comparison.png)
+![Upright comparison](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-trixel-display/upright-comparison.png)
 
 The columns show the parent behavior, dilation disabled with rectangular reads,
 and dilation disabled with local-canvas triangle reconstruction. Crops use nearest-neighbor
@@ -46,7 +46,7 @@ without world placement. Detached voxel writes use zero camera offset. The gathe
 existing hover parity incorporates `canvasOffset`, which is a separate coordinate
 contract and cannot simply be reused for this display experiment.
 
-![Magnified box control](../pr-screenshots/codex/detached-trixel-display/box-comparison.png)
+![Magnified box control](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-trixel-display/box-comparison.png)
 
 At yaw zero and zoom 2, disabling dilation and selecting local triangles produces
 cleaner diagonal boundaries. The opposite parity produces repeated teeth. Keeping

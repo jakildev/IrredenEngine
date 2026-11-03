@@ -41,7 +41,7 @@ Native M4 Max Metal Debug; full commands, hashes, reports and summaries are in
 - Frozen grid16, FULL/base1, zoom4: 15 wide-angle/cardinal poses have identical
   scene RGB before/after. Compare x<1800 over the full 1440-pixel height of the
   2560×1440 captures, excluding the changing overlay. Captures 57–71 precede this
-  slice and 175–189 follow it. [Full representative captures and pair results](../pr-screenshots/codex/voxel-cull-work-units/).
+  slice and 175–189 follow it. [Full representative captures and pair results](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-cull-work-units).
 - IRCanvasStress default multi-canvas scene, nine poses from yaw0 to 2π, no
   self-spin: clean exit with the producing-pool survivor guard enabled.
 - Deliberately tripling the staged Metal unique contribution trips the guard

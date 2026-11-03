@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Publish a PR's screenshot directory to the orphan `media` branch.
+
+Usage: fleet-media-push [--remote R] [--branch B] <dir>
+       fleet-media-push --exists [--remote R] [--branch B] <dir>
+
+<dir> is a path under docs/pr-screenshots/ (the gitignored local staging
+root). Every file beneath it is written to the same path on <remote>/<branch>
+(default origin/media) in one new commit, and that commit's SHA is printed on
+stdout — the ref segment of the PR body's raw URLs. Files already on the
+branch under <dir> and absent locally are kept; same-named files are replaced.
+
+Never touches the worktree, the index, or HEAD, and never checks the media
+branch out (its tree carries every PR's evidence): the commit is built in a
+temporary index from blobs written straight to the object store. A push the
+remote rejects because another worker advanced the branch is rebuilt on the
+new tip and retried. Branch directories are disjoint, so the retry never
+needs a merge.
+
+--exists exits 0 when <remote>/<branch> already has files under <dir>, 1 when
+it has none — the "already captured" check, after a fresh fetch.
+
+Exit 2: usage error (no such directory, empty directory, a path outside
+docs/pr-screenshots/, a file over the GitHub size cap, or the media branch
+missing on the remote). Exit 1: the push still failed after the retries.
+"""
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+STAGING_ROOT = "docs/pr-screenshots"
+MAX_FILE_BYTES = 95 * 1024 * 1024
+PUSH_ATTEMPTS = 5
+
+
+class UsageError(Exception):
+    pass
+
+
+def git(*args, cwd, env=None, stdin=None, check=True):
+    # Bytes in, so a Windows text-mode pipe never turns "\n" into "\r\n":
+    # update-index then sees a path ending in "\r" and silently ignores it.
+    result = subprocess.run(["git", *args], cwd=cwd, env=env,
+                            input=stdin.encode() if stdin is not None else None,
+                            capture_output=True)
+    result.stdout = result.stdout.decode(errors="replace")
+    result.stderr = result.stderr.decode(errors="replace")
+    if check and result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, ["git", *args],
+                                            result.stdout, result.stderr)
+    return result
+
+
+def repo_path(root, directory):
+    """``directory`` as a repo-relative POSIX path, which must sit under the staging root."""
+    full = Path(directory).resolve()
+    try:
+        rel = full.relative_to(root).as_posix()
+    except ValueError:
+        raise UsageError(f"{directory} is outside the repository at {root}")
+    if not rel.startswith(STAGING_ROOT + "/"):
+        raise UsageError(f"{rel} is not under {STAGING_ROOT}/")
+    return full, rel.rstrip("/")
+
+
+def fetch_tip(root, remote, branch):
+    tracking = f"refs/remotes/{remote}/{branch}"
+    result = git("fetch", "--quiet", remote, f"+refs/heads/{branch}:{tracking}",
+                 cwd=root, check=False)
+    if result.returncode != 0:
+        raise UsageError(f"cannot fetch {remote}/{branch} (does the media branch exist?): "
+                         f"{result.stderr.strip()}")
+    return git("rev-parse", tracking, cwd=root).stdout.strip()
+
+
+def local_files(full):
+    files = sorted(p for p in full.rglob("*") if p.is_file())
+    if not files:
+        raise UsageError(f"{full} has no files to publish")
+    for path in files:
+        if path.stat().st_size > MAX_FILE_BYTES:
+            raise UsageError(f"{path} is over GitHub's per-file limit; shrink it first")
+    return files
+
+
+def build_commit(root, parent, full, rel, files):
+    """A commit on ``parent`` carrying ``files`` at ``rel``; None when nothing changed."""
+    paths = "\n".join(str(p) for p in files) + "\n"
+    blobs = git("hash-object", "-w", "--stdin-paths", cwd=root, stdin=paths).stdout.split()
+    entries = "".join(f"100644 {blob}\t{rel}/{path.relative_to(full).as_posix()}\n"
+                      for blob, path in zip(blobs, files))
+    with tempfile.TemporaryDirectory() as scratch:
+        env = dict(os.environ, GIT_INDEX_FILE=str(Path(scratch) / "index"))
+        git("read-tree", parent, cwd=root, env=env)
+        git("update-index", "--index-info", cwd=root, env=env, stdin=entries)
+        tree = git("write-tree", cwd=root, env=env).stdout.strip()
+    if tree == git("rev-parse", f"{parent}^{{tree}}", cwd=root).stdout.strip():
+        return None
+    return git("commit-tree", tree, "-p", parent, "-m", f"media: {rel}",
+               cwd=root).stdout.strip()
+
+
+def publish(root, remote, branch, directory):
+    full, rel = repo_path(root, directory)
+    files = local_files(full)
+    for _ in range(PUSH_ATTEMPTS):
+        parent = fetch_tip(root, remote, branch)
+        commit = build_commit(root, parent, full, rel, files)
+        if commit is None:
+            return parent
+        pushed = git("push", "--quiet", remote, f"{commit}:refs/heads/{branch}",
+                     cwd=root, check=False)
+        if pushed.returncode == 0:
+            git("update-ref", f"refs/remotes/{remote}/{branch}", commit, cwd=root)
+            return commit
+        detail = pushed.stderr.strip().splitlines()[-1:] or ["no detail"]
+        print(f"fleet-media-push: push rejected, retrying on the new tip ({detail[0]})",
+              file=sys.stderr)
+    raise RuntimeError(f"push to {remote}/{branch} failed {PUSH_ATTEMPTS} times")
+
+
+def exists(root, remote, branch, directory):
+    _, rel = repo_path(root, directory)
+    tip = fetch_tip(root, remote, branch)
+    listing = git("ls-tree", "-r", "--name-only", tip, "--", rel, cwd=root).stdout
+    return bool(listing.strip())
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="fleet-media-push",
+                                     description=__doc__.split("\n\n")[0])
+    parser.add_argument("directory")
+    parser.add_argument("--remote", default="origin")
+    parser.add_argument("--branch", default="media")
+    parser.add_argument("--exists", action="store_true",
+                        help="exit 0 if the media branch has files under <dir>, else 1")
+    args = parser.parse_args(argv)
+    root = Path(git("rev-parse", "--show-toplevel", cwd=os.getcwd()).stdout.strip()).resolve()
+    try:
+        if args.exists:
+            return 0 if exists(root, args.remote, args.branch, args.directory) else 1
+        print(publish(root, args.remote, args.branch, args.directory))
+        return 0
+    except UsageError as err:
+        print(f"fleet-media-push: {err}", file=sys.stderr)
+        return 2
+    except (RuntimeError, subprocess.CalledProcessError) as err:
+        detail = getattr(err, "stderr", "") or ""
+        print(f"fleet-media-push: {err} {detail.strip()}".rstrip(), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

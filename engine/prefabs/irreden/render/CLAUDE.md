@@ -188,7 +188,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   unless `screenLocked` it attaches `C_CanvasAOTexture` + `C_TrixelCanvasRenderBehavior`,
   without which the canvas composites raw albedo.
 - Composite depth rounds the owner cell for sampled canvases; rigid `SOURCE_FACES` retains authored translation until framebuffer-unit quantization (`effSub × 8`).
-  Casting and receiving share that distinction through `C_CanvasLocalRotation::worldGeometryOrigin()` ([coordinate contract](../../../../docs/pr-screenshots/codex/rigid-canvas-world-origin/README.md#coordinate-contract)).
+  Casting and receiving share that distinction through `C_CanvasLocalRotation::worldGeometryOrigin()` ([coordinate contract](../../../../docs/evidence/rigid-canvas-world-origin/README.md#coordinate-contract)).
   `rawDist` scales by `effSub / renderedSubdivisions_`; size and gather density depend only on camera zoom × world extent
   ([density contract](../../../../docs/design/detached-canvas-density-compensation.md)).
 - The sun-shadow bake reads main-canvas-layout depth only (never a foreign

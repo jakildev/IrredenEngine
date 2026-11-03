@@ -25,7 +25,7 @@ that needs a repo-specific value names its **delta key** in bold.
 | **scope vocabulary** | Commit-title scope prefixes. | `render:`, `engine/voxel:`, `game/nav:`, `build:`, `docs:` |
 | **visual-file globs** | Paths whose change requires screenshots. | `engine/render/`, `engine/prefabs/irreden/render/`, `*.glsl`, `*.metal`, `creations/demos/*/src/**`, `creations/demos/*/main*.cpp` |
 | **screenshot skill** | The repo's screenshot-capture skill. | `attach-screenshots` |
-| **sha-pin token** | The placeholder the **screenshot skill** emits in place of a commit SHA; step 8 substitutes the real one. | `@COMMIT_SHA@` |
+| **capture-exists check** | Exits 0 when this branch's captures are already published. | `fleet-media-push --exists docs/pr-screenshots/<branch>` |
 | **info-isolation check** | The cross-repo leakage scan. | `docs/agents/CLAUDE-BASELINE.md` §"Cross-repo information isolation" |
 | **co-author trailer** | The commit trailer. | `Co-Authored-By: Claude <noreply@anthropic.com>` (exact form per the harness system prompt) |
 | **procedures** | Repo-specific step expansions. | the engine wrapper's `procedures/*.md` |
@@ -94,10 +94,10 @@ In this order:
 - **Rebase guard** (**procedures** `rebase-guard.md`) if the branch was
   rebased this session.
 - **Screenshots.** If `git diff --name-only <remote>/<default-branch>...HEAD`
-  matches a **visual-file glob** and `docs/pr-screenshots/<branch>/` does
-  not exist, run the **screenshot skill** first. Screenshots ship in the
-  same commit as the code on the Cursor path, or in the next commit on the
-  branch after a `--two-ref` capture; never in a commit after the PR opens. Docs/tests/mechanical/build-only diffs skip this.
+  matches a **visual-file glob** and the **capture-exists check** exits
+  non-zero, run the **screenshot skill** first. It publishes to the repo's
+  media branch, never to this branch, so nothing screenshot-shaped is
+  staged here. Docs/tests/mechanical/build-only diffs skip this.
 - **info-isolation check** over staged paths and the PR-body draft.
 - Python under `scripts/`: `ruff check --fix scripts/` then `ruff check
   scripts/` must exit 0 (CI-gated; `docs/agents/BUILD.md` §"Python
@@ -157,9 +157,8 @@ the Write tool to the worktree-local, gitignored `.pr-body.md` and pass
 `--body-file`. `--body "$var"` is forbidden (an unset variable opens an
 empty body and nothing reports it), as is `$(cat <<'EOF' …)` (the
 shell-substitution gate) and `printf … > file` (the Bash tool blocks `>`).
-If the **screenshot skill** ran, fold its snippet in with every **sha-pin
-token** replaced by `git rev-parse HEAD` — the commit from step 6 is the
-one whose tree contains the screenshots.
+If the **screenshot skill** ran, fold its snippet in as printed — its URLs
+are already pinned to the media-branch commit that carries the captures.
 
 Single-task common case:
 

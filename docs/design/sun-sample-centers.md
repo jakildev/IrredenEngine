@@ -31,7 +31,7 @@ These aggregate changes are modest and not uniformly better. The reason for the
 change is the sample-coordinate contract, not tuning to improve one silhouette
 score. Geometry reconstruction and clean projected face boundaries remain work.
 
-![Texel-center alignment](../pr-screenshots/codex/sun-sample-centers/sample-comparison.png)
+![Texel-center alignment](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-sample-centers/sample-comparison.png)
 
 The staircase controls retain ambient-only blocked pixels and fully lit outside
 pixels. Source-face casting passes both regions for GRID and detached receivers.

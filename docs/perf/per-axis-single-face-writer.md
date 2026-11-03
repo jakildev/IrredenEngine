@@ -42,7 +42,7 @@ The final candidate is compared against the unchanged parent renderer using
 native captures, with per-frame overlay pixels excluded only in IRPerfGrid.
 All 57 pairs in that original run matched exactly: 15 IRPerfGrid scene regions (x < 1800,
 full height), 24 complete fog frames and 18 complete CanvasStress frames.
-[Representative full screenshots and all pair hashes](../pr-screenshots/codex/per-axis-single-face-writer/)
+[Representative full screenshots and all pair hashes](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/per-axis-single-face-writer)
 are retained alongside the PR. Native builds of all three demos, changed-line
 formatting, header/Metal registry checks and comment-reference lint pass.
 
@@ -76,7 +76,7 @@ the same binary/command (915–923) restores the original pixels; all nine frame
 match 878–886. This is an output-equivalence acceptance failure despite unchanged face
 geometry. A single-pose invocation does not reproduce the sweep's darker seam.
 
-[Candidate and restored-control screenshots](../pr-screenshots/codex/per-axis-single-face-writer/stack-review-control/)
+[Candidate and restored-control screenshots](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/per-axis-single-face-writer/stack-review-control)
 retain the evidence. Sorting is conditional on displaced-cell tie detection and
 a lagged nonempty count; equal-depth cross-cell overflow ordering is a candidate
 cause, not a proven diagnosis. Resolve and test that ordering before reviving

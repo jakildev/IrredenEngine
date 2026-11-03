@@ -67,6 +67,6 @@ retaining the independent buffer/coverage checks.
 Serial execution cannot certify GPU races or performance. The cooperative
 adapter separately exercises interleaved ownership; native Metal and OpenGL
 behavior, matched captures and the span/count matrix remain distinct checks.
-[Current crowded-tile captures](../pr-screenshots/codex/shadow-index-complete-tiles/README.md)
+[Current crowded-tile captures](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-index-complete-tiles/README.md)
 measure spill coverage rather than GPU throughput. No smoothing, bias or
 geometry change follows from this operation-count audit.

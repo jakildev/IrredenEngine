@@ -67,7 +67,7 @@ All 28 near-cardinal and 15 wide-angle scene images are RGB-identical. Compariso
 uses x=0..1799 across the full 1440-pixel height of each 2560×1440 capture, excluding
 only the live performance overlay on the right. Full representative screenshots
 and every pair's scene hash are retained in
-[the screenshot evidence](../pr-screenshots/codex/per-axis-dispatch-density/).
+[the screenshot evidence](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/per-axis-dispatch-density).
 Near-cardinal pairs are captures 1–28 before / 29–56 after; wide-angle pairs are
 72–86 before / 57–71 after. Full-frame differences are the dynamic overlay.
 

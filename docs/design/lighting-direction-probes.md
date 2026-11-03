@@ -23,7 +23,7 @@ adds `--no-shadows`. Native Metal, 2560x1440: default differs from disabled in
 3,808 RGB pixels (maximum channel difference 168); source faces match disabled
 exactly. This is a retained failure, not a renderer fix in this slice.
 
-![Overhead unblocked controls](../pr-screenshots/codex/lighting-direction-probes/overhead-control.png)
+![Overhead unblocked controls](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/lighting-direction-probes/overhead-control.png)
 
 The default bake expands reconstructed depth points into uniform coverage boxes.
 Expansion of edge-on geometry is a hypothesis for the stripes, not established
@@ -50,7 +50,7 @@ lighting replace its direction and add `--source-face-shadows`. The older numeri
 occlusion metric assumes the original sun and fixed shadow locations; do not apply
 it to these changed directions without rederiving its expected values and probes.
 
-![Light direction changes](../pr-screenshots/codex/lighting-direction-probes/light-directions.png)
+![Light direction changes](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/lighting-direction-probes/light-directions.png)
 
 Native build and all listed capture runs exited cleanly. An extra infinity-input
 run through a Python subprocess failed to connect to macOS display services and

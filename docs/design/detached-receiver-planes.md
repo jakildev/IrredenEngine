@@ -32,9 +32,9 @@ same authored planes. The old detached outside control fails by 25 levels; both
 corrected regions pass with zero error. The wall/plate self-occlusion fixture also
 passes all three existing checks at yaw 180°.
 
-![Unblocked receiver](../pr-screenshots/codex/detached-receiver-planes/unblocked-comparison.png)
+![Unblocked receiver](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-receiver-planes/unblocked-comparison.png)
 
-![Independent overhead blocker](../pr-screenshots/codex/detached-receiver-planes/blocked-comparison.png)
+![Independent overhead blocker](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-receiver-planes/blocked-comparison.png)
 
 ## Reproduction and evidence
 

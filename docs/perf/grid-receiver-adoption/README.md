@@ -31,11 +31,11 @@ Wall-frame time includes offscreen pacing and CPU/GPU scheduling.
 The prepass therefore has mixed evidence: wall-frame means improve in this
 window, its combined surface draw costs more, and GPU envelope means change
 little. Do not choose a default from the wall-frame mean alone. The
-[untimed prepass controls](../../pr-screenshots/codex/grid-receiver-prepass/README.md)
+[untimed prepass controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/grid-receiver-prepass/README.md)
 establish roughly 23% fragment rejection and identical images in this fixture;
 they do not make prepass construction free. Accurate continuous receiving
 still costs more than sampled receiving here. The
-[polygon controls](../../pr-screenshots/codex/receiver-shadow-phase/README.md)
+[polygon controls](../../evidence/receiver-shadow-phase/README.md)
 separately show why sampled receiving is not the correctness target.
 
 ## Retained evidence

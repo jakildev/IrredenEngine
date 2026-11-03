@@ -71,7 +71,7 @@ runs (745,398 retained entries per sampled frame).
 - All **51 paired PNGs are byte-identical**: 36 emissive domain views, five
   emissive boundary views, five hover views and five occluded-boundary views.
   Both sides report `RESULT=CLEAN`. The occluded fixture exercises relocated
-  and discounted boundary seeds. [Hashes and representative screenshots](../../pr-screenshots/codex/bounded-light-volume/README.md)
+  and discounted boundary seeds. [Hashes and representative screenshots](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/bounded-light-volume/README.md)
   and the capture logs are retained; `captures.py` reproduces these four passes.
 - The existing lighting baseline run still fails 40 of 46 image comparisons.
   Paired controls establish those differences also occur with full-domain

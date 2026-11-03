@@ -145,7 +145,7 @@ class GeometryProbeTest(unittest.TestCase):
 
     def test_native_crowded_records_retain_the_missing_center_blocker(self):
         root = (Path(__file__).resolve().parents[2]
-                / "docs/pr-screenshots/codex/sun-geometry-capture")
+                / "docs/evidence/sun-geometry-capture")
         lower, _ = probe.load_quads(root / "lower/index.csv.gz")
         crowded, index = probe.load_quads(root / "far-128/index.csv.gz")
         self.assertTrue(set(lower) <= set(crowded))

@@ -41,7 +41,7 @@ Retained full frames and comparisons are in
 `docs/pr-screenshots/codex/detached-mask-upload-path/`.
 The side-by-side crop preserves native pixels and shows unchanged output.
 
-![Unchanged blocked rendering](../pr-screenshots/codex/detached-mask-upload-path/comparison.png)
+![Unchanged blocked rendering](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-mask-upload-path/comparison.png)
 
 Missing GPU-buffer fallback is covered by dispatch/control-flow review and shared
 mask-helper tests, not injected in the native demo. OpenGL runtime and population

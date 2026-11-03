@@ -20,7 +20,7 @@ The full-cascade fallback preserves candidate/spill/incomplete-list handling.
   native predicate/bound containment for the fixtures, not atomic publication
   or every possible compiler/hardware input. The host index tests execute
   publication separately, including 64-thread cooperative controls.
-- [35 native image pairs](../../pr-screenshots/codex/sun-face-index-coverage/README.md)
+- [35 native image pairs](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-face-index-coverage/README.md)
   are RGB-identical. This is regression evidence; the mathematical boundary
   witnesses are not established causes of defects in those images.
 - Native OpenGL remains unverified on this host.

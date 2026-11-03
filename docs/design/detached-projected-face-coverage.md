@@ -112,15 +112,15 @@ Capture 1303 is pixel-identical to the parent green canary capture 1259.
 
 Before:
 
-![Parent frame](../pr-screenshots/codex/detached-display-artifacts/capture-1260.png)
+![Parent frame](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-display-artifacts/capture-1260.png)
 
 After:
 
-![Projected frame](../pr-screenshots/codex/detached-display-artifacts/capture-1297.png)
+![Projected frame](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-display-artifacts/capture-1297.png)
 
 Higher-density normal overlay:
 
-![Density 3](../pr-screenshots/codex/detached-display-artifacts/capture-1302.png)
+![Density 3](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-display-artifacts/capture-1302.png)
 
 ## Source-geometry rejection controls
 

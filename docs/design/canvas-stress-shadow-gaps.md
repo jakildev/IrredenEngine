@@ -83,11 +83,11 @@ stage before each run. Production confirmation captures use neither patch.
 
 Default caster:
 
-![Four GRID cubes with gapped shadows](../pr-screenshots/codex/detached-raster-phase/capture-750.png)
+![Four GRID cubes with gapped shadows](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-raster-phase/capture-750.png)
 
 Existing finite face caster:
 
-![Four GRID cubes with finite face shadows](../pr-screenshots/codex/detached-raster-phase/capture-751.png)
+![Four GRID cubes with finite face shadows](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-raster-phase/capture-751.png)
 
 For the staircase experiment:
 

@@ -67,7 +67,7 @@ The corrected response passes 12/12 blocked-scene checks and 2/2 unobstructed
 checks. `metrics.txt` retains these results, including the failing positive
 controls. `comparisons.txt` records exact image comparisons.
 
-![Occlusion response, before/after/unblocked](../pr-screenshots/codex/sun-occlusion-response/occlusion-comparison.png)
+![Occlusion response, before/after/unblocked](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-occlusion-response/occlusion-comparison.png)
 
 The image uses identical native-size crops (1100,540)–(1460,810) from captures
 420,432,440. `crops.json` also records the existing-scene comparison with parent

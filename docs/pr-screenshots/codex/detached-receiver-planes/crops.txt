@@ -1,1 +1,0 @@
-Native-resolution crops: (990,520)-(1502,904), 30px label margin. No resampling.

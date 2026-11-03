@@ -99,7 +99,7 @@ ir-acquire gpu -- python3 scripts/perf/sun_hierarchy_probe.py \
   --self-test --spatial --output /tmp/sun-spatial-controls
 IR_QUIET_REPORT_FILE=/tmp/sun-spatial.quiet ir-acquire benchmark -- \
   python3 scripts/perf/sun_hierarchy_probe.py \
-  docs/pr-screenshots/codex/sun-geometry-capture/oblique-far-128/index.csv.gz \
+  docs/evidence/sun-geometry-capture/oblique-far-128/index.csv.gz \
   --spatial --measure --repeat-queries 256 --output /tmp/sun-spatial-timing
 python3 scripts/tests/test_sun_hierarchy_probe.py
 ```

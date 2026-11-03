@@ -124,8 +124,8 @@ not coverage and depth over the candidate's finite footprint. The framebuffer
 resolves the complete candidate set by depth. The scratch layout still
 reserves the former mask region so its offsets and binding ABI remain stable;
 the region is not an occlusion test. See the independent
-[six-face mask reproduction](../pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.md)
-and its [source-equation checker](../pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.py).
+[six-face mask reproduction](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.md)
+and its [source-equation checker](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.py).
 
 The rotating-frame sequence is store ×3 (mode 0), overflow append ×3
 (mode 3), then per-axis election and stage 2 ×3, with the required barriers.

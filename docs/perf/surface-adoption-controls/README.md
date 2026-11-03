@@ -42,7 +42,7 @@ This fixture overlaps **casters**, not GRID receiver geometry. Zero rejected
 fragments is therefore a useful inactive-benefit control, not evidence that the
 prepass cannot help overlapping receivers. The combined surface timer cannot
 prove prepass execution by itself. The separate
-[receiver polygon evidence](../../pr-screenshots/codex/receiver-shadow-polygon/README.md)
+[receiver polygon evidence](../../evidence/receiver-shadow-polygon/README.md)
 owns visual correctness: its tested intermediate continuous path passes while
 the default sampled path still fails. These profiling runs add no new visual
 correctness claim.

@@ -71,7 +71,7 @@ density, or one million entities at 60 FPS.
 - CanvasStress passes all 24 checks: 14 exact RGB matches and 10 existing
   structural checks, without changing references or thresholds. Three PerfGrid
   views at yaw 0°/45°/90° are RGB-identical to the complete-coverage references.
-  [Screenshots and limits](../../pr-screenshots/codex/voxel-workgroup-occupancy/README.md).
+  [Screenshots and limits](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/README.md).
 
 Measurements use base `171778ee09660c2b771eeb25571cfa16fb96dd3b`. Baseline
 return runs reverse only the candidate production edits; staged helper files
@@ -103,7 +103,7 @@ IRCanvasStress, IRPerfGrid and IrredenEngineTest build on the integrated tree.
 All 65 render-tooling suites pass, and header checks pass for 646 headers,
 40 Metal kernels and 98 GLSL files. The expanded native CanvasStress suite passes
 all 30 checks: 20 exact RGB comparisons, including shared parts and detach, and
-10 structural checks. [Complete integration log](../../pr-screenshots/codex/voxel-workgroup-occupancy/integration-render-verify.log).
+10 structural checks. [Complete integration log](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/integration-render-verify.log).
 The matched timing controls above remain tied to their earlier measured base;
 they were not rerun against the viewport/LOD integration.
 
@@ -157,8 +157,8 @@ candidate; the regression remains open until the final policy is validated. Cove
 `P+1` as well as non-divisor sample counts and the supported render domains.
 
 Latest-master native validation passes all 30 CanvasStress checks and 40
-viewport/LOD/cursor tests. The [log](../../pr-screenshots/codex/voxel-workgroup-occupancy/latest-master-render-verify.log)
-and [provenance](../../pr-screenshots/codex/voxel-workgroup-occupancy/latest-master-provenance.json)
+viewport/LOD/cursor tests. The [log](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/latest-master-render-verify.log)
+and [provenance](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/latest-master-provenance.json)
 identify the pre-direct-index Metal assets actually tested.
 
 ### Direct-index control and backend scope
@@ -196,10 +196,10 @@ integration validation is recorded separately from the pinned Linux pair.
 The integrated tree builds IRPerfGrid, IRCanvasStress and IrredenEngineTest.
 All 305 render-tooling tests pass; native viewport/LOD/cursor/fog coverage passes
 183 tests with one OpenGL-only skip. Header checks cover 648 headers, 40 Metal
-kernels and 98 GLSL files. The final native [CanvasStress log](../../pr-screenshots/codex/voxel-workgroup-occupancy/final-policy-render-verify.log)
+kernels and 98 GLSL files. The final native [CanvasStress log](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/final-policy-render-verify.log)
 passes all 30 checks (20 exact RGB and 10 structural), without changing
 references or thresholds. A separate default capture exits cleanly and all six
-reference views remain RGB-identical; [provenance](../../pr-screenshots/codex/voxel-workgroup-occupancy/final-policy-provenance.json)
+reference views remain RGB-identical; [provenance](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/final-policy-provenance.json)
 records the integrated build and compiled asset fingerprints. Existing PR
 images are retained because their RGB data is unchanged.
 
@@ -233,7 +233,7 @@ The final integration includes master `12ceac85f` (shared-canvas entity-ID uploa
 synchronization and allocation-free entity accessors). IRPerfGrid, IRCanvasStress
 and IrredenEngineTest rebuild. Expanded native coverage passes 228 tests with
 one OpenGL-only skip. All 30 CanvasStress checks pass again, including 20 exact
-RGB comparisons; [integration log](../../pr-screenshots/codex/voxel-workgroup-occupancy/entity-id-integration-render-verify.log)
+RGB comparisons; [integration log](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/entity-id-integration-render-verify.log)
 and the additional-integration entry in the provenance identify this build.
 The [automatic performance gate](https://github.com/jakildev/IrredenEngine/actions/runs/37217493554)
 passed on the earlier `6f9525792` integration; final-head CI remains required.
@@ -247,15 +247,15 @@ release builds as well. This diagnoses unsupported devices rather than changing
 lane ownership to fit a smaller group. No other Apple GPU is qualified here.
 
 All nine native Metal compute tests pass with clean exit, including cross-dispatch
-scratch visibility and the new compiled-limit test. The [native XML](../../pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limits.xml)
+scratch visibility and the new compiled-limit test. The [native XML](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limits.xml)
 records each kernel's requested/available count. The production-method stub test
 covers exact acceptance, rejection/release, null creation with/without an error,
 retry and caching with diagnostic assertions disabled. All three mutations fail
 as intended, and writer/lane coverage tests still pass.
 
-A fresh committed-build [CanvasStress run](../../pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limits-render-verify.log)
+A fresh committed-build [CanvasStress run](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limits-render-verify.log)
 passes all 30 checks (20 exact RGB, ten structural). References and thresholds
-are unchanged. [Provenance](../../pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limit-provenance.json)
+are unchanged. [Provenance](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limit-provenance.json)
 pins the pipeline source and compiled demo; existing screenshots remain the
 same images. No new performance measurement is claimed for this validation-only
 follow-up. The [ordering audit](../../design/voxel-dispatch-occupancy.md#metal-pipeline-and-ordering-constraints)
@@ -274,7 +274,7 @@ viewport/LOD/cursor/fog and entity tests pass 288 cases with one OpenGL-only ski
 and clean exit. The additional provenance entry records the tested integration.
 
 The unattended capture default now selects offscreen rendering. All 30
-[integrated CanvasStress checks](../../pr-screenshots/codex/voxel-workgroup-occupancy/offscreen-integration-render-verify.log)
+[integrated CanvasStress checks](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-workgroup-occupancy/offscreen-integration-render-verify.log)
 pass, including the 20 unchanged exact RGB references. No new timing comparison
 is inferred: future A/B runs must pin window mode and account for Metal's
 display-rate pacing. This remains an integration validation, not a new

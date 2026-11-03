@@ -58,7 +58,7 @@ case. The small caster shows the projected shadow on the floor.
 
 The rebuilt final demo also passed a nine-pose full-turn mixed-mode sweep
 (0° through 320° in 40° steps): all nine before/after RGB images are identical.
-[Captures and reproduction command](../pr-screenshots/codex/box-shadow-index-controls/README.md).
+[Captures and reproduction command](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/box-shadow-index-controls/README.md).
 This establishes appearance preservation in those fixtures, not absence of
 pre-existing visual defects.
 

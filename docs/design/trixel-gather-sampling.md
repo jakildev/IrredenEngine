@@ -79,6 +79,6 @@ The CanvasStress manifest runs these four zero-mismatch checks in addition to
 the existing yaw135° oracle on every backend. `IRShapeDebug --gui-test` covers
 shared hover identity. `scripts/tests/test_render_gather_pixel_map.py` executes
 both backends' `canvasPositionFromPixel` and `encodeUnitVectorUnorm8` source
-through a C++ adapter. The [native capture evidence](../pr-screenshots/codex/scatter-boundary-ownership/README.md)
+through a C++ adapter. The [native capture evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-boundary-ownership/README.md)
 records the tested camera, canvas and output sizes. These fixtures are not
 proof for arbitrary projection matrices or other boundary poses.

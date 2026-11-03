@@ -279,6 +279,12 @@ Parallel-agent fleet (tmux + Claude)
                                  with no before capture; creates the output
                                  directory if missing; missing ffmpeg exits 3
                                  with a one-line message
+  fleet-media-push [--exists] <docs/pr-screenshots/<branch>>
+                                 publish a staged capture directory to the
+                                 orphan `media` branch in one commit (no
+                                 checkout; retries a lost push race) and print
+                                 the SHA the PR body's raw URLs pin to;
+                                 --exists exits 0 when it is already published
   fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
   fleet-debug triggers           read-only per-role dispatch-state dump: pending
                                  trigger + mtime/content, last seen projection

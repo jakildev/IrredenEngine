@@ -28,7 +28,7 @@ SHADOW = tuple(round(c * 0.30) for c in ALBEDO)
 
 REFERENCES = REPO / "creations/demos/canvas_stress/test/references/macos-debug"
 MANIFEST = REFERENCES.parent / "manifest.json"
-RETAINED = REPO / "docs/pr-screenshots/claude/4763-canvas-stress-mismatch-attribution/master"
+RETAINED = REPO / "docs/evidence/4763-canvas-stress-mismatch-attribution/master"
 
 
 def speckle_gates():

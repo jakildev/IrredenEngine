@@ -90,4 +90,4 @@ renderer retains every feature disabled in the diagnostic probes.
 
 | Before experiments | Restored production renderer |
 |---|---|
-| ![Before](../pr-screenshots/codex/gpu-cost-attribution/capture-1242.png) | ![After](../pr-screenshots/codex/gpu-cost-attribution/capture-1251.png) |
+| ![Before](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/gpu-cost-attribution/capture-1242.png) | ![After](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/gpu-cost-attribution/capture-1251.png) |

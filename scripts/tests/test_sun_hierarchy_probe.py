@@ -186,7 +186,7 @@ class HierarchyProbeTest(unittest.TestCase):
             folder = report_path.parent
             is_control = folder.name == "controls"
             if not is_control:
-                captured = (probe.ROOT / "docs/pr-screenshots/codex/sun-geometry-capture"
+                captured = (probe.ROOT / "docs/evidence/sun-geometry-capture"
                             / folder.name)
                 capture = captured / "index.csv.gz"
                 self.assertEqual(hashlib.sha256(capture.read_bytes()).hexdigest(),

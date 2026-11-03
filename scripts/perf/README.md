@@ -66,7 +66,7 @@ zoom 1/4 and base subdivisions 1/4; `--adoption-matrix` expands these to 32 arms
 For a bounded comparison, select `--case per-axis-zoom4-receivers-subdiv1`.
 Case names belong to their scene; mismatched selections fail before launching.
 The default `shadowbox` scene retains its original 20 cases.
-The [untimed GRID controls](../../docs/pr-screenshots/codex/grid-receiver-prepass/README.md)
+The [untimed GRID controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/grid-receiver-prepass/README.md)
 show real fragment rejection with identical prepass-off/on images. Identical
 images and counters across the two subdivision settings limit that fixture's
 ability to characterize subdivision scaling; they do not qualify throughput.

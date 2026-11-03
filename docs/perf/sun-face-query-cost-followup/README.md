@@ -60,7 +60,7 @@ the initial arm reflects the parallel prototype edit, while the native process
 used the unchanged staged parent shaders. No assets were staged during a run.
 
 All six candidate images and six restored images are RGB-identical to their
-initial-parent counterparts. [Full frames and comparisons](../../pr-screenshots/codex/sun-face-query-cost-followup/README.md)
+initial-parent counterparts. [Full frames and comparisons](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-face-query-cost-followup/README.md)
 are appearance-parity evidence, not proof that existing shadows are correct.
 Native OpenGL was not run for this experiment.
 

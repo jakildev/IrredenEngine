@@ -36,7 +36,7 @@ The connected `test_render_cardinal_voxel_receiver.py` adapter compares producti
 publication and reconstruction with independently averaged face vertices for
 cardinal rotations, both halves and polarities, NONE/subdivision modes and camera
 offsets. Carrier tests cover identity and existing flag preservation. The
-[cardinal receiver evidence](../pr-screenshots/codex/4231-cardinal-surface-receiver/README.md)
+[cardinal receiver evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/4231-cardinal-surface-receiver/README.md)
 records the matched 720-frame sweep and rerun box, roof and staircase controls.
 The historical captures below validate the earlier detached work only.
 
@@ -93,7 +93,7 @@ the canvas bounds all fail. `scripts/render-shadow-speckle-metric.py` counts
 reference-free edge speckles. The IRCanvasStress manifest gates its five GRID
 mode-switch, detach and impulse rows on per-row ceilings, set to the counts the
 offline CPU oracle confirmed as true shadow
-(`docs/pr-screenshots/claude/4763-canvas-stress-mismatch-attribution/tools/receiver_oracle.py`).
+(`docs/evidence/4763-canvas-stress-mismatch-attribution/tools/receiver_oracle.py`).
 
 The producer publishes readiness only after the main canvas tick. Consumer
 resources alone cannot establish that color is albedo. Both stages require the
@@ -113,7 +113,7 @@ cardinals, both halves, and polarities. Phase, plane, and micro-square-clamping
 mutations fail. `test_render_cardinal_surface_lighting.py` executes the production
 handoff and shader gates, including missing ticks, cut faces, disabled lighting,
 and mixed shader selection. Native evidence and its limitations are recorded in
-[cardinal presentation captures](../pr-screenshots/codex/cardinal-surface-shadow/README.md).
+[cardinal presentation captures](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/cardinal-surface-shadow/README.md).
 
 ## Detached receivers and finite fallback
 
@@ -148,7 +148,7 @@ receiver plane onto a neighboring riser. It is conservative, not an exact finite
 footprint intersection: an infinite caster plane does not establish coverage,
 and disagreement can reject real shadow hits near a face boundary. No new bias,
 blur, map allocation or texture lookup is introduced. Remaining false and missed
-shadows are retained in the [eight-angle evidence](../pr-screenshots/codex/sun-receiver-footprint/README.md).
+shadows are retained in the [eight-angle evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-receiver-footprint/README.md).
 
 Unmarked raster receivers retain their existing outward offset and PCF
 comparison. Their reconstructed raster positions are not exact surface
@@ -227,7 +227,7 @@ GRID or resampled geometry can still exhaust capacity and force previously exact
 rigid-source tiles into approximate fallback; sharp edges at arbitrary density
 are not guaranteed.
 Native sparse-scene acceptance and outstanding limits are recorded in the
-[finite voxel query evidence](../pr-screenshots/codex/finite-voxel-shadow-query/README.md).
+[finite voxel query evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/finite-voxel-shadow-query/README.md).
 
 - [Finite defaults](finite-shadow-defaults.md) cover shape-only and non-main
   producer lifecycles; particle pipelines retain legacy casting.

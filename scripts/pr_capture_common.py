@@ -1,4 +1,4 @@
-"""Shared helpers for PR evidence capture drivers under docs/pr-screenshots/.
+"""Shared helpers for PR evidence capture drivers (docs/evidence/, or the media branch).
 
 A driver stages a git ref's shaders into a build's runtime shader directory,
 restores the working-tree copies afterwards, hashes what it ran, and grades a

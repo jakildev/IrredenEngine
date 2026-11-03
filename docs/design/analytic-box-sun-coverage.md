@@ -82,8 +82,8 @@ flag for 658–661. Replace it with `--probe-analytic-sphere` and capture yaw pi
 only for 671; add `--no-shadows` for 672. Captures 640–672 were made with the
 centroid experiment, although only detached receivers enter that branch.
 
-![Finite box shadow on detached staircase](../pr-screenshots/codex/analytic-box-sun-coverage/capture-639.png)
+![Finite box shadow on detached staircase](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-box-sun-coverage/capture-639.png)
 
-![Finite box shadow on attached staircase](../pr-screenshots/codex/analytic-box-sun-coverage/capture-657.png)
+![Finite box shadow on attached staircase](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-box-sun-coverage/capture-657.png)
 
-![Rotated and fractionally translated box](../pr-screenshots/codex/analytic-box-sun-coverage/capture-649.png)
+![Rotated and fractionally translated box](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-box-sun-coverage/capture-649.png)

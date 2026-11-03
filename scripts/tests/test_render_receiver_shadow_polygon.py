@@ -637,7 +637,7 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
 
     def test_retained_native_pass_and_failure_controls(self):
         root = Path(__file__).resolve().parents[2]
-        evidence = root / "docs/pr-screenshots/codex/receiver-shadow-polygon"
+        evidence = root / "docs/evidence/receiver-shadow-polygon"
         expected = {row["case"]: row for row in
                     json.loads((evidence / "results.json").read_text())}
         for case in ("yaw0-surface0", "yaw0.6-surface0", "yaw0.6-surface1"):
@@ -663,7 +663,7 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
 
     def test_retained_native_camera_phase_pass_and_failure_controls(self):
         root = Path(__file__).resolve().parents[2]
-        evidence = root / "docs/pr-screenshots/codex/receiver-shadow-phase"
+        evidence = root / "docs/evidence/receiver-shadow-phase"
         expected = {row["case"]: row for row in
                     json.loads((evidence / "results.json").read_text())}
         for case, passed in (("near0-before", True), ("mid0-phase", True),
@@ -684,7 +684,7 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
 
     def assert_native_evidence(self, directory, count, expected_pass):
         root = Path(__file__).resolve().parents[2]
-        evidence = root / "docs/pr-screenshots/codex" / directory
+        evidence = root / "docs/evidence" / directory
         rows = json.loads((evidence / "captures.json").read_text())["cases"]
         self.assertEqual(len(rows), count)
         for row in rows:
@@ -714,7 +714,7 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
 
     def test_retained_signed_sides_and_live_cardinal_crossing(self):
         evidence = (Path(__file__).resolve().parents[2]
-                    / "docs/pr-screenshots/codex/receiver-side-shadow")
+                    / "docs/evidence/receiver-side-shadow")
         rows = json.loads((evidence / "captures.json").read_text())
         self.assertEqual(len(rows), 19)
         self.assertEqual(sum(row["case"] == "live-cardinal-crossing" for row in rows), 7)
@@ -736,7 +736,7 @@ class ReceiverShadowPolygonTests(unittest.TestCase):
 
     def test_retained_native_ambient_and_local_light_controls(self):
         evidence = (Path(__file__).resolve().parents[2]
-                    / "docs/pr-screenshots/claude/4757-receiver-shadow-ambient-local-light")
+                    / "docs/evidence/4757-receiver-shadow-ambient-local-light")
         rows = json.loads((evidence / "results.json").read_text())
         retained = sorted(path.parent for path in (evidence / "retained").glob("*/*/main.png"))
         self.assertEqual(len(retained), 4)

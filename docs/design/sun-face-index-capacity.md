@@ -179,7 +179,7 @@ cost of growth; those ceiling measurements predate the leaf order and have not
 been repeated with it. The shipped ceiling is 131,072 records
 (`kSourceFaceCapacityCeiling`, 34,357,268 bytes with the leaf order), the largest pool whose
 IRPerfGrid cost stayed inside the 1.10x frame budget in the
-[native controls](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md#frame-latent-capacity-growth)
+[native controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md#frame-latent-capacity-growth)
 (steady mean 1.058x and 0.989x at zoom 1 and 4; 262,144 reaches 1.35x at zoom 4);
 `IRPrefab::SunShadow::configureRecordPool` sets another capacity or ceiling
 for a creation or a diagnostic (`IRCanvasStress` / `IRPerfGrid`
@@ -191,9 +191,9 @@ for a creation or a diagnostic (`IRCanvasStress` / `IRPerfGrid`
 |---|---|---|---|---|---|
 | Capacity growth from completed demand samples | Every exhausted CanvasStress case (three finite filler-first, the 280 straddle, three analytic, the moving filler-first track) matches its sufficient-capacity control with 0 missing and 0 excess pixels outside the 2 px band; frames without exhaustion byte-identical | One exhausted frame per demand step | 48 bytes per record above the default; 33,816,596 bytes at 131,072 | +4.3% steady frame on the exhausted CanvasStress cell, 1.000x on its control; IRPerfGrid at the ceiling per the table above | Adopted, with a measured ceiling |
 | Deterministic retention priority | Rejected by counting: a pool of C records over a receiver domain in which more than C records are each the sole blocker of some receiver loses a sole blocker under every order, and ordering only chooses which receiver reads lit. `test_render_sun_record_capacity.py` executes the counterexample through both dialects' producer, clear, hierarchy and receiver: 1,026 finite faces stacked in low/high pairs, each the only face inside its own receiver's throw window by the ray oracle (the low and high receivers of a column need disjoint depth windows), and one distant face that owns every receiver's nearest-depth sampled texel. Against 1,024 records, all 12 retention orders tried (creation, reverse, by depth either way, distant first, high first, six shuffles) leave at least 4 blocked receivers lit, every receiver whose blocker was lost among them, while the 2,048-record control shadows all 1,026. The witness rejects the family, not a scene: IRPerfGrid requests 786,432 records against the 131,072 ceiling, and how many of the 655,360 it loses are sole blockers depends on its geometry | n/a | n/a | n/a | Rejected |
-| Depth-slab extrema for lost records | Depth-only interval existence is exact with slabs no wider than the throw, but the finite query is per receiver position: [`slab_extrema_witness.py`](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/slab_extrema_witness.py) keeps a slab's minimum and maximum, both of which miss the receiver's footprint while the discarded middle face blocks it | n/a | 16 slabs of two words per texel: 268,435,456 bytes | n/a | Rejected |
+| Depth-slab extrema for lost records | Depth-only interval existence is exact with slabs no wider than the throw, but the finite query is per receiver position: [`slab_extrema_witness.py`](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4759-sun-face-pool-exhaustion/slab_extrema_witness.py) keeps a slab's minimum and maximum, both of which miss the receiver's footprint while the discarded middle face blocks it | n/a | 16 slabs of two words per texel: 268,435,456 bytes | n/a | Rejected |
 
-[Native Metal controls](../pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md)
+[Native Metal controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4759-sun-face-pool-exhaustion/README.md)
 force exhaustion with a rigid filler plate created before or after the
 casters, or at a chosen frame. Before growth, when the lower caster's own
 records were lost (filler first, the 280 straddle, or an analytic sphere baked
@@ -214,7 +214,7 @@ spill and inline IDs, partial-list rejection, global exhaustion and mutations
 that break the completeness guards. The native clear/probe test checks pending
 GPU writes and reports actual allocated capacity.
 
-[Crowded eight-yaw captures](../pr-screenshots/codex/shadow-index-complete-tiles/README.md)
+[Crowded eight-yaw captures](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-index-complete-tiles/README.md)
 compare the production query with the previously validated complete reference.
 This extends exact coverage at moderate overlap; it does not solve arbitrary
 density, record-pool exhaustion, sampled receiver placement or cascade clipping.
@@ -245,10 +245,10 @@ disjoint geometry without discarding a lower blocker. Remaining representation
 work includes records lost past the ceiling and raster-only sampled layers. It must preserve the finite
 throw limit and allocation-order independence. The moving-block report also
 needs native Windows scene reproduction; this mechanism alone does not identify
-every visible speckle. [Sampler controls and scene evidence](../pr-screenshots/codex/overlapping-caster-shadow/README.md)
+every visible speckle. [Sampler controls and scene evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/overlapping-caster-shadow/README.md)
 separate the corrected cross-layer case from that remaining limitation.
 
-The [crowded overlap fixture](../pr-screenshots/codex/crowded-shadow-overlap/README.md)
+The [crowded overlap fixture](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/crowded-shadow-overlap/README.md)
 now reproduces the remaining loss in native Metal. One and eight coincident
 upper casters keep complete tiles and preserve the floor shadow; sixteen and
 128 create incomplete tiles and lose coverage, without exhausting either global
@@ -274,7 +274,7 @@ The fixture is deliberately a known-failing diagnostic, not a blessed image.
 The raster-only route runs whenever a particle raster pass is registered:
 `beginVoxelFaceCoverage` then publishes no finite index, every visible canvas
 pixel is a primary caster, and raster receivers take the independent-layer
-PCF path. The [native fixture](../pr-screenshots/claude/4799-raster-sun-depth-preservation/README.md)
+PCF path. The [native fixture](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4799-raster-sun-depth-preservation/README.md)
 (`IRCanvasStress --probe-particle-raster --probe-ray-casters … --sun-primary-probe`)
 stacks GRID boxes on the shadowbox sun ray over a GRID floor: lower-only,
 distant-only, stacked, reversed creation order, duplicate and three-depth
@@ -291,7 +291,7 @@ cascade-0 missing pixels outside a 2-pixel band) while both casters keep their
 | Family | Evidence | Outcome |
 |---|---|---|
 | Second retained depth (nearest two distinct quantized depths; the loser of the nearest slot's atomic min lands in the otherwise empty fallback layer; the opt-in `retainSecondPrimaryDepth_` selects the `c_bake_sun_shadow_map_second_depth` compile-time variant, so the production bake carries no switch) | native fixture, two-slot write adapter and receiver controls in both shader dialects | **Rejected.** Zero recovered pixels in every stacked case: a flat raster top already yields three quantized depths per texel (−15, −14.667, −14.333 from the trixel lattice), so the second slot always holds the distant caster's own neighbour. No extra storage, no extra clear, one extra atomic per write and one extra read per tap, measured at +0.40 ms (+12 %) on `bakeSunShadowMap` and +9 % on the raster scene's GPU frame; the default path is byte-identical to the parent in all 165 captures and within noise in timing (bake 1.017×, GPU frame 1.011×). Arbitrary nearest-K inherits the failure with K words per texel. |
-| Depth-slab extrema | `test_render_sun_depth_slab.py`: 3.9 million exhaustive interval queries; the native sparse three-slot prototype ([branch evidence](https://github.com/jakildev/IrredenEngine/blob/ece131393858f732df072d2aea6deed72b18eea0/docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md), [guarded current-tree cost](../pr-screenshots/claude/4799-raster-sun-depth-preservation/slab-timing/README.md)) | Dense slabs are proof-rejected: depth-only existence is exact only when a slab is no wider than the query window (6,968 counterexamples when wider), and sixteen min/max slabs over the encoded range cost 256 MiB. The sparse layout keeps three (min, max) slots per texel, each owning one slab one throw (64 units) deep, claimed by compare-swap with a sticky overflow bit; the receiver reads them only when the nearest word is rejected as beyond the throw, and every candidate runs the unchanged per-word predicate. Natively it repairs every beyond-throw stack with at most three distinct slabs per texel to the lower-only control exactly (the parent loses 2,347 cardinal and 2,428 oblique pixels), through reversed creation order, 128 duplicates, re-voxelized casters and receiver, both receiver modes and a seven-shot track across the throw, and leaves the distant-only, in-window, unlit and overflowed scenes byte-identical. Residuals: a fourth distinct slab on a texel sets the overflow bit and keeps the nearest-only hole (the cardinal three- and four-band stacks keep all 2,347 missing pixels, the oblique two-band stack 2,344 of 2,436), and 48 of the 61,750 write sets per dialect in that branch's harness hide an interior write because both extrema of its slab are splats the receiver plane rejects (none with direct or surface words). The sun buffer grows from 30,670,864 to 81,002,512 bytes, 48 MiB cleared every frame. Under `ir-acquire benchmark` on the current tree the two small raster cells run 1.45× and 1.63× frame mean, 1.56× and 1.68× GPU envelope, with `bakeSunShadowMap` about 2×; the default raster scene and both IRPerfGrid zooms stay inside 1.10×. **Measured rejection (over budget)**; the branch ships the layer compiled out (`kSunDepthSlabSlots = 0`). |
+| Depth-slab extrema | `test_render_sun_depth_slab.py`: 3.9 million exhaustive interval queries; the native sparse three-slot prototype ([branch evidence](https://github.com/jakildev/IrredenEngine/blob/ece131393858f732df072d2aea6deed72b18eea0/docs/pr-screenshots/claude/4799-sun-raster-depth-slabs/README.md), [guarded current-tree cost](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4799-raster-sun-depth-preservation/slab-timing/README.md)) | Dense slabs are proof-rejected: depth-only existence is exact only when a slab is no wider than the query window (6,968 counterexamples when wider), and sixteen min/max slabs over the encoded range cost 256 MiB. The sparse layout keeps three (min, max) slots per texel, each owning one slab one throw (64 units) deep, claimed by compare-swap with a sticky overflow bit; the receiver reads them only when the nearest word is rejected as beyond the throw, and every candidate runs the unchanged per-word predicate. Natively it repairs every beyond-throw stack with at most three distinct slabs per texel to the lower-only control exactly (the parent loses 2,347 cardinal and 2,428 oblique pixels), through reversed creation order, 128 duplicates, re-voxelized casters and receiver, both receiver modes and a seven-shot track across the throw, and leaves the distant-only, in-window, unlit and overflowed scenes byte-identical. Residuals: a fourth distinct slab on a texel sets the overflow bit and keeps the nearest-only hole (the cardinal three- and four-band stacks keep all 2,347 missing pixels, the oblique two-band stack 2,344 of 2,436), and 48 of the 61,750 write sets per dialect in that branch's harness hide an interior write because both extrema of its slab are splats the receiver plane rejects (none with direct or surface words). The sun buffer grows from 30,670,864 to 81,002,512 bytes, 48 MiB cleared every frame. Under `ir-acquire benchmark` on the current tree the two small raster cells run 1.45× and 1.63× frame mean, 1.56× and 1.68× GPU envelope, with `bakeSunShadowMap` about 2×; the default raster scene and both IRPerfGrid zooms stay inside 1.10×. **Measured rejection (over budget)**; the branch ships the layer compiled out (`kSunDepthSlabSlots = 0`). |
 | Finite-index routing | canvas pixel census | **Rejected.** Every visible pixel is a caster: the three-object fixture occupies 31,320 of 463,524 canvas pixels (48 % of the 65,536-record pool), the default scene 34,376, and a covered canvas 7.1 pools. Routing points as faces also contradicts the index's authored-face semantics. |
 
 No candidate meets the adoption gate, so the primary layer keeps one nearest
@@ -345,7 +345,7 @@ whose finite faces miss a receiver require every leaf candidate. Report that
 case alongside useful depth pruning; do not turn candidate reduction into an
 unmeasured frame-rate claim.
 
-The [native record experiment](../pr-screenshots/codex/sun-geometry-capture/README.md)
+The [native record experiment](../evidence/sun-geometry-capture/README.md)
 contains seven captured pools, 2,023 matching query results and probe-on/off
 pixel controls. It preserves the lower blocker with 128 distant overlapping
 casters, while the unchanged production image still has a hole. These candidate

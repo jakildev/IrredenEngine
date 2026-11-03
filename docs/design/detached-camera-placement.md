@@ -35,7 +35,7 @@ The comparison uses the same native-resolution rectangle for all six images;
 `pan-crop.json` records the rectangle and frame IDs. It illustrates placement,
 not corrected voxel shape.
 
-![Matched pan crops](../pr-screenshots/codex/local-trixel-layout/pan-comparison.png)
+![Matched pan crops](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/local-trixel-layout/pan-comparison.png)
 
 The default camera pivot rereads center depth after settled pans. At nonzero yaw,
 a change of two iso-depth units predicts approximately 32.66 screenshot pixels

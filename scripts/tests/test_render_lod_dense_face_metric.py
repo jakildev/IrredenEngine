@@ -42,7 +42,7 @@ def pair(scale=1):
 
 class LodDenseFaceMetricTest(unittest.TestCase):
     def test_native_pair_matches_independent_finite_faces(self):
-        evidence = (SCRIPTS.parent / "docs/pr-screenshots/codex/authored-lod-scene"
+        evidence = (SCRIPTS.parent / "docs/evidence/authored-lod-scene"
                     / "finite-face-proof")
         result = METRIC.measure(evidence / "normals-yaw180.png",
                                 evidence / "material-yaw180.png")

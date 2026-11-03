@@ -26,8 +26,8 @@ Read it first, then apply the deltas below. Invoke only when asked.
 | **simplify skill** | `simplify` (`Skill: simplify`) |
 | **scope vocabulary** | `render:`, `engine/voxel:`, `game/nav:`, `build:`, `docs:` — derive from the dominant changed path |
 | **visual-file globs** | `engine/render/`, `engine/prefabs/irreden/render/`, any `*.glsl` / `*.metal`, `creations/demos/*/src/**`, `creations/demos/*/main*.cpp` |
-| **screenshot skill** | `attach-screenshots` (output under `docs/pr-screenshots/<branch>/`) |
-| **sha-pin token** | `@COMMIT_SHA@` — the `attach-screenshots` snippet emits it; step 8 substitutes `git rev-parse HEAD` |
+| **screenshot skill** | `attach-screenshots` (staged under the gitignored `docs/pr-screenshots/<branch>/`, published to the `media` branch) |
+| **capture-exists check** | `fleet-media-push --exists docs/pr-screenshots/<branch>` |
 | **info-isolation check** | [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §"Cross-repo information isolation" — scan staged paths with `git diff --cached --name-only -- 'creations/game/'` and the body draft for the game-leakage tokens listed there |
 | **co-author trailer** | `Co-Authored-By: Claude <noreply@anthropic.com>` (exact model-versioned form per the harness system prompt) |
 | **procedures** | the files in [`procedures/`](procedures/) beside this wrapper |

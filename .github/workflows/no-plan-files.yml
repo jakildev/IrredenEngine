@@ -2,6 +2,11 @@ name: No Plan Files
 
 # Plans live as `## Plan` issue comments. Nothing may be committed under
 # .fleet/plans/; a PR that re-creates the directory fails here.
+#
+# PR screenshots live on the orphan `media` branch (`fleet-media-push`), and
+# docs/pr-screenshots/ is a gitignored local staging root; a PR that commits
+# files there (`git add -f`, or a branch cut before the folder left master)
+# fails the second step.
 
 on:
   push:
@@ -27,3 +32,14 @@ jobs:
             exit 1
           fi
           echo "no plan files committed"
+
+      - name: Refuse committed PR screenshots
+        run: |
+          if git ls-files -- docs/pr-screenshots | grep -q .; then
+            echo "PR screenshots go to the media branch, not master. Publish each"
+            echo "directory with scripts/fleet/fleet-media-push <dir>, embed the"
+            echo "printed SHA's raw URLs, then git rm -r --cached these paths:"
+            git ls-files -- docs/pr-screenshots | cut -d/ -f1-4 | sort -u
+            exit 1
+          fi
+          echo "no PR screenshots committed"

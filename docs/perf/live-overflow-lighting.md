@@ -28,7 +28,7 @@ comparison is a regression check, not proof that every existing artifact is fixe
 
 | Parent | Live-count dispatch (identical RGB) |
 |---|---|
-| ![Before](../pr-screenshots/codex/live-overflow-lighting/capture-1215.png) | ![After](../pr-screenshots/codex/live-overflow-lighting/capture-1224.png) |
+| ![Before](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/live-overflow-lighting/capture-1215.png) | ![After](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/live-overflow-lighting/capture-1224.png) |
 
 ## Profiling method
 
