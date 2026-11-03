@@ -145,6 +145,7 @@ OUT_OF_TREE_SUBJECTS=(
     'scripts/package-smoke.py'
     'scripts/perf/perf_grid_matrix.sh'
     'scripts/perf/repeat_profile.py'
+    'scripts/perf/sdf_controls.py'
     'scripts/render-verify.py'
 )
 
