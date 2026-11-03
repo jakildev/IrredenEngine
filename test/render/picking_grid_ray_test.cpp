@@ -3,6 +3,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/render/picking.hpp>
 
+#include <limits>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -104,6 +105,83 @@ TEST(PickingGridRay, MissesWhenNothingIsOccupiedOrTheLineIsOutside) {
     EXPECT_FALSE(castThrough(Cells{}, vec3(kAnchor)).has_value());
     const Cells cells{{{4, 4, 4}}};
     EXPECT_FALSE(castThrough(cells, vec3(40.0f, 0.0f, 0.0f)).has_value());
+}
+
+TEST(PickingGridRay, ContinuousDirectionResolvesEntryAndPreservesParameterScale) {
+    const Cells cells{{{4, 4, 4}}};
+    const vec3 face(4.0f, 3.5f, 4.0f);
+    const vec3 direction(0.3660254f, 1.3660254f, 1.0f);
+    const auto hit = castGridRay(face - direction * 7.0f, direction, kGridSize, cells);
+    ASSERT_TRUE(hit);
+    EXPECT_EQ(hit->cell_, kAnchor);
+    EXPECT_EQ(hit->faceNormal_, ivec3(0, -1, 0));
+    EXPECT_NEAR(hit->rayT_, 7.0f, 0.0001f);
+    const auto scaled = castGridRay(face - direction * 7.0f, direction * 2.0f, kGridSize, cells);
+    ASSERT_TRUE(scaled);
+    EXPECT_EQ(scaled->cell_, kAnchor);
+    EXPECT_EQ(scaled->faceNormal_, hit->faceNormal_);
+    EXPECT_NEAR(scaled->rayT_, 3.5f, 0.0001f);
+}
+
+TEST(PickingGridRay, ParallelAxesAtDiagonalOrbitDoNotSkipOrInventCells) {
+    const Cells cells{{{4, 4, 4}, {4, 6, 6}}};
+    const auto hit = castGridRay(vec3(4, 3.5f, 4), vec3(0, 1.4142136f, 1), kGridSize, cells);
+    ASSERT_TRUE(hit);
+    EXPECT_EQ(hit->cell_, kAnchor);
+    EXPECT_EQ(hit->faceNormal_, ivec3(0, -1, 0));
+    EXPECT_FALSE(castGridRay(vec3(8, 3.5f, 4), vec3(0, 1.4142136f, 1), kGridSize, cells));
+    EXPECT_FALSE(castGridRay(vec3(4), vec3(0), kGridSize, cells));
+}
+
+TEST(PickingGridRay, ContinuousTraversalAgreesWithIndependentCellSlabs) {
+    const Cells cells{{{1, 2, 3}, {3, 3, 4}, {4, 4, 4}, {6, 5, 2}, {2, 6, 6}}};
+    const vec3 directions[] = {
+        {0.3660254f, 1.3660254f, 1},
+        {0, 1.4142136f, 1},
+        {-0.3660254f, 1.3660254f, 1},
+        {-1.4142136f, 0, 1},
+        {-0.3660254f, -1.3660254f, 1},
+        {1.4142136f, 0, 1}
+    };
+    for (vec3 direction : directions) {
+        for (const auto &[x, y, z] : cells.occupied_) {
+            const vec3 origin = vec3(x, y, z) + vec3(0.17f, -0.11f, 0.08f);
+            float nearest = std::numeric_limits<float>::infinity();
+            ivec3 expectedCell(0), expectedNormal(0);
+            for (const auto &[cx, cy, cz] : cells.occupied_) {
+                const vec3 center(cx, cy, cz);
+                float enter = -std::numeric_limits<float>::infinity();
+                float leave = std::numeric_limits<float>::infinity();
+                ivec3 normal(0);
+                for (int axis = 0; axis < 3; ++axis) {
+                    const float offset = origin[axis] - center[axis];
+                    if (direction[axis] == 0) {
+                        if (offset < -0.5f || offset >= 0.5f)
+                            leave = -std::numeric_limits<float>::infinity();
+                        continue;
+                    }
+                    const float a = (-0.5f - offset) / direction[axis];
+                    const float b = (0.5f - offset) / direction[axis];
+                    if (IRMath::min(a, b) > enter) {
+                        enter = IRMath::min(a, b);
+                        normal = ivec3(0);
+                        normal[axis] = direction[axis] > 0 ? -1 : 1;
+                    }
+                    leave = IRMath::min(leave, IRMath::max(a, b));
+                }
+                if (enter < leave && enter < nearest) {
+                    nearest = enter;
+                    expectedCell = ivec3(cx, cy, cz);
+                    expectedNormal = normal;
+                }
+            }
+            const auto hit = castGridRay(origin, direction, kGridSize, cells);
+            ASSERT_TRUE(hit);
+            EXPECT_EQ(hit->cell_, expectedCell);
+            EXPECT_EQ(hit->faceNormal_, expectedNormal);
+            EXPECT_NEAR(hit->rayT_, nearest, 0.0001f);
+        }
+    }
 }
 
 // IR_ASSERT throws in the test build; the traversal's per-step arithmetic is

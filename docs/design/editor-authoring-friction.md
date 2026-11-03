@@ -828,7 +828,7 @@ and what was measured.
   (`ISO_LATTICE`) is unchanged for every other consumer: the cursor-pivot latch,
   `VOXEL_PICKING`, and `shape_debug`'s hover-parity shots pair the `+0.5`
   forward aim with the floored inverse and were left on it.
-- *Where a face is displayed.* A rasterized face cell is two texels stacked in
+- *Where a face is displayed at cardinal yaw.* A rasterized face cell is two texels stacked in
   iso Y and the gather shows each texel as a rectangle, so the drawn footprint
   sits half a subdivided texel below its geometric projection. The exact inverse
   subtracts that offset. Measured, not assumed: sweeping the offset over
@@ -836,7 +836,10 @@ and what was measured.
   against the canvas's distance readback on every texel showing the editable
   set, `(0, 0.25..0.75)` agrees on **1424/1424** texels of the rock and
   **448/448** of `face_pick`; `(0, 0)` misses 33 and 5, `(0, 1)` 118 and 59, and
-  any ±0.5 in X misses 6–19%.
+  any ±0.5 in X misses 6–19%. Continuous-yaw scatter instead projects geometric
+  face quads with full camera yaw and no gathered-rectangle offset. Exact
+  picking follows that projection; its ray still intersects the requested
+  cardinal-frame depth plane so drag anchors retain their depth convention.
 - *Editable-only (F-2c-1, F-2b-1).* The edit pick leaves SDF shapes out and
   passes through any voxel set tagged `C_EditorReference` (starter rig,
   satellite sets). The floor slab, axis bars and centre cube stay visible and no
@@ -860,7 +863,9 @@ and what was measured.
   anchor, the `-x`, `-y` and `-z` face clicks place three distinct neighbours at
   zoom 2 and again at zoom 4, with the reference furniture present; each pass
   also asserts `*_pick_matches_render` (pick face and depth equal the drawn face
-  on every editable texel).
+  on every editable texel at yaw zero). These results do not cover continuous
+  orbit or actual cursor/window mapping: both need a displayed-framebuffer
+  oracle rather than the cardinal canvas or inverse-generated aim.
 - `gui-verify IRVoxelEditor -- --gui-session drag_probe` — 14/14 **with the
   furniture present** (F-2c-1 measured the same recipe at 0/11). It includes a
   click on a ground cell whose anchor face is under the scale gizmo's handle

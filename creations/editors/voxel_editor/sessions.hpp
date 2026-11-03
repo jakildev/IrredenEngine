@@ -4,6 +4,7 @@
 #include "components_panel.hpp"
 #include "recipes_panel.hpp"
 #include "session_builder.hpp"
+#include "screen_alignment.hpp"
 #include "sculpt_panel.hpp"
 #include "hierarchy_panel.hpp"
 
@@ -31,7 +32,7 @@
 // capture draws the ghost on the cells the release then fills, for a one-cell,
 // a row and a slab fill on open ground, and no ghost is drawn before the press
 // or after the release. It ends on an erase drag over the ground, where the
-// ghost is inside the voxels it would carve and shows as its x-ray outline.
+// ghost shares the voxel depth and never draws through solid cells.
 //
 // `face_pick` is the proof that the pick resolves the face under the cursor:
 // from one free-standing anchor it clicks the -x, the -y and the -z face in
@@ -141,6 +142,7 @@ enum class Id {
     PLACE_BELOW,
     FILL_GHOST,
     FACE_PICK,
+    SCREEN_ALIGNMENT,
     ROCK,
     MUSHROOM,
     ANT,
@@ -260,6 +262,8 @@ inline Id idFromName(const std::string &name) {
         return Id::PLACE_BELOW;
     if (name == "fill_ghost")
         return Id::FILL_GHOST;
+    if (name == "screen_alignment")
+        return Id::SCREEN_ALIGNMENT;
     if (name == "face_pick")
         return Id::FACE_PICK;
     if (name == "rock")
@@ -2086,6 +2090,8 @@ inline Recipe build(
     const ModuleSessionView *moduleView
 ) {
     switch (id) {
+    case Id::SCREEN_ALIGNMENT:
+        return buildScreenAlignment();
     case Id::WORKAREA_FOCUS: {
         Builder builder("workarea_focus", sceneSize, sceneOrigin);
         const IRMath::vec2 focus(580, 87);
@@ -2183,7 +2189,7 @@ inline Recipe build(
         builder.clickGui(button);
         builder.segment("draw_local_cells", kSessionZoom, stageCamera);
         builder.clickGui(sculptButtonCenter(0));
-        builder.dragWorld(origin + IRMath::vec3(1, 2, 4), origin + IRMath::vec3(3, 2, 4));
+        builder.dragWorld(origin + IRMath::vec3(1, 2, 4.5f), origin + IRMath::vec3(3, 2, 4.5f));
         builder.segment("undo_local_stroke", kSessionZoom, stageCamera);
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.segment("redo_local_stroke", kSessionZoom, stageCamera);
@@ -2567,6 +2573,9 @@ inline Recipe build(
         const auto world = [&](IRMath::ivec3 cell) {
             return deriveSceneOrigin(sceneSize) + IRMath::vec3(cell);
         };
+        const auto floorWorld = [&](IRMath::ivec3 cell) {
+            return world(cell) + IRMath::vec3(0, 0, 0.5f);
+        };
         builder.segment("empty_part");
         builder.addVoxelPart();
         builder.clickGui(sculptButtonCenter(0));
@@ -2576,8 +2585,21 @@ inline Recipe build(
         builder.expectFillGhost(start, start, "hover_previews_first_voxel");
         builder.expectPartAuthoredCount(0, 0, "hover_does_not_write");
 
+        builder.segment("bone_hover_suppressed");
+        builder.tapKey(IRInput::kKeyButtonN);
+        builder.expectNoFillGhost("bone_paint_has_no_stale_add_preview");
+        builder.segment("bone_hover_restored");
+        builder.tapKey(IRInput::kKeyButtonN);
+        builder.expectFillGhost(start, start, "brush_preview_returns_after_bone_paint");
+        builder.segment("class_hover_suppressed");
+        builder.tapKey(IRInput::kKeyButtonU);
+        builder.expectNoFillGhost("class_paint_has_no_stale_add_preview");
+        builder.segment("class_hover_restored");
+        builder.tapKey(IRInput::kKeyButtonU);
+        builder.expectFillGhost(start, start, "brush_preview_returns_after_class_paint");
+
         builder.segment("continuous");
-        builder.dragWorld(world(start), world(end));
+        builder.dragWorld(floorWorld(start), floorWorld(end));
         for (int x = start.x; x <= end.x; ++x) {
             builder
                 .expectOccupancy({x, start.y, start.z}, true, "stroke_cell_" + std::to_string(x));
@@ -2629,11 +2651,11 @@ inline Recipe build(
         const IRMath::ivec3 nextEnd{11, 10, start.z};
         builder.segment("mode_interrupt");
         builder.clickGui(sculptButtonCenter(0));
-        builder.dragWorld(world(interruptedStart), world(interruptedEnd));
+        builder.dragWorld(floorWorld(interruptedStart), floorWorld(interruptedEnd));
         builder.expectPartAuthoredCount(0, 18, "mode_change_preserves_completed_brush_cells");
         builder.segment("after_mode_interrupt");
         builder.tapKey(IRInput::kKeyButtonU);
-        builder.dragWorld(world(nextStart), world(nextEnd));
+        builder.dragWorld(floorWorld(nextStart), floorWorld(nextEnd));
         builder.expectPartAuthoredCount(0, 27, "next_stroke_does_not_resume_interrupted_path");
         builder.segment("undo_after_mode_interrupt");
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
@@ -2667,7 +2689,7 @@ inline Recipe build(
                 IRVideo::GuiInputEvent move{};
                 move.type_ = IRVideo::GuiInputEvent::Type::MOVE;
                 segment.events_.push_back(move);
-                segment.aims_.push_back({0, world(start)});
+                segment.aims_.push_back({0, floorWorld(start)});
             }
             if (segment.label_ == recipe.name_ + "_mode_interrupt") {
                 // Replace the brush release with U-down, U-up, then mouse-up.

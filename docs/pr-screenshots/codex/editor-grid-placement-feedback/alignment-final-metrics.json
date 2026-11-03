@@ -1,0 +1,236 @@
+{
+  "pass": true,
+  "cases": [
+    {
+      "yaw": 0,
+      "source_interior": 2824,
+      "fit_output_scale": 2,
+      "cursor_framebuffer_pixel": [
+        1576,
+        998
+      ],
+      "framebuffer_per_window_point": [
+        2.0,
+        2.0
+      ],
+      "grid_pixels_over_source": 0,
+      "support_corner_grid_hits": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "placed_interior": 2824,
+      "ghost_interior_coverage": 0.9950424929178471,
+      "ghost_translucent_fraction": 0.9950424929178471,
+      "ghost_fill_band_pixels": 2,
+      "ghost_outline_band_pixels": 4,
+      "ghost_fill_outside_cell": 0,
+      "ghost_outline_outside_cell": 0,
+      "ghost_pixels_outside_cell": 0,
+      "ghost_occluded_overlap": 728,
+      "ghost_pixels_through_solid": 0,
+      "floor_cell_silhouette_iou": 1.0,
+      "failures": [],
+      "pass": true
+    },
+    {
+      "yaw": 90,
+      "source_interior": 648,
+      "fit_output_scale": 2,
+      "cursor_framebuffer_pixel": [
+        1578,
+        916
+      ],
+      "framebuffer_per_window_point": [
+        2.0,
+        2.0
+      ],
+      "grid_pixels_over_source": 0,
+      "support_corner_grid_hits": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "placed_interior": 648,
+      "ghost_interior_coverage": 0.9753086419753086,
+      "ghost_translucent_fraction": 0.9753086419753086,
+      "ghost_fill_band_pixels": 2,
+      "ghost_outline_band_pixels": 4,
+      "ghost_fill_outside_cell": 0,
+      "ghost_outline_outside_cell": 0,
+      "ghost_pixels_outside_cell": 0,
+      "ghost_occluded_overlap": 100,
+      "ghost_pixels_through_solid": 0,
+      "floor_cell_silhouette_iou": 1.0,
+      "failures": [],
+      "pass": true
+    },
+    {
+      "yaw": 180,
+      "source_interior": 2824,
+      "fit_output_scale": 2,
+      "cursor_framebuffer_pixel": [
+        1640,
+        1014
+      ],
+      "framebuffer_per_window_point": [
+        2.0,
+        2.0
+      ],
+      "grid_pixels_over_source": 0,
+      "support_corner_grid_hits": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "placed_interior": 2824,
+      "ghost_interior_coverage": 0.9886685552407932,
+      "ghost_translucent_fraction": 0.9886685552407932,
+      "ghost_fill_band_pixels": 2,
+      "ghost_outline_band_pixels": 4,
+      "ghost_fill_outside_cell": 0,
+      "ghost_outline_outside_cell": 0,
+      "ghost_pixels_outside_cell": 0,
+      "ghost_occluded_overlap": 676,
+      "ghost_pixels_through_solid": 0,
+      "floor_cell_silhouette_iou": 1.0,
+      "failures": [],
+      "pass": true
+    },
+    {
+      "yaw": 270,
+      "source_interior": 648,
+      "fit_output_scale": 2,
+      "cursor_framebuffer_pixel": [
+        1584,
+        972
+      ],
+      "framebuffer_per_window_point": [
+        2.0,
+        2.0
+      ],
+      "grid_pixels_over_source": 0,
+      "support_corner_grid_hits": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "placed_interior": 648,
+      "ghost_interior_coverage": 0.9753086419753086,
+      "ghost_translucent_fraction": 0.9753086419753086,
+      "ghost_fill_band_pixels": 2,
+      "ghost_outline_band_pixels": 4,
+      "ghost_fill_outside_cell": 0,
+      "ghost_outline_outside_cell": 0,
+      "ghost_pixels_outside_cell": 0,
+      "ghost_occluded_overlap": 100,
+      "ghost_pixels_through_solid": 0,
+      "floor_cell_silhouette_iou": 1.0,
+      "failures": [],
+      "pass": true
+    },
+    {
+      "yaw": 45,
+      "source_interior": 2268,
+      "fit_output_scale": 2,
+      "cursor_framebuffer_pixel": [
+        1504,
+        982
+      ],
+      "framebuffer_per_window_point": [
+        2.0,
+        2.0
+      ],
+      "grid_pixels_over_source": 0,
+      "support_corner_grid_hits": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "placed_interior": 2268,
+      "ghost_interior_coverage": 0.9814814814814815,
+      "ghost_translucent_fraction": 0.9814814814814815,
+      "ghost_fill_band_pixels": 2,
+      "ghost_outline_band_pixels": 4,
+      "ghost_fill_outside_cell": 0,
+      "ghost_outline_outside_cell": 0,
+      "ghost_pixels_outside_cell": 0,
+      "ghost_occluded_overlap": 756,
+      "ghost_pixels_through_solid": 0,
+      "floor_cell_silhouette_iou": 1.0,
+      "failures": [],
+      "pass": true
+    },
+    {
+      "yaw": 30,
+      "source_interior": 596,
+      "fit_output_scale": 2,
+      "cursor_framebuffer_pixel": [
+        1604,
+        912
+      ],
+      "framebuffer_per_window_point": [
+        2.0,
+        2.0
+      ],
+      "grid_pixels_over_source": 0,
+      "support_corner_grid_hits": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "placed_interior": 596,
+      "ghost_interior_coverage": 0.9865771812080537,
+      "ghost_translucent_fraction": 0.9865771812080537,
+      "ghost_fill_band_pixels": 2,
+      "ghost_outline_band_pixels": 4,
+      "ghost_fill_outside_cell": 0,
+      "ghost_outline_outside_cell": 0,
+      "ghost_pixels_outside_cell": 0,
+      "ghost_occluded_overlap": 112,
+      "ghost_pixels_through_solid": 0,
+      "floor_cell_silhouette_iou": 1.0,
+      "failures": [],
+      "pass": true
+    },
+    {
+      "yaw": 67,
+      "source_interior": 2708,
+      "fit_output_scale": 2,
+      "cursor_framebuffer_pixel": [
+        1610,
+        1016
+      ],
+      "framebuffer_per_window_point": [
+        2.0,
+        2.0
+      ],
+      "grid_pixels_over_source": 0,
+      "support_corner_grid_hits": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "placed_interior": 2708,
+      "ghost_interior_coverage": 1.0,
+      "ghost_translucent_fraction": 1.0,
+      "ghost_fill_band_pixels": 2,
+      "ghost_outline_band_pixels": 4,
+      "ghost_fill_outside_cell": 0,
+      "ghost_outline_outside_cell": 0,
+      "ghost_pixels_outside_cell": 0,
+      "ghost_occluded_overlap": 724,
+      "ghost_pixels_through_solid": 0,
+      "floor_cell_silhouette_iou": 1.0,
+      "failures": [],
+      "pass": true
+    }
+  ]
+}

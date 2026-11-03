@@ -275,29 +275,18 @@ vec2 getMainCanvasSizeTrixels();
 /// Multiple iso-space mouse position variants are maintained because the render
 /// and update pipelines run at different rates and the camera offset matters.
 ///
-/// Residual yaw is folded into per-face `faceDeform[]` matrices that the
-/// trixel emit shaders apply in 2D iso space; there is no separate residual-
-/// rotation stage.
-/// The picking helpers below therefore do not apply a `R2D(-residualYaw)`
-/// inverse: the cursor's
-/// framebuffer pixel maps directly into the trixel-canvas frame. The 2D
-/// variants stay in the **trixel canvas frame**: under non-zero rasterYaw
-/// the canvas iso position = `M · R_z(rasterYaw) · world`, not `M · world`.
-/// The hover lookup path (@ref mouseCanvasTexelWorld → GPU comparison)
-/// requires this frame to match the rasterized canvas; for true world-frame
-/// coordinates use @ref mouseWorldPos3DAtIsoDepth, which composes the
-/// additional `R_z(-rasterYaw)` lift.
-///
-/// Iso-space picking accuracy at non-cardinal yaws is bounded by the
-/// geometric trixel deformation (a small per-face offset the picking
-/// math does not reverse-compose today; follow-up).
+/// The 2D variants convert the displayed cursor to iso units and remove the
+/// effective camera offset; they do not undo camera yaw. Cardinal geometry
+/// uses the raster frame, while continuous-yaw face scatter projects full yaw.
+/// Use @ref mouseWorldPos3DAtIsoDepthExact for a geometric screen ray under
+/// either route. The lattice inverse and raw main-canvas texel APIs retain
+/// their cardinal storage-frame convention.
 
 /// Mouse position in iso canvas coordinates **as seen on screen** — no camera offset.
 /// Use this to align UI overlays to the render output.
 vec2 mousePosition2DIsoScreenRender();
 /// Mouse position in iso canvas coordinates with camera offset applied.
-/// Stays in the rasterYaw-rotated trixel canvas frame; not true world iso
-/// under non-zero yaw — see the namespace doc above.
+/// This is projected iso, not unrotated world iso; see the namespace doc above.
 vec2 mousePosition2DIsoWorldRender();
 /// Integer trixel coordinate of the mouse in the trixel canvas frame, on the
 /// triangle lattice: the iso cell's two diagonal-split trixels resolve to
@@ -367,14 +356,15 @@ ivec2 worldPos3DToMouseScreenPx(vec3 worldPos);
 /// rays, so a caller marching it resolves which face of a voxel the cursor is
 /// over. Accounts for where the main canvas displays a rasterized face cell,
 /// so the ray passes through the geometry drawn under the cursor to within a
-/// subdivided texel. Same canvas-frame depth convention and raster-yaw-only
-/// inverse as the lattice form.
+/// subdivided texel at cardinal yaw. Continuous-yaw scatter uses its full
+/// geometric projection. The depth plane keeps the same cardinal canvas-frame
+/// convention as the lattice form, including during continuous orbit.
 vec3 mouseWorldPos3DAtIsoDepthExact(float canvasIsoDepth);
-/// @ref mouseWorldPos3DAtIsoDepthExact for a cursor on the centre of main-canvas
-/// texel @p texel (a raw index into the main canvas's textures): the world
-/// point at @p canvasIsoDepth on the view ray through what that texel shows.
-/// Lets a probe compare a cast against the canvas's own readback texel by
-/// texel, with no cursor involved.
+/// World point at @p canvasIsoDepth through the centre of raw main-canvas
+/// texel @p texel in its cardinal storage frame. This matches displayed geometry
+/// at cardinal yaw; continuous-yaw scatter presents separate face canvases.
+/// Lets a cardinal probe compare a cast against the main canvas readback
+/// texel by texel, with no cursor involved.
 vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth);
 /// At cardinal yaw, inverse of @ref mouseWorldPos3DAtIsoDepthExact;
 /// otherwise the continuous-yaw projection: the window pixel
@@ -382,6 +372,9 @@ vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth);
 /// point on a visible surface (a face centre), never at a voxel centre — a
 /// voxel centre projects onto the vertex its three camera-facing faces share.
 ivec2 worldPos3DToMouseScreenPxExact(vec3 worldPos);
+/// Unrounded window-point form of @ref worldPos3DToMouseScreenPxExact for
+/// continuous geometry overlays. Follows the displayed projection at every yaw.
+vec2 worldPos3DToWindowPointsExact(vec3 worldPos);
 struct MouseTrixelPick {
     IREntity::EntityId entity_ = IREntity::kNullEntity;
     int priority_ = 0;

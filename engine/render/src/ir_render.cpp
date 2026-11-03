@@ -244,10 +244,6 @@ vec2 getMainCanvasSizeTrixels() {
 
 namespace {
 
-// The picking chain needs no residualYaw inverse step: residual yaw lives in the
-// trixel emit shaders' faceDeform[], not in a screen-space stage. Iso-space
-// picking accuracy at non-cardinal yaws is bounded by the geometric trixel
-// deformation — a small per-face offset the picking math does not reverse-compose.
 vec2 mouseCanvasIso() {
     return IRMath::pos2DScreenToPos2DIso(
                IRRender::getMousePositionOutputView(),
@@ -274,16 +270,23 @@ namespace {
 // sits half a texel below its geometric projection. The texel is one
 // subdivided iso unit, hence the divide.
 vec2 displayedIsoBias() {
+    // Continuous-yaw scatter emits geometric face quads, not gathered rectangles.
+    if (IRPrefab::Camera::getYawSplit().second != 0.0f)
+        return vec2(0.0f);
     return vec2(0.0f, 0.5f / static_cast<float>(getVoxelRenderEffectiveSubdivisions()));
 }
 
 // Window pixel whose cursor reads @p canvasIso from mouseCanvasIso() minus the
 // camera offset: that chain run in reverse on the same live terms.
-ivec2 canvasIsoToMouseScreenPx(vec2 canvasIso) {
+vec2 canvasIsoToMouseWindowPoints(vec2 canvasIso) {
     const vec2 isoScreen = canvasIso + IRRender::getEffectiveCameraIso() +
                            getMainCanvasSizeTrixels() / getCameraZoom() / vec2(2.0f);
     const vec2 outputView = isoScreen * IRRender::getTriangleStepSizeScreen();
-    return IRMath::roundVec(outputViewPxToWindowPoints(outputView));
+    return outputViewPxToWindowPoints(outputView);
+}
+
+ivec2 canvasIsoToMouseScreenPx(vec2 canvasIso) {
+    return IRMath::roundVec(canvasIsoToMouseWindowPoints(canvasIso));
 }
 
 IRMath::CardinalIndex rasterCardinalIndex() {
@@ -317,10 +320,23 @@ namespace {
 // World point at @p canvasIsoDepth behind what the main canvas displays at
 // camera-relative canvas iso position @p displayedIso.
 vec3 displayedIsoToWorldPos3D(vec2 displayedIso, float canvasIsoDepth) {
-    return IRMath::rotateCardinalZInv(
-        IRMath::isoPixelToPos3D(displayedIso - displayedIsoBias(), canvasIsoDepth),
-        rasterCardinalIndex()
-    );
+    const auto cardinal = rasterCardinalIndex();
+    if (IRPrefab::Camera::getYawSplit().second == 0.0f) {
+        return IRMath::rotateCardinalZInv(
+            IRMath::isoPixelToPos3D(displayedIso - displayedIsoBias(), canvasIsoDepth),
+            cardinal
+        );
+    }
+    const float yaw = IRPrefab::Camera::getYaw();
+    const vec3 origin = IRMath::isoPixelToPos3DYawed(displayedIso, 0.0f, yaw);
+    const vec3 direction = IRMath::isoPixelToPos3DYawed(vec2(0.0f), 3.0f, yaw);
+    const vec3 cardinalOrigin = IRMath::rotateCardinalZ(origin, cardinal);
+    const vec3 cardinalDirection = IRMath::rotateCardinalZ(direction, cardinal);
+    // Keep the public depth-plane convention shared by cardinal snapshot bounds
+    // and drag anchors while following the continuously projected screen ray.
+    const float originDepth = cardinalOrigin.x + cardinalOrigin.y + cardinalOrigin.z;
+    const float depthStep = cardinalDirection.x + cardinalDirection.y + cardinalDirection.z;
+    return origin + direction * ((canvasIsoDepth - originDepth) / depthStep);
 }
 
 } // namespace
@@ -333,16 +349,18 @@ vec3 mouseWorldPos3DAtIsoDepthExact(float canvasIsoDepth) {
 }
 
 vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth) {
-    // mouseCanvasTexelWorld() run backwards from the texel's centre.
+    // Raw main-canvas texels belong to the cardinal storage frame, even when
+    // continuous-yaw geometry is presented by the separate per-axis scatter.
     const float subdivisions = static_cast<float>(getVoxelRenderEffectiveSubdivisions());
-    return displayedIsoToWorldPos3D(
+    const vec2 iso =
         (vec2(texel) -
-         vec2(IREntity::getComponent<C_TriangleCanvasTextures>(getCanvas("main")).size_) /
-             vec2(2.0f) +
+         vec2(IREntity::getComponent<C_TriangleCanvasTextures>(getCanvas("main")).size_) / 2.0f +
          vec2(0.5f)) /
-                subdivisions -
-            IRRender::getEffectiveCameraIso(),
-        canvasIsoDepth
+            subdivisions -
+        IRRender::getEffectiveCameraIso() - vec2(0.0f, 0.5f / subdivisions);
+    return IRMath::rotateCardinalZInv(
+        IRMath::isoPixelToPos3D(iso, canvasIsoDepth),
+        rasterCardinalIndex()
     );
 }
 
@@ -357,13 +375,16 @@ ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
     return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIso(rotated) + vec2(0.5f));
 }
 
+vec2 worldPos3DToWindowPointsExact(vec3 worldPos) {
+    const vec2 iso =
+        IRPrefab::Camera::getYawSplit().second == 0.0f
+            ? IRMath::pos3DtoPos2DIso(IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex()))
+            : IRMath::pos3DtoPos2DIsoYawed(worldPos, IRPrefab::Camera::getYaw());
+    return canvasIsoToMouseWindowPoints(iso + displayedIsoBias());
+}
+
 ivec2 worldPos3DToMouseScreenPxExact(vec3 worldPos) {
-    const float yaw = IRPrefab::Camera::getYaw();
-    if (IRPrefab::Camera::computeYawSplit(yaw).second != 0.0f) {
-        return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIsoYawed(worldPos, yaw));
-    }
-    const vec3 rotated = IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex());
-    return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIso(rotated) + displayedIsoBias());
+    return IRMath::roundVec(worldPos3DToWindowPointsExact(worldPos));
 }
 
 namespace {

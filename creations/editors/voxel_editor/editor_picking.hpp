@@ -68,13 +68,12 @@ pickEditablePlane(IREntity::EntityId entity, int axis, int slice, float planeOff
     const auto set = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
     if (!set || set.value()->globalPositions_.empty())
         return std::nullopt;
-    const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
-    const auto cardinal = IRMath::rasterYawCardinalIndex(rasterYaw);
-    const IRMath::vec3 direction = IRMath::rotateCardinalZInv(IRMath::vec3(1.0f), cardinal);
+    const IRMath::vec3 rayOrigin = IRRender::mouseWorldPos3DAtIsoDepthExact(0.0f);
+    const IRMath::vec3 direction = IRRender::mouseWorldPos3DAtIsoDepthExact(3.0f) - rayOrigin;
     const IRMath::vec3 origin =
         IRMath::vec3(IRMath::roundVec3HalfUp(set.value()->globalPositions_[0].pos_));
     return pickSculptPlane(
-        IRRender::mouseWorldPos3DAtIsoDepthExact(0.0f) - origin,
+        rayOrigin - origin,
         direction,
         set.value()->size_,
         axis,
