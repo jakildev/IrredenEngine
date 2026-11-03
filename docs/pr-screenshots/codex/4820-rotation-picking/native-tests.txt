@@ -1,0 +1,48 @@
+ir-run: running debug tree /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build
+ir-run: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/IrredenEngineTest --gtest_filter=*OverflowSort*:*EntityIdAttachment* (timeout: 60s) (window mode: background)
+Running main() from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = *OverflowSort*:*EntityIdAttachment*
+[==========] Running 2 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from PositionUploadTest
+[ RUN      ] PositionUploadTest.OverflowSortHandlesFirstPopulationAndCountTransitions
+[       OK ] PositionUploadTest.OverflowSortHandlesFirstPopulationAndCountTransitions (112 ms)
+[----------] 1 test from PositionUploadTest (112 ms total)
+
+[----------] 1 test from OverflowSortBoundTest
+[ RUN      ] OverflowSortBoundTest.AllocationSeedEncodesFullLadderCompletedFrameKeepsLaggedBound
+[       OK ] OverflowSortBoundTest.AllocationSeedEncodesFullLadderCompletedFrameKeepsLaggedBound (0 ms)
+[----------] 1 test from OverflowSortBoundTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 2 test suites ran. (112 ms total)
+[  PASSED  ] 2 tests.
+ir-run: IrredenEngineTest exited cleanly after 1s
+ir-run: RESULT=CLEAN exe=IrredenEngineTest exit=0
+
+ir-run: running debug tree /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build
+ir-run: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/IrredenEngineTest --gtest_filter=PositionUploadTest.FramebufferEntityIdsAllocateLazilyAndClearIndependently (timeout: 30s) (window mode: background)
+Running main() from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = PositionUploadTest.FramebufferEntityIdsAllocateLazilyAndClearIndependently
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from PositionUploadTest
+[ RUN      ] PositionUploadTest.FramebufferEntityIdsAllocateLazilyAndClearIndependently
+[2026-11-01 19:28:37.442] [GLAPILog] [critical] ASSERTION: m_textureEntityIds != nullptr
+	FILE: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/engine/render/src/framebuffer.cpp
+	FUNCTION: getTextureEntityIds(...)
+	LINE: 68
+	ERROR: Entity-id attachment must be allocated before reading
+[2026-11-01 19:28:37.442] [GLAPILog] [critical] ASSERTION: m_textureEntityIds != nullptr
+	FILE: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/engine/render/src/framebuffer.cpp
+	FUNCTION: clearEntityIds(...)
+	LINE: 60
+	ERROR: Entity-id attachment must be allocated before clearing
+[       OK ] PositionUploadTest.FramebufferEntityIdsAllocateLazilyAndClearIndependently (20 ms)
+[----------] 1 test from PositionUploadTest (20 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (20 ms total)
+[  PASSED  ] 1 test.
+ir-run: IrredenEngineTest exited cleanly after 1s
+ir-run: RESULT=CLEAN exe=IrredenEngineTest exit=0

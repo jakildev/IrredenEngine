@@ -117,13 +117,15 @@ void bindMetalFramebufferRenderTarget(
     MTL::Texture *colorTexture,
     MTL::Texture *depthTexture,
     MTL::PixelFormat colorPixelFormat,
-    MTL::PixelFormat depthPixelFormat
+    MTL::PixelFormat depthPixelFormat,
+    MTL::Texture *entityIdTexture = nullptr
 );
 void requestMetalRenderTargetClear();
 bool consumeMetalRenderTargetClear();
 bool metalUsesDefaultRenderTarget();
 MTL::Texture *metalCurrentColorTexture();
 MTL::Texture *metalCurrentDepthTexture();
+MTL::Texture *metalCurrentEntityIdTexture();
 MTL::PixelFormat metalCurrentColorPixelFormat();
 MTL::PixelFormat metalCurrentDepthPixelFormat();
 

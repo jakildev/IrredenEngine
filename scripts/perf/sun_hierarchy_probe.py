@@ -47,7 +47,7 @@ kernel void buildLeaves(device const uint* records [[buffer(0)]],
                         uint id [[thread_position_in_grid]]) {
     Bounds bounds={float4(0,0,0,-1),float4(0)};
     for(uint i=id*8u;i<min(cfg.records,(id+1u)*8u);++i){
-        const uint recordId=cfg.ordered?order[2u+i*3u+2u]:i;
+        const uint recordId=cfg.ordered?order[2u+i*4u+2u]:i;
         float3 c,u,v;readQuad(records,recordId,c,u,v);
         float2 lowUV,highUV,lowZ,highZ;
         const float det=projectedFaceDeterminant(u.xy,v.xy);
@@ -93,9 +93,9 @@ kernel void spatialKeys(device const uint* records [[buffer(0)]],
     const uint key=spreadMortonBits(coordinates.x)
                   |(spreadMortonBits(coordinates.y)<<1u)
                   |(spreadMortonBits(coordinates.z)<<2u);
-    // The shared sorter compares (word0 & 0x7fffffff, word2, word1, word0's high bit).
+    // The shared sorter compares (masked word0, word2, word1, cut flag, word3).
     // Thirty-bit spatial keys and record IDs fit that ordering without changing geometry.
-    order[2u+id*3u]=key;order[3u+id*3u]=0u;order[4u+id*3u]=id;
+    order[2u+id*4u]=key;order[3u+id*4u]=0u;order[4u+id*4u]=id;order[5u+id*4u]=0u;
 }
 
 inline bool overlaps(Bounds bounds,float4 point,float throwDistance) {
@@ -135,7 +135,7 @@ kernel void query(device const uint* records [[buffer(0)]],
 #if IR_HIERARCHY_DIAGNOSTIC
                 ++tested;
 #endif
-                const uint recordId=cfg.ordered?order[2u+i*3u+2u]:i;
+                const uint recordId=cfg.ordered?order[2u+i*4u+2u]:i;
                 if(blocks(records,recordId,point,64.0)){actual=true;break;}
             }
             if(actual)break;
@@ -200,10 +200,10 @@ int main(int argc,char** argv){@autoreleasepool{
                        options:MTLResourceStorageModeShared];
     id<MTLBuffer> output=[device newBufferWithLength:size_t(cfg[3])*16
                          options:MTLResourceStorageModeShared];
-    const uint32_t sortSpan=MAX(2048,cfg[1]*8);
-    id<MTLBuffer> order=[device newBufferWithLength:(2+size_t(sortSpan)*3)*4
+    const uint32_t sortSpan=MAX(1024,cfg[1]*8);
+    id<MTLBuffer> order=[device newBufferWithLength:(2+size_t(sortSpan)*4)*4
                         options:MTLResourceStorageModeShared];
-    id<MTLBuffer> sortArgs=[device newBufferWithLength:21*16
+    id<MTLBuffer> sortArgs=[device newBufferWithLength:22*16
                            options:MTLResourceStorageModeShared];
     if(!records||!points||!tree||!output||!order||!sortArgs)return 2;
     std::memcpy(records.contents,(const char*)input.bytes+16,size_t(cfg[0])*40);
@@ -240,15 +240,15 @@ int main(int argc,char** argv){@autoreleasepool{
             [enc setBytes:frame length:sizeof(frame) atIndex:7];
             [enc setBuffer:order offset:0 atIndex:28];
             [enc setBuffer:sortArgs offset:0 atIndex:26];
-            const uint32_t groups=sortSpan/(mode==0?256:2048);
+            const uint32_t groups=sortSpan/(mode==0?256:1024);
             [enc dispatchThreadgroups:MTLSizeMake(groups,1,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
             [enc endEncoding];
         };
         sort(0,0,0,0);sort(1,0,0,0);
-        for(uint32_t stage=12;(1u<<stage)<=sortSpan;++stage){
+        for(uint32_t stage=11;(1u<<stage)<=sortSpan;++stage){
             for(uint32_t remaining=stage;remaining;){
-                const uint32_t width=MIN(remaining,11u);
+                const uint32_t width=MIN(remaining,10u);
                 sort(2,1u<<stage,remaining-width,remaining-1);
                 remaining-=width;
             }
@@ -425,20 +425,22 @@ def control_cases(spatial=False):
     return cases
 
 
-def validate_order(raw, count):
-    span = max(2048, 1 << (max(count, 1) - 1).bit_length())
-    if len(raw) != (2 + span * 3) * 4:
+def validate_order(raw, count, *, record_words=4):
+    if record_words not in (3, 4):
+        raise ValueError("unsupported order record layout")
+    span = max(2048 if record_words == 3 else 1024, 1 << (max(count, 1) - 1).bit_length())
+    if len(raw) != (2 + span * record_words) * 4:
         raise ValueError("incomplete order readback")
     if struct.unpack_from("<2I", raw) != (0, count):
         raise ValueError("incorrect sort header")
-    records = list(struct.iter_unpack("<3I", raw[8:]))
+    records = list(struct.iter_unpack(f"<{record_words}I", raw[8:]))
     active = records[:count]
-    if (any(key >= 1 << 30 or unused != 0 for key, unused, _ in active)
-            or sorted(index for _, _, index in active) != list(range(count))):
+    if (any(row[0] >= 1 << 30 or row[1] != 0 or any(row[3:]) for row in active)
+            or sorted(row[2] for row in active) != list(range(count))):
         raise ValueError("spatial order is not a lossless record permutation")
     if active != sorted(active, key=lambda row: (row[0], row[2])):
         raise ValueError("spatial keys are not sorted")
-    if any(row != (0xffffffff,) * 3 for row in records[count:]):
+    if any(row != (0xffffffff,) * record_words for row in records[count:]):
         raise ValueError("sort padding is not sentinel-filled")
     return [row[2] for row in active]
 

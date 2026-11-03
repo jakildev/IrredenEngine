@@ -7,7 +7,7 @@
 
 // Range contract for IRRender::VoxelPoolConfig::setSize: the edge is clamped
 // to [1, kMaxEdge] in every build config, so getTotalSize never overflows int
-// and the per-axis overflow lane's face demand stays inside its 2^30 field.
+// and the per-axis overflow lane's four-word records fit uint addressing.
 
 namespace {
 
@@ -59,12 +59,12 @@ TEST_F(VoxelPoolConfigRange, NonPositiveEdgesClampToOne) {
 }
 
 // The per-axis overflow lane's face demand at the largest pool stays within
-// the signed 2^30 field overflowCapacityFor asserts on.
+// the four-word capacity overflowCapacityFor asserts on.
 TEST_F(VoxelPoolConfigRange, MaxPoolFaceDemandFitsOverflowField) {
     VoxelPoolConfig::setSize(std::numeric_limits<int>::max());
     const std::uint64_t faceDemand =
         static_cast<std::uint64_t>(VoxelPoolConfig::getTotalSize()) * 3u;
-    EXPECT_LE(faceDemand, std::uint64_t{1} << 30);
+    EXPECT_LE(faceDemand, std::uint64_t{1} << 29);
 }
 
 } // namespace

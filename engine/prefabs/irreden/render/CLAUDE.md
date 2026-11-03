@@ -178,6 +178,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 
 ## Rotation modes
 
+- Rotating hover uses a scatter-only owner attachment, four-word overflow records, and a 32-byte hover record; preserve the [depth-texel resolve contract](../../../../docs/design/per-axis-trixel-canvas-rotation.md#picking-follows-the-depth-tested-owner).
+
 - `GRID` for world-integrated rotation with exact cell aliasing or shadows from
   thin detail; `DETACHED_REVOXELIZE` for cheap smooth SO(3) that still sorts,
   casts and receives; any `DETACHED` mode with `screenLocked_ = true` for a HUD
@@ -194,9 +196,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 
 ## GPU stage timing
 
-- Read [`docs/design/gpu-stage-timing-cost-model.md`](../../../../docs/design/gpu-stage-timing-cost-model.md)
-  before quoting the overlay (untagged `VOXEL_TO_TRIXEL_STAGE_1`'s GPU rows come
-  from `GpuSubStageScope`, `gpu_substage_timing.hpp`). Untagging a system from the
+- Read [the GPU stage timing contract](../../../../docs/design/gpu-stage-timing-cost-model.md) before quoting the overlay; untagged `VOXEL_TO_TRIXEL_STAGE_1` uses `GpuSubStageScope` (`gpu_substage_timing.hpp`). Untagging a system from the
   observer pairs with an `IR_PROFILE_SCOPE("<stageName>")` or its CPU row reads
   0 forever (`IR_PROFILE_FUNCTION` does not feed the histogram).
 

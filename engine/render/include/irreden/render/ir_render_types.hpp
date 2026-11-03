@@ -94,7 +94,12 @@ struct HoveredEntityIdLayout {
     uvec2 entityId_{0u, 0u};
     float depth_{1.0f};
     float _pad_{0.0f};
+    uvec2 scatterEntityId_{0u, 0u};
+    float scatterDepth_{1.0f};
+    std::uint32_t scatterOwner_{0u};
 };
+static_assert(sizeof(HoveredEntityIdLayout) == 32);
+static_assert(offsetof(HoveredEntityIdLayout, scatterEntityId_) == 16);
 
 enum class TrixelSampleLayout : int { RECTANGULAR = 0, LOCAL_TRIANGLES = 1, SOURCE_FACES = 2 };
 
@@ -247,6 +252,9 @@ struct FrameDataTrixelToFramebuffer {
     /// only by placeGatherQuad together with mpMatrix_; a zero map samples one
     /// texel across the whole quad.
     vec4 canvasFromPixel_{0.0f, 0.0f, 0.0f, 0.0f};
+    ivec2 mouseFramebufferPixel_{-1, -1};
+    int hoverResolveMode_ = 0;
+    int hoverResolvePad_ = 0;
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -294,8 +302,9 @@ static_assert(
     "canvasFromPixel_ must std140-append after perAxisStoreFrame_ (ends at 240); "
     "the gather vertex and fragment blocks declare both members"
 );
+static_assert(offsetof(FrameDataTrixelToFramebuffer, mouseFramebufferPixel_) == 256);
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 256,
+    sizeof(FrameDataTrixelToFramebuffer) == 272,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
     "perAxisBase_ / visualYaw_ / visibleFaceIds_ and scatterFbResolution_ at "

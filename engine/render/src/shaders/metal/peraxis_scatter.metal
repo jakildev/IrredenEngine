@@ -105,9 +105,11 @@ vertex VertexOut v_peraxis_scatter(
     // This axis's occupied-cell linear indices, bound at offset 0 for the axis.
     // The indirect instanced draw covers only occupied cells, so the instance id
     // indexes this list.
-    device const uint* compactedCells [[buffer(25)]]
+    device const uint* compactedCells [[buffer(25)]],
+    device const uint2* entityIds [[buffer(13)]]
 ) {
     VertexOut out;
+    out.overflowEntityId = uint2(0);
     out.visibilityExtent = int3(frameData.scatterFbResolution.xyz);
     const int2 canvasSize = int2(triangleColors.get_width(), triangleColors.get_height());
     int2 ij;
@@ -118,7 +120,8 @@ vertex VertexOut v_peraxis_scatter(
         // encoded distance) pair the store would have written, plus its packed
         // color. Everything below is bit-identical to
         // the cell path; only the data source differs.
-        const uint entryBase = instanceId * 3u;
+        const uint entryBase = instanceId * 4u;
+        out.overflowEntityId = entityIds[compactedCells[entryBase + 3u]];
         const uint packedCell = overflowEntryCell(compactedCells[entryBase + 0u]);
         ij = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
         color = unpackColor(compactedCells[entryBase + 1u]);
@@ -131,8 +134,8 @@ vertex VertexOut v_peraxis_scatter(
         rawDist = triangleDistances.read(uint2(ij)).r;
     }
     out.fogCarrier = frameData.overflowMode != 0
-        ? scatterOverflowFogCarrier(compactedCells[instanceId * 3u],
-                                    compactedCells[instanceId * 3u + 1u])
+        ? scatterOverflowFogCarrier(compactedCells[instanceId * 4u],
+                                    compactedCells[instanceId * 4u + 1u])
         : 0u;
     if (color.a < 0.1f) {
         out.position = float4(2.0, 2.0, 2.0, 1.0);

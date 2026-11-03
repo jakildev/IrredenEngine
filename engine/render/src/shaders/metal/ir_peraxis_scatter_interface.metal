@@ -25,10 +25,12 @@ struct VertexOut {
     // An overflow entry's fog class byte, plus kScatterFogCarrierCutFace on a
     // cut face; 0 for a cell, whose class rides its axis canvas's entity id.
     uint fogCarrier [[flat]];
+    uint2 overflowEntityId [[flat]];
 };
 
 struct FragmentOut {
     float4 color [[color(0)]];
+    uint2 entityId [[color(1)]];
     float depth [[depth(any)]];
 };
 

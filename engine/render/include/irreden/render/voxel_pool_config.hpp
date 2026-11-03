@@ -14,10 +14,11 @@ constexpr int kDefaultEdge = 64;
 /// Largest accepted cube edge. The binding bound is the per-axis overflow
 /// lane (`C_PerAxisTrixelCanvases::overflowCapacityFor`, which asserts it
 /// beside `kAxisCount`): `edge³ × 3` face entries must stay within the
-/// shader's signed 2^30 field. 710 is the largest edge that fits; it also
+/// 2^29-record bound: four words per record leave room for the scratch
+/// prefix within the shader's uint address space. It also
 /// keeps @ref getTotalSize inside `int`. Enforced by @ref setSize's clamp,
 /// which survives `IR_RELEASE`.
-constexpr int kMaxEdge = 710;
+constexpr int kMaxEdge = 563;
 static_assert(
     static_cast<std::int64_t>(kMaxEdge) * kMaxEdge * kMaxEdge <= std::numeric_limits<int>::max(),
     "kMaxEdge cube must fit getTotalSize's int"

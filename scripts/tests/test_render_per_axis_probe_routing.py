@@ -153,6 +153,8 @@ def adapter_source():
             + "scatterCanvasSize=mainCanvasSize;\n" + selection + "}\n"
             + "void draw(int entity){int frameData=0,framebufferResolution=0;"
             + "const int logicalCanvasSize=642;"
+            + "struct Attachment{void bindWithEntityIds(){}void clearEntityIds(){}} attachment;"
+            + "struct{struct{Attachment* second;}framebuffer_;}framebuffer{{&attachment}};"
             + "Canvas triangleCanvasTextures;\n" + route[0] + "\n}}\n" + CASES)
 
 

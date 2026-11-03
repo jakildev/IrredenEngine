@@ -213,7 +213,8 @@ class HierarchyProbeTest(unittest.TestCase):
                     order = None
                     if spatial:
                         order = probe.validate_order(gzip.decompress(
-                            (folder / f"{name}.{mode}.bin.order.gz").read_bytes()), len(faces))
+                            (folder / f"{name}.{mode}.bin.order.gz").read_bytes()),
+                            len(faces), record_words=3)
                         if name == "spatial-octants":
                             probe.validate_octant_order(order)
                     actual = probe.validate_output(raw, bounds, faces, queries, leaves, order)
@@ -232,9 +233,10 @@ class HierarchyProbeTest(unittest.TestCase):
 
     def test_spatial_order_rejects_lost_records_unsorted_keys_and_bad_padding(self):
         def packed(rows, header=None):
-            padding = [(0xffffffff,) * 3] * (2048 - len(rows))
+            rows = [(*row, 0) for row in rows]
+            padding = [(0xffffffff,) * 4] * (1024 - len(rows))
             return (struct.pack("<2I", *(header or (0, len(rows))))
-                    + b"".join(struct.pack("<3I", *row) for row in rows + padding))
+                    + b"".join(struct.pack("<4I", *row) for row in rows + padding))
 
         self.assertEqual(probe.validate_order(packed([]), 0), [])
         valid = [(3, 0, 2), (4, 0, 0), (4, 0, 1)]
@@ -249,14 +251,15 @@ class HierarchyProbeTest(unittest.TestCase):
                 probe.validate_order(packed(rows), 3)
         raw = packed(valid)
         for corrupt in (raw[:-4], packed(valid, (1, 3)), packed(valid, (0, 2)),
-                        raw[:-4] + b"\0" * 4):
+                        raw[:-4] + b"\0" * 4,
+                        raw[:20] + struct.pack("<I", 1) + raw[24:]):
             with self.assertRaises(ValueError):
                 probe.validate_order(corrupt, 3)
 
     def test_spatial_control_rejects_all_zero_keys(self):
         raw = struct.pack("<2I", 0, 8)
-        raw += b"".join(struct.pack("<3I", 0, 0, i) for i in range(8))
-        raw += struct.pack("<3I", *((0xffffffff,) * 3)) * (2048 - 8)
+        raw += b"".join(struct.pack("<4I", 0, 0, i, 0) for i in range(8))
+        raw += struct.pack("<4I", *((0xffffffff,) * 4)) * (1024 - 8)
         order = probe.validate_order(raw, 8)
         with self.assertRaisesRegex(ValueError, "XYZ Morton order"):
             probe.validate_octant_order(order)
@@ -309,13 +312,13 @@ class HierarchyProbeTest(unittest.TestCase):
         production = extract_block(system, "inline void forEachOverflowSortMergeStep")
         production = production.replace("C_PerAxisTrixelCanvases::kOverflowSortBlockBits", bits)
         production = production.replace("IRMath::min", "std::min")
-        schedule = extract_block(probe.LAUNCHER, "for(uint32_t stage=12;")
+        schedule = extract_block(probe.LAUNCHER, "for(uint32_t stage=11;")
         shader = (probe.ROOT / "engine/render/src/shaders/metal/"
                   "c_per_axis_overflow_sort.metal").read_text()
         self.assertRegex(shader, r"kSortThreads = 256u;")
-        self.assertRegex(shader, r"kSortBlockBits = 11u;")
-        self.assertIn("const uint32_t sortSpan=MAX(2048,cfg[1]*8);", probe.LAUNCHER)
-        self.assertIn("sortSpan/(mode==0?256:2048)", probe.LAUNCHER)
+        self.assertRegex(shader, r"kSortBlockBits = 10u;")
+        self.assertIn("const uint32_t sortSpan=MAX(1024,cfg[1]*8);", probe.LAUNCHER)
+        self.assertIn("sortSpan/(mode==0?256:1024)", probe.LAUNCHER)
         self.assertIn("threadsPerThreadgroup:MTLSizeMake(256,1,1)", probe.LAUNCHER)
         source = r"""
 #include <algorithm>
@@ -326,7 +329,7 @@ class HierarchyProbeTest(unittest.TestCase):
 template <typename Callback>
 PRODUCTION
 int main(){
-    for(uint32_t sortSpan=2048;sortSpan<=65536;sortSpan*=2){
+    for(uint32_t sortSpan=1024;sortSpan<=65536;sortSpan*=2){
         std::vector<std::array<uint32_t,4>> expected,actual;
         forEachOverflowSortMergeStep(sortSpan,[&](auto k,auto low,auto high,auto){
             expected.push_back({2,k,low,high});
@@ -343,7 +346,7 @@ int main(){
             path = Path(tmp)
             for name, candidate, expected in (
                     ("matching", schedule, 0),
-                    ("missing_stage", schedule.replace("stage=12", "stage=13"), 1),
+                    ("missing_stage", schedule.replace("stage=11", "stage=12"), 1),
                     ("wrong_mode", schedule.replace("sort(2,", "sort(1,"), 1)):
                 code = source.replace("PRODUCTION", production).replace("SCHEDULE", candidate)
                 (path / "test.cpp").write_text(code)

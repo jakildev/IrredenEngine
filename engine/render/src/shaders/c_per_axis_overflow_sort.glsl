@@ -8,14 +8,14 @@
 // indices with atomicAdd, and entry index IS draw order in the overflow
 // scatter branch (v_peraxis_scatter.glsl indexes by gl_InstanceID), so
 // unsorted, equal-key entries resolve their depth contest by run-variant
-// arrival order. This pass in-place bitonic-sorts the appended 3-word
+// arrival order. This pass in-place bitonic-sorts the appended 4-word
 // entries by full record value between the append and the indirect draw,
 // making draw order — and therefore every equal-key winner — a pure
 // function of the appended SET.
 //
-// Sort key: lexicographic (masked cell, encoded distance, color, cut flag).
+// Sort key: lexicographic (masked cell, encoded distance, color, cut flag, voxel index).
 // The flag in word 0 bit 31 breaks only otherwise identical ties; this groups
-// cell ties adjacently. The key spans ALL THREE words, so key-equality and
+// cell ties adjacently. The key spans ALL FOUR words, so key-equality and
 // record-equality coincide — which is why the compare-exchange can be
 // strict (equal records never swap) without making draw order depend on
 // arrival order: two fully-equal records are indistinguishable in the output.
@@ -24,7 +24,7 @@
 // the entry cap is a power of two by construction in
 // component_per_axis_trixel_canvases.hpp):
 //   3 — write current-frame indirect grids into sortArgs.
-//   0 — sentinel-fill every slot in [liveCount, span) with 0xFFFFFFFF^3. The
+//   0 — sentinel-fill every slot in [liveCount, span) with 0xFFFFFFFF^4. The
 //       region above the live range holds stale prior-frame entries, NOT
 //       zeros — the fill is mandatory, every rotating frame, before any
 //       network step. A real entry cannot tie the sentinel: word 0 packs
@@ -115,17 +115,17 @@ layout(std430, binding = 26) buffer OverflowSortArgs {
 
 const uint kSentinelWord = 0xFFFFFFFFu;
 const uint kThreads = 256u;
-// Elements per fused slab. 3 shared words per element = 24 KB, the largest
-// power of two under the 32 KB shared-memory floor both backends guarantee —
-// and therefore the widest stride range a single dispatch can fuse.
+// Four words per element use 16 KB, leaving half of the guaranteed 32 KB
+// shared-memory capacity free.
 // kBlockBits MUST match the kSortBlockBits constant in the Metal twin and
 // the kBlockBits literal in system_voxel_to_trixel.hpp.
-const uint kBlockBits = 11u;
+const uint kBlockBits = 10u;
 const uint kBlock = 1u << kBlockBits;
 
 shared uint sW0[kBlock];
 shared uint sW1[kBlock];
 shared uint sW2[kBlock];
+shared uint sW3[kBlock];
 
 uint entriesBase() {
     return uint(overflowScratchLayout.z);
@@ -162,14 +162,15 @@ uint sortSpan() {
     return min(span, capEntries());
 }
 
-// Lexicographic (cell, distance, color, cut flag), covering the full record.
-bool recordLess(uint a0, uint a1, uint a2, uint b0, uint b1, uint b2) {
+// Lexicographic (cell, distance, color, cut flag, voxel index), covering the full record.
+bool recordLess(uint a0, uint a1, uint a2, uint a3, uint b0, uint b1, uint b2, uint b3) {
     const uint aCell = overflowEntryCell(a0);
     const uint bCell = overflowEntryCell(b0);
     if (aCell != bCell) return aCell < bCell;
     if (a2 != b2) return a2 < b2;
     if (a1 != b1) return a1 < b1;
-    return !overflowEntryIsCutFace(a0) && overflowEntryIsCutFace(b0);
+    if (a0 != b0) return !overflowEntryIsCutFace(a0);
+    return a3 < b3;
 }
 
 // Reinsert the active-bit window into a compressed slab index.
@@ -185,12 +186,12 @@ uint expandIndex(uint c, uint activeBits, uint pLo, uint pHi) {
 void localCompareExchange(uint e, uint stride, bool ascending) {
     const uint p = e + stride;
     const bool swapNeeded = ascending
-        ? recordLess(sW0[p], sW1[p], sW2[p], sW0[e], sW1[e], sW2[e])
-        : recordLess(sW0[e], sW1[e], sW2[e], sW0[p], sW1[p], sW2[p]);
+        ? recordLess(sW0[p], sW1[p], sW2[p], sW3[p], sW0[e], sW1[e], sW2[e], sW3[e])
+        : recordLess(sW0[e], sW1[e], sW2[e], sW3[e], sW0[p], sW1[p], sW2[p], sW3[p]);
     if (!swapNeeded) return;
-    uint t0 = sW0[e]; uint t1 = sW1[e]; uint t2 = sW2[e];
-    sW0[e] = sW0[p]; sW1[e] = sW1[p]; sW2[e] = sW2[p];
-    sW0[p] = t0; sW1[p] = t1; sW2[p] = t2;
+    uint t0 = sW0[e]; uint t1 = sW1[e]; uint t2 = sW2[e]; uint t3 = sW3[e];
+    sW0[e] = sW0[p]; sW1[e] = sW1[p]; sW2[e] = sW2[p]; sW3[e] = sW3[p];
+    sW0[p] = t0; sW1[p] = t1; sW2[p] = t2; sW3[p] = t3;
 }
 
 void main() {
@@ -200,15 +201,15 @@ void main() {
 
     if (mode == 3u) {
         // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1
-        // and command stride are 21, 10 and 4 respectively.
-        // Commands 0/1 cover fill/local; 2..20 cover stages 12..30.
+        // and command stride are 22, 9 and 4 respectively.
+        // Commands 0/1 cover fill/local; 2..21 cover stages 11..30.
         // Zero-sized grids suppress empty lists and stages outside the live span.
         const uint command = gl_LocalInvocationID.x;
-        if (command >= 21u) return;
+        if (command >= 22u) return;
         uint groups = 0u;
         if (liveEntryCount() != 0u) {
             if (command == 0u) groups = span / kThreads;
-            else if (command == 1u || (1u << (command + 10u)) <= span)
+            else if (command == 1u || (1u << (command + 9u)) <= span)
                 groups = span / kBlock;
         }
         const uint groupsX = max(min(groups, 1024u), 1u);
@@ -225,10 +226,11 @@ void main() {
         // virtual sentinels, so materializing them would be pure waste.
         const uint i = (gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x) * kThreads + gl_LocalInvocationID.x;
         if (i >= span || i < liveEntryCount()) return;
-        const uint b = entriesBase() + i * 3u;
+        const uint b = entriesBase() + i * 4u;
         scratch[b] = kSentinelWord;
         scratch[b + 1u] = kSentinelWord;
         scratch[b + 2u] = kSentinelWord;
+        scratch[b + 3u] = kSentinelWord;
         return;
     }
 
@@ -249,10 +251,11 @@ void main() {
             return;
         }
         for (uint e = t; e < kBlock; e += kThreads) {
-            const uint b = entriesBase() + (blockBase + e) * 3u;
+            const uint b = entriesBase() + (blockBase + e) * 4u;
             sW0[e] = scratch[b];
             sW1[e] = scratch[b + 1u];
             sW2[e] = scratch[b + 2u];
+            sW3[e] = scratch[b + 3u];
         }
         barrier();
         for (uint k = 2u; k <= kBlock; k <<= 1u) {
@@ -265,10 +268,11 @@ void main() {
             }
         }
         for (uint e = t; e < kBlock; e += kThreads) {
-            const uint b = entriesBase() + (blockBase + e) * 3u;
+            const uint b = entriesBase() + (blockBase + e) * 4u;
             scratch[b] = sW0[e];
             scratch[b + 1u] = sW1[e];
             scratch[b + 2u] = sW2[e];
+            scratch[b + 3u] = sW3[e];
         }
         return;
     }
@@ -311,12 +315,14 @@ void main() {
             sW0[e] = kSentinelWord;
             sW1[e] = kSentinelWord;
             sW2[e] = kSentinelWord;
+            sW3[e] = kSentinelWord;
             continue;
         }
-        const uint b = entriesBase() + i * 3u;
+        const uint b = entriesBase() + i * 4u;
         sW0[e] = scratch[b];
         sW1[e] = scratch[b + 1u];
         sW2[e] = scratch[b + 2u];
+        sW3[e] = scratch[b + 3u];
     }
     barrier();
 
@@ -341,9 +347,10 @@ void main() {
         // Never write back a virtual slot — that region stays untouched and is
         // never read by the draw.
         if (i >= span) continue;
-        const uint b = entriesBase() + i * 3u;
+        const uint b = entriesBase() + i * 4u;
         scratch[b] = sW0[e];
         scratch[b + 1u] = sW1[e];
         scratch[b + 2u] = sW2[e];
+        scratch[b + 3u] = sW3[e];
     }
 }

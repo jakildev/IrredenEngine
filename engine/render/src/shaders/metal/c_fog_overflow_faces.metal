@@ -20,7 +20,7 @@ kernel void c_fog_overflow_faces(
         return;
     }
 
-    const uint entryBase = uint(layout.z) + gid * 3u;
+    const uint entryBase = uint(layout.z) + gid * 4u;
     const uint packedCell = overflowEntryCell(overflowScratch[entryBase + 0u]);
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int encoded = int(overflowScratch[entryBase + 2u]);

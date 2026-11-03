@@ -15,7 +15,7 @@ namespace IRRender {
 class FramebufferImpl {
   public:
     virtual ~FramebufferImpl() = default;
-    virtual void bind() const = 0;
+    virtual void bind(const Texture2D *entityIds) const = 0;
     virtual void unbind() = 0;
     virtual void clear() const = 0;
 };
@@ -35,6 +35,9 @@ class Framebuffer {
     Framebuffer &operator=(const Framebuffer &) = delete;
 
     void bind() const;
+    void bindWithEntityIds();
+    void clearEntityIds();
+    Texture2D &getTextureEntityIds();
     void unbind();
     void clear() const;
 
@@ -60,6 +63,7 @@ class Framebuffer {
     const ivec2 m_resolutionPlusBuffer;
     Texture2D m_textureColor;
     Texture2D m_textureDepth;
+    std::unique_ptr<Texture2D> m_textureEntityIds;
     std::unique_ptr<FramebufferImpl> m_impl;
 };
 

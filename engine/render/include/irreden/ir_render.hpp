@@ -254,6 +254,7 @@ vec2 getMousePositionOutputView();
 /// the extra pixel buffer, top-left origin): the output view with the output
 /// upscale divided out. The space GUI-canvas and hitbox hover tests compare in.
 vec2 getMousePositionMainFramebuffer();
+ivec2 mouseMainFramebufferPixel();
 /// Inverse of the cursor → GUI-canvas-trixel chain that
 /// @c getMousePositionMainFramebuffer feeds: maps a point on the GUI canvas
 /// back to the cursor position, in window points, that lands on it.
@@ -344,7 +345,7 @@ float canvasIsoDepthOfWorldPos(vec3 worldPos);
 /// Use this when world-frame coordinates are needed (e.g. spawning an
 /// entity at the click location).
 vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth);
-/// Inverse of @ref mouseWorldPos3DAtIsoDepth: the window pixel (top-left
+/// At a cardinal yaw, inverse of @ref mouseWorldPos3DAtIsoDepth: the window pixel (top-left
 /// origin, GLFW cursor convention) that — injected as the mouse position —
 /// makes the picking chain read @p worldPos's iso column. Reuses the exact
 /// same live camera / canvas / viewport terms as the forward chain (camera
@@ -357,6 +358,8 @@ vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth);
 /// returns the front-most active voxel in that column — for the aimed voxel
 /// this is exact when nothing occludes it. Scripted GUI-harness input
 /// (auto-authoring sessions, alignment probes) is the primary caller.
+/// At non-cardinal yaw, projects the visible world point with live yaw;
+/// the cardinal lattice inverse does not apply.
 ivec2 worldPos3DToMouseScreenPx(vec3 worldPos);
 /// Sub-lattice form of @ref mouseWorldPos3DAtIsoDepth: the world point at
 /// @p canvasIsoDepth on the view ray through the cursor's exact position, with
@@ -373,7 +376,8 @@ vec3 mouseWorldPos3DAtIsoDepthExact(float canvasIsoDepth);
 /// Lets a probe compare a cast against the canvas's own readback texel by
 /// texel, with no cursor involved.
 vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth);
-/// Inverse of @ref mouseWorldPos3DAtIsoDepthExact: the window pixel
+/// At cardinal yaw, inverse of @ref mouseWorldPos3DAtIsoDepthExact;
+/// otherwise the continuous-yaw projection: the window pixel
 /// @p worldPos is displayed at, rounded to the nearest pixel. Aim it at a
 /// point on a visible surface (a face centre), never at a voxel centre — a
 /// voxel centre projects onto the vertex its three camera-facing faces share.

@@ -31,6 +31,9 @@ std::string metalFunctionNameForStage(const ShaderStage &stage) {
 }
 
 MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+    if (functionName == "c_peraxis_hover_resolve") {
+        return MTL::Size(1, 1, 1);
+    }
     if (functionName == "c_voxel_to_trixel_stage_1" ||
         functionName == "c_voxel_to_trixel_stage_1_feeder" ||
         functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
@@ -277,7 +280,9 @@ std::string renderPipelineCacheKey(
     return std::to_string(static_cast<int>(colorPixelFormat)) + ":" +
            std::to_string(static_cast<int>(depthPixelFormat)) + ":" +
            std::to_string(reinterpret_cast<std::uintptr_t>(vertexDescriptor)) + ":" +
-           (blendingEnabled ? "1" : "0");
+           (blendingEnabled ? "1" : "0") + ":" +
+           std::to_string(static_cast<int>(metalCurrentEntityIdTexture()
+               ? metalCurrentEntityIdTexture()->pixelFormat() : MTL::PixelFormatInvalid));
 }
 
 } // namespace
@@ -384,6 +389,11 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         descriptor->setVertexDescriptor(vertexDescriptor);
         auto *colorAttachment = descriptor->colorAttachments()->object(0);
         colorAttachment->setPixelFormat(colorPixelFormat);
+        if (auto *ids = metalCurrentEntityIdTexture()) {
+            auto *attachment = descriptor->colorAttachments()->object(1);
+            attachment->setPixelFormat(ids->pixelFormat());
+            attachment->setBlendingEnabled(false);
+        }
         // Matches GL's glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
         // which applies the same factors to RGB and alpha.
         colorAttachment->setBlendingEnabled(blendingEnabled);

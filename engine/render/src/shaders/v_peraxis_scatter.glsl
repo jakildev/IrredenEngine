@@ -101,6 +101,8 @@ flat out float vCellTieOffset;
 // An overflow entry's fog class byte, plus kScatterFogCarrierCutFace on a cut
 // face; 0 for a cell, whose class rides its axis canvas's entity id.
 flat out uint vFogCarrier;
+flat out uvec2 vOverflowEntityId;
+layout(std430, binding = 13) readonly buffer EntityIdBuffer { uvec2 entityIds[]; };
 
 // Composite-instrumentation overlay modes — raw DebugOverlayMode
 // values (ir_render_enums.hpp). Both modes recolor the scattered quad and
@@ -141,6 +143,7 @@ vec3 faceSpanCorner(int axis, vec3 origin, vec2 cornerSel) {
 }
 
 void main() {
+    vOverflowEntityId = uvec2(0);
     vVisibilityExtent = ivec3(scatterFbResolution.xyz);
     const ivec2 canvasSize = textureSize(triangleDistances, 0);
     ivec2 ij;
@@ -151,7 +154,8 @@ void main() {
         // encoded distance) pair the store would have written, plus its packed
         // color. The rest of the vertex path is
         // bit-identical to the cell path; only the data source differs.
-        const uint entryBase = uint(gl_InstanceID) * 3u;
+        const uint entryBase = uint(gl_InstanceID) * 4u;
+        vOverflowEntityId = entityIds[compactedCells[entryBase + 3u]];
         const uint packedCell = overflowEntryCell(compactedCells[entryBase + 0u]);
         ij = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
         color = unpackColor(compactedCells[entryBase + 1u]);
@@ -164,8 +168,8 @@ void main() {
         rawDist = texelFetch(triangleDistances, ij, 0).r;
     }
     vFogCarrier = overflowMode != 0
-        ? scatterOverflowFogCarrier(compactedCells[uint(gl_InstanceID) * 3u],
-                                    compactedCells[uint(gl_InstanceID) * 3u + 1u])
+        ? scatterOverflowFogCarrier(compactedCells[uint(gl_InstanceID) * 4u],
+                                    compactedCells[uint(gl_InstanceID) * 4u + 1u])
         : 0u;
     // Empty cell — kColorClear alpha is 0 (matches the gather's discard test).
     // Degenerate the whole instance off-screen so it produces no fragments.

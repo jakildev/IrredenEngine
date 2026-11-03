@@ -1,7 +1,7 @@
 // Metal twin of c_per_axis_overflow_sort.glsl; keep the two in lockstep.
 // Shared contract:
 // pass modes (0 fill / 1 local sort / 2 strided slab / 3 indirect grids),
-// the (masked cell, distance, color, cut flag) key, the mandatory
+// the (masked cell, distance, color, cut flag, voxel index) key, the mandatory
 // pre-network fill (the region above the live range holds stale prior-frame
 // entries), sentinel substitution (never thread-skip one side of a
 // compare-exchange), the strict compare-exchange, and the strided-slab
@@ -21,22 +21,23 @@
 
 constant uint kSortSentinelWord = 0xFFFFFFFFu;
 constant uint kSortThreads = 256u;
-// Elements per fused slab: 3 threadgroup words per element = 24 KB, the
-// largest power of two under the 32 KB threadgroup floor. MUST match the
+// Four words per element use 16 KB, leaving half the 32 KB threadgroup
+// capacity free. MUST match the
 // GLSL kBlockBits and the kBlockBits literal in system_voxel_to_trixel.hpp.
-constant uint kSortBlockBits = 11u;
+constant uint kSortBlockBits = 10u;
 constant uint kSortBlock = 1u << kSortBlockBits;
 
-// Lexicographic (cell, distance, color, cut flag), covering the full record.
+// Lexicographic (cell, distance, color, cut flag, voxel index), covering the full record.
 inline bool overflowRecordLess(
-    uint a0, uint a1, uint a2, uint b0, uint b1, uint b2
+    uint a0, uint a1, uint a2, uint a3, uint b0, uint b1, uint b2, uint b3
 ) {
     const uint aCell = overflowEntryCell(a0);
     const uint bCell = overflowEntryCell(b0);
     if (aCell != bCell) return aCell < bCell;
     if (a2 != b2) return a2 < b2;
     if (a1 != b1) return a1 < b1;
-    return !overflowEntryIsCutFace(a0) && overflowEntryIsCutFace(b0);
+    if (a0 != b0) return !overflowEntryIsCutFace(a0);
+    return a3 < b3;
 }
 
 // Reinsert the active-bit window into a compressed slab index.
@@ -52,18 +53,20 @@ inline void overflowCompareExchange(
     threadgroup uint *sW0,
     threadgroup uint *sW1,
     threadgroup uint *sW2,
+    threadgroup uint *sW3,
     uint e,
     uint stride,
     bool ascending
 ) {
     const uint p = e + stride;
     const bool swapNeeded = ascending
-        ? overflowRecordLess(sW0[p], sW1[p], sW2[p], sW0[e], sW1[e], sW2[e])
-        : overflowRecordLess(sW0[e], sW1[e], sW2[e], sW0[p], sW1[p], sW2[p]);
+        ? overflowRecordLess(sW0[p], sW1[p], sW2[p], sW3[p], sW0[e], sW1[e], sW2[e], sW3[e])
+        : overflowRecordLess(sW0[e], sW1[e], sW2[e], sW3[e], sW0[p], sW1[p], sW2[p], sW3[p]);
     if (!swapNeeded) return;
     const uint t0 = sW0[e], t1 = sW1[e], t2 = sW2[e];
-    sW0[e] = sW0[p]; sW1[e] = sW1[p]; sW2[e] = sW2[p];
-    sW0[p] = t0; sW1[p] = t1; sW2[p] = t2;
+    const uint t3 = sW3[e];
+    sW0[e] = sW0[p]; sW1[e] = sW1[p]; sW2[e] = sW2[p]; sW3[e] = sW3[p];
+    sW0[p] = t0; sW1[p] = t1; sW2[p] = t2; sW3[p] = t3;
 }
 
 kernel void c_per_axis_overflow_sort(
@@ -79,6 +82,7 @@ kernel void c_per_axis_overflow_sort(
     threadgroup uint sW0[kSortBlock];
     threadgroup uint sW1[kSortBlock];
     threadgroup uint sW2[kSortBlock];
+    threadgroup uint sW3[kSortBlock];
 
     const uint mode = uint(frameData.overflowSortStep.x);
     const uint entriesBase = uint(frameData.overflowScratchLayout.z);
@@ -100,15 +104,15 @@ kernel void c_per_axis_overflow_sort(
 
     if (mode == 3u) {
         // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1
-        // and command stride are 21, 10 and 4 respectively.
-        // Commands 0/1 cover fill/local; 2..20 cover stages 12..30.
+        // and command stride are 22, 9 and 4 respectively.
+        // Commands 0/1 cover fill/local; 2..21 cover stages 11..30.
         // Zero-sized grids suppress empty lists and stages outside the live span.
         const uint command = localId.x;
-        if (command >= 21u) return;
+        if (command >= 22u) return;
         uint groups = 0u;
         if (liveCount != 0u) {
             if (command == 0u) groups = span / kSortThreads;
-            else if (command == 1u || (1u << (command + 10u)) <= span)
+            else if (command == 1u || (1u << (command + 9u)) <= span)
                 groups = span / kSortBlock;
         }
         const uint groupsX = max(min(groups, 1024u), 1u);
@@ -123,10 +127,11 @@ kernel void c_per_axis_overflow_sort(
     if (mode == 0u) {
         const uint i = (groupId.x + groupId.y * gridGroups.x) * kSortThreads + localId.x;
         if (i >= span || i < liveCount) return;
-        const uint b = entriesBase + i * 3u;
+        const uint b = entriesBase + i * 4u;
         scratch[b] = kSortSentinelWord;
         scratch[b + 1u] = kSortSentinelWord;
         scratch[b + 2u] = kSortSentinelWord;
+        scratch[b + 3u] = kSortSentinelWord;
         return;
     }
 
@@ -149,10 +154,11 @@ kernel void c_per_axis_overflow_sort(
             return;
         }
         for (uint e = t; e < kSortBlock; e += kSortThreads) {
-            const uint b = entriesBase + (blockBase + e) * 3u;
+            const uint b = entriesBase + (blockBase + e) * 4u;
             sW0[e] = scratch[b];
             sW1[e] = scratch[b + 1u];
             sW2[e] = scratch[b + 2u];
+            sW3[e] = scratch[b + 3u];
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
         for (uint k = 2u; k <= kSortBlock; k <<= 1u) {
@@ -160,17 +166,18 @@ kernel void c_per_axis_overflow_sort(
                 for (uint q = t; q < pairsPerBlock; q += kSortThreads) {
                     const uint e = 2u * j * (q / j) + (q % j);
                     overflowCompareExchange(
-                        sW0, sW1, sW2, e, j, ((blockBase + e) & k) == 0u
+                        sW0, sW1, sW2, sW3, e, j, ((blockBase + e) & k) == 0u
                     );
                 }
                 threadgroup_barrier(mem_flags::mem_threadgroup);
             }
         }
         for (uint e = t; e < kSortBlock; e += kSortThreads) {
-            const uint b = entriesBase + (blockBase + e) * 3u;
+            const uint b = entriesBase + (blockBase + e) * 4u;
             scratch[b] = sW0[e];
             scratch[b + 1u] = sW1[e];
             scratch[b + 2u] = sW2[e];
+            scratch[b + 3u] = sW3[e];
         }
         return;
     }
@@ -209,12 +216,14 @@ kernel void c_per_axis_overflow_sort(
             sW0[e] = kSortSentinelWord;
             sW1[e] = kSortSentinelWord;
             sW2[e] = kSortSentinelWord;
+            sW3[e] = kSortSentinelWord;
             continue;
         }
-        const uint b = entriesBase + i * 3u;
+        const uint b = entriesBase + i * 4u;
         sW0[e] = scratch[b];
         sW1[e] = scratch[b + 1u];
         sW2[e] = scratch[b + 2u];
+        sW3[e] = scratch[b + 3u];
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
@@ -231,7 +240,7 @@ kernel void c_per_axis_overflow_sort(
             const uint slabBase =
                 overflowExpandIndex(cBase + (e / slabElems), 0u, pLo, pHi);
             overflowCompareExchange(
-                sW0, sW1, sW2, e, stride, (slabBase & k) == 0u
+                sW0, sW1, sW2, sW3, e, stride, (slabBase & k) == 0u
             );
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -243,9 +252,10 @@ kernel void c_per_axis_overflow_sort(
         // Never write back a virtual slot — that region stays untouched and is
         // never read by the draw.
         if (i >= span) continue;
-        const uint b = entriesBase + i * 3u;
+        const uint b = entriesBase + i * 4u;
         scratch[b] = sW0[e];
         scratch[b + 1u] = sW1[e];
         scratch[b + 2u] = sW2[e];
+        scratch[b + 3u] = sW3[e];
     }
 }

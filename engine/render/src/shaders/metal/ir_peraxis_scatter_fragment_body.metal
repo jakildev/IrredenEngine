@@ -20,7 +20,8 @@ static inline float3 hsvToRgb(float3 c) {
 }
 
 fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
-    VertexOut in [[stage_in]]
+    VertexOut in [[stage_in]],
+    texture2d<uint, access::read> perAxisEntityIds [[texture(2)]]
 #if IR_PER_AXIS_VISIBILITY
     , device atomic_uint* visibilityCodes [[buffer(26)]]
 #endif
@@ -39,7 +40,6 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
 #endif
 #if IR_PER_AXIS_SURFACE_FOG
     // The cell's own axis-canvas entity id: its fog class and cut-face provenance.
-    , texture2d<uint, access::read> perAxisEntityIds [[texture(2)]]
     // buffer(10) = kBufferIndex_FogSurfaceObservers: lighting holds 27.
     , constant FogObserverData& fogObservers [[buffer(10)]]
     , texture2d<uint, access::read> canvasFogOfWar [[texture(8)]]
@@ -141,6 +141,8 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
         out.color = in.color;
     }
 #endif
+    out.entityId = decodeEntityId(in.ownerPixel.x < 0 ? in.overflowEntityId
+        : perAxisEntityIds.read(uint2(in.ownerPixel)).rg);
     out.depth = finalDepth;
     return out;
 }

@@ -24,7 +24,15 @@ class OpenGLFramebufferImpl final : public FramebufferImpl {
         ENG_API->glDeleteFramebuffers(1, &m_id);
     }
 
-    void bind() const override {
+    void bind(const Texture2D *entityIds) const override {
+        ENG_API->glNamedFramebufferTexture(
+            m_id,
+            GL_COLOR_ATTACHMENT1,
+            entityIds ? entityIds->getHandle() : 0,
+            0
+        );
+        const GLenum attachments[]{GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+        ENG_API->glNamedFramebufferDrawBuffers(m_id, entityIds ? 2 : 1, attachments);
         ENG_API->glBindFramebuffer(GL_FRAMEBUFFER, m_id);
         ENG_API->glViewport(0, 0, m_width, m_height);
         ENG_API->glEnable(GL_DEPTH_TEST);

@@ -147,6 +147,7 @@ const char *const kFileCompChunkOcclusionCull = "shaders/c_chunk_occlusion_cull.
 // metal/c_resolve_per_axis_blit.metal.
 const char *const kFileCompResolvePerAxisScreenDepth =
     "shaders/c_resolve_per_axis_screen_depth.glsl";
+const char *const kFileCompPerAxisHoverResolve = "shaders/c_peraxis_hover_resolve.glsl";
 const char *const kFileCompResolvePerAxisBlit = "shaders/c_resolve_per_axis_blit.glsl";
 // The world-placed detached re-voxelize sun-shadow cast is a scatter pass that
 // re-projects an opt-in detached canvas's model-frame distances into
