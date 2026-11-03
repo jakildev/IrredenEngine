@@ -37,9 +37,9 @@ Design log, findings and the authoring-session history:
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
-  `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`,
-  `test_list_scroll`, `test_single`, `test_recipe_pages`, and the failing
-  `test_unreachable` fixture.
+  `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`, `test_list_scroll`,
+  `test_single`, `test_recipe_pages`, and the failing `test_unreachable`; the header contract
+  also covers `test_module_files`, `test_module_arg`, and `test_module_arg_absent`.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `--module test/module --module-session test_bake_radius_guard` must exit 1

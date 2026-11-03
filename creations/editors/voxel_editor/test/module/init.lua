@@ -194,6 +194,61 @@ IREditor.registerPanel("TestModulePanel", function(x, y, w, h)
     IRGui.makeLabel(x + 4, y + 32, "FIELD ROW")
 end)
 
+local session_expect = require("session_expect")
+
+local function check_session(condition, session, message)
+    if not condition then
+        session:recordError(message)
+    end
+end
+
+IREditor.registerSession("test_module_files", function(session)
+    if IRFile == nil then
+        session:recordError("IRFile is nil; pass --module-files <dir>")
+    else
+        local path = "nested/module-settings.lua"
+        local text = "first line\nsecond line\r\nprofile = alpha beta"
+        check_session(IRFile.writeText(path, text), session, "IRFile.writeText failed")
+        check_session(IRFile.readText(path) == text, session, "IRFile.readText changed bytes")
+        check_session(IRFile.mtime(path) ~= 0, session, "IRFile.mtime returned zero")
+        check_session(
+            IRFile.writeText("../escape.txt", "escape") == false,
+            session,
+            "IRFile.writeText accepted .."
+        )
+        check_session(
+            IRFile.readText("../escape.txt") == nil,
+            session,
+            "IRFile.readText accepted .."
+        )
+        check_session(
+            IRFile.writeText(IREditor.moduleArg(), "outside") == false,
+            session,
+            "IRFile.writeText accepted an absolute path"
+        )
+        check_session(
+            IRFile.readText(IREditor.moduleArg()) == nil,
+            session,
+            "IRFile.readText accepted an absolute path"
+        )
+    end
+    session:expectPartCount(0, "module_files_checked")
+end)
+
+IREditor.registerSession("test_module_arg", function(session)
+    check_session(
+        IREditor.moduleArg() == session_expect.moduleArg,
+        session,
+        "IREditor.moduleArg changed the launch string"
+    )
+    session:expectPartCount(0, "module_arg_checked")
+end)
+
+IREditor.registerSession("test_module_arg_absent", function(session)
+    check_session(IREditor.moduleArg() == "", session, "IREditor.moduleArg default is not empty")
+    session:expectPartCount(0, "module_arg_absent_checked")
+end)
+
 IREditor.registerSession("test_parts", function(session)
     local size = session:sceneSize()
     local center = {

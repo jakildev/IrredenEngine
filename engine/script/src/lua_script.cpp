@@ -1052,6 +1052,10 @@ void LuaScript::bindLuaFiles() {
     detail::bindFiles(*this);
 }
 
+void LuaScript::bindLuaFiles(const std::filesystem::path &root) {
+    detail::bindFiles(*this, root);
+}
+
 void LuaScript::bindLuaCatalog(const std::filesystem::path &toolRoot) {
     detail::bindCatalog(*this, toolRoot);
 }

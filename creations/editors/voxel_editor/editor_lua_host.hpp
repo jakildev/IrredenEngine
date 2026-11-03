@@ -19,7 +19,11 @@
 #include <vector>
 
 // Creation-module host: `--module <dir>` runs `<dir>/init.lua` in the Lua VM
-// the editor's world owns. A module registers components
+// the editor's world owns. `--module-files <dir>` opts that VM into IRFile,
+// rooted at the named directory: only relative paths are accepted, and an
+// absolute or `..` path reads nil and writes false. IRFile is nil without the
+// argument. `IREditor.moduleArg()` returns `--module-arg <text>` verbatim, or
+// an empty string when absent. A module registers components
 // (`IRComponent.register`), recipes and panels through the `IREditor` table:
 //
 //   IREditor.registerRecipe(name, params, fn, opts?)
@@ -101,6 +105,7 @@ class ModuleHost {
         editor["registerSession"] = [this](const std::string &name, sol::protected_function fn) {
             registerSession(name, std::move(fn));
         };
+        editor["moduleArg"] = [this]() { return m_moduleArg; };
     }
 
     // Runs `<dir>/init.lua` with `<dir>/?.lua` prepended to package.path.
@@ -341,6 +346,10 @@ class ModuleHost {
 
     const std::string &dir() const {
         return m_dir;
+    }
+
+    void setModuleArg(std::string moduleArg) {
+        m_moduleArg = std::move(moduleArg);
     }
 
     const std::vector<ModuleRecipe> &recipes() const {
@@ -652,6 +661,7 @@ class ModuleHost {
 
     IRScript::LuaScript *m_script = nullptr;
     std::string m_dir;
+    std::string m_moduleArg;
     std::vector<ModuleRecipe> m_recipes;
     std::vector<std::string> m_panelNames;
     std::vector<std::string> m_sessionNames;

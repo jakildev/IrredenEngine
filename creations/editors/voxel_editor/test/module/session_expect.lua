@@ -59,4 +59,5 @@ return {
         stem = { name = "test_column", values = { height = 6 } },
         frame = { name = "test_frame", values = { half = 2 } },
     },
+    moduleArg = "profile=alpha beta  gamma=2",
 }
