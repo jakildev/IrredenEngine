@@ -396,9 +396,9 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   80 %, any `seven_day*` 95 %; `FLEET_DISPATCHER_USAGE_GATE[_<TYPE>]`) until its
   `resetsAt` plus `FLEET_DISPATCHER_RESET_GRACE_SECONDS` (600); one with no `resetsAt`
   ages out (`FLEET_DISPATCHER_USAGE_STALE_SECONDS`, 3600; `fleet-up --reset-usage`
-  wipes them after an account switch). A type metering one model family (Fable's weekly
-  `seven_day_overage_included`, `seven_day_<family>`; `FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>`)
-  defers only launches on that family (a reserved resume is gated on its own session's model and, walled, holds only its pane); a walled fable model serves as a saturated fable cap.
+  wipes them after an account switch); a rejection binds past any threshold. A type metering one model family (Fable's weekly
+  `seven_day_overage_included`, any type with a `<family>` name token; `FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>`) defers only launches on that family (a reserved resume is gated on its own session's model and, walled, holds only its pane);
+  a walled fable model serves as a saturated fable cap, but `fleet:fable` fixes degrade to opus. A rejection also holds its session's family for `FLEET_DISPATCHER_LIMIT_DELAY` (family breaker).
 - **GitHub API quota** — identity-qualified core and GraphQL observations gate their
   consuming lanes; see [`FLEET-RUNTIME.md § GitHub App identity`](FLEET-RUNTIME.md).
 - **GraphQL refusal** — a `gh pr|issue` refusal (`GraphQL: API rate limit already

@@ -11,8 +11,10 @@ Covers:
     FLEET_QUOTA_FLAG touched
   - the wall's result text is the independent second flag signal, and on
     its own latches a conservative wall.rejected.json (no resetsAt, five_hour
-    unless the wording says weekly) that the event's record supersedes; an
-    ordinary error result is neither
+    unless the wording says weekly, suffixed with a family the wording names)
+    that the event's record supersedes; newer "reached your usage limit"
+    wordings match; an ordinary error result is neither
+  - a rejected event with no rateLimitType still latches, as untyped
 """
 import importlib.machinery
 import importlib.util
@@ -281,6 +283,38 @@ class QuotaFlag(unittest.TestCase):
             )
             self.assertTrue(self._flag.exists(), text)
             self.assertEqual(self._read("wall.rejected")["rateLimitType"], rl_type, text)
+
+    def test_newer_wordings_match(self):
+        for text in ("You've reached your usage limit · resets Nov 4",
+                     "Usage limit reached for this week",
+                     "You've hit your Fable weekly limit · resets 8am"):
+            self._flag.unlink(missing_ok=True)
+            self._feed(
+                {"type": "result", "subtype": "success", "is_error": True, "result": text}
+            )
+            self.assertTrue(self._flag.exists(), text)
+
+    def test_wording_that_names_a_family_scopes_the_record(self):
+        for text, rl_type in (
+            ("You've hit your Fable weekly limit · resets 8am", "seven_day_fable"),
+            ("You've hit your Opus limit · resets 3:30am", "five_hour_opus"),
+        ):
+            (self._mod.USAGE_DIR / "wall.rejected.json").unlink(missing_ok=True)
+            self._feed(
+                {"type": "result", "subtype": "success", "is_error": True, "result": text}
+            )
+            self.assertEqual(self._read("wall.rejected")["rateLimitType"], rl_type, text)
+
+    def test_untyped_rejection_still_latches_the_wall(self):
+        self._feed(
+            {"type": "rate_limit_event",
+             "rate_limit_info": {"status": "rejected", "resetsAt": 1778629200}}
+        )
+        self.assertTrue(self._flag.exists())
+        data = self._read("untyped.rejected")
+        self.assertIsNotNone(data, "a rejection with no rateLimitType is still the wall")
+        self.assertEqual(data["utilization"], 1.0)
+        self.assertEqual(data["resetsAt"], 1778629200)
 
     def test_other_error_results_do_not(self):
         self._feed(

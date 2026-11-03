@@ -429,7 +429,13 @@ for name in ("BUILTIN_PER_TYPE_DEFAULTS", "BUILTIN_FALLBACK", "MODEL_FAMILIES", 
     if d[name] != g[name]:
         bad.append(f"{name}: {d[name]!r} != {g[name]!r}")
 types = ["five_hour", "seven_day", "seven_day_overage_included", "seven_day_opus",
-         "seven_day_sonnet", "seven_day_foo", "daily_tokens", "github_core", "github_search"]
+         "seven_day_sonnet", "seven_day_foo", "daily_tokens", "github_core", "github_search",
+         "five_hour_fable", "fable_weekly", "seven_day_mythos", "untyped"]
+for model in ("claude-fable-5-1", "fable[1m]", "mythos-preview", "claude-opus-5-5[1m]",
+              "sonnet", "haiku", "", None, "gpt-5"):
+    if d["family_of_model"](model) != g["family_of_model"](model):
+        bad.append(f"family_of_model({model!r}): {d['family_of_model'](model)!r}"
+                   f" != {g['family_of_model'](model)!r}")
 envs = [{}, {"FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED": "account"},
         {"FLEET_DISPATCHER_USAGE_SCOPE_DAILY_TOKENS": "opus"},
         {"FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY": "0.5"}, {"FLEET_DISPATCHER_USAGE_GATE": "0.7"}]
@@ -471,10 +477,12 @@ check_contains "$(FLEET_CONF="$SCOPE_CONF" "$GATE_STATUS_TOOL")" "Fleet-wide usa
 THRESHOLD_CONF="$TMPROOT/threshold.conf"
 printf '%s\n' 'FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED=account' \
     'FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY_OVERAGE_INCLUDED=1.01' > "$THRESHOLD_CONF"
-assert_starts_with "$(FLEET_CONF="$THRESHOLD_CONF" "$DISPATCHER" --gate-status)" "open" \
-    "threshold conf: dispatcher open (a rejected wall reads 100% < 101%)"
-assert_starts_with "$(gate_summary "$THRESHOLD_CONF")" "open [] 0" \
-    "threshold conf: fleet-gate-status open too"
+assert_starts_with "$(FLEET_CONF="$THRESHOLD_CONF" "$DISPATCHER" --gate-status)" \
+    "closed:seven_day_overage_included rejected util=100% (< 101%" \
+    "threshold conf: dispatcher reads the 1.01 threshold, and the rejected wall still binds"
+assert_starts_with "$(gate_summary "$THRESHOLD_CONF")" \
+    "closed [('seven_day_overage_included', 'account')] 0" \
+    "threshold conf: fleet-gate-status agrees"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
 healthy_github
 

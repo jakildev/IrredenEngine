@@ -188,9 +188,15 @@ def latch_result_rejection(text):
     that long, then one launch probes the wall and re-latches if it is
     still up. The wording names the window ("weekly" is the seven_day
     pool; the session and bare forms are five_hour), carried as
-    rateLimitType for the gate's log line.
+    rateLimitType for the gate's log line. A wording that names a model
+    family ("your Fable limit") suffixes it, so the gate scopes the wall
+    to that family instead of the whole account.
     """
-    rl_type = "seven_day" if "weekly" in text.lower() else "five_hour"
+    lowered = text.lower()
+    rl_type = "seven_day" if "weekly" in lowered else "five_hour"
+    family = next((f for f in MODEL_FAMILY_WORDS if re.search(rf"\b{f}\b", lowered)), "")
+    if family:
+        rl_type = f"{rl_type}_{MODEL_FAMILY_WORDS[family]}"
     write_usage_record(
         "wall.rejected",
         with_session_model({
@@ -213,6 +219,11 @@ def latch_usage_observation(rl_type, info):
     record, `<type>.rejected.json`, that no later warning overwrites.
     """
     global REJECTION_LATCHED
+    status = info.get("status")
+    if status == "rejected" and (not isinstance(rl_type, str) or rl_type in ("", "?")):
+        # The wall with no type: still the wall. The dispatcher scopes an
+        # unlisted type account-wide, the conservative read of an unknown one.
+        rl_type = UNTYPED_WALL
     if not isinstance(rl_type, str) or not rl_type:
         return
     # "?" is the sentinel default used when rateLimitType is absent from the
@@ -226,7 +237,6 @@ def latch_usage_observation(rl_type, info):
     if safe_type == "_":
         return
     util = info.get("utilization")
-    status = info.get("status")
     record = safe_type
     if status == "rejected":
         # The wall itself. A rejected event carries resetsAt and the type but
@@ -310,14 +320,28 @@ def note_throttle():
     touch_flag("FLEET_THROTTLE_FLAG")
 
 
-# The usage wall (5-hour / weekly quota). Distinct from the throttle above:
-# claude exits rc=1 here, not the rc=2 the wrapper's usage-limit cooldown was
-# keyed on, so without this flag a wall death read as an ordinary crash —
-# no cooldown, and for a target-bound dispatch an "abandoned" target. The
-# wording is what the CLI prints as the synthetic assistant text and the
-# result string ("You've hit your limit", "... your session limit",
-# "... your weekly limit").
-QUOTA_RESULT_RE = re.compile(r"hit your (?:\w+ )?limit", re.I)
+# The usage wall (5-hour / weekly / per-model quota). Distinct from the
+# throttle above: claude exits rc=1 here, not the rc=2 the wrapper's
+# usage-limit cooldown was keyed on, so without this flag a wall death read as
+# an ordinary crash — no cooldown, and for a target-bound dispatch an
+# "abandoned" target. The wording is what the CLI prints as the synthetic
+# assistant text and the result string ("You've hit your limit", "... your
+# session limit", "... your weekly limit", "... your Fable weekly limit",
+# "You've reached your usage limit", "Usage limit reached"). The throttle's
+# "(not your usage limit)" never matches: it has no verb before "your".
+QUOTA_RESULT_RE = re.compile(
+    r"\b(?:hit|reached|exceeded) your (?:[\w-]+ ){0,3}limit\b"
+    r"|\busage limit (?:reached|exceeded)\b",
+    re.I,
+)
+
+# Words in a wall's wording that name the model family it meters, mapped to
+# the family token the dispatcher's scope_of() reads from a type name.
+MODEL_FAMILY_WORDS = {"fable": "fable", "mythos": "fable", "opus": "opus",
+                      "sonnet": "sonnet", "haiku": "haiku"}
+
+# rateLimitType latched for a rejected event that names no type.
+UNTYPED_WALL = "untyped"
 
 
 def note_quota_rejection():

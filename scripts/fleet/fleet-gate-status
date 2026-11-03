@@ -173,9 +173,10 @@ try:
 except (TypeError, ValueError):
     quiet_window = {"state": "off", "leases": [], "busy": 0, "parked": 0}
 
-# Mirrors fleet-dispatcher's usage_gate_status() tables: threshold_for(),
-# BUILTIN_PER_TYPE_DEFAULTS, BUILTIN_MODEL_SCOPES, scope_of(). Keep in sync —
-# same semantics, same defaults.
+# Mirrors fleet-dispatcher's usage_gate_status() tables and rules:
+# threshold_for(), BUILTIN_PER_TYPE_DEFAULTS, BUILTIN_MODEL_SCOPES, scope_of(),
+# family_token(), a `rejected` record binding past its threshold, and the
+# family breaker. Keep in sync — same semantics, same defaults.
 BUILTIN_PER_TYPE_DEFAULTS = {
     "seven_day": 0.95,
     "five_hour": 0.80,
@@ -204,8 +205,25 @@ def scope_of(rate_limit_type):
         return override
     if t in BUILTIN_MODEL_SCOPES:
         return BUILTIN_MODEL_SCOPES[t]
-    suffix = t[len("seven_day_"):] if t.startswith("seven_day_") else ""
-    return suffix if suffix in MODEL_FAMILIES else "account"
+    return family_token(t) or "account"
+
+
+def family_token(rate_limit_type):
+    for token in (rate_limit_type or "").lower().split("_"):
+        family = "fable" if token == "mythos" else token
+        if family in MODEL_FAMILIES:
+            return family
+    return ""
+
+
+def family_of_model(model):
+    m = (model or "").lower()
+    if "mythos" in m:
+        return "fable"
+    for family in MODEL_FAMILIES:
+        if family in m:
+            return family
+    return ""
 
 
 def threshold_source(rate_limit_type):
@@ -276,6 +294,7 @@ now = int(time.time())
 
 observations = []
 breaches = []
+breakers = {}  # family -> {"rateLimitType", "age", "remaining"}, freshest wall
 
 if usage_dir.is_dir():
     for path in sorted(usage_dir.glob("*.json")):
@@ -316,7 +335,15 @@ if usage_dir.is_dir():
         thr, thr_fallback = threshold_source(rl_type)
 
         active = not is_stale and not is_past
-        breaching = active and util_f >= thr
+        rejected = data.get("status") == "rejected" and not str(rl_type).startswith("github")
+        breaching = active and (util_f >= thr or rejected)
+        hit_family = family_of_model(data.get("model")) if rejected else ""
+        if hit_family and isinstance(observed_at, (int, float)):
+            age = now - int(observed_at)
+            if 0 <= age < limit_delay and (
+                    hit_family not in breakers or age < breakers[hit_family]["age"]):
+                breakers[hit_family] = {"rateLimitType": rl_type, "age": age,
+                                        "remaining": limit_delay - age}
 
         obs = {
             "rateLimitType": rl_type,
@@ -453,6 +480,7 @@ if emit_json:
         "quiet_window": quiet_window,
         "breaching": breaches,
         "scoped_breaching": scoped_breaches,
+        "family_breakers": breakers,
         "observations": observations,
         "github": github_obs,
         "github_identities": identities,
@@ -522,6 +550,8 @@ else:
     def thr_text(o, cmp):
         thr_pct = int(round(o["threshold"] * 100))
         fallback = ", unlisted type, fallback threshold" if o["threshold_fallback"] else ""
+        if o["breaching"] and o["utilization"] < o["threshold"]:
+            return f"(the wall binds above its {thr_pct}% threshold{fallback})"
         return f"({cmp} {thr_pct}%{fallback})"
 
     def print_group(group):
@@ -543,12 +573,15 @@ else:
 
     print_group([o for o in anthropic_obs if o["scope"] == "account"])
     scoped_obs = [o for o in anthropic_obs if o["scope"] != "account"]
-    if scoped_obs:
-        walled = sorted({o["scope"] for o in scoped_breaches})
+    if scoped_obs or breakers:
+        walled = sorted({o["scope"] for o in scoped_breaches} | set(breakers))
         state = (f"CLOSED for {', '.join(walled)} (launches on those models deferred; "
                  "other models unaffected)") if walled else "OPEN"
         print(f"Model-scoped usage gate: {state}")
         print_group(scoped_obs)
+        for family, b in sorted(breakers.items()):
+            print(f"  breaker:   {family} hit the {b['rateLimitType']} wall {fmt_duration(b['age'])} ago"
+                  f" — holds {family} launches {fmt_duration(b['remaining'])} more")
 
 print()
 
