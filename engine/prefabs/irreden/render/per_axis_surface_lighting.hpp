@@ -10,7 +10,7 @@
 // (camera-iso per-axis canvas, no debug overlay) shades per-axis voxel faces
 // per output fragment at the continuous point on the face, so sun-shadow
 // edges on voxel receivers are smooth instead of stepping a whole face at a
-// time under camera yaw. Experimental; the per-fragment cost is unmeasured.
+// time under camera yaw. Work scales with output fragments and shadow candidates.
 // Read every frame, so it can change at runtime.
 //
 // The same switch admits both surface routes, cardinal and per-axis, on a

@@ -1,0 +1,15 @@
+
+11 inherited offender(s): over budget on HEAD already and not worsened here, so they are not this change's to fix.
+introduced:
+inherited:
+.claude/commands/role-worker.md: 313 lines, budget 303
+docs/agents/BUILD.md: 407 lines, budget 400
+docs/agents/FLEET.md: 484 lines, budget 474
+docs/agents/PLANNING-PROTOCOL.md: 405 lines, budget 400
+engine/audio/CLAUDE.md: 208 lines, budget 200
+engine/prefabs/irreden/render/CLAUDE.md: 210 lines, budget 200
+engine/prefabs/irreden/update/CLAUDE.md: 202 lines, budget 200
+engine/prefabs/irreden/voxel/CLAUDE.md: 210 lines, budget 200
+engine/render/CLAUDE.md: 208 lines, budget 200
+engine/video/CLAUDE.md: 208 lines, budget 200
+scripts/fleet/CLAUDE.md: 205 lines, budget 200

@@ -1041,17 +1041,45 @@ shadows-disabled images were RGB-identical between those paths, isolating the
 difference to shadows in this fixture.
 
 `shadow_rotation` holds 219 authored cells unchanged and captures shadows on/off
-at 20 poses, including 30 and 67 degrees, both sides of the 45-degree rebracket,
-both sides of 90 degrees, and exact return poses. Both paths passed 40 assertions
+at 40 poses, including 30 and 67 degrees, both sides of the 45-degree rebracket,
+near each cardinal, and exact return poses. Both paths passed 80 assertions
 and restored every repeated pose pixel-for-pixel in the measured world region.
 This did not reproduce persistent shadow state after an exact return. Accidental
 painting and returning near, rather than exactly to, a cardinal are separate
 ways a manual orbit can appear not to restore; neither is inferred from stills
 alone.
 
-Production shadow defaults are unchanged. The existing continuous receiver is
-still opt-in because its [wider-scene cost and remaining acceptance gates](
-../pr-screenshots/codex/peraxis-surface-lighting/README.md#measured-cost-and-decision)
-are unresolved. The new diagnostic measures repeatability and isolates a
-contribution; it is not a physical shadow oracle, a dense-scene benchmark, or a
-claim that the general rotation work tracked by issues 1271 and 4231 is finished.
+The editor enables continuous voxel surface lighting by default; an explicit
+`IR_PERAXIS_SURFACE_LIGHTING=0` retains the coarse comparison path. Other creations
+keep their existing default. `IRCanvasStress` uses an analytical SDF floor by
+default, so that floor already receives fragment-level shadows independently of
+the voxel setting. Its smaller default zoom also makes voxel-face stepping less
+visible. Adding its legacy per-axis screen-depth resolver to the editor would
+not change the voxel receiver's sample rate.
+
+The shared renderer resolves surface eligibility before both shadow production
+and lighting. Eligible per-axis presentation reads the sun geometry directly,
+so it skips the three sampled axis-shadow dispatches whose only lighting
+consumer is also skipped. Main-canvas shadow production, finite casting, debug
+views and fog/resource fallbacks remain intact. The visibility prepass remains
+disabled by default. Native correctness and measured cost are recorded in
+[the follow-up evidence](../pr-screenshots/codex/editor-region-tools-yaw-lighting/README.md).
+The diagnostic's repeatability check is not a physical shadow oracle; the
+separate source-face intersection oracle covers four oblique GRID views.
+The broader dense-scene, backend and continuous-rotation acceptance tracked by
+issues 1271 and 4231 remains open.
+
+## Box and Line on the construction grid
+
+Box and Line previously required an occupied voxel at both drag endpoints.
+They now start on the selected canvas's empty floor, preview while held and
+commit on release. A floor-started gesture stays on its original plane. A
+surface-started gesture can follow the selected part's occupied faces and
+continues on its initial face plane when the cursor leaves the surface. A
+foreign part cannot redirect that gesture or receive its edits.
+
+`region_tools` selects the actual toolbar controls at 30 and 67 degrees and
+checks preview without writes, exact committed cells, toolbar Undo and Escape.
+Its overlapping-part case requires the raw pick to hit the foreign slab while
+the selected canvas retains the floor plane and the foreign fingerprint stays
+unchanged. Navigation interruption still uses the shared ownership contract.

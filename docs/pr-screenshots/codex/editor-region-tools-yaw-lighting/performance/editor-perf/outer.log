@@ -1,0 +1,16 @@
+yaw30-zoom4-surface0-timing1 1 steady 13.11 gpu [('envelope', 4.813), ('commandBufferSpans', 4.813)]
+yaw30-zoom4-surface1-timing1 1 steady 10.15 gpu [('envelope', 4.69), ('commandBufferSpans', 4.69)]
+yaw30-zoom4-surface0-timing0 1 steady 14.73 gpu [('envelope', 4.794), ('commandBufferSpans', 4.794)]
+yaw30-zoom4-surface1-timing0 1 steady 15.25 gpu [('envelope', 4.763), ('commandBufferSpans', 4.763)]
+yaw67-zoom8-surface0-timing1 1 steady 9.88 gpu [('envelope', 4.67), ('commandBufferSpans', 4.67)]
+yaw67-zoom8-surface1-timing1 1 steady 11.68 gpu [('envelope', 4.641), ('commandBufferSpans', 4.641)]
+Traceback (most recent call last):
+  File "/private/tmp/irreden-yaw-lighting/profile_editor.py", line 159, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/private/tmp/irreden-yaw-lighting/profile_editor.py", line 136, in main
+    measure(root)
+    ~~~~~~~^^^^^^
+  File "/private/tmp/irreden-yaw-lighting/profile_editor.py", line 104, in measure
+    raise RuntimeError(f"{name} failed exit {result.returncode}")
+RuntimeError: yaw67-zoom8-surface0-timing0 failed exit 0

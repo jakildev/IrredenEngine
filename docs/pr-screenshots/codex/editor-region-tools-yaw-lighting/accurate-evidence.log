@@ -1,0 +1,243 @@
+[2026-11-02 22:21:46.234] [ClientLog] [info] GUI-ASSERT shot=0 label=shadow_rotation_pose0_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.000000 shadows=1 surface=1
+[2026-11-02 22:21:46.234] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose0_on yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:46.427] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001527.png
+[2026-11-02 22:21:46.588] [ClientLog] [info] GUI-ASSERT shot=1 label=shadow_rotation_pose0_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.000000 shadows=0 surface=1
+[2026-11-02 22:21:46.588] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose0_off yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:46.771] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001528.png
+[2026-11-02 22:21:46.996] [ClientLog] [info] GUI-ASSERT shot=2 label=shadow_rotation_pose1_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.004363 shadows=1 surface=1
+[2026-11-02 22:21:46.996] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose1_on yaw=0.0043632984 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:47.183] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001529.png
+[2026-11-02 22:21:47.343] [ClientLog] [info] GUI-ASSERT shot=3 label=shadow_rotation_pose1_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.004363 shadows=0 surface=1
+[2026-11-02 22:21:47.343] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose1_off yaw=0.0043632984 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:47.529] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001530.png
+[2026-11-02 22:21:47.689] [ClientLog] [info] GUI-ASSERT shot=4 label=shadow_rotation_pose2_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.523599 shadows=1 surface=1
+[2026-11-02 22:21:47.689] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose2_on yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:47.879] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001531.png
+[2026-11-02 22:21:48.039] [ClientLog] [info] GUI-ASSERT shot=5 label=shadow_rotation_pose2_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.523599 shadows=0 surface=1
+[2026-11-02 22:21:48.040] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose2_off yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:48.229] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001532.png
+[2026-11-02 22:21:48.389] [ClientLog] [info] GUI-ASSERT shot=6 label=shadow_rotation_pose3_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.781035 shadows=1 surface=1
+[2026-11-02 22:21:48.389] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose3_on yaw=0.7810347 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:48.579] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001533.png
+[2026-11-02 22:21:48.739] [ClientLog] [info] GUI-ASSERT shot=7 label=shadow_rotation_pose3_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.781035 shadows=0 surface=1
+[2026-11-02 22:21:48.739] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose3_off yaw=0.7810347 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:48.929] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001534.png
+[2026-11-02 22:21:49.089] [ClientLog] [info] GUI-ASSERT shot=8 label=shadow_rotation_pose4_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.785398 shadows=1 surface=1
+[2026-11-02 22:21:49.089] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose4_on yaw=0.78539824 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:49.288] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001535.png
+[2026-11-02 22:21:49.448] [ClientLog] [info] GUI-ASSERT shot=9 label=shadow_rotation_pose4_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.785398 shadows=0 surface=1
+[2026-11-02 22:21:49.448] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose4_off yaw=0.78539824 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:49.636] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001536.png
+[2026-11-02 22:21:49.796] [ClientLog] [info] GUI-ASSERT shot=10 label=shadow_rotation_pose5_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.789762 shadows=1 surface=1
+[2026-11-02 22:21:49.796] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose5_on yaw=0.78976154 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:49.985] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001537.png
+[2026-11-02 22:21:50.145] [ClientLog] [info] GUI-ASSERT shot=11 label=shadow_rotation_pose5_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.789762 shadows=0 surface=1
+[2026-11-02 22:21:50.145] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose5_off yaw=0.78976154 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:50.336] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001538.png
+[2026-11-02 22:21:50.496] [ClientLog] [info] GUI-ASSERT shot=12 label=shadow_rotation_pose6_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.169371 shadows=1 surface=1
+[2026-11-02 22:21:50.496] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose6_on yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:50.684] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001539.png
+[2026-11-02 22:21:50.844] [ClientLog] [info] GUI-ASSERT shot=13 label=shadow_rotation_pose6_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.169371 shadows=0 surface=1
+[2026-11-02 22:21:50.844] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose6_off yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:51.031] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001540.png
+[2026-11-02 22:21:51.191] [ClientLog] [info] GUI-ASSERT shot=14 label=shadow_rotation_pose7_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.566433 shadows=1 surface=1
+[2026-11-02 22:21:51.191] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose7_on yaw=1.5664332 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:51.378] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001541.png
+[2026-11-02 22:21:51.538] [ClientLog] [info] GUI-ASSERT shot=15 label=shadow_rotation_pose7_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.566433 shadows=0 surface=1
+[2026-11-02 22:21:51.538] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose7_off yaw=1.5664332 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:51.724] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001542.png
+[2026-11-02 22:21:51.884] [ClientLog] [info] GUI-ASSERT shot=16 label=shadow_rotation_pose8_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.570796 shadows=1 surface=1
+[2026-11-02 22:21:51.884] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose8_on yaw=1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:52.066] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001543.png
+[2026-11-02 22:21:52.226] [ClientLog] [info] GUI-ASSERT shot=17 label=shadow_rotation_pose8_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.570796 shadows=0 surface=1
+[2026-11-02 22:21:52.226] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose8_off yaw=1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:52.423] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001544.png
+[2026-11-02 22:21:52.584] [ClientLog] [info] GUI-ASSERT shot=18 label=shadow_rotation_pose9_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.575160 shadows=1 surface=1
+[2026-11-02 22:21:52.584] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose9_on yaw=1.5751598 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:52.769] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001545.png
+[2026-11-02 22:21:52.929] [ClientLog] [info] GUI-ASSERT shot=19 label=shadow_rotation_pose9_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.575160 shadows=0 surface=1
+[2026-11-02 22:21:52.929] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose9_off yaw=1.5751598 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:53.115] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001546.png
+[2026-11-02 22:21:53.275] [ClientLog] [info] GUI-ASSERT shot=20 label=shadow_rotation_pose10_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.570796 shadows=1 surface=1
+[2026-11-02 22:21:53.275] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose10_on yaw=1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:53.462] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001547.png
+[2026-11-02 22:21:53.621] [ClientLog] [info] GUI-ASSERT shot=21 label=shadow_rotation_pose10_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.570796 shadows=0 surface=1
+[2026-11-02 22:21:53.621] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose10_off yaw=1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:53.806] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001548.png
+[2026-11-02 22:21:53.966] [ClientLog] [info] GUI-ASSERT shot=22 label=shadow_rotation_pose11_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.566433 shadows=1 surface=1
+[2026-11-02 22:21:53.966] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose11_on yaw=1.5664332 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:54.159] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001549.png
+[2026-11-02 22:21:54.320] [ClientLog] [info] GUI-ASSERT shot=23 label=shadow_rotation_pose11_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.566433 shadows=0 surface=1
+[2026-11-02 22:21:54.320] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose11_off yaw=1.5664332 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:54.507] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001550.png
+[2026-11-02 22:21:54.667] [ClientLog] [info] GUI-ASSERT shot=24 label=shadow_rotation_pose12_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.169371 shadows=1 surface=1
+[2026-11-02 22:21:54.667] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose12_on yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:54.854] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001551.png
+[2026-11-02 22:21:55.014] [ClientLog] [info] GUI-ASSERT shot=25 label=shadow_rotation_pose12_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=1.169371 shadows=0 surface=1
+[2026-11-02 22:21:55.014] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose12_off yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:55.202] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001552.png
+[2026-11-02 22:21:55.362] [ClientLog] [info] GUI-ASSERT shot=26 label=shadow_rotation_pose13_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.789762 shadows=1 surface=1
+[2026-11-02 22:21:55.362] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose13_on yaw=0.78976154 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:55.551] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001553.png
+[2026-11-02 22:21:55.711] [ClientLog] [info] GUI-ASSERT shot=27 label=shadow_rotation_pose13_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.789762 shadows=0 surface=1
+[2026-11-02 22:21:55.711] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose13_off yaw=0.78976154 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:55.900] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001554.png
+[2026-11-02 22:21:56.060] [ClientLog] [info] GUI-ASSERT shot=28 label=shadow_rotation_pose14_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.785398 shadows=1 surface=1
+[2026-11-02 22:21:56.060] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose14_on yaw=0.78539824 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:56.247] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001555.png
+[2026-11-02 22:21:56.407] [ClientLog] [info] GUI-ASSERT shot=29 label=shadow_rotation_pose14_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.785398 shadows=0 surface=1
+[2026-11-02 22:21:56.407] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose14_off yaw=0.78539824 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:56.598] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001556.png
+[2026-11-02 22:21:56.758] [ClientLog] [info] GUI-ASSERT shot=30 label=shadow_rotation_pose15_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.781035 shadows=1 surface=1
+[2026-11-02 22:21:56.758] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose15_on yaw=0.7810347 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:56.946] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001557.png
+[2026-11-02 22:21:57.106] [ClientLog] [info] GUI-ASSERT shot=31 label=shadow_rotation_pose15_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.781035 shadows=0 surface=1
+[2026-11-02 22:21:57.106] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose15_off yaw=0.7810347 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:57.294] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001558.png
+[2026-11-02 22:21:57.454] [ClientLog] [info] GUI-ASSERT shot=32 label=shadow_rotation_pose16_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.523599 shadows=1 surface=1
+[2026-11-02 22:21:57.454] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose16_on yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:57.641] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001559.png
+[2026-11-02 22:21:57.802] [ClientLog] [info] GUI-ASSERT shot=33 label=shadow_rotation_pose16_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.523599 shadows=0 surface=1
+[2026-11-02 22:21:57.802] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose16_off yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:57.991] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001560.png
+[2026-11-02 22:21:58.151] [ClientLog] [info] GUI-ASSERT shot=34 label=shadow_rotation_pose17_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.004363 shadows=1 surface=1
+[2026-11-02 22:21:58.151] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose17_on yaw=0.0043632984 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:58.340] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001561.png
+[2026-11-02 22:21:58.500] [ClientLog] [info] GUI-ASSERT shot=35 label=shadow_rotation_pose17_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.004363 shadows=0 surface=1
+[2026-11-02 22:21:58.500] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose17_off yaw=0.0043632984 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:58.690] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001562.png
+[2026-11-02 22:21:58.849] [ClientLog] [info] GUI-ASSERT shot=36 label=shadow_rotation_pose18_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.000000 shadows=1 surface=1
+[2026-11-02 22:21:58.849] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose18_on yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:59.036] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001563.png
+[2026-11-02 22:21:59.196] [ClientLog] [info] GUI-ASSERT shot=37 label=shadow_rotation_pose18_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.000000 shadows=0 surface=1
+[2026-11-02 22:21:59.196] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose18_off yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:59.386] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001564.png
+[2026-11-02 22:21:59.546] [ClientLog] [info] GUI-ASSERT shot=38 label=shadow_rotation_pose19_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.000000 shadows=1 surface=1
+[2026-11-02 22:21:59.546] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose19_on yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:21:59.734] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001565.png
+[2026-11-02 22:21:59.895] [ClientLog] [info] GUI-ASSERT shot=39 label=shadow_rotation_pose19_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.000000 shadows=0 surface=1
+[2026-11-02 22:21:59.895] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose19_off yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:00.082] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001566.png
+[2026-11-02 22:22:00.242] [ClientLog] [info] GUI-ASSERT shot=40 label=shadow_rotation_pose20_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=2.356195 shadows=1 surface=1
+[2026-11-02 22:22:00.242] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose20_on yaw=2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:00.431] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001567.png
+[2026-11-02 22:22:00.591] [ClientLog] [info] GUI-ASSERT shot=41 label=shadow_rotation_pose20_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=2.356195 shadows=0 surface=1
+[2026-11-02 22:22:00.591] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose20_off yaw=2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:00.781] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001568.png
+[2026-11-02 22:22:00.941] [ClientLog] [info] GUI-ASSERT shot=42 label=shadow_rotation_pose21_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=3.137229 shadows=1 surface=1
+[2026-11-02 22:22:00.941] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose21_on yaw=3.1372292 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:01.133] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001569.png
+[2026-11-02 22:22:01.293] [ClientLog] [info] GUI-ASSERT shot=43 label=shadow_rotation_pose21_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=3.137229 shadows=0 surface=1
+[2026-11-02 22:22:01.293] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose21_off yaw=3.1372292 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:01.481] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001570.png
+[2026-11-02 22:22:01.641] [ClientLog] [info] GUI-ASSERT shot=44 label=shadow_rotation_pose22_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-3.141493 shadows=1 surface=1
+[2026-11-02 22:22:01.641] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose22_on yaw=-3.1414928 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:01.827] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001571.png
+[2026-11-02 22:22:01.988] [ClientLog] [info] GUI-ASSERT shot=45 label=shadow_rotation_pose22_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-3.141493 shadows=0 surface=1
+[2026-11-02 22:22:01.988] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose22_off yaw=-3.1414928 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:02.176] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001572.png
+[2026-11-02 22:22:02.336] [ClientLog] [info] GUI-ASSERT shot=46 label=shadow_rotation_pose23_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-3.137229 shadows=1 surface=1
+[2026-11-02 22:22:02.336] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose23_on yaw=-3.1372292 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:02.524] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001573.png
+[2026-11-02 22:22:02.684] [ClientLog] [info] GUI-ASSERT shot=47 label=shadow_rotation_pose23_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-3.137229 shadows=0 surface=1
+[2026-11-02 22:22:02.684] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose23_off yaw=-3.1372292 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:02.875] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001574.png
+[2026-11-02 22:22:03.035] [ClientLog] [info] GUI-ASSERT shot=48 label=shadow_rotation_pose24_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-2.356195 shadows=1 surface=1
+[2026-11-02 22:22:03.035] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose24_on yaw=-2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:03.223] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001575.png
+[2026-11-02 22:22:03.383] [ClientLog] [info] GUI-ASSERT shot=49 label=shadow_rotation_pose24_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-2.356195 shadows=0 surface=1
+[2026-11-02 22:22:03.383] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose24_off yaw=-2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:03.574] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001576.png
+[2026-11-02 22:22:03.734] [ClientLog] [info] GUI-ASSERT shot=50 label=shadow_rotation_pose25_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.575159 shadows=1 surface=1
+[2026-11-02 22:22:03.734] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose25_on yaw=-1.5751594 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:03.924] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001577.png
+[2026-11-02 22:22:04.084] [ClientLog] [info] GUI-ASSERT shot=51 label=shadow_rotation_pose25_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.575159 shadows=0 surface=1
+[2026-11-02 22:22:04.084] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose25_off yaw=-1.5751594 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:04.272] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001578.png
+[2026-11-02 22:22:04.432] [ClientLog] [info] GUI-ASSERT shot=52 label=shadow_rotation_pose26_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.570796 shadows=1 surface=1
+[2026-11-02 22:22:04.432] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose26_on yaw=-1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:04.618] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001579.png
+[2026-11-02 22:22:04.778] [ClientLog] [info] GUI-ASSERT shot=53 label=shadow_rotation_pose26_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.570796 shadows=0 surface=1
+[2026-11-02 22:22:04.778] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose26_off yaw=-1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:04.965] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001580.png
+[2026-11-02 22:22:05.125] [ClientLog] [info] GUI-ASSERT shot=54 label=shadow_rotation_pose27_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.566433 shadows=1 surface=1
+[2026-11-02 22:22:05.125] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose27_on yaw=-1.5664331 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:05.312] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001581.png
+[2026-11-02 22:22:05.473] [ClientLog] [info] GUI-ASSERT shot=55 label=shadow_rotation_pose27_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.566433 shadows=0 surface=1
+[2026-11-02 22:22:05.473] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose27_off yaw=-1.5664331 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:05.661] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001582.png
+[2026-11-02 22:22:05.821] [ClientLog] [info] GUI-ASSERT shot=56 label=shadow_rotation_pose28_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-0.785399 shadows=1 surface=1
+[2026-11-02 22:22:05.821] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose28_on yaw=-0.7853987 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:06.012] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001583.png
+[2026-11-02 22:22:06.172] [ClientLog] [info] GUI-ASSERT shot=57 label=shadow_rotation_pose28_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-0.785399 shadows=0 surface=1
+[2026-11-02 22:22:06.172] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose28_off yaw=-0.7853987 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:06.360] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001584.png
+[2026-11-02 22:22:06.520] [ClientLog] [info] GUI-ASSERT shot=58 label=shadow_rotation_pose29_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-0.401426 shadows=1 surface=1
+[2026-11-02 22:22:06.520] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose29_on yaw=-0.4014256 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:06.711] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001585.png
+[2026-11-02 22:22:06.871] [ClientLog] [info] GUI-ASSERT shot=59 label=shadow_rotation_pose29_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-0.401426 shadows=0 surface=1
+[2026-11-02 22:22:06.871] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose29_off yaw=-0.4014256 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:07.062] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001586.png
+[2026-11-02 22:22:07.222] [ClientLog] [info] GUI-ASSERT shot=60 label=shadow_rotation_pose30_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-0.785399 shadows=1 surface=1
+[2026-11-02 22:22:07.222] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose30_on yaw=-0.7853987 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:07.411] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001587.png
+[2026-11-02 22:22:07.571] [ClientLog] [info] GUI-ASSERT shot=61 label=shadow_rotation_pose30_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-0.785399 shadows=0 surface=1
+[2026-11-02 22:22:07.571] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose30_off yaw=-0.7853987 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:07.759] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001588.png
+[2026-11-02 22:22:07.919] [ClientLog] [info] GUI-ASSERT shot=62 label=shadow_rotation_pose31_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.566433 shadows=1 surface=1
+[2026-11-02 22:22:07.919] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose31_on yaw=-1.5664331 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:08.107] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001589.png
+[2026-11-02 22:22:08.267] [ClientLog] [info] GUI-ASSERT shot=63 label=shadow_rotation_pose31_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.566433 shadows=0 surface=1
+[2026-11-02 22:22:08.267] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose31_off yaw=-1.5664331 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:08.454] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001590.png
+[2026-11-02 22:22:08.614] [ClientLog] [info] GUI-ASSERT shot=64 label=shadow_rotation_pose32_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.570796 shadows=1 surface=1
+[2026-11-02 22:22:08.614] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose32_on yaw=-1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:08.802] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001591.png
+[2026-11-02 22:22:08.962] [ClientLog] [info] GUI-ASSERT shot=65 label=shadow_rotation_pose32_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.570796 shadows=0 surface=1
+[2026-11-02 22:22:08.962] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose32_off yaw=-1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:09.147] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001592.png
+[2026-11-02 22:22:09.307] [ClientLog] [info] GUI-ASSERT shot=66 label=shadow_rotation_pose33_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.575159 shadows=1 surface=1
+[2026-11-02 22:22:09.308] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose33_on yaw=-1.5751594 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:09.496] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001593.png
+[2026-11-02 22:22:09.656] [ClientLog] [info] GUI-ASSERT shot=67 label=shadow_rotation_pose33_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-1.575159 shadows=0 surface=1
+[2026-11-02 22:22:09.656] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose33_off yaw=-1.5751594 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:09.842] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001594.png
+[2026-11-02 22:22:10.002] [ClientLog] [info] GUI-ASSERT shot=68 label=shadow_rotation_pose34_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-2.356195 shadows=1 surface=1
+[2026-11-02 22:22:10.002] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose34_on yaw=-2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:10.196] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001595.png
+[2026-11-02 22:22:10.356] [ClientLog] [info] GUI-ASSERT shot=69 label=shadow_rotation_pose34_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-2.356195 shadows=0 surface=1
+[2026-11-02 22:22:10.356] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose34_off yaw=-2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:10.545] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001596.png
+[2026-11-02 22:22:10.704] [ClientLog] [info] GUI-ASSERT shot=70 label=shadow_rotation_pose35_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-3.137229 shadows=1 surface=1
+[2026-11-02 22:22:10.704] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose35_on yaw=-3.1372292 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:10.893] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001597.png
+[2026-11-02 22:22:11.053] [ClientLog] [info] GUI-ASSERT shot=71 label=shadow_rotation_pose35_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-3.137229 shadows=0 surface=1
+[2026-11-02 22:22:11.053] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose35_off yaw=-3.1372292 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:11.240] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001598.png
+[2026-11-02 22:22:11.400] [ClientLog] [info] GUI-ASSERT shot=72 label=shadow_rotation_pose36_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-3.141493 shadows=1 surface=1
+[2026-11-02 22:22:11.400] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose36_on yaw=-3.1414928 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:11.588] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001599.png
+[2026-11-02 22:22:11.748] [ClientLog] [info] GUI-ASSERT shot=73 label=shadow_rotation_pose36_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=-3.141493 shadows=0 surface=1
+[2026-11-02 22:22:11.748] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose36_off yaw=-3.1414928 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:11.933] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001600.png
+[2026-11-02 22:22:12.093] [ClientLog] [info] GUI-ASSERT shot=74 label=shadow_rotation_pose37_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=3.137229 shadows=1 surface=1
+[2026-11-02 22:22:12.093] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose37_on yaw=3.1372292 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:12.285] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001601.png
+[2026-11-02 22:22:12.445] [ClientLog] [info] GUI-ASSERT shot=75 label=shadow_rotation_pose37_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=3.137229 shadows=0 surface=1
+[2026-11-02 22:22:12.445] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose37_off yaw=3.1372292 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:12.635] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001602.png
+[2026-11-02 22:22:12.796] [ClientLog] [info] GUI-ASSERT shot=76 label=shadow_rotation_pose38_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=2.356195 shadows=1 surface=1
+[2026-11-02 22:22:12.796] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose38_on yaw=2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:12.983] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001603.png
+[2026-11-02 22:22:13.143] [ClientLog] [info] GUI-ASSERT shot=77 label=shadow_rotation_pose38_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=2.356195 shadows=0 surface=1
+[2026-11-02 22:22:13.143] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose38_off yaw=2.3561947 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:13.332] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001604.png
+[2026-11-02 22:22:13.492] [ClientLog] [info] GUI-ASSERT shot=78 label=shadow_rotation_pose39_on kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.000000 shadows=1 surface=1
+[2026-11-02 22:22:13.492] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose39_on yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:13.679] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001605.png
+[2026-11-02 22:22:13.839] [ClientLog] [info] GUI-ASSERT shot=79 label=shadow_rotation_pose39_off kind=PREDICATE target=0 name=fixed_geometry_and_shadow_pose result=PASS actual=active=219 hash=4199355474554165958 yaw=0.000000 shadows=0 surface=1
+[2026-11-02 22:22:13.839] [ClientLog] [info] CaptureCamera: label=shadow_rotation_pose39_off yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:22:14.026] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001606.png
+ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0
+[gui-verify] 80/80 assertions passed
+[gui-verify] 0 layout finding(s) over 80 shot(s)

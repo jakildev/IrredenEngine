@@ -16,8 +16,15 @@ from pathlib import Path
 from PIL import Image, ImageChops
 
 YAWS = (0, .25, 30, 44.75, 45, 45.25, 67, 89.75, 90, 90.25,
-        90, 89.75, 67, 45.25, 45, 44.75, 30, .25, 0, 0)
+        90, 89.75, 67, 45.25, 45, 44.75, 30, .25, 0, 0,
+        135, 179.75, 180, 180.25, 225, 269.75, 270, 270.25, 315, 337,
+        315, 270.25, 270, 269.75, 225, 180.25, 180, 179.75, 135, 0)
 LABEL = r"shadow_rotation_pose(\d+)_(on|off)\b"
+
+
+def yaw_matches(radians, degrees):
+    # Camera pitch recovery reserves 1e-4 radians above -pi at the wrap boundary.
+    return abs(math.remainder(radians - math.radians(degrees), math.tau)) < .0002
 
 
 def difference_mask(first, second, threshold=0):
@@ -51,7 +58,7 @@ def parse_run(log, directory, surface):
                     active, fingerprint, yaw, shadows, flag = values.groups()
                     if (int(active) != 219 or int(shadows) != (key[1] == "on") or
                             int(flag) != surface or
-                            abs(float(yaw) - math.radians(YAWS[key[0]])) > .0001):
+                            not yaw_matches(float(yaw), YAWS[key[0]])):
                         raise ValueError(f"wrong authored scene or render state at {key}")
                     fingerprints[key] = fingerprint
             if "CaptureCamera:" in line:
@@ -74,7 +81,7 @@ def parse_run(log, directory, surface):
     if "CLEAN" not in log or "[gui-verify] 0 layout finding(s)" not in log:
         raise ValueError("run lacks clean shutdown and zero-layout proof")
     for key, pose in camera.items():
-        if abs(pose[0] - math.radians(YAWS[key[0]])) > .0001:
+        if not yaw_matches(pose[0], YAWS[key[0]]):
             raise ValueError(f"capture yaw differs at {key}")
         if pose[1:] != camera[0, "on"][1:]:
             raise ValueError(f"zoom, pan, or subdivision changed at {key}")

@@ -1,0 +1,5 @@
+-- Header convention checks scanned 796 header file(s); 0 file(s) baselined for header-global violations, 1 for anonymous namespaces.
+-- Metal kernel registry check scanned 53 compute kernel(s) against threadgroupSizeForFunctionName.
+-- Metal scratch-consumer check scanned 53 compute kernel(s) against functionUsesImageAtomicScratch (11 declare the image-atomic scratch at buffer slot 16).
+-- Save inventory population check scanned 205 component name(s) against 205 decision(s) and 205 tuple entry name(s).
+-- GLSL reserved-word check scanned 148 shader file(s).

@@ -1,0 +1,78 @@
+[2026-11-02 22:25:48.319] [ClientLog] [info] GUI-ASSERT shot=0 label=region_tools_0_box_select_hover kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=0.523599
+[2026-11-02 22:25:48.319] [ClientLog] [info] CaptureCamera: label=region_tools_0_box_select_hover yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:48.508] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001687.png
+[2026-11-02 22:25:48.619] [ClientLog] [info] GUI-ASSERT shot=1 label=region_tools_0_box_held kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=1 undo=0 yaw=0.523599
+[2026-11-02 22:25:48.619] [ClientLog] [info] CaptureCamera: label=region_tools_0_box_held yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:48.800] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001688.png
+[2026-11-02 22:25:48.886] [ClientLog] [info] GUI-ASSERT shot=2 label=region_tools_0_box_commit kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=24 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=1 yaw=0.523599
+[2026-11-02 22:25:48.886] [ClientLog] [info] CaptureCamera: label=region_tools_0_box_commit yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:49.078] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001689.png
+[2026-11-02 22:25:49.171] [ClientLog] [info] GUI-ASSERT shot=3 label=region_tools_0_box_undo kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=0.523599
+[2026-11-02 22:25:49.171] [ClientLog] [info] CaptureCamera: label=region_tools_0_box_undo yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:49.359] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001690.png
+[2026-11-02 22:25:49.503] [ClientLog] [info] GUI-ASSERT shot=4 label=region_tools_0_box_cancel kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=0.523599
+[2026-11-02 22:25:49.503] [ClientLog] [info] CaptureCamera: label=region_tools_0_box_cancel yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:49.686] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001691.png
+[2026-11-02 22:25:49.924] [ClientLog] [info] GUI-ASSERT shot=5 label=region_tools_1_line_select_hover kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=0.523599
+[2026-11-02 22:25:49.924] [ClientLog] [info] CaptureCamera: label=region_tools_1_line_select_hover yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:50.124] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001692.png
+[2026-11-02 22:25:50.226] [ClientLog] [info] GUI-ASSERT shot=6 label=region_tools_1_line_held kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=1 undo=0 yaw=0.523599
+[2026-11-02 22:25:50.226] [ClientLog] [info] CaptureCamera: label=region_tools_1_line_held yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:50.417] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001693.png
+[2026-11-02 22:25:50.494] [ClientLog] [info] GUI-ASSERT shot=7 label=region_tools_1_line_commit kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=6 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=1 yaw=0.523599
+[2026-11-02 22:25:50.494] [ClientLog] [info] CaptureCamera: label=region_tools_1_line_commit yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:50.679] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001694.png
+[2026-11-02 22:25:50.781] [ClientLog] [info] GUI-ASSERT shot=8 label=region_tools_1_line_undo kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=0.523599
+[2026-11-02 22:25:50.781] [ClientLog] [info] CaptureCamera: label=region_tools_1_line_undo yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:50.965] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001695.png
+[2026-11-02 22:25:51.144] [ClientLog] [info] GUI-ASSERT shot=9 label=region_tools_1_line_cancel kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=0.523599
+[2026-11-02 22:25:51.144] [ClientLog] [info] CaptureCamera: label=region_tools_1_line_cancel yaw=0.5235989 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:51.344] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001696.png
+[2026-11-02 22:25:51.463] [ClientLog] [info] GUI-ASSERT shot=10 label=region_tools_2_box_select_hover kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:51.463] [ClientLog] [info] CaptureCamera: label=region_tools_2_box_select_hover yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:51.644] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001697.png
+[2026-11-02 22:25:51.763] [ClientLog] [info] GUI-ASSERT shot=11 label=region_tools_2_box_held kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=1 undo=0 yaw=1.169371
+[2026-11-02 22:25:51.763] [ClientLog] [info] CaptureCamera: label=region_tools_2_box_held yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:51.948] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001698.png
+[2026-11-02 22:25:52.088] [ClientLog] [info] GUI-ASSERT shot=12 label=region_tools_2_box_commit kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=24 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=1 yaw=1.169371
+[2026-11-02 22:25:52.088] [ClientLog] [info] CaptureCamera: label=region_tools_2_box_commit yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:52.281] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001699.png
+[2026-11-02 22:25:52.374] [ClientLog] [info] GUI-ASSERT shot=13 label=region_tools_2_box_undo kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:52.374] [ClientLog] [info] CaptureCamera: label=region_tools_2_box_undo yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:52.558] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001700.png
+[2026-11-02 22:25:52.710] [ClientLog] [info] GUI-ASSERT shot=14 label=region_tools_2_box_cancel kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:52.710] [ClientLog] [info] CaptureCamera: label=region_tools_2_box_cancel yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:52.898] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001701.png
+[2026-11-02 22:25:53.025] [ClientLog] [info] GUI-ASSERT shot=15 label=region_tools_3_line_select_hover kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:53.025] [ClientLog] [info] CaptureCamera: label=region_tools_3_line_select_hover yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:53.210] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001702.png
+[2026-11-02 22:25:53.320] [ClientLog] [info] GUI-ASSERT shot=16 label=region_tools_3_line_held kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=1 undo=0 yaw=1.169371
+[2026-11-02 22:25:53.320] [ClientLog] [info] CaptureCamera: label=region_tools_3_line_held yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:53.504] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001703.png
+[2026-11-02 22:25:53.590] [ClientLog] [info] GUI-ASSERT shot=17 label=region_tools_3_line_commit kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=6 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=1 yaw=1.169371
+[2026-11-02 22:25:53.590] [ClientLog] [info] CaptureCamera: label=region_tools_3_line_commit yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:53.776] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001704.png
+[2026-11-02 22:25:53.878] [ClientLog] [info] GUI-ASSERT shot=18 label=region_tools_3_line_undo kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:53.878] [ClientLog] [info] CaptureCamera: label=region_tools_3_line_undo yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:54.068] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001705.png
+[2026-11-02 22:25:54.220] [ClientLog] [info] GUI-ASSERT shot=19 label=region_tools_3_line_cancel kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:54.220] [ClientLog] [info] CaptureCamera: label=region_tools_3_line_cancel yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:54.407] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001706.png
+[2026-11-02 22:25:54.534] [ClientLog] [info] GUI-ASSERT shot=20 label=region_tools_4_box_select_hover kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:54.534] [ClientLog] [info] CaptureCamera: label=region_tools_4_box_select_hover yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:54.723] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001707.png
+[2026-11-02 22:25:54.833] [ClientLog] [info] GUI-ASSERT shot=21 label=region_tools_4_box_held kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=1 undo=0 yaw=1.169371
+[2026-11-02 22:25:54.833] [ClientLog] [info] CaptureCamera: label=region_tools_4_box_held yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:55.023] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001708.png
+[2026-11-02 22:25:55.108] [ClientLog] [info] GUI-ASSERT shot=22 label=region_tools_4_box_commit kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=24 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=1 yaw=1.169371
+[2026-11-02 22:25:55.108] [ClientLog] [info] CaptureCamera: label=region_tools_4_box_commit yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:55.298] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001709.png
+[2026-11-02 22:25:55.417] [ClientLog] [info] GUI-ASSERT shot=23 label=region_tools_4_box_undo kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:55.417] [ClientLog] [info] CaptureCamera: label=region_tools_4_box_undo yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:55.607] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001710.png
+[2026-11-02 22:25:55.759] [ClientLog] [info] GUI-ASSERT shot=24 label=region_tools_4_box_cancel kind=PREDICATE target=0 name=ui_region_preview_commit_undo result=PASS actual=cells=0 exact=1 tool=1 foreign=1 preview=1 dragging=0 undo=0 yaw=1.169371
+[2026-11-02 22:25:55.760] [ClientLog] [info] CaptureCamera: label=region_tools_4_box_cancel yaw=1.1693709 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:25:55.950] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001711.png
+ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0
+[gui-verify] 25/25 assertions passed
+[gui-verify] 0 layout finding(s) over 25 shot(s)
