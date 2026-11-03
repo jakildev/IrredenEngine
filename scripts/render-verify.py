@@ -961,15 +961,19 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     # Each is a separate capture with its own demo args (e.g. `--only compare`)
     # and gated reference subset. The default-pass captures are already
     # consumed (evaluated) above, so it is safe for the pass below to rmtree
-    # shots_dir. A pass whose backend has not blessed ANY of its references is
-    # skipped wholesale (no demo run) — the cross-host reference handoff may
-    # still be in flight; a per-shot missing reference becomes a non-fatal
-    # `skip` row rather than failing the run.
+    # shots_dir. A pass whose backend has not blessed ANY of its references and
+    # carries no structural gate is skipped wholesale (no demo run) — the
+    # cross-host reference handoff may still be in flight. A pass with a
+    # structural entry always runs: those gates are reference-free, and a
+    # per-shot missing pixel reference becomes a non-fatal `skip` row rather
+    # than failing the run.
     for extra in extra_runs:
         gated = extra["shots"]
         pixel_shots = [s for s in gated if s not in extra["structural_only"]]
-        if pixel_shots and not any((ref_dir / f"{s}.png").exists()
-                                   for s in pixel_shots):
+        has_structural_gate = any(extra["structural"].get(s) for s in gated)
+        if (pixel_shots and not has_structural_gate
+                and not any((ref_dir / f"{s}.png").exists()
+                            for s in pixel_shots)):
             print(f"[render-verify] extra run '{extra['name']}' skipped — no "
                   f"{backend} references for {', '.join(pixel_shots)} yet "
                   f"(bless with --update-references on this host).")
