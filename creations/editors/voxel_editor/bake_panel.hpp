@@ -15,7 +15,7 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kBakePanelPos{130, 342};
+constexpr IRMath::ivec2 kBakePanelPos{218, 522};
 constexpr IRMath::ivec2 kBakePanelSize{120, 156};
 
 constexpr IRMath::SDF::ShapeType kBakeShapeTypes[] = {

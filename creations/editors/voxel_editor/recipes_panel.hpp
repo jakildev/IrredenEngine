@@ -25,7 +25,7 @@ namespace IRVoxelEditor {
 constexpr int kRecipeParamRowsPerPage = 3;
 constexpr int kMaxRecipeParams = 16;
 
-constexpr IRMath::ivec2 kRecipesPanelPos{682, 240};
+constexpr IRMath::ivec2 kRecipesPanelPos{218, 366};
 constexpr IRMath::ivec2 kRecipesPanelSize{120, 150};
 
 constexpr IRMath::ivec2 kRecipeListPos{kRecipesPanelPos.x + 4, kRecipesPanelPos.y + 18};
@@ -77,11 +77,7 @@ constexpr SliderGeometry recipeParamSliderGeometry(int paramIndex) {
 
 // Top-left of the @p index-th module panel, stacked below RECIPES.
 constexpr IRMath::ivec2 modulePanelPos(int index) {
-    return IRMath::ivec2(
-        kRecipesPanelPos.x,
-        kRecipesPanelPos.y + kRecipesPanelSize.y + kModulePanelGap +
-            index * (kModulePanelSize.y + kModulePanelGap)
-    );
+    return IRMath::ivec2(356, 456 + index * (kModulePanelSize.y + kModulePanelGap));
 }
 
 // Whether @p guiTrixel lies in the half-open box [pos, pos + size), the

@@ -11,7 +11,7 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kFocusButtonPos{532, 78};
+constexpr IRMath::ivec2 kFocusButtonPos{862, 60};
 constexpr IRMath::ivec2 kFocusButtonSize{96, 18};
 constexpr float kWorkareaTop = 106.0f;
 constexpr float kWorkareaGutter = 12.0f;

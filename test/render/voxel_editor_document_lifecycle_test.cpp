@@ -131,12 +131,17 @@ TEST(VoxelEditorDocumentPanel, ConfirmationControlsAndTargetsSurviveModalDecisio
         }
     }
     EXPECT_EQ(panel.poll(), DocumentPanelAction::CONFIRM_OVERWRITE);
-    EXPECT_TRUE(panel.containsCursor({20, 120}));
+    EXPECT_TRUE(panel.containsCursor({20, 12}));
+    EXPECT_TRUE(panel.containsCursor(IRMath::vec2(kDocumentModalPos + IRMath::ivec2(10))));
+    EXPECT_FALSE(panel.containsCursor({20, 120}));
     EXPECT_FALSE(panel.containsCursor({20, 240}));
     document.cancelPending();
     panel.update(document);
     EXPECT_EQ(panel.poll(), DocumentPanelAction::NONE);
     EXPECT_EQ(panel.target(), target);
+    EXPECT_FALSE(panel.containsCursor(IRMath::vec2(kDocumentModalPos + IRMath::ivec2(10))));
+    IRPrefab::Widget::setVisible(panel.widgets().front(), false);
+    EXPECT_FALSE(panel.containsCursor({20, 12}));
 }
 
 TEST(VoxelEditorDocumentPanel, UntitledPendingActionCanSupplySaveAsTarget) {

@@ -17,7 +17,7 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kPartSizePanelPos{4, 598};
+constexpr IRMath::ivec2 kPartSizePanelPos{4, 660};
 constexpr IRMath::ivec2 kPartSizePanelSize{120, 96};
 
 constexpr int kPartSizeAxisCount = 3;

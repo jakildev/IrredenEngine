@@ -85,6 +85,7 @@
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
+#include <irreden/render/systems/system_widget_render_image.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_color_swatch.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
@@ -113,9 +114,12 @@
 // scripted drag aims at the live layout.
 #include "anim_panel.hpp"
 #include "array_panel.hpp"
+#include "array_preview.hpp"
 #include "parts_panel.hpp"
 #include "panel_layout.hpp"
 #include "lod_panel.hpp"
+#include "lod_preview.hpp"
+#include "lod_comparison_panel.hpp"
 #include "loft_panel.hpp"
 #include "part_size_panel.hpp"
 
@@ -124,6 +128,7 @@
 // Paint palette colours + the GUI-canvas geometry of the swatch grid, shared
 // with the session builder so a scripted swatch click aims at the live layout.
 #include "palette.hpp"
+#include "palette_panel.hpp"
 
 // Creation-module host (--module) and the RECIPES / module-panel geometry.
 #include "bake_panel.hpp"
@@ -297,6 +302,8 @@ struct EditorState {
     IREntity::EntityId focusButton_ = IREntity::kNullEntity;
     int initialFocusDelay_ = 0;
     std::string documentStatus_;
+    std::unordered_map<IREntity::EntityId, bool> documentWidgetVisibility_;
+    IREntity::EntityId helpPanel_ = IREntity::kNullEntity;
     IREntity::EntityId documentStatusLabel_ = IREntity::kNullEntity;
     Workspace workspace_ = Workspace::ALL;
     std::vector<IREntity::EntityId> workspaceButtons_;
@@ -308,6 +315,27 @@ struct EditorState {
     std::vector<IREntity::EntityId> paletteSwatches_;
     IREntity::EntityId palettePanel_ = IREntity::kNullEntity;
     int activeSwatchIdx_ = 0;
+    EditorPalette palette_;
+    PalettePanel paletteUi_;
+    LodWorkflowProbe lodWorkflow_;
+    bool lodWorkflowPrepared_ = false;
+    LodPreviewSession lodPreview_;
+    LodCapturePlan lodCapture_;
+    LodComparisonPanel lodPreviewPanel_;
+    EditorStageView lodView_;
+    EditorStageView lodStageView_;
+    IREntity::EntityId lodCompareButton_ = IREntity::kNullEntity;
+    std::unordered_map<IREntity::EntityId, bool> lodWidgetVisibility_;
+    int lodCaptureSettle_ = 0;
+    vec3 lodStageCenter_{};
+    ArrayPreview arrayPreview_;
+    IREntity::EntityId arrayPreviewToggle_ = IREntity::kNullEntity;
+    IREntity::EntityId arrayPreviewStatus_ = IREntity::kNullEntity;
+    IREntity::EntityId arrayPreviewSource_ = IREntity::kNullEntity;
+    Session::ArrayWorkflowProbe arrayWorkflow_;
+    int arrayWorkflowShot_ = -1;
+    bool arrayPreviewEnabled_ = false;
+    bool arrayPreviewRefresh_ = false;
     // Saved at scene creation for the future save-load / serialization
     // pass; runtime place/erase resolves the target set via the picker
     // hit rather than reading this field, so it has no per-frame use.
@@ -322,6 +350,7 @@ struct EditorState {
 EditorState g_editor;
 
 void markDocumentEdited() {
+    g_editor.arrayPreviewRefresh_ = true;
     if (g_editor.documentsEnabled_)
         g_editor.document_.markEdited();
 }
@@ -333,7 +362,8 @@ bool documentInteractionBlocked() {
 }
 
 bool authoringInteractionBlocked() {
-    return documentInteractionBlocked() || g_editor.motionPreview_.active();
+    return documentInteractionBlocked() || g_editor.motionPreview_.active() ||
+           g_editor.lodPreview_.active();
 }
 
 void stopMotionPreview();
@@ -1043,11 +1073,17 @@ void prepareScreenAlignment(int shotIndex);
 void prepareCameraGestures(int shotIndex);
 void prepareClickOrbit(int shotIndex);
 void prepareRegionTools(int shotIndex);
+void prepareArrayWorkflow(int shotIndex);
+void prepareLodWorkflowShot();
 void prepareShadowRotation(int shotIndex);
 
 void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= static_cast<int>(g_session.segments_.size()))
         return;
+    if (g_sessionId == Session::Id::ARRAY_WORKFLOW)
+        prepareArrayWorkflow(shotIndex);
+    if (g_sessionId == Session::Id::LOD_WORKFLOW)
+        prepareLodWorkflowShot();
     if (g_sessionId == Session::Id::REGION_TOOLS)
         prepareRegionTools(shotIndex);
     if (g_sessionId == Session::Id::CAMERA_GESTURES)
@@ -1619,7 +1655,7 @@ void clearEntitySceneForLoad() {
     syncPartSizeReadout();
 }
 
-// Fill-mode status label — top-left status bar updated each frame with the
+// Fill-mode status label updated each frame with the
 // active fill mode (BOX / LINE / FACE), the erase-mode prefix, and active
 // symmetry axes.
 IREntity::EntityId g_fillModeLabel = IREntity::kNullEntity;
@@ -1655,7 +1691,7 @@ IRPrefab::Prefab::PrefabShapeDescription selectedShapeDescription() {
     return {
         kBakeShapeTypes[index],
         bakeShapeParams(kBakeShapeTypes[index], p1, p2),
-        kPaletteColors[g_editor.activeSwatchIdx_],
+        g_editor.palette_.color(g_editor.activeSwatchIdx_),
         IRMath::SDF::SHAPE_FLAG_VISIBLE
     };
 }
@@ -1827,8 +1863,8 @@ struct HelpEntry {
     const char *text_ = nullptr;
 };
 std::vector<HelpEntry> g_helpEntries;
-constexpr ivec2 kHelpPanelPos{4, 500};
-constexpr ivec2 kHelpPanelSize{372, 92};
+constexpr ivec2 kHelpPanelPos{484, 112};
+constexpr ivec2 kHelpPanelSize{506, 58};
 
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
@@ -2584,6 +2620,48 @@ void prepareScreenAlignment(int shotIndex) {
     }
 }
 
+void prepareLodWorkflowShot() {
+    if (g_editor.lodWorkflowPrepared_)
+        return;
+    g_editor.lodWorkflowPrepared_ = true;
+    g_editor.editableVoxelSet_ = prepareLodWorkflow(g_entityScene);
+    g_entitySceneMode = true;
+    selectEditorPart(0, false);
+    g_editor.workspace_ = Workspace::ASSEMBLE;
+    setTransformMode(false);
+    IRRender::setDebugOverlay(IRRender::DebugOverlayMode::UNLIT);
+    IRPrefab::Undo::clear();
+}
+
+void prepareArrayWorkflow(int shotIndex) {
+    if (g_editor.arrayWorkflowShot_ == shotIndex)
+        return;
+    g_editor.arrayWorkflowShot_ = shotIndex;
+    if (shotIndex % Session::kArrayWorkflowPhaseCount != 0)
+        return;
+    g_editor.arrayPreview_.clear();
+    g_editor.arrayPreviewEnabled_ = false;
+    IRPrefab::Undo::clear();
+    g_entityScene.begin();
+    g_entitySceneMode = true;
+    const auto entity =
+        g_entityScene
+            .addVoxelPart(ivec3(2, 1, 1), vec3(0), EntityAnchor::CENTER, Color{220, 100, 60, 255});
+    g_editor.editableVoxelSet_ = entity;
+    selectEditorPart(0, false);
+    g_editor.workspace_ = Workspace::ASSEMBLE;
+    setTransformMode(false);
+    IRPrefab::Widget::setSliderValue(g_arrayCountSlider, 2);
+    IRPrefab::Widget::setSliderValue(g_arrayDistanceSlider, 4);
+    IRPrefab::Widget::setSliderValue(g_arrayStepYSlider, 0);
+    IRPrefab::Widget::setSliderValue(g_arrayStepZSlider, 0);
+    IRPrefab::Widget::setSliderValue(g_arrayYawSlider, 0);
+    IREntity::getComponent<C_WidgetCheckbox>(g_editor.arrayPreviewToggle_).checked_ = false;
+    g_sculpt.showGrid_ = true;
+    IRRender::setDebugOverlay(IRRender::DebugOverlayMode::UNLIT);
+    IRPrefab::Undo::clear();
+}
+
 void prepareRegionTools(int shotIndex) {
     if (shotIndex < 20 || g_editor.regionForeign_ != IREntity::kNullEntity)
         return;
@@ -2735,7 +2813,8 @@ void drawAuthoringPrimitives() {
     auto &triangles = g_editor.authoringTriangles_;
     lines.clear();
     triangles.clear();
-    appendConstructionGrid(g_editor.editableVoxelSet_, g_sculpt.showGrid_, lines);
+    if (!g_editor.lodPreview_.active())
+        appendConstructionGrid(g_editor.editableVoxelSet_, g_sculpt.showGrid_, lines);
     // Camera controls run after INPUT; refresh an idle hover against the view
     // that this render pass presents, without applying another edit.
     if (g_fillTool.ghostVisible_ && !g_fillTool.dragging_ && !g_sculpt.dragging_) {
@@ -2762,7 +2841,7 @@ void drawAuthoringPrimitives() {
         }
     }
     if (g_fillTool.ghostVisible_) {
-        const Color color = kPaletteColors[g_editor.activeSwatchIdx_];
+        const Color color = g_editor.palette_.color(g_editor.activeSwatchIdx_);
         const vec4 fill = vec4(color.red_, color.green_, color.blue_, 255) / 255.0f;
         IRPrefab::appendVisibleBox(
             g_fillTool.ghostBox_.center_,
@@ -2774,6 +2853,9 @@ void drawAuthoringPrimitives() {
             lines
         );
     }
+    if (g_editor.arrayPreviewEnabled_ && !authoringInteractionBlocked() &&
+        (g_editor.workspace_ == Workspace::ASSEMBLE || g_editor.workspace_ == Workspace::ALL))
+        g_editor.arrayPreview_.append(IRPrefab::Camera::getYaw(), triangles, lines);
     g_editor.authoringPrimitives_.draw(lines, triangles);
 }
 
@@ -2928,6 +3010,7 @@ bool cancelPartEdits() {
         cancelled = true;
     }
     g_editor.suppressPartGesture_ = g_editor.suppressPartGesture_ || cancelled;
+    g_editor.arrayPreviewRefresh_ = g_editor.arrayPreviewRefresh_ || cancelled;
     return cancelled;
 }
 
@@ -2939,6 +3022,7 @@ void updatePartTransformHistory() {
             finishPartEdits();
         return;
     }
+    g_editor.arrayPreviewRefresh_ = true;
     if (g_editor.transformGesture_.active())
         return;
     for (const EditorPart &part : g_entityScene.parts()) {
@@ -3849,7 +3933,7 @@ void applyRecipe(int recipeIndex) {
         PartRecipeBinding binding;
         binding.recipe_ = recipe.name_;
         binding.values_ = values;
-        binding.fallbackColor_ = kPaletteColors[g_editor.activeSwatchIdx_];
+        binding.fallbackColor_ = g_editor.palette_.color(g_editor.activeSwatchIdx_);
         if (beforeBinding && beforeBinding->recipe_ == recipe.name_)
             binding.mask_ = beforeBinding->mask_;
         afterBinding = std::move(binding);
@@ -3867,7 +3951,7 @@ void applyRecipe(int recipeIndex) {
         IR_LOG_ERROR("Recipe apply failed: {}", error);
         return;
     }
-    const Color fallbackColor = kPaletteColors[g_editor.activeSwatchIdx_];
+    const Color fallbackColor = g_editor.palette_.color(g_editor.activeSwatchIdx_);
     int written = 0;
     int skipped = 0;
     if (beforeBinding && afterBinding && beforeBinding->recipe_ == recipe.name_) {
@@ -4326,6 +4410,8 @@ void updateComponentsPanel() {
                       : g_entityScene.parts()[static_cast<std::size_t>(*target)].id_) +
                  (record != nullptr ? " ATTACHED" : " NOT ATTACHED");
     }
+    if (status.size() > 24)
+        status = status.substr(0, 21) + "...";
     IRPrefab::Widget::setLabelText(g_componentStatusLabel, std::move(status));
 
     const std::string key =
@@ -4399,7 +4485,8 @@ void initComponentsUi() {
         IRPrefab::Widget::makeButton(kComponentAttachPos, kComponentButtonSize, "ATTACH");
     g_componentDetachBtn =
         IRPrefab::Widget::makeButton(kComponentDetachPos, kComponentButtonSize, "DETACH");
-    g_componentStatusLabel = IRPrefab::Widget::makeLabel(kComponentStatusPos, "");
+    g_componentStatusLabel =
+        IRPrefab::Widget::makeLabel(kComponentStatusPos, "", {}, IRRender::TextSize::SMALL);
     g_helpEntries.push_back(
         {g_componentsPanel, "COMPONENTS: attach to the selected part, or the root with ROOT."}
     );
@@ -4819,6 +4906,10 @@ void restoreDocumentModalWidgets() {
             IRPrefab::Widget::setDisabled(id, disabled);
     }
     g_editor.documentDisabledWidgets_.clear();
+    for (const auto &[id, visible] : g_editor.documentWidgetVisibility_)
+        if (IREntity::entityExists(id))
+            IRPrefab::Widget::setVisible(id, visible);
+    g_editor.documentWidgetVisibility_.clear();
 }
 
 void updateDocumentModalWidgets() {
@@ -4832,6 +4923,8 @@ void updateDocumentModalWidgets() {
         if (std::find(documentWidgets.begin(), documentWidgets.end(), id) != documentWidgets.end())
             return;
         g_editor.documentDisabledWidgets_.try_emplace(id, widget.disabled_);
+        g_editor.documentWidgetVisibility_.try_emplace(id, widget.visible_);
+        IRPrefab::Widget::setVisible(id, false);
         widget.disabled_ = true;
         if (auto state = IREntity::getComponentOptional<C_WidgetState>(id))
             **state = {};
@@ -4869,11 +4962,7 @@ void updateDocuments() {
     } else if (action == DocumentPanelAction::NEW_DOCUMENT) {
         requestDocumentAction(DocumentAction::NEW_DOCUMENT);
     }
-    g_editor.documentPanel_.update(
-        g_editor.document_,
-        g_editor.overwriteTarget_.has_value(),
-        g_editor.documentStatus_
-    );
+    g_editor.documentPanel_.update(g_editor.document_, g_editor.overwriteTarget_.has_value());
     updateDocumentModalWidgets();
 }
 
@@ -4891,7 +4980,7 @@ unsigned workspaceMembership(ivec2 pos) {
     constexpr unsigned animate = workspaceMask(Workspace::ANIMATE);
     if (inside(kPalettePanelPos, kPalettePanelSize))
         return sculpt | generate;
-    if (inside(ivec2(130, 240), ivec2(120, 96)) || inside(kPartSizePanelPos, kPartSizePanelSize))
+    if (inside(ivec2(4, 558), ivec2(120, 96)) || inside(kPartSizePanelPos, kPartSizePanelSize))
         return sculpt;
     if (inside(kPartsPanelPos, kPartsPanelSize))
         return sculpt | assemble | generate;
@@ -5091,6 +5180,172 @@ void updateMotionPreview() {
     g_editor.motionPanel_.update(g_editor.motionPreview_.tick(), g_editor.motionPlaying_);
 }
 
+void closeLodComparison() {
+    if (!g_editor.lodPreview_.active())
+        return;
+    g_editor.lodPreviewPanel_.setVisible(false);
+    g_editor.lodPreview_.stop();
+    for (const auto &[id, visible] : g_editor.lodWidgetVisibility_)
+        if (IREntity::entityExists(id))
+            IRPrefab::Widget::setVisible(id, visible);
+    g_editor.lodWidgetVisibility_.clear();
+    g_editor.lodView_.restore();
+    g_editor.documentStatus_ = "LOD comparison closed; authored parts unchanged.";
+}
+
+void prepareLodCapture() {
+    const auto request = g_editor.lodCapture_.request();
+    if (!request)
+        return;
+    g_editor.lodPreview_.setTier(request->tier_);
+    IRRender::setCameraZoom(request->zoom_);
+    g_editor.lodCaptureSettle_ = 3;
+}
+
+void openLodComparison() {
+    if (!g_entityScene.active() || g_entityScene.parts().empty()) {
+        g_editor.documentStatus_ = "Create a part before comparing its LODs.";
+        return;
+    }
+    settleDocumentEdits();
+    closeLocalPartEdit();
+    stopMotionPreview();
+    setTransformMode(false);
+    hideSculptGhost();
+    g_editor.lodView_.capture();
+    const auto offset = localEditStageOrigin(g_entityScene, ivec3(16));
+    const auto result = g_editor.lodPreview_.begin(g_entityScene, offset);
+    if (!result.ok_) {
+        g_editor.documentStatus_ = result.error_;
+        return;
+    }
+    std::vector<vec3> points;
+    for (const auto &part : g_entityScene.parts())
+        appendEditorFocusBounds(part.entity_, points);
+    vec3 low = points.empty() ? vec3(0) : points.front();
+    vec3 high = low;
+    for (const auto point : points) {
+        low = IRMath::min(low, point);
+        high = IRMath::max(high, point);
+    }
+    g_editor.lodStageCenter_ = (low + high) * 0.5f + offset;
+    g_editor.lodView_.focus(g_editor.lodStageCenter_);
+    IRRender::setCameraVisualYaw(g_editor.lodView_.yaw_ * 180.0f / IRMath::kPi);
+    const auto &preview = g_editor.lodPreviewPanel_.widgets();
+    IREntity::forEachComponent<C_Widget>([&](IREntity::EntityId id, C_Widget &widget) {
+        if (std::find(preview.begin(), preview.end(), id) != preview.end())
+            return;
+        g_editor.lodWidgetVisibility_.emplace(id, widget.visible_);
+        IRPrefab::Widget::setVisible(id, false);
+    });
+    const auto viewport = IRRender::getViewport();
+    const int width = IRMath::min(1024, viewport.x / 16 * 16);
+    const int height = IRMath::min(768, viewport.y / 16 * 16);
+    IRRender::setCameraZoom(16.0f);
+    g_editor.lodStageView_.capture();
+    bool clipped = false;
+    for (const auto point : points) {
+        const vec2 pixel = IRRender::windowPointsToFramebufferPx(
+            vec2(IRRender::worldPos3DToMouseScreenPxExact(point + offset))
+        );
+        const vec2 delta = IRMath::abs(pixel - vec2(viewport) * 0.5f);
+        clipped = clipped || delta.x >= width * 0.5f || delta.y >= height * 0.5f;
+    }
+    g_editor.lodCapture_.begin({width, height}, clipped);
+    prepareLodCapture();
+}
+
+void holdLodComparisonView() {
+    if (!g_editor.lodPreview_.active())
+        return;
+    if (const auto request = g_editor.lodCapture_.request()) {
+        g_editor.lodStageView_.restore();
+        IRRender::setCameraZoom(request->zoom_);
+    } else {
+        g_editor.lodView_.restore();
+    }
+}
+
+void captureLodComparison() {
+    if (!g_editor.lodPreview_.active() || !g_editor.lodCapture_.request())
+        return;
+    if (g_editor.lodCaptureSettle_-- > 0)
+        return;
+    const auto request = *g_editor.lodCapture_.request();
+    const auto origin = (IRRender::getViewport() - request.size_) / 2;
+    auto image = IRRender::captureComparisonImage(origin, request.size_);
+    if (!image || !g_editor.lodCapture_.accept(std::move(*image))) {
+        closeLodComparison();
+        g_editor.documentStatus_ = "Could not capture LOD comparison.";
+        return;
+    }
+    if (g_editor.lodCapture_.complete()) {
+        const vec2 pixelScale = IRRender::windowPointsToFramebufferPx(
+                                    vec2(IRRender::guiTrixelToScreenPx(vec2(128))) -
+                                    vec2(IRRender::guiTrixelToScreenPx(vec2(0)))
+                                ) /
+                                128.0f;
+        const int scale = IRMath::roundHalfUp(pixelScale.x);
+        if (scale < 1 || IRMath::abs(pixelScale.x - scale) > 0.001f ||
+            IRMath::abs(pixelScale.y - scale) > 0.001f ||
+            !g_editor.lodPreviewPanel_.setImages(g_editor.lodCapture_, scale)) {
+            closeLodComparison();
+            g_editor.documentStatus_ =
+                "LOD native-size comparison requires uniform integer UI scale.";
+            return;
+        }
+        g_editor.lodPreviewPanel_.setVisible(true);
+        g_editor.lodView_.restore();
+    } else
+        prepareLodCapture();
+}
+
+void updateLodComparison() {
+    if (documentInteractionBlocked() || g_editor.motionPreview_.active())
+        return;
+    if (IRPrefab::Widget::wasClicked(g_editor.lodCompareButton_))
+        openLodComparison();
+    if (!g_editor.lodPreview_.active()) {
+        IRPrefab::Widget::setDisabled(
+            g_editor.lodCompareButton_,
+            !g_entityScene.active() || g_entityScene.parts().empty()
+        );
+        return;
+    }
+    IRCommand::getCommandManager().setKeyboardCaptured(true);
+    g_editor.lodPreviewPanel_.updateSelection();
+    const auto action = g_editor.lodPreviewPanel_.poll();
+    if (action == LodComparisonAction::DONE ||
+        IRInput::checkKeyMouseButton(IRInput::kKeyButtonEscape, IRInput::PRESSED)) {
+        closeLodComparison();
+    } else if (action == LodComparisonAction::REFRESH) {
+        closeLodComparison();
+        openLodComparison();
+    } else if (action == LodComparisonAction::DERIVE) {
+        const auto *source = g_entityScene.selectedPart();
+        const auto derived =
+            source ? deriveLodPart(
+                         g_entityScene,
+                         source->id_,
+                         static_cast<IRRender::LodLevel>(g_editor.lodPreviewPanel_.selectedTier())
+                     )
+                   : std::nullopt;
+        closeLodComparison();
+        if (!derived)
+            return;
+        const auto restored = restoreDerivedLodPart(g_entityScene, g_moduleHost.script(), *derived);
+        if (!restored.ok()) {
+            g_editor.documentStatus_ = restored.error_;
+            return;
+        }
+        commitPartCreation({restored.entity_});
+        g_editor.documentStatus_ =
+            derived->overlapsSourceBand_
+                ? "LOD copy created. Source also uses this tier: narrow its band before editing."
+                : "LOD copy created at the same size and origin. Edit this tier independently.";
+    }
+}
+
 void updateWorkspaces() {
     if (authoringInteractionBlocked())
         return;
@@ -5109,9 +5364,9 @@ void updateWorkspaces() {
     }
     if (g_editor.documentStatusLabel_ != IREntity::kNullEntity) {
         std::string status = g_editor.documentStatus_;
-        if (IRRender::measureText(status, 0, IRRender::TextSize::SMALL).x > 520) {
+        if (IRRender::measureText(status, 0, IRRender::TextSize::SMALL).x > 450) {
             while (!status.empty() &&
-                   IRRender::measureText(status + "...", 0, IRRender::TextSize::SMALL).x > 520)
+                   IRRender::measureText(status + "...", 0, IRRender::TextSize::SMALL).x > 450)
                 status.pop_back();
             status += "...";
         }
@@ -5134,7 +5389,7 @@ void updateWorkspaces() {
                 g_anim.playing_ = false;
             }
         }
-        constexpr const char *labels[] = {"SCULPT", "ASSEMBLE", "GENERATE", "ANIMATE", "ALL"};
+        constexpr const char *labels[] = {"SCULPT", "ASSEMBLE", "GENERATE", "ANIMATE", "ALL TOOLS"};
         const bool selected = static_cast<std::size_t>(g_editor.workspace_) == i;
         IRPrefab::Widget::setButtonLabel(
             g_editor.workspaceButtons_[i],
@@ -5144,6 +5399,12 @@ void updateWorkspaces() {
     IREntity::forEachComponent<C_Widget>([](IREntity::EntityId id, C_Widget &widget) {
         const auto &previewWidgets = g_editor.motionPanel_.widgets();
         if (std::find(previewWidgets.begin(), previewWidgets.end(), id) != previewWidgets.end())
+            return;
+        const auto &lodWidgets = g_editor.lodPreviewPanel_.widgets();
+        if (std::find(lodWidgets.begin(), lodWidgets.end(), id) != lodWidgets.end())
+            return;
+        const auto &documentWidgets = g_editor.documentPanel_.widgets();
+        if (std::find(documentWidgets.begin(), documentWidgets.end(), id) != documentWidgets.end())
             return;
         auto found = g_editor.workspaceMembers_.find(id);
         if (found == g_editor.workspaceMembers_.end()) {
@@ -5160,8 +5421,8 @@ void updateWorkspaces() {
                        (member.mask_ & workspaceMask(g_editor.workspace_)) != 0;
         if (g_editor.localEdit_.active()) {
             const auto position = IREntity::getComponentOptional<C_GuiPosition>(id);
-            if (position && (*position)->pos_.x >= 130 && (*position)->pos_.x < 250 &&
-                (*position)->pos_.y >= 240 && (*position)->pos_.y < 336)
+            if (position && (*position)->pos_.x >= 4 && (*position)->pos_.x < 124 &&
+                (*position)->pos_.y >= 558 && (*position)->pos_.y < 654)
                 allowed = false;
         }
         if (!allowed) {
@@ -5182,6 +5443,40 @@ void updateWorkspaces() {
 }
 
 namespace Session {
+
+bool evaluateLodWorkflowCheck(const void *context, std::string &actual) {
+    return g_editor.lodWorkflow_.evaluate(
+        *static_cast<const int *>(context),
+        g_entityScene,
+        g_editor.lodCapture_,
+        g_editor.lodPreviewPanel_,
+        g_editor.lodPreview_.active(),
+        actual
+    );
+}
+
+bool evaluateArrayWorkflowCheck(const void *context, std::string &actual) {
+    return g_editor.arrayWorkflow_.evaluate(
+        *static_cast<const int *>(context),
+        g_entityScene,
+        g_editor.arrayPreview_,
+        g_editor.arrayPreviewEnabled_,
+        IRMath::roundHalfUp(IRPrefab::Widget::sliderValue(g_arrayCountSlider)),
+        IRPrefab::Widget::sliderValue(g_arrayDistanceSlider),
+        IRPrefab::Undo::canUndo(),
+        actual
+    );
+}
+
+bool evaluatePaletteWorkflowCheck(const void *context, std::string &actual) {
+    return checkPaletteWorkflow(
+        *static_cast<const int *>(context),
+        g_editor.palette_,
+        g_editor.activeSwatchIdx_,
+        IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_),
+        actual
+    );
+}
 
 bool evaluateRegionToolCheck(const void *context, std::string &actual) {
     const int shot = *static_cast<const int *>(context);
@@ -6888,7 +7183,7 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | "
-        "click_orbit | "
+        "click_orbit | palette_workflow | array_workflow | lod_workflow | "
         "region_tools | rock | "
         "mushroom | ant | bird | tree | "
         "parts_roundtrip | "
@@ -6909,6 +7204,9 @@ int main(int argc, char **argv) {
          "screen_alignment",
          "camera_gestures",
          "click_orbit",
+         "palette_workflow",
+         "array_workflow",
+         "lod_workflow",
          "region_tools",
          "shadow_rotation",
          "rock",
@@ -7160,6 +7458,11 @@ int main(int argc, char **argv) {
                 IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
                     static_cast<float>(IRVoxelEditor::clickOrbitYaw(shot)) * IRMath::kPi / 180.0f;
         }
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ARRAY_WORKFLOW) {
+            for (int shot = 0; shot < IRVoxelEditor::Session::kArrayWorkflowShotCount; ++shot)
+                IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
+                    IRVoxelEditor::Session::arrayWorkflowYaw(shot);
+        }
         if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS) {
             for (int shot = 0; shot < IRVoxelEditor::Session::kRegionToolShotCount; ++shot)
                 IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
@@ -7365,7 +7668,8 @@ void initSystems() {
                 &IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("gui"));
         },
         [hrp]() {
-            if (hrp->canvas_ == nullptr)
+            if (hrp->canvas_ == nullptr ||
+                !IRPrefab::Widget::isVisible(IRVoxelEditor::g_editor.helpPanel_))
                 return;
             const char *help = nullptr;
             int bestArea = 0;
@@ -7381,7 +7685,18 @@ void initSystems() {
                     help = entry.text_;
                 }
             }
-            const char *shown = (help != nullptr) ? help : "Hover a panel or control for help.";
+            constexpr const char *guides[] = {
+                "Choose a color. ADD draws; PAINT recolors. Right drag orbits; Space + drag pans.",
+                "Select a part. Set its parent or LOD band. Preview radial/linear copies before "
+                "Apply.",
+                "Choose a shape or recipe. Set its parameters, then apply to the selected part.",
+                "Scrub frames or pose joints. Motion Preview plays component animation without "
+                "editing.",
+                "All tools: advanced layout. Use the workflow tabs for a focused workspace."
+            };
+            const char *shown = help != nullptr
+                                    ? help
+                                    : guides[static_cast<int>(IRVoxelEditor::g_editor.workspace_)];
             IRPrefab::GuiText::queueGuiText(
                 hrp->textCmds_,
                 shown,
@@ -7503,10 +7818,11 @@ void initSystems() {
         "EditorPaletteUpdate",
         [](const C_GuiElement &) {},
         []() {
-            updateSwatchSelection(
-                IRVoxelEditor::g_editor.paletteSwatches_,
-                IRVoxelEditor::g_editor.activeSwatchIdx_
-            );
+            if (!IRVoxelEditor::authoringInteractionBlocked())
+                IRVoxelEditor::g_editor.paletteUi_.update(
+                    IRVoxelEditor::g_editor.palette_,
+                    IRVoxelEditor::g_editor.activeSwatchIdx_
+                );
         }
     );
 
@@ -7670,9 +7986,10 @@ void initSystems() {
                 inBoneMode ? static_cast<std::uint8_t>(IRVoxelEditor::g_bonePaint.activeBoneIdx_)
                            : std::uint8_t{0};
             const Color placeColor =
-                inBoneMode
-                    ? IRVoxelEditor::kBoneColors[IRVoxelEditor::g_bonePaint.activeBoneIdx_]
-                    : IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
+                inBoneMode ? IRVoxelEditor::kBoneColors[IRVoxelEditor::g_bonePaint.activeBoneIdx_]
+                           : IRVoxelEditor::g_editor.palette_.color(
+                                 IRVoxelEditor::g_editor.activeSwatchIdx_
+                             );
 
             // Ctrl + left-click: face-fill (immediate, no drag).
             const bool ctrlDown = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
@@ -7902,6 +8219,11 @@ void initSystems() {
         "EditorViewportRotate",
         [](C_Camera &) {},
         [rotState]() {
+            if (IRVoxelEditor::g_editor.lodPreview_.active()) {
+                rotState->anchor_.end();
+                rotState->dragging_ = false;
+                return;
+            }
             bool rightPressed =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
             bool rightHeld =
@@ -8285,31 +8607,69 @@ void initSystems() {
             using namespace IRVoxelEditor;
             if (authoringInteractionBlocked())
                 return;
-            if (g_arrayApplyButton == IREntity::kNullEntity ||
-                !IRPrefab::Widget::wasClicked(g_arrayApplyButton)) {
+            using namespace IRPrefab::Widget;
+            if (g_arrayApplyButton == IREntity::kNullEntity)
                 return;
-            }
-            const int count =
-                static_cast<int>(IRMath::round(IRPrefab::Widget::sliderValue(g_arrayCountSlider)));
-            const int type = IRPrefab::Widget::listSelectedIndex(g_arrayTypeList);
-            if (type == 1) {
-                applyLinearArray(
-                    count,
-                    vec3(
-                        IRPrefab::Widget::sliderValue(g_arrayDistanceSlider),
-                        IRPrefab::Widget::sliderValue(g_arrayStepYSlider),
-                        IRPrefab::Widget::sliderValue(g_arrayStepZSlider)
-                    )
-                );
-                return;
-            }
-            const float yaw = IRMath::round(IRPrefab::Widget::sliderValue(g_arrayYawSlider)) *
-                              IRMath::kPi / 180.0f;
-            applyRadialArray(
-                count,
-                IRMath::round(IRPrefab::Widget::sliderValue(g_arrayDistanceSlider)),
-                yaw
+            const bool available =
+                g_entitySceneMode && g_entityScene.selectedPart() && !g_editor.localEdit_.active();
+            setDisabled(g_arrayApplyButton, !available);
+            setDisabled(g_editor.arrayPreviewToggle_, !available);
+            const bool requested =
+                checkboxState(g_editor.arrayPreviewToggle_) && available && isVisible(g_arrayPanel);
+            const bool changed = wasClicked(g_editor.arrayPreviewToggle_) ||
+                                 wasClicked(g_arrayTypeList) || isPressed(g_arrayCountSlider) ||
+                                 isPressed(g_arrayDistanceSlider) ||
+                                 isPressed(g_arrayStepYSlider) || isPressed(g_arrayStepZSlider) ||
+                                 isPressed(g_arrayYawSlider) ||
+                                 g_editor.arrayPreviewSource_ != g_entityScene.selectedEntity() ||
+                                 g_editor.arrayPreviewRefresh_;
+            const int count = IRMath::roundHalfUp(sliderValue(g_arrayCountSlider));
+            const bool radial = listSelectedIndex(g_arrayTypeList) != 1;
+            const float radius = IRMath::round(sliderValue(g_arrayDistanceSlider));
+            const float yaw = IRMath::round(sliderValue(g_arrayYawSlider)) * IRMath::kPi / 180.0f;
+            const vec3 step(
+                sliderValue(g_arrayDistanceSlider),
+                sliderValue(g_arrayStepYSlider),
+                sliderValue(g_arrayStepZSlider)
             );
+            IREntity::getComponent<C_WidgetSlider>(g_arrayDistanceSlider).label_ =
+                radial ? "RADIUS" : "STEP X";
+            setDisabled(g_arrayStepYSlider, radial);
+            setDisabled(g_arrayStepZSlider, radial);
+            setDisabled(g_arrayYawSlider, !radial);
+            if (requested && (changed || !g_editor.arrayPreviewEnabled_)) {
+                const auto offsets =
+                    radial ? IRPrefab::Arrays::radial(count, vec3(0, 0, 1), radius, yaw)
+                           : IRPrefab::Arrays::linear(count, step);
+                const auto result =
+                    g_editor.arrayPreview_.rebuild(g_entityScene, offsets, radial, radius);
+                g_editor.documentStatus_ =
+                    !result.ok_ ? result.error_
+                    : g_editor.arrayPreview_.sampledShape()
+                        ? "Voxel approximation of shape. Apply creates shape copies."
+                    : g_editor.arrayPreview_.authoredTransformPreview()
+                        ? "Authored-cell preview; detached rendering may differ. Apply creates "
+                          "editable copies."
+                        : "Preview only. Apply creates editable copies; Undo removes them.";
+                g_editor.arrayPreviewSource_ = g_entityScene.selectedEntity();
+                g_editor.arrayPreviewRefresh_ = false;
+            }
+            g_editor.arrayPreviewEnabled_ = requested;
+            setLabelText(
+                g_editor.arrayPreviewStatus_,
+                !available  ? "SELECT A PART"
+                : requested ? std::to_string(g_editor.arrayPreview_.copyCount()) + " NEW COPIES"
+                            : "PREVIEW THEN APPLY"
+            );
+            if (!wasClicked(g_arrayApplyButton))
+                return;
+            g_editor.arrayPreview_.clear();
+            g_editor.arrayPreviewEnabled_ = false;
+            IREntity::getComponent<C_WidgetCheckbox>(g_editor.arrayPreviewToggle_).checked_ = false;
+            if (radial)
+                applyRadialArray(count, radius, yaw);
+            else
+                applyLinearArray(count, step);
         }
     );
 
@@ -8511,7 +8871,10 @@ void initSystems() {
         "EditorMotionPreview",
         [](const C_GuiElement &) {},
         []() {},
-        []() { IRVoxelEditor::updateMotionPreview(); }
+        []() {
+            IRVoxelEditor::updateLodComparison();
+            IRVoxelEditor::updateMotionPreview();
+        }
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
@@ -8569,6 +8932,11 @@ void initSystems() {
         renderPipeline.end(),
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<C_Camera>(
+                "EditorLodStableView",
+                [](const C_Camera &) {},
+                []() { IRVoxelEditor::holdLodComparisonView(); }
+            ),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
             updateJointMatricesId,
             updateVoxelPositionsId,
@@ -8588,6 +8956,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
             loftRenderSystem,
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_IMAGE>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
@@ -8617,6 +8986,11 @@ void initSystems() {
             ),
             IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+            IRSystem::createSystem<C_Camera>(
+                "EditorLodCapture",
+                [](const C_Camera &) {},
+                []() { IRVoxelEditor::captureLodComparison(); }
+            ),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
@@ -9121,7 +9495,7 @@ void initCommands() {
             if (!IRVoxelEditor::g_loftTool.active_)
                 return;
             const Color placeColor =
-                IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
+                IRVoxelEditor::g_editor.palette_.color(IRVoxelEditor::g_editor.activeSwatchIdx_);
             if (IRVoxelEditor::applyLoft(placeColor))
                 IR_LOG_INFO("Loft stamped.");
         },
@@ -9748,7 +10122,9 @@ void initEntities() {
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCREEN_ALIGNMENT ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CAMERA_GESTURES ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CLICK_ORBIT ||
-        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS;
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ARRAY_WORKFLOW ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOD_WORKFLOW;
     IRVoxelEditor::g_sculpt.tool_ =
         ordinaryWorkspace ? IRVoxelEditor::SculptTool::BRUSH : IRVoxelEditor::SculptTool::BOX;
     IRVoxelEditor::g_sculpt.showGrid_ = ordinaryWorkspace;
@@ -9887,49 +10263,24 @@ void initEntities() {
     // small and crisp instead of the coarse iso-canvas default. The editor
     // lays its widgets out relative to the resulting GUI canvas size below.
     IRRender::setGuiCanvasFullResolution();
+    auto &theme = IRPrefab::Widget::defaultTheme();
+    theme.borderThickness_ = 1;
+    theme.backgroundIdle_ = Color{36, 43, 53, 255};
+    theme.panelBackground_ = Color{23, 29, 37, 245};
+    theme.panelTitleBackground_ = Color{30, 38, 48, 255};
+    theme.borderIdle_ = Color{58, 70, 84, 255};
+    theme.borderFocused_ = Color{91, 201, 191, 255};
+    theme.listRowSelected_ = Color{45, 85, 91, 255};
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
-    // Palette panel — fixed top-left dock at 200×220 trixels. The 16
-    // swatches lay out in a 4×4 grid below the title. The palette is
-    // mutable and voxels store raw RGBA, so editing a swatch does not
-    // repaint already-placed voxels.
-    // Palette docks to the bottom-left of the GUI canvas so it sits
-    // below the iso scene render and never covers the edit target.
-    // Sized to fit a 4×4 grid of 22-trixel swatches inside a
-    // ~115×165-trixel panel — small enough not to crowd the workspace.
-    g_editor.palettePanel_ = IRPrefab::Widget::makePanel(
-        IRVoxelEditor::kPalettePanelPos,
-        IRVoxelEditor::kPalettePanelSize,
-        "PALETTE"
-    );
-    // makePanel skips C_HitBox2DGui so it doesn't consume mouse hover. Add it
-    // manually so clicks on the panel background (title bar, label gap, padding)
-    // are blocked from falling through to the scene picker.
-    IREntity::setComponent(
-        g_editor.palettePanel_,
-        IRComponents::C_HitBox2DGui{IRVoxelEditor::kPalettePanelSize}
-    );
-    // Left-align the hint to the panel padding so it doesn't overflow the
-    // right edge ("CLICK A SWATCH" is ~111 trixels; the panel interior is ~116).
-    IRPrefab::Widget::makeLabel(
-        ivec2(IRVoxelEditor::kPalettePanelPos.x + 4, IRVoxelEditor::kPalettePanelPos.y + 36),
-        "CLICK A SWATCH"
+    g_editor.paletteUi_.create();
+    g_editor.palettePanel_ = g_editor.paletteUi_.panel();
+    g_editor.paletteSwatches_.assign(
+        g_editor.paletteUi_.swatches().begin(),
+        g_editor.paletteUi_.swatches().end()
     );
 
-    g_editor.paletteSwatches_.reserve(IRVoxelEditor::kPaletteCount);
-    for (int i = 0; i < IRVoxelEditor::kPaletteCount; ++i) {
-        g_editor.paletteSwatches_.push_back(
-            IRPrefab::Widget::makeColorSwatch(
-                IRVoxelEditor::paletteSwatchPos(i),
-                ivec2(IRVoxelEditor::kPaletteSwatchSize),
-                IRVoxelEditor::kPaletteColors[i],
-                i == 0
-            )
-        );
-    }
-
-    // Animation controls panel — sits below the palette
     // panel. Frame scrubber: drag to navigate frames smoothly. FPS slider:
     // drag to adjust playback speed (1–30 FPS). Both update in real time;
     // keyboard nav (Left/Right) and playback keep the scrubber thumb in sync.
@@ -9971,7 +10322,7 @@ void initEntities() {
     // The list shows all layers with a "[H]" suffix on hidden ones. The
     // visibility checkbox and add/delete buttons are below the list. Keyboard
     // shortcuts K/[/]/H still work; the panel just makes the state visible.
-    constexpr ivec2 kLayerPanelPos{130, 240};
+    constexpr ivec2 kLayerPanelPos{4, 558};
     constexpr ivec2 kLayerPanelSize{120, 96};
     IRVoxelEditor::g_layerPanel =
         IRPrefab::Widget::makePanel(kLayerPanelPos, kLayerPanelSize, "LAYERS");
@@ -10074,6 +10425,19 @@ void initEntities() {
         true
     );
     IRVoxelEditor::syncLodBandSliders();
+    g_editor.lodCompareButton_ = IRPrefab::Widget::makeButton(
+        {872, 322},
+        {170, 20},
+        "COMPARE LODS",
+        IRRender::TextSize::SMALL
+    );
+    g_editor.workspaceMembers_.emplace(
+        g_editor.lodCompareButton_,
+        IRVoxelEditor::WorkspaceMember{
+            IRVoxelEditor::workspaceMask(IRVoxelEditor::Workspace::ASSEMBLE)
+        }
+    );
+    g_editor.lodPreviewPanel_.create({220, 180});
 
     IRVoxelEditor::g_arrayPanel = IRPrefab::Widget::makePanel(
         IRVoxelEditor::kArrayPanelPos,
@@ -10127,15 +10491,41 @@ void initEntities() {
     IRVoxelEditor::g_arrayYawSlider = IRPrefab::Widget::makeSlider(
         IRVoxelEditor::kArrayYawSliderGeometry.pos_,
         IRVoxelEditor::kArrayYawSliderGeometry.size_,
-        "COPY YAW",
+        "TURN DEG",
         IRVoxelEditor::kArrayYawSliderMin,
         IRVoxelEditor::kArrayYawSliderMax,
         0.0f
     );
+    g_editor.arrayPreviewToggle_ = IRPrefab::Widget::makeCheckbox(
+        IRVoxelEditor::kArrayPanelPos + ivec2(4, 142),
+        ivec2(122, 16),
+        "PREVIEW",
+        false,
+        IRRender::TextSize::SMALL
+    );
+    g_editor.arrayPreviewStatus_ = IRPrefab::Widget::makeLabel(
+        IRVoxelEditor::kArrayPanelPos + ivec2(4, 188),
+        "SELECT A PART",
+        {},
+        IRRender::TextSize::SMALL
+    );
+    IRPrefab::Widget::makeLabel(
+        IRVoxelEditor::kArrayPanelPos + ivec2(4, 206),
+        "SOURCE IS KEPT",
+        {},
+        IRRender::TextSize::SMALL
+    );
+    IRPrefab::Widget::makeLabel(
+        IRVoxelEditor::kArrayPanelPos + ivec2(4, 222),
+        "ONE APPLY = ONE UNDO",
+        {},
+        IRRender::TextSize::SMALL
+    );
     IRVoxelEditor::g_arrayApplyButton = IRPrefab::Widget::makeButton(
-        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 142),
+        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 164),
         ivec2(122, 14),
-        "APPLY"
+        "APPLY COPIES",
+        IRRender::TextSize::SMALL
     );
 
     IRVoxelEditor::g_partSizePanel = IRPrefab::Widget::makePanel(
@@ -10165,7 +10555,6 @@ void initEntities() {
         IRPrefab::Widget::makeLabel(IRVoxelEditor::kPartSizeReadoutPos, "");
     IRVoxelEditor::syncPartSizeReadout();
 
-    // Parametric shape bake panel. Sits below the LAYERS panel.
     // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
     // secondary params; BAKE writes DENSE voxels into the active entity.
     // List itemHeight is one glyph row + 2-trixel gap so the 6 shape rows
@@ -10246,7 +10635,6 @@ void initEntities() {
         );
     }
 
-    // Skeleton tree panel below BONE in the x=378 column.
     // Shows the live joint list from C_Skeleton.joints_; clicking a row
     // selects that joint as the active bone (for B-chaining). The rename
     // row writes C_JointName; the reparent row rewrites the CHILD_OF
@@ -10292,15 +10680,17 @@ void initEntities() {
         "PAR"
     );
 
-    // Hover-help panel — docks below the panel stack and shows the help text of
+    // Hover-help panel shows the help text of
     // whatever panel/control is hovered (drawn by the EditorHelpRender system).
-    IRPrefab::Widget::makePanel(
+    g_editor.helpPanel_ = IRPrefab::Widget::makePanel(
         IRVoxelEditor::kHelpPanelPos,
         IRVoxelEditor::kHelpPanelSize,
         "HELP"
     );
     IRVoxelEditor::g_helpEntries = {
-        {g_editor.palettePanel_, "PALETTE: click a swatch to set the active paint color."},
+        {g_editor.palettePanel_,
+         "Palette starts with 16 named colors. Edit/Add use hex RGB; Load/Save use .gpl. Existing "
+         "voxels keep their colors."},
         {g_editor.animationPanel_, "ANIM: single voxel assets only; entity parts are static."},
         {g_editor.addFrameButton_, "ADD: blank frame (Shift+A). Single voxel assets only."},
         {g_editor.duplicateFrameButton_, "DUP: copy frame (Shift+D). Single voxel assets only."},
@@ -10320,7 +10710,8 @@ void initEntities() {
         {IRVoxelEditor::g_lodTierSlider, "TIER: preview the parts at a tier (, and . step it)."},
         {IRVoxelEditor::g_lodFollowCheckbox, "FOLLOW ZOOM: preview the camera zoom's own tier."},
         {IRVoxelEditor::g_arrayPanel,
-         "ARRAY: radial or linear part copies; each remains editable."},
+         "Copy the selected part (not its children). Preview shows the new copies; Apply keeps the "
+         "source. Undo removes the copies."},
         {IRVoxelEditor::g_arrayApplyButton, "APPLY: create the configured part array as one undo."},
         {IRVoxelEditor::g_partModeDropdown,
          "MODE: preview GRID, DETACHED, or DETACHED REVOXELIZE (M cycles)."},
@@ -10342,10 +10733,11 @@ void initEntities() {
         {IRVoxelEditor::g_jointReparentBtn, "PAR: reparent selected joint to the index at left."},
     };
 
-    // Fill-mode status label — top-left of the GUI canvas. Updated each frame
+    // Fill-mode status label. Updated each frame
     // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which
     // symmetry axes are active so the user can see modifier state at a glance.
-    IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
+    IRVoxelEditor::g_fillModeLabel =
+        IRPrefab::Widget::makeLabel(ivec2(642, 36), "BOX", {}, IRRender::TextSize::SMALL);
     constexpr const char *toolLabels[] =
         {"ADD", "ERASE", "PAINT", "BOX", "LINE", "NEW PART", "UNDO", "REDO", "GRID"};
     for (int i = 0; i < 9; ++i) {
@@ -10359,11 +10751,12 @@ void initEntities() {
         );
     }
 
-    constexpr const char *workspaceLabels[] = {"SCULPT", "ASSEMBLE", "GENERATE", "ANIMATE", "ALL"};
+    constexpr const char *workspaceLabels[] =
+        {"SCULPT", "ASSEMBLE", "GENERATE", "ANIMATE", "ALL TOOLS"};
     for (int i = 0; i < 5; ++i) {
         g_editor.workspaceButtons_.push_back(
             IRPrefab::Widget::makeButton(
-                ivec2(4 + i * 84, 52),
+                ivec2(4 + i * 84, 34),
                 ivec2(80, 18),
                 workspaceLabels[i],
                 IRRender::TextSize::SMALL
@@ -10390,7 +10783,7 @@ void initEntities() {
         IRRender::TextSize::SMALL
     );
     g_editor.documentStatusLabel_ =
-        IRPrefab::Widget::makeLabel(ivec2(4, 78), "", {}, IRRender::TextSize::SMALL);
+        IRPrefab::Widget::makeLabel(ivec2(4, 88), "", {}, IRRender::TextSize::SMALL);
     if (g_editor.documentsEnabled_) {
         const bool fixture =
             IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::DOCUMENT_WORKFLOW;

@@ -21,7 +21,7 @@ namespace IRVoxelEditor {
 // f % kComponentFieldRowsPerPage of page f / kComponentFieldRowsPerPage.
 constexpr int kComponentFieldRowsPerPage = 5;
 
-constexpr IRMath::ivec2 kComponentsPanelPos{kLodPanelPos.x, kLodPanelPos.y + kLodPanelSize.y + 6};
+constexpr IRMath::ivec2 kComponentsPanelPos{1000, 424};
 constexpr IRMath::ivec2 kComponentsPanelSize{170, 220};
 
 constexpr IRMath::ivec2 kComponentListPos{kComponentsPanelPos.x + 4, kComponentsPanelPos.y + 18};

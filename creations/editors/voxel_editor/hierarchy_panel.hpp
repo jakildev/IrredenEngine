@@ -13,7 +13,7 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kHierarchyPanelPos{254, 362};
+constexpr IRMath::ivec2 kHierarchyPanelPos{1050, 234};
 constexpr IRMath::ivec2 kHierarchyPanelSize{120, 82};
 constexpr IRMath::ivec2 kHierarchyParentPos{kHierarchyPanelPos.x + 4, kHierarchyPanelPos.y + 30};
 constexpr IRMath::ivec2 kHierarchyParentSize{112, 16};

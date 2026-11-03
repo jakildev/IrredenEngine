@@ -163,6 +163,10 @@ add_executable(IrredenEngineTest
   render/sun_record_pool_layout_test.cpp
   render/viewport_test.cpp
   render/voxel_editor_fill_ghost_test.cpp
+  render/voxel_editor_palette_test.cpp
+  render/voxel_editor_array_preview_test.cpp
+  render/voxel_editor_lod_preview_test.cpp
+  render/comparison_image_test.cpp
   render/voxel_editor_sculpt_grid_test.cpp
   render/voxel_editor_part_edit_history_test.cpp
   render/voxel_editor_composite_save_transaction_test.cpp

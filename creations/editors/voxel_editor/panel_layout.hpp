@@ -8,9 +8,9 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kBonePanelPos{378, 240};
+constexpr IRMath::ivec2 kBonePanelPos{356, 112};
 constexpr IRMath::ivec2 kBonePanelSize{120, 96};
-constexpr IRMath::ivec2 kSkeletonPanelPos{378, 342};
+constexpr IRMath::ivec2 kSkeletonPanelPos{356, 214};
 constexpr IRMath::ivec2 kSkeletonPanelSize{120, 114};
 
 constexpr bool panelRectsDisjoint(

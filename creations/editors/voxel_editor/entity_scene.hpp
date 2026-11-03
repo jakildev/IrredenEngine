@@ -17,6 +17,7 @@
 #include <irreden/voxel/dense_bridge.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
 
+#include "array_placement.hpp"
 #include "component_records.hpp"
 #include "composite_save_transaction.hpp"
 #include "module_session_view.hpp"
@@ -428,9 +429,7 @@ class EntityScene {
         std::vector<EditorPart> clones;
         clones.reserve(offsets.size());
         for (const IRComponents::C_LocalTransform &offset : offsets) {
-            IRComponents::C_LocalTransform transform = sourceTransform;
-            transform.translation_ += offset.translation_;
-            transform.rotation_ = IRMath::quatMul(offset.rotation_, sourceTransform.rotation_);
+            const auto transform = arrayCopyTransform(sourceTransform, offset);
             const std::string id = "part_" + std::to_string(m_nextPartId++);
             IREntity::EntityId entity = IREntity::kNullEntity;
             if (source.kind_ == EditorPartKind::SHAPE) {

@@ -9,7 +9,7 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kMotionPreviewButtonPos{528, 52};
+constexpr IRMath::ivec2 kMotionPreviewButtonPos{756, 60};
 constexpr IRMath::ivec2 kMotionPreviewButtonSize{100, 18};
 constexpr int kMotionPreviewLastTick = 600;
 constexpr float kMotionPreviewTicksPerSecond = 60.0f;
