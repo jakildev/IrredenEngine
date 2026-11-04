@@ -77,7 +77,21 @@ class EditorPalette {
         return m_name;
     }
 
+    // A sampled RGB outside the palette is a foreground color until Add saves it.
+    static constexpr int kSampled = -1;
+
+    int sample(IRMath::Color color) {
+        color.alpha_ = 255;
+        for (int index = 0; index < size(); ++index)
+            if (m_entries[index].color_.toPackedRGBA() == color.toPackedRGBA())
+                return index;
+        m_sampled = color;
+        return kSampled;
+    }
+
     IRMath::Color color(int index) const {
+        if (index == kSampled && m_sampled)
+            return *m_sampled;
         return m_entries[static_cast<std::size_t>(IRMath::clamp(index, 0, size() - 1))].color_;
     }
 
@@ -225,6 +239,7 @@ class EditorPalette {
     }
 
   private:
+    std::optional<IRMath::Color> m_sampled;
     std::vector<PaletteEntry> m_entries;
     std::string m_name;
 };

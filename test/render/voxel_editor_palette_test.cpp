@@ -32,6 +32,22 @@ TEST(VoxelEditorPalette, DefaultsKeepSessionIndicesAndEditsDoNotRecolorAuthoredV
     EXPECT_EQ(palette.entries()[4].name_, "Green");
 }
 
+TEST(VoxelEditorPalette, SampledForegroundNeverReplacesSavedSwatches) {
+    EditorPalette palette;
+    EXPECT_EQ(palette.sample(palette.color(4)), 4);
+    const auto first = palette.color(0);
+    while (palette.size() < kPaletteCapacity)
+        ASSERT_TRUE(palette.add(Color{17, 34, 51, 255}));
+    const Color sampled{13, 57, 113, 255};
+    EXPECT_EQ(palette.sample(sampled), EditorPalette::kSampled);
+    EXPECT_EQ(palette.color(EditorPalette::kSampled).toPackedRGBA(), sampled.toPackedRGBA());
+    EXPECT_EQ(palette.size(), kPaletteCapacity);
+    EXPECT_EQ(palette.color(0).toPackedRGBA(), first.toPackedRGBA());
+    EXPECT_EQ(palette.sample(Color{29, 77, 153, 255}), EditorPalette::kSampled);
+    EXPECT_EQ(paletteHex(palette.color(EditorPalette::kSampled)), "#1D4D99");
+    EXPECT_EQ(palette.sample(palette.color(4)), 4);
+}
+
 TEST(VoxelEditorPalette, HexInputUsesExactlySixRgbDigits) {
     for (const auto text : {"#12aBef", "12ABEF"}) {
         const auto color = parsePaletteHex(text);

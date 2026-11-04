@@ -93,10 +93,12 @@
 #include <irreden/render/systems/system_widget_apply_dropdown.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
 #include <irreden/render/systems/system_widget_apply_text_input.hpp>
+#include <irreden/render/systems/system_widget_apply_number_field.hpp>
 #include <irreden/render/systems/system_widget_render_slider.hpp>
 #include <irreden/render/systems/system_widget_render_list.hpp>
 #include <irreden/render/systems/system_widget_render_dropdown.hpp>
 #include <irreden/render/systems/system_widget_render_text_input.hpp>
+#include <irreden/render/systems/system_widget_render_number_field.hpp>
 #include <irreden/render/systems/system_widget_render_checkbox.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
 
@@ -129,6 +131,7 @@
 // with the session builder so a scripted swatch click aims at the live layout.
 #include "palette.hpp"
 #include "palette_panel.hpp"
+#include "shapes_panel.hpp"
 
 // Creation-module host (--module) and the RECIPES / module-panel geometry.
 #include "bake_panel.hpp"
@@ -148,6 +151,7 @@
 #include <iterator>
 #include <list>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <queue>
 #include <span>
@@ -172,6 +176,7 @@
 #include "motion_preview_panel.hpp"
 #include "workarea_framing.hpp"
 #include "sculpt_panel.hpp"
+#include "primitive_shapes.hpp"
 
 // Authoring sessions — recipes of editor gestures compiled into
 // scripted input and replayed against the live UI by the GUI-test harness.
@@ -320,6 +325,7 @@ struct EditorState {
     int activeSwatchIdx_ = 0;
     EditorPalette palette_;
     PalettePanel paletteUi_;
+    ShapesPanel shapesPanel_;
     LodWorkflowProbe lodWorkflow_;
     bool lodWorkflowPrepared_ = false;
     LodPreviewSession lodPreview_;
@@ -543,8 +549,6 @@ struct FillToolState {
 };
 FillToolState g_fillTool;
 
-enum class SculptTool { BRUSH, PAINT, BOX, LINE };
-
 struct SculptState {
     SculptTool tool_ = SculptTool::BOX;
     bool referenceScene_ = false;
@@ -564,6 +568,8 @@ struct SculptState {
     std::uint8_t bone_ = 0;
     std::vector<bool> visited_;
     std::vector<IREntity::EntityId> buttons_;
+    std::string feedback_;
+    int highlightedButton_ = -1;
 };
 SculptState g_sculpt;
 
@@ -1605,6 +1611,47 @@ void addEditorVoxelPart() {
     commitPartCreation({part});
 }
 
+bool spawnEditorShape(PrimitiveShape shape, ivec3 size) {
+    if (authoringInteractionBlocked())
+        return false;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (size[axis] < 1 || size[axis] > 64) {
+            g_editor.documentStatus_ = "Dimensions must be whole voxels from 1 to 64.";
+            return false;
+        }
+    }
+    const auto count = static_cast<unsigned>(size.x * size.y * size.z);
+    bool capacity = false;
+    IRPrefab::VoxelPool::withPoolByEntity(
+        IRPrefab::VoxelPool::activeCanvasEntity(),
+        [&](const C_VoxelPool &pool) { capacity = pool.canAllocateVoxels(count); }
+    );
+    if (!capacity) {
+        g_editor.documentStatus_ = "Not enough voxel storage. Choose smaller dimensions.";
+        return false;
+    }
+    if (!ensureEntitySceneForPartCreation())
+        return false;
+    finishSculptStroke();
+    closeLocalPartEdit();
+    const Color color = g_editor.palette_.color(g_editor.activeSwatchIdx_);
+    const auto part =
+        g_entityScene.addVoxelPart(size, derivePartPivot(size), EntityAnchor::CENTER, color);
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
+    auto records = set.mutableAuthoredRecords();
+    IRMath::iterateAABB(ivec3(0), size - ivec3(1), [&](int x, int y, int z) {
+        const ivec3 cell(x, y, z);
+        if (!primitiveShapeCell(shape, cell, size))
+            records[IRMath::index3DtoIndex1D(cell, size)].deactivate();
+    });
+    set.resyncAfterAuthoredEdits();
+    commitPartCreation({part});
+    g_sculpt.feedback_ = "Shape created";
+    g_editor.documentStatus_ = "Shape created as an editable voxel part.";
+    g_editor.initialFocusDelay_ = 2;
+    return true;
+}
+
 void clearEntitySceneForLoad() {
     cancelSculptStroke();
     closeLocalPartEdit();
@@ -2521,6 +2568,79 @@ std::optional<SculptTarget> sculptTarget(bool erase, bool paint, bool inverted) 
     return std::nullopt;
 }
 
+// A floating or upright outline can have empty space behind the click. Walk the
+// intersected slices front to back, stopping at the first enclosed region.
+void fillOutlinedPlane(Color color) {
+    const auto entity = g_editor.editableVoxelSet_;
+    if (entity == IREntity::kNullEntity || !isEditable(entity)) {
+        g_sculpt.feedback_ = "Select an editable voxel part";
+        return;
+    }
+    const auto canonical = g_editor.localEdit_.canonical(g_entityScene, entity);
+    if (canonical == IREntity::kNullEntity)
+        return;
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(canonical);
+    const auto &displaySet = IREntity::getComponent<C_VoxelSetNew>(entity);
+    const auto origin =
+        vec3(voxelSetCellOrigin(displaySet, IREntity::getComponent<C_WorldTransform>(entity)));
+    const auto ray = IRRender::mouseWorldPos3DAtIsoDepthExact(0.0f);
+    const auto direction = IRRender::mouseWorldPos3DAtIsoDepthExact(3.0f) - ray;
+    const auto hit = pickEditable();
+    const float maxDepth =
+        hit ? IRMath::dot(hit->worldHitPos_ - ray, direction) / IRMath::dot(direction, direction)
+            : std::numeric_limits<float>::infinity();
+    struct Candidate {
+        ivec3 cell_;
+        int axis_;
+        float depth_;
+    };
+    std::vector<Candidate> candidates;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (IRMath::abs(direction[axis]) < 1e-6f)
+            continue;
+        for (int slice = 0; slice < set.size_[axis]; ++slice) {
+            // The ground slice uses the same support plane as the drawing brush.
+            const float offset = axis == 2 && slice == set.size_.z - 1 ? 0.5f : 0.0f;
+            const float depth = (origin[axis] + slice + offset - ray[axis]) / direction[axis];
+            if (depth > maxDepth)
+                continue;
+            if (const auto cell =
+                    pickSculptPlane(ray - origin, direction, set.size_, axis, slice, offset))
+                candidates.push_back({*cell, axis, depth});
+        }
+    }
+    std::stable_sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
+        return a.depth_ < b.depth_;
+    });
+    const auto records = set.authoredRecords();
+    bool touchesHiddenLayer = false;
+    const auto occupied = [&](ivec3 cell) {
+        const auto &voxel = records[IRMath::index3DtoIndex1D(cell, set.size_)];
+        if (!g_layerManager.isVisible(voxel.layer_id_)) {
+            touchesHiddenLayer = true;
+            return true;
+        }
+        return voxel.color_.alpha_ != 0;
+    };
+    for (const auto &candidate : candidates) {
+        touchesHiddenLayer = false;
+        const auto cells =
+            enclosedPlaneCells(candidate.cell_, set.size_, candidate.axis_, occupied);
+        if (cells.empty() || touchesHiddenLayer)
+            continue;
+        g_anim.playing_ = false;
+        for (const auto cell : cells) {
+            const auto flat = static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell, set.size_));
+            // An outline bounds the whole operation, including when symmetry is enabled.
+            applyEditRaw(canonical, set, cell, flat, true, color, 0);
+        }
+        commitStroke();
+        g_sculpt.feedback_ = "Filled " + std::to_string(cells.size()) + " cells";
+        return;
+    }
+    g_sculpt.feedback_ = "Click inside a closed outline";
+}
+
 void applySculptCell(ivec3 local) {
     auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sculpt.target_);
     if (!cellInBounds(local, set.size_))
@@ -2911,14 +3031,14 @@ void updateSculptToolbar() {
         finishSculptStroke();
         g_fillTool.dragging_ = false;
         hideSculptGhost();
-        if (i < 5) {
-            g_sculpt.tool_ = i == 2 ? SculptTool::PAINT
-                                    : (i == 3 ? SculptTool::BOX
-                                              : (i == 4 ? SculptTool::LINE : SculptTool::BRUSH));
+        g_sculpt.feedback_.clear();
+        if (const auto tool = kSculptButtons[i].tool_) {
+            g_sculpt.tool_ = *tool;
             g_eraseMode = i == 1;
             g_classPaintMode = false;
             g_bonePaint.active_ = false;
             g_sculpt.showGrid_ = true;
+            g_loftTool.active_ = false;
         } else if (i == 5) {
             addEditorVoxelPart();
         } else if (i == 6) {
@@ -2927,9 +3047,42 @@ void updateSculptToolbar() {
         } else if (i == 7) {
             finishPartEdits();
             IRVoxelEditor::replayDocumentUndo(true);
-        } else {
+        } else if (i == 8) {
             g_sculpt.showGrid_ = !g_sculpt.showGrid_;
+        } else if (i == 11) {
+            g_editor.shapesPanel_.setVisible(!g_editor.shapesPanel_.visible());
         }
+    }
+    if (const auto request = g_editor.shapesPanel_.update()) {
+        finishSculptStroke();
+        finishPartEdits();
+        const bool spawned = spawnEditorShape(request->shape_, request->size_);
+        g_editor.shapesPanel_.showStatus(
+            spawned ? "Part created / Undo available" : "Not created: see status above"
+        );
+    }
+    int active = -1;
+    if (!g_bonePaint.active_ && !g_classPaintMode && !g_loftTool.active_) {
+        for (std::size_t i = 0; i < g_sculpt.buttons_.size(); ++i) {
+            if (kSculptButtons[i].tool_ == g_sculpt.tool_ &&
+                (g_sculpt.tool_ != SculptTool::BRUSH || (i == 1) == g_eraseMode)) {
+                active = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+    if (active != g_sculpt.highlightedButton_) {
+        if (g_sculpt.highlightedButton_ >= 0)
+            IRPrefab::Widget::setButtonLabel(
+                g_sculpt.buttons_[g_sculpt.highlightedButton_],
+                kSculptButtons[g_sculpt.highlightedButton_].label_
+            );
+        if (active >= 0)
+            IRPrefab::Widget::setButtonLabel(
+                g_sculpt.buttons_[active],
+                "[" + std::string(kSculptButtons[active].label_) + "]"
+            );
+        g_sculpt.highlightedButton_ = active;
     }
 }
 
@@ -5508,6 +5661,7 @@ void updateWorkspaces() {
             finishPartEdits();
             g_fillTool.dragging_ = false;
             hideSculptGhost();
+            g_editor.shapesPanel_.setVisible(false);
             g_editor.workspace_ = static_cast<Workspace>(i);
             g_loftTool.active_ = false;
             if (g_editor.workspace_ != Workspace::ANIMATE &&
@@ -5525,6 +5679,9 @@ void updateWorkspaces() {
         );
     }
     IREntity::forEachComponent<C_Widget>([](IREntity::EntityId id, C_Widget &widget) {
+        const auto &shapeWidgets = g_editor.shapesPanel_.widgets();
+        if (std::find(shapeWidgets.begin(), shapeWidgets.end(), id) != shapeWidgets.end())
+            return;
         const auto &previewWidgets = g_editor.motionPanel_.widgets();
         if (std::find(previewWidgets.begin(), previewWidgets.end(), id) != previewWidgets.end())
             return;
@@ -5651,6 +5808,35 @@ bool evaluatePaletteWorkflowCheck(const void *context, std::string &actual) {
         IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_),
         actual
     );
+}
+
+bool evaluateShapesWorkflowCheck(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const ShapesWorkflowCheck *>(context);
+    const bool history =
+        check.occupied_ == 0 ? IRPrefab::Undo::canRedo() : IRPrefab::Undo::canUndo();
+    const bool editable =
+        check.occupied_ == 0 || g_editor.editableVoxelSet_ == g_entityScene.selectedEntity();
+    return shapesWorkflowMatches(g_entityScene, check, actual) && history && editable;
+}
+
+bool evaluateMaterialToolCheck(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const MaterialToolCheck *>(context);
+    const auto phase = &check - kMaterialToolChecks.data();
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    bool ok = materialToolColorsMatch(set, check, actual);
+    if (phase == 0)
+        ok = ok && g_sculpt.tool_ == SculptTool::BUCKET && !IRPrefab::Undo::canUndo();
+    if (phase == 1)
+        ok = ok && g_sculpt.tool_ == SculptTool::BRUSH && !g_eraseMode;
+    if (phase == 5 || phase == 6) {
+        const auto rgb = g_editor.palette_.color(g_editor.activeSwatchIdx_);
+        ok = ok && g_sculpt.tool_ == SculptTool::PAINT && g_editor.activeSwatchIdx_ == -1 &&
+             rgb.red_ == kSampledWallColor.red_ && rgb.green_ == kSampledWallColor.green_ &&
+             rgb.blue_ == kSampledWallColor.blue_ && g_editor.palette_.size() == kPaletteCount;
+    }
+    actual += " tool=" + std::to_string(static_cast<int>(g_sculpt.tool_)) +
+              " swatch=" + std::to_string(g_editor.activeSwatchIdx_);
+    return ok;
 }
 
 bool evaluateRegionToolCheck(const void *context, std::string &actual) {
@@ -7361,7 +7547,7 @@ int main(int argc, char **argv) {
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | "
         "click_orbit | viewport_scroll | palette_workflow | array_workflow | lod_workflow | "
-        "region_tools | rock | "
+        "region_tools | material_tools | shapes_workflow | rock | "
         "mushroom | ant | bird | tree | "
         "parts_roundtrip | "
         "tier_scrub | remove_part | undo_history | animation_boundary | sculpt_workflow | "
@@ -7386,6 +7572,8 @@ int main(int argc, char **argv) {
          "array_workflow",
          "lod_workflow",
          "region_tools",
+         "material_tools",
+         "shapes_workflow",
          "shadow_rotation",
          "rock",
          "mushroom",
@@ -7669,6 +7857,11 @@ int main(int argc, char **argv) {
             for (int shot = 0; shot < IRVoxelEditor::Session::kArrayWorkflowShotCount; ++shot)
                 IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
                     IRVoxelEditor::Session::arrayWorkflowYaw(shot);
+        }
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MATERIAL_TOOLS) {
+            for (std::size_t shot = 0; shot < IRVoxelEditor::g_session.shots_.size(); ++shot)
+                IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
+                    (shot % 2 == 0 ? 30.0f : 67.0f) * IRMath::kPi / 180.0f;
         }
         if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS) {
             for (int shot = 0; shot < IRVoxelEditor::Session::kRegionToolShotCount; ++shot)
@@ -8067,12 +8260,12 @@ void initSystems() {
             const bool cameraOwnsGesture = IRVoxelEditor::updateCameraGestureOwnership();
             if (cameraOwnsGesture || IRVoxelEditor::authoringInteractionBlocked())
                 return;
+            IRVoxelEditor::updateSculptToolbar();
             // All 3D editing is suppressed in loft mode — the loft input system
             // handles mouse events over the mask panels instead.
             if (IRVoxelEditor::g_loftTool.active_)
                 return;
 
-            IRVoxelEditor::updateSculptToolbar();
             IRVoxelEditor::updateHierarchyPanel();
             if (IRVoxelEditor::g_fillModeLabel != IREntity::kNullEntity) {
                 std::string status;
@@ -8091,8 +8284,9 @@ void initSystems() {
                     const IRVoxelEditor::ModuleRecipe *recipe =
                         part != nullptr ? IRVoxelEditor::boundRecipe(*part, recipeIndex) : nullptr;
                     status =
-                        recipe != nullptr && IRVoxelEditor::g_editor.activeSwatchIdx_ <
-                                                 static_cast<int>(recipe->classes_.size())
+                        recipe != nullptr && IRVoxelEditor::g_editor.activeSwatchIdx_ >= 0 &&
+                                IRVoxelEditor::g_editor.activeSwatchIdx_ <
+                                    static_cast<int>(recipe->classes_.size())
                             ? "CLASS " +
                                   recipe->classes_[static_cast<std::size_t>(IRVoxelEditor::g_editor
                                                                                 .activeSwatchIdx_)]
@@ -8105,9 +8299,15 @@ void initSystems() {
                     if (IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::BRUSH)
                         status = IRVoxelEditor::g_eraseMode ? "ERASE BRUSH" : "ADD BRUSH";
                     else if (IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::PAINT)
-                        status = "PAINT BRUSH";
+                        status = "RECOLOR";
                     else if (IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::LINE)
                         status = IRVoxelEditor::g_eraseMode ? "ERASE LINE" : "ADD LINE";
+                }
+                if (!IRVoxelEditor::g_bonePaint.active_ && !IRVoxelEditor::g_classPaintMode) {
+                    if (IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::BUCKET)
+                        status = "BUCKET";
+                    else if (IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::PICKER)
+                        status = "PICKER";
                 }
                 if (IRVoxelEditor::g_editor.editableVoxelSet_ != IREntity::kNullEntity &&
                     !IRVoxelEditor::isEditable(IRVoxelEditor::g_editor.editableVoxelSet_))
@@ -8134,10 +8334,15 @@ void initSystems() {
                 if (IRVoxelEditor::g_transformMode) {
                     status = "TRANSFORM | " + status;
                 }
+                if (!IRVoxelEditor::g_sculpt.feedback_.empty())
+                    status += " | " + IRVoxelEditor::g_sculpt.feedback_;
                 IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
             }
 
-            bool overWidget = IRPrefab::Widget::hoveredWidget() != IREntity::kNullEntity ||
+            bool overWidget = IRVoxelEditor::g_editor.shapesPanel_.containsCursor(
+                                  IRPrefab::Layout::mousePositionInGuiTrixels()
+                              ) ||
+                              IRPrefab::Widget::hoveredWidget() != IREntity::kNullEntity ||
                               IRVoxelEditor::g_editor.hierarchy_.containsCursor(
                                   IRPrefab::Layout::mousePositionInGuiTrixels()
                               ) ||
@@ -8209,6 +8414,27 @@ void initSystems() {
             const bool farSideDown = IRVoxelEditor::farSidePlacementHeld();
             const bool leftPressedNow =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
+            const auto tool = IRVoxelEditor::g_sculpt.tool_;
+            if ((tool == IRVoxelEditor::SculptTool::BUCKET ||
+                 tool == IRVoxelEditor::SculptTool::PICKER) &&
+                !IRVoxelEditor::g_classPaintMode && !inBoneMode) {
+                IRVoxelEditor::hideSculptGhost();
+                if (overWidget || !leftPressedNow || ctrlDown)
+                    return;
+                if (tool == IRVoxelEditor::SculptTool::BUCKET) {
+                    IRVoxelEditor::fillOutlinedPlane(placeColor);
+                } else if (const auto color = IRVoxelEditor::pickSceneVoxelColor()) {
+                    auto &editor = IRVoxelEditor::g_editor;
+                    editor.paletteUi_
+                        .selectSample(editor.palette_, editor.activeSwatchIdx_, *color);
+                    IRVoxelEditor::g_sculpt.tool_ = IRVoxelEditor::SculptTool::PAINT;
+                    IRVoxelEditor::g_eraseMode = false;
+                    IRVoxelEditor::g_sculpt.feedback_.clear();
+                } else {
+                    IRVoxelEditor::g_sculpt.feedback_ = "Click a visible voxel";
+                }
+                return;
+            }
             if (!overWidget && ctrlDown && leftPressedNow) {
                 const auto hit = IRVoxelEditor::pickEditable();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
@@ -9104,6 +9330,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_LIST>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
+         IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
          documentSystem,
          motionPreviewSystem,
@@ -9181,6 +9408,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
             helpRenderSystem,
@@ -10416,6 +10644,8 @@ void initEntities() {
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCREEN_ALIGNMENT ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CAMERA_GESTURES ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CLICK_ORBIT ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SHAPES_WORKFLOW ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MATERIAL_TOOLS ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ARRAY_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOD_WORKFLOW ||
@@ -10530,6 +10760,8 @@ void initEntities() {
         // something to click before placing any voxels themselves.
         if (!ordinaryWorkspace)
             set.fillPlane(2, set.size_.z - 1, Color{120, 120, 130, 255});
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MATERIAL_TOOLS)
+            IRVoxelEditor::Session::seedMaterialTools(set);
     }
 
     // Smaller satellite voxel sets — reference furniture a click passes
@@ -11034,19 +11266,19 @@ void initEntities() {
     // symmetry axes are active so the user can see modifier state at a glance.
     IRVoxelEditor::g_fillModeLabel =
         IRPrefab::Widget::makeLabel(ivec2(642, 36), "BOX", {}, IRRender::TextSize::SMALL);
-    constexpr const char *toolLabels[] =
-        {"ADD", "ERASE", "PAINT", "BOX", "LINE", "NEW PART", "UNDO", "REDO", "GRID"};
-    for (int i = 0; i < 9; ++i) {
-        IRVoxelEditor::g_sculpt.buttons_.push_back(
-            IRPrefab::Widget::makeButton(
-                IRVoxelEditor::kSculptToolbarPos + ivec2(i * IRVoxelEditor::kSculptButtonStride, 0),
-                IRVoxelEditor::kSculptButtonSize,
-                toolLabels[i],
-                IRRender::TextSize::SMALL
-            )
+    for (std::size_t i = 0; i < IRVoxelEditor::kSculptButtons.size(); ++i) {
+        const auto &tool = IRVoxelEditor::kSculptButtons[i];
+        const auto button = IRPrefab::Widget::makeButton(
+            IRVoxelEditor::sculptButtonPos(static_cast<int>(i)),
+            IRVoxelEditor::kSculptButtonSize,
+            tool.label_,
+            IRRender::TextSize::SMALL
         );
+        IRVoxelEditor::g_sculpt.buttons_.push_back(button);
+        IRVoxelEditor::g_helpEntries.push_back({button, tool.help_});
     }
 
+    g_editor.shapesPanel_.create();
     constexpr const char *workspaceLabels[] =
         {"SCULPT", "ASSEMBLE", "GENERATE", "ANIMATE", "ALL TOOLS"};
     for (int i = 0; i < 5; ++i) {
