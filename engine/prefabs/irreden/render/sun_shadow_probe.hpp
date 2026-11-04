@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -284,6 +285,32 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
     return !output.fail();
 }
 
+// One probe CSV row from a texel's nearest word and its slab planes, stored
+// every slot's min plane then every slot's max plane at `stride` words each.
+// The sticky overflow flag lives on max plane 0, the plane right after the
+// last min plane; an unclaimed min word is EMPTY and carries the same bit.
+inline void writeSunPrimaryDepthProbeRow(
+    std::ostream &output,
+    std::uint32_t cascade,
+    int x,
+    int y,
+    std::uint32_t nearest,
+    const std::uint32_t *slabPlanes,
+    std::size_t stride,
+    std::size_t column,
+    std::uint32_t slots
+) {
+    output << cascade << ',' << x << ',' << y << ',' << nearest;
+    for (std::uint32_t slot = 0; slot < slots; ++slot) {
+        output << ',' << slabPlanes[std::size_t(slot) * stride + column] << ','
+               << (slabPlanes[std::size_t(slots + slot) * stride + column] &
+                   ~kSunDepthSlabOverflow);
+    }
+    const bool overflow = slots != 0u && (slabPlanes[std::size_t(slots) * stride + column] &
+                                          kSunDepthSlabOverflow) != 0u;
+    output << ',' << (overflow ? 1 : 0) << "\n";
+}
+
 // Primary-layer words (nearest plus slab extrema) for the sun texels a
 // world-space XY rectangle at height @p worldZ projects to, both cascades.
 // Works on every bake route; the index probe above needs finite coverage.
@@ -389,15 +416,17 @@ inline bool writeSunPrimaryDepthProbe(
                 );
             }
             for (std::size_t i = 0; i < width; ++i) {
-                output << cascade << ',' << first.x + int(i) << ',' << y << ',' << nearest[i];
-                for (std::uint32_t slot = 0; slot < kSunDepthSlabSlots; ++slot) {
-                    output << ',' << slabs[std::size_t(slot) * width + i] << ','
-                           << (slabs[std::size_t(kSunDepthSlabSlots + slot) * width + i] &
-                               ~kSunDepthSlabOverflow);
-                }
-                const bool overflow =
-                    kSunDepthSlabSlots != 0u && (slabs[width + i] & kSunDepthSlabOverflow) != 0u;
-                output << ',' << (overflow ? 1 : 0) << "\n";
+                writeSunPrimaryDepthProbeRow(
+                    output,
+                    cascade,
+                    first.x + int(i),
+                    y,
+                    nearest[i],
+                    slabs.data(),
+                    width,
+                    i,
+                    kSunDepthSlabSlots
+                );
             }
         }
     }

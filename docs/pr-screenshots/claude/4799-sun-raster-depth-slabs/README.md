@@ -103,7 +103,12 @@ theirs), the 17 controls keep receiver hashes identical to the base arm's, and
 the cooperative kernel's receivers are hash-identical to the per-pixel writer's
 on all 58 captures (the 29 static cases, two seven-shot tracks and their
 static poses), so the cooperative path is exact natively as well as in the
-harness.
+harness. The head arm's probe summaries were re-captured with the probe
+reading the overflow flag from max plane 0 (planar storage puts it right after
+the last min plane): every receiver hash is unchanged and the overflow column
+now agrees with the per-pixel arm's on all 80 cascade rows (437 / 379 texels
+on `layered-3` and `-4`, 277 / 249 on `oblique-layered-2-h60-step40`, zero
+elsewhere), so the cooperative flush propagates the sticky bit natively too.
 
 Reading the table:
 

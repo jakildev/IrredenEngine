@@ -424,7 +424,8 @@ void cooperativeTile(const std::vector<Lane>& lanes,int cascadeOffset,int radius
     for(uint lane:order)WINDOW_FLUSH(lane,kLanes,cascadeOffset,anchor,extent);
 }
 const char* planeOf(uint index){
-    if(index<kSunDepthSlabMinPlanesOffset)return index<kSourceFaceFallbackOffset?"nearest":"fallback";
+    if(index<kSunDepthSlabMinPlanesOffset)
+        return index<kSourceFaceFallbackOffset?"nearest":"fallback";
     if(index<kSunDepthSlabMaxPlanesOffset)return "slab min";
     if(index<kSourceFaceHeaderOffset)return "slab max";
     return "tail";
@@ -466,7 +467,8 @@ void compare(const std::vector<Lane>& priming,const std::vector<Lane>& lanes,int
                    sunDepthBuf.words.begin()+kSunDepthSlabOffset)){
         for(uint texel=0;texel<kSourceFaceFallbackOffset;++texel){
             const uint flag=sunDepthSlabMaxIndex(int(texel),0u);
-            const uint flagE=expected[flag]&kSunDepthSlabOverflow,flagG=sunDepthBuf.words[flag]&kSunDepthSlabOverflow;
+            const uint flagE=expected[flag]&kSunDepthSlabOverflow;
+            const uint flagG=sunDepthBuf.words[flag]&kSunDepthSlabOverflow;
             if(flagE!=flagG)mismatch(flag,"overflow bit");
             if(flagE!=0u)continue;
             std::vector<std::pair<uint,uint>> e,g;
@@ -683,8 +685,8 @@ uint windowNearestStore[kSunDepthSlabWindowArea + kSunDepthSlabWindowTexels];
 uint windowSlabMinStore[kSunDepthSlabWindowSlotWords + kSunDepthSlabWindowTexels];
 uint windowSlabMaxStore[kSunDepthSlabWindowSlotWords + kSunDepthSlabWindowTexels];
 int windowBaseMinStore[2],windowBaseMaxStore[2];
-SunDepthSlabWindow window{windowNearestStore,windowSlabMinStore,windowSlabMaxStore,windowBaseMinStore,
-                          windowBaseMaxStore};
+SunDepthSlabWindow window{windowNearestStore,windowSlabMinStore,windowSlabMaxStore,
+                          windowBaseMinStore,windowBaseMaxStore};
 #define PRIMARY(t,w) writeSunPrimaryDepth(sunDepthBuf,t,w)
 #define WINDOW_RESET(lane) sunWindowReset(window,lane)
 #define WINDOW_REDUCE(base) sunWindowReduceBase(window,base)
@@ -692,7 +694,8 @@ SunDepthSlabWindow window{windowNearestStore,windowSlabMinStore,windowSlabMaxSto
 #define WINDOW_EXTENT(radius) sunWindowExtent(window,radius)
 #define WINDOW_INIT(lane,lanes,extent) sunWindowInit(window,lane,lanes,extent)
 #define WINDOW_WRITE(off,px,anchor,w) writeSunTexelCooperative(sunDepthBuf,window,off,px,anchor,w)
-#define WINDOW_FLUSH(lane,lanes,off,anchor,extent) sunWindowFlush(sunDepthBuf,window,lane,lanes,off,anchor,extent)
+#define WINDOW_FLUSH(lane,lanes,off,anchor,extent) \
+    sunWindowFlush(sunDepthBuf,window,lane,lanes,off,anchor,extent)
 """,
 }
 
@@ -924,7 +927,8 @@ class SunDepthSlabTest(unittest.TestCase):
                     ("    writeSunPrimaryDepth(cascadeOffset + px.y * kSunShadowMapDim + px.x, "
                      "packedDepth);\n", ""), disagree),
                 "wrong_window_origin": (
-                    ("        const ivec2 px = anchor + cell;", "        const ivec2 px = anchor + cell + ivec2(1, 0);"), disagree),
+                    ("        const ivec2 px = anchor + cell;",
+                     "        const ivec2 px = anchor + cell + ivec2(1, 0);"), disagree),
                 "inclusive_window_bound": (
                     ("if (uint(rel.x) < kSunDepthSlabWindowTexels && uint(rel.y) < "
                      "kSunDepthSlabWindowTexels) {",
@@ -936,10 +940,11 @@ class SunDepthSlabTest(unittest.TestCase):
                     ("        atomic_fetch_min_explicit(&sunDepthBuf[index], nearest, "
                      "memory_order_relaxed);\n", ""), disagree),
                 "dropped_spill": (
-                    ("    writeSunPrimaryDepth(sunDepthBuf, cascadeOffset + px.y * kSunShadowMapDim "
-                     "+ px.x, packedDepth);\n", ""), disagree),
+                    ("    writeSunPrimaryDepth(sunDepthBuf, cascadeOffset + px.y * "
+                     "kSunShadowMapDim + px.x, packedDepth);\n", ""), disagree),
                 "wrong_window_origin": (
-                    ("        const int2 px = anchor + cell;", "        const int2 px = anchor + cell + int2(1, 0);"), disagree),
+                    ("        const int2 px = anchor + cell;",
+                     "        const int2 px = anchor + cell + int2(1, 0);"), disagree),
                 "inclusive_window_bound": (
                     ("if (uint(rel.x) < kSunDepthSlabWindowTexels && uint(rel.y) < "
                      "kSunDepthSlabWindowTexels) {",

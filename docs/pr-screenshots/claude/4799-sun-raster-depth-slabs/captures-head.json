@@ -1,9 +1,9 @@
 {
   "label": "head",
   "route": "particles",
-  "build_dir": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
-  "head": "e211f8a222fd82535d4a178fc6532edcd5798cfb",
-  "binary_sha256": "8b9a7c6cdce67312574f0ea5b00ef8dc216486fa32ff9f7418ea0cd91eec35aa",
+  "build_dir": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
+  "head": "9bf277e84093bea4f83977e79258e36f9bc3f8ef",
+  "binary_sha256": "f4c35c7b025f1742c5d01c684eb8100c564cd0c1fc4001ddd2bd5a0fc94dd77a",
   "crop": [
     1100,
     600,
@@ -37,10 +37,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/lower/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/lower/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -169,10 +169,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/lower-unlit/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/lower-unlit/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -238,10 +238,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/floor/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/floor/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -305,7 +305,7 @@
         "cascades": {
           "0": {
             "texels": 1225,
-            "overflow": 1225,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 1225
             },
@@ -318,7 +318,7 @@
           },
           "1": {
             "texels": 861,
-            "overflow": 861,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 861
             },
@@ -367,10 +367,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/distant-8-h60/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/distant-8-h60/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -447,7 +447,7 @@
         "cascades": {
           "0": {
             "texels": 1225,
-            "overflow": 788,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 788,
               "2": 437
@@ -467,7 +467,7 @@
           },
           "1": {
             "texels": 861,
-            "overflow": 482,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 482,
               "2": 379
@@ -520,10 +520,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/stacked-8-h60/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/stacked-8-h60/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -680,10 +680,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/stacked-8-h60-unlit/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/stacked-8-h60-unlit/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -766,10 +766,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/stacked-8-h60-last/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/stacked-8-h60-last/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -927,10 +927,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/stacked-128-h60/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/stacked-128-h60/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -1087,10 +1087,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/stacked-8-h90/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/stacked-8-h90/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -1247,10 +1247,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/stacked-8-h30/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/stacked-8-h30/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -1406,10 +1406,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/layered-2-h60-step40/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/layered-2-h60-step40/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -1570,10 +1570,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/layered-3-h60-step64/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/layered-3-h60-step64/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -1653,7 +1653,7 @@
         "cascades": {
           "0": {
             "texels": 1225,
-            "overflow": 0,
+            "overflow": 437,
             "slab_count_histogram": {
               "2": 788,
               "3": 437
@@ -1674,15 +1674,16 @@
               "6:-85..-83": 39,
               "6:-85..-85": 24,
               "7:-14..-7": 50,
-              "7:-15..-15": 304,
-              "7:-15..-7": 739,
-              "7:-15..-8": 44,
-              "8:3..3": 876
+              "7:-15..-15": 302,
+              "7:-15..-7": 729,
+              "7:-15..-8": 45,
+              "7:-15..-9": 2,
+              "8:3..3": 885
             }
           },
           "1": {
             "texels": 861,
-            "overflow": 0,
+            "overflow": 379,
             "slab_count_histogram": {
               "2": 482,
               "3": 379
@@ -1697,9 +1698,9 @@
               "6:-85..-82": 344,
               "6:-85..-85": 35,
               "7:-15..-15": 189,
-              "7:-15..-7": 665,
+              "7:-15..-7": 604,
               "7:-15..-8": 7,
-              "8:3..3": 482
+              "8:3..3": 543
             }
           }
         }
@@ -1740,10 +1741,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/layered-4-h60-step64/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/layered-4-h60-step64/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -1823,7 +1824,7 @@
         "cascades": {
           "0": {
             "texels": 1225,
-            "overflow": 0,
+            "overflow": 437,
             "slab_count_histogram": {
               "2": 788,
               "3": 437
@@ -1844,15 +1845,16 @@
               "6:-85..-83": 39,
               "6:-85..-85": 24,
               "7:-14..-7": 50,
-              "7:-15..-15": 304,
-              "7:-15..-7": 749,
-              "7:-15..-8": 44,
-              "8:3..3": 866
+              "7:-15..-15": 307,
+              "7:-15..-7": 724,
+              "7:-15..-8": 45,
+              "7:-15..-9": 2,
+              "8:3..3": 885
             }
           },
           "1": {
             "texels": 861,
-            "overflow": 0,
+            "overflow": 379,
             "slab_count_histogram": {
               "2": 482,
               "3": 379
@@ -1867,9 +1869,9 @@
               "6:-85..-82": 344,
               "6:-85..-85": 35,
               "7:-15..-15": 189,
-              "7:-15..-7": 637,
+              "7:-15..-7": 606,
               "7:-15..-8": 7,
-              "8:3..3": 510
+              "8:3..3": 541
             }
           }
         }
@@ -1906,10 +1908,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-lower/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-lower/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -1972,7 +1974,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1357
@@ -2076,7 +2078,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 933
@@ -2193,10 +2195,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-lower-unlit/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-lower-unlit/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -2262,10 +2264,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-floor/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-floor/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -2329,7 +2331,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 1100,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 1100,
               "2": 605
@@ -2388,7 +2390,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 559,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 559,
               "2": 473
@@ -2475,10 +2477,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-distant-8-h60/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-distant-8-h60/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -2555,7 +2557,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 793,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 793,
               "2": 912
@@ -2630,7 +2632,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 300,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 300,
               "2": 732
@@ -2732,10 +2734,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-stacked-8-h60/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-stacked-8-h60/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -2811,7 +2813,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1050,
@@ -2932,7 +2934,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 674,
@@ -3069,10 +3071,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-stacked-8-h60-unlit/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-stacked-8-h60-unlit/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -3155,10 +3157,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-stacked-8-h60-last/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-stacked-8-h60-last/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -3235,7 +3237,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1050,
@@ -3356,7 +3358,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 674,
@@ -3493,10 +3495,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-stacked-128-h60/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-stacked-128-h60/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -3572,7 +3574,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1050,
@@ -3693,7 +3695,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 674,
@@ -3830,10 +3832,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-stacked-8-h90/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-stacked-8-h90/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -3909,7 +3911,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1050,
@@ -4030,7 +4032,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 674,
@@ -4168,10 +4170,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-stacked-8-h30/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-stacked-8-h30/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -4247,7 +4249,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1357
@@ -4369,7 +4371,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 933
@@ -4507,10 +4509,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-layered-2-h60-step40/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-layered-2-h60-step40/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -4590,7 +4592,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 277,
             "slab_count_histogram": {
               "1": 348,
               "2": 1048,
@@ -4626,12 +4628,12 @@
               "3": 22
             },
             "slab_extrema": {
-              "5:-129..-129": 9,
+              "5:-129..-129": 1,
               "5:-131..-128": 74,
               "5:-131..-130": 17,
               "5:-131..-131": 4,
-              "5:-132..-128": 151,
-              "5:-132..-129": 17,
+              "5:-132..-128": 133,
+              "5:-132..-129": 10,
               "5:-132..-131": 3,
               "5:-132..-132": 4,
               "6:-127..-87": 3,
@@ -4658,31 +4660,31 @@
               "7:-13..-4": 12,
               "7:-13..-5": 10,
               "7:-13..-8": 5,
-              "7:-14..-3": 63,
+              "7:-14..-3": 61,
               "7:-14..-4": 36,
+              "7:-14..-5": 2,
               "7:-14..-8": 1,
               "7:-15..-12": 5,
-              "7:-15..-13": 32,
-              "7:-15..-14": 7,
+              "7:-15..-13": 28,
+              "7:-15..-14": 11,
               "7:-15..-15": 7,
-              "7:-15..-3": 23,
-              "7:-15..-4": 49,
-              "7:-15..-5": 19,
-              "7:-15..-6": 7,
-              "7:-15..-7": 2,
+              "7:-15..-3": 16,
+              "7:-15..-4": 53,
+              "7:-15..-5": 23,
+              "7:-15..-6": 8,
               "7:-15..-8": 2,
-              "7:-16..-13": 5,
-              "7:-16..-14": 37,
+              "7:-16..-13": 4,
+              "7:-16..-14": 38,
               "7:-16..-15": 4,
-              "7:-16..-4": 7,
-              "7:-16..-5": 80,
-              "7:-16..-7": 2,
+              "7:-16..-4": 6,
+              "7:-16..-5": 73,
+              "7:-16..-6": 10,
               "7:-17..-14": 6,
               "7:-17..-15": 40,
               "7:-17..-16": 29,
-              "7:-17..-5": 7,
-              "7:-17..-6": 68,
-              "7:-17..-7": 68,
+              "7:-17..-5": 6,
+              "7:-17..-6": 75,
+              "7:-17..-7": 62,
               "7:-17..-8": 16,
               "7:-17..0": 35,
               "7:-2..0": 142,
@@ -4708,13 +4710,13 @@
               "8:1..5": 209,
               "8:1..6": 13,
               "8:2..5": 9,
-              "8:2..6": 169,
+              "8:2..6": 174,
               "8:2..7": 8,
               "8:3..6": 9,
-              "8:3..7": 78,
-              "8:3..8": 4,
+              "8:3..7": 101,
+              "8:3..8": 7,
               "8:4..7": 4,
-              "8:4..8": 44,
+              "8:4..8": 46,
               "8:4..9": 2,
               "8:5..10": 3,
               "8:5..8": 3,
@@ -4728,7 +4730,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 249,
             "slab_count_histogram": {
               "1": 99,
               "2": 672,
@@ -4760,15 +4762,10 @@
             },
             "slab_extrema": {
               "5:-129..-129": 1,
-              "5:-130..-129": 4,
-              "5:-131..-128": 37,
-              "5:-131..-129": 11,
-              "5:-131..-130": 16,
-              "5:-131..-131": 3,
-              "5:-132..-128": 165,
-              "5:-132..-129": 5,
-              "5:-132..-131": 3,
-              "5:-132..-132": 2,
+              "5:-131..-128": 3,
+              "5:-131..-129": 2,
+              "5:-131..-131": 1,
+              "5:-132..-128": 1,
               "6:-127..-87": 2,
               "6:-128..-87": 203,
               "6:-128..-88": 14,
@@ -4786,24 +4783,27 @@
               "7:-13..-13": 4,
               "7:-13..-5": 9,
               "7:-13..0": 1,
-              "7:-14..-3": 50,
-              "7:-14..-4": 20,
-              "7:-14..-8": 1,
+              "7:-14..-3": 43,
+              "7:-14..-4": 17,
+              "7:-14..-8": 5,
+              "7:-14..-9": 6,
               "7:-14..0": 3,
-              "7:-15..-12": 1,
-              "7:-15..-13": 8,
-              "7:-15..-3": 50,
-              "7:-15..-4": 39,
+              "7:-15..-12": 4,
+              "7:-15..-13": 11,
+              "7:-15..-3": 48,
+              "7:-15..-4": 28,
+              "7:-15..-9": 7,
               "7:-16..-13": 12,
               "7:-16..-14": 13,
               "7:-16..-15": 3,
               "7:-16..-4": 40,
               "7:-16..-5": 19,
               "7:-16..0": 9,
-              "7:-17..-14": 16,
+              "7:-17..-10": 6,
+              "7:-17..-14": 17,
               "7:-17..-15": 9,
               "7:-17..-5": 36,
-              "7:-17..-6": 62,
+              "7:-17..-6": 55,
               "7:-17..-7": 27,
               "7:-17..-8": 5,
               "7:-17..0": 78,
@@ -4822,17 +4822,17 @@
               "8:0..3": 109,
               "8:0..4": 126,
               "8:0..5": 139,
-              "8:0..6": 47,
-              "8:1..6": 74,
-              "8:1..7": 26,
-              "8:2..7": 51,
-              "8:2..8": 9,
-              "8:3..8": 16,
-              "8:3..9": 6,
-              "8:4..10": 6,
-              "8:4..9": 13,
-              "8:5..10": 11,
-              "8:5..11": 4,
+              "8:0..6": 49,
+              "8:1..6": 99,
+              "8:1..7": 35,
+              "8:2..7": 93,
+              "8:2..8": 33,
+              "8:3..8": 71,
+              "8:3..9": 25,
+              "8:4..10": 16,
+              "8:4..9": 49,
+              "8:5..10": 27,
+              "8:5..11": 5,
               "8:6..11": 12,
               "8:6..12": 1
             }
@@ -4875,10 +4875,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-layered-3-h60-step64/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-layered-3-h60-step64/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -4958,7 +4958,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1050,
@@ -5079,7 +5079,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 674,
@@ -5216,10 +5216,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-layered-4-h60-step64/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-layered-4-h60-step64/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -5299,7 +5299,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1050,
@@ -5420,7 +5420,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 674,
@@ -5553,10 +5553,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/lower-revoxelize/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/lower-revoxelize/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -5618,7 +5618,7 @@
         "cascades": {
           "0": {
             "texels": 1225,
-            "overflow": 1,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 1,
               "2": 1224
@@ -5688,10 +5688,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/stacked-8-h60-revoxelize/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/stacked-8-h60-revoxelize/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -5766,7 +5766,7 @@
         "cascades": {
           "0": {
             "texels": 1225,
-            "overflow": 1,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 1,
               "2": 707,
@@ -5846,10 +5846,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/lower-revoxelized/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/lower-revoxelized/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -5986,10 +5986,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/stacked-8-h60-revoxelized/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/stacked-8-h60-revoxelized/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -6848,10 +6848,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/moving-8/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/moving-8/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -6929,10 +6929,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/moving-8-pose-0/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/moving-8-pose-0/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -7103,10 +7103,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/moving-8-pose-1/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/moving-8-pose-1/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -7278,10 +7278,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/moving-8-pose-2/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/moving-8-pose-2/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -7438,10 +7438,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/moving-8-pose-3/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/moving-8-pose-3/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -7619,10 +7619,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/moving-8-pose-4/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/moving-8-pose-4/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -7798,10 +7798,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/moving-8-pose-5/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/moving-8-pose-5/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -7958,10 +7958,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/moving-8-pose-6/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/moving-8-pose-6/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -8171,7 +8171,7 @@
             "cascades": {
               "0": {
                 "texels": 1705,
-                "overflow": 348,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 348,
                   "2": 1357
@@ -8285,7 +8285,7 @@
               },
               "1": {
                 "texels": 1032,
-                "overflow": 99,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 99,
                   "2": 933
@@ -8424,7 +8424,7 @@
             "cascades": {
               "0": {
                 "texels": 1705,
-                "overflow": 348,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 348,
                   "2": 1216,
@@ -8547,7 +8547,7 @@
               },
               "1": {
                 "texels": 1032,
-                "overflow": 99,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 99,
                   "2": 799,
@@ -8693,7 +8693,7 @@
             "cascades": {
               "0": {
                 "texels": 1705,
-                "overflow": 348,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 348,
                   "2": 1291,
@@ -8814,7 +8814,7 @@
               },
               "1": {
                 "texels": 1032,
-                "overflow": 99,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 99,
                   "2": 855,
@@ -8953,7 +8953,7 @@
             "cascades": {
               "0": {
                 "texels": 1705,
-                "overflow": 348,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 348,
                   "2": 1343,
@@ -9060,7 +9060,7 @@
               },
               "1": {
                 "texels": 1032,
-                "overflow": 99,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 99,
                   "2": 904,
@@ -9191,7 +9191,7 @@
             "cascades": {
               "0": {
                 "texels": 1705,
-                "overflow": 348,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 348,
                   "2": 1357
@@ -9295,7 +9295,7 @@
               },
               "1": {
                 "texels": 1032,
-                "overflow": 99,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 99,
                   "2": 933
@@ -9421,7 +9421,7 @@
             "cascades": {
               "0": {
                 "texels": 1705,
-                "overflow": 348,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 348,
                   "2": 1357
@@ -9525,7 +9525,7 @@
               },
               "1": {
                 "texels": 1032,
-                "overflow": 99,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 99,
                   "2": 933
@@ -9651,7 +9651,7 @@
             "cascades": {
               "0": {
                 "texels": 1705,
-                "overflow": 348,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 348,
                   "2": 1357
@@ -9755,7 +9755,7 @@
               },
               "1": {
                 "texels": 1032,
-                "overflow": 99,
+                "overflow": 0,
                 "slab_count_histogram": {
                   "1": 99,
                   "2": 933
@@ -9855,10 +9855,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-moving-8/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-moving-8/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -9936,10 +9936,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-moving-8-pose-0/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-moving-8-pose-0/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -10015,7 +10015,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1357
@@ -10129,7 +10129,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 933
@@ -10263,10 +10263,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-moving-8-pose-1/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-moving-8-pose-1/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -10342,7 +10342,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1216,
@@ -10465,7 +10465,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 799,
@@ -10606,10 +10606,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-moving-8-pose-2/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-moving-8-pose-2/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -10685,7 +10685,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1291,
@@ -10806,7 +10806,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 855,
@@ -10940,10 +10940,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-moving-8-pose-3/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-moving-8-pose-3/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -11019,7 +11019,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1343,
@@ -11126,7 +11126,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 904,
@@ -11252,10 +11252,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-moving-8-pose-4/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-moving-8-pose-4/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -11331,7 +11331,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1357
@@ -11435,7 +11435,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 933
@@ -11556,10 +11556,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-moving-8-pose-5/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-moving-8-pose-5/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -11635,7 +11635,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1357
@@ -11739,7 +11739,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 933
@@ -11860,10 +11860,10 @@
         "--timeout",
         "240",
         "--build-dir",
-        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-2/build",
         "IRCanvasStress",
         "--config-preset",
-        "/private/tmp/pool-1-4845/captures/head/oblique-moving-8-pose-6/config.lua",
+        "/private/tmp/pool-2-4867-cap/head/oblique-moving-8-pose-6/config.lua",
         "--only",
         "shadowbox,floor",
         "--probe-floor-mode",
@@ -11939,7 +11939,7 @@
         "cascades": {
           "0": {
             "texels": 1705,
-            "overflow": 348,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 348,
               "2": 1357
@@ -12043,7 +12043,7 @@
           },
           "1": {
             "texels": 1032,
-            "overflow": 99,
+            "overflow": 0,
             "slab_count_histogram": {
               "1": 99,
               "2": 933

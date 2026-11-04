@@ -44,7 +44,8 @@ enum class TextureFormat {R32I,RG32UI};
 enum class BarrierType {SHADER_STORAGE,ALL};
 constexpr int kBufferIndex_FrameDataVoxelToCanvas=7,kBufferIndex_FrameDataSun=29;
 constexpr int kBufferIndex_SunShadowDepthMap=28,kBufferIndex_PerAxisResolveScratch=16;
-constexpr int kBufferIndex_RevoxelizeDetachedParams=22,kBakeSunShadowGroupSize=16,kBakeSunShadowCooperativeGroupSize=8;
+constexpr int kBufferIndex_RevoxelizeDetachedParams=22,kBakeSunShadowGroupSize=16;
+constexpr int kBakeSunShadowCooperativeGroupSize=8;
 constexpr int kBufferIndex_FogObservers=27;
 #define IR_PROFILE_FUNCTION(x)
 struct FrameDataVoxelToCanvas {
