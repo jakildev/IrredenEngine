@@ -59,6 +59,9 @@ endif()
 # IRREDEN_DEBUG_INFO=LINES so fleet worktrees configure with the small form.
 # The environment only seeds a build dir's first configure — change an
 # existing one with -DIRREDEN_DEBUG_INFO=<FULL|LINES>.
+# Compressed DWARF is no alternative on MinGW: gcc rejects -gz ("not supported
+# in this configuration") and neither ld nor objcopy --compress-debug-sections
+# accepts PE.
 if(DEFINED ENV{IRREDEN_DEBUG_INFO})
     set(_irDebugInfoDefault "$ENV{IRREDEN_DEBUG_INFO}")
 else()
