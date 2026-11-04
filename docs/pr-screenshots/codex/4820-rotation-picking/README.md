@@ -1,38 +1,12 @@
-# Rotation picking evidence
-
-## Native Metal acceptance follow-up (2026-11-04)
-
-[The acceptance receipt](acceptance-2026-11-04.txt) records the checks rerun on
-`4e8e10656c23e8c854fd6650cbef9c6205b28fea`, after the corrected implementation
-merged in PR #4864. The eight-shot session, 360-degree sweep, three identical
-tie runs and 288-sample cube probe pass. Removing only the retained-ID binding
-makes the tie probe fail with 5,090 disallowed reads, proving that the hidden
-private canvas exercises the binding lifetime.
-
-The macOS display connection worked in this session. Performance acceptance
-remains blocked: configuring the archived pre-implementation source attempted
-an out-of-sandbox RtAudio package-registry write and received `Operation not
-permitted`. [The exact command](blocked-base-configure.json) records its argv.
-CMake returned zero with a warning, but the denied operation was not retried
-and no baseline build or A/B measurements followed. The manual configuration attempt also
-violated the fleet's configured-tree build rule; a resumed run must use a
-preconfigured baseline tree. This evidence does not close #4820.
-The full ShapeDebug render verifier also fails 19 of 148 checks (ten extra
-runs skipped for missing macOS references). Failures are 180/270-degree rows
-with maximum channel differences of 109–120 against the limit of 64; the full
-table is in [the render report](render-verify-2026-11-04.txt). CanvasStress also
-fails 21 of 59 checks; its table is in the same report. No references were
-re-blessed and no claim is made that criterion 6 passes. OpenGL runtime
-verification remains tracked in #4865.
-
-## Original implementation and amendment history
+# Initial rotation picking evidence
 
 The captures and readings below describe the first published implementation,
 before the feedback amendment. The amendment corrects the cardinal-dependent
 tie offset, retains main-pool IDs and bounds four-word scratch addressing.
-Its validation and graphics-session limitation at that time are recorded in
+Its current validation and graphics-session limitation are recorded in
 `amendment-validation.txt`; the earlier images are retained with their original
-commit provenance. The original graphics-session failure was tracked in #4866.
+commit provenance. Remaining native validation is tracked in #4866, and GL
+runtime verification in #4865.
 
 Control: `795e16adb809e526536e734e9b56b4bbe60a170f`, fixture-only on
 `8a38400646e46b3d3e72adc2b56dfacf9e4c85c6`. Engine implementation:
