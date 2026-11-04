@@ -849,9 +849,10 @@ template <> struct SaveSerialize<IRComponents::C_Widget> {
         w.writeU8(value.disabled_ ? 1 : 0);
         w.writeU8(value.coversBelow_ ? 1 : 0);
         w.writeI32(value.zOrder_);
+        w.writeU8(value.visible_ ? 1 : 0);
     }
 
-    static IRAsset::Result<IRComponents::C_Widget> read(IRAsset::BinaryReader &r) {
+    static IRAsset::Result<IRComponents::C_Widget> readV2(IRAsset::BinaryReader &r) {
         using Res = IRAsset::Result<IRComponents::C_Widget>;
         IRComponents::C_Widget value{};
         IR_SAVE_READ_STATUS(
@@ -863,6 +864,16 @@ template <> struct SaveSerialize<IRComponents::C_Widget> {
         IR_SAVE_READ(value.zOrder_, r.readI32());
         return Res::success(value);
     }
+
+    static IRAsset::Result<IRComponents::C_Widget> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_Widget>;
+        Res result = readV2(r);
+        if (!result.ok()) {
+            return result;
+        }
+        IR_SAVE_READ_BOOL(result.value_.visible_, r.readU8());
+        return result;
+    }
 };
 
 // A version-1 row predates the cover flag; it takes the value its builder
@@ -871,7 +882,8 @@ template <> struct SaveMigration<IRComponents::C_Widget> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_Widget>>>
     migrators() {
         return {
-            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_Widget> {
+            {1u,
+             [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_Widget> {
                  using Res = IRAsset::Result<IRComponents::C_Widget>;
                  detail::WidgetV1 old{};
                  IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
@@ -897,6 +909,7 @@ template <> struct SaveMigration<IRComponents::C_Widget> {
                  value.zOrder_ = old.zOrder_;
                  return Res::success(value);
              }},
+            {2u, SaveSerialize<IRComponents::C_Widget>::readV2},
         };
     }
 };

@@ -170,6 +170,10 @@ class FileBinaryWriter final : public BinaryWriter {
         return m_file != nullptr && !failed();
     }
 
+    /// Flushes and closes the file. False preserves a write/close diagnostic in
+    /// failureMessage(); repeated closes return the same status.
+    bool close();
+
     void writeBytes(const void *data, std::size_t size) override;
     std::uint64_t tell() const override;
     void seek(std::uint64_t pos) override;

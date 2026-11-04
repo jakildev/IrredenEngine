@@ -37,6 +37,10 @@ template <> struct System<WIDGET_RENDER_SPLITTER> {
         const IRComponents::C_Widget &widget,
         const IRComponents::C_GuiPosition &guiPos
     ) {
+        if (!widget.visible_) {
+            return;
+        }
+
         if (!canvas_)
             return;
 

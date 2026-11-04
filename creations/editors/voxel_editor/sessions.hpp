@@ -4,8 +4,11 @@
 #include "components_panel.hpp"
 #include "recipes_panel.hpp"
 #include "session_builder.hpp"
+#include "sculpt_panel.hpp"
+#include "hierarchy_panel.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -146,6 +149,10 @@ enum class Id {
     PARTS_ROUNDTRIP,
     REMOVE_PART,
     UNDO_HISTORY,
+    ANIMATION_BOUNDARY,
+    SCULPT_WORKFLOW,
+    SCULPT_SINGLE_SAVE,
+    HIERARCHY_WORKFLOW,
     TIER_SCRUB,
     RADIAL_ARRAY,
     LINEAR_ARRAY,
@@ -166,11 +173,28 @@ enum class Id {
     COMPOSITE_PROOF,
 };
 
+struct AnimationBoundaryCheck {
+    int frames_;
+    int active_;
+    bool playing_;
+    bool entityMode_;
+    bool cameraStationary_;
+};
+
+bool evaluateAnimationBoundaryCheck(const void *context, std::string &actual);
+bool evaluateWorkspaceCheck(const void *context, std::string &actual);
+
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
 // unknown name is rejected at parse time with the allowed list; this maps the
 // validated string to the typed id (the "enum, not string-match" rule at the
 // CLI edge, .claude/rules/cpp-lua-enums.md).
 inline Id idFromName(const std::string &name) {
+    if (name == "hierarchy_workflow")
+        return Id::HIERARCHY_WORKFLOW;
+    if (name == "sculpt_workflow")
+        return Id::SCULPT_WORKFLOW;
+    if (name == "sculpt_single_save")
+        return Id::SCULPT_SINGLE_SAVE;
     if (name == "drag_probe")
         return Id::DRAG_PROBE;
     if (name == "place_below")
@@ -195,6 +219,8 @@ inline Id idFromName(const std::string &name) {
         return Id::REMOVE_PART;
     if (name == "undo_history")
         return Id::UNDO_HISTORY;
+    if (name == "animation_boundary")
+        return Id::ANIMATION_BOUNDARY;
     if (name == "tier_scrub")
         return Id::TIER_SCRUB;
     if (name == "radial_array")
@@ -2001,6 +2027,352 @@ inline Recipe build(
     const ModuleSessionView *moduleView
 ) {
     switch (id) {
+    case Id::HIERARCHY_WORKFLOW: {
+        Builder builder("hierarchy_workflow", sceneSize, sceneOrigin);
+        const auto chooseOtherParent = [&]() {
+            builder.clickGui(
+                IRMath::vec2(kHierarchyParentPos) + IRMath::vec2(kHierarchyParentSize) * 0.5f
+            );
+            builder.clickGui(
+                IRMath::vec2(kHierarchyParentPos) +
+                IRMath::vec2(40.0f, kHierarchyParentSize.y + kHierarchyParentItemHeight * 1.5f)
+            );
+            builder.clickGui(
+                IRMath::vec2(kHierarchyAttachPos) + IRMath::vec2(kHierarchyAttachSize) * 0.5f
+            );
+        };
+        builder.segment("parts");
+        builder.addVoxelPart();
+        builder.addVoxelPart();
+        builder.expectPartCount(2, "two_local_parts");
+        builder.segment("attach");
+        chooseOtherParent();
+        builder.expectPartTransform(
+            1,
+            IRMath::vec3(0),
+            0.001f,
+            true,
+            "child_pose_is_relative_to_parent"
+        );
+        builder.save();
+        builder.expectManifestContains("prefab_version = 3", "nested_schema");
+        builder.expectManifestContains("parent = \"part_0\"", "parent_saved");
+        builder.segment("undo");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartTransform(
+            1,
+            detail::partPivot(sceneSize, sceneOrigin),
+            0.001f,
+            true,
+            "undo_restores_root_pose"
+        );
+        builder.save();
+        builder.expectManifestOmits("parent =", "undo_detaches");
+        builder.segment("redo");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.save();
+        builder.expectManifestContains("parent = \"part_0\"", "redo_restores_parent");
+        builder.segment("reject_cycle");
+        builder.nextPart();
+        chooseOtherParent();
+        builder.save();
+        builder.expectManifestOmits("parent = \"part_1\"", "cycle_does_not_mutate_parent");
+        builder.expectManifestContains("parent = \"part_0\"", "cycle_preserves_child");
+        builder.segment("remove_parent");
+        builder.removeSelectedPart();
+        builder.expectPartCount(1, "removing_parent_preserves_child");
+        builder.expectPartTransform(
+            0,
+            detail::partPivot(sceneSize, sceneOrigin),
+            0.001f,
+            true,
+            "orphan_keeps_world_pose"
+        );
+        builder.segment("undo_remove");
+        builder.undoRemovedPart();
+        builder.save();
+        builder.expectPartCount(2, "undo_restores_parent");
+        builder.expectManifestContains("parent = \"part_0\"", "undo_restores_child_link");
+        builder.segment("lod");
+        builder.dragLodSlider(SliderTarget::LOD_COARSE, 2);
+        builder.expectSliderValue(SliderTarget::LOD_COARSE, 2.0f, 0.01f, "lod_changed");
+        builder.segment("lod_undo");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectSliderValue(SliderTarget::LOD_COARSE, 4.0f, 0.01f, "lod_undo_restores_band");
+        builder.segment("clear");
+        builder.clearEntityScene();
+        builder.segment("reload");
+        builder.reload();
+        builder.save();
+        builder.expectPartCount(2, "nested_parts_reload");
+        builder.expectManifestContains("parent = \"part_0\"", "parent_roundtrip");
+        builder.expectPartTransform(1, IRMath::vec3(0), 0.001f, true, "child_local_pose_roundtrip");
+        return builder.finish();
+    }
+
+    case Id::SCULPT_SINGLE_SAVE: {
+        // Keep the diagnostic single asset and its seeded floor. These raw world
+        // drags do not depend on the builder's occupancy shadow after reload.
+        Builder builder("sculpt_single_save", sceneSize, sceneOrigin);
+        const int z = sceneSize.z - 2;
+        const IRMath::ivec3 savedStart{3, 5, z};
+        const IRMath::ivec3 savedEnd{7, 5, z};
+        const IRMath::ivec3 switchedStart{3, 9, z};
+        const IRMath::ivec3 switchedEnd{7, 9, z};
+        const auto floorFace = [sceneOrigin](IRMath::ivec3 cell) {
+            return sceneOrigin + IRMath::vec3(cell) + IRMath::vec3(0, 0, 0.5f);
+        };
+        builder.segment("held_save");
+        builder.clickGui(sculptButtonCenter(0));
+        builder.dragWorld(floorFace(savedStart), floorFace(savedEnd));
+        builder.save();
+        for (int x = savedStart.x; x <= savedEnd.x; ++x)
+            builder
+                .expectOccupancy({x, savedStart.y, z}, true, "held_save_cell_" + std::to_string(x));
+        builder.expectPoolActive({5, 5, z}, true, "held_save_updates_pool");
+
+        builder.segment("undo_saved_stroke");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectOccupancy({5, 5, z}, false, "save_committed_one_undoable_stroke");
+        builder.segment("reload_saved_stroke");
+        builder.reload();
+        for (int x = savedStart.x; x <= savedEnd.x; ++x)
+            builder.expectOccupancy(
+                {x, savedStart.y, z},
+                true,
+                "held_save_reloads_cell_" + std::to_string(x)
+            );
+        builder.expectPoolActive({5, 5, z}, true, "saved_stroke_pool_reloads");
+
+        builder.segment("duplicate_saved_frame");
+        builder.duplicateFrame();
+        builder.expectOccupancy({5, 5, z}, true, "duplicate_keeps_saved_stroke");
+        builder.segment("return_to_source_frame");
+        builder.prevFrame();
+        builder.expectOccupancy({5, 9, z}, false, "source_second_row_starts_empty");
+
+        builder.segment("held_frame_switch");
+        builder.dragWorld(floorFace(switchedStart), floorFace(switchedEnd));
+        builder.nextFrame();
+        builder.expectOccupancy({5, 5, z}, true, "destination_keeps_its_own_stroke");
+        builder.expectOccupancy({5, 9, z}, false, "switch_does_not_paint_destination_frame");
+        builder.expectPoolActive({5, 9, z}, false, "destination_pool_stays_empty");
+
+        builder.segment("verify_source_frame");
+        builder.prevFrame();
+        for (int x = switchedStart.x; x <= switchedEnd.x; ++x)
+            builder.expectOccupancy(
+                {x, switchedStart.y, z},
+                true,
+                "switch_commits_source_cell_" + std::to_string(x)
+            );
+        builder.expectPoolActive({5, 9, z}, true, "source_pool_keeps_committed_stroke");
+        builder.segment("undo_source_stroke");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectOccupancy({5, 9, z}, false, "frame_switch_keeps_source_undo_context");
+        builder.expectOccupancy({5, 5, z}, true, "source_undo_keeps_earlier_saved_stroke");
+        builder.segment("redo_source_stroke");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectOccupancy({5, 9, z}, true, "source_redo_restores_committed_stroke");
+        builder.segment("verify_copy_frame");
+        builder.nextFrame();
+        builder.expectOccupancy({5, 9, z}, false, "source_history_does_not_change_copy");
+
+        Recipe recipe = builder.finish();
+        static constexpr AnimationBoundaryCheck checks[] = {
+            {1, 0, false, false, true},
+            {1, 0, false, false, true},
+            {1, 0, false, false, true},
+            {2, 1, false, false, true},
+            {2, 0, false, false, true},
+            {2, 1, false, false, true},
+            {2, 0, false, false, true},
+            {2, 0, false, false, true},
+            {2, 0, false, false, true},
+            {2, 1, false, false, true},
+        };
+        if (recipe.segments_.size() != std::size(checks)) {
+            recipe.errors_.push_back("single-asset stroke fixture lost a shot boundary");
+            return recipe;
+        }
+        for (std::size_t i = 0; i < recipe.segments_.size(); ++i) {
+            auto &segment = recipe.segments_[i];
+            segment.assertions_.push_back(
+                IRPrefab::GuiTest::predicate(
+                    &evaluateAnimationBoundaryCheck,
+                    &checks[i],
+                    "single_asset_frame_ownership"
+                )
+            );
+            if (segment.label_ != recipe.name_ + "_held_save" &&
+                segment.label_ != recipe.name_ + "_held_frame_switch")
+                continue;
+            // Keep the mouse down through Ctrl+S / Right-arrow. Both commands
+            // must commit the in-flight brush before snapshotting the frame.
+            // The only aims after this release are absent (keyboard events),
+            // so moving it does not change any deferred aim indices.
+            auto release = std::find_if(
+                segment.events_.rbegin(),
+                segment.events_.rend(),
+                [](const IRVideo::GuiInputEvent &event) {
+                    return event.type_ == IRVideo::GuiInputEvent::Type::RELEASE &&
+                           event.button_ == IRInput::kMouseButtonLeft;
+                }
+            );
+            if (release == segment.events_.rend()) {
+                recipe.errors_.push_back("held single-asset gesture has no mouse release");
+                continue;
+            }
+            IRVideo::GuiInputEvent deferred = *release;
+            segment.events_.erase(std::next(release).base());
+            deferred.frameOffset_ = segment.events_.back().frameOffset_ + 2;
+            segment.events_.push_back(deferred);
+        }
+        return recipe;
+    }
+
+    case Id::SCULPT_WORKFLOW: {
+        Builder builder("sculpt_workflow", sceneSize, sceneOrigin);
+        const IRMath::ivec3 start{3, 5, sceneSize.z - 1};
+        const IRMath::ivec3 end{11, 5, sceneSize.z - 1};
+        const auto world = [&](IRMath::ivec3 cell) {
+            return deriveSceneOrigin(sceneSize) + IRMath::vec3(cell);
+        };
+        builder.segment("empty_part");
+        builder.addVoxelPart();
+        builder.clickGui(sculptButtonCenter(0));
+        builder.expectPartAuthoredCount(0, 0, "empty_part_needs_no_bake");
+
+        builder.segment("hover_floor");
+        builder.expectFillGhost(start, start, "hover_previews_first_voxel");
+        builder.expectPartAuthoredCount(0, 0, "hover_does_not_write");
+
+        builder.segment("continuous");
+        builder.dragWorld(world(start), world(end));
+        for (int x = start.x; x <= end.x; ++x) {
+            builder
+                .expectOccupancy({x, start.y, start.z}, true, "stroke_cell_" + std::to_string(x));
+            builder
+                .expectPoolActive({x, start.y, start.z}, true, "stroke_pool_" + std::to_string(x));
+        }
+        builder.expectPartAuthoredCount(0, 9, "stroke_does_not_stack_on_itself");
+        builder.segment("undo");
+        builder.clickGui(sculptButtonCenter(6));
+        builder.expectPartAuthoredCount(0, 0, "one_undo_removes_whole_stroke");
+        builder.segment("redo");
+        builder.clickGui(sculptButtonCenter(7));
+        builder.expectPartAuthoredCount(0, 9, "redo_restores_whole_stroke");
+
+        builder.segment("paint");
+        builder.selectPaletteSwatch(4);
+        builder.clickGui(sculptButtonCenter(2));
+        builder.dragWorld(
+            world(start) + IRMath::vec3(0, 0, -0.5f),
+            world(end) + IRMath::vec3(0, 0, -0.5f)
+        );
+        builder.expectVoxelColor({7, 5, start.z}, 4, "paint_changes_existing_color");
+        builder.expectPartAuthoredCount(0, 9, "paint_adds_no_geometry");
+
+        builder.segment("cancel");
+        builder.clickGui(sculptButtonCenter(1));
+        builder.dragWorld(
+            world(start) + IRMath::vec3(0, 0, -0.5f),
+            world(end) + IRMath::vec3(0, 0, -0.5f)
+        );
+        builder.expectPartAuthoredCount(0, 9, "escape_restores_live_stroke");
+        builder.expectVoxelColor({7, 5, start.z}, 4, "escape_restores_color");
+
+        builder.segment("save");
+        builder.save();
+        builder.segment("clear");
+        builder.clearEntityScene();
+        builder.expectPartCount(0, "clear_before_reload");
+        builder.segment("reload");
+        builder.reload();
+        builder.expectPartAuthoredCount(0, 9, "stroke_survives_reload");
+        builder.expectVoxelColor({7, 5, start.z}, 4, "paint_survives_reload");
+        // Toggle class painting while the brush is still held, then release.
+        // A following gesture must get its own history entry, not resume the
+        // interrupted stroke and interpolate across the gap between rows.
+        const IRMath::ivec3 interruptedStart{3, 8, start.z};
+        const IRMath::ivec3 interruptedEnd{11, 8, start.z};
+        const IRMath::ivec3 nextStart{3, 10, start.z};
+        const IRMath::ivec3 nextEnd{11, 10, start.z};
+        builder.segment("mode_interrupt");
+        builder.clickGui(sculptButtonCenter(0));
+        builder.dragWorld(world(interruptedStart), world(interruptedEnd));
+        builder.expectPartAuthoredCount(0, 18, "mode_change_preserves_completed_brush_cells");
+        builder.segment("after_mode_interrupt");
+        builder.tapKey(IRInput::kKeyButtonU);
+        builder.dragWorld(world(nextStart), world(nextEnd));
+        builder.expectPartAuthoredCount(0, 27, "next_stroke_does_not_resume_interrupted_path");
+        builder.segment("undo_after_mode_interrupt");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartAuthoredCount(0, 18, "undo_removes_only_following_stroke");
+        builder.expectOccupancy({7, 8, start.z}, true, "interrupted_stroke_has_its_own_history");
+        builder.expectOccupancy({7, 10, start.z}, false, "following_stroke_undone");
+        builder.segment("undo_interrupted_stroke");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartAuthoredCount(0, 9, "second_undo_removes_interrupted_stroke");
+
+        for (int workspace = 0; workspace < 5; ++workspace) {
+            builder.segment(("workspace_" + std::to_string(workspace)).c_str());
+            builder.clickGui(IRMath::vec2(44 + workspace * 84, 61));
+        }
+        builder.segment("workspace_return_sculpt");
+        builder.clickGui(IRMath::vec2(44, 61));
+        Recipe recipe = builder.finish();
+        static constexpr int workspaceChecks[] = {0, 1, 2, 3, 4};
+        for (Segment &segment : recipe.segments_) {
+            for (int workspace = 0; workspace < 5; ++workspace) {
+                if (segment.label_.ends_with("workspace_" + std::to_string(workspace)))
+                    segment.assertions_.push_back(
+                        IRPrefab::GuiTest::predicate(
+                            &evaluateWorkspaceCheck,
+                            &workspaceChecks[workspace],
+                            "workspace_visibility"
+                        )
+                    );
+            }
+            if (segment.label_.ends_with("hover_floor")) {
+                IRVideo::GuiInputEvent move{};
+                move.type_ = IRVideo::GuiInputEvent::Type::MOVE;
+                segment.events_.push_back(move);
+                segment.aims_.push_back({0, world(start)});
+            }
+            if (segment.label_ == recipe.name_ + "_mode_interrupt") {
+                // Replace the brush release with U-down, U-up, then mouse-up.
+                auto &release = segment.events_.back();
+                const int frame = release.frameOffset_;
+                release.type_ = IRVideo::GuiInputEvent::Type::PRESS;
+                release.button_ = IRInput::kKeyButtonU;
+                IRVideo::GuiInputEvent keyUp{};
+                keyUp.frameOffset_ = frame + 1;
+                keyUp.type_ = IRVideo::GuiInputEvent::Type::RELEASE;
+                keyUp.button_ = IRInput::kKeyButtonU;
+                segment.events_.push_back(keyUp);
+                keyUp.frameOffset_ = frame + 2;
+                keyUp.button_ = IRInput::kMouseButtonLeft;
+                segment.events_.push_back(keyUp);
+            }
+            if (segment.label_.ends_with("cancel")) {
+                auto &release = segment.events_.back();
+                const int frame = release.frameOffset_;
+                release.type_ = IRVideo::GuiInputEvent::Type::PRESS;
+                release.button_ = IRInput::kKeyButtonEscape;
+                IRVideo::GuiInputEvent keyUp{};
+                keyUp.frameOffset_ = frame + 1;
+                keyUp.type_ = IRVideo::GuiInputEvent::Type::RELEASE;
+                keyUp.button_ = IRInput::kKeyButtonEscape;
+                segment.events_.push_back(keyUp);
+                keyUp.frameOffset_ = frame + 2;
+                keyUp.button_ = IRInput::kMouseButtonLeft;
+                segment.events_.push_back(keyUp);
+            }
+        }
+        return recipe;
+    }
+
     case Id::MODULE:
         break;
     case Id::DRAG_PROBE:
@@ -2022,7 +2394,7 @@ inline Recipe build(
     case Id::TREE:
         return detail::buildTree(sceneSize, sceneOrigin);
     case Id::PARTS_ROUNDTRIP: {
-        Builder builder("parts_roundtrip", sceneSize, sceneOrigin);
+        Builder builder("parts_roundtrip", sceneSize, sceneOrigin, nullptr, true);
         const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
         const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
         const IRMath::ivec3 first = center + IRMath::ivec3(0, 0, -3);
@@ -2034,10 +2406,16 @@ inline Recipe build(
 
         builder.segment("enter_entity_scene");
         builder.addVoxelPart();
+        builder.expectPartOccupancy(0, prime, true, "existing_asset_preserved");
+        builder.segment("undo_new_part_preserves_original");
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartCount(1, "only_appended_part_undone");
+        builder.expectPartOccupancy(0, prime, true, "original_survives_new_part_undo");
+        builder.segment("redo_new_part");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
         builder.addVoxelPart();
-        builder.expectPartAuthoredCount(0, 0, "first_part_starts_clear");
-        builder.expectPartAuthoredCount(1, 0, "second_part_starts_clear");
+        builder.expectPartAuthoredCount(1, 0, "first_part_starts_clear");
+        builder.expectPartAuthoredCount(2, 0, "second_part_starts_clear");
 
         // The gizmo is dragged while the part is still clear.
         const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
@@ -2050,26 +2428,27 @@ inline Recipe build(
             detail::kGizmoDragPartDelta
         );
         builder.toggleTransformMode();
-        builder.expectPartTransform(1, movedPivot, 0.25f, true, "second_part_moved_by_gizmo");
-        builder.expectPartTransform(0, pivot, 0.25f, true, "first_part_stays_at_its_pivot");
+        builder.expectPartTransform(2, movedPivot, 0.25f, true, "second_part_moved_by_gizmo");
+        builder.expectPartTransform(1, pivot, 0.25f, true, "first_part_stays_at_its_pivot");
 
         builder.segment("bake_second");
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
-        builder.expectPartOccupancy(1, blobFront, true, "second_part_blob_baked");
-        builder.expectPartOccupancy(1, first, false, "second_part_paint_cell_empty");
+        builder.expectPartOccupancy(2, blobFront, true, "second_part_blob_baked");
+        builder.expectPartOccupancy(2, first, false, "second_part_paint_cell_empty");
 
         builder.segment("paint_second");
         builder.click(second);
-        builder.expectPartOccupancy(1, second, true, "second_part_cell_painted");
+        builder.expectPartOccupancy(2, second, true, "second_part_cell_painted");
 
         builder.segment("bake_first");
         builder.nextPart();
+        builder.nextPart();
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
-        builder.expectPartOccupancy(0, blobFront, true, "first_part_blob_baked");
+        builder.expectPartOccupancy(1, blobFront, true, "first_part_blob_baked");
 
         builder.segment("paint_first");
         builder.click(first);
-        builder.expectPartOccupancy(0, first, true, "first_part_cell_painted");
+        builder.expectPartOccupancy(1, first, true, "first_part_cell_painted");
 
         builder.segment("save");
         builder.save();
@@ -2078,14 +2457,15 @@ inline Recipe build(
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.segment("load");
         builder.reload();
-        builder.expectPartOccupancy(0, first, true, "first_part_survives_reload");
-        builder.expectPartOccupancy(1, second, true, "second_part_survives_reload");
+        builder.expectPartOccupancy(0, prime, true, "original_asset_survives_reload");
+        builder.expectPartOccupancy(1, first, true, "first_part_survives_reload");
+        builder.expectPartOccupancy(2, second, true, "second_part_survives_reload");
         builder
-            .expectPartTransform(1, pivot, 0.25f, false, "pre_move_transform_fails_after_reload");
-        builder.expectPartTransform(0, pivot, 0.25f, true, "unmoved_transform_survives_reload");
-        builder.expectPartTransform(1, movedPivot, 0.25f, true, "moved_transform_survives_reload");
+            .expectPartTransform(2, pivot, 0.25f, false, "pre_move_transform_fails_after_reload");
+        builder.expectPartTransform(1, pivot, 0.25f, true, "unmoved_transform_survives_reload");
+        builder.expectPartTransform(2, movedPivot, 0.25f, true, "moved_transform_survives_reload");
         builder.expectPartAnchor(
-            1,
+            2,
             IRComponents::EntityAnchor::CENTER,
             "center_anchor_survives_reload"
         );
@@ -2114,17 +2494,11 @@ inline Recipe build(
 
         builder.segment("cold_undo_paint");
         builder.click(edited);
-        builder.expectPartOccupancy(0, edited, true, "edit_exists_before_frame_switch");
+        builder.expectPartOccupancy(0, edited, true, "edit_exists_before_removal");
 
-        builder.segment("remove_in_other_frame");
-        builder.duplicateFrame();
+        builder.segment("remove_source");
         builder.removeSelectedPart();
-        builder.expectPartCount(0, "part_removed_in_second_frame");
-
-        builder.segment("missing_part_undo_guard");
-        builder.prevFrame();
-        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
-        builder.expectPartCount(0, "cold_edit_undo_skips_removed_part");
+        builder.expectPartCount(0, "part_removed");
 
         builder.segment("source_setup");
         builder.discardRemovedPart();
@@ -2280,12 +2654,109 @@ inline Recipe build(
         builder.expectPartOccupancy(1, blobFront, true, "surviving_group_state_survives_reload");
         return builder.finish();
     }
+    case Id::ANIMATION_BOUNDARY: {
+        Builder builder("animation_boundary", sceneSize, sceneOrigin, moduleView, true);
+        builder.segment("bare_a_is_navigation");
+        builder.tapKey(IRInput::kKeyButtonA);
+        builder.segment("bare_d_is_navigation");
+        builder.tapKey(IRInput::kKeyButtonD);
+        builder.segment("shift_a_adds_frame");
+        builder.chordKey(IRInput::kKeyButtonLeftShift, IRInput::kKeyButtonA);
+        builder.segment("shift_d_duplicates_frame");
+        builder.chordKey(IRInput::kKeyButtonLeftShift, IRInput::kKeyButtonD);
+        builder.segment("add_button");
+        builder.clickGui(IRMath::vec2(kAddFrameButtonPos + kFrameButtonSize / 2));
+        builder.segment("duplicate_button");
+        builder.clickGui(IRMath::vec2(kDuplicateFrameButtonPos + kFrameButtonSize / 2));
+        builder.segment("start_playback");
+        builder.tapKey(IRInput::kKeyButtonP);
+        builder.segment("animated_conversion_refused");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
+        builder.segment("reduce_to_single_frame");
+        builder.tapKey(IRInput::kKeyButtonP);
+        for (int i = 0; i < 4; ++i)
+            builder.tapKey(IRInput::kKeyButtonBackspace);
+        builder.segment("enter_entity_stops_playback");
+        builder.addVoxelPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        builder.expectPartOccupancy(1, center, true, "first_part_created");
+        builder.segment("second_part");
+        builder.setPartSize(IRMath::ivec3(5, 5, 5));
+        builder.addVoxelPart();
+        builder.segment("refuse_frame_commands_and_buttons");
+        builder.chordKey(IRInput::kKeyButtonLeftShift, IRInput::kKeyButtonA);
+        builder.chordKey(IRInput::kKeyButtonLeftShift, IRInput::kKeyButtonD);
+        builder.tapKey(IRInput::kKeyButtonBackspace);
+        builder.tapKey(IRInput::kKeyButtonLeft);
+        builder.tapKey(IRInput::kKeyButtonRight);
+        builder.tapKey(IRInput::kKeyButtonP);
+        builder.tapKey(IRInput::kKeyButtonL);
+        builder.clickGui(IRMath::vec2(kAddFrameButtonPos + kFrameButtonSize / 2));
+        builder.clickGui(IRMath::vec2(kDuplicateFrameButtonPos + kFrameButtonSize / 2));
+        builder.expectPartAuthoredCount(2, 0, "empty_second_part_stays_empty");
+        builder.expectPartOccupancy(1, center, true, "first_part_keeps_geometry");
+        builder.segment("save");
+        builder.save();
+        builder.segment("reload");
+        builder.reload();
+        builder.expectPartCount(3, "original_and_both_parts_reload");
+        builder.expectPartAuthoredCount(2, 0, "empty_part_reloads_empty");
+        builder.expectPartOccupancy(1, center, true, "first_part_reloads_intact");
+        Recipe recipe = builder.finish();
+        static constexpr AnimationBoundaryCheck checks[] = {
+            {1, 0, false, false, false},
+            {1, 0, false, false, false},
+            {2, 1, false, false, true},
+            {3, 2, false, false, true},
+            {4, 3, false, false, true},
+            {5, 4, false, false, true},
+            {5, -1, true, false, true},
+            {5, -1, true, false, true},
+            {1, 0, false, false, true},
+            {1, 0, false, true, true},
+            {1, 0, false, true, true},
+            {1, 0, false, true, true},
+            {1, 0, false, true, true},
+            {1, 0, false, true, true},
+        };
+        for (std::size_t i = 0; i < std::size(checks); ++i) {
+            recipe.segments_[i].assertions_.push_back(
+                IRPrefab::GuiTest::predicate(
+                    &evaluateAnimationBoundaryCheck,
+                    &checks[i],
+                    "animation_document_boundary"
+                )
+            );
+        }
+        return recipe;
+    }
     case Id::UNDO_HISTORY: {
-        Builder builder("undo_history", sceneSize, sceneOrigin, moduleView);
+        Builder builder("undo_history", sceneSize, sceneOrigin, moduleView, true);
         const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
         const IRMath::ivec3 edited = center + IRMath::ivec3(0, 0, -3);
+        const IRMath::ivec3 singleAssetEdit(center.x, center.y, sceneSize.z - 2);
+
+        builder.segment("single_asset_stroke");
+        builder.click(singleAssetEdit);
+        builder.expectOccupancy(singleAssetEdit, true, "single_asset_stroke_exists");
+
+        builder.segment("single_asset_other_frame");
+        builder.duplicateFrame();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectOccupancy(singleAssetEdit, true, "duplicate_has_separate_history");
+
+        builder.segment("single_asset_source_undo");
+        builder.prevFrame();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectOccupancy(singleAssetEdit, false, "source_frame_keeps_its_history");
 
         builder.segment("setup");
+        builder.tapKey(IRInput::kKeyButtonBackspace);
+        builder.addVoxelPart();
+        // Explicitly start a fresh composite after proving single-asset history.
+        builder.clearEntityScene();
+        builder.discardRemovedPart();
         builder.addVoxelPart();
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
@@ -2293,13 +2764,12 @@ inline Recipe build(
         builder.click(edited);
         builder.expectPartOccupancy(0, edited, true, "stroke_changes_cell");
 
-        builder.segment("other_frame_undo_isolated");
-        builder.duplicateFrame();
-        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
-        builder.expectPartOccupancy(0, edited, true, "other_frame_does_not_consume_source_history");
+        builder.segment("part_frame_commands_refused");
+        builder.chordKey(IRInput::kKeyButtonLeftShift, IRInput::kKeyButtonD);
+        builder.tapKey(IRInput::kKeyButtonLeft);
+        builder.expectPartOccupancy(0, edited, true, "frame_commands_preserve_part");
 
         builder.segment("source_undo");
-        builder.prevFrame();
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.expectPartOccupancy(0, edited, false, "stroke_undo_restores_cell");
 
@@ -2601,7 +3071,6 @@ inline Recipe build(
 
         builder.segment("enter_entity_scene");
         builder.addVoxelPart();
-        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.addVoxelPart();
 
         int selectedPart = 1;
@@ -2751,6 +3220,14 @@ inline Recipe build(
         );
         builder.expectPartTransform(0, movedOnce, 0.25f, true, "baked_part_moved_by_x_arrow");
 
+        builder.segment("undo_x_drag");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartTransform(0, pivot, 0.25f, true, "one_undo_restores_whole_x_drag");
+        builder.expectPartOccupancy(0, center, true, "transform_undo_keeps_authored_voxels");
+        builder.segment("redo_x_drag");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectPartTransform(0, movedOnce, 0.25f, true, "one_redo_restores_whole_x_drag");
+
         // A segment opens at yaw 0, so the turn and its drag share one. Only
         // world-aimed drags are valid while the camera is turned.
         builder.segment("drag_x_turned");
@@ -2789,6 +3266,62 @@ inline Recipe build(
             0.25f,
             true,
             "turned_copy_moved_by_z_arrow"
+        );
+        // Cancel a second live Z drag, then undo the previous committed drag.
+        // This proves Escape restores the press pose and adds no history entry.
+        // All remaining checks read real transforms; no later voxel aim relies
+        // on the builder's deliberately history-free pose model.
+        const IRMath::vec3 movedCopy = copyPivot + detail::kGizmoDragPartDeltaZ;
+        builder.segment("hold_z_for_cancel", detail::kGizmoDragZoomZ);
+        builder.holdPartGizmo(
+            movedCopy + detail::kGizmoDragGrabOffsetZ,
+            movedCopy + detail::kGizmoDragGrabOffsetZ + detail::kGizmoDragPullZ,
+            detail::kGizmoDragPartDeltaZ
+        );
+        builder.expectGizmoDragActive(true, "cancel_probe_has_live_drag");
+        builder.expectPartTransform(
+            kCopies,
+            movedCopy + detail::kGizmoDragPartDeltaZ,
+            0.25f,
+            true,
+            "cancel_probe_moved_before_escape"
+        );
+        builder.segment("cancel_z_drag", detail::kGizmoDragZoomZ);
+        builder.tapKey(IRInput::kKeyButtonEscape);
+        builder.expectGizmoDragActive(false, "escape_ends_transform_drag");
+        builder.expectPartTransform(
+            kCopies,
+            movedCopy,
+            0.25f,
+            true,
+            "escape_restores_transform_press_pose"
+        );
+        builder.segment("release_cancelled_z_drag", detail::kGizmoDragZoomZ);
+        builder.releasePartGizmo();
+        builder.expectPartTransform(
+            kCopies,
+            movedCopy,
+            0.25f,
+            true,
+            "release_does_not_commit_cancelled_drag"
+        );
+        builder.segment("undo_z_after_cancel", detail::kGizmoDragZoomZ);
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartTransform(
+            kCopies,
+            copyPivot,
+            0.25f,
+            true,
+            "cancel_added_no_transform_history_entry"
+        );
+        builder.segment("redo_z_after_cancel", detail::kGizmoDragZoomZ);
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.expectPartTransform(
+            kCopies,
+            movedCopy,
+            0.25f,
+            true,
+            "redo_restores_committed_drag_after_cancel"
         );
         return builder.finish();
     }

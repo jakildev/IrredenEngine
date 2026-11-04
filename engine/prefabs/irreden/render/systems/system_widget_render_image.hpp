@@ -35,6 +35,10 @@ template <> struct System<WIDGET_RENDER_IMAGE> {
         const IRComponents::C_WidgetImage &image,
         const IRComponents::C_GuiPosition &guiPos
     ) {
+        if (!widget.visible_) {
+            return;
+        }
+
         if (!canvas_ || image.texels_.empty())
             return;
 

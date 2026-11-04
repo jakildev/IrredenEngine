@@ -173,7 +173,7 @@ template <> struct System<WIDGET_APPLY_DROPDOWN> {
         IRComponents::C_HitBox2DGui &hitbox,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (widget.disabled_) {
+        if (!widget.visible_ || widget.disabled_) {
             closeDropdown(entityId, dd, *this);
             collapseHitbox(hitbox, widget);
             syncFloatingZOrder(widget, false);

@@ -73,13 +73,11 @@ with `mode = "codegen"`.
 
 `IREnum.register("DeviceType", { "EFFECT", "SYNTH" })` returns a 0-based table
 at `IREnum.DeviceType`. Invalid/duplicate input raises; a typo reads `nil`
-([`cpp-lua-enums.md`](../../.claude/rules/cpp-lua-enums.md)). CODEGEN ticks
-cannot use members.
+([`cpp-lua-enums.md`](../../.claude/rules/cpp-lua-enums.md)). CODEGEN ticks cannot use members.
 
 ## Build-time codegen of Lua-defined components (CODEGEN mode)
 
-`irreden_lua_codegen(...)` emits each component and its binding, plus
-`registerCodegenComponents`, `registerCodegenSystems`, and `kDefaultEcsMode`.
+`irreden_lua_codegen(...)` emits each component and its binding, plus `registerCodegenComponents`, `registerCodegenSystems`, and `kDefaultEcsMode`.
 
 - **Field types:** `int32`, `float`, `bool`, `string`, `vec3`, `ivec3`; others
   are codegen-time errors. **Field order is alphabetical** (struct and `C.new`).
@@ -90,8 +88,7 @@ cannot use members.
 
 ### CODEGEN system bodies
 
-`IRSystem.registerSystem` in a codegen source lowers to a typed per-row lambda.
-Anything outside this DSL is a file:line build error:
+`IRSystem.registerSystem` in a codegen source lowers to a typed per-row lambda. Anything outside this DSL is a file:line build error:
 
 - One top-level `for i = 0, arch.length - 1 do ... end`; no other loop or jump.
 - `:at`/`:setAt`/`:getField`/`:setField` (literal names) on Lua-defined
@@ -105,17 +102,13 @@ Anything outside this DSL is a file:line build error:
 
 ### Per-system mode override + CODEGEN/EVAL coexistence
 
-`mode = "eval"`/`"codegen"` overrides the default; other values raise. Build
-default: `DEFAULT_MODE`, else `-DIR_LUA_ECS_DEFAULT_MODE` (`CODEGEN`). Runtime
-default: `LuaScript::setEcsDefaultMode` (`EVAL`). With codegen, initialize in
-order — `bindLuaDrivenEcs()`, `registerCodegenComponents(lua)`,
-`setEcsDefaultMode(kDefaultEcsMode)`, `registerCodegenSystems()`, then
-`scriptFile` — so codegen systems are not registered twice.
+`mode = "eval"`/`"codegen"` overrides the default; other values raise. Build default: `DEFAULT_MODE`, else `-DIR_LUA_ECS_DEFAULT_MODE` (`CODEGEN`). Runtime
+default: `LuaScript::setEcsDefaultMode` (`EVAL`). With codegen, initialize in order — `bindLuaDrivenEcs()`, `registerCodegenComponents(lua)`,
+`setEcsDefaultMode(kDefaultEcsMode)`, `registerCodegenSystems()`, then `scriptFile` — so codegen systems are not registered twice.
 
 ## Lua-defined systems (`IRSystem.registerSystem`)
 
-`registerSystem({ name, components, excludes?, tick, concurrency?, mode? })`
-returns a `SystemId` for any pipeline.
+`registerSystem({ name, components, excludes?, tick, concurrency?, mode? })` returns a `SystemId` for any pipeline.
 
 - Name components by handle (`IRComponent.C_LocalTransform`, or the value
   `IRComponent.register` returned); strings resolve but hide typos.
@@ -128,8 +121,7 @@ returns a `SystemId` for any pipeline.
 
 ## Pipeline composition (`IRSystem.registerPipeline`, `IRSystem.SystemName`)
 
-`IRSystem.systemId(IRSystem.SystemName.X)` reads the C++ `registerPrefabSystems` /
-`registerPrefabSystemId` map and raises on a miss. `IRSystem.findSystem` reads the
+`IRSystem.systemId(IRSystem.SystemName.X)` reads the C++ `registerPrefabSystems` / `registerPrefabSystemId` map and raises on a miss. `IRSystem.findSystem` reads the
 `SystemManager` registry, so it finds any `createSystem<X>` stage: nil on a miss, raises on a typo.
 
 - `registerPipeline` / `registerPipelineGroups` **replace** the event's list;
@@ -147,8 +139,7 @@ returns a `SystemId` for any pipeline.
 
 Registering `C_VoxelSetNew` installs `IRAsset.loadVoxelSet(path[, anchor[, targetCanvas]])` and the integer-backed `IRShape`
 table. Authoring contracts live in [`engine/prefabs/irreden/voxel/CLAUDE.md`](../prefabs/irreden/voxel/CLAUDE.md).
-The loader returns a DENSE component value and defaults its anchor to `CENTER`;
-voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
+The loader returns a DENSE component value and defaults its anchor to `CENTER`; voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
 
 ### IRFog
 
@@ -189,21 +180,20 @@ The [fog selftest](../../creations/demos/fog_demo/scripts/fog_binding_selftest.l
 
 `LuaScript::bindLuaCommands()`; design in [`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md).
 It also binds the `IRInput.onEntity*` hover/click handlers ([input prefabs](../prefabs/irreden/input/CLAUDE.md)).
-Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1 overlay only with
-`name`/`description`; `isButtonBound` is modifier-blind. A new prefab command needs an
+Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1 overlay only with `name`/`description`; `isButtonBound` is modifier-blind. A new prefab command needs an
 `IR_BIND_CMD` line in `lua_command_bindings.hpp` and a case in `ir_command.cpp`'s `fireByName`/`bindPrefabCommand`.
 
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
 A prefab has optional refs/rotation/canvas/components/setup and v2 `parts`
 ([schema](../../docs/design/lod-strategy.md), Phase 2); a `voxel_ref` part's [`anchor`](../../docs/design/prefab-part-anchor.md) is an `IRComponent.EntityAnchor.*` integer (absent = CORNER).
+v3 adds [nested part parents](../../docs/design/prefab-part-hierarchy.md), while retaining v1/v2 loading.
 An `IRComponent.register` name in `components` spawns only in a process that registered it. Contracts: [`prefab_api.hpp`](include/irreden/script/prefab_api.hpp).
 
 ## Script output
 
 `LuaScript` binds `print` to `ScriptLog`: one timestamped line per call, arguments
-tab-joined verbatim, ordered with engine/client logs, and flushed (load-bearing under
-redirected stdout and signal death). `io.write` and a bare `sol::state` stay buffered.
+tab-joined verbatim, ordered with engine/client logs, and flushed (load-bearing under redirected stdout and signal death). `io.write` and a bare `sol::state` stay buffered.
 
 ## Script resolution
 

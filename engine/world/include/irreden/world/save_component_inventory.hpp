@@ -351,8 +351,8 @@ IR_SAVE_OPT_IN(IRComponents::C_CollisionResponse, 1)
 // authored configuration; save_serializers_input.hpp owns the direct migration.
 IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_HitBox2D, 2)
 // Version 1 was the raw {size_, hovered_} image. Version 2 writes the extent
-// and origin offset; save_serializers_input.hpp owns the direct migration.
-IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_HitBox2DGui, 2)
+// and origin offset; version 3 adds the authored input gate.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_HitBox2DGui, 3)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxCircle, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxRect, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ActiveHitbox, 1)
@@ -421,9 +421,9 @@ IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_TextStyle, 3)
 IR_SAVE_OPT_IN(IRComponents::C_GuiPosition, 1)
 IR_SAVE_OPT_IN(IRComponents::C_GuiElement, 1)
 IR_SAVE_OPT_IN(IRComponents::C_GuiHoverState, 1)
-// Version 1 was the raw struct image, before the layout-audit cover flag. The
-// render serializer owns its direct migration and the current layout.
-IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_Widget, 2)
+// Version 1 was the raw struct image, before the layout-audit cover flag.
+// Version 3 adds authored visibility.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_Widget, 3)
 // Version 2 of each text-bearing widget appends the glyph-set size; a version 1
 // row reads back through its SaveMigration as LARGE.
 IR_SAVE_OPT_IN(IRComponents::C_WidgetButton, 2)

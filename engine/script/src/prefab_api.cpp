@@ -56,6 +56,7 @@ struct ComponentSpec {
 
 struct PartSpec {
     std::string id_;
+    std::string parentId_;
     // At most one of voxelRef_ / shape_; a part with neither is a bare node.
     std::string voxelRef_;
     IRComponents::EntityAnchor anchor_ = IRComponents::EntityAnchor::CORNER;
@@ -76,6 +77,8 @@ struct PartSpec {
 struct PartsManifest {
     std::string prefabId_;
     std::vector<PartSpec> parts_;
+    std::vector<std::size_t> parentIndices_;
+    std::vector<std::size_t> hierarchyOrder_;
     // Indexed like parts_; filled on the part's first spawn.
     mutable std::vector<std::shared_ptr<const IRAsset::VoxelSetAllFile>> voxels_;
 };
@@ -301,6 +304,13 @@ std::optional<std::string> parsePart(const sol::table &partTable, PartSpec &part
         return std::string{"needs a non-empty string id"};
     }
     part.id_ = *idOpt;
+    if (hasField(partTable, "parent")) {
+        const sol::object parent = partTable["parent"];
+        if (parent.get_type() != sol::type::string || parent.as<std::string>().empty()) {
+            return std::string{"parent must be a non-empty part id"};
+        }
+        part.parentId_ = parent.as<std::string>();
+    }
 
     sol::optional<std::string> voxelRef = partTable["voxel_ref"];
     sol::object shapeObj = partTable["shape"];
@@ -377,8 +387,55 @@ std::optional<std::string> parsePart(const sol::table &partTable, PartSpec &part
     return parseComponents(partTable, part.components_);
 }
 
+template <typename Part>
+std::optional<std::string> resolvePartHierarchy(
+    const std::vector<Part> &parts,
+    std::vector<std::size_t> &parents,
+    std::vector<std::size_t> &order
+) {
+    std::unordered_map<std::string, std::size_t> indices;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        indices.emplace(parts[i].id_, i);
+    }
+    parents.assign(parts.size(), IRComponents::kPrefabRootParent);
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (parts[i].parentId_.empty())
+            continue;
+        const auto parent = indices.find(parts[i].parentId_);
+        if (parent == indices.end()) {
+            return "part '" + parts[i].id_ + "' names missing parent '" + parts[i].parentId_ + "'";
+        }
+        parents[i] = parent->second;
+    }
+    enum class Visit { UNSEEN, ACTIVE, DONE };
+    std::vector<Visit> visited(parts.size(), Visit::UNSEEN);
+    std::vector<std::size_t> path;
+    order.clear();
+    order.reserve(parts.size());
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        path.clear();
+        std::size_t current = i;
+        while (current != IRComponents::kPrefabRootParent && visited[current] == Visit::UNSEEN) {
+            visited[current] = Visit::ACTIVE;
+            path.push_back(current);
+            current = parents[current];
+        }
+        if (current != IRComponents::kPrefabRootParent && visited[current] == Visit::ACTIVE) {
+            return "part hierarchy contains a cycle at '" + parts[current].id_ + "'";
+        }
+        for (auto it = path.rbegin(); it != path.rend(); ++it) {
+            visited[*it] = Visit::DONE;
+            order.push_back(*it);
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<std::string> parseParts(
-    const sol::table &prefab, const std::string &prefabId, std::shared_ptr<PartsManifest> &manifest
+    const sol::table &prefab,
+    const std::string &prefabId,
+    int version,
+    std::shared_ptr<PartsManifest> &manifest
 ) {
     sol::object partsObj = prefab["parts"];
     if (!partsObj.valid() || partsObj.get_type() == sol::type::lua_nil) {
@@ -403,10 +460,17 @@ std::optional<std::string> parseParts(
         if (auto error = parsePart(partObj.as<sol::table>(), part)) {
             return where + ": " + *error;
         }
+        if (version < 3 && !part.parentId_.empty()) {
+            return where + ": parent requires prefab_version = 3";
+        }
         if (!ids.insert(part.id_).second) {
             return where + ": duplicate part id '" + part.id_ + "'";
         }
         parsed->parts_.push_back(std::move(part));
+    }
+    if (auto error =
+            resolvePartHierarchy(parsed->parts_, parsed->parentIndices_, parsed->hierarchyOrder_)) {
+        return error;
     }
     parsed->voxels_.resize(parsed->parts_.size());
     manifest = std::move(parsed);
@@ -683,10 +747,10 @@ void writeComponents(
 }
 
 /// Builds manifest part `index` onto `part`, an entity with no components yet,
-/// and parents it to `root`. A resident part's content takes the part's band
-/// and a tier pin at `tier`, the root's settled tier.
+/// and parents it to `parent`. Its own content takes its band and a tier pin,
+/// so an ancestor needed only for transforms does not draw out of band.
 void buildPart(
-    IREntity::EntityId root,
+    IREntity::EntityId parent,
     IREntity::EntityId part,
     const PartsManifest &manifest,
     std::size_t index,
@@ -699,10 +763,13 @@ void buildPart(
     IREntity::setComponent(part, spec.transform_);
     IREntity::setComponent(
         part,
-        composeWorld(IREntity::getComponent<IRComponents::C_WorldTransform>(root), spec.transform_)
+        composeWorld(
+            IREntity::getComponent<IRComponents::C_WorldTransform>(parent),
+            spec.transform_
+        )
     );
     IREntity::setComponent(part, IRComponents::C_RotationMode{spec.rotationMode_});
-    IREntity::setParent(part, root);
+    IREntity::setParent(part, parent);
 
     attachEntityCanvas(
         part,
@@ -742,9 +809,6 @@ void buildPart(
     }
 
     slot.pinned_.clear();
-    if (!spec.resident_) {
-        return;
-    }
     slot.pinned_.reserve(shapeChildren.size() + 1);
     slot.pinned_.push_back(part);
     slot.pinned_.insert(slot.pinned_.end(), shapeChildren.begin(), shapeChildren.end());
@@ -815,9 +879,9 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
     }
     const sol::table prefab = root.as<sol::table>();
     const sol::optional<int> version = prefab["prefab_version"];
-    if (!version || *version != kPrefabSchemaVersion) {
+    if (!version || *version < 2 || *version > kPrefabSchemaVersion) {
         result.error_ =
-            "editor manifests require prefab_version = " + std::to_string(kPrefabSchemaVersion);
+            "editor manifests require prefab_version = 2.." + std::to_string(kPrefabSchemaVersion);
         return result;
     }
     if (sol::object rootLod = prefab["lod"];
@@ -831,11 +895,12 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
     }
 
     std::shared_ptr<PartsManifest> manifest;
-    if (auto error = parseParts(prefab, path, manifest)) {
+    if (auto error = parseParts(prefab, path, *version, manifest)) {
         result.error_ = *error;
         return result;
     }
     PrefabDescription description;
+    description.version_ = *version;
     std::vector<ComponentSpec> rootComponents;
     if (auto error = parseComponents(prefab, rootComponents)) {
         result.error_ = *error;
@@ -850,6 +915,7 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
         for (const PartSpec &spec : manifest->parts_) {
             PrefabPartDescription part;
             part.id_ = spec.id_;
+            part.parentId_ = spec.parentId_;
             part.voxelRef_ = spec.voxelRef_;
             part.anchor_ = spec.anchor_;
             part.shape_ = spec.shape_;
@@ -872,8 +938,8 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
 
 std::optional<std::string>
 writeManifest(const std::string &path, const PrefabDescription &description) {
-    if (description.version_ != kPrefabSchemaVersion) {
-        return "writer only supports prefab_version = " + std::to_string(kPrefabSchemaVersion);
+    if (description.version_ < 2 || description.version_ > kPrefabSchemaVersion) {
+        return "writer only supports prefab_version = 2.." + std::to_string(kPrefabSchemaVersion);
     }
     if (auto error = checkComponents(description.components_, "the root")) {
         return error;
@@ -882,6 +948,9 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
     for (const PrefabPartDescription &part : description.parts_) {
         if (part.id_.empty()) {
             return std::string{"part id must not be empty"};
+        }
+        if (description.version_ < 3 && !part.parentId_.empty()) {
+            return "part '" + part.id_ + "' parent requires prefab_version = 3";
         }
         if (!ids.insert(part.id_).second) {
             return "duplicate part id '" + part.id_ + "'";
@@ -904,6 +973,12 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
         }
     }
 
+    std::vector<std::size_t> parents;
+    std::vector<std::size_t> order;
+    if (auto error = resolvePartHierarchy(description.parts_, parents, order)) {
+        return error;
+    }
+
     const std::filesystem::path outputPath(path);
     if (const std::filesystem::path parent = outputPath.parent_path(); !parent.empty()) {
         std::error_code error;
@@ -922,6 +997,9 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
     out << "  parts = {\n";
     for (const PrefabPartDescription &part : description.parts_) {
         out << "    {\n      id = " << IRScript::luaStringLiteral(part.id_) << ",\n";
+        if (!part.parentId_.empty()) {
+            out << "      parent = " << IRScript::luaStringLiteral(part.parentId_) << ",\n";
+        }
         if (!part.voxelRef_.empty()) {
             out << "      voxel_ref = " << IRScript::luaStringLiteral(part.voxelRef_) << ",\n";
         } else if (part.shape_) {
@@ -955,6 +1033,7 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
         out << "    },\n";
     }
     out << "  },\n}\n";
+    out.close();
     if (!out) {
         return "failed while writing '" + path + "'";
     }
@@ -1020,7 +1099,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 "root-level lod is not supported; give each part its own lod band"
             );
         }
-        if (auto error = parseParts(prefab, idStr, partsManifest)) {
+        if (auto error = parseParts(prefab, idStr, *versionOpt, partsManifest)) {
             return makeError(idStr, path, *error);
         }
     } else if (
@@ -1207,17 +1286,25 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         parts.tier_ = tier;
         parts.candidateTier_ = tier;
         parts.candidateTicks_ = IRConstants::kPrefabPartsTierSettleTicks;
+        parts.hierarchyOrder_ = partsManifest->hierarchyOrder_;
         for (std::size_t i = 0; i < parts.slots_.size(); ++i) {
             IRComponents::PrefabPartSlot &slot = parts.slots_[i];
             const PartSpec &spec = partsManifest->parts_[i];
             slot.lodMin_ = spec.lodMin_;
             slot.lodMax_ = spec.lodMax_;
             slot.resident_ = spec.resident_;
-            if (!slot.inBand(tier)) {
+            slot.parentIndex_ = partsManifest->parentIndices_[i];
+        }
+        parts.updateNeeded(tier);
+        for (std::size_t i : parts.hierarchyOrder_) {
+            IRComponents::PrefabPartSlot &slot = parts.slots_[i];
+            if (!slot.needed_)
                 continue;
-            }
+            const IREntity::EntityId parent = slot.parentIndex_ == IRComponents::kPrefabRootParent
+                                                  ? entity
+                                                  : parts.slots_[slot.parentIndex_].entity_;
             slot.entity_ = IREntity::createEntity();
-            buildPart(entity, slot.entity_, *partsManifest, i, tier, slot);
+            buildPart(parent, slot.entity_, *partsManifest, i, tier, slot);
         }
         parts.manifest_ = std::move(partsManifest);
         IREntity::setComponent(entity, std::move(parts));
@@ -1269,8 +1356,18 @@ void stagePartSpawn(
                 IREntity::destroyEntity(part);
                 return;
             }
+            const std::size_t parentIndex = (*rootParts)->slots_[index].parentIndex_;
+            const IREntity::EntityId parent = parentIndex == IRComponents::kPrefabRootParent
+                                                  ? root
+                                                  : (*rootParts)->slots_[parentIndex].entity_;
+            if (parent == IREntity::kNullEntity || !IREntity::entityExists(parent) ||
+                IREntity::getEntityManager().isMarkedForDeletion(parent)) {
+                (*rootParts)->slots_[index].entity_ = IREntity::kNullEntity;
+                IREntity::destroyEntity(part);
+                return;
+            }
             IRComponents::PrefabPartSlot built;
-            buildPart(root, part, *manifest, index, tier, built);
+            buildPart(parent, part, *manifest, index, tier, built);
             // buildPart moved archetypes, so the root's column may have moved.
             IRComponents::PrefabPartSlot &slot =
                 IREntity::getComponent<IRComponents::C_PrefabParts>(root).slots_[index];

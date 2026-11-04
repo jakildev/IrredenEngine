@@ -108,9 +108,18 @@ FileBinaryWriter::FileBinaryWriter(const std::string &path)
 }
 
 FileBinaryWriter::~FileBinaryWriter() {
+    close();
+}
+
+bool FileBinaryWriter::close() {
     if (m_file) {
-        std::fclose(m_file);
+        const int result = std::fclose(m_file);
+        m_file = nullptr;
+        if (result != 0) {
+            setFailed("FileBinaryWriter: close failed on " + m_path);
+        }
     }
+    return !failed();
 }
 
 void FileBinaryWriter::writeBytes(const void *data, std::size_t size) {
@@ -156,7 +165,11 @@ void MemoryBinaryWriter::writeBytes(const void *data, std::size_t size) {
     if (end > m_buffer.size()) {
         m_buffer.resize(static_cast<std::size_t>(end));
     }
-    std::memcpy(m_buffer.data() + m_pos, data, size); // raw buffer copy — the primitive all higher-level writes go through
+    std::memcpy(
+        m_buffer.data() + m_pos,
+        data,
+        size
+    ); // raw buffer copy — the primitive all higher-level writes go through
     m_pos = end;
 }
 
@@ -375,7 +388,11 @@ BinaryStatus MemoryBinaryReader::readBytes(void *dest, std::size_t size) {
                 " of " + std::to_string(size) + " bytes) in " + m_sourceName
         );
     }
-    std::memcpy(dest, m_data + m_pos, size); // raw buffer copy — the primitive all higher-level reads go through
+    std::memcpy(
+        dest,
+        m_data + m_pos,
+        size
+    ); // raw buffer copy — the primitive all higher-level reads go through
     m_pos += size;
     return BinaryStatus::success();
 }

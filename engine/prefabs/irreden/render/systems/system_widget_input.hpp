@@ -159,10 +159,33 @@ template <> struct System<WIDGET_INPUT> {
     void beginTick() {
         frame_ = &IREntity::singleton<IRComponents::C_WidgetInputFrame>();
         theme_ = &IRPrefab::Widget::defaultTheme();
+        // setVisible clears the published focus even if the widget is shown again
+        // before this tick. A hidden editor must never resume an old edit.
+        if (focusedWidgetId_ != frame_->focusedWidget_) {
+            focusedWidgetId_ = IREntity::kNullEntity;
+            focusVisible_ = false;
+        }
+        if (capturedWidgetId_ != IREntity::kNullEntity) {
+            const auto widget =
+                IREntity::entityExists(capturedWidgetId_)
+                    ? IREntity::getComponentOptional<IRComponents::C_Widget>(capturedWidgetId_)
+                    : std::nullopt;
+            const auto state =
+                widget
+                    ? IREntity::getComponentOptional<IRComponents::C_WidgetState>(capturedWidgetId_)
+                    : std::nullopt;
+            if (!widget || !(*widget)->visible_ || (*widget)->disabled_ || !state ||
+                !(*state)->pressed_) {
+                capturedWidgetId_ = IREntity::kNullEntity;
+            }
+        }
         const IREntity::EntityId requested = IRPrefab::Widget::takeFocusRequest();
         if (requested != IREntity::kNullEntity && IREntity::entityExists(requested)) {
-            focusedWidgetId_ = requested;
-            focusVisible_ = true;
+            const auto widget = IREntity::getComponentOptional<IRComponents::C_Widget>(requested);
+            if (widget && (*widget)->visible_ && !(*widget)->disabled_) {
+                focusedWidgetId_ = requested;
+                focusVisible_ = true;
+            }
         }
         keyboardWidgetFocusedAtStart_ = hasFocusedKeyboardWidget();
         focusVisibleAtStart_ = focusVisible_;
@@ -237,8 +260,8 @@ template <> struct System<WIDGET_INPUT> {
                     IRInput::KeyMouseButtons::kKeyButtonEscape,
                     IRInput::ButtonStatuses::PRESSED
                 );
-            if (!focusedWidget || (*focusedWidget)->disabled_ || submitted || cancelled ||
-                clickedAway) {
+            if (!focusedWidget || !(*focusedWidget)->visible_ || (*focusedWidget)->disabled_ ||
+                submitted || cancelled || clickedAway) {
                 focusedWidgetId_ = IREntity::kNullEntity;
                 focusVisible_ = false;
             }
@@ -322,7 +345,7 @@ template <> struct System<WIDGET_INPUT> {
                         return;
                     }
                     const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(id);
-                    if (!widget.disabled_) {
+                    if (widget.visible_ && !widget.disabled_) {
                         hotkeyWidgetId_ = id;
                         claimedTypedButtons_.push_back(hotkey.key_);
                     }
@@ -420,7 +443,7 @@ template <> struct System<WIDGET_INPUT> {
             }
         }
 
-        if (widget.disabled_) {
+        if (!widget.visible_ || widget.disabled_) {
             state.hovered_ = false;
             state.pressed_ = false;
             clearSliderPress(state);

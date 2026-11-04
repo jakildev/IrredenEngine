@@ -36,6 +36,10 @@ template <> struct System<WIDGET_RENDER_NUMBER_FIELD> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
+        if (!widget.visible_) {
+            return;
+        }
+
         if (!canvas_) {
             return;
         }

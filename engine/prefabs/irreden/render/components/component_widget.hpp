@@ -64,6 +64,9 @@ struct C_Widget {
     WidgetKind kind_ = WidgetKind::PANEL;
     IRMath::ivec2 size_ = IRMath::ivec2(0, 0);
     bool disabled_ = false;
+    // Hidden widgets retain their layout and authored values but do not draw or interact.
+    // Change through Widget::setVisible to cancel transient input state immediately.
+    bool visible_ = true;
     // Declared cover: the GUI layout audit drops an overlap or text-over-widget
     // finding against this widget's covering surface — a panel's background, a
     // dropdown's open strip, the whole rect of any other kind. A panel's title

@@ -18,7 +18,8 @@ template <> struct System<WIDGET_APPLY_CHECKBOX> {
         const IRComponents::C_WidgetState &state,
         IRComponents::C_WidgetCheckbox &checkbox
     ) {
-        if (state.fireAction_) checkbox.checked_ = !checkbox.checked_;
+        if (widget.visible_ && !widget.disabled_ && state.fireAction_)
+            checkbox.checked_ = !checkbox.checked_;
     }
 
     static SystemId create() {
@@ -26,8 +27,7 @@ template <> struct System<WIDGET_APPLY_CHECKBOX> {
             WIDGET_APPLY_CHECKBOX,
             IRComponents::C_Widget,
             IRComponents::C_WidgetState,
-            IRComponents::C_WidgetCheckbox
-        >("WidgetApplyCheckbox");
+            IRComponents::C_WidgetCheckbox>("WidgetApplyCheckbox");
     }
 };
 

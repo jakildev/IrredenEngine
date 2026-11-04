@@ -18,6 +18,7 @@ namespace IRComponents {
 struct C_HitBox2DGui {
     ivec2 size_;
     ivec2 offset_{0, 0};
+    bool enabled_ = true;
     bool hovered_ = false;
 
     C_HitBox2DGui()

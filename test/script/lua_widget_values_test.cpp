@@ -710,4 +710,23 @@ TEST_F(LuaWidgetValues, HotkeySurfaceValidatesAndMirrorsHintVisibility) {
     }
 }
 
+TEST_F(LuaWidgetValues, VisibilityPreservesWidgetValuesAndValidatesIds) {
+    run(R"lua(
+        checkbox = IRGui.makeCheckbox(10, 20, 80, 20, "CHECK", true)
+        assert(IRGui.isVisible(checkbox))
+        IRGui.setDisabled(checkbox, true)
+        IRGui.setVisible(checkbox, false)
+        assert(not IRGui.isVisible(checkbox))
+        assert(IRGui.checkboxState(checkbox))
+        IRGui.setVisible(checkbox, true)
+        assert(IRGui.isVisible(checkbox))
+        assert(IRGui.checkboxState(checkbox))
+    )lua");
+    const auto checkbox = eval<IREntity::EntityId>("checkbox");
+    EXPECT_TRUE(IREntity::getComponent<C_Widget>(checkbox).disabled_);
+    EXPECT_EQ(IREntity::getComponent<C_GuiPosition>(checkbox).pos_, IRMath::ivec2(10, 20));
+    EXPECT_FALSE(error("IRGui.setVisible(999999, false)").empty());
+    EXPECT_FALSE(error("IRGui.isVisible(999999)").empty());
+}
+
 } // namespace

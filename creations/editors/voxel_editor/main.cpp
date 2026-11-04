@@ -151,6 +151,11 @@
 
 // Geometry of the fill tool's drag preview.
 #include "fill_ghost.hpp"
+#include "construction_grid.hpp"
+#include <irreden/render/systems/system_debug_overlay.hpp>
+#include "hierarchy_panel.hpp"
+#include "part_edit_history.hpp"
+#include "sculpt_panel.hpp"
 
 // Authoring sessions — recipes of editor gestures compiled into
 // scripted input and replayed against the live UI by the GUI-test harness.
@@ -226,7 +231,24 @@ constexpr std::size_t kUndoStrokeReserve = 1024;
 // palette swatch entity ids (built at init), the active swatch index
 // (driven by swatch clicks), the editable voxel set's entity id, the
 // frame-local undo contexts and the in-flight stroke buffer.
+enum class Workspace { SCULPT, ASSEMBLE, GENERATE, ANIMATE, ALL };
+
+struct WorkspaceMember {
+    unsigned mask_ = 0;
+    bool hidden_ = false;
+    bool visibleBeforeHide_ = true;
+};
+
 struct EditorState {
+    std::string documentStatus_;
+    IREntity::EntityId documentStatusLabel_ = IREntity::kNullEntity;
+    Workspace workspace_ = Workspace::ALL;
+    std::vector<IREntity::EntityId> workspaceButtons_;
+    std::unordered_map<IREntity::EntityId, WorkspaceMember> workspaceMembers_;
+    HierarchyPanel hierarchy_;
+    PartTransformGesture transformGesture_;
+    PartLodBandGesture lodGesture_;
+    bool suppressPartGesture_ = false;
     std::vector<IREntity::EntityId> paletteSwatches_;
     IREntity::EntityId palettePanel_ = IREntity::kNullEntity;
     int activeSwatchIdx_ = 0;
@@ -236,6 +258,9 @@ struct EditorState {
     IREntity::EntityId editableVoxelSet_ = IREntity::kNullEntity;
     std::vector<UndoEdit> pendingStroke_;
     std::vector<IRPrefab::Undo::ContextId> frameUndoContexts_;
+    IREntity::EntityId animationPanel_ = IREntity::kNullEntity;
+    IREntity::EntityId addFrameButton_ = IREntity::kNullEntity;
+    IREntity::EntityId duplicateFrameButton_ = IREntity::kNullEntity;
 };
 
 EditorState g_editor;
@@ -329,6 +354,9 @@ namespace {
 constexpr float kRotationSensitivity = 0.004f;
 
 void refreshRecipeHandles();
+void cancelSculptStroke();
+void finishPartEdits();
+bool cancelPartEdits();
 
 SymmetryState g_symmetry;
 
@@ -380,6 +408,27 @@ struct FillToolState {
     bool dragInverted_ = false;
 };
 FillToolState g_fillTool;
+
+enum class SculptTool { BRUSH, PAINT, BOX, LINE };
+
+struct SculptState {
+    SculptTool tool_ = SculptTool::BOX;
+    bool referenceScene_ = false;
+    bool showGrid_ = false;
+    bool dragging_ = false;
+    bool erase_ = false;
+    bool paint_ = false;
+    int planeAxis_ = 2;
+    int planeSlice_ = 0;
+    float planeOffset_ = 0.0f;
+    ivec3 lastCell_{};
+    IREntity::EntityId target_ = IREntity::kNullEntity;
+    Color color_{};
+    std::uint8_t bone_ = 0;
+    std::vector<bool> visited_;
+    std::vector<IREntity::EntityId> buttons_;
+};
+SculptState g_sculpt;
 
 // Loft-from-profiles tool (A2). Two 2D boolean masks — XZ (front) and YZ
 // (side) — rendered as pixel grids on the GUI canvas (loft_panel.hpp). Voxels
@@ -436,8 +485,8 @@ constexpr IRVideo::GuiInputEvent kPickVoxelEvents[] = {
 
 // --- Mechanism probes ----------------------------------------------
 // Prove the auto-authoring premise the session infrastructure rests on:
-// keyboard→command dispatch, world→screen click mapping, and the A/D binding
-// overload — all through the live GUI harness on the seed scene.
+// keyboard→command dispatch, world→screen click mapping, and camera/frame
+// shortcut isolation — all through the live GUI harness on the seed scene.
 // These shots append after the stable framings so existing labels and the
 // screen→world regression baseline (kPickVoxelShotIndex) stay untouched.
 
@@ -468,11 +517,6 @@ constexpr IRVideo::GuiInputEvent kProbeSaveEvents[] = {
      IRInput::kKeyButtonLeftControl},
 };
 
-// Probe 4 — A/D binding overload: tap A. The plain-PRESSED A binding both starts
-// a camera-left move AND adds an animation frame (no modifier guard, main.cpp
-// ~2130 vs ~2290) — one press fires both. The runner greps the "Added blank
-// frame" log to confirm the overload so later sessions re-establish the camera
-// after any frame op.
 // Ctrl+S again, but Ctrl comes back up BEFORE S does. The press was
 // shadowed, so neither pan half may fire — and the release frame, which sees no
 // modifier at all, is the one the old frame-local rule could not reach.
@@ -667,7 +711,7 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_help_overlay_closed"}, kHelpOverlayCloseEvents, 2},
     // Mechanism probes, appended after the stable shots so their indices
     // stay fixed. The eight mapping-accuracy shots come first (clean read-only
-    // picks), then the Ctrl+S dispatch and A/D-overload shots (both mutate state).
+    // picks), then the Ctrl+S dispatch and camera-shortcut shots.
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_0"}, &g_probeMapMoves[0], 1},
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_1"}, &g_probeMapMoves[1], 1},
     {{2.0f, IRMath::vec2(0.0f), 0.0f, "editor_probe_map_2"}, &g_probeMapMoves[2], 1},
@@ -700,7 +744,7 @@ constexpr int kPickVoxelShotIndex = 5;
 constexpr int kHelpOverlayOpenShotIndex = kPickVoxelShotIndex + 1;
 constexpr int kHelpOverlayClosedShotIndex = kHelpOverlayOpenShotIndex + 1;
 // Mechanism / erase-fill probe shot indices. Map shots occupy
-// [start, start+count); the erase probe, then the dispatch and overload shots
+// [start, start+count); the erase probe, then the dispatch and shortcut shots
 // follow. Derived from the preceding shot index so they track any reordering of
 // the stable shots.
 constexpr int kProbeMapShotStart = kHelpOverlayClosedShotIndex + 1;
@@ -1231,19 +1275,54 @@ void reseatEditorMirrorAxes() {
 }
 
 void clearUndoHistory() {
+    cancelPartEdits();
+    cancelSculptStroke();
     IRPrefab::Undo::clear();
     g_editor.pendingStroke_.clear();
     g_editor.pendingStroke_.reserve(kUndoStrokeReserve);
     g_editor.frameUndoContexts_.clear();
-    for (int i = 0; i < g_anim.frameCount(); ++i) {
+    const int contextCount = g_entitySceneMode ? 1 : g_anim.frameCount();
+    for (int i = 0; i < contextCount; ++i) {
         g_editor.frameUndoContexts_.push_back(IRPrefab::Undo::createContext());
     }
     if (!g_editor.frameUndoContexts_.empty()) {
-        IRPrefab::Undo::selectContext(g_editor.frameUndoContexts_[g_anim.activeFrame_]);
+        IRPrefab::Undo::selectContext(
+            g_editor.frameUndoContexts_[g_entitySceneMode ? 0 : g_anim.activeFrame_]
+        );
     }
 }
 
+void syncAnimationControls() {
+    if (g_editor.animationPanel_ == IREntity::kNullEntity)
+        return;
+    IREntity::getComponent<C_WidgetPanel>(g_editor.animationPanel_).title_ =
+        g_entitySceneMode ? "STATIC PARTS" : "ANIM";
+    for (const auto widget :
+         {g_scrubberSlider,
+          g_fpsSlider,
+          g_editor.addFrameButton_,
+          g_editor.duplicateFrameButton_}) {
+        IRPrefab::Widget::setDisabled(widget, g_entitySceneMode);
+    }
+}
+
+void enterEntitySceneMode() {
+    g_entitySceneMode = true;
+    g_anim.playing_ = false;
+    g_anim.elapsed_ = 0.0f;
+    syncAnimationControls();
+}
+
+bool canEditAnimationFrames() {
+    if (!g_entitySceneMode)
+        return true;
+    IR_LOG_INFO("Frame animation is available for single voxel assets; entity parts are static.");
+    return false;
+}
+
 void selectEditorPart(int index, bool createGizmos = true) {
+    finishPartEdits();
+    cancelSculptStroke();
     const IREntity::EntityId selected = g_entityScene.select(index, createGizmos);
     if (g_entityScene.previewSourceEntity() != IREntity::kNullEntity &&
         selected != g_entityScene.previewSourceEntity()) {
@@ -1288,24 +1367,58 @@ void selectRelativeEditorPart(int offset) {
     selectEditorPart((g_entityScene.selectedIndex() + offset + count) % count);
 }
 
-void addEditorVoxelPart() {
-    if (!g_entitySceneMode) {
-        g_entitySceneMode = true;
-        clearUndoHistory();
-        if (g_editor.editableVoxelSet_ != IREntity::kNullEntity) {
-            IREntity::destroyEntity(g_editor.editableVoxelSet_);
-        }
-        g_entityScene.begin();
+bool hasRigForCompositeConversion();
+void commitPartCreation(std::vector<IREntity::EntityId> created);
+
+bool ensureEntitySceneForPartCreation() {
+    if (g_entitySceneMode)
+        return true;
+    if (g_anim.frameCount() > 1) {
+        g_editor.documentStatus_ = "NEW PART refused: animated assets need a single frame first.";
+        return false;
     }
+    const auto &layers = g_layerManager.layers();
+    if (layers.size() != 1 || layers[0].id_ != 0 || layers[0].name_ != "default" ||
+        !layers[0].visible_ || g_layerManager.activeLayerId() != 0 ||
+        layers[0].colorTag_.red_ != 180 || layers[0].colorTag_.green_ != 180 ||
+        layers[0].colorTag_.blue_ != 200 || layers[0].colorTag_.alpha_ != 255) {
+        g_editor.documentStatus_ = "NEW PART refused: composite layer metadata is not supported.";
+        return false;
+    }
+    if (hasRigForCompositeConversion()) {
+        g_editor.documentStatus_ =
+            "NEW PART refused: rigged assets cannot convert to composites yet.";
+        return false;
+    }
+    if (g_editor.editableVoxelSet_ != IREntity::kNullEntity &&
+        g_entityScene.adoptVoxelPart(g_editor.editableVoxelSet_) == IREntity::kNullEntity) {
+        g_editor.documentStatus_ =
+            "NEW PART refused: the current voxel asset could not be adopted.";
+        return false;
+    }
+    cancelSculptStroke();
+    enterEntitySceneMode();
+    clearUndoHistory();
+    if (!g_entityScene.active())
+        g_entityScene.begin();
+    g_editor.documentStatus_ = "Existing voxel asset preserved as the first part.";
+    return true;
+}
+
+void addEditorVoxelPart() {
+    if (!ensureEntitySceneForPartCreation())
+        return;
+    cancelSculptStroke();
     const ivec3 size = nextPartSize();
     const IREntity::EntityId part =
         g_entityScene.addVoxelPart(size, derivePartPivot(size), EntityAnchor::CENTER);
     auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
     set.deactivateAll();
-    selectEditorPart(g_entityScene.selectedIndex());
+    commitPartCreation({part});
 }
 
 void clearEntitySceneForLoad() {
+    cancelSculptStroke();
     clearUndoHistory();
     g_entityScene.clear();
     refreshRecipeHandles();
@@ -1363,19 +1476,14 @@ IRPrefab::Prefab::PrefabShapeDescription selectedShapeDescription() {
 }
 
 void addEditorShapePart() {
-    if (!g_entitySceneMode) {
-        g_entitySceneMode = true;
-        clearUndoHistory();
-        if (g_editor.editableVoxelSet_ != IREntity::kNullEntity) {
-            IREntity::destroyEntity(g_editor.editableVoxelSet_);
-        }
-        g_entityScene.begin();
-    }
-    g_entityScene.addShapePart(
+    if (!ensureEntitySceneForPartCreation())
+        return;
+    cancelSculptStroke();
+    const auto part = g_entityScene.addShapePart(
         selectedShapeDescription(),
         IRComponents::C_LocalTransform{g_editableSceneOrigin}
     );
-    selectEditorPart(g_entityScene.selectedIndex());
+    commitPartCreation({part});
 }
 
 std::optional<RemovedEditorPart> snapshotEditorPartById(const std::string &partId) {
@@ -1388,6 +1496,8 @@ std::optional<RemovedEditorPart> snapshotEditorPartById(const std::string &partI
 }
 
 void removeSelectedPart() {
+    finishPartEdits();
+    cancelSculptStroke();
     if (!g_entitySceneMode || g_entityScene.selectedPart() == nullptr) {
         return;
     }
@@ -1578,10 +1688,15 @@ void applyEditRaw(
     std::size_t flat,
     bool place,
     Color placeColor,
-    std::uint8_t boneId
+    std::uint8_t boneId,
+    bool paintOnly = false
 ) {
+    if (paintOnly && set.voxels_[flat].color_.alpha_ == 0)
+        return;
     UndoEdit edit{voxelSetEntity, localIdx, set.voxels_[flat], {}};
-    if (place) {
+    if (paintOnly) {
+        set.voxels_[flat].color_ = placeColor;
+    } else if (place) {
         set.voxels_[flat].color_ = placeColor;
         set.voxels_[flat].bone_id_ = boneId;
         set.voxels_[flat].layer_id_ = g_layerManager.activeLayerId();
@@ -1614,7 +1729,8 @@ void applyEdit(
     std::size_t flat,
     bool place,
     Color placeColor,
-    std::uint8_t boneId = 0
+    std::uint8_t boneId = 0,
+    bool paintOnly = false
 ) {
     if (g_symmetry.enableX_ || g_symmetry.enableY_ || g_symmetry.enableZ_) {
         applyMirrors(localIdx, g_symmetry, g_mirrorScratch);
@@ -1636,6 +1752,7 @@ void applyEdit(
         if (sourcePart != nullptr && sourcePart->groupId_ != 0) {
             for (const EditorPart &part : g_entityScene.parts()) {
                 if (part.groupId_ == sourcePart->groupId_ &&
+                    part.parentId_ == sourcePart->parentId_ &&
                     part.kind_ == EditorPartKind::VOXEL_SET) {
                     g_rotationGroupScratch.push_back(&part);
                     g_rotationSetScratch.push_back(
@@ -1675,7 +1792,8 @@ void applyEdit(
                     mirroredFlat,
                     place,
                     placeColor,
-                    boneId
+                    boneId,
+                    paintOnly
                 );
             }
             continue;
@@ -1706,7 +1824,8 @@ void applyEdit(
                     targetFlat,
                     place,
                     placeColor,
-                    boneId
+                    boneId,
+                    paintOnly
                 );
             }
         }
@@ -2067,6 +2186,275 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     ghost.params_ = box.params_;
 }
 
+void hideSculptGhost() {
+    if (g_fillTool.ghostEntity_ != IREntity::kNullEntity)
+        IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_).flags_ =
+            IRMath::SDF::SHAPE_FLAG_NONE;
+}
+
+void refreshPendingSculptSets() {
+    std::vector<IREntity::EntityId> touched;
+    for (const UndoEdit &edit : g_editor.pendingStroke_) {
+        if (std::find(touched.begin(), touched.end(), edit.voxelSet_) == touched.end()) {
+            touched.push_back(edit.voxelSet_);
+            IREntity::getComponent<C_VoxelSetNew>(edit.voxelSet_).resyncAfterRawEdits();
+        }
+    }
+}
+
+void cancelSculptStroke() {
+    if (!g_sculpt.dragging_)
+        return;
+    for (auto edit = g_editor.pendingStroke_.rbegin(); edit != g_editor.pendingStroke_.rend();
+         ++edit) {
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(edit->voxelSet_);
+        const auto flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(edit->localIdx_, set.size_));
+        set.voxels_[flat] = edit->before_;
+    }
+    refreshPendingSculptSets();
+    g_editor.pendingStroke_.clear();
+    g_sculpt.dragging_ = false;
+    hideSculptGhost();
+}
+
+void finishSculptStroke() {
+    if (!g_sculpt.dragging_)
+        return;
+    g_sculpt.dragging_ = false;
+    commitStroke(true);
+    hideSculptGhost();
+}
+
+struct SculptTarget {
+    ivec3 local_{};
+    ivec3 world_{};
+    int axis_ = 2;
+    float planeOffset_ = 0.0f;
+};
+
+std::optional<SculptTarget> sculptTarget(bool erase, bool paint, bool inverted) {
+    const auto entity = g_editor.editableVoxelSet_;
+    if (entity == IREntity::kNullEntity || !isEditable(entity))
+        return std::nullopt;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+    const auto &world = IREntity::getComponent<C_WorldTransform>(entity);
+    if (const auto hit = pickEditable(); hit && hit->entity_ == entity) {
+        const ivec3 target = editTargetCell(*hit, erase || paint, inverted);
+        ivec3 local;
+        std::size_t flat = 0;
+        if (!worldVoxelToLocal(set, world, target, local, flat))
+            return std::nullopt;
+        const int axis = hit->faceNormal_.x != 0 ? 0 : (hit->faceNormal_.y != 0 ? 1 : 2);
+        const float planeOffset = static_cast<float>(hit->voxelPos_[axis] - target[axis]) +
+                                  0.5f * static_cast<float>(hit->faceNormal_[axis]);
+        return SculptTarget{local, target, axis, planeOffset};
+    }
+    if (!erase && !paint) {
+        if (const auto local = pickEditablePlane(entity, 2, set.size_.z - 1))
+            return SculptTarget{*local, voxelSetCellOrigin(set, world) + *local, 2};
+    }
+    return std::nullopt;
+}
+
+void applySculptCell(ivec3 local) {
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sculpt.target_);
+    if (!cellInBounds(local, set.size_))
+        return;
+    const auto flat = static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
+    if (g_sculpt.visited_[flat])
+        return;
+    g_sculpt.visited_[flat] = true;
+    const bool occupied = set.voxels_[flat].color_.alpha_ != 0;
+    if ((g_sculpt.erase_ || g_sculpt.paint_) ? !occupied : occupied)
+        return;
+    applyEdit(
+        g_sculpt.target_,
+        set,
+        local,
+        flat,
+        !g_sculpt.erase_,
+        g_sculpt.color_,
+        g_sculpt.bone_,
+        g_sculpt.paint_
+    );
+}
+
+void updateSculptBrush(bool blocked, Color color, std::uint8_t bone, bool inverted) {
+    const bool pressed = IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
+    const bool held = IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD);
+    const bool released =
+        IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED);
+    if (g_sculpt.dragging_ && released) {
+        finishSculptStroke();
+        return;
+    }
+    if (blocked) {
+        hideSculptGhost();
+        return;
+    }
+    if (g_sculpt.dragging_) {
+        if (!held)
+            return;
+        const auto local = pickEditablePlane(
+            g_sculpt.target_,
+            g_sculpt.planeAxis_,
+            g_sculpt.planeSlice_,
+            g_sculpt.planeOffset_
+        );
+        if (!local) {
+            hideSculptGhost();
+            return;
+        }
+        forEachStrokeCell(g_sculpt.lastCell_, *local, applySculptCell);
+        g_sculpt.lastCell_ = *local;
+        refreshPendingSculptSets();
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sculpt.target_);
+        const auto &world = IREntity::getComponent<C_WorldTransform>(g_sculpt.target_);
+        const auto cell = voxelSetCellOrigin(set, world) + *local;
+        updateGhostShape(cell, cell, false);
+        return;
+    }
+    const auto target = sculptTarget(g_eraseMode, g_sculpt.tool_ == SculptTool::PAINT, inverted);
+    if (!target) {
+        hideSculptGhost();
+        return;
+    }
+    updateGhostShape(target->world_, target->world_, false);
+    if (!pressed)
+        return;
+    g_anim.playing_ = false;
+    g_sculpt.dragging_ = true;
+    g_sculpt.erase_ = g_eraseMode;
+    g_sculpt.paint_ = g_sculpt.tool_ == SculptTool::PAINT;
+    g_sculpt.target_ = g_editor.editableVoxelSet_;
+    g_sculpt.planeAxis_ = target->axis_;
+    g_sculpt.planeSlice_ = target->local_[target->axis_];
+    g_sculpt.planeOffset_ = target->planeOffset_;
+    g_sculpt.lastCell_ = target->local_;
+    g_sculpt.color_ = color;
+    g_sculpt.bone_ = bone;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sculpt.target_);
+    g_sculpt.visited_.assign(set.voxels_.size(), false);
+    applySculptCell(target->local_);
+    refreshPendingSculptSets();
+}
+
+void updateSculptToolbar() {
+    for (std::size_t i = 0; i < g_sculpt.buttons_.size(); ++i) {
+        if (!IRPrefab::Widget::wasClicked(g_sculpt.buttons_[i]))
+            continue;
+        finishSculptStroke();
+        g_fillTool.dragging_ = false;
+        hideSculptGhost();
+        if (i < 5) {
+            g_sculpt.tool_ = i == 2 ? SculptTool::PAINT
+                                    : (i == 3 ? SculptTool::BOX
+                                              : (i == 4 ? SculptTool::LINE : SculptTool::BRUSH));
+            g_eraseMode = i == 1;
+            g_classPaintMode = false;
+            g_bonePaint.active_ = false;
+            g_sculpt.showGrid_ = true;
+        } else if (i == 5) {
+            addEditorVoxelPart();
+        } else if (i == 6) {
+            finishPartEdits();
+            IRPrefab::Undo::undo();
+        } else if (i == 7) {
+            finishPartEdits();
+            IRPrefab::Undo::redo();
+        } else {
+            g_sculpt.showGrid_ = !g_sculpt.showGrid_;
+        }
+    }
+}
+
+void updateHierarchyPanel() {
+    if (auto edit = g_editor.hierarchy_.update(g_entityScene)) {
+        const auto replay = [edit = *edit](bool redo) {
+            const auto result = applyReparentEdit(g_entityScene, edit, redo);
+            if (!result.ok_) {
+                g_editor.hierarchy_.showError(result.error_);
+                IR_LOG_ERROR("Cannot restore parent: {}", result.error_);
+            }
+            selectEditorPart(g_entityScene.selectedIndex());
+        };
+        IRPrefab::Undo::push(
+            {"REPARENT PART", [replay]() { replay(false); }, [replay]() { replay(true); }, {}}
+        );
+        selectEditorPart(g_entityScene.selectedIndex());
+    }
+}
+
+void finishPartEdits() {
+    if (const auto *pending = g_editor.transformGesture_.pending()) {
+        const auto after = snapshotPartTransform(g_entityScene, pending->partId_);
+        if (auto edit = g_editor.transformGesture_.finish(after)) {
+            const auto replay = [edit = *edit](bool redo) {
+                applyPartTransform(g_entityScene, edit.partId_, redo ? edit.after_ : edit.before_);
+                refreshRecipeHandles();
+            };
+            IRPrefab::Undo::push(
+                {"TRANSFORM PART", [replay]() { replay(false); }, [replay]() { replay(true); }, {}}
+            );
+        }
+    }
+    if (const auto *pending = g_editor.lodGesture_.pending()) {
+        const auto after = snapshotPartLodBand(g_entityScene, pending->partId_);
+        if (auto edit = g_editor.lodGesture_.finish(after)) {
+            const auto replay = [edit = *edit](bool redo) {
+                applyPartLodBand(g_entityScene, edit.partId_, redo ? edit.after_ : edit.before_);
+                syncLodBandSliders();
+            };
+            IRPrefab::Undo::push(
+                {"PART LOD BAND", [replay]() { replay(false); }, [replay]() { replay(true); }, {}}
+            );
+        }
+    }
+}
+
+bool cancelPartEdits() {
+    bool cancelled = false;
+    if (const auto *pending = g_editor.transformGesture_.pending()) {
+        applyPartTransform(g_entityScene, pending->partId_, pending->before_);
+        g_editor.transformGesture_.cancel();
+        auto *drag =
+            IRSystem::getSystemParams<IRSystem::System<IRSystem::GIZMO_DRAG>>(g_gizmoDragSystem);
+        drag->dragHandle_ = IREntity::kNullEntity;
+        refreshRecipeHandles();
+        cancelled = true;
+    }
+    if (const auto *pending = g_editor.lodGesture_.pending()) {
+        applyPartLodBand(g_entityScene, pending->partId_, pending->before_);
+        g_editor.lodGesture_.cancel();
+        syncLodBandSliders();
+        cancelled = true;
+    }
+    g_editor.suppressPartGesture_ = g_editor.suppressPartGesture_ || cancelled;
+    return cancelled;
+}
+
+void updatePartTransformHistory() {
+    const auto *drag =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::GIZMO_DRAG>>(g_gizmoDragSystem);
+    if (drag->dragHandle_ == IREntity::kNullEntity) {
+        if (g_editor.transformGesture_.active())
+            finishPartEdits();
+        return;
+    }
+    if (g_editor.transformGesture_.active())
+        return;
+    for (const EditorPart &part : g_entityScene.parts()) {
+        if (part.entity_ != drag->dragAnchor_)
+            continue;
+        auto before = IREntity::getComponent<C_LocalTransform>(part.entity_);
+        before.translation_ = drag->dragStartAnchorPos_;
+        before.rotation_ = drag->dragStartAnchorRot_;
+        g_editor.transformGesture_.begin(part.id_, before);
+        break;
+    }
+}
+
 // Loft mask cell colors. Painted onto the GUI canvas by
 // IRRender::drawMaskGridOntoCanvas in the EditorLoftRender system.
 constexpr Color kLoftCellOn{180, 220, 180, 230};
@@ -2130,7 +2518,8 @@ bool applyLoft(Color color) {
 // runs before initEntities, so command callbacks may fire before the
 // editable set exists — guard rather than crash).
 void snapshotLiveToFrame(int idx) {
-    if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+    finishSculptStroke();
+    if (g_entitySceneMode || g_editor.editableVoxelSet_ == IREntity::kNullEntity)
         return;
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
     g_anim.frames_[idx].voxels_.assign(vs.voxels_.begin(), vs.voxels_.end());
@@ -2141,7 +2530,7 @@ void snapshotLiveToFrame(int idx) {
 // voxels_ has never been populated — fills the live voxels with
 // transparent cells instead.
 void loadFrameToLive(int idx) {
-    if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+    if (g_entitySceneMode || g_editor.editableVoxelSet_ == IREntity::kNullEntity)
         return;
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
     auto &nf = g_anim.frames_[idx];
@@ -2168,11 +2557,36 @@ void loadFrameToLive(int idx) {
     vs.resyncAfterRawEdits();
 }
 
+void addAnimationFrame() {
+    if (!canEditAnimationFrames())
+        return;
+    snapshotLiveToFrame(g_anim.activeFrame_);
+    g_anim.addBlankFrame();
+    auto &contexts = g_editor.frameUndoContexts_;
+    contexts.insert(contexts.begin() + g_anim.activeFrame_, IRPrefab::Undo::createContext());
+    IRPrefab::Undo::selectContext(contexts[g_anim.activeFrame_]);
+    loadFrameToLive(g_anim.activeFrame_);
+    IR_LOG_INFO("Added blank frame {} / {}", g_anim.activeFrame_ + 1, g_anim.frameCount());
+}
+
+void duplicateAnimationFrame() {
+    if (!canEditAnimationFrames())
+        return;
+    snapshotLiveToFrame(g_anim.activeFrame_);
+    g_anim.duplicateCurrentFrame();
+    auto &contexts = g_editor.frameUndoContexts_;
+    contexts.insert(contexts.begin() + g_anim.activeFrame_, IRPrefab::Undo::createContext());
+    IRPrefab::Undo::selectContext(contexts[g_anim.activeFrame_]);
+    IR_LOG_INFO("Duplicated frame {} / {}", g_anim.activeFrame_ + 1, g_anim.frameCount());
+}
+
 // Snapshot the live voxels into the active frame, then load frame
 // `frameIndex` into the live target. Out-of-range and same-frame are
 // no-ops. Selects the frame's history context so undo reaches only into the
 // active frame.
 void switchToFrame(int frameIndex) {
+    if (!canEditAnimationFrames())
+        return;
     if (frameIndex < 0 || frameIndex >= g_anim.frameCount())
         return;
     if (frameIndex == g_anim.activeFrame_)
@@ -2241,6 +2655,10 @@ struct JointToolState {
     IREntity::EntityId lastDragHandle_ = IREntity::kNullEntity;
 };
 JointToolState g_jointTool;
+
+bool hasRigForCompositeConversion() {
+    return !g_jointTool.parentIdx_.empty();
+}
 
 // Ensures the session's rig-root entity (the C_Skeleton owner) exists,
 // creating it at kJointRigOrigin on first use. Joints parent under it.
@@ -3120,14 +3538,17 @@ void updateRecipesPanel() {
 bool cursorOverModuleUi() {
     const vec2 cursor = IRPrefab::Layout::mousePositionInGuiTrixels();
     if (g_componentsPanel != IREntity::kNullEntity &&
+        IRPrefab::Widget::isVisible(g_componentsPanel) &&
         guiPointInRect(cursor, kComponentsPanelPos, kComponentsPanelSize))
         return true;
     if (g_recipesPanel == IREntity::kNullEntity)
         return false;
-    if (guiPointInRect(cursor, kRecipesPanelPos, kRecipesPanelSize))
+    if (IRPrefab::Widget::isVisible(g_recipesPanel) &&
+        guiPointInRect(cursor, kRecipesPanelPos, kRecipesPanelSize))
         return true;
     for (const DockedModulePanel &docked : g_dockedModulePanels) {
-        if (guiPointInRect(cursor, docked.pos_, kModulePanelSize))
+        if (IRPrefab::Widget::isVisible(docked.panel_) &&
+            guiPointInRect(cursor, docked.pos_, kModulePanelSize))
             return true;
     }
     return false;
@@ -3138,6 +3559,7 @@ bool cursorOverModuleUi() {
 // is on one of its sliders.
 bool cursorOverPartSizePanel() {
     return g_partSizePanel != IREntity::kNullEntity &&
+           IRPrefab::Widget::isVisible(g_partSizePanel) &&
            guiPointInRect(
                IRPrefab::Layout::mousePositionInGuiTrixels(),
                kPartSizePanelPos,
@@ -3467,20 +3889,38 @@ bool initModuleUi() {
     IREntity::setComponent(g_recipesPanel, IRComponents::C_HitBox2DGui{kRecipesPanelSize});
     IREntity::getComponent<IRComponents::C_Widget>(g_recipesPanel).zOrder_ = -1;
     std::vector<std::string> names;
-    for (const ModuleRecipe &recipe : g_moduleHost.recipes())
-        names.push_back(recipe.name_);
+    const int labelWidth = kRecipeListSize.x - IRPrefab::Widget::defaultTheme().padding_ * 4;
+    for (const ModuleRecipe &recipe : g_moduleHost.recipes()) {
+        std::string label = recipe.name_;
+        if (IRRender::measureText(label, 0, IRRender::TextSize::SMALL).x > labelWidth) {
+            while (!label.empty() &&
+                   IRRender::measureText(label + "...", 0, IRRender::TextSize::SMALL).x >
+                       labelWidth)
+                label.pop_back();
+            label += "...";
+        }
+        names.push_back(std::move(label));
+    }
     const int initialRecipe = names.empty() ? -1 : 0;
     g_recipeList = IRPrefab::Widget::makeList(
         kRecipeListPos,
         kRecipeListSize,
         std::move(names),
         initialRecipe,
-        kRecipeListItemHeight
+        kRecipeListItemHeight,
+        IRRender::TextSize::SMALL
     );
     for (int i = 0; i < kRecipeParamRowsPerPage; ++i) {
         const SliderGeometry geom = recipeParamSliderGeometry(i);
-        g_recipeSliders[i] =
-            IRPrefab::Widget::makeSlider(geom.pos_, geom.size_, "", 0.0f, 1.0f, 0.0f);
+        g_recipeSliders[i] = IRPrefab::Widget::makeSlider(
+            geom.pos_,
+            geom.size_,
+            "",
+            0.0f,
+            1.0f,
+            0.0f,
+            IRRender::TextSize::SMALL
+        );
     }
     g_recipeApplyBtn = IRPrefab::Widget::makeButton(kRecipeApplyPos, kRecipeApplySize, "APPLY");
     configureRecipeSliders(initialRecipe);
@@ -3509,7 +3949,139 @@ bool initModuleUi() {
     return true;
 }
 
+constexpr unsigned workspaceMask(Workspace workspace) {
+    return 1u << static_cast<unsigned>(workspace);
+}
+
+unsigned workspaceMembership(ivec2 pos) {
+    const auto inside = [pos](ivec2 origin, ivec2 size) {
+        return guiPointInRect(vec2(pos), origin, size);
+    };
+    constexpr unsigned sculpt = workspaceMask(Workspace::SCULPT);
+    constexpr unsigned assemble = workspaceMask(Workspace::ASSEMBLE);
+    constexpr unsigned generate = workspaceMask(Workspace::GENERATE);
+    constexpr unsigned animate = workspaceMask(Workspace::ANIMATE);
+    if (inside(kPalettePanelPos, kPalettePanelSize))
+        return sculpt | generate;
+    if (inside(ivec2(130, 240), ivec2(120, 96)) || inside(kPartSizePanelPos, kPartSizePanelSize))
+        return sculpt;
+    if (inside(kPartsPanelPos, kPartsPanelSize))
+        return sculpt | assemble | generate;
+    if (inside(kHierarchyPanelPos, kHierarchyPanelSize) || inside(kLodPanelPos, kLodPanelSize) ||
+        inside(kArrayPanelPos, kArrayPanelSize) ||
+        inside(kComponentsPanelPos, kComponentsPanelSize))
+        return assemble;
+    if (inside(kBakePanelPos, kBakePanelSize))
+        return generate;
+    if (inside(kAnimPanelPos, kAnimPanelSize) || inside(kBonePanelPos, kBonePanelSize) ||
+        inside(kSkeletonPanelPos, kSkeletonPanelSize))
+        return animate;
+    if (inside(kRecipesPanelPos, kRecipesPanelSize))
+        return generate;
+    for (const auto &panel : g_dockedModulePanels) {
+        if (inside(panel.pos_, kModulePanelSize))
+            return generate;
+    }
+    return 0;
+}
+
+void updateWorkspaces() {
+    if (g_editor.documentStatusLabel_ != IREntity::kNullEntity) {
+        std::string status = g_editor.documentStatus_;
+        if (IRRender::measureText(status, 0, IRRender::TextSize::SMALL).x > 620) {
+            while (!status.empty() &&
+                   IRRender::measureText(status + "...", 0, IRRender::TextSize::SMALL).x > 620)
+                status.pop_back();
+            status += "...";
+        }
+        IRPrefab::Widget::setLabelText(g_editor.documentStatusLabel_, std::move(status));
+    }
+    for (std::size_t i = 0; i < g_editor.workspaceButtons_.size(); ++i) {
+        if (IRPrefab::Widget::wasClicked(g_editor.workspaceButtons_[i])) {
+            finishSculptStroke();
+            finishPartEdits();
+            g_fillTool.dragging_ = false;
+            hideSculptGhost();
+            g_editor.workspace_ = static_cast<Workspace>(i);
+            g_loftTool.active_ = false;
+            if (g_editor.workspace_ != Workspace::ANIMATE &&
+                g_editor.workspace_ != Workspace::ALL) {
+                g_bonePaint.active_ = false;
+                g_jointTool.active_ = false;
+                g_anim.playing_ = false;
+            }
+        }
+        constexpr const char *labels[] = {"SCULPT", "ASSEMBLE", "GENERATE", "ANIMATE", "ALL"};
+        const bool selected = static_cast<std::size_t>(g_editor.workspace_) == i;
+        IRPrefab::Widget::setButtonLabel(
+            g_editor.workspaceButtons_[i],
+            selected ? "[" + std::string(labels[i]) + "]" : labels[i]
+        );
+    }
+    IREntity::forEachComponent<C_Widget>([](IREntity::EntityId id, C_Widget &widget) {
+        auto found = g_editor.workspaceMembers_.find(id);
+        if (found == g_editor.workspaceMembers_.end()) {
+            const auto position = IREntity::getComponentOptional<C_GuiPosition>(id);
+            if (!position)
+                return;
+            const unsigned mask = workspaceMembership((*position)->pos_);
+            if (mask == 0)
+                return;
+            found = g_editor.workspaceMembers_.emplace(id, WorkspaceMember{mask}).first;
+        }
+        auto &member = found->second;
+        const bool allowed = g_editor.workspace_ == Workspace::ALL ||
+                             (member.mask_ & workspaceMask(g_editor.workspace_)) != 0;
+        if (!allowed) {
+            if (!member.hidden_)
+                member.visibleBeforeHide_ = widget.visible_;
+            member.hidden_ = true;
+            IRPrefab::Widget::setVisible(id, false);
+        } else if (member.hidden_) {
+            member.hidden_ = false;
+            IRPrefab::Widget::setVisible(id, member.visibleBeforeHide_);
+        }
+    });
+}
+
 namespace Session {
+
+bool evaluateWorkspaceCheck(const void *context, std::string &actual) {
+    const int workspace = *static_cast<const int *>(context);
+    const bool all = workspace == 4;
+    const bool palette = IRPrefab::Widget::isVisible(g_editor.palettePanel_);
+    const bool hierarchy = IRPrefab::Widget::isVisible(g_editor.hierarchy_.panel());
+    const bool bake = IRPrefab::Widget::isVisible(g_bakePanel);
+    const bool animation = IRPrefab::Widget::isVisible(g_editor.animationPanel_);
+    actual = "workspace=" + std::to_string(static_cast<int>(g_editor.workspace_)) +
+             "; palette=" + std::to_string(palette) + "; hierarchy=" + std::to_string(hierarchy) +
+             "; bake=" + std::to_string(bake) + "; animation=" + std::to_string(animation);
+    return static_cast<int>(g_editor.workspace_) == workspace &&
+           palette == (all || workspace == 0 || workspace == 2) &&
+           hierarchy == (all || workspace == 1) && bake == (all || workspace == 2) &&
+           animation == (all || workspace == 3);
+}
+
+bool evaluateAnimationBoundaryCheck(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const AnimationBoundaryCheck *>(context);
+    const bool disabled =
+        IREntity::getComponent<C_Widget>(g_scrubberSlider).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_fpsSlider).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_editor.addFrameButton_).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_editor.duplicateFrameButton_).disabled_;
+    const vec2 camera = IRRender::getCameraPosition2DIso();
+    const bool stationary = IRMath::length(camera) < 0.001f;
+    actual = "frames=" + std::to_string(g_anim.frameCount()) +
+             " active=" + std::to_string(g_anim.activeFrame_) +
+             " playing=" + std::to_string(g_anim.playing_) +
+             " entity=" + std::to_string(g_entitySceneMode) +
+             " controlsDisabled=" + std::to_string(disabled) +
+             " cameraOffset=" + std::to_string(IRMath::length(camera));
+    return g_anim.frameCount() == check.frames_ &&
+           (check.active_ < 0 || g_anim.activeFrame_ == check.active_) &&
+           g_anim.playing_ == check.playing_ && g_entitySceneMode == check.entityMode_ &&
+           disabled == check.entityMode_ && stationary == check.cameraStationary_;
+}
 
 // How far, in subdivided depth units, a picked face may sit from the drawn one
 // and still be the same voxel's. The next voxel along any axis is a whole
@@ -4661,7 +5233,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Left-click (no drag): place single voxel adjacent to hit face");
     IR_LOG_INFO("  Alt + any place gesture: place on the FAR side of the hit face");
     IR_LOG_INFO("    (on a top face that is BELOW it — the only way to grow downward)");
-    IR_LOG_INFO("  Right-click: erase hit voxel (drag still rotates camera)");
+    IR_LOG_INFO("  Right-drag: rotate camera; use ERASE or V to remove voxels");
     IR_LOG_INFO("  V: toggle erase-fill mode (left-click place/box/line/face gestures erase)");
     IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
@@ -4671,7 +5243,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Ctrl+Z: undo  Ctrl+Y / Ctrl+Shift+Z: redo");
     IR_LOG_INFO("  X/Y/Z: toggle X/Y/Z mirror symmetry");
     IR_LOG_INFO("  Left/Right arrow: previous/next frame");
-    IR_LOG_INFO("  P: play/pause  A: add blank frame  D: duplicate  Backspace: delete frame");
+    IR_LOG_INFO("  P: play/pause  Shift+A: add frame  Shift+D: duplicate  Backspace: delete frame");
     IR_LOG_INFO("  L: toggle loop mode (LOOP / PING-PONG)");
     IR_LOG_INFO("  F: toggle loft mode (paint XZ+YZ profiles)  Enter: stamp  C: clear masks");
     IR_LOG_INFO("  J: toggle joint authoring  B: add joint to chain  R: start new chain");
@@ -4690,7 +5262,10 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | "
-        "tier_scrub | remove_part | undo_history | radial_array | linear_array | nway_symmetry | "
+        "tier_scrub | remove_part | undo_history | animation_boundary | sculpt_workflow | "
+        "sculpt_single_save | "
+        "radial_array | "
+        "linear_array | nway_symmetry | "
         "mode_preview | "
         "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
@@ -4709,6 +5284,10 @@ int main(int argc, char **argv) {
          "parts_roundtrip",
          "remove_part",
          "undo_history",
+         "animation_boundary",
+         "sculpt_workflow",
+         "sculpt_single_save",
+         "hierarchy_workflow",
          "tier_scrub",
          "radial_array",
          "linear_array",
@@ -4743,7 +5322,12 @@ int main(int argc, char **argv) {
         IRPrefab::GuiAudit::kLayoutCheckFlag,
         IRPrefab::GuiAudit::kLayoutCheckFlagHelp
     );
+    IREngine::args().flag(
+        "--reference-scene",
+        "open the seeded diagnostic scene instead of a blank sculpt"
+    );
     IREngine::init(argc, argv);
+    IRVoxelEditor::g_sculpt.referenceScene_ = IREngine::args().getFlag("--reference-scene");
     IRVoxelEditor::g_guiAssertLatch.layoutCheck_ =
         IREngine::args().getFlag(IRPrefab::GuiAudit::kLayoutCheckFlag);
     const auto exitCleanly = [](int code) {
@@ -4842,6 +5426,10 @@ int main(int argc, char **argv) {
     IRVoxelEditor::g_sessionId = moduleSession.empty()
                                      ? IRVoxelEditor::Session::idFromName(guiSession)
                                      : IRVoxelEditor::Session::Id::MODULE;
+    if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE &&
+        !IRVoxelEditor::g_sculpt.referenceScene_ &&
+        IREngine::args().autoScreenshotWarmupFrames() > 0)
+        IRVoxelEditor::g_sessionId = IRVoxelEditor::Session::Id::SCULPT_WORKFLOW;
     if (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE) {
         const IRVoxelEditor::Session::ModuleSessionSpec moduleSpec =
             IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE_LOADED
@@ -4896,6 +5484,7 @@ int main(int argc, char **argv) {
     if (!IRVoxelEditor::initModuleUi())
         return exitCleanly(2);
     IRVoxelEditor::initComponentsUi();
+    IRVoxelEditor::updateWorkspaces();
     IREngine::gameLoop();
     return 0;
 }
@@ -5026,6 +5615,8 @@ void initSystems() {
             const char *help = nullptr;
             int bestArea = 0;
             for (const auto &entry : IRVoxelEditor::g_helpEntries) {
+                if (!IRPrefab::Widget::isVisible(entry.widget_))
+                    continue;
                 auto hitbox = IREntity::getComponentOptional<C_HitBox2DGui>(entry.widget_);
                 if (!hitbox.has_value() || !(*hitbox)->hovered_)
                     continue;
@@ -5095,7 +5686,9 @@ void initSystems() {
                 static_cast<int>(lip->mouseGuiTrixel_.x),
                 static_cast<int>(lip->mouseGuiTrixel_.y)
             );
-            const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+            const bool shiftHeld =
+                IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::LINE ||
+                IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
             const int sx = IRVoxelEditor::g_editableSceneSize.x;
             const int sy = IRVoxelEditor::g_editableSceneSize.y;
             const int sz = IRVoxelEditor::g_editableSceneSize.z;
@@ -5182,17 +5775,20 @@ void initSystems() {
     //   left-click (no drag)    → single-voxel place (same as original behavior)
     // Alt modifies any of the place gestures: the hit face's normal inverts, so
     // the edit lands on the far side of the clicked face (editTargetCell).
-    // Right-click PRESSED → single-voxel erase (unchanged).
+    // Right-drag belongs to camera orbit.
     auto placeEraseSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorPlaceErase",
         [](const C_GuiElement &) {},
         []() {},
         []() {
+            IRVoxelEditor::updateWorkspaces();
             // All 3D editing is suppressed in loft mode — the loft input system
             // handles mouse events over the mask panels instead.
             if (IRVoxelEditor::g_loftTool.active_)
                 return;
 
+            IRVoxelEditor::updateSculptToolbar();
+            IRVoxelEditor::updateHierarchyPanel();
             if (IRVoxelEditor::g_fillModeLabel != IREntity::kNullEntity) {
                 std::string status;
                 const bool shiftNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
@@ -5219,6 +5815,18 @@ void initSystems() {
                 } else {
                     status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
                 }
+                if (!IRVoxelEditor::g_bonePaint.active_ && !IRVoxelEditor::g_classPaintMode &&
+                    !ctrlNow) {
+                    if (IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::BRUSH)
+                        status = IRVoxelEditor::g_eraseMode ? "ERASE BRUSH" : "ADD BRUSH";
+                    else if (IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::PAINT)
+                        status = "PAINT BRUSH";
+                    else if (IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::LINE)
+                        status = IRVoxelEditor::g_eraseMode ? "ERASE LINE" : "ADD LINE";
+                }
+                if (IRVoxelEditor::g_editor.editableVoxelSet_ != IREntity::kNullEntity &&
+                    !IRVoxelEditor::isEditable(IRVoxelEditor::g_editor.editableVoxelSet_))
+                    status += " | PART NEEDS LOCAL EDIT VIEW";
                 // Alt inverts the hit-face normal on every place gesture, so the
                 // edit lands on the far side of the clicked face (below it, for
                 // the -z face). Erase has no far side to invert onto.
@@ -5245,7 +5853,16 @@ void initSystems() {
                 IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
             }
 
-            bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
+            bool overWidget = IRPrefab::Widget::hoveredWidget() != IREntity::kNullEntity ||
+                              IRVoxelEditor::g_editor.hierarchy_.containsCursor(
+                                  IRPrefab::Layout::mousePositionInGuiTrixels()
+                              ) ||
+                              IRVoxelEditor::guiPointInRect(
+                                  IRPrefab::Layout::mousePositionInGuiTrixels(),
+                                  IRVoxelEditor::kSculptToolbarPos,
+                                  IRVoxelEditor::kSculptToolbarSize
+                              ) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_partsPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_lodPanel) ||
@@ -5296,22 +5913,6 @@ void initSystems() {
                     ? IRVoxelEditor::kBoneColors[IRVoxelEditor::g_bonePaint.activeBoneIdx_]
                     : IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
 
-            // Right-click: single-voxel erase (bone_id_ unaffected — erase only).
-            if (!overWidget &&
-                IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED)) {
-                const auto hit = IRVoxelEditor::pickEditable();
-                if (hit && hit->faceNormal_ != ivec3(0)) {
-                    auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
-                    auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
-                    ivec3 local{};
-                    std::size_t flat = 0;
-                    if (IRVoxelEditor::worldVoxelToLocal(set, gpos, hit->voxelPos_, local, flat)) {
-                        IRVoxelEditor::applyEdit(hit->entity_, set, local, flat, false, placeColor);
-                        IRVoxelEditor::commitStroke();
-                    }
-                }
-            }
-
             // Ctrl + left-click: face-fill (immediate, no drag).
             const bool ctrlDown = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
             // Alt: place on the far side of the hit face (editTargetCell). Read
@@ -5343,6 +5944,18 @@ void initSystems() {
                     );
                     IRVoxelEditor::commitStroke();
                 }
+                return;
+            }
+
+            if ((IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::BRUSH ||
+                 IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::PAINT) &&
+                !IRVoxelEditor::g_classPaintMode && !IRVoxelEditor::g_bonePaint.active_) {
+                IRVoxelEditor::updateSculptBrush(
+                    overWidget || ctrlDown,
+                    placeColor,
+                    placeBoneId,
+                    altDown
+                );
                 return;
             }
 
@@ -5386,6 +5999,7 @@ void initSystems() {
                                                );
                     IRVoxelEditor::g_fillTool.lastEndWorld_ = endPos;
                     const bool shiftHeld =
+                        IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::LINE ||
                         IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
                     IRVoxelEditor::updateGhostShape(
                         IRVoxelEditor::g_fillTool.dragStartWorld_,
@@ -5410,7 +6024,9 @@ void initSystems() {
                 auto &gpos = IREntity::getComponent<C_WorldTransform>(targetEntity);
                 const ivec3 startPos = IRVoxelEditor::g_fillTool.dragStartWorld_;
                 const ivec3 endPos = IRVoxelEditor::g_fillTool.lastEndWorld_;
-                const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                const bool shiftHeld =
+                    IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::LINE ||
+                    IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
                 // Erase mode flips the whole drag to removal; startPos / endPos
                 // were already captured in the hit-cell frame at PRESS / HELD.
                 const bool place = !IRVoxelEditor::g_eraseMode;
@@ -5522,6 +6138,12 @@ void initSystems() {
         []() {
             if (IRVoxelEditor::g_scrubberSlider == IREntity::kNullEntity)
                 return;
+            if (IRVoxelEditor::g_entitySceneMode)
+                return;
+            if (IRPrefab::Widget::wasClicked(IRVoxelEditor::g_editor.addFrameButton_))
+                IRVoxelEditor::addAnimationFrame();
+            if (IRPrefab::Widget::wasClicked(IRVoxelEditor::g_editor.duplicateFrameButton_))
+                IRVoxelEditor::duplicateAnimationFrame();
             auto &slider = IREntity::getComponent<C_WidgetSlider>(IRVoxelEditor::g_scrubberSlider);
             slider.maxValue_ = static_cast<float>(IRVoxelEditor::g_anim.frameCount() - 1);
             if (IRPrefab::Widget::isPressed(IRVoxelEditor::g_scrubberSlider)) {
@@ -5554,6 +6176,8 @@ void initSystems() {
         "EditorAnimPlayback",
         [](C_Camera &) {},
         []() {
+            if (IRVoxelEditor::g_entitySceneMode)
+                return;
             const float dt = static_cast<float>(IRTime::deltaTime(IRTime::Events::RENDER));
             int next = 0;
             if (IRVoxelEditor::tickPlayback(IRVoxelEditor::g_anim, dt, next))
@@ -5575,6 +6199,13 @@ void initSystems() {
             using namespace IRVoxelEditor;
             if (g_lodPanel == IREntity::kNullEntity)
                 return;
+            if (g_editor.suppressPartGesture_) {
+                syncLodBandSliders();
+                if (!IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD) &&
+                    !IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED))
+                    g_editor.suppressPartGesture_ = false;
+                return;
+            }
             const auto active = [](IREntity::EntityId widget) {
                 return IRPrefab::Widget::isPressed(widget) || IRPrefab::Widget::wasClicked(widget);
             };
@@ -5596,8 +6227,13 @@ void initSystems() {
 
             const int selected = g_entityScene.selectedIndex();
             const bool finePressed = active(g_lodFineSlider);
-            if (selected < 0 || (!finePressed && !active(g_lodCoarseSlider)))
+            if (selected < 0 || (!finePressed && !active(g_lodCoarseSlider))) {
+                if (g_editor.lodGesture_.active())
+                    finishPartEdits();
                 return;
+            }
+            const auto *part = g_entityScene.selectedPart();
+            g_editor.lodGesture_.begin(part->id_, PartLodBand{part->lodMax_, part->lodMin_});
             IRRender::LodLevel fine = lodLevelFromSlider(g_lodFineSlider);
             IRRender::LodLevel coarse = lodLevelFromSlider(g_lodCoarseSlider);
             if (fine > coarse) {
@@ -5608,6 +6244,9 @@ void initSystems() {
             }
             g_entityScene.setPartBand(selected, fine, coarse);
             syncLodBandSliders();
+            if (!IRPrefab::Widget::isPressed(g_lodFineSlider) &&
+                !IRPrefab::Widget::isPressed(g_lodCoarseSlider))
+                finishPartEdits();
         }
     );
 
@@ -5873,6 +6512,12 @@ void initSystems() {
         []() {},
         []() { IRVoxelEditor::updateRecipeHandleDrag(); }
     );
+    auto partTransformHistorySystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorPartTransformHistory",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() { IRVoxelEditor::updatePartTransformHistory(); }
+    );
     auto jointBindSyncSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorJointBindSync",
         [](const C_GuiElement &) {},
@@ -6032,6 +6677,7 @@ void initSystems() {
          IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          gizmoHoverId,
          gizmoDragId,
+         partTransformHistorySystem,
          recipeHandleSystem,
          jointBindSyncSystem,
          jointTreeSyncSystem}
@@ -6100,6 +6746,17 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+            IRSystem::createSystem<C_Camera>(
+                "EditorConstructionGrid",
+                [](const C_Camera &) {},
+                []() {
+                    IRVoxelEditor::drawConstructionGrid(
+                        IRVoxelEditor::g_editor.editableVoxelSet_,
+                        IRVoxelEditor::g_sculpt.showGrid_
+                    );
+                }
+            ),
+            IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
@@ -6136,7 +6793,36 @@ void initCommands() {
     // pair's eligibility once, at the press, so the Ctrl+S save chord shadows
     // both halves or neither, and no per-creation mask is needed.
     IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
-    IRPrefab::Undo::registerUndoCommands();
+    IRPrefab::Undo::materialize();
+    const auto historyCommand =
+        [](IRInput::KeyMouseButtons key, unsigned required, unsigned excluded, bool redo) {
+            IRCommand::createCommand(
+                IRInput::KEY_MOUSE,
+                IRInput::PRESSED,
+                key,
+                [redo]() {
+                    if (IRVoxelEditor::cancelPartEdits())
+                        return;
+                    IRVoxelEditor::finishSculptStroke();
+                    if (redo)
+                        IRPrefab::Undo::redo();
+                    else
+                        IRPrefab::Undo::undo();
+                },
+                required,
+                excluded,
+                redo ? "REDO" : "UNDO",
+                redo ? "REDO LAST EDIT" : "UNDO LAST EDIT"
+            );
+        };
+    historyCommand(IRInput::kKeyButtonZ, IRInput::kModifierControl, IRInput::kModifierShift, false);
+    historyCommand(IRInput::kKeyButtonY, IRInput::kModifierControl, IRInput::kModifierShift, true);
+    historyCommand(
+        IRInput::kKeyButtonZ,
+        IRInput::kModifierControl | IRInput::kModifierShift,
+        0u,
+        true
+    );
 
     // F1 opens the registry-driven command help overlay. Every
     // named PRESSED binding registered below appears automatically.
@@ -6286,6 +6972,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonV,
         []() {
+            IRVoxelEditor::finishSculptStroke();
             IRVoxelEditor::g_eraseMode = !IRVoxelEditor::g_eraseMode;
             IR_LOG_INFO("Erase-fill mode: {}", IRVoxelEditor::g_eraseMode ? "ON" : "OFF");
         },
@@ -6300,6 +6987,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonU,
         []() {
+            IRVoxelEditor::finishSculptStroke();
             IRVoxelEditor::g_classPaintMode = !IRVoxelEditor::g_classPaintMode;
             IR_LOG_INFO("Class paint mode: {}", IRVoxelEditor::g_classPaintMode ? "ON" : "OFF");
         },
@@ -6326,8 +7014,8 @@ void initCommands() {
 
     // Frame-based animation controls. Keys not taken by the gizmo
     // controls (Q/E/Space/Z), symmetry (X/Y/Z), or the layer system
-    // (K/[/]/H): Left/Right for frame nav, P play/pause, A add
-    // blank frame, D duplicate, Backspace delete, L loop-mode toggle.
+    // (K/[/]/H): Left/Right for frame nav, P play/pause, Shift+A add
+    // blank frame, Shift+D duplicate, Backspace delete, L loop-mode toggle.
 
     // Left arrow — go to previous frame.
     IRCommand::createCommand(
@@ -6360,6 +7048,8 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonP,
         []() {
+            if (!IRVoxelEditor::canEditAnimationFrames())
+                return;
             auto &anim = IRVoxelEditor::g_anim;
             anim.playing_ = !anim.playing_;
             anim.elapsed_ = 0.0f;
@@ -6378,53 +7068,26 @@ void initCommands() {
         "TOGGLE FRAME PLAYBACK"
     );
 
-    // A — add a blank frame after the current frame and switch to it.
-    // Snapshot the live voxels into the active frame first so the user
-    // doesn't lose their pose when stepping forward to a new blank.
-    // The new frame's voxels_ is empty, so loadFrameToLive falls into
-    // its size-mismatch branch and fills the live target with blank.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonA,
-        []() {
-            auto &anim = IRVoxelEditor::g_anim;
-            IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
-            anim.addBlankFrame();
-            auto &contexts = IRVoxelEditor::g_editor.frameUndoContexts_;
-            contexts.insert(contexts.begin() + anim.activeFrame_, IRPrefab::Undo::createContext());
-            IRPrefab::Undo::selectContext(contexts[anim.activeFrame_]);
-            IRVoxelEditor::loadFrameToLive(anim.activeFrame_);
-            IR_LOG_INFO("Added blank frame {} / {}", anim.activeFrame_ + 1, anim.frameCount());
-        },
-        IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        &IRVoxelEditor::addAnimationFrame,
+        IRInput::kModifierShift,
+        IRInput::kModifierControl | IRInput::kModifierAlt,
         "ADD FRAME",
-        "ADD BLANK FRAME AFTER CURRENT"
+        "ADD BLANK FRAME (SINGLE VOXEL ASSET)"
     );
 
-    // D — duplicate the current frame. Snapshot the live voxels into
-    // the active frame first so the copy is current. The duplicate
-    // starts with an empty undo history — its voxels are the same as
-    // the source frame, so no undo-restoration is needed to get back
-    // to the initial state; clearing is the simpler and safer choice.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonD,
-        []() {
-            auto &anim = IRVoxelEditor::g_anim;
-            IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
-            anim.duplicateCurrentFrame();
-            auto &contexts = IRVoxelEditor::g_editor.frameUndoContexts_;
-            contexts.insert(contexts.begin() + anim.activeFrame_, IRPrefab::Undo::createContext());
-            IRPrefab::Undo::selectContext(contexts[anim.activeFrame_]);
-            IR_LOG_INFO("Duplicated frame {} / {}", anim.activeFrame_ + 1, anim.frameCount());
-        },
-        IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        &IRVoxelEditor::duplicateAnimationFrame,
+        IRInput::kModifierShift,
+        IRInput::kModifierControl | IRInput::kModifierAlt,
         "DUPLICATE FRAME",
-        "DUPLICATE THE CURRENT FRAME"
+        "DUPLICATE FRAME (SINGLE VOXEL ASSET)"
     );
 
     // Backspace — delete the current frame (minimum 1 frame). The deleted
@@ -6435,6 +7098,8 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonBackspace,
         []() {
+            if (!IRVoxelEditor::canEditAnimationFrames())
+                return;
             auto &anim = IRVoxelEditor::g_anim;
             if (anim.frameCount() <= 1) {
                 IR_LOG_INFO("Cannot delete the only frame.");
@@ -6465,6 +7130,8 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonL,
         []() {
+            if (!IRVoxelEditor::canEditAnimationFrames())
+                return;
             auto &anim = IRVoxelEditor::g_anim;
             anim.loopMode_ = (anim.loopMode_ == IRVoxelEditor::LoopMode::LOOP)
                                  ? IRVoxelEditor::LoopMode::PING_PONG
@@ -6486,6 +7153,12 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonEscape,
         []() {
+            if (IRVoxelEditor::cancelPartEdits())
+                return;
+            if (IRVoxelEditor::g_sculpt.dragging_) {
+                IRVoxelEditor::cancelSculptStroke();
+                return;
+            }
             if (IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
@@ -6512,6 +7185,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonF,
         []() {
+            IRVoxelEditor::finishSculptStroke();
             auto &loft = IRVoxelEditor::g_loftTool;
             loft.active_ = !loft.active_;
             IRVoxelEditor::g_fillTool.dragging_ = false;
@@ -6676,6 +7350,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonN,
         []() {
+            IRVoxelEditor::finishSculptStroke();
             IRVoxelEditor::g_bonePaint.active_ = !IRVoxelEditor::g_bonePaint.active_;
             IR_LOG_INFO(
                 "Bone paint mode: {}  (active bone: {})",
@@ -6846,12 +7521,16 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonS,
         []() {
+            IRVoxelEditor::finishSculptStroke();
+            IRVoxelEditor::finishPartEdits();
             if (IRVoxelEditor::g_entitySceneMode) {
                 const auto result = IRVoxelEditor::g_entityScene.save(
                     std::string(IRVoxelEditor::kSceneSaveDir),
                     std::string(IRVoxelEditor::kSceneBaseName),
                     IRVoxelEditor::g_moduleHost.recipes()
                 );
+                IRVoxelEditor::g_editor.documentStatus_ =
+                    result.ok_ ? "SAVED COMPOSITE" : "SAVE FAILED: " + result.error_;
                 if (result.ok_) {
                     IR_LOG_INFO(
                         "Entity scene saved to {}/{}.prefab.lua",
@@ -6878,6 +7557,8 @@ void initCommands() {
                 anim,
                 IRVoxelEditor::g_symmetry
             );
+            IRVoxelEditor::g_editor.documentStatus_ =
+                res.ok_ ? "SAVED VOXEL ASSET" : "SAVE FAILED: " + res.errorMsg_;
             if (res.ok_)
                 IR_LOG_INFO(
                     "Scene saved to {}/{}",
@@ -6931,6 +7612,8 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonO,
         []() {
             if (IRVoxelEditor::g_entitySceneMode) {
+                IRVoxelEditor::cancelSculptStroke();
+                IRVoxelEditor::cancelPartEdits();
                 const auto loaded = IRVoxelEditor::g_entityScene.load(
                     IRVoxelEditor::g_moduleHost.script(),
                     std::string(IRVoxelEditor::kSceneSaveDir),
@@ -7107,8 +7790,20 @@ void initEntities() {
     // reference furniture below (floor slab, axis bars, centre cube, perimeter
     // gizmos, starter rig, satellite sets) either way; a session that proves
     // exactly that asks for it with referenceFurniture_.
-    const bool sessionScene = IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE &&
-                              !IRVoxelEditor::g_session.referenceFurniture_;
+    const bool ordinaryWorkspace =
+        (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE &&
+         !IRVoxelEditor::g_sculpt.referenceScene_) ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCULPT_WORKFLOW;
+    IRVoxelEditor::g_sculpt.tool_ =
+        ordinaryWorkspace ? IRVoxelEditor::SculptTool::BRUSH : IRVoxelEditor::SculptTool::BOX;
+    IRVoxelEditor::g_sculpt.showGrid_ = ordinaryWorkspace;
+    g_editor.workspace_ =
+        ordinaryWorkspace ? IRVoxelEditor::Workspace::SCULPT : IRVoxelEditor::Workspace::ALL;
+    const bool sessionScene =
+        ordinaryWorkspace || (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE &&
+                              !IRVoxelEditor::g_session.referenceFurniture_);
+    if (ordinaryWorkspace)
+        IRRender::setCameraZoom(4.0f);
 
     constexpr float kFloorZ = 2.0f;
 
@@ -7206,7 +7901,8 @@ void initEntities() {
         set.deactivateAll();
         // Ground plane at z == size_.z - 1: flat gray, gives the user
         // something to click before placing any voxels themselves.
-        set.fillPlane(2, set.size_.z - 1, Color{120, 120, 130, 255});
+        if (!ordinaryWorkspace)
+            set.fillPlane(2, set.size_.z - 1, Color{120, 120, 130, 255});
     }
 
     // Smaller satellite voxel sets — reference furniture a click passes
@@ -7282,7 +7978,7 @@ void initEntities() {
     // panel. Frame scrubber: drag to navigate frames smoothly. FPS slider:
     // drag to adjust playback speed (1–30 FPS). Both update in real time;
     // keyboard nav (Left/Right) and playback keep the scrubber thumb in sync.
-    IRPrefab::Widget::makePanel(
+    g_editor.animationPanel_ = IRPrefab::Widget::makePanel(
         IRVoxelEditor::kAnimPanelPos,
         IRVoxelEditor::kAnimPanelSize,
         "ANIM"
@@ -7303,6 +7999,18 @@ void initEntities() {
         IRVoxelEditor::kFpsSliderMaxValue,
         IRVoxelEditor::g_anim.fps_
     );
+
+    g_editor.addFrameButton_ = IRPrefab::Widget::makeButton(
+        IRVoxelEditor::kAddFrameButtonPos,
+        IRVoxelEditor::kFrameButtonSize,
+        "ADD"
+    );
+    g_editor.duplicateFrameButton_ = IRPrefab::Widget::makeButton(
+        IRVoxelEditor::kDuplicateFrameButtonPos,
+        IRVoxelEditor::kFrameButtonSize,
+        "DUP"
+    );
+    IRVoxelEditor::syncAnimationControls();
 
     // Layer panel — second column alongside the PALETTE panel.
     // The list shows all layers with a "[H]" suffix on hidden ones. The
@@ -7366,7 +8074,8 @@ void initEntities() {
         IRVoxelEditor::kPartModeDropdownSize,
         IRVoxelEditor::partModeItems(),
         0,
-        IRVoxelEditor::kPartModeDropdownItemHeight
+        IRVoxelEditor::kPartModeDropdownItemHeight,
+        IRRender::TextSize::SMALL
     );
     IRVoxelEditor::g_partRemoveButton = IRPrefab::Widget::makeButton(
         IRVoxelEditor::kPartRemoveButtonPos,
@@ -7637,7 +8346,10 @@ void initEntities() {
     );
     IRVoxelEditor::g_helpEntries = {
         {g_editor.palettePanel_, "PALETTE: click a swatch to set the active paint color."},
-        {IRVoxelEditor::g_scrubberSlider, "FRAME: drag to scrub frames (Left/Right keys too)."},
+        {g_editor.animationPanel_, "ANIM: single voxel assets only; entity parts are static."},
+        {g_editor.addFrameButton_, "ADD: blank frame (Shift+A). Single voxel assets only."},
+        {g_editor.duplicateFrameButton_, "DUP: copy frame (Shift+D). Single voxel assets only."},
+        {IRVoxelEditor::g_scrubberSlider, "FRAME: scrub single-asset frames (Left/Right)."},
         {IRVoxelEditor::g_fpsSlider, "FPS: animation playback speed (1-30)."},
         {IRVoxelEditor::g_layerPanel, "LAYERS: edit-layer stack. Keys K [ ] H also work."},
         {IRVoxelEditor::g_layerList, "LAYERS: click a layer row to make it active."},
@@ -7693,13 +8405,51 @@ void initEntities() {
     // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which
     // symmetry axes are active so the user can see modifier state at a glance.
     IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
+    constexpr const char *toolLabels[] =
+        {"ADD", "ERASE", "PAINT", "BOX", "LINE", "NEW PART", "UNDO", "REDO", "GRID"};
+    for (int i = 0; i < 9; ++i) {
+        IRVoxelEditor::g_sculpt.buttons_.push_back(
+            IRPrefab::Widget::makeButton(
+                IRVoxelEditor::kSculptToolbarPos + ivec2(i * IRVoxelEditor::kSculptButtonStride, 0),
+                IRVoxelEditor::kSculptButtonSize,
+                toolLabels[i],
+                IRRender::TextSize::SMALL
+            )
+        );
+    }
+
+    constexpr const char *workspaceLabels[] = {"SCULPT", "ASSEMBLE", "GENERATE", "ANIMATE", "ALL"};
+    for (int i = 0; i < 5; ++i) {
+        g_editor.workspaceButtons_.push_back(
+            IRPrefab::Widget::makeButton(
+                ivec2(4 + i * 84, 52),
+                ivec2(80, 18),
+                workspaceLabels[i],
+                IRRender::TextSize::SMALL
+            )
+        );
+    }
+    g_editor.documentStatusLabel_ =
+        IRPrefab::Widget::makeLabel(ivec2(4, 78), "", {}, IRRender::TextSize::SMALL);
+    IRPrefab::Widget::makeLabel(
+        ivec2(4, 91),
+        "CTRL+S SAVE / CTRL+O REOPEN: " + std::string(IRVoxelEditor::kSceneSaveDir) + "/" +
+            std::string(IRVoxelEditor::kSceneBaseName),
+        {},
+        IRRender::TextSize::SMALL
+    );
+    g_editor.hierarchy_.create();
+    IRVoxelEditor::g_helpEntries.push_back(
+        {g_editor.hierarchy_.panel(),
+         "PARENT: attach parts while preserving world pose; ROOT detaches."}
+    );
 
     const bool modePreviewSession =
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODE_PREVIEW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODE_PREVIEW_SHOTS;
     if (modePreviewSession) {
         IREntity::destroyEntity(g_editor.editableVoxelSet_);
-        IRVoxelEditor::g_entitySceneMode = true;
+        IRVoxelEditor::enterEntitySceneMode();
         IRVoxelEditor::g_entityScene.begin();
         constexpr ivec3 kPreviewSize{6, 6, 6};
         const IREntity::EntityId part = IRVoxelEditor::g_entityScene.addVoxelPart(
@@ -7723,7 +8473,7 @@ void initEntities() {
     // here.
     if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CORNER_PART_REVOX_REFUSED) {
         IREntity::destroyEntity(g_editor.editableVoxelSet_);
-        IRVoxelEditor::g_entitySceneMode = true;
+        IRVoxelEditor::enterEntitySceneMode();
         IRVoxelEditor::g_entityScene.begin();
         constexpr ivec3 kCornerPartSize{6, 6, 6};
         IRVoxelEditor::g_entityScene.addVoxelPart(
@@ -7733,6 +8483,17 @@ void initEntities() {
         );
         IRVoxelEditor::selectEditorPart(0, false);
         IRVoxelEditor::g_modePreviewBaseCanvasCount = IRPrefab::EntityCanvas::count();
+    }
+
+    // Composite-only recipes declare an empty document fixture. Conversion
+    // recipes keep the single-set fixture and exercise the production adoption path.
+    if (IRVoxelEditor::g_session.startWithEmptyComposite_) {
+        if (g_editor.editableVoxelSet_ != IREntity::kNullEntity)
+            IREntity::destroyEntity(g_editor.editableVoxelSet_);
+        IRVoxelEditor::enterEntitySceneMode();
+        IRVoxelEditor::g_entityScene.begin();
+        g_editor.editableVoxelSet_ = IREntity::kNullEntity;
+        IRVoxelEditor::g_sceneVoxelSetEntity = IREntity::kNullEntity;
     }
 
     // GUI-test assertions — populated here (not at the constexpr
@@ -7833,6 +8594,16 @@ void initEntities() {
             &IRVoxelEditor::evaluateCameraVelocityBalanced,
             nullptr,
             "ctrl_s_leaves_camera_balanced"
+        ),
+    };
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbeADShotIndex] = {
+        IRPrefab::GuiTest::predicate(
+            [](const void *, std::string &actual) {
+                actual = "frames=" + std::to_string(IRVoxelEditor::g_anim.frameCount());
+                return IRVoxelEditor::g_anim.frameCount() == 1;
+            },
+            nullptr,
+            "camera_pan_does_not_add_frame"
         ),
     };
     IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kProbeSaveCtrlFirstShotIndex] = {
