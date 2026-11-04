@@ -53,6 +53,10 @@ falling back to the current authoring floor, and show a gold anchor while held.
 Release hides the marker and retains the focus; reanchoring preserves the view.
 `Camera::setCursorPivotOptions` supplies the editor resolver to the standard
 controls; the custom right-drag uses the same options.
+Horizontal two-finger scroll orbits around the cursor. Vertical scroll accumulates
+fractional input into camera zoom steps. The dominant axis owns each sample,
+and hovering a widget gives the panel scroll ownership. The native
+`viewport_scroll` session checks both directions and GUI isolation at 30° and 67°.
 Space+left pans without resetting yaw; Home resets camera pan and yaw; right-drag
 starts only with no hovered widget and an unblocked document interaction.
 

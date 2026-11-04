@@ -76,7 +76,6 @@
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/camera_gesture.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
-#include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
 #include <irreden/render/systems/system_gizmo_drag.hpp>
@@ -513,6 +512,10 @@ struct RotateParams {
     IRPrefab::CursorPivot::OrbitAnchor anchor_;
     IRPrefab::CursorPivot::FocusOptions focusOptions_;
     bool dragging_ = false;
+    IRPrefab::Camera::GestureOwnership buttonNavigation_;
+    bool scrollOrbit_ = false;
+    float zoomRemainder_ = 0.0f;
+    IRTime::TimePoint lastScroll_{};
     float startMouseX_ = 0.0f;
     float startYaw_ = 0.0f;
 };
@@ -542,6 +545,7 @@ struct SculptState {
     bool referenceScene_ = false;
     IRPrefab::Camera::GestureOwnership cameraGesture_;
     bool cameraInputBlocked_ = false;
+    bool viewportScrolled_ = false;
     bool showGrid_ = false;
     bool dragging_ = false;
     bool erase_ = false;
@@ -2485,7 +2489,8 @@ bool updateCameraGestureOwnership() {
                IRInput::checkKeyMouseButton(button, IRInput::HELD) ||
                IRInput::checkKeyMouseButton(button, IRInput::RELEASED);
     };
-    const bool customCameraInput = active(IRInput::kMouseButtonRight) ||
+    const bool customCameraInput = g_sculpt.viewportScrolled_ ||
+                                   active(IRInput::kMouseButtonRight) ||
                                    active(IRInput::kKeyButtonQ) || active(IRInput::kKeyButtonE);
     IRSystem::getSystemParams<IRSystem::System<IRSystem::GIZMO_DRAG>>(g_gizmoDragSystem)
         ->queueCameraInput(customCameraInput);
@@ -4180,6 +4185,72 @@ bool cursorOverPartSizePanel() {
                kPartSizePanelPos,
                kPartSizePanelSize
            );
+}
+
+void updateViewportScroll(RotateParams &state) {
+    g_sculpt.viewportScrolled_ = false;
+    const bool buttonNavigating = state.buttonNavigation_.poll();
+    const vec2 delta = IRInput::scrollOffset();
+    if (delta == vec2(0) && !state.scrollOrbit_ && state.zoomRemainder_ == 0.0f)
+        return;
+    const auto now = IRTime::Clock::now();
+    const auto mouse = IRPrefab::Layout::mousePositionInGuiTrixels();
+    const bool blocked =
+        documentInteractionBlocked() || g_editor.lodPreview_.active() || state.dragging_ ||
+        IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED) ||
+        buttonNavigating ||
+        IRPrefab::Widget::hoveredWidget() != IREntity::kNullEntity ||
+        (g_editor.documentsEnabled_ && g_editor.documentPanel_.containsCursor(mouse)) ||
+        g_editor.hierarchy_.containsCursor(mouse) || cursorOverPartSizePanel() ||
+        cursorOverModuleUi() ||
+        (IRPrefab::Widget::isVisible(g_editor.helpPanel_) &&
+         guiPointInRect(mouse, kHelpPanelPos, kHelpPanelSize));
+    // GLFW scroll offsets have no gesture-end phase. Retain a single pivot
+    // across samples and retire its marker when the stream goes quiet.
+    if (blocked || now - state.lastScroll_ > IRTime::MilliSeconds(180)) {
+        if (state.scrollOrbit_)
+            state.anchor_.end();
+        state.scrollOrbit_ = false;
+        state.zoomRemainder_ = 0.0f;
+    }
+    if (blocked || delta == vec2(0))
+        return;
+    state.lastScroll_ = now;
+    g_sculpt.viewportScrolled_ = true;
+    if (IRMath::abs(delta.x) > IRMath::abs(delta.y)) {
+        state.zoomRemainder_ = 0.0f;
+        if (!state.scrollOrbit_) {
+            state.anchor_.begin(
+                IRInput::checkKeyMouseModifiers(IRInput::kModifierShift) !=
+                    IRPrefab::Camera::cursorPivotByDefault(),
+                state.focusOptions_
+            );
+            state.scrollOrbit_ = true;
+        }
+        constexpr float kRadiansPerScrollUnit = 0.04f;
+        IRPrefab::Camera::rotateYaw(delta.x * kRadiansPerScrollUnit);
+        state.anchor_.updateIndicator();
+        return;
+    }
+    if (state.scrollOrbit_) {
+        state.anchor_.end();
+        state.scrollOrbit_ = false;
+    }
+    state.zoomRemainder_ += delta.y;
+    while (IRMath::abs(state.zoomRemainder_) >= 1.0f) {
+        const auto previous = IRRender::getCameraZoom();
+        if (state.zoomRemainder_ > 0.0f) {
+            IRPrefab::Camera::zoomIn();
+            state.zoomRemainder_ -= 1.0f;
+        } else {
+            IRPrefab::Camera::zoomOut();
+            state.zoomRemainder_ += 1.0f;
+        }
+        if (IRRender::getCameraZoom() == previous) {
+            state.zoomRemainder_ = 0.0f;
+            break;
+        }
+    }
 }
 
 // What ATTACH targets: the root while ROOT is checked, else the selected part.
@@ -7158,7 +7229,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  V: toggle erase-fill mode (left-click place/box/line/face gestures erase)");
     IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
-    IR_LOG_INFO("  Scroll: zoom in/out");
+    IR_LOG_INFO("  Two-finger scroll: horizontal orbits around the cursor, vertical zooms");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
     IR_LOG_INFO("  Space+left: pan camera  Home: re-center + reset yaw");
     IR_LOG_INFO("  Ctrl+Z: undo  Ctrl+Y / Ctrl+Shift+Z: redo");
@@ -7183,7 +7254,7 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | "
-        "click_orbit | palette_workflow | array_workflow | lod_workflow | "
+        "click_orbit | viewport_scroll | palette_workflow | array_workflow | lod_workflow | "
         "region_tools | rock | "
         "mushroom | ant | bird | tree | "
         "parts_roundtrip | "
@@ -7204,6 +7275,7 @@ int main(int argc, char **argv) {
          "screen_alignment",
          "camera_gestures",
          "click_orbit",
+         "viewport_scroll",
          "palette_workflow",
          "array_workflow",
          "lod_workflow",
@@ -7453,6 +7525,11 @@ int main(int argc, char **argv) {
                     static_cast<float>(IRVoxelEditor::screenAlignmentCase(shot).yawDegrees_) *
                     IRMath::kPi / 180.0f;
         }
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::VIEWPORT_SCROLL) {
+            for (int shot = 0; shot < IRVoxelEditor::Session::kViewportScrollShotCount; ++shot)
+                IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
+                    IRVoxelEditor::Session::viewportScrollYaw(shot);
+        }
         if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CLICK_ORBIT) {
             for (int shot = 0; shot < IRVoxelEditor::kClickOrbitShotCount; ++shot)
                 IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
@@ -7686,7 +7763,8 @@ void initSystems() {
                 }
             }
             constexpr const char *guides[] = {
-                "Choose a color. ADD draws; PAINT recolors. Right drag orbits; Space + drag pans.",
+                "ADD draws. PAINT recolors. Swipe sideways to orbit, up/down to zoom. Space + drag "
+                "pans.",
                 "Select a part. Set its parent or LOD band. Preview radial/linear copies before "
                 "Apply.",
                 "Choose a shape or recipe. Set its parameters, then apply to the selected part.",
@@ -8215,6 +8293,11 @@ void initSystems() {
     // edit path either.
     auto rotState = std::make_shared<RotateParams>();
     rotState->focusOptions_.resolveSurface_ = &IRVoxelEditor::resolveOrbitFocus;
+    const auto scrollSystem = IRSystem::createSystem<C_Camera, IRSystem::MainThread>(
+        "EditorViewportScroll",
+        [](C_Camera &) {},
+        [rotState]() { IRVoxelEditor::updateViewportScroll(*rotState); }
+    );
     auto rotateSystem = IRSystem::createSystem<C_Camera, IRSystem::MainThread>(
         "EditorViewportRotate",
         [](C_Camera &) {},
@@ -8258,8 +8341,10 @@ void initSystems() {
         }
     );
     IREntity::getEntityManager().registerPreDestroyHook([rotState](IREntity::EntityId destroyed) {
-        if (rotState->anchor_.pivotIndicator_ == destroyed)
+        if (rotState->anchor_.pivotIndicator_ == destroyed) {
             rotState->dragging_ = false;
+            rotState->scrollOrbit_ = false;
+        }
         rotState->anchor_.onEntityDestroyed(destroyed);
     });
 
@@ -8889,6 +8974,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
          documentSystem,
          motionPreviewSystem,
+         scrollSystem,
          scrubberSystem,
          layerSyncSystem,
          lodPanelSyncSystem,
@@ -8900,7 +8986,6 @@ void initSystems() {
          paletteUpdateSystem,
          bonePaintUpdateSystem,
          placeEraseSystem,
-         IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          gizmoHoverId,
          gizmoDragId,
          partTransformHistorySystem,
@@ -10124,7 +10209,8 @@ void initEntities() {
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CLICK_ORBIT ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ARRAY_WORKFLOW ||
-        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOD_WORKFLOW;
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOD_WORKFLOW ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::VIEWPORT_SCROLL;
     IRVoxelEditor::g_sculpt.tool_ =
         ordinaryWorkspace ? IRVoxelEditor::SculptTool::BRUSH : IRVoxelEditor::SculptTool::BOX;
     IRVoxelEditor::g_sculpt.showGrid_ = ordinaryWorkspace;

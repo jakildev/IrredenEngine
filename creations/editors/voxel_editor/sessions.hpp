@@ -10,6 +10,7 @@
 #include "palette_workflow.hpp"
 #include "array_workflow.hpp"
 #include "lod_workflow.hpp"
+#include "viewport_scroll_workflow.hpp"
 #include "region_tools.hpp"
 #include "shadow_rotation.hpp"
 #include "sculpt_panel.hpp"
@@ -155,6 +156,7 @@ enum class Id {
     PALETTE_WORKFLOW,
     ARRAY_WORKFLOW,
     LOD_WORKFLOW,
+    VIEWPORT_SCROLL,
     REGION_TOOLS,
     SHADOW_ROTATION,
     ROCK,
@@ -280,6 +282,8 @@ inline Id idFromName(const std::string &name) {
         return Id::REGION_TOOLS;
     if (name == "camera_gestures")
         return Id::CAMERA_GESTURES;
+    if (name == "viewport_scroll")
+        return Id::VIEWPORT_SCROLL;
     if (name == "lod_workflow")
         return Id::LOD_WORKFLOW;
     if (name == "array_workflow")
@@ -2122,6 +2126,8 @@ inline Recipe build(
         return buildRegionTools(sceneSize, sceneOrigin);
     case Id::CAMERA_GESTURES:
         return buildCameraGestures();
+    case Id::VIEWPORT_SCROLL:
+        return buildViewportScroll();
     case Id::LOD_WORKFLOW:
         return buildLodWorkflow();
     case Id::ARRAY_WORKFLOW:
