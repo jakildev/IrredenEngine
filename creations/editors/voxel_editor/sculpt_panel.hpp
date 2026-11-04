@@ -13,57 +13,66 @@ enum class SculptTool { BRUSH, PAINT, BOX, LINE, BUCKET, PICKER };
 struct SculptToolbarButton {
     const char *label_;
     const char *help_;
-    int slot_;
+    int left_;
+    int width_;
     std::optional<SculptTool> tool_;
 };
 
-// Array indices are stable gesture IDs. Slots group tools visually without
-// changing the IDs used by editor sessions.
+// Array indices are stable gesture IDs used by editor sessions.
 inline constexpr std::array<SculptToolbarButton, 12> kSculptButtons{{
-    {"BRUSH",
-     "Brush: click the floor or a face to add a voxel. Drag for a continuous stroke.",
-     0,
-     SculptTool::BRUSH},
-    {"ERASE", "Erase: drag over occupied voxels to remove them.", 1, SculptTool::BRUSH},
+    {"BRUSH", "Brush: drag across the floor or a face to add voxels.", 4, 55, SculptTool::BRUSH},
+    {"ERASE", "Erase: drag over voxels to remove them.", 62, 55, SculptTool::BRUSH},
     {"RECOLOR",
-     "Recolor: drag over occupied voxels to apply the active palette color.",
-     2,
+     "Recolor: drag over occupied voxels with the active color.",
+     120,
+     55,
      SculptTool::PAINT},
-    {"BOX", "Box: drag between two cells to fill a box.", 5, SculptTool::BOX},
-    {"LINE", "Line: drag between two cells to draw a line.", 6, SculptTool::LINE},
-    {"NEW PART", "New Part: add a voxel part with its own editable grid.", 7, std::nullopt},
-    {"UNDO", "Undo the last edit.", 8, std::nullopt},
-    {"REDO", "Redo the last undone edit.", 9, std::nullopt},
-    {"GRID", "Show or hide the construction grid.", 10, std::nullopt},
+    {"FILL BOX IN CURRENT PART",
+     "Box fill: drag between two cells to fill the current part.",
+     662,
+     200,
+     SculptTool::BOX},
+    {"LINE",
+     "Line: drag between two cells. Shift+drag up/down to draw vertically.",
+     383,
+     45,
+     SculptTool::LINE},
+    {"NEW PART",
+     "New Part: create an empty part using the New Grid Size dimensions.",
+     431,
+     59,
+     std::nullopt},
+    {"UNDO", "Undo the last edit.", 493, 45, std::nullopt},
+    {"REDO", "Redo the last undone edit.", 541, 45, std::nullopt},
+    {"GRID", "Show or hide the construction grid.", 589, 48, std::nullopt},
     {"BUCKET",
-     "Bucket: click an enclosed empty area to fill it on the visible grid plane.",
-     3,
+     "Bucket: click inside a closed outline to fill it on one plane.",
+     178,
+     55,
      SculptTool::BUCKET},
-    {"PICKER",
-     "Picker: click a visible voxel to sample its RGB, then recolor with that color.",
-     4,
+    {"COLOR PICKER",
+     "Color Picker: sample a visible voxel, then recolor with its RGB.",
+     236,
+     85,
      SculptTool::PICKER},
     {"SHAPES",
-     "Shapes: choose a primitive and voxel dimensions, then spawn a new editable part.",
-     11,
+     "Shapes: stamp a voxel part, drag its dimensions, or box-fill the current part.",
+     324,
+     56,
      std::nullopt},
 }};
-
 constexpr IRMath::ivec2 kSculptToolbarPos{4, 60};
-constexpr IRMath::ivec2 kSculptButtonSize{55, 18};
-constexpr int kSculptButtonStride = 58;
-constexpr IRMath::ivec2 kSculptToolbarSize{
-    10 * kSculptButtonStride + kSculptButtonSize.x, kSculptButtonSize.y
-};
-
+constexpr IRMath::ivec2 kSculptToolbarSize{633, 18};
+constexpr IRMath::ivec2 kBoxFillButtonPos{662, 456};
 constexpr IRMath::ivec2 sculptButtonPos(int index) {
-    if (index == 11)
-        return {1072, 60};
-    return kSculptToolbarPos + IRMath::ivec2(kSculptButtons[index].slot_ * kSculptButtonStride, 0);
+    return index == 3 ? kBoxFillButtonPos
+                      : IRMath::ivec2(kSculptButtons[index].left_, kSculptToolbarPos.y);
 }
-
+constexpr IRMath::ivec2 sculptButtonSize(int index) {
+    return {kSculptButtons[index].width_, 18};
+}
 constexpr IRMath::vec2 sculptButtonCenter(int index) {
-    return IRMath::vec2(sculptButtonPos(index)) + IRMath::vec2(kSculptButtonSize) * 0.5f;
+    return IRMath::vec2(sculptButtonPos(index)) + IRMath::vec2(sculptButtonSize(index)) * 0.5f;
 }
 
 } // namespace IRVoxelEditor

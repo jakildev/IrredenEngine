@@ -1756,32 +1756,29 @@ class Builder {
         forgetBindings();
     }
 
-    // Drag the PART SIZE sliders to @p size: the extent every later
-    // addVoxelPart creates, until the next call. Each axis must lie on its
-    // track (part_size_panel.hpp).
+    // Types each prospective extent into the same integer fields that Create Part reads.
     void setPartSize(IRMath::ivec3 size) {
         for (int axis = 0; axis < kPartSizeAxisCount; ++axis) {
-            const float maxValue = partSizeSliderMax(m_sceneSize[axis]);
-            if (size[axis] < static_cast<int>(kPartSizeSliderMin) ||
-                size[axis] > static_cast<int>(maxValue)) {
+            if (size[axis] < 1 || size[axis] > partSizeMax(m_sceneSize[axis])) {
                 recordError(
                     "setPartSize axis " + std::to_string(axis) + " = " +
-                    std::to_string(size[axis]) + " is off the slider track in segment " +
+                    std::to_string(size[axis]) + " is outside the grid range in segment " +
                     m_current.label_
                 );
                 return;
             }
-            dragGuiSlider(
-                partSizeSliderGeometry(axis),
-                kPartSizeSliderMin,
-                maxValue,
-                static_cast<float>(size[axis])
-            );
+            if (size[axis] == m_partSize[axis])
+                continue;
+            const IRMath::vec2 field(partSizeFieldPos(axis) + kIntegerFieldSize / 2);
+            clickGui(field);
+            for (std::size_t digit = 0; digit < std::to_string(m_partSize[axis]).size(); ++digit)
+                tapKey(IRInput::kKeyButtonBackspace);
+            typeText(field, std::to_string(size[axis]));
         }
         m_partSize = size;
     }
 
-    // Ctrl+P: add a voxel part at the PART SIZE sliders' extent and select it.
+    // Ctrl+P: add a voxel part at the New Grid Size extent and select it.
     // The editor seats the part's cell (0,0,0) at deriveSceneOrigin, which is
     // the model's origin too.
     void addVoxelPart() {
@@ -2989,10 +2986,10 @@ class Builder {
     }
 
     OccupancyModel m_model;
-    // The single-set scene's extent: the PART SIZE sliders' range and initial
+    // The single-set scene's extent: the New Grid Size fields' range and initial
     // value, and the loft grids' cell counts.
     IRMath::ivec3 m_sceneSize;
-    // What the PART SIZE sliders read: the extent the next addVoxelPart creates.
+    // What the New Grid Size fields hold: the extent the next addVoxelPart creates.
     IRMath::ivec3 m_partSize;
     const ModuleSessionView *m_moduleView = nullptr;
     // Scroll shadows of the RECIPES and COMPONENTS lists. The editor builds
