@@ -756,17 +756,19 @@ TEST(SaveSerializers, HitBox2DRoundTripsAuthoredStateOnly) {
     expectReserializesIdentically(hitbox);
 }
 
-TEST(SaveSerializers, HitBox2DGuiRoundTripsExtentAndOffsetNotHover) {
+TEST(SaveSerializers, HitBox2DGuiRoundTripsAuthoredStateNotHover) {
     C_HitBox2DGui hitbox{IRMath::ivec2(100, 120)};
     hitbox.offset_ = IRMath::ivec2(0, -100);
+    hitbox.enabled_ = false;
     hitbox.hovered_ = true;
     const C_HitBox2DGui restored = roundTrip(hitbox);
     EXPECT_EQ(restored.size_, IRMath::ivec2(100, 120));
     EXPECT_EQ(restored.offset_, IRMath::ivec2(0, -100));
+    EXPECT_FALSE(restored.enabled_);
     EXPECT_FALSE(restored.hovered_);
     expectConsumesAllBytes(hitbox);
     expectReserializesIdentically(hitbox);
-    EXPECT_EQ(IRWorld::saveVersion<C_HitBox2DGui>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_HitBox2DGui>(), 3u);
 }
 
 // Version 1 was the raw struct image {ivec2 size_, bool hovered_, padding}.
@@ -779,6 +781,19 @@ TEST(SaveSerializers, HitBox2DGuiV1MigrationKeepsTheExtentAndDropsHover) {
     ASSERT_TRUE(hitbox.ok()) << hitbox.status_.message_;
     EXPECT_EQ(hitbox.value_.size_, IRMath::ivec2(64, 16));
     EXPECT_EQ(hitbox.value_.offset_, IRMath::ivec2(0, 0));
+    EXPECT_TRUE(hitbox.value_.enabled_);
+    EXPECT_FALSE(hitbox.value_.hovered_);
+}
+
+TEST(SaveSerializers, HitBox2DGuiV2MigrationDefaultsEnabled) {
+    IRAsset::MemoryBinaryWriter v2;
+    IRMath::BinaryIO::writeIVec2(v2, IRMath::ivec2(64, 16));
+    IRMath::BinaryIO::writeIVec2(v2, IRMath::ivec2(2, -3));
+    const IRAsset::Result<C_HitBox2DGui> hitbox = migrate<C_HitBox2DGui>(2u, v2.buffer());
+    ASSERT_TRUE(hitbox.ok()) << hitbox.status_.message_;
+    EXPECT_EQ(hitbox.value_.size_, IRMath::ivec2(64, 16));
+    EXPECT_EQ(hitbox.value_.offset_, IRMath::ivec2(2, -3));
+    EXPECT_TRUE(hitbox.value_.enabled_);
     EXPECT_FALSE(hitbox.value_.hovered_);
 }
 
@@ -1002,11 +1017,12 @@ TEST(SaveSerializers, TextStyleV1MigrationRejectsAnOutOfRangeAlignment) {
     EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
 }
 
-TEST(SaveSerializers, WidgetRoundTripsEveryFieldWithTheCoverOnAndOff) {
+TEST(SaveSerializers, WidgetRoundTripsEveryField) {
     for (const bool covers : {true, false}) {
         C_Widget widget{WidgetKind::NUMBER_FIELD, IRMath::ivec2(80, 18), -3};
         widget.disabled_ = true;
         widget.coversBelow_ = covers;
+        widget.visible_ = false;
 
         const C_Widget restored = roundTrip(widget);
 
@@ -1015,8 +1031,26 @@ TEST(SaveSerializers, WidgetRoundTripsEveryFieldWithTheCoverOnAndOff) {
         EXPECT_TRUE(restored.disabled_);
         EXPECT_EQ(restored.coversBelow_, covers);
         EXPECT_EQ(restored.zOrder_, -3);
+        EXPECT_FALSE(restored.visible_);
     }
-    EXPECT_EQ(IRWorld::saveVersion<C_Widget>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_Widget>(), 3u);
+}
+
+TEST(SaveSerializers, WidgetV2MigrationDefaultsVisible) {
+    IRAsset::MemoryBinaryWriter v2;
+    v2.writeU8(static_cast<std::uint8_t>(WidgetKind::BUTTON));
+    IRMath::BinaryIO::writeIVec2(v2, IRMath::ivec2(64, 14));
+    v2.writeU8(1);
+    v2.writeU8(0);
+    v2.writeI32(7);
+    const IRAsset::Result<C_Widget> restored = migrate<C_Widget>(2u, v2.buffer());
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_EQ(restored.value_.kind_, WidgetKind::BUTTON);
+    EXPECT_EQ(restored.value_.size_, IRMath::ivec2(64, 14));
+    EXPECT_TRUE(restored.value_.disabled_);
+    EXPECT_FALSE(restored.value_.coversBelow_);
+    EXPECT_EQ(restored.value_.zOrder_, 7);
+    EXPECT_TRUE(restored.value_.visible_);
 }
 
 TEST(SaveSerializers, WidgetRejectsAnOutOfRangeKind) {
@@ -1045,7 +1079,7 @@ std::vector<std::uint8_t> widgetV1Image(WidgetKind kind) {
 }
 
 TEST(SaveSerializers, WidgetV1MigrationTakesEachKindsBuilderCover) {
-    ASSERT_EQ(IRWorld::SaveMigration<C_Widget>::migrators().size(), 1u);
+    ASSERT_EQ(IRWorld::SaveMigration<C_Widget>::migrators().size(), 2u);
     for (int raw = 0; raw <= static_cast<int>(WidgetKind::IMAGE); ++raw) {
         const WidgetKind kind = static_cast<WidgetKind>(raw);
         const IRAsset::Result<C_Widget> restored = migrate<C_Widget>(1u, widgetV1Image(kind));

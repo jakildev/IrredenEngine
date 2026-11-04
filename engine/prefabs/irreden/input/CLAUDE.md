@@ -11,7 +11,8 @@ systems that populate button state. The underlying polling lives in
   cannot overwrite it. Ordinary owners derive their center from world space;
   detached-canvas owners receive the exact composite center and footprint from
   `ENTITY_CANVAS_TO_FRAMEBUFFER` one frame before input consumes it.
-- `C_HitBox2DGui` — full width/height + `hovered_` flag. AABB extends
+- `C_HitBox2DGui` — full width/height, authored `enabled_`, and transient
+  `hovered_` flag. AABB extends
   `[pos, pos + size_)` from a sibling `C_GuiPosition`, in
   **GUI-canvas-trixel coordinates** (top-left origin, +X right, +Y down).
   Kept separate from `C_HitBox2D` because the world hitbox lives in

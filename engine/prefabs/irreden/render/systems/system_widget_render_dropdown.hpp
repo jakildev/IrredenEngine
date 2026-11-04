@@ -54,6 +54,10 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
+        if (!widget.visible_) {
+            return;
+        }
+
         if (!canvas_)
             return;
         if (widget.size_.x <= 0 || widget.size_.y <= 0)

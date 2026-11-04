@@ -63,6 +63,10 @@ template <> struct System<WIDGET_RENDER_HINTS> {
         const IRComponents::C_WidgetHotkey &hotkey,
         const IRComponents::C_GuiPosition &position
     ) {
+        if (!widget.visible_) {
+            return;
+        }
+
         if (canvas_ == nullptr || widget.disabled_) {
             return;
         }

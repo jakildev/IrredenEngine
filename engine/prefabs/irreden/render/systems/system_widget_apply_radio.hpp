@@ -39,18 +39,22 @@ template <> struct System<WIDGET_APPLY_RADIO> {
         const IRComponents::C_WidgetState &state,
         IRComponents::C_WidgetRadio &radio
     ) {
-        if (widget.disabled_) return;
-        if (!state.fireAction_) return;
+        if (!widget.visible_ || widget.disabled_)
+            return;
+        if (!state.fireAction_)
+            return;
         radio.selected_ = true;
         firedThisFrame_.push_back({entityId, radio.groupId_});
     }
 
     void endTick() {
-        if (firedThisFrame_.empty()) return;
+        if (firedThisFrame_.empty())
+            return;
         IREntity::forEachComponent<IRComponents::C_WidgetRadio>(
             [this](IREntity::EntityId &id, IRComponents::C_WidgetRadio &radio) {
                 for (const auto &fired : firedThisFrame_) {
-                    if (fired.entity_ == id) continue;
+                    if (fired.entity_ == id)
+                        continue;
                     if (fired.groupId_ == radio.groupId_) {
                         radio.selected_ = false;
                     }
@@ -64,8 +68,7 @@ template <> struct System<WIDGET_APPLY_RADIO> {
             WIDGET_APPLY_RADIO,
             IRComponents::C_Widget,
             IRComponents::C_WidgetState,
-            IRComponents::C_WidgetRadio
-        >("WidgetApplyRadio");
+            IRComponents::C_WidgetRadio>("WidgetApplyRadio");
     }
 };
 

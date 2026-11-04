@@ -6,6 +6,9 @@
 `IRVoxelEditor` is the tool real assets are authored with — creating,
 editing, saving, and loading voxel entities end-to-end through the UI is
 routine, proven by scripted interaction rather than claimed.
+The ordinary launch experience must also let an evaluator discover the tools,
+predict an edit, recover from a mistake, and reopen the resulting asset without
+implementation-specific instructions.
 
 ## Done means
 - [x] The #766 proof-of-usability lands: five test entities (ant, bird,
@@ -25,11 +28,26 @@ routine, proven by scripted interaction rather than claimed.
 - [x] A composite entity — a root plus parts with per-part LOD bands and
   attached components — is authored end to end through the GUI harness from
   a loaded creation module and round-trips through `Prefab.spawn` (#3974).
+- [ ] A blank document supports visible floor/work-plane placement, a hover
+  preview, continuous sculpting, and an explicit operation/tool choice; an
+  evaluator completes the blank-asset task without a seeded fixture or bake.
+- [ ] Navigation and editing shortcuts have one visible meaning in their active
+  context, and supported durable edits can be undone/redone without changing
+  another part or frame. Save feedback describes actual persistence.
+- [ ] A part is sculpted in its own local voxel grid while its placement and
+  parent-child transforms remain intact. Composition supports independently
+  rotating child canvases and round-trips the hierarchy it exposes.
+- [ ] An author can preview the supported frame/pose/part motion, reset the
+  preview without changing authored data, and save/reopen the advertised state.
+- [ ] Each authoring change includes both deterministic regression evidence and
+  the applicable task-based usability evidence from
+  [gui-verify](../../agents/skills/gui-verify.md#task-based-usability-pass).
 
 ## Non-goals
-Entity-editor epic phases 3, 4, 7, and 8 (animation timeline, IK/chain
-solvers, particles/lights/audio, multi-window polish —
-`docs/design/entity-editor-epic.md`) remain out of scope. The 2026-05 phase
+The owner authorized safe animation/runtime preview and local-part hierarchy
+authoring on 2026-11-01. A full curve/event timeline, IK/chain solvers,
+particles/lights/audio authoring, and multi-window polish from
+`docs/design/entity-editor-epic.md` remain separate follow-on scopes. The 2026-05 phase
 epics (#606–#613) are retired; a phase revives only as a fresh,
 objective-linked decomposition. Adopting dear-imgui — the trixel-rendered UI
 is the standing bet.
@@ -76,8 +94,11 @@ were fixed forward (#4467 by PR #4468, #4642 by PR #4687). Open: #4753
 makes the module paths `author-entity.py` writes into
 `composite_proof/author.json` portable. Every change since the owner's
 2026-09-30 review has been validated by scripted sessions only; no hands-on
-pass has landed and the friction doc still ends at Part 3, so the owner's
-pass remains the next input and the next decomposition.
+pass has landed. The friction report now also records recipe-handle work in
+Part 4. Scripted feature proofs remain useful regression evidence, but the
+2026-11-01 authoring rework adds task-based evaluation as an agent responsibility;
+the owner's next hands-on pass is no longer the prerequisite for finding ordinary
+workflow blockers.
 
 The entity creator (#3974) landed its reference proof: the `composite_proof`
 session authors nine parts (a stem and a frame from the fixture module's
@@ -108,3 +129,4 @@ objective-linked decomposition for the entity creator.
 | 2026-10-23 | #4402 / PR #4694; PR #4689 | COPY YAW bound to sessions (`test_yaw`); shared undo service and the `undo_history` session (30 sessions, 8 fixture) |
 | 2026-10-27 | sweep | re-verified against master `ee85797c0`; audit list drained; row 3 reframed (`worldToScreen` is a dead helper); no Part 4 yet |
 | 2026-10-29 | #4767 / PR #4791 | debug-overlay `worldToScreen` delegates to `worldPos3DToMouseScreenPx`; dead `screenToWorld` removed; Done-means row 3 verifies |
+| 2026-11-01 | owner-directed authoring rework | Added blank-document sculpting, trustworthy editing/persistence, local-part hierarchy, safe motion preview, and task-based usability criteria; existing feature proofs remain complete, the expanded outcome remains open |

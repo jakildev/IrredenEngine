@@ -16,7 +16,10 @@
 namespace IRVoxelEditor {
 
 constexpr IRMath::ivec2 kAnimPanelPos{4, 420};
-constexpr IRMath::ivec2 kAnimPanelSize{120, 55};
+constexpr IRMath::ivec2 kAnimPanelSize{120, 72};
+constexpr IRMath::ivec2 kAddFrameButtonPos{kAnimPanelPos.x + 4, kAnimPanelPos.y + 55};
+constexpr IRMath::ivec2 kDuplicateFrameButtonPos{kAnimPanelPos.x + 62, kAnimPanelPos.y + 55};
+constexpr IRMath::ivec2 kFrameButtonSize{53, 14};
 
 // Position + size of a slider's track — matches the C_Widget::size_ a
 // makeSlider call gives it, the full width system_widget_input.hpp's

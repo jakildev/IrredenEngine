@@ -365,4 +365,49 @@ TEST_F(LuaWidgetHitRegion, BadOptionsRaise) {
     EXPECT_EQ(widgetCount(), 0u);
 }
 
+TEST_F(LuaWidgetHitRegion, HidingInHoverCallbackDropsAlreadyQueuedClick) {
+    registerDispatch();
+    run(R"lua(
+        events = {}
+        region = IRGui.makeHitRegion(0, 0, 100, 10, {
+            onHover = function(id)
+                events[#events + 1] = 'hover'
+                IRGui.setVisible(id, false)
+            end,
+            onUnhover = function() events[#events + 1] = 'unhover' end,
+            onClick = function() events[#events + 1] = 'click' end,
+        })
+    )lua");
+    const auto region = entity("region");
+    state(region).hovered_ = true;
+    state(region).fireAction_ = true;
+    dispatch();
+    EXPECT_EQ(events(), "hover");
+    dispatch();
+    EXPECT_EQ(events(), "hover unhover");
+    run("IRGui.setVisible(region, true)");
+    dispatch();
+    EXPECT_EQ(events(), "hover unhover");
+}
+
+TEST_F(LuaWidgetHitRegion, HideShowInHoverCallbackDoesNotRestoreQueuedClick) {
+    registerDispatch();
+    run(R"lua(
+        events = {}
+        region = IRGui.makeHitRegion(0, 0, 100, 10, {
+            onHover = function(id)
+                events[#events + 1] = 'hover'
+                IRGui.setVisible(id, false)
+                IRGui.setVisible(id, true)
+            end,
+            onClick = function() events[#events + 1] = 'click' end,
+        })
+    )lua");
+    const auto region = entity("region");
+    state(region).hovered_ = true;
+    state(region).fireAction_ = true;
+    dispatch();
+    EXPECT_EQ(events(), "hover");
+}
+
 } // namespace

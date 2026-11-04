@@ -208,6 +208,9 @@ class Collector {
     }
 
     void addWidget(IREntity::EntityId id, const IRComponents::C_Widget &widget) {
+        if (!widget.visible_) {
+            return;
+        }
         const auto *guiPos = component<IRComponents::C_GuiPosition>(id);
         if (guiPos == nullptr) {
             return;

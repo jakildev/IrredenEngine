@@ -51,7 +51,7 @@ template <> struct System<WIDGET_APPLY_SLIDER> {
         IRComponents::C_WidgetSlider &slider,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (widget.disabled_) {
+        if (!widget.visible_ || widget.disabled_) {
             return;
         }
 

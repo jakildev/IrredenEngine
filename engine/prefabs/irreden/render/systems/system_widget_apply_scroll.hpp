@@ -28,9 +28,12 @@ template <> struct System<WIDGET_APPLY_SCROLL> {
         IRComponents::C_WidgetScroll &scroll,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (widget.disabled_) return;
-        if (!state.pressed_) return;
-        if (widget.size_.x <= 0 || widget.size_.y <= 0) return;
+        if (!widget.visible_ || widget.disabled_)
+            return;
+        if (!state.pressed_)
+            return;
+        if (widget.size_.x <= 0 || widget.size_.y <= 0)
+            return;
 
         const bool vertical = (scroll.axis_ == IRComponents::C_WidgetScroll::Axis::VERTICAL);
         const int viewExtent = vertical ? widget.size_.y : widget.size_.x;
@@ -41,9 +44,8 @@ template <> struct System<WIDGET_APPLY_SCROLL> {
             return;
         }
 
-        const float rel = vertical
-            ? (mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y))
-            : (mouseGuiTrixel_.x - static_cast<float>(guiPos.pos_.x));
+        const float rel = vertical ? (mouseGuiTrixel_.y - static_cast<float>(guiPos.pos_.y))
+                                   : (mouseGuiTrixel_.x - static_cast<float>(guiPos.pos_.x));
         const float t = IRMath::clamp(rel / static_cast<float>(viewExtent), 0.0f, 1.0f);
         scroll.scrollPos_ = static_cast<int>(t * static_cast<float>(maxScroll) + 0.5f);
     }
@@ -54,8 +56,7 @@ template <> struct System<WIDGET_APPLY_SCROLL> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetState,
             IRComponents::C_WidgetScroll,
-            IRComponents::C_GuiPosition
-        >("WidgetApplyScroll");
+            IRComponents::C_GuiPosition>("WidgetApplyScroll");
     }
 };
 

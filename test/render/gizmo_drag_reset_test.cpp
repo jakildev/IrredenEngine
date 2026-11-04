@@ -69,4 +69,65 @@ TEST_F(GizmoDragResetTest, UnrelatedEntityDestructionLeavesDragStateIntact) {
            "match, not on any destruction";
 }
 
+TEST(GizmoDragTransformTest, RotatedRootArrowUsesItsVisibleWorldAxis) {
+    IRComponents::C_WorldTransform anchor;
+    anchor.rotation_ = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), IRMath::kPi * 0.5f);
+    const auto axis = IRPrefab::Gizmo::translationAxisWorld(IRMath::vec3(1.0f, 0.0f, 0.0f), anchor);
+    const auto delta =
+        IRPrefab::Gizmo::translationDeltaInParent(IRMath::vec3(2.0f, 3.0f, 0.0f), axis, {});
+    EXPECT_NEAR(axis.x, 0.0f, 0.0001f);
+    EXPECT_NEAR(axis.y, 1.0f, 0.0001f);
+    EXPECT_NEAR(delta.x, 0.0f, 0.0001f);
+    EXPECT_NEAR(delta.y, 3.0f, 0.0001f);
+}
+
+TEST(GizmoDragTransformTest, RotatedScaledParentConvertsWorldDragIntoLocalTranslation) {
+    IRComponents::C_WorldTransform parent;
+    parent.rotation_ = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), IRMath::kPi * 0.5f);
+    parent.scale_ = IRMath::vec3(2.0f, 3.0f, 4.0f);
+    IRComponents::C_WorldTransform anchor = parent;
+    const auto axis = IRPrefab::Gizmo::translationAxisWorld(IRMath::vec3(1.0f, 0.0f, 0.0f), anchor);
+    const auto delta =
+        IRPrefab::Gizmo::translationDeltaInParent(IRMath::vec3(0.0f, 6.0f, 0.0f), axis, parent);
+    EXPECT_NEAR(delta.x, 3.0f, 0.0001f);
+    EXPECT_NEAR(delta.y, 0.0f, 0.0001f);
+    EXPECT_NEAR(delta.z, 0.0f, 0.0001f);
+    const auto worldDelta = IRMath::rotateVectorByQuat(parent.scale_ * delta, parent.rotation_);
+    EXPECT_NEAR(worldDelta.x, 0.0f, 0.0001f);
+    EXPECT_NEAR(worldDelta.y, 6.0f, 0.0001f);
+}
+
+TEST(GizmoDragTransformTest, ChildRotationAndReflectedParentKeepTheDrawnArrowDirection) {
+    IRComponents::C_WorldTransform parent;
+    parent.rotation_ = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), IRMath::kPi * 0.5f);
+    parent.scale_ = IRMath::vec3(-2.0f, 3.0f, 4.0f);
+    IRComponents::C_WorldTransform anchor = parent;
+    anchor.rotation_ = IRMath::quatMul(parent.rotation_, parent.rotation_);
+    const auto axis = IRPrefab::Gizmo::translationAxisWorld(IRMath::vec3(1.0f, 0.0f, 0.0f), anchor);
+    EXPECT_NEAR(axis.x, 1.0f, 0.0001f);
+    const auto delta =
+        IRPrefab::Gizmo::translationDeltaInParent(IRMath::vec3(6.0f, 0.0f, 0.0f), axis, parent);
+    const auto worldDelta = IRMath::rotateVectorByQuat(parent.scale_ * delta, parent.rotation_);
+    EXPECT_NEAR(worldDelta.x, 6.0f, 0.0001f);
+    EXPECT_NEAR(worldDelta.y, 0.0f, 0.0001f);
+    EXPECT_NEAR(delta.y, -2.0f, 0.0001f);
+}
+
+TEST(GizmoDragTransformTest, ZeroScaleDoesNotProduceAnInvalidTranslation) {
+    IRComponents::C_WorldTransform parent;
+    parent.scale_ = IRMath::vec3(1.0f, 0.0f, 1.0f);
+    EXPECT_EQ(
+        IRPrefab::Gizmo::translationDeltaInParent(
+            IRMath::vec3(1.0f),
+            IRMath::vec3(1.0f, 0.0f, 0.0f),
+            parent
+        ),
+        IRMath::vec3(0.0f)
+    );
+    EXPECT_EQ(
+        IRPrefab::Gizmo::translationAxisWorld(IRMath::vec3(0.0f, 1.0f, 0.0f), parent),
+        IRMath::vec3(0.0f)
+    );
+}
+
 } // namespace

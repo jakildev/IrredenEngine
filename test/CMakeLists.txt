@@ -162,6 +162,9 @@ add_executable(IrredenEngineTest
   render/sun_record_pool_layout_test.cpp
   render/viewport_test.cpp
   render/voxel_editor_fill_ghost_test.cpp
+  render/voxel_editor_sculpt_grid_test.cpp
+  render/voxel_editor_part_edit_history_test.cpp
+  render/voxel_editor_composite_save_transaction_test.cpp
   render/voxel_pool_config_test.cpp
   render/voxel_pool_capacity_test.cpp
   render/voxel_font_test.cpp
@@ -178,6 +181,7 @@ add_executable(IrredenEngineTest
   render/widget_image_test.cpp
   render/widget_tab_focus_test.cpp
   render/widget_keyboard_test.cpp
+  render/widget_visibility_test.cpp
   render/gui_layout_audit_test.cpp
   script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp

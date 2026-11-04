@@ -102,19 +102,18 @@ template <> struct System<WIDGET_LUA_DISPATCH> {
     // The map lookups are keyed by the iterating entity's own id (not a
     // getComponent on a foreign entity), so they are allowed inside a tick.
     // Widgets with no registered handler miss both maps — a no-op.
-    void tick(IREntity::EntityId id, const C_WidgetState &state) {
+    void tick(IREntity::EntityId id, const C_Widget &widget, const C_WidgetState &state) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_INPUT);
 
+        const bool hovered = widget.visible_ && state.hovered_;
         if (!hoverHandlers_.empty()) {
             auto hover = hoverHandlers_.find(id);
-            if (hover != hoverHandlers_.end() && hover->second.hovered_ != state.hovered_) {
-                hover->second.hovered_ = state.hovered_;
-                pending_.push_back(
-                    {id, state.hovered_ ? WidgetEvent::HOVER : WidgetEvent::UNHOVER}
-                );
+            if (hover != hoverHandlers_.end() && hover->second.hovered_ != hovered) {
+                hover->second.hovered_ = hovered;
+                pending_.push_back({id, hovered ? WidgetEvent::HOVER : WidgetEvent::UNHOVER});
             }
         }
-        if (state.fireAction_ && clickHandlers_.contains(id)) {
+        if (widget.visible_ && state.fireAction_ && clickHandlers_.contains(id)) {
             pending_.push_back({id, WidgetEvent::CLICK});
         }
     }
@@ -131,7 +130,8 @@ template <> struct System<WIDGET_LUA_DISPATCH> {
     }
 
     static SystemId create() {
-        SystemId id = registerSystem<WIDGET_LUA_DISPATCH, C_WidgetState>("WidgetLuaDispatch");
+        SystemId id =
+            registerSystem<WIDGET_LUA_DISPATCH, C_Widget, C_WidgetState>("WidgetLuaDispatch");
         auto *params = getSystemParams<System<WIDGET_LUA_DISPATCH>>(id);
         IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
             params->forgetWidget(destroyed);
@@ -150,6 +150,16 @@ template <> struct System<WIDGET_LUA_DISPATCH> {
     // after this endTick.
     void fire(const PendingEvent &pending) {
         if (IREntity::getEntityManager().isMarkedForDeletion(pending.widget_)) {
+            return;
+        }
+        const auto widget = IREntity::getComponentOptional<C_Widget>(pending.widget_);
+        if (!widget || (!(*widget)->visible_ && pending.event_ != WidgetEvent::UNHOVER)) {
+            return;
+        }
+        // Hiding and showing in an earlier callback still cancels the event.
+        const auto state = IREntity::getComponentOptional<C_WidgetState>(pending.widget_);
+        if (!state || (pending.event_ == WidgetEvent::CLICK && !(*state)->fireAction_) ||
+            (pending.event_ == WidgetEvent::HOVER && !(*state)->hovered_)) {
             return;
         }
         sol::protected_function fn;

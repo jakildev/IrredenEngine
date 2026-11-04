@@ -31,6 +31,10 @@ template <> struct System<WIDGET_RENDER_LABEL> {
         const IRComponents::C_WidgetLabel &label,
         const IRComponents::C_GuiPosition &guiPos
     ) {
+        if (!widget.visible_) {
+            return;
+        }
+
         if (!canvas_)
             return;
         if (label.text_.empty())
