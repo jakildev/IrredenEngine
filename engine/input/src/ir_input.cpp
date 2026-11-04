@@ -31,10 +31,13 @@ KeyModifierMask heldKeyModifiers() {
     const bool altDown = getInputManager().checkButtonDown(kKeyButtonLeftAlt) ||
                          getInputManager().checkButtonDown(kKeyButtonRightAlt);
 
+    const bool superDown = getInputManager().checkButtonDown(kKeyButtonLeftSuper) ||
+                           getInputManager().checkButtonDown(kKeyButtonRightSuper);
     KeyModifierMask held = kModifierNone;
     held |= shiftDown ? kModifierShift : kModifierNone;
     held |= controlDown ? kModifierControl : kModifierNone;
     held |= altDown ? kModifierAlt : kModifierNone;
+    held |= superDown ? kModifierSuper : kModifierNone;
     return held;
 }
 

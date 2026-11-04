@@ -534,17 +534,15 @@ TEST(CameraZoomCanvasPlacement, ACameraFollowingCanvasPlacesFromTheFrame) {
         vec2(2.5f / density),
         density
     );
-    EXPECT_EQ(
-        placed,
-        vec2(
-            IRMath::cameraRasterGatherTranslation(
-                frame,
-                canvasCamera * static_cast<float>(density),
-                vec2(0.0f),
-                density
-            )
-        )
-    );
+    // Undo the gather's fragment-pixel map: one canvas texel in +Y lies
+    // above its quad centre. Add the offset consumed by the integer raster.
+    const dvec2 rasterPixels = dvec2(IRMath::floor(canvasCamera * static_cast<float>(density))) *
+                               frame.pitch_ / static_cast<double>(density);
+    const dvec2 recoveredPlacement = rasterPixels + dvec2(placed.x, -placed.y);
+    const dvec2 expectedPlacement =
+        IRMath::floor(frame.cameraIso_ * frame.pitch_ - frame.phase_) + frame.phase_;
+    EXPECT_NEAR(recoveredPlacement.x, expectedPlacement.x, 1e-6);
+    EXPECT_NEAR(recoveredPlacement.y, expectedPlacement.y, 1e-6);
     EXPECT_NE(
         placed,
         TrixelToFramebuffer::canvasGatherTranslation(

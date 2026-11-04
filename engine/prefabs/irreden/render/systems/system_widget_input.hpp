@@ -332,15 +332,13 @@ template <> struct System<WIDGET_INPUT> {
                         hotkey.modifiers_ != heldModifiers_ || !pressed(hotkey.key_)) {
                         return;
                     }
-                    const bool dropdownOwnsKey =
-                        dropdownTakesKeys_ && focusedDropdownOpen_ &&
-                        (heldModifiers_ & (IRInput::kModifierControl | IRInput::kModifierAlt)) ==
-                            0 &&
-                        std::find(
-                            IRPrefab::Widget::kTypedKeys.begin(),
-                            IRPrefab::Widget::kTypedKeys.end(),
-                            hotkey.key_
-                        ) != IRPrefab::Widget::kTypedKeys.end();
+                    const bool dropdownOwnsKey = dropdownTakesKeys_ && focusedDropdownOpen_ &&
+                                                 (heldModifiers_ & ~IRInput::kModifierShift) == 0 &&
+                                                 std::find(
+                                                     IRPrefab::Widget::kTypedKeys.begin(),
+                                                     IRPrefab::Widget::kTypedKeys.end(),
+                                                     hotkey.key_
+                                                 ) != IRPrefab::Widget::kTypedKeys.end();
                     if (dropdownOwnsKey) {
                         return;
                     }
@@ -379,14 +377,13 @@ template <> struct System<WIDGET_INPUT> {
                 static_cast<IRInput::KeyMouseButtons>(key & 0xFFFFu);
             if (!hasFocusedKeyboardWidget() && !IRPrefab::Widget::isFocusKey(button) &&
                 pressed(button) && mods == heldModifiers_) {
-                const bool dropdownOwnsKey =
-                    dropdownTakesKeys_ && focusedDropdownOpen_ &&
-                    (heldModifiers_ & (IRInput::kModifierControl | IRInput::kModifierAlt)) == 0 &&
-                    std::find(
-                        IRPrefab::Widget::kTypedKeys.begin(),
-                        IRPrefab::Widget::kTypedKeys.end(),
-                        button
-                    ) != IRPrefab::Widget::kTypedKeys.end();
+                const bool dropdownOwnsKey = dropdownTakesKeys_ && focusedDropdownOpen_ &&
+                                             (heldModifiers_ & ~IRInput::kModifierShift) == 0 &&
+                                             std::find(
+                                                 IRPrefab::Widget::kTypedKeys.begin(),
+                                                 IRPrefab::Widget::kTypedKeys.end(),
+                                                 button
+                                             ) != IRPrefab::Widget::kTypedKeys.end();
                 if (dropdownOwnsKey) {
                     continue;
                 }
@@ -397,8 +394,7 @@ template <> struct System<WIDGET_INPUT> {
         for (auto &callback : hotkeyCallbacks_) {
             callback();
         }
-        const bool typedModifiers =
-            (heldModifiers_ & (IRInput::kModifierControl | IRInput::kModifierAlt)) == 0;
+        const bool typedModifiers = (heldModifiers_ & ~IRInput::kModifierShift) == 0;
         if (dropdownTakesKeys_ && typedModifiers) {
             for (const IRInput::KeyMouseButtons key : IRPrefab::Widget::kTypedKeys) {
                 if (!pressed(key)) {
@@ -595,8 +591,7 @@ template <> struct System<WIDGET_INPUT> {
                         kOpenDropdownCaptured.begin(),
                         kOpenDropdownCaptured.end()
                     );
-                    if ((heldModifiers_ & (IRInput::kModifierControl | IRInput::kModifierAlt)) ==
-                        0) {
+                    if ((heldModifiers_ & ~IRInput::kModifierShift) == 0) {
                         capturedButtons_.insert(
                             capturedButtons_.end(),
                             IRPrefab::Widget::kTypedKeys.begin(),

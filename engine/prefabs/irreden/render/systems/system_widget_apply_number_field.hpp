@@ -18,6 +18,11 @@ template <> struct System<WIDGET_APPLY_NUMBER_FIELD> {
     void beginTick() {
         typed_.reserve(3);
         typed_.clear();
+        if (IRInput::heldKeyModifiers() & (IRInput::kModifierControl | IRInput::kModifierSuper)) {
+            backspace_ = false;
+            escape_ = false;
+            return;
+        }
         for (int index = 0; index < 10; ++index) {
             const auto key = static_cast<IRInput::KeyMouseButtons>(IRInput::kKeyButton0 + index);
             if (IRInput::checkKeyMouseButton(key, IRInput::ButtonStatuses::PRESSED)) {

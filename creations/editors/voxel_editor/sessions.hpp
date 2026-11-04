@@ -141,6 +141,10 @@
 // times with a 60 degree turn a copy, so every copy carries its band and its
 // spin. It saves, clears and reloads the scene, and
 // `scripts/author-entity.py --prefab composite_proof` commits the result.
+namespace IRVoxelEditor {
+bool evaluateChordOverlayRows(const void *, std::string &actual);
+}
+
 namespace IRVoxelEditor::Session {
 
 enum class Id {
@@ -2364,10 +2368,16 @@ inline Recipe build(
                 builder.tapKey(IRInput::kKeyButtonBackspace);
             builder.typeText({150, 15}, name);
         };
-        builder.segment("overwrite_requires_decision");
+        constexpr auto primary =
+            IRPlatform::kIsMacOS ? IRInput::kKeyButtonLeftSuper : IRInput::kKeyButtonLeftControl;
+        builder.segment("shortcut_undo");
         builder.clickGui(sculptButtonCenter(0));
         builder.click(cell);
-        builder.clickGui({366, 15});
+        builder.chordKey(primary, IRInput::kKeyButtonZ);
+        builder.segment("shortcut_redo");
+        builder.chordKey(IRInput::kKeyButtonLeftShift, primary, IRInput::kKeyButtonZ);
+        builder.segment("overwrite_requires_decision");
+        builder.chordKey(IRInput::kKeyButtonLeftShift, primary, IRInput::kKeyButtonS);
         builder.segment("cancel_preserves_unsaved_asset");
         builder.clickGui({531, 229});
         builder.segment("save_as_publishes_named_asset");
@@ -2375,7 +2385,10 @@ inline Recipe build(
         builder.clickGui({655, 229});
         builder.segment("new_guard_blocks_authoring");
         builder.tapKey(IRInput::kKeyButtonX);
-        builder.clickGui({526, 15});
+        if constexpr (IRPlatform::kIsMacOS)
+            builder.chordKey(primary, IRInput::kKeyButtonN);
+        else
+            builder.clickGui({526, 15});
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
         builder.segment("cancel_new_keeps_asset");
         builder.clickGui({531, 229});
@@ -2383,7 +2396,7 @@ inline Recipe build(
         builder.clickGui({526, 15});
         builder.clickGui({407, 229});
         builder.segment("open_restores_named_asset");
-        builder.clickGui({446, 15});
+        builder.chordKey(primary, IRInput::kKeyButtonO);
         builder.segment("failed_open_keeps_current_data");
         rename(5, "missing");
         builder.tapKey(IRInput::kKeyButtonX);
@@ -2391,7 +2404,7 @@ inline Recipe build(
         builder.clickGui({407, 229});
         builder.segment("save_retries_current_identity");
         rename(7, "draft");
-        builder.clickGui({286, 15});
+        builder.chordKey(primary, IRInput::kKeyButtonS);
         builder.segment("close_requests_confirmation");
         builder.tapKey(IRInput::kKeyButtonX);
         builder.tapKey(IRInput::kKeyButtonEscape);
@@ -2430,6 +2443,7 @@ inline Recipe build(
         builder.tapKey(IRInput::kKeyButtonEnd);
         for (int index = 0; index < 6; ++index)
             builder.tapKey(IRInput::kKeyButtonBackspace);
+        builder.chordKey(primary, IRInput::kKeyButtonS);
         builder.typeText(kJointRenameInputCenter, "tip");
         builder.clickGui(renameButton);
         builder.segment("rig_rename_requires_decision");
@@ -2451,8 +2465,19 @@ inline Recipe build(
         builder.tapKey(IRInput::kKeyButtonX);
         builder.clickGui({480, 119});
         builder.clickGui({190, 199});
+        builder.segment("platform_shortcuts_help");
+        builder.tapKey(IRInput::kKeyButtonF1);
         Recipe recipe = builder.finish();
+        recipe.segments_.back().assertions_.push_back(
+            IRPrefab::GuiTest::predicate(
+                &evaluateChordOverlayRows,
+                nullptr,
+                "rendered_platform_shortcut_rows"
+            )
+        );
         static constexpr DocumentWorkflowCheck checks[] = {
+            {"", true, false, false, false, false},
+            {"", true, false, false, false, true},
             {"", true, false, true, false, true},
             {"", true, false, false, false, true},
             {"draft", false, false, false, false, true},
@@ -2476,6 +2501,7 @@ inline Recipe build(
             {"rescue", false, false, false, false, false, "tip"},
             {"composite", false, false, false, false, false, nullptr, true, true, true},
             {"", false, false, false, false, false, nullptr, false, false, true},
+            {"composite", false, false, false, false, false, nullptr, true, true, true},
             {"composite", false, false, false, false, false, nullptr, true, true, true},
         };
         if (recipe.segments_.size() != std::size(checks)) {

@@ -110,6 +110,18 @@ editorFitZoom(float currentZoom, IRMath::vec2 projectedSize, IRMath::vec2 availa
     return currentZoom * IRMath::min(ratio.x, ratio.y);
 }
 
+inline void moveEditorViewBy(IRMath::vec2 delta) {
+    const IRMath::vec2 framebufferDelta = IRRender::windowPointsToFramebufferPx(delta) -
+                                          IRRender::windowPointsToFramebufferPx(IRMath::vec2(0.0f));
+    IRRender::setCameraPosition2DIso(
+        IRRender::getCameraPosition2DIso() +
+        IRMath::cameraMoveRelativeToYaw(
+            framebufferDelta / IRRender::getTriangleStepSizeScreen(),
+            IRRender::getCameraPanYaw()
+        )
+    );
+}
+
 // Points are the world-space corners of the selected volume or preview copies.
 // Projection and DPI/letterbox mapping remain owned by the renderer. The camera
 // yaw and orbit pivot stay unchanged; only pan and zoom change.
@@ -140,16 +152,7 @@ inline bool focusEditorPoints(std::span<const IRMath::vec3> points) {
     // upward, use the lower step so fitting cannot spill behind a panel.
     if (IRRender::getCameraZoom().x > requestedZoom)
         IRRender::setCameraZoom(IRRender::getCameraZoom().x * 0.5f);
-    const IRMath::vec2 delta = screenArea.center() - projectedBounds().center();
-    const IRMath::vec2 framebufferDelta = IRRender::windowPointsToFramebufferPx(delta) -
-                                          IRRender::windowPointsToFramebufferPx(IRMath::vec2(0.0f));
-    IRRender::setCameraPosition2DIso(
-        IRRender::getCameraPosition2DIso() +
-        IRMath::cameraMoveRelativeToYaw(
-            framebufferDelta / IRRender::getTriangleStepSizeScreen(),
-            IRRender::getCameraPanYaw()
-        )
-    );
+    moveEditorViewBy(screenArea.center() - projectedBounds().center());
     return true;
 }
 

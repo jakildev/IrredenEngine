@@ -1,3 +1,4 @@
+#include <irreden/ir_platform.hpp>
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
@@ -256,6 +257,8 @@ struct WorkspaceMember {
 };
 
 struct EditorState {
+    float homeZoom_ = 4.0f;
+    float scrollZoomRate_ = 0.125f;
     int profileFrames_ = 0;
     int profileFramesSeen_ = 0;
     float profileYawDegrees_ = 30.0f;
@@ -299,6 +302,7 @@ struct EditorState {
     Workspace workspaceBeforeLocalEdit_ = Workspace::ASSEMBLE;
     IREntity::EntityId localEditButton_ = IREntity::kNullEntity;
     IREntity::EntityId focusButton_ = IREntity::kNullEntity;
+    IREntity::EntityId resetViewButton_ = IREntity::kNullEntity;
     int initialFocusDelay_ = 0;
     std::string documentStatus_;
     std::unordered_map<IREntity::EntityId, bool> documentWidgetVisibility_;
@@ -463,6 +467,8 @@ IREntity::EntityId g_componentPagePrevBtn = IREntity::kNullEntity;
 IREntity::EntityId g_componentPageNextBtn = IREntity::kNullEntity;
 IREntity::EntityId g_componentPageLabel = IREntity::kNullEntity;
 
+vec3 editorPlaneCenter();
+
 namespace {
 
 constexpr float kRotationSensitivity = 0.004f;
@@ -514,7 +520,6 @@ struct RotateParams {
     bool dragging_ = false;
     IRPrefab::Camera::GestureOwnership buttonNavigation_;
     bool scrollOrbit_ = false;
-    float zoomRemainder_ = 0.0f;
     IRTime::TimePoint lastScroll_{};
     float startMouseX_ = 0.0f;
     float startYaw_ = 0.0f;
@@ -932,13 +937,11 @@ constexpr ChordRow kExpectedChordRows[] = {
     {"CTRL+Z", "UNDO"},
     {"Z", "MIRROR Z"},
     {"CTRL+S", "SAVE SCENE"},
-    {"SHIFT+CTRL+S", "SAVE RIG"},
+    {"SHIFT+CTRL+S", "SAVE AS / LEGACY RIG SAVE"},
     {"CTRL+O", "LOAD SCENE"},
     {"SHIFT+CTRL+O", "LOAD RIG"},
+    {IRPlatform::kIsMacOS ? "CTRL+OPTION+Y" : "CTRL+ALT+Y", "ROTATIONAL SYMMETRY"},
 };
-constexpr int kNumExpectedChordRows =
-    static_cast<int>(sizeof(kExpectedChordRows) / sizeof(kExpectedChordRows[0]));
-
 // Splits one overlay row into its key column and command name.
 // `System<HELP_OVERLAY>::buildText` lays a row out as
 // `<key><pad to a fixed width> <NAME>[ - <DESCRIPTION>]`, and a key column never
@@ -960,45 +963,6 @@ bool splitOverlayRow(const std::string &line, std::string &key, std::string &nam
         descStart == std::string::npos ? std::string::npos : descStart - nameStart
     );
     return true;
-}
-
-bool evaluateChordOverlayRows(const void *, std::string &actual) {
-    const std::string text = IRPrefab::HelpOverlay::builtText();
-    if (text.empty()) {
-        actual = "overlay text is empty — never opened, or HELP_OVERLAY is not registered";
-        return false;
-    }
-
-    std::string rendered[kNumExpectedChordRows];
-    for (std::string &row : rendered)
-        row = "<absent>";
-    for (std::size_t lineStart = 0; lineStart < text.size();) {
-        const std::size_t lineEnd = text.find('\n', lineStart);
-        const std::size_t lineLength =
-            lineEnd == std::string::npos ? text.size() - lineStart : lineEnd - lineStart;
-        const std::string line = text.substr(lineStart, lineLength);
-        lineStart += lineLength + 1;
-        std::string key;
-        std::string name;
-        if (!splitOverlayRow(line, key, name))
-            continue;
-        for (int i = 0; i < kNumExpectedChordRows; ++i) {
-            if (name == kExpectedChordRows[i].name_)
-                rendered[i] = key;
-        }
-    }
-
-    std::string wrong;
-    for (int i = 0; i < kNumExpectedChordRows; ++i) {
-        if (rendered[i] == kExpectedChordRows[i].chord_)
-            continue;
-        if (!wrong.empty())
-            wrong += ", ";
-        wrong += std::string(kExpectedChordRows[i].name_) + " renders \"" + rendered[i] +
-                 "\" want \"" + kExpectedChordRows[i].chord_ + "\"";
-    }
-    actual = wrong.empty() ? "all six chord rows present in the opened overlay's text" : wrong;
-    return wrong.empty();
 }
 
 // Visibility is the flag the F1 command flips; the glyph count is the evidence
@@ -2191,6 +2155,22 @@ void commitStroke(
 // its minimum corner, so every world-to-cell conversion goes through here.
 ivec3 voxelSetCellOrigin(const C_VoxelSetNew &set, const C_WorldTransform &worldTransform) {
     return IRMath::roundVec3HalfUp(worldTransform.translation_ + voxelSetLocalOrigin(set));
+}
+
+void resetEditorView() {
+    if (authoringInteractionBlocked())
+        return;
+    const auto center = editorPlaneCenter();
+    IRPrefab::Camera::setYawPitch(0.0f, 0.0f);
+    IRPrefab::CursorPivot::setFocusPreservingView(center);
+    if (g_editor.homeZoom_ > 0.0f)
+        IRRender::setCameraZoom(g_editor.homeZoom_);
+    const auto area = visibleEditorWorkarea();
+    const vec2 target = area ? area->center() : vec2(IRPrefab::Layout::guiCanvasSize()) * 0.5f;
+    moveEditorViewBy(
+        vec2(IRRender::guiTrixelToScreenPx(target)) -
+        vec2(IRRender::worldPos3DToMouseScreenPxExact(center))
+    );
 }
 
 std::optional<vec3> resolveOrbitFocus(IREntity::EntityId) {
@@ -4191,7 +4171,7 @@ void updateViewportScroll(RotateParams &state) {
     g_sculpt.viewportScrolled_ = false;
     const bool buttonNavigating = state.buttonNavigation_.poll();
     const vec2 delta = IRInput::scrollOffset();
-    if (delta == vec2(0) && !state.scrollOrbit_ && state.zoomRemainder_ == 0.0f)
+    if (delta == vec2(0) && !state.scrollOrbit_)
         return;
     const auto now = IRTime::Clock::now();
     const auto mouse = IRPrefab::Layout::mousePositionInGuiTrixels();
@@ -4210,24 +4190,23 @@ void updateViewportScroll(RotateParams &state) {
         if (state.scrollOrbit_)
             state.anchor_.end();
         state.scrollOrbit_ = false;
-        state.zoomRemainder_ = 0.0f;
     }
     if (blocked || delta == vec2(0))
         return;
     state.lastScroll_ = now;
     g_sculpt.viewportScrolled_ = true;
     if (IRMath::abs(delta.x) > IRMath::abs(delta.y)) {
-        state.zoomRemainder_ = 0.0f;
-        if (!state.scrollOrbit_) {
-            state.anchor_.begin(
-                IRInput::checkKeyMouseModifiers(IRInput::kModifierShift) !=
-                    IRPrefab::Camera::cursorPivotByDefault(),
-                state.focusOptions_
-            );
+        if (!state.scrollOrbit_ || !IRRender::hasRotationPivotFocus() ||
+            IRRender::getRotationPivotFocus() != state.anchor_.focusWorld_) {
+            const vec3 center = editorPlaneCenter();
+            state.anchor_
+                .beginAt(center, vec2(IRRender::worldPos3DToMouseScreenPxExact(center)), true);
             state.scrollOrbit_ = true;
         }
         constexpr float kRadiansPerScrollUnit = 0.04f;
         IRPrefab::Camera::rotateYaw(delta.x * kRadiansPerScrollUnit);
+        state.anchor_.indicatorWindowPoint_ =
+            vec2(IRRender::worldPos3DToMouseScreenPxExact(state.anchor_.focusWorld_));
         state.anchor_.updateIndicator();
         return;
     }
@@ -4235,21 +4214,18 @@ void updateViewportScroll(RotateParams &state) {
         state.anchor_.end();
         state.scrollOrbit_ = false;
     }
-    state.zoomRemainder_ += delta.y;
-    while (IRMath::abs(state.zoomRemainder_) >= 1.0f) {
-        const auto previous = IRRender::getCameraZoom();
-        if (state.zoomRemainder_ > 0.0f) {
-            IRPrefab::Camera::zoomIn();
-            state.zoomRemainder_ -= 1.0f;
-        } else {
-            IRPrefab::Camera::zoomOut();
-            state.zoomRemainder_ += 1.0f;
-        }
-        if (IRRender::getCameraZoom() == previous) {
-            state.zoomRemainder_ = 0.0f;
-            break;
-        }
-    }
+    const float logZoom =
+        IRMath::log2(IRRender::getCameraZoom().x) + delta.y * g_editor.scrollZoomRate_;
+    IRRender::setCameraZoom(
+        IRMath::pow(
+            2.0f,
+            IRMath::clamp(
+                logZoom,
+                IRMath::log2(IRConstants::kTrixelCanvasZoomMin.x),
+                IRMath::log2(IRConstants::kTrixelCanvasZoomMax.x)
+            )
+        )
+    );
 }
 
 // What ATTACH targets: the root while ROOT is checked, else the selected part.
@@ -4515,6 +4491,65 @@ void updateComponentsPanel() {
 }
 
 } // namespace
+
+bool evaluateChordOverlayRows(const void *, std::string &actual) {
+    const std::string text = IRPrefab::HelpOverlay::builtText();
+    if (text.empty()) {
+        actual = "overlay text is empty — never opened, or HELP_OVERLAY is not registered";
+        return false;
+    }
+
+    const IRPrefab::GuiRect canvas{{0, 0}, IRPrefab::Layout::guiCanvasSize()};
+    const auto panel = IRPrefab::HelpOverlay::panelRect();
+    if (IRPrefab::isEmpty(panel) || !IRPrefab::contains(canvas, panel)) {
+        actual = "help panel extends outside the canvas";
+        return false;
+    }
+    int lineIndex = 0;
+    std::vector<std::pair<std::string, std::string>> rendered;
+    for (std::size_t lineStart = 0; lineStart < text.size();) {
+        const std::size_t lineEnd = text.find('\n', lineStart);
+        const std::size_t lineLength =
+            lineEnd == std::string::npos ? text.size() - lineStart : lineEnd - lineStart;
+        const std::string line = text.substr(lineStart, lineLength);
+        lineStart += lineLength + 1;
+        const auto bounds = IRPrefab::HelpOverlay::textLineRect(lineIndex++);
+        if (!line.empty() && (IRPrefab::isEmpty(bounds) || !IRPrefab::contains(panel, bounds))) {
+            actual = "help text outside visible panel: " + line;
+            return false;
+        }
+        std::string key;
+        std::string name;
+        if (!splitOverlayRow(line, key, name))
+            continue;
+        rendered.emplace_back(std::move(key), std::move(name));
+    }
+    std::string wrong;
+    const auto require = [&](ChordRow row) {
+        if (std::none_of(rendered.begin(), rendered.end(), [&](const auto &entry) {
+                return entry.first == row.chord_ && entry.second == row.name_;
+            })) {
+            if (!wrong.empty())
+                wrong += ", ";
+            wrong += std::string(row.chord_) + " " + row.name_;
+        }
+    };
+    for (const auto row : kExpectedChordRows)
+        require(row);
+    if constexpr (IRPlatform::kIsMacOS) {
+        require({"CMD+Z", "UNDO"});
+        require({"SHIFT+CMD+Z", "REDO"});
+        require({"CMD+0", "RESET CAMERA"});
+        if (g_editor.documentsEnabled_) {
+            require({"CMD+S", "SAVE"});
+            require({"SHIFT+CMD+S", "SAVE AS"});
+            require({"CMD+O", "OPEN"});
+            require({"CMD+N", "NEW"});
+        }
+    }
+    actual = wrong.empty() ? "all expected bindings present" : "missing bindings: " + wrong;
+    return wrong.empty();
+}
 
 std::vector<std::string> componentPaletteNames(const ModuleSessionView &view) {
     std::vector<std::string> names;
@@ -5116,6 +5151,29 @@ std::vector<vec3> editorFocusPoints() {
     return points;
 }
 
+vec3 editorPlaneCenter() {
+    if (!g_editor.motionPreview_.active()) {
+        if (const auto plane = constructionPlane(g_editor.editableVoxelSet_))
+            return plane->center();
+    }
+    // A shape, detached part or staged preview has no editable grid. Orbit
+    // about the base of the volume that Focus frames in that workspace.
+    const auto points = editorFocusPoints();
+    if (!points.empty()) {
+        vec3 low = points.front(), high = low;
+        for (const auto point : points) {
+            low = IRMath::min(low, point);
+            high = IRMath::max(high, point);
+        }
+        return {(low.x + high.x) * 0.5f, (low.y + high.y) * 0.5f, high.z};
+    }
+    return ConstructionPlane{
+        IRMath::vec3(IRMath::roundVec3HalfUp(g_editableSceneOrigin)),
+        g_editableSceneSize
+    }
+        .center();
+}
+
 void focusEditorWorkarea() {
     finishSculptStroke();
     finishPartEdits();
@@ -5508,11 +5566,58 @@ void updateWorkspaces() {
     if (g_editor.focusButton_ != IREntity::kNullEntity &&
         IRPrefab::Widget::wasClicked(g_editor.focusButton_))
         focusEditorWorkarea();
+    if (IRPrefab::Widget::wasClicked(g_editor.resetViewButton_))
+        resetEditorView();
     if (g_editor.initialFocusDelay_ > 0 && --g_editor.initialFocusDelay_ == 0)
         focusEditorWorkarea();
 }
 
 namespace Session {
+
+bool viewportPlaneWitness(int phase, std::string &actual) {
+    std::vector<IRPrefab::WorldPrimitiveVertex> grid;
+    appendConstructionGrid(g_editor.editableVoxelSet_, true, grid);
+    if (grid.empty())
+        return false;
+    // Endpoints of the first and final grid lines are opposite floor corners.
+    const vec3 center = (grid.front().position_ + grid.back().position_) * 0.5f;
+    const bool centered = IRRender::hasRotationPivotFocus() &&
+                          IRMath::length(IRRender::getRotationPivotFocus() - center) < 0.001f;
+    const vec2 projected(IRRender::worldPos3DToMouseScreenPxExact(center));
+    bool markerAtCenter = false;
+    bool visible = false;
+    IREntity::forEachComponent<C_ScreenSpaceMarker>([&](IREntity::EntityId,
+                                                        const C_ScreenSpaceMarker &marker) {
+        markerAtCenter = markerAtCenter || IRMath::length(marker.windowPoint_ - projected) <= 1.0f;
+        visible = visible || marker.visible_;
+    });
+    actual = "planeFocus=" + std::to_string(centered) +
+             " centerMarker=" + std::to_string(markerAtCenter);
+    if (phase == 0)
+        return centered && markerAtCenter;
+    if (phase == 1)
+        return IRRender::hasRotationPivotFocus() && !centered;
+    return phase != 2 || !visible;
+}
+
+bool viewportHomeWitness(std::string &actual) {
+    const auto area = visibleEditorWorkarea();
+    if (!area)
+        return false;
+    const vec3 center = editorPlaneCenter();
+    const float error = IRMath::length(
+        vec2(IRRender::worldPos3DToMouseScreenPxExact(center)) -
+        vec2(IRRender::guiTrixelToScreenPx(area->center()))
+    );
+    const float zoom = IRRender::getCameraZoom().x;
+    const float expected = g_editor.homeZoom_ == 0 ? 7.75f : g_editor.homeZoom_;
+    actual = "centerErrorPoints=" + std::to_string(error) + " zoom=" + std::to_string(zoom) +
+             " expectedZoom=" + std::to_string(expected);
+    return error <= 1.5f && IRMath::abs(zoom - expected) < 0.001f &&
+           IRRender::hasRotationPivotFocus() && IRRender::getRotationPivotFocus() == center &&
+           IRMath::abs(IRPrefab::Camera::getYaw()) < 0.0001f &&
+           IRMath::abs(IRPrefab::Camera::getPitch()) < 0.0001f;
+}
 
 bool evaluateLodWorkflowCheck(const void *context, std::string &actual) {
     return g_editor.lodWorkflow_.evaluate(
@@ -7228,9 +7333,11 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  V: toggle erase-fill mode (left-click place/box/line/face gestures erase)");
     IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
-    IR_LOG_INFO("  Two-finger scroll: horizontal orbits around the cursor, vertical zooms");
+    IR_LOG_INFO("  Two-finger scroll: horizontal orbits the editing plane, vertical zooms");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
-    IR_LOG_INFO("  Space+left: pan camera  Home: re-center + reset yaw");
+    IR_LOG_INFO("  Home: reset camera; Space+left: pan");
+    if constexpr (IRPlatform::kIsMacOS)
+        IR_LOG_INFO("  Mac: Fn+Left (Home) or Cmd+0 resets; Option+drag orbits at the pointer");
     IR_LOG_INFO("  Ctrl+Z: undo  Ctrl+Y / Ctrl+Shift+Z: redo");
     IR_LOG_INFO("  X/Y/Z: toggle X/Y/Z mirror symmetry");
     IR_LOG_INFO("  Left/Right arrow: previous/next frame");
@@ -7336,6 +7443,16 @@ int main(int argc, char **argv) {
     );
     IREngine::args()
         .integer("--profile-frames", "time a fixed voxel shadow scene for N frames and exit", 0)
+        .number(
+            "--home-zoom",
+            "reset view zoom (0 keeps current zoom)",
+            IRVoxelEditor::g_editor.homeZoom_
+        )
+        .number(
+            "--scroll-zoom-rate",
+            "zoom octaves per vertical scroll unit",
+            IRVoxelEditor::g_editor.scrollZoomRate_
+        )
         .number("--profile-yaw", "fixed shadow profile camera yaw in degrees", 30.0f)
         .number("--profile-zoom", "fixed shadow profile camera zoom", 4.0f)
         .flag("--no-stage-timing", "collect wall-frame timing without GPU stage timestamps");
@@ -7348,6 +7465,20 @@ int main(int argc, char **argv) {
         IREngine::gameLoop();
         return code;
     };
+    auto &navigation = IRVoxelEditor::g_editor;
+    navigation.homeZoom_ = IREngine::args().getFloat("--home-zoom");
+    navigation.scrollZoomRate_ = IREngine::args().getFloat("--scroll-zoom-rate");
+    if (!IRMath::isFinite(navigation.homeZoom_) ||
+        (navigation.homeZoom_ != 0 &&
+         (navigation.homeZoom_ < IRConstants::kTrixelCanvasZoomMin.x ||
+          navigation.homeZoom_ > IRConstants::kTrixelCanvasZoomMax.x)) ||
+        !IRMath::isFinite(navigation.scrollZoomRate_) || navigation.scrollZoomRate_ <= 0) {
+        IR_LOG_ERROR(
+            "Home zoom must be 0 or within the camera zoom range; scroll rate must be finite and "
+            "positive."
+        );
+        return exitCleanly(2);
+    }
     if (IREngine::args().wasProvided("--profile-frames")) {
         auto &editor = IRVoxelEditor::g_editor;
         editor.profileFrames_ = IREngine::args().getInt("--profile-frames");
@@ -7762,8 +7893,11 @@ void initSystems() {
                 }
             }
             constexpr const char *guides[] = {
-                "ADD draws. PAINT recolors. Swipe sideways to orbit, up/down to zoom. Space + drag "
-                "pans.",
+                IRPlatform::kIsMacOS
+                    ? "Swipe: orbit floor / zoom. Option+drag: orbit pointer. Space+drag: pan. "
+                      "Cmd+0: reset. Fn+F1: keys."
+                    : "Swipe: orbit floor / zoom. Alt+drag: orbit pointer. Space+drag: pan. "
+                      "Home: reset. F1: keys.",
                 "Select a part. Set its parent or LOD band. Preview radial/linear copies before "
                 "Apply.",
                 "Choose a shape or recipe. Set its parameters, then apply to the selected part.",
@@ -9168,13 +9302,92 @@ void initCommands() {
             );
         };
     historyCommand(IRInput::kKeyButtonZ, IRInput::kModifierControl, IRInput::kModifierShift, false);
-    historyCommand(IRInput::kKeyButtonY, IRInput::kModifierControl, IRInput::kModifierShift, true);
+    historyCommand(
+        IRInput::kKeyButtonY,
+        IRInput::kModifierControl,
+        IRInput::kModifierShift | IRInput::kModifierAlt,
+        true
+    );
     historyCommand(
         IRInput::kKeyButtonZ,
         IRInput::kModifierControl | IRInput::kModifierShift,
         0u,
         true
     );
+
+    if constexpr (IRPlatform::kIsMacOS) {
+        using namespace IRInput;
+        const auto macShortcut = [](KeyMouseButtons key,
+                                    bool shift,
+                                    auto action,
+                                    const char *name,
+                                    const char *description) {
+            const KeyModifierMask required = kModifierSuper | (shift ? kModifierShift : 0);
+            IRCommand::createCommand(
+                KEY_MOUSE,
+                PRESSED,
+                key,
+                action,
+                required,
+                kModifierAll & ~required,
+                name,
+                description
+            );
+        };
+        historyCommand(kKeyButtonZ, kModifierSuper, kModifierAll & ~kModifierSuper, false);
+        historyCommand(
+            kKeyButtonZ,
+            kModifierSuper | kModifierShift,
+            kModifierControl | kModifierAlt,
+            true
+        );
+        macShortcut(
+            kKeyButton0,
+            false,
+            &IRVoxelEditor::resetEditorView,
+            "RESET CAMERA",
+            "RESET VIEW"
+        );
+        if (IRVoxelEditor::g_editor.documentsEnabled_) {
+            macShortcut(
+                kKeyButtonS,
+                false,
+                [] { IRVoxelEditor::beginDocumentSave(false); },
+                "SAVE",
+                "SAVE CURRENT DOCUMENT"
+            );
+            macShortcut(
+                kKeyButtonS,
+                true,
+                [] { IRVoxelEditor::beginDocumentSave(true); },
+                "SAVE AS",
+                "SAVE AT THE NAME AND FOLDER IN THE DOCUMENT BAR"
+            );
+            macShortcut(
+                kKeyButtonO,
+                false,
+                [] {
+                    IRVoxelEditor::requestDocumentAction(
+                        IRVoxelEditor::DocumentAction::OPEN,
+                        IRVoxelEditor::g_editor.documentPanel_.target()
+                    );
+                },
+                "OPEN",
+                "OPEN THE NAME AND FOLDER IN THE DOCUMENT BAR"
+            );
+            macShortcut(
+                kKeyButtonN,
+                false,
+                [] {
+                    IRVoxelEditor::requestDocumentAction(
+                        IRVoxelEditor::DocumentAction::NEW_DOCUMENT
+                    );
+                },
+                "NEW",
+                "START A NEW DOCUMENT"
+            );
+        }
+    }
 
     // F1 opens the registry-driven command help overlay. Every
     // named PRESSED binding registered below appears automatically.
@@ -9225,14 +9438,11 @@ void initCommands() {
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonHome,
-        []() {
-            IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
-            IRPrefab::Camera::setYaw(0.0f);
-        },
+        &IRVoxelEditor::resetEditorView,
         IRInput::kModifierNone,
         IRInput::kModifierNone,
         "RESET CAMERA",
-        "RESET PAN AND YAW TO ORIGIN"
+        IRPlatform::kIsMacOS ? "RESET VIEW (HOME / FN+LEFT / CMD+0)" : "RESET VIEW"
     );
 
     // X/Y/Z: toggle mirror-symmetry axis. When an axis turns ON, seat its mirror
@@ -9324,7 +9534,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonY,
         []() { IRVoxelEditor::toggleRotationalSymmetry(); },
-        IRInput::kModifierControl,
+        IRInput::kModifierControl | IRInput::kModifierAlt,
         IRInput::kModifierNone,
         "ROTATIONAL SYMMETRY",
         "TOGGLE N-WAY SYMMETRY FOR THE SELECTED ARRAY GROUP"
@@ -10218,6 +10428,7 @@ void initEntities() {
     const bool sessionScene =
         ordinaryWorkspace || (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE &&
                               !IRVoxelEditor::g_session.referenceFurniture_);
+    IRPrefab::Camera::setZoomContinuous(true);
     if (ordinaryWorkspace)
         IRRender::setCameraZoom(4.0f);
 
@@ -10867,6 +11078,8 @@ void initEntities() {
         "FOCUS",
         IRRender::TextSize::SMALL
     );
+    g_editor.resetViewButton_ =
+        IRPrefab::Widget::makeButton({964, 60}, {96, 18}, "RESET VIEW", IRRender::TextSize::SMALL);
     g_editor.documentStatusLabel_ =
         IRPrefab::Widget::makeLabel(ivec2(4, 88), "", {}, IRRender::TextSize::SMALL);
     if (g_editor.documentsEnabled_) {

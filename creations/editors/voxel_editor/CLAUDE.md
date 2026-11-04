@@ -53,8 +53,18 @@ falling back to the current authoring floor, and show a gold anchor while held.
 Release hides the marker and retains the focus; reanchoring preserves the view.
 `Camera::setCursorPivotOptions` supplies the editor resolver to the standard
 controls; the custom right-drag uses the same options.
-Two-finger scroll: the dominant axis owns each sample; horizontal orbits around the cursor, vertical accumulates fractional zoom steps, and a hovered widget takes scroll ownership (the native `viewport_scroll` session checks both at 30° and 67°).
-Space+left pans without resetting yaw; Home resets camera pan and yaw; right-drag starts only with no hovered widget and an unblocked document interaction.
+Horizontal two-finger scroll orbits the center of the active construction plane.
+Option/Alt+left-drag anchors on the surface or floor beneath the pointer. Vertical
+scroll changes zoom continuously by `--scroll-zoom-rate` octaves per unit (default
+0.125). The editor uses the renderer's continuous placement policy and discrete
+authored LOD tiers. Space+left pans. RESET VIEW, Home, or Command+0 on macOS
+centers the floor in the clear work area and restores yaw/pitch. Its zoom is
+`--home-zoom` (default 4, or 0 to preserve zoom). On compact Mac keyboards,
+Fn+Left sends Home. The native `viewport_scroll` session checks 30° and 67°
+orbits, fractional zoom, LOD crossings, panel ownership, and reset inputs.
+macOS supports Command+N/O/S/Shift+S for documents and Command+Z/Shift+Z
+for history. Focused text fields consume shortcuts. Control+Alt+Y toggles
+rotational symmetry.
 
 Surface edit gestures pick through `IRVoxelEditor::pickEditable()`
 (`editor_picking.hpp`). Never call `IRPrefab::Picking::castVoxelRay()` bare
