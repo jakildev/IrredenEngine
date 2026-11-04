@@ -16,6 +16,8 @@ only. Bucket fills the nearest visible enclosed four-connected empty region on
 one local axis plane; an open boundary rejects the operation before mutation.
 Bucket does not expand through symmetry. Shapes creates a new voxel part in the
 active color with integer X/Y/Z extents, using closed cell/solid intersection.
+Stamp stays active for repeated clicks against the document plane. In Drag mode,
+set the footprint first, then the height. Each placed part owns one Undo.
 
 Palettes use direct RGB: Edit/Add and `.gpl` Load/Save change swatches, never
 existing voxel colors. Arrays preview selected-part copies without descendants;
@@ -77,11 +79,11 @@ from displayed albedo/normal pixels at seven angles, including 30° and 67°;
 
 ## Authoring sessions
 
-- Ctrl+P enters entity-scene mode and adds a voxel part at the PART SIZE
-  panel's W / H / D (initially `--scene-size`); Ctrl+Shift+P adds the
+- Ctrl+P enters entity-scene mode and adds a voxel part at the NEW GRID SIZE
+  panel's X/Y/Z dimensions. File > New uses them for the standalone canvas; Ctrl+Shift+P adds the
   BAKE panel's selected SDF primitive. Tab/Shift+Tab select parts. Ctrl+S and
   Ctrl+O write/read the prefab manifest plus one `.vxs` per voxel part (v3 for nested parents, v2 for flat scenes).
-- Ordinary launch opens a blank grid in Sculpt and fits it into visible free viewport space; FOCUS fits the selected part/local canvas without changing camera yaw. `workarea_focus` validates rotated-child and local-canvas framing around module panels; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. BOX and LINE can start on the empty floor; floor-started regions stay on that plane, and surface-started regions can extend into empty space on their initial face plane. LINE follows the dominant axis. Right-drag or Alt+left-drag orbits the camera; Ctrl+middle-drag also orbits, and Space+left-drag pans. Camera gestures own the pointer through release, suppress sculpt previews, and cancel pending BOX/LINE commits. I+left places inward on the far side of a picked face. Grid lines sit on the bottom support plane and share voxel depth; the preview is a full translucent cell. F12 saves the composite view to `save_files/screenshots` beside the executable.
+- Ordinary launch opens a blank 32×32×16 grid in Sculpt and fits it into visible free viewport space; FOCUS fits the selected part/local canvas without changing camera yaw. `workarea_focus` validates rotated-child and local-canvas framing around module panels; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. BOX and LINE can start on the empty floor; floor-started regions stay on that plane, and surface-started regions can extend into empty space on their initial face plane. LINE follows the dominant axis. Shift+drag with Line selected locks X and Y and measures vertical movement in projected voxel heights. Right-drag or Alt+left-drag orbits the camera; Ctrl+middle-drag also orbits, and Space+left-drag pans. Camera gestures own the pointer through release, suppress sculpt previews, and cancel pending BOX/LINE commits. I+left places inward on the far side of a picked face. Grid lines sit on the bottom support plane and share voxel depth; the preview is a full translucent cell. F12 saves the composite view to `save_files/screenshots` beside the executable.
 - Assemble exposes hierarchy/LOD/components/arrays; Generate exposes recipes/bake/module panels; Animate exposes single-asset frames/rig tools. Hidden widgets retain state and neither draw nor intercept input. ALL exposes the diagnostic layout.
 - BAKE reads the radius the P1 slider holds, and a scripted drag leaves that
   within `kBakeParamSliderDragDrift` of the request. `bakeSphere` models the
