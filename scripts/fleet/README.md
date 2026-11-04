@@ -109,7 +109,8 @@ fleet workflow.
   under `.claude/worktrees/` that `git worktree list` does not know, registered
   worktrees under a temp dir, old `*.prof` / `save_files/` output, and
   `tmp_pack_*` git garbage. `--wipe-builds` also clears every idle pool's
-  builds. Never touches a busy, dirty or locked worktree or a tracked file;
+  builds. Never touches a busy, dirty or locked worktree or a tracked file,
+  and re-runs those checks immediately before each `--apply` deletion;
   `fleet-clean --help` lists every rule.
 - **`fleet-edit`** — exact string replacement CLI (Python3). Takes a
   target file, an old-text file, and a new-text file; replaces exactly

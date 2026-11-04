@@ -268,6 +268,87 @@ assert_exists "$POOL/pool-2/build-game" "T3 a busy pool's build survives the wip
 assert_exists "$POOL/pool-3/build-game" "T3 a dirty pool's build survives the wipe"
 assert_exists "$ENGINE/build-game-game" "T3 the game main clone's build is not a pool build"
 
+# --- T5: state that changes between discovery and deletion ---------------------
+# Every target below is reclaimable when discovery runs. FLEET_CLEAN_APPLY_HOOK
+# fires before the first --apply re-check and changes all of them at once, so
+# each later deletion has to see a change made after discovery and after
+# earlier deletions; race-idle and old2.prof are the untouched controls.
+echo "T5: apply-time re-check"
+for n in busy claim hb dirty branch lock unreg idle cap; do
+    add_pool "$ENGINE" "race-$n"
+    make_build "$POOL/race-$n/build-game" 30
+done
+mkdir -p "$POOL/race-cap/build"
+echo old > "$POOL/race-cap/build/old.prof"
+echo old > "$POOL/race-cap/build/old2.prof"
+set_age 30 "$POOL/race-cap/build"
+make_orphan race-orphan
+set_age 2 "$POOL/race-orphan"
+git -C "$ENGINE" worktree add -q --detach "$TMPROOT/bisect/bwt-race"
+make_build "$ENGINE/build" 30
+make_build "$ENGINE/build-game-race-gone" 2
+add_pool "$GAME" race-game claude/game-race-game-scratch
+make_build "$ENGINE/build-game-race-game" 30
+
+HOOK="$TMPROOT/apply-hook.sh"
+cat > "$HOOK" <<EOF
+[[ -e "$TMPROOT/hook-fired" ]] && exit 0
+touch "$TMPROOT/hook-fired"
+echo '{"task_id": "77"}' > "$HOME/.fleet/reservations/race-busy.json"
+mkdir -p "$HOME/.fleet/claims/issue-77"
+echo race-claim > "$HOME/.fleet/claims/issue-77/owner"
+touch "$HOME/.fleet/heartbeats/race-hb"
+echo wip > "$POOL/race-dirty/wip.txt"
+git -C "$POOL/race-branch" checkout -q -b claude/race-feature
+git -C "$ENGINE" worktree lock "$POOL/race-lock"
+rm -rf "$ENGINE/.git/worktrees/race-unreg"
+touch "$POOL/race-cap/build/old.prof"
+echo "fresh unsaved work" > "$POOL/race-orphan/notes.txt"
+echo edit >> "$TMPROOT/bisect/bwt-race/readme.txt"
+echo fresh > "$ENGINE/build/bin/new.o"
+git -C "$GAME" worktree add -q --detach "$GAME/.claude/worktrees/race-gone"
+git -C "$GAME/.claude/worktrees/race-game" checkout -q -b claude/game-race-feature
+EOF
+FLEET_CLEAN_APPLY_HOOK="$HOOK" run_clean --apply
+assert_exists "$TMPROOT/hook-fired" "T5 the apply hook ran"
+# assert_skipped <path-suffix> <reason> <msg> — discovery listed the item, then
+# --apply skipped it for <reason> and left it on disk.
+assert_skipped() {
+    if printf '%s\n' "$out" | grep -qF "$1  (" \
+        && printf '%s\n' "$out" | grep -F "skipped: " | grep -F "$1 (" | grep -qF "$2"; then
+        ok "$3"
+    else
+        bad "$3"
+        printf '%s\n' "$out" | sed 's/^/        /'
+    fi
+}
+assert_skipped "race-busy/build-game" "busy: reserved" "T5 a pool reserved after discovery is skipped"
+assert_skipped "race-claim/build-game" "busy: claim issue-77" "T5 a pool that took a claim is skipped"
+assert_skipped "race-hb/build-game" "busy: heartbeat within the hour" "T5 a pool that heartbeat is skipped"
+assert_skipped "race-dirty/build-game" "1 dirty file(s)" "T5 a pool that went dirty is skipped"
+assert_skipped "race-branch/build-game" "holds branch claude/race-feature" "T5 a pool that left its scratch branch is skipped"
+assert_skipped "race-lock/build-game" "locked" "T5 a pool locked after discovery is skipped"
+assert_skipped "race-unreg/build-game" "is no longer registered" "T5 a pool unregistered after discovery is skipped"
+assert_skipped "race-orphan" "created within the hour" "T5 an orphan written after discovery is skipped"
+assert_skipped "bisect/bwt-race" "1 dirty file(s)" "T5 a temp worktree that went dirty is skipped"
+assert_skipped "IrredenEngine/build" "written since discovery" "T5 a stale build written after discovery is skipped"
+assert_skipped "build-game-race-gone" "game worktree 'race-gone' exists now" \
+    "T5 a gone worktree's build is skipped once the worktree is back"
+assert_skipped "build-game-race-game" "holds branch claude/game-race-feature" \
+    "T5 a root game build is skipped when its game worktree leaves its scratch branch"
+for n in busy claim hb dirty branch lock unreg; do
+    assert_exists "$POOL/race-$n/build-game/bin/app.exe" "T5 race-$n's build untouched"
+done
+assert_exists "$POOL/race-orphan/notes.txt" "T5 the orphan's new work untouched"
+assert_exists "$TMPROOT/bisect/bwt-race/readme.txt" "T5 the dirty temp worktree untouched"
+assert_exists "$ENGINE/build/bin/new.o" "T5 the rewritten main build untouched"
+assert_exists "$ENGINE/build-game-race-gone" "T5 the reclaimed worktree's root build untouched"
+assert_exists "$ENGINE/build-game-race-game" "T5 the busy game worktree's root build untouched"
+assert_exists "$POOL/race-cap/build/old.prof" "T5 a capture rewritten after discovery is kept"
+assert_gone "$POOL/race-cap/build/old2.prof" "T5 the untouched capture beside it is removed"
+assert_gone "$POOL/race-idle/build-game" "T5 the untouched idle pool's build is removed"
+assert_eq "$rc" "0" "T5 skips are not failures"
+
 # --- T4: arguments -------------------------------------------------------------
 echo "T4: arguments"
 for args in "--days" "--days=" "--days abc" "--root" "--root=" "--bogus" "--root $TMPROOT/nowhere"; do
