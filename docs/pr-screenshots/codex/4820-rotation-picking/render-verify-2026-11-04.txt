@@ -1,0 +1,275 @@
+Source: 4e8e10656c23e8c854fd6650cbef9c6205b28fea
+Host: Apple M4 Max, Metal, macos-debug
+Command: fleet-jobs start render-verify -- --target IRShapeDebug --no-build
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+zoom1_origin                             PASS      99.9955     53    59.36
+zoom2_origin                             PASS      99.9635     53    53.04
+zoom4_origin                             PASS      99.9018     53    50.92
+zoom1_odd_offset                         PASS      99.9954     53    59.36
+zoom8_origin                             PASS      99.9905     53    53.12
+zoom4_offset_3_5                         PASS      99.9999     52    76.62
+zoom16_lod_fine_sphere                   PASS      99.9906     53    53.45
+lod_swap_zoom1_cube                      PASS      99.9954     53    59.36
+lod_swap_zoom2_cube                      PASS      99.9635     53    53.04
+lod_swap_zoom4_cone                      PASS      99.9071     53    51.94
+lod_swap_zoom8_cone                      PASS      99.9912     53     54.6
+lod_swap_zoom16_sphere                   PASS        100.0      6    57.73
+zoom4_yaw90                              PASS      99.9752     53    52.55
+zoom4_yaw180                             FAIL      99.9875    112    50.66
+zoom4_yaw270                             FAIL      99.9968    112    54.13
+zoom4_yaw45_inter_cardinal               PASS        100.0      0      inf
+zoom8_yaw180                             FAIL      99.9961    112    55.78
+zoom4_pan16_yaw0_pivot                   PASS      99.9025     53    50.91
+zoom4_pan16_yaw90_pivot                  PASS        99.97     53    51.79
+zoom4_pan16_yaw180_pivot                 FAIL      99.9858    112    50.07
+zoom4_pan16_yaw45_pivot                  PASS        100.0      0      inf
+zoom4_origin:coverage                    PASS     
+zoom16_lod_fine_sphere:silhouette        PASS     
+zoom1_origin:clip                        PASS     
+sdf_baked_surface_parented:sdf_voxel_surface_yaw0 PASS      99.9088     56    47.52
+sdf_baked_surface_parented:sdf_voxel_surface_yaw45 PASS        100.0      0      inf
+sdf_baked_surface_parented:sdf_voxel_surface_yaw90 PASS      99.9927     56    58.36
+sdf_baked_surface_parented:sdf_voxel_surface_yaw180 FAIL      99.9819    120    49.76
+sdf_baked_surface_parented:sdf_voxel_surface_yaw270 FAIL      99.9917    120    50.05
+sdf_baked_surface_parented:sdf_voxel_surface_zoom2 PASS        100.0      0      inf
+sdf_baked_pose_root:sdf_voxel_pose_yaw0  PASS      99.9088     57    47.53
+sdf_baked_pose_root:sdf_voxel_pose_yaw45 PASS        100.0      0      inf
+sdf_baked_pose_root:sdf_voxel_pose_yaw90 PASS      99.9927     56    58.36
+sdf_baked_pose_root:sdf_voxel_pose_yaw180 FAIL      99.9819    120    49.87
+sdf_baked_pose_root:sdf_voxel_pose_yaw270 FAIL      99.9917    120    50.16
+sdf_baked_pose_root:sdf_voxel_pose_zoom2 PASS        100.0      0      inf
+sdf_baked_pose_parented:sdf_voxel_pose_yaw0 PASS      99.9088     57    47.53
+sdf_baked_pose_parented:sdf_voxel_pose_yaw45 PASS        100.0      0      inf
+sdf_baked_pose_parented:sdf_voxel_pose_yaw90 PASS      99.9927     56    58.36
+sdf_baked_pose_parented:sdf_voxel_pose_yaw180 FAIL      99.9819    120    49.87
+sdf_baked_pose_parented:sdf_voxel_pose_yaw270 FAIL      99.9917    120    50.16
+sdf_baked_pose_parented:sdf_voxel_pose_zoom2 PASS        100.0      0      inf
+lod_scene:lod_scene_coarse               PASS      99.9993     35    70.17
+lod_scene:lod_scene_medium_yaw45         PASS        100.0      0      inf
+lod_scene:lod_scene_fine_yaw90           PASS      99.9999      9    84.01
+lod_scene:lod_scene_return_yaw180        FAIL      99.9967    109    57.13
+lod_scene:lod_scene_coarse_yaw270        PASS       99.999     35     68.8
+lod_scene:lod_scene_restored             PASS      99.9993     35    70.17
+moving_caster:moving_caster_0            PASS      99.9985     48    63.21
+moving_caster:moving_caster_1            PASS      99.9978     48    61.45
+moving_caster:moving_caster_2            PASS      99.9977     48    61.29
+moving_caster:moving_caster_3            PASS      99.9977     48    61.29
+moving_caster:moving_caster_4            PASS      99.9978     48    61.45
+moving_caster:moving_caster_5            PASS      99.9985     48    63.21
+moving_caster:moving_caster_6            PASS      99.9978     48    61.45
+moving_caster:moving_caster_7            PASS      99.9977     48    61.29
+moving_caster:moving_caster_8            PASS      99.9977     48    61.29
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_000 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_001 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_002 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_003 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_004 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_005 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_006 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_007 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_008 PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z2         PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z8         PASS      99.9867     55    54.78
+viewport_portrait:portrait_world_z1      PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1_world_yaw90 PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1:clip PASS     
+viewport_portrait:portrait_world_z1_world_yaw90:clip PASS     
+viewport_portrait_lod_swap:portrait_lod_swap_z1 PASS        100.0      0      inf
+prefab_flower:prefab_flower_z1           PASS        100.0      0      inf
+prefab_flower:prefab_flower_z4           PASS      99.9989     34    71.93
+prefab_flower:prefab_flower_z16          PASS      99.9563     36    54.86
+editor_parts_z4:prefab_editor_parts_z4   PASS       99.995     53    60.44
+composite_proof:composite_proof_z1       PASS      99.9996     48    71.68
+composite_proof:composite_proof_z4       PASS        100.0      0      inf
+composite_proof:composite_proof_z16      PASS        100.0      0      inf
+text_sizes:text_size_sample              PASS        100.0      0      inf
+text_sizes:text_size_sample:text-size-ratio PASS     
+text_scale1_legibility:text_size_sample:text-stroke-contrast PASS     
+voxel_text:voxel_text_sample             PASS        100.0      0      inf
+glitch_standard_off:zoom1_origin         PASS      99.9955     53    59.36
+glitch_standard_off:zoom2_origin         PASS      99.9635     53    53.04
+glitch_standard_off:zoom4_origin         PASS      99.9018     53    50.92
+glitch_standard_off:zoom1_odd_offset     PASS      99.9954     53    59.36
+glitch_standard_off:zoom8_origin         PASS      99.9905     53    53.12
+glitch_standard_off:zoom4_offset_3_5     PASS      99.9999     52    76.62
+glitch_standard_off:zoom16_lod_fine_sphere PASS      99.9906     53    53.45
+glitch_standard_off:lod_swap_zoom1_cube  PASS      99.9954     53    59.36
+glitch_standard_off:lod_swap_zoom2_cube  PASS      99.9635     53    53.04
+glitch_standard_off:lod_swap_zoom4_cone  PASS      99.9071     53    51.94
+glitch_standard_off:lod_swap_zoom8_cone  PASS      99.9912     53     54.6
+glitch_standard_off:lod_swap_zoom16_sphere PASS        100.0      6    57.73
+glitch_standard_off:zoom4_yaw90          PASS      99.9752     53    52.55
+glitch_standard_off:zoom4_yaw180         FAIL      99.9875    112    50.66
+glitch_standard_off:zoom4_yaw270         FAIL      99.9968    112    54.13
+glitch_standard_off:zoom4_yaw45_inter_cardinal PASS        100.0      0      inf
+glitch_standard_off:zoom8_yaw180         FAIL      99.9961    112    55.78
+glitch_standard_off:zoom4_pan16_yaw0_pivot PASS      99.9025     53    50.91
+glitch_standard_off:zoom4_pan16_yaw90_pivot PASS        99.97     53    51.79
+glitch_standard_off:zoom4_pan16_yaw180_pivot FAIL      99.9858    112    50.07
+glitch_standard_off:zoom4_pan16_yaw45_pivot PASS        100.0      0      inf
+glitch_off:glitch_off                    PASS      99.9865     53    54.25
+glitch_tear:glitch_tear                  PASS      99.9865     53    54.25
+glitch_hold:glitch_hold                  PASS      99.9848     53    53.78
+glitch_split:glitch_split                PASS      99.9865     53    54.25
+glitch_bars:glitch_bars                  PASS      99.9865     53    54.25
+glitch_cells:glitch_cells                PASS       99.997     53    60.67
+glitch_depth_tear:glitch_depth_tear      PASS      99.9865     53    54.25
+glitch_depth_hold:glitch_depth_hold      PASS      99.9865     53    54.25
+glitch_hold_divisor2:glitch_hold_divisor2 PASS      99.9848     53    53.78
+glitch_subject_standard_off:zoom1_origin PASS      99.9955     53    59.36
+glitch_subject_standard_off:zoom2_origin PASS      99.9635     53    53.04
+glitch_subject_standard_off:zoom4_origin PASS      99.9018     53    50.92
+glitch_subject_standard_off:zoom1_odd_offset PASS      99.9954     53    59.36
+glitch_subject_standard_off:zoom8_origin PASS      99.9905     53    53.12
+glitch_subject_standard_off:zoom4_offset_3_5 PASS      99.9999     52    76.62
+glitch_subject_standard_off:zoom16_lod_fine_sphere PASS      99.9906     53    53.45
+glitch_subject_standard_off:lod_swap_zoom1_cube PASS      99.9954     53    59.36
+glitch_subject_standard_off:lod_swap_zoom2_cube PASS      99.9635     53    53.04
+glitch_subject_standard_off:lod_swap_zoom4_cone PASS      99.9071     53    51.94
+glitch_subject_standard_off:lod_swap_zoom8_cone PASS      99.9912     53     54.6
+glitch_subject_standard_off:lod_swap_zoom16_sphere PASS        100.0      6    57.73
+glitch_subject_standard_off:zoom4_yaw90  PASS      99.9752     53    52.55
+glitch_subject_standard_off:zoom4_yaw180 FAIL      99.9875    112    50.66
+glitch_subject_standard_off:zoom4_yaw270 FAIL      99.9968    112    54.13
+glitch_subject_standard_off:zoom4_yaw45_inter_cardinal PASS        100.0      0      inf
+glitch_subject_standard_off:zoom8_yaw180 FAIL      99.9961    112    55.78
+glitch_subject_standard_off:zoom4_pan16_yaw0_pivot PASS      99.9025     53    50.91
+glitch_subject_standard_off:zoom4_pan16_yaw90_pivot PASS        99.97     53    51.79
+glitch_subject_standard_off:zoom4_pan16_yaw180_pivot FAIL      99.9858    112    50.07
+glitch_subject_standard_off:zoom4_pan16_yaw45_pivot PASS        100.0      0      inf
+glitch_subject_off:glitch_subject_off    PASS      99.9892     53    55.27
+glitch_subject_tear:glitch_subject_tear  PASS      99.9999     53    76.61
+glitch_subject_hold:glitch_subject_hold  PASS      99.9999     53    76.61
+glitch_subject_split:glitch_subject_split PASS      99.9999     53    76.61
+glitch_subject_echo:glitch_subject_echo  PASS      99.9999     53    76.61
+glitch_subject_dissolve:glitch_subject_dissolve PASS      99.9999     53    76.61
+glitch_subject_depth:glitch_subject_depth PASS      99.9999     53    76.61
+glitch_subject_spill_far_off:glitch_subject_spill_far_off PASS      99.9892     53    55.27
+glitch_subject_spill_far_on:glitch_subject_spill_far_on PASS      99.9999     53    76.61
+glitch_subject_spill_near_off:glitch_subject_spill_near_off PASS      99.9892     53    55.27
+glitch_subject_spill_near_on:glitch_subject_spill_near_on PASS      99.9999     53    76.61
+glitch_subject_choreography:glitch_subject_choreo_tick_n PASS      99.9999     53    76.61
+glitch_subject_choreography:glitch_subject_choreo_tick_n1 PASS      99.9892     53    55.27
+glitch_subject_yaw22_off:glitch_subject_yaw22_off SKIP     no macos-debug reference yet
+glitch_subject_yaw22_tear:glitch_subject_yaw22_tear SKIP     no macos-debug reference yet
+glitch_subject_yaw22_hold:glitch_subject_yaw22_hold SKIP     no macos-debug reference yet
+glitch_subject_yaw22_split:glitch_subject_yaw22_split SKIP     no macos-debug reference yet
+glitch_subject_yaw22_echo:glitch_subject_yaw22_echo SKIP     no macos-debug reference yet
+glitch_subject_yaw22_dissolve:glitch_subject_yaw22_dissolve SKIP     no macos-debug reference yet
+glitch_subject_yaw22_depth:glitch_subject_yaw22_depth SKIP     no macos-debug reference yet
+glitch_subject_yaw22_spill_far_on:glitch_subject_yaw22_spill_far_on SKIP     no macos-debug reference yet
+glitch_subject_yaw22_spill_near_on:glitch_subject_yaw22_spill_near_on SKIP     no macos-debug reference yet
+glitch_subject_yaw22_all:glitch_subject_yaw22_all SKIP     no macos-debug reference yet
+
+[render-verify] 19 of 148 checks FAIL (10 skipped — references pending)
+  - zoom4_yaw180: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_yaw180.diff.png
+  - zoom4_yaw270: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_yaw270.diff.png
+  - zoom8_yaw180: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom8_yaw180.diff.png
+  - zoom4_pan16_yaw180_pivot: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_pan16_yaw180_pivot.diff.png
+  - sdf_baked_surface_parented:sdf_voxel_surface_yaw180: max_delta 120 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/sdf_voxel_surface_yaw180.diff.png
+  - sdf_baked_surface_parented:sdf_voxel_surface_yaw270: max_delta 120 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/sdf_voxel_surface_yaw270.diff.png
+  - sdf_baked_pose_root:sdf_voxel_pose_yaw180: max_delta 120 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/sdf_voxel_pose_yaw180.diff.png
+  - sdf_baked_pose_root:sdf_voxel_pose_yaw270: max_delta 120 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/sdf_voxel_pose_yaw270.diff.png
+  - sdf_baked_pose_parented:sdf_voxel_pose_yaw180: max_delta 120 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/sdf_voxel_pose_yaw180.diff.png
+  - sdf_baked_pose_parented:sdf_voxel_pose_yaw270: max_delta 120 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/sdf_voxel_pose_yaw270.diff.png
+  - lod_scene:lod_scene_return_yaw180: max_delta 109 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/lod_scene_return_yaw180.diff.png
+  - glitch_standard_off:zoom4_yaw180: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_yaw180.diff.png
+  - glitch_standard_off:zoom4_yaw270: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_yaw270.diff.png
+  - glitch_standard_off:zoom8_yaw180: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom8_yaw180.diff.png
+  - glitch_standard_off:zoom4_pan16_yaw180_pivot: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_pan16_yaw180_pivot.diff.png
+  - glitch_subject_standard_off:zoom4_yaw180: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_yaw180.diff.png
+  - glitch_subject_standard_off:zoom4_yaw270: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_yaw270.diff.png
+  - glitch_subject_standard_off:zoom8_yaw180: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom8_yaw180.diff.png
+  - glitch_subject_standard_off:zoom4_pan16_yaw180_pivot: max_delta 112 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/shape_debug/save_files/render_verify_diffs/zoom4_pan16_yaw180_pivot.diff.png
+fleet-jobs: 20261104T164213Z-render-verify-374e86 failed exit=1
+
+CanvasStress, same source and host
+Command: fleet-jobs start render-verify -- --target IRCanvasStress --no-build
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+so3_smooth_sweep                         FAIL      99.7526    225    32.65
+so3_offsnap_disc                         FAIL      99.7374    200    33.44
+so3_wide_parity                          FAIL      99.7436    211    32.49
+so3_grid_cross                           FAIL      99.7542    225    32.62
+so3_offsnap_wide                         FAIL      99.7639    195    33.59
+revoxelize_solids                        FAIL      99.7573    214    32.87
+modeswitch:modeswitch_grid               PASS        100.0      0      inf
+modeswitch:modeswitch_detached           FAIL      99.8808    208    35.76
+modeswitch:modeswitch_revox              PASS        100.0      0      inf
+modeswitch:modeswitch_grid_return        PASS        100.0      0      inf
+modeswitch:modeswitch_grid:shadow-speckle PASS     
+modeswitch:modeswitch_grid_return:shadow-speckle PASS     
+sharedparts:sharedparts_spin_a           PASS        100.0      0      inf
+sharedparts:sharedparts_spin_b           PASS        100.0      0      inf
+sharedparts:sharedparts_yaw              PASS        100.0      0      inf
+detach:detach_hosted                     PASS        100.0      0      inf
+detach:detach_own_canvas                 PASS        100.0      0      inf
+detach:detach_grid                       PASS        100.0      0      inf
+detach:detach_grid:shadow-speckle        PASS     
+compare:compare_yaw0                     PASS        100.0      0      inf
+compare:compare_yaw_q                    PASS        100.0      0      inf
+impulse:impulse_midspin                  PASS        100.0      0      inf
+impulse:impulse_settled                  PASS        100.0      0      inf
+impulse:impulse_midspin:shadow-speckle   PASS     
+impulse:impulse_settled:shadow-speckle   PASS     
+floor_selfshadow:floor_selfshadow_offwide:shadow PASS     
+shadow_overlay_floor:shadow_overlay_floor:shadow PASS     
+world_placed_cast:shadow_overlay_floor:shadow PASS     
+gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS     
+grid_orbit_facing:grid_orbit_facing:normal-facing PASS     
+grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_0:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_90:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_180:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_270:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_0:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_90:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_180:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_270:grid-cell PASS     
+cylinder_receiver:cylinder_receiver_000  FAIL      99.7292    155    34.31
+cylinder_receiver:cylinder_receiver_045  FAIL      99.8044    157    39.63
+cylinder_receiver:cylinder_receiver_090  FAIL       99.689     97    37.28
+cylinder_receiver:cylinder_receiver_135  FAIL      99.9204     97    42.55
+cylinder_receiver:cylinder_receiver_180  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_225  FAIL      99.9827     97    48.98
+cylinder_receiver:cylinder_receiver_270  FAIL      99.8184     97    39.18
+cylinder_receiver:cylinder_receiver_315  FAIL      99.8181     97     39.7
+cylinder_receiver_pitched:cylinder_receiver_pitched_000 FAIL      99.6885    155    33.66
+cylinder_receiver_pitched:cylinder_receiver_pitched_045 FAIL      99.7678    157    38.92
+cylinder_receiver_pitched:cylinder_receiver_pitched_090 FAIL      99.8285     97    39.66
+cylinder_receiver_pitched:cylinder_receiver_pitched_135 FAIL      99.8832     97    40.87
+cylinder_receiver_pitched:cylinder_receiver_pitched_180 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_225 FAIL      99.9905     97    51.56
+cylinder_receiver_pitched:cylinder_receiver_pitched_270 FAIL      99.7722     97    38.27
+cylinder_receiver_pitched:cylinder_receiver_pitched_315 FAIL       99.818     97     39.7
+
+[render-verify] 21 of 59 checks FAIL
+  - so3_smooth_sweep: max_delta 225 > 64; match_pct 99.753% < 99.9%; psnr 32.65dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_smooth_sweep.diff.png
+  - so3_offsnap_disc: max_delta 200 > 64; match_pct 99.737% < 99.9%; psnr 33.44dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_offsnap_disc.diff.png
+  - so3_wide_parity: max_delta 211 > 64; match_pct 99.744% < 99.9%; psnr 32.49dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_wide_parity.diff.png
+  - so3_grid_cross: max_delta 225 > 64; match_pct 99.754% < 99.9%; psnr 32.62dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_grid_cross.diff.png
+  - so3_offsnap_wide: max_delta 195 > 64; match_pct 99.764% < 99.9%; psnr 33.59dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_offsnap_wide.diff.png
+  - revoxelize_solids: max_delta 214 > 64; match_pct 99.757% < 99.9%; psnr 32.87dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/revoxelize_solids.diff.png
+  - modeswitch:modeswitch_detached: max_delta 208 > 64; match_pct 99.881% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/modeswitch_detached.diff.png
+  - cylinder_receiver:cylinder_receiver_000: max_delta 155 > 64; match_pct 99.729% < 99.9%; psnr 34.31dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_000.diff.png
+  - cylinder_receiver:cylinder_receiver_045: max_delta 157 > 64; match_pct 99.804% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_045.diff.png
+  - cylinder_receiver:cylinder_receiver_090: max_delta 97 > 64; match_pct 99.689% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_090.diff.png
+  - cylinder_receiver:cylinder_receiver_135: max_delta 97 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_135.diff.png
+  - cylinder_receiver:cylinder_receiver_225: max_delta 97 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_225.diff.png
+  - cylinder_receiver:cylinder_receiver_270: max_delta 97 > 64; match_pct 99.818% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_270.diff.png
+  - cylinder_receiver:cylinder_receiver_315: max_delta 97 > 64; match_pct 99.818% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_315.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_000: max_delta 155 > 64; match_pct 99.688% < 99.9%; psnr 33.66dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_000.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_045: max_delta 157 > 64; match_pct 99.768% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_045.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_090: max_delta 97 > 64; match_pct 99.828% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_090.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_135: max_delta 97 > 64; match_pct 99.883% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_135.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_225: max_delta 97 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_225.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_270: max_delta 97 > 64; match_pct 99.772% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_270.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_315: max_delta 97 > 64; match_pct 99.818% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-4/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_315.diff.png
+fleet-jobs: 20261104T170002Z-render-verify-ba00b3 failed exit=1

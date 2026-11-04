@@ -368,9 +368,12 @@ drift from the cell-path lighting model.
 ### Picking follows the depth-tested owner
 
 The corrected tie fixture and retained main-pool ID buffer are implemented.
-Native capture, repeatability and performance acceptance remain pending on a
-macOS session with a WindowServer connection; picking remains open until that
-evidence is complete.
+Native Metal capture, sweep, cube and three-run tie repeatability pass; removing
+the retained-ID binding makes the tie probe fail. Full ShapeDebug and
+CanvasStress image acceptance still fails; performance remains pending after a
+sandbox-denied baseline configuration operation. See the
+[acceptance receipts](../pr-screenshots/codex/4820-rotation-picking/README.md).
+Picking remains open until the remaining acceptance evidence is complete.
 
 The scatter writes a decoded entity id to a lazily allocated `RG32UI`
 framebuffer attachment at colour index 1, alongside its unchanged colour.
