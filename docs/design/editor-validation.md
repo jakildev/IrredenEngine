@@ -13,7 +13,7 @@
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
   `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`, `test_list_scroll`,
-  `test_single`, `test_recipe_pages`, and the failing `test_unreachable`; the header contract
+  `test_single`, `test_recipe_pages`, `test_click_after_focus`, and the failing `test_unreachable` / `test_click_under_panel`; the header contract
   also covers `test_module_files`, `test_module_arg`, and `test_module_arg_absent`.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
@@ -71,3 +71,5 @@
   and models the re-apply. After an undo, redo, clear or reload it and `paintClass`
   need a fresh APPLY. `expectRecipeValue`, `expectPartMatchesRecipe` and
   `expectRecipeHandleTexels` read the live binding; the gizmo census skips handles.
+
+World-aimed left presses are checked against the editor UI gate on their consume tick. A swallowed press fails its segment and names the operation, target and GUI position. `test_click_under_panel` must fail that check; `test_click_after_focus` must pass after returning focus to the scene.
