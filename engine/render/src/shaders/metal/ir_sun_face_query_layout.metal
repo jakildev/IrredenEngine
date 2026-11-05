@@ -22,6 +22,8 @@ constant uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceM
 // Per-texel depth-slab extrema of the primary layer; mirrors GLSL.
 // Zero compiles the layer out; opt in with the CPU twin (sun_face_query_layout.hpp).
 constant uint kSunDepthSlabSlots = 0u;
+// Direct slots may contain gaps; unequal extremum slabs invalidate the whole texel.
+constant bool kSunDepthSlabDirectMapped = true;
 constant uint kSunDepthSlabWords = 2u;
 constant uint kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
 constant uint kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;

@@ -38,19 +38,37 @@ TEST(SunPrimaryDepthProbeRowTest, OverflowColumnReadsMaxPlaneZero) {
     word(slots + 2, 1) = 0x20100u;
 
     std::ostringstream rows;
-    writeSunPrimaryDepthProbeRow(rows, 0u, 5, 7, 0x100u, planes.data(), stride, 0, slots);
-    writeSunPrimaryDepthProbeRow(rows, 1u, 6, 7, 0x100u, planes.data(), stride, 1, slots);
+    writeSunPrimaryDepthProbeRow(rows, 0u, 5, 7, 0x100u, planes.data(), stride, 0, slots, false);
+    writeSunPrimaryDepthProbeRow(rows, 1u, 6, 7, 0x100u, planes.data(), stride, 1, slots, false);
     EXPECT_EQ(
         rows.str(),
-        "0,5,7,256,256,512,4294967295,0,4294967295,0,0\n"
-        "1,6,7,256,256,768,65536,65792,131072,131328,1\n"
+        "0,5,7,256,256,512,4294967295,0,4294967295,0,0,0\n"
+        "1,6,7,256,256,768,65536,65792,131072,131328,1,0\n"
     );
 }
 
 TEST(SunPrimaryDepthProbeRowTest, ZeroSlotsEmitNearestAndNoOverflow) {
     std::ostringstream row;
     writeSunPrimaryDepthProbeRow(row, 1u, 3, 4, kEmpty, nullptr, 0, 0, 0u);
-    EXPECT_EQ(row.str(), "1,3,4,4294967295,0\n");
+    EXPECT_EQ(row.str(), "1,3,4,4294967295,0,0\n");
+}
+
+TEST(SunPrimaryDepthProbeRowTest, DirectCollisionChecksEveryOccupiedSlotAndKeepsRawExtrema) {
+    const std::vector<std::uint32_t>
+        planes{kEmpty, 0x04000100u, 0x08000100u, 0u, 0x07000200u, 0x08000200u};
+    std::ostringstream row;
+    writeSunPrimaryDepthProbeRow(row, 1u, 3, 4, 0x04000100u, planes.data(), 1u, 0, 3u, true);
+    EXPECT_EQ(
+        row.str(),
+        "1,3,4,67109120,4294967295,0,67109120,117441024,134217984,134218240,0,1\n"
+    );
+}
+
+TEST(SunPrimaryDepthProbeRowTest, DirectSparseSlotsAndDuplicatesHaveNoCollision) {
+    const std::vector<std::uint32_t> planes{kEmpty, kEmpty, 0x08000100u, 0u, 0u, 0x08000100u};
+    std::ostringstream row;
+    writeSunPrimaryDepthProbeRow(row, 0u, 0, 0, 0x08000100u, planes.data(), 1u, 0, 3u, true);
+    EXPECT_EQ(row.str(), "0,0,0,134217984,4294967295,0,4294967295,0,134217984,134217984,0,0\n");
 }
 
 } // namespace

@@ -216,7 +216,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         int groupSize_;
     };
     RasterBakeDispatch rasterBakeDispatch(bool splatEngaged) const {
-        if (bakeCooperativeProgram_ != nullptr && splatEngaged && !retainSecondPrimaryDepth_) {
+        if (!IRPrefab::SunShadow::kSunDepthSlabDirectMapped && bakeCooperativeProgram_ != nullptr &&
+            splatEngaged && !retainSecondPrimaryDepth_) {
             return {bakeCooperativeProgram_, kBakeSunShadowCooperativeGroupSize};
         }
         return {
@@ -1354,7 +1355,10 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             IRRender::getNamedResource<Buffer>("RevoxelizeDetachedParamsBuffer");
         p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearSunShadowMapProgram");
         p->bakeProgram_ = IRRender::getNamedResource<ShaderProgram>("BakeSunShadowMapProgram");
-        if constexpr (IRPrefab::SunShadow::kSunDepthSlabSlots > 0u) {
+        if constexpr (
+            IRPrefab::SunShadow::kSunDepthSlabSlots > 0u &&
+            !IRPrefab::SunShadow::kSunDepthSlabDirectMapped
+        ) {
             p->bakeCooperativeProgram_ = IRRender::createNamedResource<ShaderProgram>(
                                              "BakeSunShadowMapCooperativeProgram",
                                              std::vector{ShaderStage{

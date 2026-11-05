@@ -159,11 +159,21 @@ inline bool sunDepthSlabBlocks(device const uint *sunDepthBuf, int texelIndex, f
                                float maxShadowThrow, bool surfaceReceiver, int2 px, float2 origin,
                                float2 texelSz, float2 gradUV, float2 sunUV) {
     if (kSunDepthSlabSlots == 0u || maxShadowThrow != float(kSunDepthSlabWidthUnits)) return false;
-    if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
+    if (kSunDepthSlabDirectMapped) {
+        // Any collision disables the whole texel, including otherwise valid slots.
+        for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
+            const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
+            if (low == 0xFFFFFFFFu) continue;
+            const uint high = sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, slot)];
+            if (sunDepthSlab(low) != sunDepthSlab(high)) return false;
+        }
+    } else {
+        if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
+    }
     const uint farSlab = sunDepthSlab(packSunDepth(sunZ - bias - maxShadowThrow, int2(0)));
     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
         const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
-        if (low == 0xFFFFFFFFu) break;
+        if (low == 0xFFFFFFFFu) continue;
         const uint slab = sunDepthSlab(low);
         if (slab != farSlab && slab != farSlab + 1u) continue;
         // Both extrema of a window slab: the far slab's max and the near slab's
