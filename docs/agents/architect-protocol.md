@@ -225,9 +225,9 @@ or "what should the fleet work on next", run the `fleet-unblock` skill
 tool partitions the queue (claimable here / host-pinned / ghost /
 in-flight / blocked), audits parks and stranded WIP, and lists the
 approval gap; the session then executes the unblocks its authority table
-grants (ghost closes, bounded approvals, factual needs-human lifts), hands
-the human only the merges and product calls, and files the next work the
-state calls for. Cue-driven only.
+grants (ghost closes, bounded approvals, factual needs-human lifts), asks
+the human the product calls in the session, lists the merges, and files
+the next work the state calls for. Cue-driven only.
 
 ## Planning issues
 

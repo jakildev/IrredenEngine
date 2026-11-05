@@ -11,7 +11,9 @@
 #          from a staging file. Refuses unless the human confirmed, skips
 #          issues that gained a state label since staging (beyond the entry's
 #          labels_at_staging), judges a fleet:agent-approved entry's class
-#          and bar through fleet_triage_class, and never closes an issue.
+#          and bar through fleet_triage_class, and never closes an issue
+#          (a confirmed recommend-close with no labels is reported as a
+#          ready-to-run close line, not rejected).
 #   stamp  the dispatched role's writing path: posts a `## Triage` comment
 #          and the label set its verdict earns — fleet:agent-approved plus
 #          the model label (and fleet:no-plan for verification-run) for a
@@ -445,6 +447,10 @@ for entry in staged.get("entries", []):
     number = entry.get("number")
     labels = entry.get("labels") or []
 
+    # A confirmed close owes no label write: its act is the reported
+    # `gh issue close` line.
+    if not labels and entry.get("verdict") == "recommend-close":
+        continue
     bad = [label for label in labels if label not in ALLOWED]
     if bad or not labels:
         rejected.append((number, "label(s) outside the apply allowlist: "

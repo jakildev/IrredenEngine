@@ -7,7 +7,8 @@ description: >-
   issues, approves defect-shaped and epic-child work, lifts factual
   needs-human parks, repairs lapsed awaiting-infra parks, triages the
   untriaged set, files verified fleet defects and the next objective
-  slices, and hands the human only the merges and product calls. Use when
+  slices, asks the human the product calls in the session, and lists only
+  the merges. Use when
   the user says "unblock the fleet", "fleet unblock", "why is the fleet
   idle", "is anything really blocked", or "what should the fleet work on
   next"; cue-only, never auto-run.
@@ -42,8 +43,9 @@ Read it first, then apply the deltas below.
   A compound call is matched by none of those allow rules and falls to
   the harness's auto-mode classifier, which refused the batched
   staging-write-plus-`apply` on 2026-10-12. Write the staging file in one
-  call (the `Write` tool, or a script run as `python3 -I <file>`), run
-  `apply` in the next, and pass comment and body text with `--body-file`
+  call (the `Write` tool, or a script run as `python3 -I <file>`), rewrite
+  it the same way once the human has answered, run `apply` in the next,
+  and pass comment and body text with `--body-file`
   ([`CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)
   § Bash tool rules). The worktree sync uses `git checkout -B`;
   `git reset --hard` is denied by user policy.

@@ -207,9 +207,13 @@ untriaged set instead of re-surfacing every sweep.
 
 ### 4. Confirm
 
-The human confirms or rejects per issue or in batch. Set top-level
-`human_confirmed` to `true` and each accepted entry's `confirmed` to `true`;
-rejected entries stay `false` and are not applied.
+The human confirms or rejects per issue or in batch: in a session, by
+answering one question per entry, the recommended verdict first
+(`skills/fleet-unblock.md` Step 4 is the shape); outside one, by editing
+the file. The session writes what the human said: top-level
+`human_confirmed` to `true`, each accepted entry's `confirmed` to `true`,
+and `confirmed_by` naming the session and date when the answers came in
+conversation. Rejected entries stay `false` and are not applied.
 
 ### 5. Apply
 
@@ -222,9 +226,11 @@ and skips any issue that gained a `fleet:` / `human:` label since staging
 (beyond the entry's `labels_at_staging`); a `fleet:agent-approved` entry
 whose class or bar fails the judge refuses the whole apply. Applied issues
 append to `~/.fleet/triage/log.jsonl` with their class and a timestamp;
-`fleet-decisions` reads the graduated stamps from it. **Closes stay
-human-executed**: a recommend-close entry is reported with a ready-to-run
-`gh issue close` line; neither `list` nor `apply` closes anything.
+`fleet-decisions` reads the graduated stamps from it. **Closes stay the
+human's decision**: a confirmed recommend-close entry (no labels needed)
+is reported with a ready-to-run `gh issue close` line, which the human or
+the session the human answered in runs; neither `list` nor `apply` closes
+anything.
 
 ### 6. Extended sweep — backlog drains
 

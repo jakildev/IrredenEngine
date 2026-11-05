@@ -16,6 +16,8 @@
 #   - apply --dry-run: emits the expected `gh issue edit --add-label` set,
 #     no `gh issue close`, and reports the race-guard issue as skipped
 #   - apply: recommend-close is reported as a ready-to-run line, never run
+#   - apply: a confirmed recommend-close with no labels is reported, not
+#     rejected; a confirmed approve with no labels still refuses
 #   - apply: a graduated-class entry (class + complete bar) stamps
 #     fleet:agent-approved plus the model label; an incomplete bar, a
 #     direction entry or a verdict other than exactly recommend-approve
@@ -245,6 +247,51 @@ assert_absent  "$out" "gh issue close 305" "no close line for a non-close verdic
 assert_contains "$out" "gh issue close 302" "recommend-close reported as a ready-to-run line"
 assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "dry-run issues no gh write"
 assert_eq "$(wc -l < "$TMP/gh-closes.log" | tr -d ' ')" "0" "sweep never calls gh issue close"
+
+# --- apply --dry-run: a confirmed close stages no labels ---------------------
+# The close is the human's act, so the entry carries nothing for apply to
+# write; it must still be reported, and must not refuse the entries beside it.
+
+cat > "$TMP/close-no-labels.json" << 'EOF'
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "confirmed_by": "in-session 2026-11-05",
+  "entries": [
+    {"number": 302, "verdict": "recommend-approve",
+     "labels": ["human:approved", "fleet:opus"], "confirmed": true},
+    {"number": 301, "verdict": "recommend-close", "labels": [], "confirmed": true}
+  ]
+}
+EOF
+
+: > "$TMP/gh-closes.log"
+status=$(run_sweep apply --repo engine "$TMP/close-no-labels.json" --dry-run)
+out=$(cat "$TMP/out.txt")
+
+assert_eq "$status" "0" "a confirmed label-less close does not refuse the apply"
+assert_absent  "$out" "rejected" "a confirmed label-less close is not a rejection"
+assert_contains "$out" "would run: gh issue edit 302 --repo jakildev/IrredenEngine --add-label human:approved --add-label fleet:opus" \
+    "the approve entry beside it still plans its labels"
+assert_contains "$out" "1 issue(s) would be labeled, 0 closed" "the close entry is not counted as a label write"
+assert_contains "$out" "gh issue close 301" "the label-less close is reported as a ready-to-run line"
+assert_eq "$(wc -l < "$TMP/gh-closes.log" | tr -d ' ')" "0" "sweep never calls gh issue close"
+
+cat > "$TMP/approve-no-labels.json" << 'EOF'
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "entries": [
+    {"number": 301, "verdict": "recommend-approve", "labels": [], "confirmed": true}
+  ]
+}
+EOF
+
+status=$(run_sweep apply --repo engine "$TMP/approve-no-labels.json" --dry-run)
+out=$(cat "$TMP/out.txt")
+
+assert_eq "$status" "1" "a confirmed approve with no labels refuses"
+assert_contains "$out" "(no labels staged)" "the rejection names the empty label set"
 
 # --- apply --dry-run touches no filesystem state ----------------------------
 # A read-only path must not create ~/.fleet/triage/ as a side effect.
