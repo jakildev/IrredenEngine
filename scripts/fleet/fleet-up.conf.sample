@@ -184,6 +184,15 @@
 # ir-build invocations.
 # FLEET_BUILD_WORKERS=4
 
+# --- Debug-info depth ---------------------------------------------------------
+#
+# fleet-up exports IRREDEN_DEBUG_INFO (default LINES = -g1: gdb backtraces keep
+# function names and file:line, but no locals, arguments or types), which seeds
+# a build dir's first configure. Set FULL here when panes need full-variable
+# debugging; an already-configured build dir keeps its value until
+# reconfigured with -DIRREDEN_DEBUG_INFO=<FULL|LINES>.
+# IRREDEN_DEBUG_INFO=FULL
+
 # --- Per-role effort levels -------------------------------------------------
 #
 # Reasoning effort per role: "high" or "xhigh" (xhigh ≈ one notch below the

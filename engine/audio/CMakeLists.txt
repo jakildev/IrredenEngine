@@ -33,6 +33,7 @@ FetchContent_Declare(
     rtaudio
     GIT_REPOSITORY https://github.com/thestk/rtaudio.git
     GIT_TAG master
+    GIT_SHALLOW TRUE
     UPDATE_DISCONNECTED TRUE
 )
 IrredenEngine_applyPatchOnce(
@@ -68,6 +69,7 @@ FetchContent_Declare(
     rtmidi
     GIT_REPOSITORY https://github.com/thestk/rtmidi.git
     GIT_TAG master
+    GIT_SHALLOW TRUE
     UPDATE_DISCONNECTED TRUE
 )
 # rtmidi's uninstall target no longer clashes with rtaudio's: upstream renamed
@@ -115,14 +117,16 @@ FetchContent_Declare(
     miniaudio
     GIT_REPOSITORY https://github.com/mackron/miniaudio.git
     GIT_TAG 0.11.25
+    GIT_SHALLOW TRUE
     UPDATE_DISCONNECTED TRUE
+    EXCLUDE_FROM_ALL
 )
 # We consume miniaudio as a single header (MINIAUDIO_IMPLEMENTATION lives in
-# src/audio_playback.cpp), so none of its CMake targets are linked. Its
-# extras/nodes/* example libraries (ma_reverb_node, ma_vocoder_node, …) build
-# as dylibs that reference the ma_* core symbols without linking them; that
-# links on Linux (undefined symbols resolved at load) but fails on macOS
-# arm64 (the linker requires every symbol resolved). Skip building them.
+# src/audio_playback.cpp), so none of its CMake targets are linked, and
+# EXCLUDE_FROM_ALL keeps them out of `all`. Built anyway, its extras/nodes/*
+# libraries (ma_reverb_node, …) fail to link on macOS arm64 and its
+# miniaudio_libvorbis DLL fails on MinGW when MSYS2's libvorbis is installed
+# — both reference ma_* core symbols without linking them.
 set(MINIAUDIO_NO_EXTRA_NODES ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(miniaudio)
 target_include_directories(IrredenEngineAudio PRIVATE ${miniaudio_SOURCE_DIR})
