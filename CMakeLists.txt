@@ -4,6 +4,10 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 set(CMAKE_USER_MAKE_RULES_OVERRIDE ${CMAKE_CURRENT_LIST_DIR}/cmake/ir_make_rules_override.cmake)
 project(BuildCreation VERSION 0.1.0)
 
+# FetchContent dependencies must not register build-tree paths globally.
+set(CMAKE_EXPORT_NO_PACKAGE_REGISTRY ON)
+set(CMAKE_FIND_USE_PACKAGE_REGISTRY OFF)
+
 option(IRREDEN_BUILD_CREATIONS "Build creations present in this tree (engine-owned creations/ and nested private checkouts)" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_TESTS "Build engine test targets" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_QUALITY_TARGETS "Build engine quality targets" ${PROJECT_IS_TOP_LEVEL})
