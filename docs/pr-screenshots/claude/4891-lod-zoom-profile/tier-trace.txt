@@ -1,0 +1,15 @@
+LOD-PROFILE-TIER shot=0 zoom=4.9 main=3 portrait_inherit=3 (zoom 4) portrait_own=3 (zoom 2) hysteresis=0
+LOD-PROFILE-TIER shot=1 zoom=5.1 main=2 portrait_inherit=2 (zoom 8) portrait_own=3 (zoom 4) hysteresis=0
+LOD-PROFILE-TIER shot=2 zoom=4.9 main=3 portrait_inherit=3 (zoom 4) portrait_own=3 (zoom 2) hysteresis=0
+LOD-PROFILE-TIER shot=3 zoom=5.1 main=2 portrait_inherit=2 (zoom 8) portrait_own=3 (zoom 4) hysteresis=0
+LOD-PROFILE-TIER shot=4 zoom=6 main=2 portrait_inherit=3 (zoom 4) portrait_own=2 (zoom 8) hysteresis=0.25
+LOD-PROFILE-TIER shot=5 zoom=4.9 main=2 portrait_inherit=2 (zoom 8) portrait_own=2 (zoom 4) hysteresis=0.25
+LOD-PROFILE-TIER shot=6 zoom=5.1 main=2 portrait_inherit=3 (zoom 4) portrait_own=2 (zoom 8) hysteresis=0.25
+LOD-PROFILE-TIER shot=7 zoom=4.9 main=2 portrait_inherit=2 (zoom 8) portrait_own=2 (zoom 4) hysteresis=0.25
+LOD-PROFILE-TIER shot=8 zoom=4.1 main=3 portrait_inherit=3 (zoom 4) portrait_own=3 (zoom 2) hysteresis=0.25
+LOD-PROFILE-TIER shot=9 zoom=5.1 main=3 portrait_inherit=2 (zoom 8) portrait_own=3 (zoom 4) hysteresis=0.25
+LOD-PROFILE-TIER shot=10 zoom=4.9 main=3 portrait_inherit=3 (zoom 4) portrait_own=3 (zoom 2) hysteresis=0.25
+LOD-PROFILE-TIER shot=11 zoom=5.9 main=3 portrait_inherit=2 (zoom 8) portrait_own=3 (zoom 4) hysteresis=0.25
+LOD-PROFILE-TIER shot=12 zoom=6 main=2 portrait_inherit=3 (zoom 4) portrait_own=2 (zoom 8) hysteresis=0.25
+LOD-PROFILE-TIER shot=13 zoom=4.9 main=2 portrait_inherit=2 (zoom 8) portrait_own=2 (zoom 4) hysteresis=0.25
+LOD-PROFILE-TIER shot=14 zoom=5.1 main=2 portrait_inherit=3 (zoom 4) portrait_own=3 (zoom 2) hysteresis=0.25

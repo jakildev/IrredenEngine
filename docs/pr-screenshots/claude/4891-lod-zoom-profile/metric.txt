@@ -1,0 +1,16 @@
+shot  0: grid=C detached=C detached_revoxelize=C sdf=C pinned_lod0=F portrait_inherit=C portrait_own=C
+shot  1: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=F portrait_own=C
+shot  2: grid=C detached=C detached_revoxelize=C sdf=C pinned_lod0=F portrait_inherit=C portrait_own=C
+shot  3: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=F portrait_own=C
+shot  4: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=C portrait_own=F
+shot  5: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=F portrait_own=F
+shot  6: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=C portrait_own=F
+shot  7: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=F portrait_own=F
+shot  8: grid=C detached=C detached_revoxelize=C sdf=C pinned_lod0=F portrait_inherit=C portrait_own=C
+shot  9: grid=C detached=C detached_revoxelize=C sdf=C pinned_lod0=F portrait_inherit=F portrait_own=C
+shot 10: grid=C detached=C detached_revoxelize=C sdf=C pinned_lod0=F portrait_inherit=C portrait_own=C
+shot 11: grid=C detached=C detached_revoxelize=C sdf=C pinned_lod0=F portrait_inherit=F portrait_own=C
+shot 12: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=C portrait_own=F
+shot 13: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=F portrait_own=F
+shot 14: grid=F detached=F detached_revoxelize=F sdf=F pinned_lod0=F portrait_inherit=C portrait_own=C
+105/105 regions pass
