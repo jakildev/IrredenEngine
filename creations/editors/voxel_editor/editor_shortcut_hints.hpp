@@ -2,6 +2,7 @@
 #define EDITOR_SHORTCUT_HINTS_H
 
 #include <irreden/ir_command.hpp>
+#include <irreden/render/widget_actions.hpp>
 #include <irreden/ir_platform.hpp>
 #include <irreden/render/help_overlay.hpp>
 #include <irreden/render/widgets.hpp>
@@ -12,6 +13,8 @@ namespace IRVoxelEditor {
 class EditorShortcutHints {
   public:
     void add(IREntity::EntityId id, std::string_view action) {
+        for (const auto &entry : m_entries)
+            if (entry.widget_ == id) return;
         m_entries.push_back({id, action, {}, {}});
         m_resolved = false;
     }
@@ -39,6 +42,8 @@ class EditorShortcutHints {
         const auto &theme = IRPrefab::Widget::defaultTheme();
         for (auto &entry : m_entries) {
             entry.last_ = {};
+            if (const auto action = IREntity::getComponentOptional<IRComponents::C_WidgetAction>(entry.widget_))
+                entry.shortcut_ = IRPrefab::Widget::actionHint((*action)->actionId_);
             if (!show || entry.shortcut_.empty())
                 continue;
             const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(entry.widget_);
