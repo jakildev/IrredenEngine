@@ -127,8 +127,9 @@ question tool). Write each answer into its entry (`confirmed`, the
 `labels` the answer names), set `human_confirmed` and
 `confirmed_by: "in-session <ISO date>"`, then run `apply`. A confirmed
 recommend-close entry stages no labels; `apply` reports its
-`gh issue close` line and never runs it, so the session runs it with
-the staged comment. A deferred answer leaves `confirmed: false`, and the
+`gh issue close` line (only if it passes the race guard) and never runs
+it, so the session runs exactly the reported lines with the staged
+comment. A deferred answer leaves `confirmed: false`, and the
 entry re-surfaces annotated on the next sweep.
 
 The staging-file write and `fleet-triage-sweep apply` are two separate

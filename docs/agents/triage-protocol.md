@@ -229,8 +229,9 @@ append to `~/.fleet/triage/log.jsonl` with their class and a timestamp;
 `fleet-decisions` reads the graduated stamps from it. **Closes stay the
 human's decision**: a confirmed recommend-close entry (no labels needed)
 is reported with a ready-to-run `gh issue close` line, which the human or
-the session the human answered in runs; neither `list` nor `apply` closes
-anything.
+the session the human answered in runs; it passes the same race guard, so a
+close entry whose issue gained a state label or is no longer open is
+skipped with no line. Neither `list` nor `apply` closes anything.
 
 ### 6. Extended sweep — backlog drains
 
