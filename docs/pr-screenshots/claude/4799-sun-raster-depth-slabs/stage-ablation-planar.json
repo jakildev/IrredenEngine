@@ -1,0 +1,105 @@
+{
+  "cell": "canvas-lower",
+  "rounds": {
+    "head": [
+      {
+        "steady_mean_ms": 15.09,
+        "steady_p99_ms": 23.49,
+        "gpu_envelope_ms": 3.845,
+        "gpu:canvasClear": 0.027,
+        "gpu:voxelCompact": 0.12,
+        "gpu:voxelStage1": 0.084,
+        "gpu:voxelCardinalElect": 0.401,
+        "gpu:voxelStage2": 0.313,
+        "gpu:computeVoxelAO": 0.121,
+        "gpu:bakeSunShadowMap": 2.817,
+        "gpu:computeSunShadow": 0.047,
+        "gpu:computeLightVolume": 0.111,
+        "gpu:lightingToTrixel": 0.037,
+        "gpu:trixelToFb": 1.292,
+        "gpu:cardinalSurfaceFb": 3.26,
+        "gpu:fbToScreen": 0.117,
+        "cpu:BakeSunShadowMap": 0.05,
+        "cpu:ComputeSunShadow": 0.02,
+        "cpu:LightingToTrixel": 0.058,
+        "cpu:CanvasToFramebuffer": 0.16,
+        "cpu:SingleVoxelToCanvasFirst": 0.323
+      }
+    ],
+    "layout": [
+      {
+        "steady_mean_ms": 10.36,
+        "steady_p99_ms": 18.9,
+        "gpu_envelope_ms": 2.741,
+        "gpu:canvasClear": 0.028,
+        "gpu:voxelCompact": 0.136,
+        "gpu:voxelStage1": 0.09,
+        "gpu:voxelCardinalElect": 0.462,
+        "gpu:voxelStage2": 0.321,
+        "gpu:computeVoxelAO": 0.112,
+        "gpu:bakeSunShadowMap": 1.69,
+        "gpu:computeSunShadow": 0.058,
+        "gpu:computeLightVolume": 0.592,
+        "gpu:lightingToTrixel": 0.041,
+        "gpu:trixelToFb": 1.937,
+        "gpu:cardinalSurfaceFb": 2.155,
+        "gpu:fbToScreen": 0.121,
+        "cpu:BakeSunShadowMap": 0.049,
+        "cpu:ComputeSunShadow": 0.019,
+        "cpu:LightingToTrixel": 0.056,
+        "cpu:CanvasToFramebuffer": 0.155,
+        "cpu:SingleVoxelToCanvasFirst": 0.299
+      }
+    ],
+    "writer": [
+      {
+        "steady_mean_ms": 15.31,
+        "steady_p99_ms": 22.78,
+        "gpu_envelope_ms": 3.984,
+        "gpu:canvasClear": 0.029,
+        "gpu:voxelCompact": 0.129,
+        "gpu:voxelStage1": 0.09,
+        "gpu:voxelCardinalElect": 0.417,
+        "gpu:voxelStage2": 0.329,
+        "gpu:computeVoxelAO": 0.13,
+        "gpu:bakeSunShadowMap": 2.952,
+        "gpu:computeSunShadow": 0.045,
+        "gpu:computeLightVolume": 0.115,
+        "gpu:lightingToTrixel": 0.04,
+        "gpu:trixelToFb": 1.35,
+        "gpu:cardinalSurfaceFb": 3.404,
+        "gpu:fbToScreen": 0.122,
+        "cpu:BakeSunShadowMap": 0.05,
+        "cpu:ComputeSunShadow": 0.02,
+        "cpu:LightingToTrixel": 0.059,
+        "cpu:CanvasToFramebuffer": 0.167,
+        "cpu:SingleVoxelToCanvasFirst": 0.328
+      }
+    ],
+    "reader": [
+      {
+        "steady_mean_ms": 11.48,
+        "steady_p99_ms": 19.71,
+        "gpu_envelope_ms": 2.713,
+        "gpu:canvasClear": 0.028,
+        "gpu:voxelCompact": 0.127,
+        "gpu:voxelStage1": 0.092,
+        "gpu:voxelCardinalElect": 0.428,
+        "gpu:voxelStage2": 0.317,
+        "gpu:computeVoxelAO": 0.126,
+        "gpu:bakeSunShadowMap": 1.666,
+        "gpu:computeSunShadow": 0.062,
+        "gpu:computeLightVolume": 0.595,
+        "gpu:lightingToTrixel": 0.04,
+        "gpu:trixelToFb": 1.917,
+        "gpu:cardinalSurfaceFb": 2.149,
+        "gpu:fbToScreen": 0.123,
+        "cpu:BakeSunShadowMap": 0.046,
+        "cpu:ComputeSunShadow": 0.019,
+        "cpu:LightingToTrixel": 0.053,
+        "cpu:CanvasToFramebuffer": 0.147,
+        "cpu:SingleVoxelToCanvasFirst": 0.296
+      }
+    ]
+  }
+}
