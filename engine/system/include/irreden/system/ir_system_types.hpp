@@ -268,6 +268,13 @@ enum SystemName {
     // in INPUT, after the WIDGET_APPLY_* chain that produces the state it
     // reads. Its widgets are drawn by the standard WIDGET_RENDER_* systems.
     SETTINGS_MENU,
+    // Actions window: the searchable action list with runtime key assignment
+    // (`engine/prefabs/irreden/render/actions_window.hpp`). Register in INPUT,
+    // after the WIDGET_APPLY_* chain whose state it polls.
+    ACTIONS_WINDOW,
+    // Refreshes the badge text of every action-bound widget when an action's
+    // chords change. INPUT, anywhere after the widgets are built.
+    WIDGET_SYNC_ACTION_HINTS,
     ENTITY_CANVAS_TO_FRAMEBUFFER,
     // Secondary viewports (engine/prefabs/irreden/render/viewport.hpp).
     // SYNC_VIEWPORT_SUBJECTS sits in RENDER before VOXEL_TO_TRIXEL_STAGE_1;

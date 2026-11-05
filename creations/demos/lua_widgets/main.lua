@@ -188,7 +188,7 @@ IRTest.setDropdown(IRGui.makeDropdown(510, 450, 120, 20, dropdownItems))
 
 -- A 40-item dropdown near the canvas bottom: its 8-row window has no room
 -- below the header, so the strip opens upward and stays on the canvas. Alt+P
--- opens it from the keyboard (no hint badge, so the hint count stays three).
+-- opens it from the keyboard (no hint badge, so the hint count stays four).
 local longDropdownItems = {
     "GAIN", "COLOR", "CUTOFF", "FLOW", "LOW PASS", "RESONANCE", "ATTACK", "DECAY",
     "SUSTAIN", "RELEASE", "DRIVE", "MIX", "PAN", "WIDTH", "RATE", "DEPTH", "PHASE",
@@ -209,6 +209,29 @@ for i = 1, 60 do
 end
 local longList = IRGui.makeList(510, 642, 120, 72, longListItems, LONG_LIST_SELECTED, IRText.Size.SMALL)
 IRTest.setLongList(longList, LONG_LIST_SELECTED)
+
+-- An action registered from Lua. Its key (J), the PULSE button and
+-- IRCommand.invokeAction run the same function; the button's Alt badge shows
+-- whatever key the action resolves to, including a user's own.
+local pulses = 0
+local pulseLabel = IRGui.makeLabel(170, 28, "PULSES 0")
+IRCommand.registerAction{
+    id = "lua_widgets.pulse",
+    label = "PULSE",
+    section = "DEMO",
+    description = "COUNT ONE PULSE",
+    keys = { "J" },
+    run = function()
+        pulses = pulses + 1
+        IRGui.setLabelText(pulseLabel, "PULSES " .. pulses)
+        IRTest.actionPulsed(pulses)
+    end,
+}
+local pulseButton = IRGui.makeButton(40, 20, 120, 28, "PULSE", function()
+    IRCommand.invokeAction("lua_widgets.pulse")
+end)
+IRGui.bindAction(pulseButton, "lua_widgets.pulse")
+IRTest.setPulseButton(pulseButton)
 
 local hotkeyButton = IRGui.makeButton(20, 430, 180, 28, "HOTKEY BUTTON")
 local hotkeyCheckbox = IRGui.makeCheckbox(20, 464, 180, 28, "HOTKEY CHECK", false)

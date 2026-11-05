@@ -5,7 +5,8 @@ triggers (keyboard/mouse/gamepad/MIDI). Commands are fire-and-forget: they
 return void, can't be undone, and don't queue. Design contract for the Lua
 surface: [`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md).
 
-Validators: `test/command/default_binding_manifest_test.cpp`,
+Validators: `test/command/action_registry_test.cpp`, `keymap_store_test.cpp`,
+`test/command/default_binding_manifest_test.cpp`,
 `test/command/keyboard_dispatch_test.cpp`, `test/common/command_registry_test.cpp`,
 `test/script/lua_command_test.cpp` (all in `IrredenEngineTest`).
 
@@ -57,14 +58,10 @@ creations pass overrides through `IRPrefab::Camera::registerStandardKeyboardComm
   bound. Omit both to drop the axis.
 - **Remaps never chain.** First matching pair wins per row, so `{W→A, A→UP}`
   leaves `W` on `A`.
-- **Registration-time only; no `unbind` / `rebind`.** `CommandId` is an index
-  into an append-only vector (removal would invalidate outstanding ids or put
-  tombstones on the per-tick dispatch loop), and `CommandNames` is not a
-  unique key in the live registry, so rebind-by-command is ambiguous by
-  construction. Never-bound also keeps the help overlay and
-  `getCommandRegistrations()` consistent. A runtime rebind surface (settings
-  menu, persisted keymaps) is a separate design reachable via in-place
-  `CommandId` mutation.
+- **Manifests are registration-time only.** `CommandId` is an index into an
+  append-only vector and `CommandNames` is not a unique key in the live
+  registry, so a manifest row has no runtime rebind. Runtime assignment is the
+  action registry's (§"Actions and keymaps"), which mutates rows in place.
 - **The registration map is not the manifest.** Enumerate defaults via
   `IRCommand::suiteDefaults(Suite)` (reads the constexpr tables); ask what is
   bound *now* via `isButtonBound` (scans the live command list).
@@ -91,7 +88,7 @@ poll — the input systems look up matching commands each tick and invoke them.
   `CommandRegistration{name, description, button, triggerStatus,
   requiredModifiers}` rows — populated only for **named `PRESSED`** bindings;
   it is what `System<HELP_OVERLAY>` and the settings menu render.
-  `getRegistrationGeneration()` bumps only when the vector grows; a consumer
+  `getRegistrationGeneration()` bumps whenever the rows change; a consumer
   caching text built from the registry compares it against its own snapshot
   to decide whether to rebuild (keeps "zero cost while hidden" true).
 
@@ -118,6 +115,24 @@ declaration in `command/command_manager.hpp`):
   the tree is `KEY_MOUSE`; there is no gamepad dispatch loop). The type check
   belongs to the query; the missing filter belongs to the dispatcher.
   `CommandRegistryTest.IsButtonBoundIsTypeExact` locks the query half.
+
+## Actions and keymaps
+
+`ActionRegistry` (`IRCommand::actions()`) is the searchable catalog: a stable id
+(the keymap key), label, section, context, availability, and one `invoke_` shared
+by keys, widgets (`IRPrefab::Widget::bindAction`), Lua and `invokeAction`
+([design](../../docs/design/command-actions-keymap.md)).
+
+- Each chord owns ordinary rows: rebinding moves them in place, unbinding parks
+  them (inactive, skipped by dispatch and `isButtonBound`), so capture,
+  specificity and pairing apply unchanged. A chord's mask is exact.
+- A hold (`release_` set) ends through a latch-release row on key-up, and
+  before any binding change; it never ends twice.
+- `adoptNamedCommands(prefix)` turns named `createCommand` rows into actions,
+  keeping each chord's body and blocked mask; start/end pairs stay plain.
+- `KeymapStore` (`IRCommand::keymap()`) persists overrides to
+  `<IR_PREFS_DIR or userDataDir>/keymaps/<creation>.keymap` by atomic rename,
+  keeps unknown ids, and never overwrites a file it could not parse.
 
 ## The command catalog (`kCommandInfo`)
 
@@ -178,7 +193,7 @@ of truth for prefab command bodies.
   deterministic snapshot — no GLFW, no display.
 - **Callbacks capture by value at bind time.** A pointer re-seated later is
   not seen by the command.
-- **Only named `PRESSED` commands appear in the help overlay.** `HELD` /
+- **Only named `PRESSED` commands and action chords appear in the help overlay.** `HELD` /
   `RELEASED` / `PRESSED_AND_RELEASED` bindings and any binding registered
   without a `name` are invisible to the registry. An ad-hoc lambda that should
   be discoverable passes the trailing `name` / `description` args

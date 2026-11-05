@@ -9,6 +9,7 @@
 #include <iterator>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace IRCommand {
@@ -77,6 +78,26 @@ inline bool isButtonBound(
     IRInput::KeyModifierMask heldModifiers
 ) {
     return getCommandManager().isButtonBound(inputType, triggerStatus, button, heldModifiers);
+}
+
+/// The action catalog: stable-id actions with runtime-assignable chords
+/// (`command/action_registry.hpp`). Keyboard dispatch, widget buttons, Lua and
+/// direct calls all run an action through the same `invoke_`.
+inline ActionRegistry &actions() {
+    return getCommandManager().actions();
+}
+
+/// The per-creation keymap file the action registry persists to.
+inline KeymapStore &keymap() {
+    return getCommandManager().keymap();
+}
+
+inline bool registerAction(ActionSpec spec) {
+    return actions().registerAction(std::move(spec));
+}
+
+inline bool invokeAction(std::string_view id) {
+    return actions().invokeAction(id);
 }
 
 /// Sentinel returned by @ref bindPrefabCommand on a name that has no

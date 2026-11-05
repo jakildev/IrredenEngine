@@ -60,6 +60,7 @@
 #include <irreden/input/components/component_mouse_position.hpp>
 #include <irreden/input/components/component_mouse_scroll.hpp>
 #include <irreden/input/systems/system_entity_hover_detect.hpp>
+#include <irreden/render/components/component_actions_window.hpp>
 #include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
@@ -125,6 +126,7 @@
 #include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_action.hpp>
 #include <irreden/render/components/component_widget_focus_request.hpp>
 #include <irreden/render/components/component_widget_hotkey.hpp>
 #include <irreden/render/components/component_widget_image.hpp>
@@ -460,6 +462,12 @@ IR_SAVE_OPT_OUT(IRComponents::C_HelpOverlayState)
 // C_SettingsMenuState: OPT-OUT — same reasoning as the help overlay above. A
 // menu left open is a momentary view, not authored state.
 IR_SAVE_OPT_OUT(IRComponents::C_SettingsMenuState)
+// C_ActionsWindowState: OPT-OUT — same reasoning as the settings menu above.
+IR_SAVE_OPT_OUT(IRComponents::C_ActionsWindowState)
+// C_WidgetAction: OPT-OUT — an action id means nothing without the creation
+// that registers the action, and that creation rebinds its controls whenever it
+// builds them.
+IR_SAVE_OPT_OUT(IRComponents::C_WidgetAction)
 // C_PerfHudState: OPT-OUT — same reasoning as C_HelpOverlayState: the HUD's
 // visibility and corner are a momentary view, not authored state.
 IR_SAVE_OPT_OUT(IRComponents::C_PerfHudState)
@@ -702,6 +710,8 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetFocusRequest,
     IRComponents::C_HelpOverlayState,
     IRComponents::C_SettingsMenuState,
+    IRComponents::C_ActionsWindowState,
+    IRComponents::C_WidgetAction,
     IRComponents::C_PerfHudState,
     IRComponents::C_PerAxisSurfaceLighting,
     IRComponents::C_GlitchState,
