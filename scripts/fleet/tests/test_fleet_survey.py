@@ -369,6 +369,24 @@ class Queue(FleetSurveyFixture):
         self.assertEqual(stacked["blocked_by"], "#102, jakildev/other#5")
         self.assertEqual(self.ids("in_progress"), ["#107"])
 
+    def test_unresolvable_blocker_ref_renders_as_such_not_as_blocked_by(self):
+        state = copy.deepcopy(STATE)
+        row = next(t for t in state["repos"]["engine"]["tasks"]["open"]
+                   if t["id"] == "#106")
+        row["blocked_by"] = "#4753"
+        row["blocked_by_unresolvable"] = "#4753"
+        report = self.run_survey(state=state)
+        blocked = next(r for r in report["repos"]["engine"]["queue"]["blocked"]
+                       if r["id"] == "#106")
+        self.assertEqual(blocked["blocked_by_unresolvable"], "#4753")
+        line = next(ln for ln in _mod.render(report).splitlines() if "#106" in ln)
+        self.assertIn("blocked (unresolvable ref #4753)", line)
+        self.assertNotIn("by #4753", line)
+        # Rows without the field keep the plain form.
+        plain = next(ln for ln in _mod.render(self.run_survey()).splitlines()
+                     if ln.strip().startswith("#106"))
+        self.assertIn("by #101", plain)
+
     def test_blocker_impacts_names_open_dependents(self):
         ghosts = {101: {"shadow_pr": 900}}
         self.assertEqual(_mod.blocker_impacts({

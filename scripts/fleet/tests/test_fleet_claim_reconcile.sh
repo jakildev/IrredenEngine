@@ -350,6 +350,54 @@ PY
 assert_dir_present "$FLEET_CLAIMS_DIR/520" "--apply keeps the detached pane's live claim #520"
 assert_dir_absent  "$FLEET_CLAIMS_DIR/521" "--apply releases control #521 (stale heartbeat)"
 
+echo "=== Phase 5: R11 flags a task whose same-repo Blocked-by ref 404s ==="
+# The scout records `blocked_by_unresolvable` on a task whose ref the repo
+# answers with a 404; R11 reports it, flag-only, from state.json. A snapshot
+# past ~10 minutes is skipped (its field may already be fixed), and a task
+# without the field draws nothing.
+write_state() {
+    python3 - "$FLEET_STATE_DIR/state.json" "$1" <<'PY'
+import json, sys, datetime
+age = int(sys.argv[2])
+gen = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=age)
+json.dump({"generated_at": gen.strftime("%Y-%m-%dT%H:%M:%SZ"), "repos": {
+    "engine": {"tasks": {"open": [
+        {"id": "#621", "issue": "#621", "blocked_by": "#4753",
+         "blocked_by_unresolvable": "#4753"},
+        {"id": "#622", "issue": "#622", "blocked_by": "#4754"}],
+        "in_progress": [
+        {"id": "#623", "issue": "#623", "blocked_by": "#4755, #4756",
+         "blocked_by_unresolvable": "#4755"}]}},
+    "game": {"tasks": {"open": [
+        {"id": "#9621", "issue": "#9621", "blocked_by_unresolvable": "#1"}],
+        "in_progress": []}}}}, open(sys.argv[1], "w"))
+PY
+}
+write_state 30
+"$FLEET_CLAIM" reconcile --repo jakildev/IrredenEngine >/dev/null 2>&1
+python3 - "$REPORT" <<'PY' && ok "R11 flags the open and in-progress 404 tasks, names the ref, skips the plain task and the unselected repo" || bad "R11 findings wrong"
+import sys, json
+r11 = {f["target"]: f for f in json.load(open(sys.argv[1]))["findings"] if f["rule"] == "R11"}
+assert set(r11) == {621, 623}, sorted(r11)
+f = r11[621]
+assert f["repo"] == "jakildev/IrredenEngine" and f["target_kind"] == "issue", f
+assert "#4753" in f["action"] and "#4753" in f["gated_by"], f
+assert f["apply"] is None and f["escalate"] is True, f
+assert "#4755" in r11[623]["action"], r11[623]
+PY
+write_state 3600
+"$FLEET_CLAIM" reconcile --repo jakildev/IrredenEngine >/dev/null 2>&1
+python3 - "$REPORT" <<'PY' && ok "R11 skips a state.json snapshot older than 10 minutes" || bad "R11 read a stale snapshot"
+import sys, json
+assert not [f for f in json.load(open(sys.argv[1]))["findings"] if f["rule"] == "R11"]
+PY
+rm -f "$FLEET_STATE_DIR/state.json"
+"$FLEET_CLAIM" reconcile --repo jakildev/IrredenEngine >/dev/null 2>&1
+python3 - "$REPORT" <<'PY' && ok "R11 is silent when state.json is absent" || bad "R11 fired without state.json"
+import sys, json
+assert not [f for f in json.load(open(sys.argv[1]))["findings"] if f["rule"] == "R11"]
+PY
+
 echo
 echo "================================"
 echo "  PASS: $PASS    FAIL: $FAIL"

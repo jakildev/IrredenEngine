@@ -4246,7 +4246,8 @@ cmd_check_stale() {
 # park; R9 class-escalates a fleet:sonnet backing issue while any of its PRs
 # is parked in the design lane, so the opus+-only resume tier has a
 # permitted class to dispatch; R10 removes this host's fleet:amending-* label
-# whose owner is provably gone or unvouched past the TTL. The periodic scout
+# whose owner is provably gone or unvouched past the TTL; R11 flags a queued
+# task whose same-repo Blocked-by ref 404s. The periodic scout
 # spawn lives in fleet-state-scout.
 
 # reconcile_fs_claims_json
@@ -4968,6 +4969,37 @@ for repo in repos:
                 "the amend lock)" % lab, why,
                 apply={"type": "dead_amend_label", "repo": repo,
                        "pr": pr.get("number"), "label": lab})
+
+# ---- R11: a Blocked-by ref that names nothing in the task's repo ----
+# The scout fails closed on every unreadable ref read, so a same-repo ref the
+# repo answers with a definite 404 (usually a cross-repo ref written without
+# its `Repo#` qualifier) blocks the task forever with no signal anywhere. The
+# scout records it as `blocked_by_unresolvable`; this rule reports it so the
+# body line gets fixed. Flag-only (the body is the owner's to edit), carried to
+# the human by the persistence-gated fleet:state-drift tracker. A snapshot
+# older than STATE_MAX_AGE_S is skipped: its field may already be fixed.
+import fleet_poll_topology as topology
+STATE_MAX_AGE_S = 600
+snapshot = load(os.path.join(state_dir, "state.json"), {})
+if (isinstance(snapshot, dict) and snapshot.get("repos")
+        and topology.state_age_seconds(snapshot.get("generated_at"), 0,
+                                       now=now) <= STATE_MAX_AGE_S):
+    key_to_slug = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+    for repo_key, repo_state in sorted(snapshot["repos"].items()):
+        slug = key_to_slug.get(repo_key)
+        if slug is None or slug not in repos:
+            continue
+        tasks = (repo_state or {}).get("tasks") or {}
+        for task in (tasks.get("open") or []) + (tasks.get("in_progress") or []):
+            refs = task.get("blocked_by_unresolvable")
+            number = str(task.get("issue") or task.get("id") or "").lstrip("#")
+            if refs and number.isdigit():
+                add("R11", slug, int(number), "issue", ["label"],
+                    "Blocked-by ref(s) %s do not exist in %s (the scout got a "
+                    "404); fix the body line, likely a cross-repo ref missing "
+                    "its Repo# qualifier" % (refs, slug),
+                    "scout recorded blocked_by_unresolvable=%s; task stays blocked"
+                    % refs)
 
 for f in findings:
     print(json.dumps(f))
@@ -7052,7 +7084,10 @@ commands:
                                         fleet:sonnet backing issue → re-tag
                                         the issue fleet:sonnet → fleet:opus
                                         (the design-resume tier is opus+-
-                                        only, so no class could serve it).
+                                        only, so no class could serve it);
+                                  R11   (flag-only) task whose same-repo
+                                        Blocked-by ref 404s in state.json
+                                        (`blocked_by_unresolvable`).
                                 R2 (orphaned WIP/feedback PR with no claim,
                                 read as R7 reads it for a WIP PR;
                                 fleet:design-blocked / fleet:design-proposed /

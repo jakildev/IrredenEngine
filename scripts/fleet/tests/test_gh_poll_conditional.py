@@ -224,5 +224,56 @@ class TestRateLimitRecord(unittest.TestCase):
         self.assertEqual(_mod.last_rate_limit("core")["used"], 100)
 
 
+class TestStatusOut(unittest.TestCase):
+    """`status_out` reports a definite HTTP error code and nothing else, so a
+    caller can tell a 404 from a timeout, a 5xx, or a 401."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._token_patch = patch.object(_mod, "auth_token", return_value="tok")
+        self._token_patch.start()
+
+    def tearDown(self):
+        self._token_patch.stop()
+        self._tmp.cleanup()
+
+    def _status(self, *, response=None, error=None):
+        out = {}
+        with patch("urllib.request.urlopen", return_value=response, side_effect=error):
+            result = conditional_get(_SLUG, "issues/1", cache_dir=Path(self._tmp.name),
+                                     status_out=out)
+        return result, out
+
+    def test_404_is_reported(self):
+        result, out = self._status(error=_http_error(404, _headers()))
+        self.assertEqual(result, (True, None))
+        self.assertEqual(out, {"http_status": 404})
+
+    def test_5xx_is_reported_as_its_own_code(self):
+        _, out = self._status(error=_http_error(502, _headers()))
+        self.assertEqual(out, {"http_status": 502})
+
+    def test_401_after_the_reauth_retry_is_reported_as_401(self):
+        with patch.object(_mod, "auth_token", side_effect=["tok", "fresh"]):
+            _, out = self._status(error=_http_error(401, _headers()))
+        self.assertEqual(out, {"http_status": 401})
+
+    def test_timeout_and_url_errors_report_nothing(self):
+        for err in (TimeoutError(), urllib.error.URLError("down"), OSError("x")):
+            _, out = self._status(error=err)
+            self.assertEqual(out, {}, err)
+
+    def test_success_and_304_report_nothing(self):
+        result, out = self._status(response=_resp(b"{}", 'W/"e"'))
+        self.assertEqual((result, out), ((True, "{}"), {}))
+        result, out = self._status(error=_http_error(304, _headers()))
+        self.assertEqual(out, {})
+
+    def test_no_token_reports_nothing(self):
+        with patch.object(_mod, "auth_token", return_value=None):
+            _, out = self._status(error=_http_error(404, _headers()))
+        self.assertEqual(out, {})
+
+
 if __name__ == "__main__":
     unittest.main()

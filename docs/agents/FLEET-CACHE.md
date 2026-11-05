@@ -123,7 +123,12 @@ scout's separate same-repo resolution fact, and worker election treats either
 as blocked; an eligible `stackable_blocker_pr` still routes the row to the stack
 tier. Cross-repo blockers are deliberately absent from `has_open_blocker` and
 remain claim-time gated; a queued task lacking `fleet:blocked` can therefore be
-elected and refused in that residual shape.
+elected and refused in that residual shape. A same-repo ref the REST read
+answers with a definite 404 (usually a cross-repo ref written without its
+`Repo#` qualifier) keeps the task blocked and adds `blocked_by_unresolvable`
+(`#N[, #M]`) to the row; `fleet-claim reconcile` R11 flags it and `fleet-survey`
+prints `blocked (unresolvable ref #N)`. Timeouts, 5xx, 401 and malformed bodies
+stay fail-closed with no field.
 
 ### `inflight_pr` on a `tasks_open` row — the open-PR gate
 
