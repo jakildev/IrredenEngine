@@ -30,6 +30,12 @@ binary boot on every host.
 `swapBuffers()` is called by `World::gameLoop()` at the end of each
 render frame.
 
+`IRWindow::setCloseGuard` lets an editor veto a pending close request,
+including the native close button. `shouldClose()` evaluates the guard and
+clears a vetoed request; `isCloseRequested()` only observes it. Confirmation
+must issue a fresh `closeWindow()` request. The window owns the callback;
+captured state must outlive it, or the creation must remove it first.
+
 ## Window modes
 
 `IRWindow::WindowMode` (`ir_glfw_window.hpp`) selects how the window is

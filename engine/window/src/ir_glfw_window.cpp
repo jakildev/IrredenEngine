@@ -210,7 +210,19 @@ IRGLFWWindow::~IRGLFWWindow() {
 }
 
 int IRGLFWWindow::shouldClose() {
-    return glfwWindowShouldClose(m_window);
+    const bool requested = isCloseRequested();
+    const bool accepted = m_closeGuard.accepts(requested);
+    if (requested && !accepted)
+        glfwSetWindowShouldClose(m_window, false);
+    return accepted;
+}
+
+bool IRGLFWWindow::isCloseRequested() const {
+    return glfwWindowShouldClose(m_window) != 0;
+}
+
+void IRGLFWWindow::setCloseGuard(std::function<bool()> guard) {
+    m_closeGuard.set(std::move(guard));
 }
 
 void IRGLFWWindow::setShouldClose() {

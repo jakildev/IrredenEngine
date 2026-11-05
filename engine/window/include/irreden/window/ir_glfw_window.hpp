@@ -3,6 +3,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_platform.hpp>
+#include <irreden/window/close_guard.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -138,8 +139,12 @@ class IRGLFWWindow {
     /// Returns `true` if @p joystick has a known gamepad mapping.
     bool joystickIsGamepad(int joystick);
 
-    /// Returns non-zero if GLFW has flagged the window for closing.
+    /// Consumes a pending close request through the installed guard.
     int shouldClose();
+    /// Observes a pending close request without invoking the guard.
+    bool isCloseRequested() const;
+    /// An empty callback restores unconditional close behavior.
+    void setCloseGuard(std::function<bool()> guard);
     /// Flags the window for closing on the next `gameLoop()` iteration.
     void setShouldClose();
     void setWindowMonitor();
@@ -191,6 +196,7 @@ class IRGLFWWindow {
     /// @}
 
   private:
+    CloseGuard m_closeGuard;
     GLFWwindow *m_window;
     std::vector<GLFWmonitor *> m_monitors;
     ivec2 m_initWindowSize;

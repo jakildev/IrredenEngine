@@ -152,6 +152,7 @@ enum class Id {
     ANIMATION_BOUNDARY,
     SCULPT_WORKFLOW,
     SCULPT_SINGLE_SAVE,
+    DOCUMENT_WORKFLOW,
     LOCAL_CANVAS,
     HIERARCHY_WORKFLOW,
     TIER_SCRUB,
@@ -173,6 +174,20 @@ enum class Id {
     COMPONENT_FIELD_KEY,
     COMPOSITE_PROOF,
 };
+
+struct DocumentWorkflowCheck {
+    const char *name_;
+    bool dirty_;
+    bool pending_;
+    bool overwrite_;
+    bool error_;
+    bool occupied_;
+    const char *jointName_ = nullptr;
+    bool entityMode_ = false;
+    bool animationControlsDisabled_ = false;
+    bool checkAnimationControls_ = false;
+};
+bool evaluateDocumentWorkflowCheck(const void *context, std::string &actual);
 
 struct AnimationBoundaryCheck {
     int frames_;
@@ -207,6 +222,8 @@ inline IRComponents::C_LocalTransform localCanvasChildTransform() {
 // validated string to the typed id (the "enum, not string-match" rule at the
 // CLI edge, .claude/rules/cpp-lua-enums.md).
 inline Id idFromName(const std::string &name) {
+    if (name == "document_workflow")
+        return Id::DOCUMENT_WORKFLOW;
     if (name == "local_canvas")
         return Id::LOCAL_CANVAS;
     if (name == "hierarchy_workflow")
@@ -2171,6 +2188,145 @@ inline Recipe build(
         builder.expectManifestContains("parent = \"part_0\"", "parent_roundtrip");
         builder.expectPartTransform(1, IRMath::vec3(0), 0.001f, true, "child_local_pose_roundtrip");
         return builder.finish();
+    }
+
+    case Id::DOCUMENT_WORKFLOW: {
+        Builder builder("document_workflow", sceneSize, sceneOrigin);
+        const IRMath::ivec3 cell{3, 3, sceneSize.z - 2};
+        const auto rename = [&](int oldLength, std::string_view name) {
+            builder.clickGui({160, 119});
+            builder.tapKey(IRInput::kKeyButtonEnd);
+            for (int index = 0; index < oldLength; ++index)
+                builder.tapKey(IRInput::kKeyButtonBackspace);
+            builder.typeText({160, 119}, name);
+        };
+        builder.segment("overwrite_requires_decision");
+        builder.clickGui(sculptButtonCenter(0));
+        builder.click(cell);
+        builder.clickGui({390, 119});
+        builder.segment("cancel_preserves_unsaved_asset");
+        builder.clickGui({310, 199});
+        builder.segment("save_as_publishes_named_asset");
+        builder.clickGui({390, 119});
+        builder.clickGui({435, 199});
+        builder.segment("new_guard_blocks_authoring");
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.clickGui({570, 119});
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
+        builder.segment("cancel_new_keeps_asset");
+        builder.clickGui({310, 199});
+        builder.segment("discard_new_starts_blank");
+        builder.clickGui({570, 119});
+        builder.clickGui({190, 199});
+        builder.segment("open_restores_named_asset");
+        builder.clickGui({480, 119});
+        builder.segment("failed_open_keeps_current_data");
+        rename(5, "missing");
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.clickGui({480, 119});
+        builder.clickGui({190, 199});
+        builder.segment("save_retries_current_identity");
+        rename(7, "draft");
+        builder.clickGui({305, 119});
+        builder.segment("close_requests_confirmation");
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.tapKey(IRInput::kKeyButtonEscape);
+        builder.segment("cancel_close_preserves_document");
+        builder.clickGui({310, 199});
+        builder.segment("save_changes_then_new");
+        builder.clickGui({570, 119});
+        builder.clickGui({65, 199});
+        builder.segment("open_after_save_changes");
+        builder.clickGui({480, 119});
+        builder.segment("save_as_changes_identity");
+        rename(5, "copy");
+        builder.clickGui({390, 119});
+        builder.clickGui({435, 199});
+        builder.segment("untitled_save_can_recover_missing_name");
+        builder.clickGui({570, 119});
+        rename(4, "");
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.clickGui({570, 119});
+        builder.clickGui({65, 199});
+        builder.segment("name_pending_document_and_continue");
+        builder.typeText({160, 119}, "rescue");
+        builder.clickGui({65, 199});
+        builder.clickGui({435, 199});
+        builder.segment("open_rescued_document");
+        builder.clickGui({480, 119});
+        const IRMath::vec2 renameButton = IRMath::vec2(kSkeletonPanelPos) + IRMath::vec2(103, 81);
+        builder.segment("rig_name_saved");
+        builder.tapKey(IRInput::kKeyButtonJ);
+        builder.tapKey(IRInput::kKeyButtonB);
+        builder.typeText(kJointRenameInputCenter, "branch");
+        builder.clickGui(renameButton);
+        builder.save();
+        builder.segment("rig_rename_marks_modified");
+        builder.clickGui(kJointRenameInputCenter);
+        builder.tapKey(IRInput::kKeyButtonEnd);
+        for (int index = 0; index < 6; ++index)
+            builder.tapKey(IRInput::kKeyButtonBackspace);
+        builder.typeText(kJointRenameInputCenter, "tip");
+        builder.clickGui(renameButton);
+        builder.segment("rig_rename_requires_decision");
+        builder.clickGui({570, 119});
+        builder.segment("rig_rename_saved_and_reloaded");
+        builder.clickGui({310, 199});
+        builder.save();
+        builder.reload();
+        builder.segment("prepare_composite_for_discard_crossing");
+        builder.clickGui({570, 119});
+        rename(6, "composite");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
+        builder.clickGui({390, 119});
+        builder.segment("discard_composite_to_single_restores_animation_controls");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
+        builder.clickGui({570, 119});
+        builder.clickGui({190, 199});
+        builder.segment("discard_single_to_composite_disables_animation_controls");
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.clickGui({480, 119});
+        builder.clickGui({190, 199});
+        Recipe recipe = builder.finish();
+        static constexpr DocumentWorkflowCheck checks[] = {
+            {"", true, false, true, false, true},
+            {"", true, false, false, false, true},
+            {"draft", false, false, false, false, true},
+            {"draft", true, true, false, false, true},
+            {"draft", true, false, false, false, true},
+            {"", false, false, false, false, false},
+            {"draft", false, false, false, false, true},
+            {"draft", true, false, false, true, true},
+            {"draft", false, false, false, false, true},
+            {"draft", true, true, false, false, true},
+            {"draft", true, false, false, false, true},
+            {"", false, false, false, false, false},
+            {"draft", false, false, false, false, true},
+            {"copy", false, false, false, false, true},
+            {"", true, true, false, true, false},
+            {"", false, false, false, false, false},
+            {"rescue", false, false, false, false, false},
+            {"rescue", false, false, false, false, false, "branch"},
+            {"rescue", true, false, false, false, false, "tip"},
+            {"rescue", true, true, false, false, false, "tip"},
+            {"rescue", false, false, false, false, false, "tip"},
+            {"composite", false, false, false, false, false, nullptr, true, true, true},
+            {"", false, false, false, false, false, nullptr, false, false, true},
+            {"composite", false, false, false, false, false, nullptr, true, true, true},
+        };
+        if (recipe.segments_.size() != std::size(checks)) {
+            recipe.errors_.push_back("document workflow shot count mismatch");
+            return recipe;
+        }
+        for (std::size_t index = 0; index < recipe.segments_.size(); ++index)
+            recipe.segments_[index].assertions_.push_back(
+                IRPrefab::GuiTest::predicate(
+                    &evaluateDocumentWorkflowCheck,
+                    &checks[index],
+                    "document_state_and_voxel_preserved"
+                )
+            );
+        return recipe;
     }
 
     case Id::SCULPT_SINGLE_SAVE: {

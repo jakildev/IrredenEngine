@@ -124,6 +124,7 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   selected source stays outside the copy group: radial copies start at the
   radius, and linear copies start one step out.
 - Part transform drags, LOD-band edits, and attachment each make one undo record; Escape cancels an active transform/LOD gesture. Shift+A/D add/duplicate single-asset frames; multipart frame controls are disabled.
+- Ordinary documents expose named Save / Save As / Open / New and Save / Discard / Cancel for unsaved changes, including native-window close. Failed loads retain the current document; failed saves never clear its modified state. Single-asset saves stage frames, layer metadata and optional rig as one publication; composite saves refuse unsupported frame, rig or layer metadata. `document_workflow` exercises these decisions through the UI.
 - Composite saves stage canonical files and roll back publication failures. Recovery directories survive failed rollback; this is not crash/power-loss atomic.
 - Delete and PARTS REMOVE remove the selected part as one undo record; undo
   restores its payload at the same index, redo removes it again. Records name

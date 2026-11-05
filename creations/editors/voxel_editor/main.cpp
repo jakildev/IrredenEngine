@@ -141,6 +141,7 @@
 #include <memory>
 #include <optional>
 #include <queue>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -167,6 +168,7 @@
 
 // Scene save/load
 #include "scene_io.hpp"
+#include "document_panel.hpp"
 // Rig save/load (joint entities ↔ .rig asset)
 #include "rig_scene_io.hpp"
 
@@ -242,6 +244,12 @@ struct WorkspaceMember {
 };
 
 struct EditorState {
+    DocumentLifecycle document_;
+    DocumentPanel documentPanel_;
+    bool documentsEnabled_ = false;
+    bool documentCloseApproved_ = false;
+    std::optional<DocumentLocation> overwriteTarget_;
+    std::unordered_map<IREntity::EntityId, bool> documentDisabledWidgets_;
     LocalPartEditSession localEdit_;
     EditorStageView localEditView_;
     Workspace workspaceBeforeLocalEdit_ = Workspace::ASSEMBLE;
@@ -270,6 +278,29 @@ struct EditorState {
 };
 
 EditorState g_editor;
+
+void markDocumentEdited() {
+    if (g_editor.documentsEnabled_)
+        g_editor.document_.markEdited();
+}
+
+bool documentInteractionBlocked() {
+    return g_editor.documentsEnabled_ &&
+           (g_editor.document_.pendingAction() != DocumentAction::NONE ||
+            g_editor.overwriteTarget_);
+}
+
+bool pushDocumentUndo(IRPrefab::Undo::Record record) {
+    const bool pushed = IRPrefab::Undo::push(std::move(record));
+    if (pushed)
+        markDocumentEdited();
+    return pushed;
+}
+
+void replayDocumentUndo(bool redo) {
+    if (redo ? IRPrefab::Undo::redo() : IRPrefab::Undo::undo())
+        markDocumentEdited();
+}
 
 // Bone-paint mode state. N toggles the mode; while active,
 // left-click writes activeBoneIdx_ to C_Voxel.bone_id_ and tints the voxel
@@ -1195,6 +1226,7 @@ void createModePreviewTwin() {
 // A request the part cannot take leaves its mode as it was and re-syncs the
 // dropdown to it.
 void setSelectedPartRotationMode(IRComponents::RotationMode mode) {
+    markDocumentEdited();
     closeLocalPartEdit();
     EditorPart *part = g_entityScene.selectedPart();
     if (part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET || part->mode_ == mode ||
@@ -1589,7 +1621,7 @@ void removeSelectedPart() {
         return;
     }
     auto state = std::make_shared<RemovedEditorPart>(std::move(*removed));
-    IRPrefab::Undo::push({
+    IRVoxelEditor::pushDocumentUndo({
         "REMOVE PART",
         [state]() {
             const EntitySceneRestoreResult restored =
@@ -1626,7 +1658,7 @@ void commitPartCreation(std::vector<IREntity::EntityId> created) {
             states->push_back(std::move(*snapshot));
         }
     }
-    IRPrefab::Undo::push({
+    IRVoxelEditor::pushDocumentUndo({
         "CREATE PARTS",
         [states]() {
             std::vector<IREntity::EntityId> entities;
@@ -2028,7 +2060,7 @@ void commitStroke(
             );
         }
     };
-    IRPrefab::Undo::push({
+    IRVoxelEditor::pushDocumentUndo({
         "VOXEL STROKE",
         [applyEdits]() { applyEdits(false); },
         [applyEdits]() { applyEdits(true); },
@@ -2461,10 +2493,10 @@ void updateSculptToolbar() {
             addEditorVoxelPart();
         } else if (i == 6) {
             finishPartEdits();
-            IRPrefab::Undo::undo();
+            IRVoxelEditor::replayDocumentUndo(false);
         } else if (i == 7) {
             finishPartEdits();
-            IRPrefab::Undo::redo();
+            IRVoxelEditor::replayDocumentUndo(true);
         } else {
             g_sculpt.showGrid_ = !g_sculpt.showGrid_;
         }
@@ -2481,7 +2513,7 @@ void updateHierarchyPanel() {
             }
             selectEditorPart(g_entityScene.selectedIndex());
         };
-        IRPrefab::Undo::push(
+        IRVoxelEditor::pushDocumentUndo(
             {"REPARENT PART", [replay]() { replay(false); }, [replay]() { replay(true); }, {}}
         );
         selectEditorPart(g_entityScene.selectedIndex());
@@ -2496,7 +2528,7 @@ void finishPartEdits() {
                 applyPartTransform(g_entityScene, edit.partId_, redo ? edit.after_ : edit.before_);
                 refreshRecipeHandles();
             };
-            IRPrefab::Undo::push(
+            IRVoxelEditor::pushDocumentUndo(
                 {"TRANSFORM PART", [replay]() { replay(false); }, [replay]() { replay(true); }, {}}
             );
         }
@@ -2508,7 +2540,7 @@ void finishPartEdits() {
                 applyPartLodBand(g_entityScene, edit.partId_, redo ? edit.after_ : edit.before_);
                 syncLodBandSliders();
             };
-            IRPrefab::Undo::push(
+            IRVoxelEditor::pushDocumentUndo(
                 {"PART LOD BAND", [replay]() { replay(false); }, [replay]() { replay(true); }, {}}
             );
         }
@@ -2662,6 +2694,7 @@ void loadFrameToLive(int idx) {
 void addAnimationFrame() {
     if (!canEditAnimationFrames())
         return;
+    markDocumentEdited();
     snapshotLiveToFrame(g_anim.activeFrame_);
     g_anim.addBlankFrame();
     auto &contexts = g_editor.frameUndoContexts_;
@@ -2674,6 +2707,7 @@ void addAnimationFrame() {
 void duplicateAnimationFrame() {
     if (!canEditAnimationFrames())
         return;
+    markDocumentEdited();
     snapshotLiveToFrame(g_anim.activeFrame_);
     g_anim.duplicateCurrentFrame();
     auto &contexts = g_editor.frameUndoContexts_;
@@ -2783,6 +2817,7 @@ IREntity::EntityId ensureRigRoot() {
 // identity at the bind pose. joints_ is in creation order, so a parent's bind
 // slot is always resolved before its children's.
 void recomputeJointBindPose() {
+    markDocumentEdited();
     if (g_jointTool.rigRoot_ == IREntity::kNullEntity)
         return;
     auto &skeleton = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
@@ -2848,6 +2883,7 @@ IREntity::EntityId addJointAuthored() {
     auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
     skeleton.joints_.push_back(joint);
     g_jointTool.parentIdx_.push_back(parentIdx);
+    markDocumentEdited();
     g_jointTool.activeJointIdx_ = static_cast<int>(skeleton.joints_.size()) - 1;
     recomputeJointBindPose();
 
@@ -3821,6 +3857,7 @@ void commitComponentFieldText(
         IR_LOG_WARN("Component field not set: {}", *error);
         return;
     }
+    markDocumentEdited();
     IR_LOG_INFO("component_field_set name={} value={}", record.name_, componentLiteral(record));
 }
 
@@ -3838,8 +3875,10 @@ void syncComponentFieldRows(ComponentRecord &record, IREntity::EntityId entity) 
                     IRPrefab::Widget::checkboxState(row.input_);
                 if (auto error = applyComponentRecord(g_moduleHost.script(), entity, edited))
                     IR_LOG_WARN("Component field not set: {}", *error);
-                else
+                else {
                     record = std::move(edited);
+                    markDocumentEdited();
+                }
             }
             const ComponentFieldValue &value =
                 record.fields_[static_cast<std::size_t>(row.field_)].value_;
@@ -3897,11 +3936,13 @@ void updateComponentsPanel() {
             IR_LOG_WARN("Component not attached: {}", *error);
         } else {
             IR_LOG_INFO("component_attached name={} target={}", *name, *target);
+            markDocumentEdited();
             records->push_back(std::move(attached));
             record = &records->back();
         }
     }
     if (IRPrefab::Widget::wasClicked(g_componentDetachBtn) && record != nullptr) {
+        markDocumentEdited();
         detachComponentRecord(script, entity, *record);
         IR_LOG_INFO("component_detached name={} target={}", record->name_, *target);
         records->erase(records->begin() + (record - records->data()));
@@ -4076,6 +4117,395 @@ bool initModuleUi() {
     return true;
 }
 
+DocumentLocation legacyDocumentLocation() {
+    return {std::string(kSceneSaveDir), std::string(kSceneBaseName)};
+}
+
+void settleDocumentEdits() {
+    endRecipeHandleDrag();
+    finishSculptStroke();
+    finishPartEdits();
+    for (const auto &row : g_componentFieldRows) {
+        if (row.input_ != IREntity::kNullEntity && !row.checkbox_)
+            IREntity::getComponent<C_WidgetState>(row.input_).focused_ = false;
+    }
+    updateComponentsPanel();
+    g_fillTool.dragging_ = false;
+    hideSculptGhost();
+    g_anim.playing_ = false;
+}
+
+void clearDocumentRig() {
+    if (g_jointTool.rigRoot_ != IREntity::kNullEntity &&
+        IREntity::entityExists(g_jointTool.rigRoot_))
+        IREntity::destroyTree(g_jointTool.rigRoot_);
+    g_jointTool = {};
+}
+
+void installDocumentRig(const std::optional<IRAsset::Rig> &rig) {
+    clearDocumentRig();
+    if (!rig)
+        return;
+    const auto root = ensureRigRoot();
+    std::vector<IREntity::EntityId> joints;
+    for (std::size_t index = 0; index < rig->joints_.size(); ++index) {
+        const auto &joint = rig->joints_[index];
+        const auto entity = IREntity::createEntity(
+            C_LocalTransform{vec3(joint.translation_), joint.rotation_},
+            C_Joint{},
+            C_JointName{joint.name_}
+        );
+        const bool atRoot =
+            joint.parentIndex_ == index || joint.parentIndex_ >= rig->joints_.size();
+        IREntity::setParent(entity, atRoot ? root : joints[joint.parentIndex_]);
+        IRPrefab::Gizmo::createJointMarker(entity);
+        IRPrefab::Gizmo::createTranslateGizmoForAnchor(entity);
+        joints.push_back(entity);
+        g_jointTool.parentIdx_.push_back(atRoot ? -1 : static_cast<int>(joint.parentIndex_));
+    }
+    auto &skeleton = IREntity::getComponent<C_Skeleton>(root);
+    skeleton.joints_ = std::move(joints);
+    skeleton.bindPose_ = IRPrefab::Rig::bindPose(*rig);
+}
+
+std::string compositeDocumentError() {
+    if (g_anim.frameCount() != 1 || hasRigForCompositeConversion())
+        return "Composite documents cannot save animation frames or rigs yet.";
+    const auto &layers = g_layerManager.layers();
+    if (layers.size() != 1 || layers[0].id_ != 0 || layers[0].name_ != "default" ||
+        !layers[0].visible_ || g_layerManager.activeLayerId() != 0 ||
+        layers[0].colorTag_.red_ != 180 || layers[0].colorTag_.green_ != 180 ||
+        layers[0].colorTag_.blue_ != 200 || layers[0].colorTag_.alpha_ != 255)
+        return "Composite documents cannot save layer metadata yet.";
+    return {};
+}
+
+bool saveDocumentAt(const DocumentLocation &location) {
+    settleDocumentEdits();
+    if (!location.valid()) {
+        g_editor.document_.failed("Enter a directory and a single filename for this document.");
+        return false;
+    }
+    std::string error;
+    const auto opposite =
+        std::filesystem::path(location.directory_) /
+        (location.baseName_ + (g_entitySceneMode ? "_frame_0.vxs" : ".prefab.lua"));
+    std::error_code pathError;
+    if (std::filesystem::exists(opposite, pathError) || pathError) {
+        g_editor.document_.failed(
+            "Target already belongs to another document kind; use a different name."
+        );
+        return false;
+    }
+    if (g_entitySceneMode) {
+        error = compositeDocumentError();
+        if (error.empty()) {
+            const auto saved =
+                g_entityScene.save(location.directory_, location.baseName_, g_moduleHost.recipes());
+            if (!saved.ok_)
+                error = saved.error_;
+        }
+    } else {
+        snapshotLiveToFrame(g_anim.activeFrame_);
+        std::vector<std::vector<C_Voxel>> snapshots;
+        for (const auto &frame : g_anim.frames_)
+            snapshots.push_back(frame.voxels_);
+        std::optional<IRAsset::Rig> rig;
+        if (g_jointTool.rigRoot_ != IREntity::kNullEntity) {
+            rig = skeletonToRig(g_jointTool.rigRoot_, g_jointTool.parentIdx_);
+            const auto &joints = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_).joints_;
+            for (std::size_t index = 0; index < rig->joints_.size(); ++index) {
+                const auto name = IREntity::getComponentOptional<C_JointName>(joints[index]);
+                if (name)
+                    rig->joints_[index].name_ = (*name)->name_;
+            }
+        }
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const auto saved = saveEditorScene(
+            location.directory_,
+            location.baseName_,
+            snapshots,
+            set.size_,
+            g_layerManager,
+            g_anim,
+            g_symmetry,
+            rig ? &*rig : nullptr
+        );
+        if (!saved.ok_)
+            error = saved.errorMsg_;
+    }
+    if (!error.empty()) {
+        g_editor.document_.failed(error);
+        g_editor.documentStatus_ = "SAVE FAILED: " + error;
+        return false;
+    }
+    g_editor.document_.saved(location);
+    g_editor.documentPanel_.setTarget(location);
+    g_editor.documentStatus_ = "SAVED " + location.baseName_;
+    return true;
+}
+
+// The replacement set allocates while the current document remains alive.
+// A failed allocation or decode leaves the current selection and history intact.
+bool replaceWithSingleDocument(
+    LoadResult loaded, const DocumentLocation &location, bool newlyCreated
+) {
+    const auto &snapshot = loaded.frameSnapshots_[static_cast<std::size_t>(loaded.activeFrame_)];
+    const auto replacement = IREntity::createEntity(
+        C_LocalTransform{g_editableSceneOrigin},
+        C_VoxelSetNew{
+            ivec3(0),
+            loaded.gridSize_,
+            std::span<const C_Voxel>(snapshot),
+            EntityAnchor::CORNER
+        }
+    );
+    if (IREntity::getComponent<C_VoxelSetNew>(replacement).recordCount() != snapshot.size()) {
+        IREntity::destroyEntity(replacement);
+        g_editor.document_.failed(
+            "Not enough voxel storage to open this document; current document kept."
+        );
+        return false;
+    }
+    closeLocalPartEdit();
+    destroyRecipeHandles();
+    const auto oldSingle = g_entitySceneMode ? IREntity::kNullEntity : g_editor.editableVoxelSet_;
+    g_entityScene.clear();
+    if (oldSingle != IREntity::kNullEntity && IREntity::entityExists(oldSingle))
+        IREntity::destroyTree(oldSingle);
+    g_entitySceneMode = false;
+    g_editor.editableVoxelSet_ = replacement;
+    g_sceneVoxelSetEntity = replacement;
+    g_editableSceneSize = loaded.gridSize_;
+    g_anim = {};
+    g_anim.frames_.clear();
+    for (auto &frame : loaded.frameSnapshots_)
+        g_anim.frames_.push_back(VoxelFrame{std::move(frame)});
+    g_anim.fps_ = loaded.fps_;
+    g_anim.loopMode_ = loaded.loopMode_;
+    g_anim.activeFrame_ = loaded.activeFrame_;
+    g_symmetry = loaded.symmetry_;
+    g_layerManager.resetAndLoad(loaded.layers_, loaded.activeLayerId_, loaded.nextLayerId_);
+    installDocumentRig(loaded.rig_);
+    g_loftTool.maskXZ_.assign(
+        static_cast<std::size_t>(g_editableSceneSize.x) * g_editableSceneSize.z,
+        false
+    );
+    g_loftTool.maskYZ_.assign(
+        static_cast<std::size_t>(g_editableSceneSize.y) * g_editableSceneSize.z,
+        false
+    );
+    if (g_partsList != IREntity::kNullEntity)
+        IRPrefab::Widget::setListItems(g_partsList, {});
+    clearUndoHistory();
+    syncAnimationControls();
+    syncPartSizeReadout();
+    if (g_fpsSlider != IREntity::kNullEntity) {
+        auto &slider = IREntity::getComponent<C_WidgetSlider>(g_fpsSlider);
+        slider.minValue_ = IRMath::min(slider.minValue_, g_anim.fps_);
+        slider.maxValue_ = IRMath::max(slider.maxValue_, g_anim.fps_);
+        slider.currentValue_ = g_anim.fps_;
+    }
+    for (const auto &layer : g_layerManager.layers()) {
+        if (!layer.visible_)
+            applyLayerVisibility(layer.id_, false);
+    }
+    if (newlyCreated)
+        g_editor.document_.created();
+    else
+        g_editor.document_.opened(location);
+    g_editor.documentStatus_ =
+        newlyCreated ? "NEW UNTITLED DOCUMENT" : "OPENED " + location.baseName_;
+    return true;
+}
+
+bool openDocumentAt(const DocumentLocation &location) {
+    if (!location.valid()) {
+        g_editor.document_.failed("Enter a valid document directory and name.");
+        return false;
+    }
+    std::error_code error;
+    const auto directory = std::filesystem::path(location.directory_);
+    const bool composite =
+        std::filesystem::exists(directory / (location.baseName_ + ".prefab.lua"), error);
+    if (error) {
+        g_editor.document_.failed(error.message());
+        return false;
+    }
+    const bool single =
+        std::filesystem::exists(directory / (location.baseName_ + "_frame_0.vxs"), error);
+    if (error || composite == single) {
+        g_editor.document_.failed(
+            composite ? "Ambiguous name: both voxel and composite documents exist."
+                      : "No document found at this directory and name."
+        );
+        return false;
+    }
+    if (!composite) {
+        auto loaded = loadEditorScene(location.directory_, location.baseName_);
+        if (!loaded.ok_) {
+            g_editor.document_.failed(loaded.errorMsg_);
+            return false;
+        }
+        return replaceWithSingleDocument(std::move(loaded), location, false);
+    }
+    closeLocalPartEdit();
+    const auto oldSingle = g_entitySceneMode ? IREntity::kNullEntity : g_editor.editableVoxelSet_;
+    const auto loaded = g_entityScene.load(
+        g_moduleHost.script(),
+        location.directory_,
+        location.baseName_,
+        g_moduleHost.recipes()
+    );
+    if (!loaded.ok_) {
+        g_editor.document_.failed(loaded.error_);
+        return false;
+    }
+    if (oldSingle != IREntity::kNullEntity && IREntity::entityExists(oldSingle))
+        IREntity::destroyTree(oldSingle);
+    clearDocumentRig();
+    g_layerManager = {};
+    g_anim = {};
+    g_symmetry = {};
+    enterEntitySceneMode();
+    clearUndoHistory();
+    selectEditorPart(g_entityScene.selectedIndex());
+    g_editor.document_.opened(location);
+    g_editor.documentStatus_ = "OPENED " + location.baseName_;
+    return true;
+}
+
+void performPendingDocumentAction() {
+    auto &document = g_editor.document_;
+    if (!document.pendingReady())
+        return;
+    const auto action = document.pendingAction();
+    const auto target = document.pendingLocation();
+    bool success = true;
+    if (action == DocumentAction::CLOSE) {
+        g_editor.documentCloseApproved_ = true;
+        IRWindow::closeWindow();
+        return;
+    }
+    if (action == DocumentAction::NEW_DOCUMENT) {
+        LoadResult blank;
+        blank.gridSize_ = g_editableSceneSize;
+        blank.layers_ = EditorLayerManager{}.layers();
+        const std::size_t count =
+            static_cast<std::size_t>(blank.gridSize_.x) * blank.gridSize_.y * blank.gridSize_.z;
+        blank.frameSnapshots_.push_back(std::vector<C_Voxel>(count, C_Voxel{Color{0, 0, 0, 0}}));
+        success = replaceWithSingleDocument(std::move(blank), {}, true);
+    } else if (action == DocumentAction::OPEN || action == DocumentAction::RELOAD) {
+        success = openDocumentAt(target);
+        if (success)
+            g_editor.documentPanel_.setTarget(target);
+    }
+    if (!success) {
+        const auto error = document.error();
+        document.cancelPending();
+        document.failed(error);
+    }
+}
+
+void requestDocumentAction(DocumentAction action, DocumentLocation target = {}) {
+    settleDocumentEdits();
+    closeLocalPartEdit();
+    setTransformMode(false);
+    g_loftTool.active_ = false;
+    g_jointTool.active_ = false;
+    g_editor.document_.request(action, std::move(target));
+    performPendingDocumentAction();
+}
+
+void beginDocumentSave(bool saveAs) {
+    settleDocumentEdits();
+    const auto target = saveAs || !g_editor.document_.location().valid()
+                            ? g_editor.documentPanel_.target()
+                            : g_editor.document_.location();
+    if (!target.valid()) {
+        g_editor.document_.failed("Enter a directory and document name before saving.");
+        return;
+    }
+    const auto path = std::filesystem::path(target.directory_) /
+                      (target.baseName_ + (g_entitySceneMode ? ".prefab.lua" : "_frame_0.vxs"));
+    std::error_code error;
+    const bool exists = std::filesystem::exists(path, error);
+    if (error) {
+        g_editor.document_.failed(error.message());
+        return;
+    }
+    if (exists && (saveAs || target != g_editor.document_.location())) {
+        g_editor.overwriteTarget_ = target;
+        setTransformMode(false);
+        g_loftTool.active_ = false;
+        return;
+    }
+    if (saveDocumentAt(target))
+        performPendingDocumentAction();
+}
+
+void restoreDocumentModalWidgets() {
+    for (const auto &[id, disabled] : g_editor.documentDisabledWidgets_) {
+        if (IREntity::entityExists(id))
+            IRPrefab::Widget::setDisabled(id, disabled);
+    }
+    g_editor.documentDisabledWidgets_.clear();
+}
+
+void updateDocumentModalWidgets() {
+    const bool blocked = documentInteractionBlocked();
+    const auto &documentWidgets = g_editor.documentPanel_.widgets();
+    if (!blocked) {
+        restoreDocumentModalWidgets();
+        return;
+    }
+    IREntity::forEachComponent<C_Widget>([&](IREntity::EntityId id, C_Widget &widget) {
+        if (std::find(documentWidgets.begin(), documentWidgets.end(), id) != documentWidgets.end())
+            return;
+        g_editor.documentDisabledWidgets_.try_emplace(id, widget.disabled_);
+        widget.disabled_ = true;
+        if (auto state = IREntity::getComponentOptional<C_WidgetState>(id))
+            **state = {};
+    });
+    IRCommand::getCommandManager().setKeyboardCaptured(true);
+}
+
+void updateDocuments() {
+    if (!g_editor.documentsEnabled_)
+        return;
+    const auto action = g_editor.documentPanel_.poll();
+    const bool escape = documentInteractionBlocked() &&
+                        IRInput::checkKeyMouseButton(IRInput::kKeyButtonEscape, IRInput::PRESSED);
+    if (action != DocumentPanelAction::NONE || escape)
+        restoreDocumentModalWidgets();
+    if (action == DocumentPanelAction::CANCEL || escape) {
+        g_editor.overwriteTarget_.reset();
+        g_editor.document_.cancelPending();
+    } else if (action == DocumentPanelAction::CONFIRM_OVERWRITE && g_editor.overwriteTarget_) {
+        const auto target = *g_editor.overwriteTarget_;
+        g_editor.overwriteTarget_.reset();
+        if (saveDocumentAt(target))
+            performPendingDocumentAction();
+    } else if (action == DocumentPanelAction::DISCARD) {
+        g_editor.document_.discardPendingChanges();
+        performPendingDocumentAction();
+    } else if (action == DocumentPanelAction::SAVE_CHANGES || action == DocumentPanelAction::SAVE) {
+        beginDocumentSave(false);
+    } else if (action == DocumentPanelAction::SAVE_AS) {
+        beginDocumentSave(true);
+    } else if (action == DocumentPanelAction::OPEN) {
+        requestDocumentAction(DocumentAction::OPEN, g_editor.documentPanel_.target());
+    } else if (action == DocumentPanelAction::NEW_DOCUMENT) {
+        requestDocumentAction(DocumentAction::NEW_DOCUMENT);
+    }
+    g_editor.documentPanel_.update(
+        g_editor.document_,
+        g_editor.overwriteTarget_.has_value(),
+        g_editor.documentStatus_
+    );
+    updateDocumentModalWidgets();
+}
+
 constexpr unsigned workspaceMask(Workspace workspace) {
     return 1u << static_cast<unsigned>(workspace);
 }
@@ -4113,6 +4543,8 @@ unsigned workspaceMembership(ivec2 pos) {
 }
 
 void updateWorkspaces() {
+    if (documentInteractionBlocked())
+        return;
     if (g_editor.localEditButton_ != IREntity::kNullEntity) {
         if (IRPrefab::Widget::wasClicked(g_editor.localEditButton_))
             toggleLocalPartEdit();
@@ -4128,9 +4560,9 @@ void updateWorkspaces() {
     }
     if (g_editor.documentStatusLabel_ != IREntity::kNullEntity) {
         std::string status = g_editor.documentStatus_;
-        if (IRRender::measureText(status, 0, IRRender::TextSize::SMALL).x > 620) {
+        if (IRRender::measureText(status, 0, IRRender::TextSize::SMALL).x > 520) {
             while (!status.empty() &&
-                   IRRender::measureText(status + "...", 0, IRRender::TextSize::SMALL).x > 620)
+                   IRRender::measureText(status + "...", 0, IRRender::TextSize::SMALL).x > 520)
                 status.pop_back();
             status += "...";
         }
@@ -4243,6 +4675,50 @@ bool evaluateLocalCanvasCheck(const void *context, std::string &actual) {
              " hierarchy=" + std::to_string(hierarchy) + " mode=" + std::to_string(mode);
     return g_editor.localEdit_.active() == check.editing_ && occupied == check.occupied_ && pose &&
            hierarchy && mode && set.anchor_ == EntityAnchor::CENTER;
+}
+
+bool evaluateDocumentWorkflowCheck(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const DocumentWorkflowCheck *>(context);
+    const auto &document = g_editor.document_;
+    const bool pending = document.pendingAction() != DocumentAction::NONE;
+    const bool overwrite = g_editor.overwriteTarget_.has_value();
+    const bool animationControlsDisabled =
+        IREntity::getComponent<C_Widget>(g_scrubberSlider).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_fpsSlider).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_editor.addFrameButton_).disabled_ &&
+        IREntity::getComponent<C_Widget>(g_editor.duplicateFrameButton_).disabled_;
+    bool occupied = false;
+    if (g_editor.editableVoxelSet_ != IREntity::kNullEntity) {
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const auto records = set.authoredRecords();
+        const auto flat = static_cast<std::size_t>(
+            IRMath::index3DtoIndex1D(ivec3(3, 3, set.size_.z - 2), set.size_)
+        );
+        occupied = flat < records.size() && records[flat].color_.alpha_ != 0;
+    }
+    std::string jointName;
+    bool jointNameMatches = check.jointName_ == nullptr;
+    if (check.jointName_ && g_jointTool.rigRoot_ != IREntity::kNullEntity) {
+        const auto &joints = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_).joints_;
+        if (!joints.empty()) {
+            const auto name = IREntity::getComponentOptional<C_JointName>(joints.front());
+            if (name)
+                jointName = (*name)->name_;
+            jointNameMatches = name && jointName == check.jointName_;
+        }
+    }
+    actual = "jointName=" + jointName + " name=" + document.location().baseName_ +
+             " dirty=" + std::to_string(document.dirty()) + " pending=" + std::to_string(pending) +
+             " overwrite=" + std::to_string(overwrite) + " occupied=" + std::to_string(occupied) +
+             " entityMode=" + std::to_string(g_entitySceneMode) +
+             " animationControlsDisabled=" + std::to_string(animationControlsDisabled) +
+             " error=" + document.error();
+    return jointNameMatches && g_entitySceneMode == check.entityMode_ &&
+           (!check.checkAnimationControls_ ||
+            animationControlsDisabled == check.animationControlsDisabled_) &&
+           document.location().baseName_ == check.name_ && document.dirty() == check.dirty_ &&
+           pending == check.pending_ && overwrite == check.overwrite_ &&
+           !document.error().empty() == check.error_ && occupied == check.occupied_;
 }
 
 bool evaluateAnimationBoundaryCheck(const void *context, std::string &actual) {
@@ -5470,6 +5946,7 @@ int main(int argc, char **argv) {
          "animation_boundary",
          "sculpt_workflow",
          "sculpt_single_save",
+         "document_workflow",
          "local_canvas",
          "hierarchy_workflow",
          "tier_scrub",
@@ -5662,6 +6139,9 @@ int main(int argc, char **argv) {
             IRVoxelEditor::g_session.checks_.size()
         );
     }
+    IRVoxelEditor::g_editor.documentsEnabled_ =
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::DOCUMENT_WORKFLOW;
     initSystems();
     initCommands();
     initEntities();
@@ -5669,6 +6149,18 @@ int main(int argc, char **argv) {
         return exitCleanly(2);
     IRVoxelEditor::initComponentsUi();
     IRVoxelEditor::updateWorkspaces();
+    if (IRVoxelEditor::g_editor.documentsEnabled_) {
+        IRWindow::setCloseGuard([]() {
+            using namespace IRVoxelEditor;
+            if (g_editor.documentCloseApproved_)
+                return true;
+            settleDocumentEdits();
+            if (!g_editor.document_.dirty())
+                return true;
+            requestDocumentAction(DocumentAction::CLOSE);
+            return false;
+        });
+    }
     IREngine::gameLoop();
     return 0;
 }
@@ -5845,7 +6337,7 @@ void initSystems() {
         [](const C_GuiElement &) {},
         [lip]() { lip->mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels(); },
         [lip]() {
-            if (!IRVoxelEditor::g_loftTool.active_)
+            if (IRVoxelEditor::documentInteractionBlocked() || !IRVoxelEditor::g_loftTool.active_)
                 return;
 
             const bool leftPressed =
@@ -5966,6 +6458,8 @@ void initSystems() {
         []() {},
         []() {
             IRVoxelEditor::updateWorkspaces();
+            if (IRVoxelEditor::documentInteractionBlocked())
+                return;
             // All 3D editing is suppressed in loft mode — the loft input system
             // handles mouse events over the mask panels instead.
             if (IRVoxelEditor::g_loftTool.active_)
@@ -6061,6 +6555,10 @@ void initSystems() {
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel) ||
+                              (IRVoxelEditor::g_editor.documentsEnabled_ &&
+                               IRVoxelEditor::g_editor.documentPanel_.containsCursor(
+                                   IRPrefab::Layout::mousePositionInGuiTrixels()
+                               )) ||
                               IRVoxelEditor::cursorOverPartSizePanel() ||
                               IRVoxelEditor::cursorOverModuleUi();
             if (!overWidget) {
@@ -6320,6 +6818,8 @@ void initSystems() {
         "EditorScrubberSync",
         [](const C_GuiElement &) {},
         []() {
+            if (IRVoxelEditor::documentInteractionBlocked())
+                return;
             if (IRVoxelEditor::g_scrubberSlider == IREntity::kNullEntity)
                 return;
             if (IRVoxelEditor::g_entitySceneMode)
@@ -6341,8 +6841,11 @@ void initSystems() {
                 );
             }
             if (IRVoxelEditor::g_fpsSlider != IREntity::kNullEntity) {
-                IRVoxelEditor::g_anim.fps_ =
-                    IRPrefab::Widget::sliderValue(IRVoxelEditor::g_fpsSlider);
+                const float fps = IRPrefab::Widget::sliderValue(IRVoxelEditor::g_fpsSlider);
+                if (fps != IRVoxelEditor::g_anim.fps_) {
+                    IRVoxelEditor::markDocumentEdited();
+                    IRVoxelEditor::g_anim.fps_ = fps;
+                }
             }
         }
     );
@@ -6381,6 +6884,8 @@ void initSystems() {
         []() {},
         []() {
             using namespace IRVoxelEditor;
+            if (documentInteractionBlocked())
+                return;
             if (g_lodPanel == IREntity::kNullEntity)
                 return;
             if (g_editor.suppressPartGesture_) {
@@ -6443,6 +6948,8 @@ void initSystems() {
         []() {},
         []() {
             using namespace IRVoxelEditor;
+            if (documentInteractionBlocked())
+                return;
             if (g_partSizePanel == IREntity::kNullEntity)
                 return;
             for (int axis = 0; axis < kPartSizeAxisCount; ++axis) {
@@ -6470,6 +6977,8 @@ void initSystems() {
         []() {},
         []() {
             using namespace IRVoxelEditor;
+            if (documentInteractionBlocked())
+                return;
             if (g_entitySceneMode && g_partsList != IREntity::kNullEntity &&
                 IRPrefab::Widget::wasClicked(g_partsList)) {
                 const int selected = IRPrefab::Widget::listSelectedIndex(g_partsList);
@@ -6497,14 +7006,17 @@ void initSystems() {
             // List click → set active layer.
             if (IRPrefab::Widget::wasClicked(g_layerList)) {
                 const int sel = list.selectedIndex_;
-                if (sel >= 0 && sel < static_cast<int>(layers.size()))
+                if (sel >= 0 && sel < static_cast<int>(layers.size())) {
+                    IRVoxelEditor::markDocumentEdited();
                     g_layerManager.setActiveLayer(layers[static_cast<std::size_t>(sel)].id_);
+                }
             }
 
             // Checkbox click → toggle active layer visibility + update voxels.
             if (g_layerVisCheckbox != IREntity::kNullEntity &&
                 IRPrefab::Widget::wasClicked(g_layerVisCheckbox)) {
                 const std::uint8_t activeId = g_layerManager.activeLayerId();
+                markDocumentEdited();
                 bool nowVisible = g_layerManager.toggleLayerVisibility(activeId);
                 applyLayerVisibility(activeId, nowVisible);
             }
@@ -6515,8 +7027,10 @@ void initSystems() {
                 std::uint8_t id = g_layerManager.addLayer(
                     "layer " + std::to_string(g_layerManager.layers().size())
                 );
-                if (id != 0)
+                if (id != 0) {
+                    IRVoxelEditor::markDocumentEdited();
                     g_layerManager.setActiveLayer(id);
+                }
             }
 
             // Delete button → migrate voxels to default, then remove layer.
@@ -6535,6 +7049,7 @@ void initSystems() {
                         else
                             v.deactivate();
                     });
+                    IRVoxelEditor::markDocumentEdited();
                     g_layerManager.deleteLayer(delId);
                 }
             }
@@ -6587,6 +7102,8 @@ void initSystems() {
         []() {},
         []() {
             using namespace IRVoxelEditor;
+            if (documentInteractionBlocked())
+                return;
             if (g_bakeButton == IREntity::kNullEntity)
                 return;
             if (!IRPrefab::Widget::wasClicked(g_bakeButton))
@@ -6633,6 +7150,8 @@ void initSystems() {
         []() {},
         []() {
             using namespace IRVoxelEditor;
+            if (documentInteractionBlocked())
+                return;
             if (g_arrayApplyButton == IREntity::kNullEntity ||
                 !IRPrefab::Widget::wasClicked(g_arrayApplyButton)) {
                 return;
@@ -6671,6 +7190,8 @@ void initSystems() {
         [](const C_GuiElement &) {},
         []() {},
         []() {
+            if (IRVoxelEditor::documentInteractionBlocked())
+                return;
             IRVoxelEditor::updateRecipesPanel();
             IRVoxelEditor::updateComponentsPanel();
         }
@@ -6694,7 +7215,10 @@ void initSystems() {
         "EditorRecipeHandles",
         [](const C_GuiElement &) {},
         []() {},
-        []() { IRVoxelEditor::updateRecipeHandleDrag(); }
+        []() {
+            if (!IRVoxelEditor::documentInteractionBlocked())
+                IRVoxelEditor::updateRecipeHandleDrag();
+        }
     );
     auto partTransformHistorySystem = IRSystem::createSystem<C_GuiElement>(
         "EditorPartTransformHistory",
@@ -6709,6 +7233,9 @@ void initSystems() {
         [gizmoDragId]() {
             const auto *drag =
                 IRSystem::getSystemParams<IRSystem::System<IRSystem::GIZMO_DRAG>>(gizmoDragId);
+            if (drag->dragHandle_ != IREntity::kNullEntity &&
+                IRVoxelEditor::isRigJoint(drag->dragAnchor_))
+                IRVoxelEditor::markDocumentEdited();
             const bool releasedThisFrame =
                 IRVoxelEditor::g_jointTool.lastDragHandle_ != IREntity::kNullEntity &&
                 drag->dragHandle_ == IREntity::kNullEntity;
@@ -6735,6 +7262,8 @@ void initSystems() {
         []() {},
         []() {
             using namespace IRVoxelEditor;
+            if (documentInteractionBlocked())
+                return;
             if (g_skeletonList == IREntity::kNullEntity)
                 return;
 
@@ -6801,6 +7330,7 @@ void initSystems() {
                         sk.joints_[static_cast<std::size_t>(idx)],
                         C_JointName{newName}
                     );
+                    markDocumentEdited();
                 }
             }
 
@@ -6828,12 +7358,20 @@ void initSystems() {
                             (newParentIdx < 0) ? g_jointTool.rigRoot_
                                                : sk.joints_[static_cast<std::size_t>(newParentIdx)];
                         IREntity::setParent(joint, newParentEntity);
+                        markDocumentEdited();
                         g_jointTool.parentIdx_[static_cast<std::size_t>(idx)] = newParentIdx;
                         recomputeJointBindPose();
                     }
                 }
             }
         }
+    );
+
+    const auto documentSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorDocuments",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() { IRVoxelEditor::updateDocuments(); }
     );
 
     IRSystem::registerPipeline(
@@ -6847,6 +7385,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
+         documentSystem,
          scrubberSystem,
          layerSyncSystem,
          lodPanelSyncSystem,
@@ -6989,9 +7528,9 @@ void initCommands() {
                         return;
                     IRVoxelEditor::finishSculptStroke();
                     if (redo)
-                        IRPrefab::Undo::redo();
+                        IRVoxelEditor::replayDocumentUndo(true);
                     else
-                        IRPrefab::Undo::undo();
+                        IRVoxelEditor::replayDocumentUndo(false);
                 },
                 required,
                 excluded,
@@ -7076,6 +7615,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonX,
         [logSymmetry]() {
+            IRVoxelEditor::markDocumentEdited();
             IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_;
             if (IRVoxelEditor::g_symmetry.enableX_)
                 IRVoxelEditor::seatEditorMirrorAxis(0);
@@ -7091,6 +7631,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonY,
         [logSymmetry]() {
+            IRVoxelEditor::markDocumentEdited();
             IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_;
             if (IRVoxelEditor::g_symmetry.enableY_)
                 IRVoxelEditor::seatEditorMirrorAxis(1);
@@ -7106,6 +7647,7 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonZ,
         [logSymmetry]() {
+            IRVoxelEditor::markDocumentEdited();
             IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_;
             if (IRVoxelEditor::g_symmetry.enableZ_)
                 IRVoxelEditor::seatEditorMirrorAxis(2);
@@ -7294,6 +7836,7 @@ void initCommands() {
             const int deletedFrame = anim.activeFrame_;
             auto &contexts = IRVoxelEditor::g_editor.frameUndoContexts_;
             if (deletedFrame < static_cast<int>(contexts.size())) {
+                IRVoxelEditor::markDocumentEdited();
                 IRPrefab::Undo::eraseContext(contexts[deletedFrame]);
                 contexts.erase(contexts.begin() + deletedFrame);
             }
@@ -7319,6 +7862,7 @@ void initCommands() {
             if (!IRVoxelEditor::canEditAnimationFrames())
                 return;
             auto &anim = IRVoxelEditor::g_anim;
+            IRVoxelEditor::markDocumentEdited();
             anim.loopMode_ = (anim.loopMode_ == IRVoxelEditor::LoopMode::LOOP)
                                  ? IRVoxelEditor::LoopMode::PING_PONG
                                  : IRVoxelEditor::LoopMode::LOOP;
@@ -7445,8 +7989,10 @@ void initCommands() {
             std::uint8_t id = IRVoxelEditor::g_layerManager.addLayer(
                 "layer " + std::to_string(IRVoxelEditor::g_layerManager.layers().size())
             );
-            if (id != 0)
+            if (id != 0) {
+                IRVoxelEditor::markDocumentEdited();
                 IRVoxelEditor::g_layerManager.setActiveLayer(id);
+            }
             IR_LOG_INFO("Layers after add:");
             IRVoxelEditor::logLayerState();
         },
@@ -7464,6 +8010,7 @@ void initCommands() {
         []() {
             if (IRVoxelEditor::localToolUnsupported("Layers"))
                 return;
+            IRVoxelEditor::markDocumentEdited();
             IRVoxelEditor::g_layerManager.selectPrevLayer();
             IRVoxelEditor::logLayerState();
         },
@@ -7481,6 +8028,7 @@ void initCommands() {
         []() {
             if (IRVoxelEditor::localToolUnsupported("Layers"))
                 return;
+            IRVoxelEditor::markDocumentEdited();
             IRVoxelEditor::g_layerManager.selectNextLayer();
             IRVoxelEditor::logLayerState();
         },
@@ -7592,6 +8140,7 @@ void initCommands() {
             if (IRVoxelEditor::localToolUnsupported("Layers"))
                 return;
             const std::uint8_t layerId = IRVoxelEditor::g_layerManager.activeLayerId();
+            IRVoxelEditor::markDocumentEdited();
             bool nowVisible = IRVoxelEditor::g_layerManager.toggleLayerVisibility(layerId);
             IRVoxelEditor::applyLayerVisibility(layerId, nowVisible);
             IR_LOG_INFO("Layer {} visibility -> {}", layerId, nowVisible ? "shown" : "hidden");
@@ -7706,6 +8255,10 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonBackspace,
         []() {
+            if (IRVoxelEditor::g_editor.documentsEnabled_) {
+                IRVoxelEditor::requestDocumentAction(IRVoxelEditor::DocumentAction::NEW_DOCUMENT);
+                return;
+            }
             if (IRVoxelEditor::g_entitySceneMode) {
                 IRVoxelEditor::clearEntitySceneForLoad();
             }
@@ -7723,6 +8276,10 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonS,
         []() {
+            if (IRVoxelEditor::g_editor.documentsEnabled_) {
+                IRVoxelEditor::beginDocumentSave(false);
+                return;
+            }
             IRVoxelEditor::finishSculptStroke();
             IRVoxelEditor::finishPartEdits();
             if (IRVoxelEditor::g_entitySceneMode) {
@@ -7776,12 +8333,16 @@ void initCommands() {
         "SAVE ALL FRAMES AND LAYERS"
     );
 
-    // Ctrl+Shift+S — save skeleton to {kSceneSaveDir}/{kSceneBaseName}.rig.
+    // Interactive documents use Save As; legacy scripted sessions export the rig separately.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonS,
         []() {
+            if (IRVoxelEditor::g_editor.documentsEnabled_) {
+                IRVoxelEditor::beginDocumentSave(true);
+                return;
+            }
             if (IRVoxelEditor::g_jointTool.rigRoot_ == IREntity::kNullEntity) {
                 IR_LOG_WARN("No rig to save — author joints with J + B first.");
                 return;
@@ -7803,8 +8364,8 @@ void initCommands() {
         },
         IRInput::kModifierControl | IRInput::kModifierShift,
         IRInput::kModifierNone,
-        "SAVE RIG",
-        "SAVE SKELETON TO .RIG FILE"
+        "SAVE AS / LEGACY RIG SAVE",
+        "SAVE DOCUMENT AT NAME AND DIRECTORY; LEGACY SESSIONS SAVE RIG"
     );
 
     // Ctrl+O — load scene from disk, replacing all frames and layer state.
@@ -7813,6 +8374,13 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonO,
         []() {
+            if (IRVoxelEditor::g_editor.documentsEnabled_) {
+                IRVoxelEditor::requestDocumentAction(
+                    IRVoxelEditor::DocumentAction::OPEN,
+                    IRVoxelEditor::g_editor.documentPanel_.target()
+                );
+                return;
+            }
             if (IRVoxelEditor::g_entitySceneMode) {
                 IRVoxelEditor::cancelSculptStroke();
                 IRVoxelEditor::closeLocalPartEdit();
@@ -7885,7 +8453,7 @@ void initCommands() {
         "LOAD SCENE, REPLACE ALL FRAMES"
     );
 
-    // Ctrl+Shift+O — load skeleton from {kSceneSaveDir}/{kSceneBaseName}.rig.
+    // Standalone rig import is restricted to legacy scripted sessions.
     // Destroys existing joint entities and their gizmo children, then
     // reconstructs the skeleton from the saved .rig file.
     IRCommand::createCommand(
@@ -7893,6 +8461,12 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonO,
         []() {
+            if (IRVoxelEditor::g_editor.documentsEnabled_) {
+                IRVoxelEditor::g_editor.document_.failed(
+                    "Use OPEN to load the document and its rig together."
+                );
+                return;
+            }
             auto loaded = IRVoxelEditor::loadRigScene(
                 std::string(IRVoxelEditor::kSceneSaveDir),
                 std::string(IRVoxelEditor::kSceneBaseName)
@@ -8640,13 +9214,31 @@ void initEntities() {
     );
     g_editor.documentStatusLabel_ =
         IRPrefab::Widget::makeLabel(ivec2(4, 78), "", {}, IRRender::TextSize::SMALL);
-    IRPrefab::Widget::makeLabel(
-        ivec2(4, 91),
-        "CTRL+S SAVE / CTRL+O REOPEN: " + std::string(IRVoxelEditor::kSceneSaveDir) + "/" +
-            std::string(IRVoxelEditor::kSceneBaseName),
-        {},
-        IRRender::TextSize::SMALL
-    );
+    if (g_editor.documentsEnabled_) {
+        const bool fixture =
+            IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::DOCUMENT_WORKFLOW;
+        const IRVoxelEditor::DocumentLocation location =
+            fixture ? IRVoxelEditor::DocumentLocation{"data/gui_document_workflow", "draft"}
+                    : IRVoxelEditor::legacyDocumentLocation();
+        g_editor.documentPanel_.create(location);
+        if (fixture) {
+            IRVoxelEditor::AnimationState animation;
+            const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+            const std::vector<std::vector<C_Voxel>> empty{
+                std::vector<C_Voxel>(set.recordCount(), C_Voxel{Color{0, 0, 0, 0}})
+            };
+            const auto saved = IRVoxelEditor::saveEditorScene(
+                location.directory_,
+                location.baseName_,
+                empty,
+                set.size_,
+                IRVoxelEditor::EditorLayerManager{},
+                animation,
+                IRVoxelEditor::SymmetryState{}
+            );
+            IR_ASSERT(saved.ok_, "Could not prepare named-document GUI fixture");
+        }
+    }
     g_editor.hierarchy_.create();
     IRVoxelEditor::g_helpEntries.push_back(
         {g_editor.hierarchy_.panel(),
