@@ -88,6 +88,8 @@ struct CliOverrides {
     int gridSize_ = 16;
     bool zoomSet_ = false;
     float zoom_ = 0.5f;
+    bool waveAmplitudeSet_ = false;
+    float waveAmplitude_ = 0.0f;
     bool subdivisionModeSet_ = false;
     IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
     bool baseSubdivisionsSet_ = false;
@@ -131,6 +133,9 @@ void applyCliOverrides() {
     if (g_cliOverrides.zoomSet_) {
         g_settings.initialZoom_ = g_cliOverrides.zoom_;
     }
+    if (g_cliOverrides.waveAmplitudeSet_) {
+        g_settings.waveAmplitude_ = g_cliOverrides.waveAmplitude_;
+    }
 }
 
 // Declare lua_perf_grid's custom flags on the engine-owned parser. Must run
@@ -147,6 +152,7 @@ void registerArgs() {
     );
     args.integer("--grid-size", "Override the grid edge in cells (> 0)", 0);
     args.number("--zoom", "Override the initial camera zoom (> 0)", 0.0f);
+    args.number("--wave-amplitude", "Per-frame idle wave amplitude (0 = static scene)", 0.0f);
     args.string(
         "--subdivision-mode",
         "Voxel subdivision mode override (none|position_only|full)",
@@ -188,6 +194,10 @@ void applyArgs() {
             g_cliOverrides.zoom_ = zoom;
             g_cliOverrides.zoomSet_ = true;
         }
+    }
+    if (args.wasProvided("--wave-amplitude")) {
+        g_cliOverrides.waveAmplitude_ = args.getFloat("--wave-amplitude");
+        g_cliOverrides.waveAmplitudeSet_ = true;
     }
     if (args.wasProvided("--subdivision-mode")) {
         const std::string mode = args.getString("--subdivision-mode");
