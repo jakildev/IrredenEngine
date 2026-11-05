@@ -26,6 +26,7 @@ target_compile_options(
 FetchContent_Declare(fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
   GIT_TAG 11.2.0
+  GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(fmt)
 
@@ -40,6 +41,7 @@ FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog
     GIT_TAG v1.15.3
+    GIT_SHALLOW TRUE
 )
 option(
     IR_SPDLOG_FMT_EXTERNAL
@@ -89,6 +91,7 @@ FetchContent_Declare(
     easy_profiler
     GIT_REPOSITORY https://github.com/yse/easy_profiler
     GIT_TAG v2.1.0
+    GIT_SHALLOW TRUE
 )
 set(EASY_PROFILER_NO_GUI ON CACHE BOOL "" FORCE)
 if(IRREDEN_PROFILE_ENABLE_EASY_PROFILER_GUI)

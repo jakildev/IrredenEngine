@@ -14,6 +14,7 @@ layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
 layout(std430, binding = 20) readonly buffer ShapeBuffer { ShapeDescriptor shapes[]; };
 layout(std140, binding = 23) uniform ShapeProjectionFrame { ShapeProjectionData shapeProjection; };
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap { uint sunDepthBuf[]; };
+#include "ir_sun_depth_slab_write.glsl"
 layout(std140, binding = 16) uniform ShapeSunFrame { ivec4 dispatch; };
 layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec4 sunDirection;
@@ -129,7 +130,10 @@ void main() {
                 if (!(fogBody) && fogCeilingEnabled.x != 0 && fogShadowVisionCircleCount > 0 &&
         !fogFieldCastsSunShadow(worldSample, false, fogCeilingEnabled.x,
             fogShadowCell(worldSample))) continue;
-                atomicMin(sunDepthBuf[depthLayerOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth));
+                const int texelIndex = cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x;
+                // Only the primary layer keeps slab extrema; the indexed fallback stays nearest-only.
+                if (depthLayerOffset == 0u) writeSunPrimaryDepth(texelIndex, packSunSurfaceDepth(casterDepth));
+                else atomicMin(sunDepthBuf[depthLayerOffset + uint(texelIndex)], packSunSurfaceDepth(casterDepth));
             }
         }
     }

@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.28.0)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+# Must precede project(): CMake reads it while loading each language's rules.
+set(CMAKE_USER_MAKE_RULES_OVERRIDE ${CMAKE_CURRENT_LIST_DIR}/cmake/ir_make_rules_override.cmake)
 project(BuildCreation VERSION 0.1.0)
 
 option(IRREDEN_BUILD_CREATIONS "Build creations present in this tree (engine-owned creations/ and nested private checkouts)" ${PROJECT_IS_TOP_LEVEL})
@@ -47,6 +49,34 @@ else()
         $<$<CONFIG:Release>:-O3>
         $<$<CONFIG:RelWithDebInfo>:-O3>
     )
+endif()
+
+# Debug-info depth for Debug builds. The engine and its deps link statically
+# into every executable, so full -g repeats the engine's DWARF in each one
+# (~330 MB per demo, 1.7 GB for IrredenEngineTest on MinGW). LINES (-g1) keeps
+# function names and file:line backtraces in gdb but drops locals, arguments
+# and types. FULL is the interactive-debugging default; fleet-up exports
+# IRREDEN_DEBUG_INFO=LINES so fleet worktrees configure with the small form.
+# The environment only seeds a build dir's first configure — change an
+# existing one with -DIRREDEN_DEBUG_INFO=<FULL|LINES>.
+# Compressed DWARF is no alternative on MinGW: gcc rejects -gz ("not supported
+# in this configuration") and neither ld nor objcopy --compress-debug-sections
+# accepts PE.
+if(DEFINED ENV{IRREDEN_DEBUG_INFO})
+    set(_irDebugInfoDefault "$ENV{IRREDEN_DEBUG_INFO}")
+else()
+    set(_irDebugInfoDefault FULL)
+endif()
+set(IRREDEN_DEBUG_INFO "${_irDebugInfoDefault}" CACHE STRING "Debug-build debug info: FULL (-g) or LINES (-g1)")
+set_property(CACHE IRREDEN_DEBUG_INFO PROPERTY STRINGS FULL LINES)
+string(TOUPPER "${IRREDEN_DEBUG_INFO}" _irDebugInfo)
+if(_irDebugInfo STREQUAL "LINES")
+    if(NOT MSVC)
+        # Lands after CMAKE_<LANG>_FLAGS_DEBUG's -g on the command line, so it wins.
+        add_compile_options($<$<CONFIG:Debug>:-g1>)
+    endif()
+elseif(NOT _irDebugInfo STREQUAL "FULL")
+    message(FATAL_ERROR "IRREDEN_DEBUG_INFO must be FULL or LINES (got '${IRREDEN_DEBUG_INFO}')")
 endif()
 
 include(cmake/ir_functions.cmake)

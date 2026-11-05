@@ -56,9 +56,9 @@
 //         snapped to their lattice, and every result is clamped to its
 //         param's range. A key outside `params`, a non-number, or a
 //         raise is logged and that drag frame changes nothing.
-//     Each drag frame that changes the values replaces the cells the recipe
-//     made at the old values with the cells it makes at the new ones, and the
-//     release commits the drag as one undo record. An unknown opts key or a
+//     Each changed drag frame replaces unchanged generated cells, preserving
+//     manual overrides against the old output. Erased cells have no tombstone
+//     outside that footprint. Release commits one undo record. An unknown opts key or a
 //     malformed handle is a load error.
 //   IREditor.registerPanel(name, buildFn)
 //     buildFn(x, y, w, h) builds IRGui widgets inside the panel the editor

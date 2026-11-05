@@ -17,7 +17,11 @@ void closeWindow() {
 }
 
 bool isCloseRequested() {
-    return getWindow().shouldClose() != 0;
+    return getWindow().isCloseRequested();
+}
+
+void setCloseGuard(std::function<bool()> guard) {
+    getWindow().setCloseGuard(std::move(guard));
 }
 
 void getWindowSize(IRMath::ivec2 &size) {

@@ -250,6 +250,9 @@ emutls-shaped crash (a `thread_local` destructor faulting during
 chasing. It is a diagnostic workaround, not a fix — the use-after-free is
 real and surfaces in a non-debugger run once the freed block is reused.
 
+Fleet build dirs are `-g1` (`IRREDEN_DEBUG_INFO=LINES`, root `CMakeLists.txt`):
+`bt` keeps `file:line` but no locals; reconfigure `-DIRREDEN_DEBUG_INFO=FULL`.
+
 ### Running the fleet on native Windows
 
 The bash+tmux fleet runs natively (host key `windows`): orchestration from

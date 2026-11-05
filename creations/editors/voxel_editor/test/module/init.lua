@@ -743,3 +743,50 @@ IREditor.registerSession("test_bake_radius_guard", function(session)
     session:segment("save")
     session:save()
 end)
+
+IREditor.registerSession("test_recipe_reapply", function(session)
+    local size = session:sceneSize()
+    local x, y = math.floor(size.x / 2), math.floor(size.y / 2)
+    local function cell(height) return { x, y, size.z - 1 - height } end
+
+    session:segment("generated")
+    session:addVoxelPart()
+    session:applyRecipe("test_column", { height = 5 })
+    session:expectPartAuthoredCount(0, 5, "five_generated")
+    session:expectPartMatchesRecipe(0, "initial_matches")
+
+    session:segment("shrink")
+    session:applyRecipe("test_column", { height = 2 })
+    session:expectPartAuthoredCount(0, 2, "shrink_replaces")
+    session:expectPartOccupancy(0, cell(5), false, "old_tip_removed")
+    session:expectPartMatchesRecipe(0, "shrink_matches")
+
+    session:segment("undo_shrink")
+    session:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.Z)
+    session:expectPartAuthoredCount(0, 5, "undo_restores_five")
+    session:expectRecipeValue(0, "height", 5, "undo_restores_binding")
+
+    session:segment("redo_shrink")
+    session:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.Y)
+    session:expectPartAuthoredCount(0, 2, "redo_restores_two")
+    session:expectRecipeValue(0, "height", 2, "redo_restores_binding")
+
+    session:segment("expand")
+    session:applyRecipe("test_column", { height = 4 })
+    session:expectPartAuthoredCount(0, 4, "expand_replaces")
+    session:expectPartMatchesRecipe(0, "expand_matches")
+
+    session:segment("manual_color")
+    session:selectPaletteSwatch(3)
+    session:clickGui({177, 37})
+    -- PAINT hits the anchor face; the occupancy-only click model is unused below.
+    session:clickFace(cell(4), {0, 0, -1})
+    session:expectVoxelColor(cell(4), 3, "manual_color_applied")
+
+    session:segment("reapply_keeps_color")
+    session:applyRecipe("test_column", { height = 5 })
+    session:expectPartAuthoredCount(0, 5, "expanded_with_manual_color")
+    session:expectVoxelColor(cell(4), 3, "manual_color_preserved")
+    session:expectPartOccupancy(0, cell(5), true, "new_tip_added")
+    session:expectRecipeValue(0, "height", 5, "updated_binding")
+end)

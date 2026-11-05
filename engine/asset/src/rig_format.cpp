@@ -237,6 +237,10 @@ BinaryStatus saveRig(const std::string &name, const std::string &path, const Rig
         return st;
     }
 
+    if (!w.close()) {
+        return BinaryStatus::error(BinaryIOError::WriteFailed, w.failureMessage());
+    }
+
     const std::string sidecarPath = IRUtility::joinPath(path, name, kRigSidecarExtension);
     if (!writeJsonSidecarToFile(sidecarPath, emitSidecarJson(rig))) {
         IRE_LOG_WARN("Saved {} but sidecar emit to {} failed", filename, sidecarPath);

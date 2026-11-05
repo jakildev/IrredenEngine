@@ -49,6 +49,7 @@ EXEMPT=(
     "fleet-queue-backfill-model-labels"  # one-time human backfill
     "fleet-worktree-sweep"               # fleet-health runs its listing in-process; --prune
                                          # (incl. --dirty-too deletion) is a human cleanup step
+    "fleet-clean"                        # disk reclaim; --apply deletes, a human cleanup step
     "solo-architect"                     # human pane launcher
     "review-fleet-feedback"              # the cue-only skill of that name calls it by
                                          # relative path, which a bare-name entry never matches

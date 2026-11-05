@@ -222,7 +222,9 @@ File a follow-up and leave the approval intact when the concern is scope
 expansion, a downstream-PR dependency rather than a bug in this PR, a
 concern the original review explicitly deferred that the human is
 overriding into its own design issue, or a fix needing a heavier class
-than yours. Default to AMEND when uncertain.
+than yours. A `fleet:fable` PR handed to an opus iteration is not that: the
+dispatcher degrades it while Fable's usage window is walled, so amend it
+(never decline it for class). Default to AMEND when uncertain.
 
 1. `gh issue create --repo jakildev/IrredenEngine --title "<short title>"
    --body "<body>"` with **Context** (escalated from PR #N; each concern

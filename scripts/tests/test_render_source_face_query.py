@@ -24,7 +24,7 @@ class SourceFaceQueryTest(unittest.TestCase):
                 shader = (shader.replace("constant uint", "const uint")
                           .replace("device const uint*", "const uint*")
                           .replace("float2", "vec2").replace("float3", "vec3"))
-                names = re.findall(r"const uint (kSourceFace\w+) =", shader)
+                names = re.findall(r"const uint (kSourceFace\w+|kSunDepthSlab\w+) =", shader)
                 checks = "\n".join(f"static_assert({n} == IRPrefab::SunShadow::{n});"
                                    for n in names)
                 header_check = (
@@ -99,7 +99,11 @@ int main() {
         return 13;
     if (sourceFaceRaySeparation(uv, 3, {0, 0, 2}, {1, 0, 0}, {0, 1, 0}) != 1)
         return 14;
-    if (kSourceFaceHeaderOffset != 2u * kSourceFaceFallbackOffset) return 15;
+    if (kSunDepthSlabOffset != 2u * kSourceFaceFallbackOffset ||
+        kSunDepthSlabLayerWords !=
+            kSourceFaceFallbackOffset * kSunDepthSlabSlots * kSunDepthSlabWords ||
+        kSourceFaceHeaderOffset != kSunDepthSlabOffset + kSunDepthSlabLayerWords ||
+        kSunDepthSlabQuantized != kSunDepthSlabWidthUnits * 1024u) return 15;
     const float positions[] = {-0.01f, 0.0f, .25f, 1.0f, 1.01f};
     for (int quadrant = 0; quadrant < 4; ++quadrant) {
         for (int mirrored = 0; mirrored < 2; ++mirrored) {

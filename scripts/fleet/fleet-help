@@ -360,6 +360,14 @@ Parallel-agent fleet (tmux + Claude)
                                  clean ones, salvaging unpushed HEADs to
                                  salvage/<path-slug>; exit 0 clean / 1 leaks
                                  / 3 a clone's worktrees unlistable
+  fleet-clean [--days N] [--apply] [--wipe-builds] [--root <clone>]
+                                 report (dry run) or reclaim regenerable disk:
+                                 build dirs untouched N days (default 14),
+                                 .claude/worktrees/ orphans git does not know,
+                                 temp-dir worktrees, old *.prof / save_files
+                                 output, tmp_pack_* git garbage; never a busy,
+                                 dirty or locked worktree or a tracked file.
+                                 --wipe-builds clears every idle pool's builds
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
   fleet-iteration-summary <agent> "<text>"

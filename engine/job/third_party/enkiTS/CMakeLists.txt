@@ -7,18 +7,17 @@ project(enkiTS LANGUAGES CXX)
 # FetchContent_MakeAvailable is enough; no native Makefile invocation
 # (the LuaJIT precedent next door) needed.
 #
-# Default pins the v1.11 commit SHA for a reproducible build. Override
-# IR_ENKITS_GIT_TAG to a branch or tag name (and set GIT_SHALLOW TRUE in
-# the FetchContent_Declare below) for a mutable reference.
-# The tag is the only knob: enkiTS' own CMakeLists.txt builds a static
+# Default fetches the v1.11 commit as a hash-checked source archive (no git
+# history lands in _deps). Set IR_ENKITS_GIT_REF to a branch or tag name to
+# shallow-clone a mutable reference instead.
+# The ref is the only knob: enkiTS' own CMakeLists.txt builds a static
 # library called `enkiTS` by default, which we re-export as the IMPORTED
 # target `enkits` to keep the engine-side link name consistent with the
 # `lua` rename in `engine/script/third_party/luajit/CMakeLists.txt`.
 include(FetchContent)
 
-# v1.11 — 6ffccbdb1000253d8d513dd7a5ae9226e5023a5c
-set(IR_ENKITS_GIT_TAG "6ffccbdb1000253d8d513dd7a5ae9226e5023a5c" CACHE STRING
-    "enkiTS commit SHA (or branch/tag) to fetch and build")
+set(IR_ENKITS_GIT_REF "" CACHE STRING
+    "enkiTS branch or tag to shallow-clone instead of the pinned v1.11 archive")
 
 # Force-disable enkiTS' optional targets so the vendor add_subdirectory
 # does not pollute our `all` target with example binaries or its test
@@ -29,12 +28,22 @@ set(ENKITS_BUILD_SHARED   OFF CACHE BOOL "" FORCE)
 set(ENKITS_BUILD_C_INTERFACE OFF CACHE BOOL "" FORCE)
 set(ENKITS_INSTALL OFF CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
-    enkiTS_src
-    GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
-    GIT_TAG        ${IR_ENKITS_GIT_TAG}
-    GIT_SHALLOW    FALSE
-)
+if(IR_ENKITS_GIT_REF)
+    FetchContent_Declare(
+        enkiTS_src
+        GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
+        GIT_TAG        ${IR_ENKITS_GIT_REF}
+        GIT_SHALLOW    TRUE
+    )
+else()
+    # v1.11 — 6ffccbdb1000253d8d513dd7a5ae9226e5023a5c
+    FetchContent_Declare(
+        enkiTS_src
+        URL      https://github.com/dougbinks/enkiTS/archive/6ffccbdb1000253d8d513dd7a5ae9226e5023a5c.tar.gz
+        URL_HASH SHA256=a56759d215aa4a9ea2cfe74f80ba92d15de5db2dbef5a268aba320d6b60a0ab0
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+endif()
 
 FetchContent_MakeAvailable(enkiTS_src)
 

@@ -118,6 +118,65 @@ inline bool sourceSunHierarchyBlocks(device const uint* sunDepthBuf, uint capaci
     return false;
 }
 
+// One stored map word against the receiver: the throw window, then the
+// direct / surface near rejection or the coverage-splat same-plane test, which
+// reconstructs the write's origin texel from its displacement nibbles and
+// rejects an occluder lying in the receiver's own plane. Mirrors GLSL.
+inline bool sunStoredTapBlocks(uint stored, float sunZ, float bias, float maxShadowThrow,
+                               bool surfaceReceiver, int2 px, float2 origin, float2 texelSz,
+                               float2 gradUV, float2 sunUV) {
+    if (stored == 0xFFFFFFFFu || (surfaceReceiver && sunWriteIsSurface(stored))) return false;
+    float nearestZ = unpackSunDepth(stored);
+    // Far shadow-throw window — raw sun-Z gap, on BOTH tap regimes.
+    // maxShadowThrow == the feeder / bake sweep (kSunShadowMaxDistance) so
+    // a baked caster is receivable at its full throw.
+    float depthDiff = sunZ - nearestZ;
+    if (depthDiff - bias >= maxShadowThrow) return false;
+    if (sunWriteIsDirect(stored) || sunWriteIsSurface(stored)) {
+        // Direct and finite surface writes compare depth without splat-origin recovery.
+        if (depthDiff <= bias) return false;
+    } else {
+        int2 offset = unpackSunSplatOffset(stored);
+        int2 originTexel = px - offset;
+        float2 originUV = origin + (float2(originTexel) + 0.5f) * texelSz;
+        float expectedZ = sunZ + dot(gradUV, originUV - sunUV);
+        float h = expectedZ - nearestZ;
+        if (h <= bias) return false;
+    }
+    return true;
+}
+
+// A nearest word rejected as beyond the throw is the only one that can hide a
+// nearer blocker. Mirrors GLSL.
+inline bool sunStoredTapBeyondThrow(uint stored, float sunZ, float bias, float maxShadowThrow) {
+    return stored != 0xFFFFFFFFu && sunZ - unpackSunDepth(stored) - bias >= maxShadowThrow;
+}
+
+// Primary-layer slab extrema behind a nearest word beyond the throw: the slab
+// holding the window's far end answers with its max, the next slab with its
+// min, each through the same per-word test. Mirrors GLSL.
+inline bool sunDepthSlabBlocks(device const uint *sunDepthBuf, int texelIndex, float sunZ, float bias,
+                               float maxShadowThrow, bool surfaceReceiver, int2 px, float2 origin,
+                               float2 texelSz, float2 gradUV, float2 sunUV) {
+    if (kSunDepthSlabSlots == 0u || maxShadowThrow != float(kSunDepthSlabWidthUnits)) return false;
+    if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
+    const uint farSlab = sunDepthSlab(packSunDepth(sunZ - bias - maxShadowThrow, int2(0)));
+    for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
+        const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
+        if (low == 0xFFFFFFFFu) break;
+        const uint slab = sunDepthSlab(low);
+        if (slab != farSlab && slab != farSlab + 1u) continue;
+        // Both extrema of a window slab: the far slab's max and the near slab's
+        // min decide depth exactly; the other two recover a splat-rejected extremum.
+        if (sunStoredTapBlocks(low, sunZ, bias, maxShadowThrow, surfaceReceiver,
+                               px, origin, texelSz, gradUV, sunUV)) return true;
+        const uint high = sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, slot)] & ~kSunDepthSlabOverflow;
+        if (sunStoredTapBlocks(high, sunZ, bias, maxShadowThrow, surfaceReceiver,
+                               px, origin, texelSz, gradUV, sunUV)) return true;
+    }
+    return false;
+}
+
 inline float sampleCascadeShadow(
     float2 sunUV, float sunZ, float3 normal, float3 sunDir, float3 uHat, float3 vHat,
     float2 origin, float2 texelSz, int bufferOffset,
@@ -287,31 +346,15 @@ inline float sampleCascadeShadow(
             const int layerCount =
                 !surfaceReceiver && (hasSourceFaces || secondPrimaryDepth) ? 2 : 1;
             for (int layer = 0; layer < layerCount; ++layer) {
-                uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x
-                    + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
-                if (stored == 0xFFFFFFFFu || (surfaceReceiver && sunWriteIsSurface(stored))) continue;
-                float nearestZ = unpackSunDepth(stored);
-                // Far shadow-throw window — raw sun-Z gap, on BOTH tap regimes.
-                // maxShadowThrow == the feeder / bake sweep (kSunShadowMaxDistance) so
-                // a baked caster is receivable at its full throw. Mirrors the GLSL twin.
-                float depthDiff = sunZ - nearestZ;
-                if (depthDiff - bias >= maxShadowThrow) continue;
-
-                if (sunWriteIsDirect(stored) || sunWriteIsSurface(stored)) {
-                    // Direct and finite surface writes compare depth without splat-origin recovery.
-                    if (depthDiff <= bias) continue;
-                } else {
-                    // Coverage-SPLAT neighbour: reconstruct the write's origin
-                    // and reject an occluder that lies in the RECEIVER's own plane
-                    // (a same-face self-hit → h ~ 0 → lit at any splat distance); a
-                    // genuine cast sits far above the plane (h ~ caster height → shadow
-                    // at the base tolerance, no widening → no erosion). Mirrors GLSL.
-                    int2 offset = unpackSunSplatOffset(stored);
-                    int2 originTexel = px - offset;
-                    float2 originUV = origin + (float2(originTexel) + 0.5f) * texelSz;
-                    float expectedZ = sunZ + dot(gradUV, originUV - sunUV);
-                    float h = expectedZ - nearestZ;
-                    if (h <= bias) continue;
+                const int texelIndex = bufferOffset + px.y * kSunShadowMapDim + px.x;
+                uint stored = sunDepthBuf[texelIndex + (layer == 1 ? int(kSourceFaceFallbackOffset) : 0)];
+                if (!sunStoredTapBlocks(stored, sunZ, bias, maxShadowThrow, surfaceReceiver,
+                                        px, origin, texelSz, gradUV, sunUV)) {
+                    // Only the primary layer retains what a nearest word beyond the throw hid.
+                    if (layer != 0 || (surfaceReceiver && sunWriteIsSurface(stored)) ||
+                        !sunStoredTapBeyondThrow(stored, sunZ, bias, maxShadowThrow) ||
+                        !sunDepthSlabBlocks(sunDepthBuf, texelIndex, sunZ, bias, maxShadowThrow,
+                                            surfaceReceiver, px, origin, texelSz, gradUV, sunUV)) continue;
                 }
                 shadowAccum += weight;
                 break;

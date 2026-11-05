@@ -1,0 +1,18 @@
+{
+  "demo": "lua_perf_grid",
+  "target": "IRLuaPerfGrid",
+  "sweep_backends": ["macos-debug"],
+  "screenshot_subdir": "save_files/screenshots",
+  "demo_args": ["--wave-amplitude", "0"],
+  "shots": [
+    "fit_grid",
+    "zoom1_origin"
+  ],
+  "thresholds": {
+    "per_pixel_tol": 0,
+    "match_pct": 100.0,
+    "max_delta": 0,
+    "psnr_db": 0.0
+  },
+  "notes": "The idle wave advances each tick, so --wave-amplitude 0 freezes the scene independently of auto-screenshot warmup. The shot order matches kShots[] in main_lua.cpp. References are macos-debug-only; other backends are out of scope until their sets are committed."
+}

@@ -159,12 +159,19 @@ add_executable(IrredenEngineTest
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sun_shadow_feeder_ring_test.cpp
+  render/sun_shadow_probe_test.cpp
   render/sun_record_pool_layout_test.cpp
   render/viewport_test.cpp
   render/voxel_editor_fill_ghost_test.cpp
   render/voxel_editor_sculpt_grid_test.cpp
   render/voxel_editor_part_edit_history_test.cpp
   render/voxel_editor_composite_save_transaction_test.cpp
+  render/voxel_editor_motion_preview_test.cpp
+  render/voxel_editor_scene_io_test.cpp
+  render/voxel_editor_document_lifecycle_test.cpp
+  render/voxel_editor_local_part_edit_test.cpp
+  render/voxel_editor_workarea_framing_test.cpp
+  render/voxel_editor_recipe_reapply_test.cpp
   render/voxel_pool_config_test.cpp
   render/voxel_pool_capacity_test.cpp
   render/voxel_font_test.cpp
@@ -269,6 +276,7 @@ add_executable(IrredenEngineTest
   video/recording_state_test.cpp
   video/capture_source_test.cpp
   window/window_mode_test.cpp
+  window/close_guard_test.cpp
   world/chunk_coord_test.cpp
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp
@@ -295,6 +303,7 @@ FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_TAG        main
+    GIT_SHALLOW    TRUE
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)

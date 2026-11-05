@@ -217,18 +217,52 @@ inline TextRun numberFieldText(
     return run;
 }
 
+struct TextInputViewport {
+    TextRun text_;
+    GuiRect cursor_;
+};
+
+// A single-line window follows the insertion point without modifying the value.
+// Reserve cursor width even while unfocused so focus and blinking do not reflow it.
+inline TextInputViewport textInputViewport(
+    const IRComponents::C_Widget &widget,
+    const IRComponents::C_WidgetTextInput &textInput,
+    IRMath::ivec2 pos,
+    const IRPrefab::Widget::WidgetTheme &theme
+) {
+    const int width = IRMath::max(0, widget.size_.x);
+    const int inset = IRMath::min(theme.padding_ * 2, width / 2);
+    const int innerWidth = width - inset * 2;
+    const int cursorWidth = IRMath::min(theme.textInputCursorWidth_, innerWidth);
+    const int capacity = (innerWidth - cursorWidth) / IRRender::kGlyphStepX;
+    const int length = static_cast<int>(textInput.text_.size());
+    const int cursor = IRMath::clamp(textInput.cursorPos_, 0, length);
+    const int first = IRMath::clamp(cursor - capacity / 2, 0, IRMath::max(0, length - capacity));
+    TextInputViewport viewport;
+    viewport.text_ = leftCentered(
+        std::string_view(textInput.text_).substr(first, capacity),
+        IRMath::ivec2(pos.x + inset, pos.y),
+        widget.size_.y,
+        IRRender::TextSize::LARGE
+    );
+    const int cursorHeight = IRMath::min(IRRender::kGlyphHeight, IRMath::max(0, widget.size_.y));
+    viewport.cursor_ = {
+        IRMath::ivec2(
+            pos.x + inset + (cursor - first) * IRRender::kGlyphStepX,
+            pos.y + (widget.size_.y - cursorHeight) / 2
+        ),
+        IRMath::ivec2(cursorWidth, cursorHeight)
+    };
+    return viewport;
+}
+
 inline TextRun textInputText(
     const IRComponents::C_Widget &widget,
     const IRComponents::C_WidgetTextInput &textInput,
     IRMath::ivec2 pos,
     const IRPrefab::Widget::WidgetTheme &theme
 ) {
-    return leftCentered(
-        textInput.text_,
-        IRMath::ivec2(pos.x + theme.padding_ * 2, pos.y),
-        widget.size_.y,
-        IRRender::TextSize::LARGE
-    );
+    return textInputViewport(widget, textInput, pos, theme).text_;
 }
 
 // Item `index` drawn on visible row `row` (0 = the top row).

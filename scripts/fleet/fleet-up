@@ -364,6 +364,13 @@ FLEET_BUILD_WORKERS="${FLEET_BUILD_WORKERS:-${FLEET_CONCURRENCY_WORKER}}"
 if (( FLEET_BUILD_WORKERS < 1 )); then FLEET_BUILD_WORKERS=1; fi
 export IR_FLEET_WORKERS="${IR_FLEET_WORKERS:-$FLEET_BUILD_WORKERS}"
 
+# --- Debug-info depth for fleet build dirs ----------------------------------
+# A fleet build dir configures with -g1 (file:line backtraces, no locals or
+# types): full -g repeats the statically linked engine's DWARF in every exe
+# and a pool's build dir reaches 25+ GB. Read by CMakeLists.txt on a build
+# dir's first configure only; a human shell never carries it.
+export IRREDEN_DEBUG_INFO="${IRREDEN_DEBUG_INFO:-LINES}"
+
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
     exit 1
@@ -2164,6 +2171,7 @@ TRANSIENT_PANE_CMD='exec $SHELL -i'
 seed_tmux_pane_env() {
     local name
     tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
+    tmux set-environment -g IRREDEN_DEBUG_INFO "$IRREDEN_DEBUG_INFO"
     tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
     for name in GH_TOKEN GITHUB_TOKEN FLEET_GH_IDENTITY; do
         tmux set-environment -g -u "$name"

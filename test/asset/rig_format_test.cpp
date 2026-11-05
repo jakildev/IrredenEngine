@@ -7,6 +7,8 @@
 #include <irreden/voxel/joint_hierarchy_gpu.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 
+#include <chrono>
+#include <filesystem>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -63,6 +65,25 @@ std::string readFileBytes(const std::string &path) {
 }
 
 // ---- Buffer round-trips --------------------------------------------------
+
+TEST(RigFormat, SaveReportsBufferedWriteFailureBeforeEmittingSummary) {
+    if (!std::filesystem::exists("/dev/full"))
+        GTEST_SKIP() << "This host has no /dev/full failure device";
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto directory =
+        std::filesystem::temp_directory_path() / ("ir_rig_flush_" + std::to_string(stamp));
+    ASSERT_TRUE(std::filesystem::create_directory(directory));
+    std::error_code error;
+    std::filesystem::create_symlink("/dev/full", directory / "rig.rig", error);
+    EXPECT_FALSE(error) << error.message();
+    if (!error) {
+        const auto saved = saveRig("rig", directory.string(), Rig{});
+        EXPECT_FALSE(saved.ok());
+        EXPECT_FALSE(std::filesystem::exists(directory / "rig.rig.json"));
+    }
+    std::filesystem::remove_all(directory, error);
+    EXPECT_FALSE(error);
+}
 
 TEST(RigFormat, EmptyRigRoundTrip) {
     MemoryBinaryWriter w;

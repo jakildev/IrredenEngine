@@ -45,6 +45,7 @@ enum class BarrierType {SHADER_STORAGE,ALL};
 constexpr int kBufferIndex_FrameDataVoxelToCanvas=7,kBufferIndex_FrameDataSun=29;
 constexpr int kBufferIndex_SunShadowDepthMap=28,kBufferIndex_PerAxisResolveScratch=16;
 constexpr int kBufferIndex_RevoxelizeDetachedParams=22,kBakeSunShadowGroupSize=16;
+constexpr int kBakeSunShadowCooperativeGroupSize=8;
 constexpr int kBufferIndex_FogObservers=27;
 #define IR_PROFILE_FUNCTION(x)
 struct FrameDataVoxelToCanvas {
@@ -111,6 +112,7 @@ Device* device(){static Device value;return &value;}
 namespace IRPrefab::Camera {
 float getYaw(){return cameraYaw;}
 std::pair<float,float> computeYawSplit(float yaw){return {0,yaw};}
+std::pair<float,float> getYawSplit(){return computeYawSplit(getYaw());}
 vec4 getRotationQuat(){return {};}
 }
 void restoreVoxelCompactionSlots(Buffer*&,Buffer*&){}
@@ -126,6 +128,7 @@ struct Adapter {
  FrameDataVoxelToCanvas analyticCasterFrame_;bool analyticCasterReady_=false;
  ShaderProgram bake{1},scatter{2},blit{3};
  ShaderProgram *bakeProgram_=&bake,*bakeSecondDepthProgram_=&bake;
+ ShaderProgram *bakeCooperativeProgram_=nullptr;
  ShaderProgram *worldPlacedScatterProgram_=&scatter;
  bool retainSecondPrimaryDepth_=false;
  ShaderProgram *worldPlacedBlitProgram_=&blit;
@@ -221,8 +224,9 @@ def cpu_source():
     methods = "\n".join(extract_function(driver, name) for name in
                         ("patchFrameYawSplit", "patchSunSplatRadius", "patchFogCasterPrecut",
                          "bindFogObservers", "tick", "bakeAnalyticCasterDepth"))
+    methods = extract_block(driver, "RasterBakeDispatch rasterBakeDispatch(") + "\n" + methods
     guards = "\n".join(extract_block(driver, "struct " + name) + ";" for name in
-                       ("FrameYawRestoreGuard", "SunSplatRestoreGuard",
+                       ("RasterBakeDispatch", "FrameYawRestoreGuard", "SunSplatRestoreGuard",
                         "FogCasterPrecutRestoreGuard"))
     guards = guards.replace("System<BAKE_SUN_SHADOW_MAP>", "Adapter")
     cases = CPU_CASES.replace("STORE_RESET", store).replace("COMPACT_RESET", compact)
@@ -306,8 +310,17 @@ int main(){
 def shader_source(suffix, folder):
     source = uncomment((SHADERS / folder / f"c_bake_sun_shadow_map_body.{suffix}").read_text())
     common = uncomment((SHADERS / folder / f"ir_iso_common.{suffix}").read_text())
-    function = extract_block(
-        source, "void main(" if suffix == "glsl" else "kernel void IR_SUN_BAKE_KERNEL_NAME(")
+    # The body carries the production main and, under IR_SUN_BAKE_COOPERATIVE,
+    # the cooperative one; these controls grade the production path.
+    if suffix == "glsl":
+        function = extract_block(source, "#else\nvoid main(")
+    else:
+        function = extract_block(source, "kernel void IR_SUN_BAKE_KERNEL_NAME(")
+        function = re.sub(r"#if IR_SUN_BAKE_COOPERATIVE\n.*?\n#endif\n", "", function, count=1,
+                          flags=re.S)
+        function = re.sub(r"#if IR_SUN_BAKE_COOPERATIVE\n.*?\n#else\n", "", function, count=1,
+                          flags=re.S)
+        function = function.replace("#endif\n", "")
     body = function[function.index("{") + 1:-1]
     body = body.replace("frameData.", "").replace("sunFrameData.", "")
     body = re.sub(r"ivec2 pixel = ivec2\(gl_GlobalInvocationID.xy\);|"
@@ -346,6 +359,14 @@ uint atomicMin(uint& word,uint value){
 using atomic_uint=uint;
 constexpr int memory_order_relaxed=0;
 uint atomic_fetch_min_explicit(uint* word,uint value,int){return atomicMin(*word,value);}
+// The shipped layout compiles the depth-slab layer out, so the primary write is
+// the nearest atomicMin alone; test_render_sun_depth_slab executes the layer.
+void writeSunDepthSlab(int,uint){}
+void writeSunDepthSlab(std::vector<uint>&,int,uint){}
+void writeSunPrimaryDepth(int index,uint packedDepth){atomicMin(sunDepthBuf[index],packedDepth);}
+void writeSunPrimaryDepth(std::vector<uint>& buf,int index,uint packedDepth){
+ atomicMin(buf[index],packedDepth);
+}
 """
 
 SLOT_CASES = r"""

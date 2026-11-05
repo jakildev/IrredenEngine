@@ -381,7 +381,7 @@ class RecordingRenderDevice final : public IRRender::RenderDevice {
     void clearTexImage(const IRRender::Texture2D *, int, const void *) override {
         m_log.push_back("device:clearTexImage");
     }
-    void fillBuffer(const IRRender::Buffer *, std::size_t, std::uint8_t) override {}
+    void fillBuffer(const IRRender::Buffer *, std::size_t, std::size_t, std::uint8_t) override {}
     void copyBufferSubData(
         const IRRender::Buffer *,
         std::ptrdiff_t,

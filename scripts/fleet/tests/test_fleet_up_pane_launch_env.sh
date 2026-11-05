@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Tests fleet-up's pane env seed (seed_tmux_pane_env plus the new-session
 # block that calls it, both lifted from the script): ir-run's launch knobs
-# (FLEET_UNATTENDED, FLEET_RUN_DEFAULT_TIMEOUT, FLEET_WINDOW_MODE) reach every
-# pane even when the tmux server predates the fleet-up run.
+# (FLEET_UNATTENDED, FLEET_RUN_DEFAULT_TIMEOUT, FLEET_WINDOW_MODE) and the
+# build dirs' IRREDEN_DEBUG_INFO reach every pane even when the tmux server
+# predates the fleet-up run.
 #
 # fleet-down kills the session, not the server, and a pane's shell inherits
 # the server's global env — not the env of the client that created it. An
@@ -59,7 +60,7 @@ ptmux() { tmux -S "$TMPROOT/sock" "$@"; }
 # POSIX-only: tmux runs it under the host's default-shell, which may be zsh.
 probe_cmd() {
     local out="$TMPROOT/$1.out"
-    printf 'printf "FLEET_UNATTENDED=%%s FLEET_RUN_DEFAULT_TIMEOUT=%%s FLEET_WINDOW_MODE=%%s\\n" "${FLEET_UNATTENDED:-unset}" "${FLEET_RUN_DEFAULT_TIMEOUT:-unset}" "${FLEET_WINDOW_MODE:-unset}" > %q.tmp; mv %q.tmp %q; exec sleep 60' \
+    printf 'printf "FLEET_UNATTENDED=%%s FLEET_RUN_DEFAULT_TIMEOUT=%%s FLEET_WINDOW_MODE=%%s IRREDEN_DEBUG_INFO=%%s\\n" "${FLEET_UNATTENDED:-unset}" "${FLEET_RUN_DEFAULT_TIMEOUT:-unset}" "${FLEET_WINDOW_MODE:-unset}" "${IRREDEN_DEBUG_INFO:-unset}" > %q.tmp; mv %q.tmp %q; exec sleep 60' \
         "$out" "$out" "$out"
 }
 
@@ -89,7 +90,7 @@ mkdir -p "$TMPROOT/engine/.claude/worktrees/pool-1"
 # would with the conf setting the marker and a timeout but no window mode.
 run_block() {
     FLEET_UNATTENDED=1 FLEET_RUN_DEFAULT_TIMEOUT=90 SOCK="$1" \
-        IR_FLEET_WORKERS=4 FLEET_FABLE_FALLBACK=opus _gh_app_token= \
+        IR_FLEET_WORKERS=4 IRREDEN_DEBUG_INFO=LINES FLEET_FABLE_FALLBACK=opus _gh_app_token= \
         SESSION=fleet-test ENGINE="$TMPROOT/engine" TRANSIENT_PANE_CMD="$(probe_cmd "$2")" \
         "$BASH" -c '
             set -euo pipefail
@@ -106,12 +107,14 @@ echo "T2: the initial pool-1 pane sees the set knobs"
 pool1=$(read_probe pool1)
 assert_contains "$pool1" "FLEET_UNATTENDED=1" "pool-1 carries the marker"
 assert_contains "$pool1" "FLEET_RUN_DEFAULT_TIMEOUT=90" "pool-1 carries the conf timeout"
+assert_contains "$pool1" "IRREDEN_DEBUG_INFO=LINES" "pool-1 carries the debug-info depth"
 
 echo "T3: a later split pane sees them too"
 ptmux split-window -d -t fleet-test "$(probe_cmd split)"
 split=$(read_probe split)
 assert_contains "$split" "FLEET_UNATTENDED=1" "split pane carries the marker"
 assert_contains "$split" "FLEET_RUN_DEFAULT_TIMEOUT=90" "split pane carries the conf timeout"
+assert_contains "$split" "IRREDEN_DEBUG_INFO=LINES" "split pane carries the debug-info depth"
 
 echo "T4: an unset conf knob evicts the prior session's value"
 assert_contains "$pool1" "FLEET_WINDOW_MODE=unset" "pool-1 drops the stale window mode"
