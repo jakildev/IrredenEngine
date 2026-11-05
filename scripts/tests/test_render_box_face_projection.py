@@ -128,13 +128,17 @@ bool fogFieldCastsSunShadow(vec3 pos,bool body,int enabled,int){
 }
 uint packSunSurfaceDepth(float d){return uint(d*100);}
 void atomicMin(uint& a,uint b){a=std::min(a,b);}
+int primaryWrites=0;
+void writeSunPrimaryDepth(int texelIndex,uint packedDepth){
+ ++primaryWrites;atomicMin(sunDepthBuf[texelIndex],packedDepth);
+}
 """
         checks = r"""
 int main(){
  for(bool box:{false,true})for(bool body:{false,true})for(int ceiling:{0,1})
  for(float depth:{1.f,3.f})for(bool complete:{false,true}){
   std::fill(sunDepthBuf,sunDepthBuf+8,999u);fogCalls=0;lastFogZ=-99;
-  solvedDepth=depth;solverHit=true;
+  solvedDepth=depth;solverHit=true;primaryWrites=0;
   const uint indexed=emit(box,body,ceiling);
   const bool retained=body||!ceiling||depth>=2;
   if(indexed!=uint(body||!ceiling))return 1;
@@ -146,11 +150,14 @@ int main(){
   // Complete empty and BODY-only exact lists both skip the indexed fallback.
   // Deliberately unindexed FIELD samples must remain visible in either case.
   if(!body&&ceiling&&readDepth(complete)!=(retained?uint(depth*100):999u))return 5;
+  // Only the primary layer's write carries slab extrema; the indexed
+  // fallback stays a nearest-only atomicMin.
+  if(primaryWrites!=int(layer==0&&retained))return 7;
  }
  for(bool body:{false,true}){
-  std::fill(sunDepthBuf,sunDepthBuf+8,999u);fogCalls=0;solverHit=false;
+  std::fill(sunDepthBuf,sunDepthBuf+8,999u);fogCalls=0;solverHit=false;primaryWrites=0;
   emit(false,body,1);
-  if(fogCalls||readDepth(false)!=999u)return 6;
+  if(fogCalls||primaryWrites||readDepth(false)!=999u)return 6;
  }
 }
 """
@@ -167,6 +174,8 @@ int main(){
             solved = extract_block(source, "if (hit && nearDepth <= farDepth &&")
             skip = re.search(r"if \(layer == 1 && sourceQueryComplete\) continue;", sample).group()
             solved = solved.replace("continue;", "return uint(indexWholeShape);")
+            # The Metal helper takes the buffer the GLSL one reads as a global.
+            solved = solved.replace("writeSunPrimaryDepth(sunDepthBuf, ", "writeSunPrimaryDepth(")
             solved = re.sub(r"atomic_fetch_min_explicit\(&sunDepthBuf\[([^]]+)\], "
                             r"([^;]+), memory_order_relaxed\);",
                             r"atomicMin(sunDepthBuf[\1], \2);", solved)
@@ -182,6 +191,8 @@ int main(){
                 "lost_unindexed_layer": body.replace(
                     "indexWholeShape ? kSourceFaceFallbackOffset : 0u",
                     "kSourceFaceFallbackOffset"),
+                "nearest_only_primary": body.replace(
+                    "writeSunPrimaryDepth(texelIndex, ", "atomicMin(sunDepthBuf[texelIndex], "),
             }
             emitter = r"""
 uint emit(bool box,bool fogBody,int ceiling){
@@ -211,7 +222,8 @@ uint emit(bool box,bool fogBody,int ceiling){
                     run = subprocess.run([str(exe)], capture_output=True, text=True)
                     self.assertEqual(run.returncode, {"production": 0, "uncut_index": 1,
                                                      "aabb_ceiling": 2,
-                                                     "lost_unindexed_layer": 3}[name])
+                                                     "lost_unindexed_layer": 3,
+                                                     "nearest_only_primary": 7}[name])
 
     def test_oriented_faces_match_slab_entry(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):

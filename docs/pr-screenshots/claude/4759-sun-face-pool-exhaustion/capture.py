@@ -155,9 +155,9 @@ def scaled_crop(frame_width):
     return tuple(v * frame_width // CROP_FRAME_WIDTH for v in CROP)
 
 
-def stage_parent(shader_dir, ref):
+def stage_parent(shader_dir, ref, names=POLICY_SHADERS):
     saved = {}
-    for name in POLICY_SHADERS:
+    for name in names:
         path = shader_dir / name
         saved[name] = path.read_bytes()
         source = subprocess.check_output(

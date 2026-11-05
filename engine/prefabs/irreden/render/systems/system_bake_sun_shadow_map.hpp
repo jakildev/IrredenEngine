@@ -65,6 +65,10 @@ using IRPrefab::SunShadow::kSunShadowCascadeCount;
 using IRPrefab::SunShadow::kSunShadowMapDim;
 using IRPrefab::SunShadow::kSunShadowMaxDistance;
 constexpr int kBakeSunShadowGroupSize = 16;
+// Pixel tile of c_bake_sun_shadow_map_cooperative, whose splat boxes one
+// threadgroup window of kSunDepthSlabWindowTexels reduces; IR_SUN_BAKE_GROUP_SIZE
+// in that wrapper and the Metal threadgroup registry carry the same value.
+constexpr int kBakeSunShadowCooperativeGroupSize = 8;
 // coverage-splat radius (sun texels): c_bake_sun_shadow_map atomicMin's
 // each caster's depth into a (2·r+1)² box, filling the sun texels a grazing /
 // point-scattered caster footprint leaves empty (the moth-eaten cast-shadow
@@ -85,6 +89,10 @@ constexpr int kBakeSunShadowGroupSize = 16;
 // those references deliberately, never reflexively.
 constexpr int kSunSplatMaxTexels = 7;
 static_assert(kSunSplatMaxTexels < 8, "Splat offsets must reserve -8 for finite surface writes");
+static_assert(
+    float(IRPrefab::SunShadow::kSunDepthSlabWidthUnits) == kSunShadowMaxDistance,
+    "Depth-slab extrema answer a throw-wide window only when the slab is one throw wide"
+);
 
 namespace detail {
 
@@ -197,6 +205,25 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     // (docs/design/sun-face-index-capacity.md).
     bool retainSecondPrimaryDepth_ = false;
     ShaderProgram *bakeSecondDepthProgram_ = nullptr;
+    // The depth-slab layer's splat writer: constructed only when the layer is
+    // compiled in, and dispatched only where the coverage splat is engaged, since
+    // one write per pixel has no redundancy for the window to remove. Which
+    // kernel writes never changes the layer's state, only its cost.
+    ShaderProgram *bakeCooperativeProgram_ = nullptr;
+
+    struct RasterBakeDispatch {
+        ShaderProgram *program_;
+        int groupSize_;
+    };
+    RasterBakeDispatch rasterBakeDispatch(bool splatEngaged) const {
+        if (bakeCooperativeProgram_ != nullptr && splatEngaged && !retainSecondPrimaryDepth_) {
+            return {bakeCooperativeProgram_, kBakeSunShadowCooperativeGroupSize};
+        }
+        return {
+            retainSecondPrimaryDepth_ ? bakeSecondDepthProgram_ : bakeProgram_,
+            kBakeSunShadowGroupSize
+        };
+    }
     bool coverageFrameOpen_ = false;
     bool frameUsesFiniteCoverage_ = false;
     Buffer *analyticCasterFrameBuf_ = nullptr;
@@ -513,10 +540,14 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
         clearDepthMap();
 
-        // Bake: each pixel projects into both cascades in one pass.
-        ShaderProgram *const rasterBakeProgram =
-            retainSecondPrimaryDepth_ ? bakeSecondDepthProgram_ : bakeProgram_;
-        rasterBakeProgram->use();
+        // Bake: each pixel projects into both cascades in one pass. The kernel
+        // engages the splat on a cardinal resident frame, the same split the
+        // frame upload took from the camera.
+        const bool cardinalResidentFrame = IRPrefab::Camera::getYawSplit().second == 0.0f;
+        const RasterBakeDispatch mainBake =
+            rasterBakeDispatch(cardinalResidentFrame && frameData_.sunSplatMaxTexels_ > 0.0f);
+        const RasterBakeDispatch perPixelBake = rasterBakeDispatch(false);
+        mainBake.program_->use();
         canvasTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         canvasTextures.getTextureEntityIds()
@@ -527,7 +558,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         bindFogObservers();
         const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kBakeSunShadowGroupSize);
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kBakeSunShadowGroupSize);
-        IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+        IRRender::device()->dispatchCompute(
+            IRMath::divCeil(canvasTextures.size_.x, mainBake.groupSize_),
+            IRMath::divCeil(canvasTextures.size_.y, mainBake.groupSize_),
+            1
+        );
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
 
         // Smooth camera Z-yaw: bake per-axis voxel sun shadows from the
@@ -576,6 +611,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             const FogCasterPrecutRestoreGuard fogPrecutGuard{*this};
             // resolveDepth_ is allocated at the main canvas size, so dispatch
             // over canvasTextures.size_ (same domain as the main bake above).
+            perPixelBake.program_->use();
             perAxisCanvases_->resolveDepth_.second
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
@@ -688,7 +724,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // the unchanged cardinal recovery (the per-axis resolveDepth_ bake
             // above is the in-file precedent). Re-bind the bake's full set: the
             // scratch aliased slot 28 and the UBO was orphaned by the subData.
-            rasterBakeProgram->use();
+            const RasterBakeDispatch worldPlacedBake =
+                rasterBakeDispatch(frameData_.sunSplatMaxTexels_ > 0.0f);
+            worldPlacedBake.program_->use();
             sunShadowDepthMap_->bindBase(
                 BufferTarget::SHADER_STORAGE,
                 kBufferIndex_SunShadowDepthMap
@@ -701,7 +739,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             bindFogObservers();
             worldPlacedResolveDepth_.second
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            IRRender::device()->dispatchCompute(
+                IRMath::divCeil(canvasTextures.size_.x, worldPlacedBake.groupSize_),
+                IRMath::divCeil(canvasTextures.size_.y, worldPlacedBake.groupSize_),
+                1
+            );
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             // Restore the main-canvas distance image so the persistent Metal
             // image-binding table doesn't dangle (mirrors the per-axis restore).
@@ -1060,7 +1102,35 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         frameData_.sunMaxShadowThrow_ = kSunShadowMaxDistance;
     }
 
+    // The slab planes clear through two contiguous device fills: every min
+    // plane to the empty sentinel, every max plane to zero, which sits below
+    // every packed depth with the overflow bit clear. Nothing to fill at zero
+    // slots. The capacity word lies past both ranges, so neither fill touches it.
+    void clearDepthSlabPlanes() {
+        using IRPrefab::SunShadow::kSunDepthSlabMaxPlanesOffset;
+        using IRPrefab::SunShadow::kSunDepthSlabMinPlanesOffset;
+        using IRPrefab::SunShadow::kSunDepthSlabPlanesWords;
+        if (kSunDepthSlabPlanesWords == 0u) {
+            return;
+        }
+        const std::size_t planesBytes =
+            std::size_t(kSunDepthSlabPlanesWords) * sizeof(std::uint32_t);
+        IRRender::device()->fillBuffer(
+            sunShadowDepthMap_,
+            std::size_t(kSunDepthSlabMinPlanesOffset) * sizeof(std::uint32_t),
+            planesBytes,
+            0xFF
+        );
+        IRRender::device()->fillBuffer(
+            sunShadowDepthMap_,
+            std::size_t(kSunDepthSlabMaxPlanesOffset) * sizeof(std::uint32_t),
+            planesBytes,
+            0x00
+        );
+    }
+
     void clearDepthMap() {
+        clearDepthSlabPlanes();
         // Clear the full depth map (both cascades) to 0xFFFFFFFF.
         clearProgram_->use();
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
@@ -1284,6 +1354,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             IRRender::getNamedResource<Buffer>("RevoxelizeDetachedParamsBuffer");
         p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearSunShadowMapProgram");
         p->bakeProgram_ = IRRender::getNamedResource<ShaderProgram>("BakeSunShadowMapProgram");
+        if constexpr (IRPrefab::SunShadow::kSunDepthSlabSlots > 0u) {
+            p->bakeCooperativeProgram_ = IRRender::createNamedResource<ShaderProgram>(
+                                             "BakeSunShadowMapCooperativeProgram",
+                                             std::vector{ShaderStage{
+                                                 IRRender::kFileCompBakeSunShadowMapCooperative,
+                                                 ShaderType::COMPUTE
+                                             }}
+            ).second;
+        }
         p->worldPlacedScatterProgram_ =
             IRRender::getNamedResource<ShaderProgram>("ResolveWorldPlacedDepthProgram");
         p->worldPlacedBlitProgram_ =

@@ -530,6 +530,23 @@ bool g_noPerVoxelOcclusion = false;
 // path) is byte-identical to master. Driven by scripts/feeder-margin-verify.py.
 int g_feederClassifyPad = 0;
 bool g_feederClassifyPadSet = false;
+
+void logSunBakeFootprint(int shotIndex) {
+    const std::string path = "sun-footprint-" + std::to_string(shotIndex) + ".csv";
+    const bool written = IRPrefab::SunShadow::writeSunBakeFootprintProbe(path);
+    IR_LOG_INFO("sun-bake-footprint-probe: shot={} path={} written={}", shotIndex, path, written);
+}
+
+// Default-shot capture hook: each diagnostic reports only for a run that asked
+// for it, so a flagless run keeps the empty hook it has always had.
+void logDefaultShotDiagnostics(int shotIndex) {
+    if (g_feederClassifyPadSet) {
+        logFeederClassify(shotIndex);
+    }
+    if (IREngine::args().getFlag("--sun-bake-footprint-probe")) {
+        logSunBakeFootprint(shotIndex);
+    }
+}
 // --wave-freeze: bake each per-cell wave's phase-0 offset into the
 // cell's spawn position instead of attaching C_PeriodicIdle. The wave-scene
 // geometry (WaveMode::PerCell's per-cell (x+y+z) phase gradient) is the only
@@ -841,6 +858,11 @@ void registerCliArgs() {
         "Force the voxel-pool chunk-occlusion HZB pre-pass ON (off by default)"
     );
     args.flag("--legacy-depth-shadows", "Benchmark the legacy point-depth shadow caster");
+    args.flag(
+        "--sun-bake-footprint-probe",
+        "On capture frames, write the sun bake's per-workgroup texel footprint census to "
+        "sun-footprint-<shot>.csv (stalls GPU)"
+    );
     args.flag("--no-overlay", "Drop PERF_STATS_OVERLAY so a captured frame is deterministic");
     args.flag(
         "--no-sun-shadows",
@@ -2179,11 +2201,8 @@ void initSystems() {
             cfg.settleFrames_ = 12;
         } else {
             IRVideo::setAutoScreenshotShots(cfg, kShots);
-            // Report the classify arm + its non-vacuity witness per shot,
-            // but only for a run that asked for the diagnostic — a flagless run
-            // keeps the empty hook it has always had.
-            if (g_feederClassifyPadSet) {
-                cfg.onCaptureFrame_ = &logFeederClassify;
+            if (g_feederClassifyPadSet || IREngine::args().getFlag("--sun-bake-footprint-probe")) {
+                cfg.onCaptureFrame_ = &logDefaultShotDiagnostics;
             }
         }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));

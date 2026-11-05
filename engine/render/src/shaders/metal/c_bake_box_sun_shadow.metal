@@ -5,6 +5,7 @@
 #include "ir_shape_sun_ray.metal"
 #include "ir_sun_projection.metal"
 #include "ir_sun_face_query_layout.metal"
+#include "ir_sun_depth_slab_write.metal"
 #include "ir_sun_shadow_sample.metal"
 #include "ir_fog_shadow_caster.metal"
 #include <metal_atomic>
@@ -111,7 +112,10 @@ kernel void c_bake_box_sun_shadow(
                 if (!(fogBody) && sunFrame.fogCeilingEnabled.x != 0 && fogObservers.visionCircleCount > 0 &&
         !fogFieldCastsSunShadow(worldSample, false, sunFrame.fogCeilingEnabled.x,
             fogShadowCell(worldSample, fogObservers, fogShadowWindow), fogObservers)) continue;
-                atomic_fetch_min_explicit(&sunDepthBuf[depthLayerOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth), memory_order_relaxed);
+                const int texelIndex = cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x;
+                // Only the primary layer keeps slab extrema; the indexed fallback stays nearest-only.
+                if (depthLayerOffset == 0u) writeSunPrimaryDepth(sunDepthBuf, texelIndex, packSunSurfaceDepth(casterDepth));
+                else atomic_fetch_min_explicit(&sunDepthBuf[depthLayerOffset + uint(texelIndex)], packSunSurfaceDepth(casterDepth), memory_order_relaxed);
             }
         }
     }

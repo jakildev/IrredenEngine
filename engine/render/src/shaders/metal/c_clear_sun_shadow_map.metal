@@ -36,4 +36,5 @@ kernel void c_clear_sun_shadow_map(
         0xFFFFFFFFu,
         memory_order_relaxed
     );
+    // The slab planes are cleared by the bake system's two device fills.
 }
