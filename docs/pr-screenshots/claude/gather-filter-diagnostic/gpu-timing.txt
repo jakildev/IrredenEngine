@@ -1,0 +1,18 @@
+IRShapeDebug --gather-filter-fixture --zoom-calibration --zoom-continuous --zoom 2.2 --yaw 0 --auto-profile 600
+Metal, output scale 2, five alternating runs per arm. Whole-frame GPU envelope (ms) from save_files/profile_report.txt.
+arm run avg min max frames quiet
+nearest 1 2.853 1.269 7.176 600 guarded
+owner 1 1.231 0.972 7.283 600 guarded
+unrestricted 1 1.275 0.975 7.895 600 guarded
+nearest 2 3.421 2.693 7.340 600 guarded
+owner 2 1.197 0.973 7.736 600 guarded
+unrestricted 2 3.335 1.825 7.500 600 guarded
+nearest 3 1.235 0.966 7.565 600 guarded
+owner 3 1.230 0.976 8.285 600 guarded
+unrestricted 3 2.640 1.059 7.908 600 guarded
+nearest 4 1.155 0.970 7.753 600 breach
+owner 4 2.181 0.981 7.974 600 guarded
+unrestricted 4 2.289 0.975 7.558 600 guarded
+nearest 5 2.648 1.091 9.129 600 guarded
+owner 5 1.656 0.985 7.250 600 guarded
+unrestricted 5 1.263 0.980 7.575 600 guarded
