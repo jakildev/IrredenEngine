@@ -7941,7 +7941,6 @@ void initSystems() {
                 [](const C_Camera &) {},
                 []() { IRVoxelEditor::drawAuthoringPrimitives(); }
             ),
-            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
