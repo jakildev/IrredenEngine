@@ -168,6 +168,7 @@ add_executable(IrredenEngineTest
   render/voxel_editor_scene_io_test.cpp
   render/voxel_editor_document_lifecycle_test.cpp
   render/voxel_editor_local_part_edit_test.cpp
+  render/voxel_editor_workarea_framing_test.cpp
   render/voxel_editor_recipe_reapply_test.cpp
   render/voxel_pool_config_test.cpp
   render/voxel_pool_capacity_test.cpp

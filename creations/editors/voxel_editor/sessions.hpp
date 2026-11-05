@@ -154,6 +154,7 @@ enum class Id {
     SCULPT_SINGLE_SAVE,
     DOCUMENT_WORKFLOW,
     LOCAL_CANVAS,
+    WORKAREA_FOCUS,
     HIERARCHY_WORKFLOW,
     TIER_SCRUB,
     RADIAL_ARRAY,
@@ -199,6 +200,12 @@ struct AnimationBoundaryCheck {
 
 bool evaluateAnimationBoundaryCheck(const void *context, std::string &actual);
 bool evaluateWorkspaceCheck(const void *context, std::string &actual);
+struct WorkareaFocusCheck {
+    bool local_;
+    bool turned_;
+};
+bool evaluateWorkareaFocusCheck(const void *context, std::string &actual);
+
 struct LocalCanvasCheck {
     bool editing_;
     bool occupied_;
@@ -224,6 +231,8 @@ inline IRComponents::C_LocalTransform localCanvasChildTransform() {
 inline Id idFromName(const std::string &name) {
     if (name == "document_workflow")
         return Id::DOCUMENT_WORKFLOW;
+    if (name == "workarea_focus")
+        return Id::WORKAREA_FOCUS;
     if (name == "local_canvas")
         return Id::LOCAL_CANVAS;
     if (name == "hierarchy_workflow")
@@ -2064,6 +2073,38 @@ inline Recipe build(
     const ModuleSessionView *moduleView
 ) {
     switch (id) {
+    case Id::WORKAREA_FOCUS: {
+        Builder builder("workarea_focus", sceneSize, sceneOrigin);
+        const IRMath::vec2 focus(580, 87);
+        const IRMath::vec2 local(474, 61);
+        builder.segment("sculpt_focus");
+        builder.clickGui({42, 61});
+        builder.clickGui(focus);
+        builder.segment("generate_focus");
+        builder.clickGui({210, 61});
+        builder.clickGui(focus);
+        builder.segment("turned_focus");
+        builder.tapKey(IRInput::kKeyButtonQ);
+        builder.clickGui(focus);
+        builder.segment("local_focus");
+        builder.clickGui(local);
+        builder.clickGui(focus);
+        builder.segment("assembly_focus");
+        builder.clickGui(local);
+        builder.clickGui(focus);
+        Recipe recipe = builder.finish();
+        static constexpr WorkareaFocusCheck checks[] =
+            {{false, false}, {false, false}, {false, true}, {true, false}, {false, false}};
+        for (std::size_t i = 0; i < std::size(checks); ++i)
+            recipe.segments_[i].assertions_.push_back(
+                IRPrefab::GuiTest::predicate(
+                    &evaluateWorkareaFocusCheck,
+                    &checks[i],
+                    "bounds_clear_visible_panels"
+                )
+            );
+        return recipe;
+    }
     case Id::LOCAL_CANVAS: {
         Builder builder("local_canvas", sceneSize, sceneOrigin);
         const IRMath::vec3 origin(291, 0, 0);

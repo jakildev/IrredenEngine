@@ -158,6 +158,7 @@
 #include "part_edit_history.hpp"
 #include "recipe_reapply.hpp"
 #include "local_part_edit.hpp"
+#include "workarea_framing.hpp"
 #include "sculpt_panel.hpp"
 
 // Authoring sessions — recipes of editor gestures compiled into
@@ -254,6 +255,8 @@ struct EditorState {
     EditorStageView localEditView_;
     Workspace workspaceBeforeLocalEdit_ = Workspace::ASSEMBLE;
     IREntity::EntityId localEditButton_ = IREntity::kNullEntity;
+    IREntity::EntityId focusButton_ = IREntity::kNullEntity;
+    int initialFocusDelay_ = 0;
     std::string documentStatus_;
     IREntity::EntityId documentStatusLabel_ = IREntity::kNullEntity;
     Workspace workspace_ = Workspace::ALL;
@@ -4542,6 +4545,55 @@ unsigned workspaceMembership(ivec2 pos) {
     return 0;
 }
 
+void appendEditorFocusBounds(IREntity::EntityId entity, std::vector<vec3> &points) {
+    if (entity == IREntity::kNullEntity)
+        return;
+    const auto world = IREntity::getComponentOptional<C_WorldTransform>(entity);
+    if (!world)
+        return;
+    const auto set = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
+    const auto shape = IREntity::getComponentOptional<C_ShapeDescriptor>(entity);
+    if (!set && !shape)
+        return;
+    const float radius =
+        shape ? IRMath::SDF::boundingRadius((*shape)->shapeType_, (*shape)->params_) : 0.0f;
+    for (unsigned corner = 0; corner < 8; ++corner) {
+        const vec3 side((corner & 1u) != 0u, (corner & 2u) != 0u, (corner & 4u) != 0u);
+        if (set) {
+            const vec3 local = side * vec3((*set)->size_) - vec3(0.5f);
+            points.push_back(voxelSetLocalToWorld(**set, **world, local));
+        } else {
+            const vec3 local = (side * 2.0f - vec3(1.0f)) * radius;
+            points.push_back(
+                (*world)->translation_ +
+                IRMath::rotateVectorByQuat((*world)->scale_ * local, (*world)->rotation_)
+            );
+        }
+    }
+}
+
+std::vector<vec3> editorFocusPoints() {
+    std::vector<vec3> points;
+    if (g_editor.localEdit_.active())
+        appendEditorFocusBounds(g_editor.localEdit_.proxy(), points);
+    else if (const auto *part = g_entityScene.selectedPart(); g_entitySceneMode && part)
+        appendEditorFocusBounds(part->entity_, points);
+    else if (g_entitySceneMode) {
+        for (const auto &part : g_entityScene.parts())
+            appendEditorFocusBounds(part.entity_, points);
+    } else
+        appendEditorFocusBounds(g_editor.editableVoxelSet_, points);
+    return points;
+}
+
+void focusEditorWorkarea() {
+    finishSculptStroke();
+    finishPartEdits();
+    g_editor.documentStatus_ = focusEditorPoints(editorFocusPoints())
+                                   ? "FOCUSED IN THE CLEAR WORK AREA"
+                                   : "FOCUS: SELECT CONTENT AND MAKE ROOM IN THE VIEWPORT";
+}
+
 void updateWorkspaces() {
     if (documentInteractionBlocked())
         return;
@@ -4622,9 +4674,37 @@ void updateWorkspaces() {
             IRPrefab::Widget::setVisible(id, member.visibleBeforeHide_);
         }
     });
+    if (g_editor.focusButton_ != IREntity::kNullEntity &&
+        IRPrefab::Widget::wasClicked(g_editor.focusButton_))
+        focusEditorWorkarea();
+    if (g_editor.initialFocusDelay_ > 0 && --g_editor.initialFocusDelay_ == 0)
+        focusEditorWorkarea();
 }
 
 namespace Session {
+
+bool evaluateWorkareaFocusCheck(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const WorkareaFocusCheck *>(context);
+    const auto area = visibleEditorWorkarea();
+    const auto points = editorFocusPoints();
+    if (!area || points.empty()) {
+        actual = "no clear workarea or selected bounds";
+        return false;
+    }
+    const vec2 low(IRRender::guiTrixelToScreenPx(area->min_));
+    const vec2 high(IRRender::guiTrixelToScreenPx(area->max_));
+    bool contained = true;
+    for (const auto point : points) {
+        const vec2 screen(IRRender::worldPos3DToMouseScreenPxExact(point));
+        contained = contained && screen.x >= low.x - 2.0f && screen.y >= low.y - 2.0f &&
+                    screen.x <= high.x + 2.0f && screen.y <= high.y + 2.0f;
+    }
+    const bool turned = IRMath::abs(IRPrefab::Camera::getYaw()) > 0.1f;
+    actual = "contained=" + std::to_string(contained) +
+             " local=" + std::to_string(g_editor.localEdit_.active()) +
+             " turned=" + std::to_string(turned);
+    return contained && g_editor.localEdit_.active() == check.local_ && turned == check.turned_;
+}
 
 bool evaluateWorkspaceCheck(const void *context, std::string &actual) {
     const int workspace = *static_cast<const int *>(context);
@@ -5922,7 +6002,7 @@ int main(int argc, char **argv) {
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | "
         "tier_scrub | remove_part | undo_history | animation_boundary | sculpt_workflow | "
-        "sculpt_single_save | local_canvas | "
+        "sculpt_single_save | local_canvas | workarea_focus | "
         "radial_array | "
         "linear_array | nway_symmetry | "
         "mode_preview | "
@@ -5948,6 +6028,7 @@ int main(int argc, char **argv) {
          "sculpt_single_save",
          "document_workflow",
          "local_canvas",
+         "workarea_focus",
          "hierarchy_workflow",
          "tier_scrub",
          "radial_array",
@@ -6149,6 +6230,10 @@ int main(int argc, char **argv) {
         return exitCleanly(2);
     IRVoxelEditor::initComponentsUi();
     IRVoxelEditor::updateWorkspaces();
+    // Let the transform pipeline complete once before framing world-space bounds.
+    if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE &&
+        !IRVoxelEditor::g_sculpt.referenceScene_)
+        IRVoxelEditor::g_editor.initialFocusDelay_ = 2;
     if (IRVoxelEditor::g_editor.documentsEnabled_) {
         IRWindow::setCloseGuard([]() {
             using namespace IRVoxelEditor;
@@ -9212,6 +9297,12 @@ void initEntities() {
         "LOCAL EDIT",
         IRRender::TextSize::SMALL
     );
+    g_editor.focusButton_ = IRPrefab::Widget::makeButton(
+        IRVoxelEditor::kFocusButtonPos,
+        IRVoxelEditor::kFocusButtonSize,
+        "FOCUS",
+        IRRender::TextSize::SMALL
+    );
     g_editor.documentStatusLabel_ =
         IRPrefab::Widget::makeLabel(ivec2(4, 78), "", {}, IRRender::TextSize::SMALL);
     if (g_editor.documentsEnabled_) {
@@ -9297,7 +9388,8 @@ void initEntities() {
         IRVoxelEditor::g_sceneVoxelSetEntity = IREntity::kNullEntity;
     }
 
-    if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOCAL_CANVAS) {
+    if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOCAL_CANVAS ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::WORKAREA_FOCUS) {
         IREntity::destroyEntity(g_editor.editableVoxelSet_);
         IRVoxelEditor::enterEntitySceneMode();
         auto &scene = IRVoxelEditor::g_entityScene;
@@ -9309,6 +9401,13 @@ void initEntities() {
         scene.reparentPart("part_1", "part_0", false);
         IRVoxelEditor::selectEditorPart(1, false);
         IRVoxelEditor::setSelectedPartRotationMode(RotationMode::DETACHED_REVOXELIZE);
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::WORKAREA_FOCUS) {
+            auto &set = IREntity::getComponent<C_VoxelSetNew>(child);
+            const auto center =
+                static_cast<std::size_t>(IRMath::index3DtoIndex1D(ivec3(2), set.size_));
+            set.mutableAuthoredRecords()[center].color_ = Color{48, 184, 212, 255};
+            set.resyncAfterAuthoredEdits();
+        }
     }
 
     // GUI-test assertions — populated here (not at the constexpr

@@ -91,7 +91,7 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   panel's W / H / D (initially `--scene-size`); Ctrl+Shift+P adds the
   BAKE panel's selected SDF primitive. Tab/Shift+Tab select parts. Ctrl+S and
   Ctrl+O write/read the prefab manifest plus one `.vxs` per voxel part (v3 for nested parents, v2 for flat scenes).
-- Ordinary launch opens a blank grid in Sculpt; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. Right-drag orbits the camera.
+- Ordinary launch opens a blank grid in Sculpt and fits it into visible free viewport space; FOCUS fits the selected part/local canvas without changing camera yaw. `workarea_focus` validates rotated-child and local-canvas framing around module panels; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. Right-drag orbits the camera.
 - Assemble exposes hierarchy/LOD/components/arrays; Generate exposes recipes/bake/module panels; Animate exposes single-asset frames/rig tools. Hidden widgets retain state and neither draw nor intercept input. ALL exposes the diagnostic layout.
 - BAKE reads the radius the P1 slider holds, and a scripted drag leaves that
   within `kBakeParamSliderDragDrift` of the request. `bakeSphere` models the
