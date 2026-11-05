@@ -2,10 +2,10 @@
   "target": "both",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "468c8e57f",
+  "git_sha": "34ed50e69",
   "git_dirty": false,
-  "run_name": "468c8e57f-ci",
-  "started_at": "2026-10-28T02:19:02Z",
+  "run_name": "34ed50e69-ci",
+  "started_at": "2026-11-05T03:00:18Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,13 +17,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 115.412,
+        "before": 115.206,
         "before_samples": [
-          115.475,
-          115.412,
-          115.289
+          115.206,
+          115.202,
+          115.345
         ],
-        "after": 115.534
+        "after": 115.695
       }
     },
     {
@@ -36,13 +36,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 115.413,
+        "before": 115.29,
         "before_samples": [
-          115.328,
-          115.446,
-          115.413
+          115.108,
+          115.303,
+          115.29
         ],
-        "after": 115.797
+        "after": 115.233
       }
     },
     {
@@ -55,13 +55,13 @@
       "status": "ok",
       "report": "target=IRLuaPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 115.378,
+        "before": 115.223,
         "before_samples": [
-          115.316,
-          115.378,
-          115.562
+          115.225,
+          115.223,
+          115.188
         ],
-        "after": 115.416
+        "after": 115.386
       }
     },
     {
@@ -74,19 +74,19 @@
       "status": "ok",
       "report": "target=IRLuaPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 115.296,
+        "before": 117.037,
         "before_samples": [
-          115.22,
-          115.296,
-          115.464
+          117.037,
+          117.108,
+          115.274
         ],
-        "after": 115.785
+        "after": 115.485
       }
     }
   ],
-  "finished_at": "2026-10-28T02:23:48Z",
+  "finished_at": "2026-11-05T03:04:58Z",
   "calibration": {
-    "ref_ms": 115.413,
+    "ref_ms": 115.283,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-xeon-platinum-8370c-unknown",
     "host_fingerprint": {
@@ -101,13 +101,13 @@
       },
       "os": {
         "distro": "Ubuntu 24.04.5 LTS",
-        "kernel": "Linux 6.17.0-1022-azure"
+        "kernel": "Linux 7.0.0-1017-azure"
       },
       "ram": {
         "gb": 15
       },
       "slug": "linux-x86_64-xeon-platinum-8370c-unknown"
     },
-    "math_sha": "2b26d6323de14ecc0cccad2eccebd9ed37db2dae"
+    "math_sha": "613df57b0eb2f7ffee129a5cce94e218a2c1dc55"
   }
 }
