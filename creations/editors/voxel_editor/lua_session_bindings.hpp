@@ -189,6 +189,31 @@ editorInputKindArg(const sol::object &value, const char *method, const char *arg
     }
 }
 
+inline Session::ActionCheckKind
+actionCheckKindArg(const sol::object &value, const char *method, const char *argument) {
+    const int kind = integerArg(value, method, argument);
+    switch (kind) {
+    case static_cast<int>(Session::ActionCheckKind::KEYS):
+        return Session::ActionCheckKind::KEYS;
+    case static_cast<int>(Session::ActionCheckKind::RUNS):
+        return Session::ActionCheckKind::RUNS;
+    case static_cast<int>(Session::ActionCheckKind::BADGE):
+        return Session::ActionCheckKind::BADGE;
+    case static_cast<int>(Session::ActionCheckKind::LISTED):
+        return Session::ActionCheckKind::LISTED;
+    case static_cast<int>(Session::ActionCheckKind::ROW_CONTAINS):
+        return Session::ActionCheckKind::ROW_CONTAINS;
+    case static_cast<int>(Session::ActionCheckKind::STATUS):
+        return Session::ActionCheckKind::STATUS;
+    case static_cast<int>(Session::ActionCheckKind::WINDOW_OPEN):
+        return Session::ActionCheckKind::WINDOW_OPEN;
+    case static_cast<int>(Session::ActionCheckKind::AUDIT):
+        return Session::ActionCheckKind::AUDIT;
+    default:
+        throw argumentError(method, argument, "an IREditor.ActionCheckKind value");
+    }
+}
+
 inline Session::LoftMask
 loftMaskArg(const sol::object &value, const char *method, const char *argument) {
     const int mask = integerArg(value, method, argument);
@@ -302,6 +327,12 @@ class Handle {
             keyArg(modifier, "chordKey", "modifier"),
             keyArg(key, "chordKey", "key")
         );
+    }
+    void holdKey(const sol::object &key) {
+        builder().holdKey(keyArg(key, "holdKey", "key"));
+    }
+    void releaseKey(const sol::object &key) {
+        builder().releaseKey(keyArg(key, "releaseKey", "key"));
     }
 
 #define IR_SESSION_FORWARD_0(name)                                                                 \
@@ -572,6 +603,21 @@ class Handle {
             name
         );
     }
+    void expectAction(
+        const sol::object &kind,
+        const std::string &actionId,
+        const std::string &text,
+        int expected,
+        const std::string &name
+    ) {
+        builder().expectAction(
+            actionCheckKindArg(kind, "expectAction", "kind"),
+            actionId,
+            text,
+            expected,
+            name
+        );
+    }
     void expectEditorInput(const sol::object &kind, int expectedPart, const std::string &name) {
         builder().expectEditorInput(
             editorInputKindArg(kind, "expectEditorInput", "kind"),
@@ -817,6 +863,10 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::tapKey,
         "chordKey",
         &Handle::chordKey,
+        "holdKey",
+        &Handle::holdKey,
+        "releaseKey",
+        &Handle::releaseKey,
         "toggleEraseMode",
         &Handle::toggleEraseMode,
         "toggleTransformMode",
@@ -965,6 +1015,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectPartAnchor,
         "expectPartModeDropdown",
         &Handle::expectPartModeDropdown,
+        "expectAction",
+        &Handle::expectAction,
         "expectEditorInput",
         &Handle::expectEditorInput,
         "expectPoolActive",
@@ -1040,6 +1092,20 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
     IR_BIND_SESSION_INPUT_CHECK(TAB_WALK_COVERAGE);
 #undef IR_BIND_SESSION_INPUT_CHECK
     editor["EditorInputCheckKind"] = inputCheck;
+
+    sol::table actionCheck = lua.create_table();
+#define IR_BIND_SESSION_ACTION_CHECK(name)                                                         \
+    actionCheck[#name] = static_cast<lua_Integer>(Session::ActionCheckKind::name)
+    IR_BIND_SESSION_ACTION_CHECK(KEYS);
+    IR_BIND_SESSION_ACTION_CHECK(RUNS);
+    IR_BIND_SESSION_ACTION_CHECK(BADGE);
+    IR_BIND_SESSION_ACTION_CHECK(LISTED);
+    IR_BIND_SESSION_ACTION_CHECK(ROW_CONTAINS);
+    IR_BIND_SESSION_ACTION_CHECK(STATUS);
+    IR_BIND_SESSION_ACTION_CHECK(WINDOW_OPEN);
+    IR_BIND_SESSION_ACTION_CHECK(AUDIT);
+#undef IR_BIND_SESSION_ACTION_CHECK
+    editor["ActionCheckKind"] = actionCheck;
 
     sol::table loftMask = lua.create_table();
 #define IR_BIND_SESSION_LOFT_MASK(name)                                                            \

@@ -16,6 +16,8 @@ Design log, findings and the authoring-session history:
   also covers `test_module_files`, `test_module_arg`, and `test_module_arg_absent`.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
+- `actions_workflow`, then `actions_restart` under the same `IR_PREFS_DIR`: the
+  Actions window (search, run, conflict replace), badges, and keymap restore.
 - `--module test/module --module-session test_bake_radius_guard` must exit 1
   before any replay, on a recipe error naming `bakeSphere` and radius 2.095.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice

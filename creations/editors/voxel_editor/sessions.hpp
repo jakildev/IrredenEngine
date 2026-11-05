@@ -6,6 +6,7 @@
 #include "session_builder.hpp"
 #include "sculpt_panel.hpp"
 #include "hierarchy_panel.hpp"
+#include "actions_sessions.hpp"
 
 #include <algorithm>
 #include <iterator>
@@ -164,6 +165,8 @@ enum class Id {
     MODE_PREVIEW,
     MODE_PREVIEW_SHOTS,
     TEXT_INPUT_COMMAND_CAPTURE,
+    ACTIONS_WORKFLOW,
+    ACTIONS_RESTART,
     PART_SIZES,
     PART_GIZMO_REACH,
     PART_RING_TURN,
@@ -294,6 +297,10 @@ inline Id idFromName(const std::string &name) {
         return Id::MODE_PREVIEW_SHOTS;
     if (name == "text_input_command_capture")
         return Id::TEXT_INPUT_COMMAND_CAPTURE;
+    if (name == "actions_workflow")
+        return Id::ACTIONS_WORKFLOW;
+    if (name == "actions_restart")
+        return Id::ACTIONS_RESTART;
     if (name == "part_sizes")
         return Id::PART_SIZES;
     if (name == "part_gizmo_reach")
@@ -3395,6 +3402,10 @@ inline Recipe build(
         );
         return builder.finish();
     }
+    case Id::ACTIONS_WORKFLOW:
+        return buildActionsWorkflow(sceneSize, sceneOrigin);
+    case Id::ACTIONS_RESTART:
+        return buildActionsRestart(sceneSize, sceneOrigin);
     case Id::TEXT_INPUT_COMMAND_CAPTURE: {
         Builder builder("text_input_command_capture", sceneSize, sceneOrigin);
 
