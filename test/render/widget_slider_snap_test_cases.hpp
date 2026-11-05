@@ -10,7 +10,7 @@
 
 namespace IRTest::detail {
 
-inline void expectCanonicalSteppedFloatLattices() {
+static void expectCanonicalSteppedFloatLattices() {
     struct TestCase {
         float min_;
         float max_;
