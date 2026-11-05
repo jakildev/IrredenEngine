@@ -1,0 +1,13 @@
+....
+----------------------------------------------------------------------
+Ran 4 tests in 22.474s
+
+OK
+glsl: 32 global spill boundary and allocation-order controls passed
+metal: 32 global spill boundary and allocation-order controls passed
+glsl reference=False: 16 retained-subset comparisons; poisoned exhaustion safe
+glsl reference=True: 16 retained-subset comparisons; poisoned exhaustion safe
+metal reference=False: 16 retained-subset comparisons; poisoned exhaustion safe
+metal reference=True: 16 retained-subset comparisons; poisoned exhaustion safe
+glsl: 61934 independent ray queries; 4519 hits; 57415 misses
+metal: 61934 independent ray queries; 4519 hits; 57415 misses

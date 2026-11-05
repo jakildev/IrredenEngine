@@ -1,0 +1,25 @@
+.
+----------------------------------------------------------------------
+Ran 1 test in 29.752s
+
+OK
+glsl:
+small-64: allocation_attempts=64 occupied=6 incomplete=0 peak_raw_count=64 atomic_add=448 atomic_max=0
+small-65: allocation_attempts=65 occupied=6 incomplete=0 peak_raw_count=65 atomic_add=461 atomic_max=0
+small-66: allocation_attempts=66 occupied=6 incomplete=0 peak_raw_count=66 atomic_add=474 atomic_max=0
+small-257: allocation_attempts=257 occupied=6 incomplete=6 peak_raw_count=257 atomic_add=2951 atomic_max=0
+global-exhaustion: allocation_attempts=65538 occupied=16 incomplete=16 peak_raw_count=2147483649 atomic_add=459905 atomic_max=0
+full-map-64: allocation_attempts=64 occupied=32768 incomplete=0 peak_raw_count=64 atomic_add=2097216 atomic_max=0
+full-map-65: allocation_attempts=65 occupied=32768 incomplete=0 peak_raw_count=65 atomic_add=2162753 atomic_max=0
+large-face control: 32768 tile entries per face; 65 overlapping faces retain complete candidates in both cascades
+spill boundary, pool exhaustion, stale reset and 12 insertion permutations pass
+metal:
+small-64: allocation_attempts=64 occupied=6 incomplete=0 peak_raw_count=64 atomic_add=448 atomic_max=0
+small-65: allocation_attempts=65 occupied=6 incomplete=0 peak_raw_count=65 atomic_add=461 atomic_max=0
+small-66: allocation_attempts=66 occupied=6 incomplete=0 peak_raw_count=66 atomic_add=474 atomic_max=0
+small-257: allocation_attempts=257 occupied=6 incomplete=6 peak_raw_count=257 atomic_add=2951 atomic_max=0
+global-exhaustion: allocation_attempts=65538 occupied=16 incomplete=16 peak_raw_count=2147483649 atomic_add=459905 atomic_max=0
+full-map-64: allocation_attempts=64 occupied=32768 incomplete=0 peak_raw_count=64 atomic_add=2097216 atomic_max=0
+full-map-65: allocation_attempts=65 occupied=32768 incomplete=0 peak_raw_count=65 atomic_add=2162753 atomic_max=0
+large-face control: 32768 tile entries per face; 65 overlapping faces retain complete candidates in both cascades
+spill boundary, pool exhaustion, stale reset and 12 insertion permutations pass

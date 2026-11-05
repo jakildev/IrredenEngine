@@ -1,0 +1,11 @@
+....
+----------------------------------------------------------------------
+Ran 4 tests in 12.709s
+
+OK
+glsl: 30 complete overlap queries plus distant-only controls
+metal: 30 complete overlap queries plus distant-only controls
+glsl: 48 overlap comparisons plus weighted union and range controls
+metal: 48 overlap comparisons plus weighted union and range controls
+glsl: 250 second-depth comparisons plus duplicate, residual, surface and union controls
+metal: 250 second-depth comparisons plus duplicate, residual, surface and union controls

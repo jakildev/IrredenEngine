@@ -1,0 +1,757 @@
+[  4%] Built target luajit_build
+[  4%] Building CXX object _deps/enkits_src-build/CMakeFiles/enkiTS.dir/src/TaskScheduler.cpp.o
+[  4%] Built target IRCanvasStressAssets
+[  4%] Building CXX object _deps/rtaudio-build/CMakeFiles/rtaudio.dir/RtAudio.cpp.o
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtaudio-src/RtAudio.cpp:94:13: warning: variable length arrays in C++ are a Clang extension [-Wvla-cxx-extension]
+   94 |   char dest[MB_CUR_MAX];
+      |             ^~~~~~~~~~
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/_mb_cur_max.h:37:22: note: expanded from macro 'MB_CUR_MAX'
+   37 | #define MB_CUR_MAX                      (___mb_cur_max())
+      |                                         ^~~~~~~~~~~~~~~~~
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtaudio-src/RtAudio.cpp:94:13: note: non-constexpr function '___mb_cur_max' cannot be used in a constant expression
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/_mb_cur_max.h:37:23: note: expanded from macro 'MB_CUR_MAX'
+   37 | #define MB_CUR_MAX                      (___mb_cur_max())
+      |                                          ^
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/_mb_cur_max.h:33:6: note: declared here
+   33 | int             ___mb_cur_max(void);
+      |                 ^
+[  4%] Linking CXX static library libenkiTS.a
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtaudio-src/RtAudio.cpp:1143:22: warning: variable length arrays in C++ are a Clang extension [-Wvla-cxx-extension]
+ 1143 |   AudioDeviceID ids[ nDevices ];
+      |                      ^~~~~~~~
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtaudio-src/RtAudio.cpp:1143:22: note: read of non-const variable 'nDevices' is not allowed in a constant expression
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtaudio-src/RtAudio.cpp:1136:16: note: declared here
+ 1136 |   unsigned int nDevices = dataSize / sizeof( AudioDeviceID );
+      |                ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtaudio-src/RtAudio.cpp:1354:30: warning: variable length arrays in C++ are a Clang extension [-Wvla-cxx-extension]
+ 1354 |   AudioValueRange rangeList[ nRanges ];
+      |                              ^~~~~~~
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtaudio-src/RtAudio.cpp:1354:30: note: read of non-const variable 'nRanges' is not allowed in a constant expression
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtaudio-src/RtAudio.cpp:1353:10: note: declared here
+ 1353 |   UInt32 nRanges = dataSize / sizeof( AudioValueRange );
+      |          ^
+[  4%] Built target enkiTS
+[  4%] Building CXX object _deps/rtaudio-build/CMakeFiles/rtaudio.dir/rtaudio_c.cpp.o
+3 warnings generated.
+[  4%] Building CXX object _deps/rtmidi-build/CMakeFiles/rtmidi.dir/RtMidi.cpp.o
+[  9%] Linking CXX shared library librtaudio.dylib
+[  9%] Built target rtaudio
+[  9%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/base_block_descriptor.cpp.o
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtmidi-src/RtMidi.cpp:1689:15: warning: variable length arrays in C++ are a Clang extension [-Wvla-cxx-extension]
+ 1689 |   Byte buffer[bufsize+16]; // pad for other struct members
+      |               ^~~~~~~~~~
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtmidi-src/RtMidi.cpp:1689:15: note: read of non-const variable 'bufsize' is not allowed in a constant expression
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/rtmidi-src/RtMidi.cpp:1688:13: note: declared here
+ 1688 |   ByteCount bufsize = nBytes > 65535 ? 65535 : nBytes;
+      |             ^
+[  9%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/block.cpp.o
+1 warning generated.
+[  9%] Building CXX object _deps/rtmidi-build/CMakeFiles/rtmidi.dir/rtmidi_c.cpp.o
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/block.cpp:52:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/profile_manager.h:56:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/thread_storage.h:53:
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:9: warning: explicitly defaulted default constructor is implicitly deleted [-Wdefaulted-function-deleted]
+   94 |         CSwitchEvent() = default;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:88:39: note: default constructor of 'CSwitchEvent' is implicitly deleted because base class 'Event' has a deleted default constructor
+   88 |     class PROFILER_API CSwitchEvent : public Event
+      |                                       ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/details/profiler_public_types.h:117:9: note: 'Event' has been explicitly marked deleted here
+  117 |         Event() = delete;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:26: note: replace 'default' with 'delete'
+   94 |         CSwitchEvent() = default;
+      |                          ^~~~~~~
+      |                          delete
+1 warning generated.
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/block_descriptor.cpp.o
+[ 14%] Linking CXX shared library librtmidi.dylib
+[ 14%] Built target rtmidi
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/easy_socket.cpp.o
+[ 14%] Building CXX object _deps/fmt-build/CMakeFiles/fmt.dir/src/format.cc.o
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/event_trace_win.cpp.o
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/nonscoped_block.cpp.o
+[ 14%] Building CXX object _deps/fmt-build/CMakeFiles/fmt.dir/src/os.cc.o
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/profile_manager.cpp.o
+[ 14%] Linking CXX shared library libfmtd.dylib
+[ 14%] Built target fmt
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/profile_manager.cpp:56:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/profile_manager.h:56:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/thread_storage.h:53:
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:9: warning: explicitly defaulted default constructor is implicitly deleted [-Wdefaulted-function-deleted]
+   94 |         CSwitchEvent() = default;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:88:39: note: default constructor of 'CSwitchEvent' is implicitly deleted because base class 'Event' has a deleted default constructor
+   88 |     class PROFILER_API CSwitchEvent : public Event
+      |                                       ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/details/profiler_public_types.h:117:9: note: 'Event' has been explicitly marked deleted here
+  117 |         Event() = delete;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:26: note: replace 'default' with 'delete'
+   94 |         CSwitchEvent() = default;
+      |                          ^~~~~~~
+      |                          delete
+[ 14%] Building CXX object _deps/glm-build/glm/CMakeFiles/glm.dir/detail/glm.cpp.o
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/profile_manager.cpp:713:12: warning: Warning: Implicit thread registration without removing empty unguarded threads may lead to memory leak because there is no possibility to check thread state (dead or alive) for pthreads. [-W#pragma-messages]
+  713 | #   pragma message "Warning: Implicit thread registration without removing empty unguarded threads may lead to memory leak because there is no possibility to check thread state (dead or alive) for pthreads."
+      |            ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/profile_manager.cpp:896:10: warning: Warning: Your compiler does not support thread_local C++11 feature. Please use EASY_THREAD_SCOPE as much as possible. Otherwise, there is a possibility of memory leak if there are a lot of rapidly created and destroyed threads. [-W#pragma-messages]
+  896 | # pragma message "Warning: Your compiler does not support thread_local C++11 feature. Please use EASY_THREAD_SCOPE as much as possible. Otherwise, there is a possibility of memory leak if there are a lot of rapidly created and destroyed threads."
+      |          ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/profile_manager.cpp:1028:10: warning: Warning: Can not check pthread state (dead or alive). This may cause memory leak because ThreadStorage-s would not be removed ever during an application launched. [-W#pragma-messages]
+ 1028 | # pragma message "Warning: Can not check pthread state (dead or alive). This may cause memory leak because ThreadStorage-s would not be removed ever during an application launched."
+      |          ^
+4 warnings generated.
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/profiler.cpp.o
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/profiler.cpp:53:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/profile_manager.h:56:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/thread_storage.h:53:
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:9: warning: explicitly defaulted default constructor is implicitly deleted [-Wdefaulted-function-deleted]
+   94 |         CSwitchEvent() = default;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:88:39: note: default constructor of 'CSwitchEvent' is implicitly deleted because base class 'Event' has a deleted default constructor
+   88 |     class PROFILER_API CSwitchEvent : public Event
+      |                                       ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/details/profiler_public_types.h:117:9: note: 'Event' has been explicitly marked deleted here
+  117 |         Event() = delete;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:26: note: replace 'default' with 'delete'
+   94 |         CSwitchEvent() = default;
+      |                          ^~~~~~~
+      |                          delete
+1 warning generated.
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/reader.cpp.o
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/reader.cpp:65:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/reader.h:55:
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:9: warning: explicitly defaulted default constructor is implicitly deleted [-Wdefaulted-function-deleted]
+   94 |         CSwitchEvent() = default;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:88:39: note: default constructor of 'CSwitchEvent' is implicitly deleted because base class 'Event' has a deleted default constructor
+   88 |     class PROFILER_API CSwitchEvent : public Event
+      |                                       ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/details/profiler_public_types.h:117:9: note: 'Event' has been explicitly marked deleted here
+  117 |         Event() = delete;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:26: note: replace 'default' with 'delete'
+   94 |         CSwitchEvent() = default;
+      |                          ^~~~~~~
+      |                          delete
+[ 14%] Linking CXX shared library libglm.dylib
+[ 14%] Built target glm
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/serialized_block.cpp.o
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/serialized_block.cpp:44:
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:9: warning: explicitly defaulted default constructor is implicitly deleted [-Wdefaulted-function-deleted]
+   94 |         CSwitchEvent() = default;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:88:39: note: default constructor of 'CSwitchEvent' is implicitly deleted because base class 'Event' has a deleted default constructor
+   88 |     class PROFILER_API CSwitchEvent : public Event
+      |                                       ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/details/profiler_public_types.h:117:9: note: 'Event' has been explicitly marked deleted here
+  117 |         Event() = delete;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:26: note: replace 'default' with 'delete'
+   94 |         CSwitchEvent() = default;
+      |                          ^~~~~~~
+      |                          delete
+1 warning generated.
+[ 14%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/thread_storage.cpp.o
+1 warning generated.
+[ 19%] Building CXX object _deps/easy_profiler-build/easy_profiler_core/CMakeFiles/easy_profiler.dir/writer.cpp.o
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/thread_storage.cpp:44:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/thread_storage.h:53:
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:9: warning: explicitly defaulted default constructor is implicitly deleted [-Wdefaulted-function-deleted]
+   94 |         CSwitchEvent() = default;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:88:39: note: default constructor of 'CSwitchEvent' is implicitly deleted because base class 'Event' has a deleted default constructor
+   88 |     class PROFILER_API CSwitchEvent : public Event
+      |                                       ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/details/profiler_public_types.h:117:9: note: 'Event' has been explicitly marked deleted here
+  117 |         Event() = delete;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:26: note: replace 'default' with 'delete'
+   94 |         CSwitchEvent() = default;
+      |                          ^~~~~~~
+      |                          delete
+1 warning generated.
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/writer.cpp:56:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/writer.h:46:
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/reader.h:55:
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:9: warning: explicitly defaulted default constructor is implicitly deleted [-Wdefaulted-function-deleted]
+   94 |         CSwitchEvent() = default;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:88:39: note: default constructor of 'CSwitchEvent' is implicitly deleted because base class 'Event' has a deleted default constructor
+   88 |     class PROFILER_API CSwitchEvent : public Event
+      |                                       ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/details/profiler_public_types.h:117:9: note: 'Event' has been explicitly marked deleted here
+  117 |         Event() = delete;
+      |         ^
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/easy_profiler-src/easy_profiler_core/include/easy/serialized_block.h:94:26: note: replace 'default' with 'delete'
+   94 |         CSwitchEvent() = default;
+      |                          ^~~~~~~
+      |                          delete
+[ 19%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/context.c.o
+1 warning generated.
+[ 19%] Linking CXX shared library ../bin/libeasy_profiler.dylib
+[ 19%] Built target easy_profiler
+[ 19%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/init.c.o
+[ 23%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/input.c.o
+[ 23%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/monitor.c.o
+[ 23%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/vulkan.c.o
+[ 23%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/window.c.o
+[ 23%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/cocoa_init.m.o
+[ 23%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/cocoa_joystick.m.o
+[ 23%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/cocoa_monitor.m.o
+[ 23%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/allocator.cpp.o
+[ 23%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/clusterizer.cpp.o
+[ 23%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/indexanalyzer.cpp.o
+[ 23%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/indexcodec.cpp.o
+[ 23%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/indexgenerator.cpp.o
+[ 23%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/cocoa_window.m.o
+[ 23%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/meshletcodec.cpp.o
+[ 23%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/meshletutils.cpp.o
+[ 23%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/opacitymap.cpp.o
+[ 28%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/overdrawoptimizer.cpp.o
+[ 28%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/partition.cpp.o
+[ 33%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/cocoa_time.c.o
+[ 33%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/quantization.cpp.o
+[ 33%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/rasterizer.cpp.o
+[ 33%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/remesher.cpp.o
+[ 33%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/posix_thread.c.o
+[ 33%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/simplifier.cpp.o
+[ 33%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/spatialorder.cpp.o
+[ 33%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/stripifier.cpp.o
+[ 33%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/nsgl_context.m.o
+[ 33%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/tangentspace.cpp.o
+[ 38%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/vcacheoptimizer.cpp.o
+[ 38%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/vertexcodec.cpp.o
+[ 38%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/vertexfilter.cpp.o
+[ 38%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/egl_context.c.o
+[ 38%] Building CXX object _deps/meshoptimizer-build/CMakeFiles/meshoptimizer.dir/src/vfetchoptimizer.cpp.o
+[ 38%] Linking CXX static library libmeshoptimizer.a
+[ 38%] Built target meshoptimizer
+[ 38%] Building C object _deps/glfw-build/src/CMakeFiles/glfw.dir/osmesa_context.c.o
+[ 38%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/spdlog.cpp.o
+[ 38%] Linking C shared library libglfw.dylib
+[ 38%] Built target glfw
+[ 38%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/stdout_sinks.cpp.o
+[ 38%] Building CXX object engine/math/CMakeFiles/IrredenEngineMath.dir/src/ir_math.cpp.o
+[ 38%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/color_sinks.cpp.o
+[ 42%] Linking CXX static library libIrredenEngineMath.a
+[ 42%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/file_sinks.cpp.o
+[ 42%] Built target IrredenEngineMath
+[ 42%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/async.cpp.o
+[ 42%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/cfg.cpp.o
+[ 42%] Linking CXX shared library libspdlogd.dylib
+[ 42%] Built target spdlog
+[ 42%] Building CXX object engine/profile/CMakeFiles/IrredenEngineProfile.dir/src/logger_spd.cpp.o
+[ 42%] Building CXX object engine/profile/CMakeFiles/IrredenEngineProfile.dir/src/cpu_profiler.cpp.o
+[ 42%] Building CXX object engine/profile/CMakeFiles/IrredenEngineProfile.dir/src/ir_profile.cpp.o
+[ 42%] Building CXX object engine/profile/CMakeFiles/IrredenEngineProfile.dir/src/process_memory.cpp.o
+[ 42%] Building CXX object engine/profile/CMakeFiles/IrredenEngineProfile.dir/src/profile_report.cpp.o
+[ 42%] Linking CXX static library libIrredenEngineProfile.a
+[ 42%] Built target IrredenEngineProfile
+[ 42%] Building CXX object engine/time/CMakeFiles/IrredenEngineTime.dir/src/time_manager.cpp.o
+[ 42%] Building CXX object engine/job/CMakeFiles/IrredenEngineJob.dir/src/job_manager.cpp.o
+[ 42%] Building CXX object engine/time/CMakeFiles/IrredenEngineTime.dir/src/ir_time.cpp.o
+[ 42%] Building CXX object engine/job/CMakeFiles/IrredenEngineJob.dir/src/ir_job.cpp.o
+[ 42%] Linking CXX static library libIrredenEngineTime.a
+[ 42%] Built target IrredenEngineTime
+[ 42%] Building CXX object engine/utility/CMakeFiles/IrredenEngineUtility.dir/src/ir_utility.cpp.o
+[ 42%] Linking CXX static library libIrredenEngineJob.a
+[ 42%] Built target IrredenEngineJob
+[ 42%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/ir_entity.cpp.o
+[ 42%] Linking CXX static library libIrredenEngineUtility.a
+[ 42%] Built target IrredenEngineUtility
+[ 42%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/archetype_graph.cpp.o
+[ 42%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/archetype_node.cpp.o
+[ 42%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/entity_manager.cpp.o
+[ 42%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/ir_asset.cpp.o
+[ 42%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/binary_io.cpp.o
+[ 42%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/chunk_header.cpp.o
+[ 47%] Building CXX object engine/entity/CMakeFiles/IrredenEngineEntity.dir/src/archetype.cpp.o
+[ 47%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/name_table.cpp.o
+[ 47%] Linking CXX static library libIrredenEngineEntity.a
+[ 47%] Built target IrredenEngineEntity
+[ 52%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/json_sidecar.cpp.o
+[ 52%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/ir_audio.cpp.o
+[ 52%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/json_reader.cpp.o
+[ 52%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/creation_manifest.cpp.o
+[ 52%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/audio_manager.cpp.o
+[ 52%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/voxel_set_format.cpp.o
+[ 57%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/audio_playback.cpp.o
+[ 57%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/rig_format.cpp.o
+[ 57%] Building CXX object engine/asset/CMakeFiles/IrredenEngineAsset.dir/src/key_value_store.cpp.o
+[ 57%] Linking CXX static library libIrredenEngineAsset.a
+[ 57%] Built target IrredenEngineAsset
+[ 57%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/midi_clock.cpp.o
+[ 57%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/midi_in.cpp.o
+[ 57%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/midi_out.cpp.o
+[ 57%] Building CXX object engine/system/CMakeFiles/IrredenEngineSystem.dir/src/system_manager.cpp.o
+[ 57%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/audio.cpp.o
+[ 61%] Building CXX object engine/system/CMakeFiles/IrredenEngineSystem.dir/src/ir_system.cpp.o
+[ 61%] Building CXX object engine/audio/CMakeFiles/IrredenEngineAudio.dir/src/synthetic_capture_source.cpp.o
+[ 61%] Linking CXX static library libIrredenEngineSystem.a
+[ 61%] Built target IrredenEngineSystem
+[ 61%] Linking CXX static library libIrredenEngineAudio.a
+[ 61%] Building CXX object engine/catalog/CMakeFiles/IrredenEngineCatalog.dir/src/catalog.cpp.o
+[ 61%] Built target IrredenEngineAudio
+[ 66%] Building CXX object engine/catalog/CMakeFiles/IrredenEngineCatalog.dir/src/asset_index.cpp.o
+[ 66%] Building CXX object engine/window/CMakeFiles/IrredenEngineWindow.dir/src/ir_glfw_window.cpp.o
+[ 66%] Linking CXX static library libIrredenEngineCatalog.a
+[ 66%] Built target IrredenEngineCatalog
+[ 66%] Building CXX object engine/window/CMakeFiles/IrredenEngineWindow.dir/src/ir_window.cpp.o
+[ 66%] Building CXX object engine/window/CMakeFiles/IrredenEngineWindow.dir/src/ir_window_platform_cocoa.mm.o
+[ 66%] Linking CXX static library libIrredenEngineWindow.a
+[ 66%] Built target IrredenEngineWindow
+[ 66%] Building CXX object engine/input/CMakeFiles/IrredenEngineInput.dir/src/ir_input.cpp.o
+[ 66%] Building CXX object engine/input/CMakeFiles/IrredenEngineInput.dir/src/input_manager.cpp.o
+[ 66%] Linking CXX static library libIrredenEngineInput.a
+[ 66%] Built target IrredenEngineInput
+[ 66%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/active_canvas.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/async_texture.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/ir_render.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/buffer.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/framebuffer.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/render_manager.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/rendering_rm.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/shader.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/texture.cpp.o
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/vao.cpp.o
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/voxel_pool_config.cpp.o
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/image_data.cpp.o
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_cpp_impl.cpp.o
+In file included from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/engine/render/src/image_data.cpp:8:
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/_deps/stbimage-src/stb_image_write.h:776:13: warning: 'sprintf' is deprecated: This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead. [-Wdeprecated-declarations]
+  776 |       len = sprintf(buffer, "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n", y, x);
+      |             ^
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/_stdio.h:278:1: note: 'sprintf' has been explicitly marked deprecated here
+  278 | __deprecated_msg("This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead.")
+      | ^
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/cdefs.h:227:48: note: expanded from macro '__deprecated_msg'
+  227 |         #define __deprecated_msg(_msg) __attribute__((__deprecated__(_msg)))
+      |                                                       ^
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_render_impl.cpp.o
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_runtime.cpp.o
+1 warning generated.
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_buffer.cpp.o
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_texture.cpp.o
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_pipeline.cpp.o
+[ 76%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_framebuffer.cpp.o
+[ 80%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/metal/metal_cocoa_bridge.mm.o
+[ 80%] Linking CXX static library libIrredenEngineRendering.a
+[ 80%] Built target IrredenEngineRendering
+[ 80%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/auto_screenshot.cpp.o
+[ 80%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/ir_video.cpp.o
+[ 85%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/video_manager.cpp.o
+[ 85%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/video_recorder.cpp.o
+[ 85%] Building CXX object engine/video/CMakeFiles/IrredenEngineVideo.dir/src/metal/video_backend.cpp.o
+[ 85%] Linking CXX static library libIrredenEngineVideo.a
+[ 85%] Built target IrredenEngineVideo
+[ 85%] Building CXX object engine/command/CMakeFiles/IrredenEngineCommand.dir/src/ir_command.cpp.o
+[ 85%] Building CXX object engine/command/CMakeFiles/IrredenEngineCommand.dir/src/command_manager.cpp.o
+[ 85%] Linking CXX static library libIrredenEngineCommand.a
+[ 85%] Built target IrredenEngineCommand
+[ 85%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/chunk_residency.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/chunk_persistence.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/field_chunk_persistence.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world_snapshot.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world_snapshot_relations.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world_default_registry.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/hand_off.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/tool_spawn.cpp.o
+[ 90%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/__/process_spawn.cpp.o
+[ 95%] Linking CXX static library libIrredenEngineWorld.a
+[ 95%] Built target IrredenEngineWorld
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/lua_script.cpp.o
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/prefab_api.cpp.o
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/prefab_component_factory.cpp.o
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/lua_bindings_prefab.cpp.o
+[ 95%] Linking CXX static library libIrredenEngineScripting.a
+[ 95%] Built target IrredenEngineScripting
+[ 95%] Building CXX object engine/CMakeFiles/IrredenEngine.dir/hand_off_process.cpp.o
+[ 95%] Building CXX object engine/CMakeFiles/IrredenEngine.dir/engine.cpp.o
+[ 95%] Building CXX object engine/CMakeFiles/IrredenEngine.dir/ir_args.cpp.o
+[ 95%] Linking CXX static library libIrredenEngine.a
+[ 95%] Built target IrredenEngine
+[100%] Building CXX object creations/demos/canvas_stress/CMakeFiles/IRCanvasStress.dir/main.cpp.o
+[100%] Linking CXX executable IRCanvasStress
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRCanvasStress
+[  4%] Built target luajit_build
+[  4%] Built target enkiTS
+[  9%] Built target rtaudio
+[  9%] Built target rtmidi
+[  9%] Built target IRPerfGridAssets
+[  9%] Built target fmt
+[ 19%] Built target easy_profiler
+[ 19%] Built target glm
+[ 28%] Built target meshoptimizer
+[ 28%] Built target spdlog
+[ 38%] Built target glfw
+[ 42%] Built target IrredenEngineMath
+[ 42%] Built target IrredenEngineProfile
+[ 42%] Built target IrredenEngineTime
+[ 42%] Built target IrredenEngineJob
+[ 42%] Built target IrredenEngineUtility
+[ 47%] Built target IrredenEngineEntity
+[ 52%] Built target IrredenEngineAsset
+[ 57%] Built target IrredenEngineAudio
+[ 61%] Built target IrredenEngineSystem
+[ 66%] Built target IrredenEngineCatalog
+[ 66%] Built target IrredenEngineWindow
+[ 66%] Built target IrredenEngineInput
+[ 80%] Built target IrredenEngineRendering
+[ 85%] Built target IrredenEngineVideo
+[ 85%] Built target IrredenEngineCommand
+[ 95%] Built target IrredenEngineWorld
+[ 95%] Built target IrredenEngineScripting
+[ 95%] Built target IrredenEngine
+[ 95%] Building CXX object creations/demos/perf_grid/CMakeFiles/IRPerfGrid.dir/main.cpp.o
+[100%] Linking CXX executable IRPerfGrid
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRPerfGrid
+[  1%] Built target luajit_build
+[  1%] Building CXX object _deps/googletest-build/googletest/CMakeFiles/gtest.dir/src/gtest-all.cc.o
+[  1%] Built target enkiTS
+[  3%] Built target rtaudio
+[  3%] Built target rtmidi
+[  7%] Built target easy_profiler
+[  7%] Built target fmt
+[  7%] Built target glm
+[ 10%] Built target glfw
+[ 14%] Built target meshoptimizer
+[ 14%] Building CXX object cmake/lua_codegen/CMakeFiles/ir_lua_codegen.dir/main.cpp.o
+[ 16%] Linking CXX shared library ../../../lib/libgtest.dylib
+[ 16%] Built target gtest
+[ 16%] Building CXX object cmake/lua_codegen/CMakeFiles/ir_lua_codegen.dir/system_dsl.cpp.o
+[ 16%] Building CXX object cmake/lua_codegen/CMakeFiles/ir_lua_codegen.dir/__/__/engine/ir_args.cpp.o
+[ 16%] Building CXX object _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o
+[ 16%] Linking CXX executable ir_lua_codegen
+[ 16%] Built target ir_lua_codegen
+[ 16%] Built target spdlog
+[ 17%] Built target IrredenEngineMath
+[ 17%] Built target IrredenEngineProfile
+[ 17%] Built target IrredenEngineJob
+[ 17%] Built target IrredenEngineTime
+[ 17%] Built target IrredenEngineUtility
+[ 19%] Built target IrredenEngineEntity
+[ 19%] Linking CXX shared library ../../../lib/libgtest_main.dylib
+[ 21%] Built target IrredenEngineAsset
+[ 21%] Built target gtest_main
+[ 23%] Built target IrredenEngineAudio
+[ 25%] Built target IrredenEngineSystem
+[ 26%] Built target IrredenEngineCatalog
+[ 26%] Built target IrredenEngineWindow
+[ 26%] Built target IrredenEngineInput
+[ 32%] Built target IrredenEngineRendering
+[ 33%] Built target IrredenEngineVideo
+[ 33%] Built target IrredenEngineCommand
+[ 37%] Built target IrredenEngineWorld
+[ 37%] Built target IrredenEngineScripting
+[ 37%] Built target IrredenEngine
+[ 37%] lua_codegen [codegen]: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/test/codegen/lod_tier_codegen_fixtures.hpp
+[ 37%] lua_codegen [codegen]: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/test/codegen/lua_system_coexistence_fixtures.hpp
+[ 37%] lua_codegen [codegen]: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/test/codegen/lua_component_codegen_fixtures.hpp
+[ 37%] lua_codegen [codegen]: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/test/codegen/lua_system_codegen_fixtures.hpp
+[ 37%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/binary_io_test.cpp.o
+[ 37%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/creation_manifest_test.cpp.o
+[ 37%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/json_reader_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/json_sidecar_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/key_value_store_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/name_table_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/rig_format_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/sprite_sheet_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/voxel_set_dense_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/voxel_set_hybrid_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/voxel_set_rle_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/voxel_set_shapes_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/audio_capture_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/audio_monitor_ring_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/audio_playback_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/synthetic_audio_capture_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_clock_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_note_spacing_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_in_tick_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_hand_off_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_message_ring_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_multiport_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/music_theory_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/catalog/catalog_assets_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/catalog/catalog_scan_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/command/default_binding_manifest_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/command/keyboard_dispatch_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/command/undo_commands_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/allocation_counter.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/array_transforms_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/command_registry_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/ir_args_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/ir_platform_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/archetype_move_storage_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/chunk_bounds_eviction_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/chunked_field_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/collision_swept_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/command_randomize_voxels_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/entity_event_handlers_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/entity_manager_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/execute_query_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/field_clearance_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/field_placement_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/field_regions_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/grid_destination_capacity_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/grid_rotation_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/grid_span_coverage_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/hitbox_2d_gui_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/hover_detect_reset_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/joint_matrix_upload_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/modifier_quat_runtime_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/modifier_runtime_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/modifier_types_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/modifier_vec3_runtime_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/pick_priority_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/propagate_transform_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/rebuild_detached_voxels_guard_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/rotation_mode_set_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/rotation_target_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/sort_archetype_relational_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/store_tie_signal_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/parallel_spawn_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/skeleton_components_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/skeleton_skinning_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/skinning_pipeline_consistency_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/spatial_grid_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/system_exclude_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/undo_history_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_bone_slot_seed_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_pool_teardown_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_set_anchor_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_set_edit_api_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/sdf_bake_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_set_target_canvas_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/physics_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/edt_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/rng_pcg32_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_wrap_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_viewport_helpers_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/sun_frustum_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/camera_subpixel_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_color_layout_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_coord_helpers_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_easing_color_sort_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_random_misc_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_trixel_index_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_yaw_deformation_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/sdf_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/profile/process_memory_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/profile/profile_report_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/camera_mouse_rotate_reset_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/camera_pan_pivot_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/camera_yaw_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/camera_zoom_policy_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/canvas_part_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/canvas_residency_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/canvas_rotation_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/default_pivot_latch_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/composite_depth_row_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/debug_overlay_world_to_screen_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/detached_revoxelize_groups_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/detached_world_depth_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/entity_canvas_teardown_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/entity_canvas_hitbox_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/entity_id_carrier_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_carrier_policy_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/font_maker_source_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_cross_section_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_ghost_policy_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_line_of_sight_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_mode_switch_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_reveal_eval_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_reveal_eval_canvas_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_reveal_eval_shape_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_seams_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_subject_adopt_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_surface_composition_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_canvas_lifecycle_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_canvas_size_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_cast_subcell_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_store_frame_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_surface_lighting_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/frame_data_sun_layout_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/glitch_math_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/trixel_glitch_math_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gizmo_drag_reset_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gizmo_ring_orientation_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gizmo_view_clearance_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gui_canvas_routing_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gpu_compute_dispatch_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gpu_readback_ring_test.cpp.o
+[ 64%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gpu_submission_fences_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gpu_timestamp_poll_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/light_volume_boundary_seed_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/light_volume_dispatch_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/metal_sticky_untrack_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/named_resource_probe_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/help_overlay_layout_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/rendering_resource_manager_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/opengl_shader_include_test.cpp.o
+[ 66%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_canvas_light_scope_test.cpp.o
+[ 67%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/perf_hud_test.cpp.o
+[ 67%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/perf_stats_overlay_reset_test.cpp.o
+[ 67%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/picking_grid_ray_test.cpp.o
+[ 67%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/picking_face_normal_test.cpp.o
+[ 67%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/prefab_system_probe_test.cpp.o
+[ 67%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/shape_sample_probe_test.cpp.o
+[ 67%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/run_witness_test.cpp.o
+[ 67%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/settings_menu_layout_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/trixel_font_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/settings_menu_reset_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/shape_tile_bounds_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_direction_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_lighting_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_shadow_feeder_ring_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_shadow_probe_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_record_pool_layout_test.cpp.o
+[ 69%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/viewport_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_fill_ghost_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_sculpt_grid_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_part_edit_history_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_composite_save_transaction_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_motion_preview_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_scene_io_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_document_lifecycle_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_local_part_edit_test.cpp.o
+[ 71%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_workarea_framing_test.cpp.o
+[ 73%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_recipe_reapply_test.cpp.o
+[ 73%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_pool_config_test.cpp.o
+[ 73%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_pool_capacity_test.cpp.o
+[ 73%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_font_test.cpp.o
+[ 73%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_text_test.cpp.o
+[ 73%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sprite_animation_test.cpp.o
+[ 73%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sprite_components_test.cpp.o
+[ 73%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sprite_render_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_list_scroll_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_slider_snap_fp_contract_off_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_slider_snap_fp_contract_on_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_slider_gesture_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_dropdown_window_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_dropdown_typeahead_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_theme_singleton_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_hit_region_test.cpp.o
+[ 75%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_image_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_tab_focus_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_keyboard_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_visibility_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gui_layout_audit_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_audio_midi_clock_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_audio_midi_observer_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_audio_monitor_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_collision_bindings_test.cpp.o
+[ 76%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_collision_response_test.cpp.o
+[ 78%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_catalog_test.cpp.o
+[ 78%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_command_test.cpp.o
+[ 78%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_cursor_position_test.cpp.o
+[ 78%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_input_bindings_test.cpp.o
+[ 78%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_input_enums_test.cpp.o
+[ 78%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_editor_session_bindings_test.cpp.o
+[ 78%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_hitbox_2d_test.cpp.o
+[ 78%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_component_codegen_test.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_component_codegen_second_tu.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_debug_overlay_bindings_test.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_component_register_test.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_deferred_entity_test.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_entity_anchor_test.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_entity_events_test.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_hit_region_test.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_values_test.cpp.o
+[ 80%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_layout_bindings_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_image_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_layout_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_voxel_seam_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_text_style_voxel_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_undo_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_hierarchy_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_enum_register_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_persistence_test.cpp.o
+[ 82%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_print_sink_test.cpp.o
+[ 83%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_world_snapshot_test.cpp.o
+[ 83%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_pipeline_register_test.cpp.o
+[ 83%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_render_bindings_test.cpp.o
+[ 83%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lod_tier_lua_test.cpp.o
+[ 83%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_fog_revealed_test.cpp.o
+[ 83%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_fog_bindings_test.cpp.o
+[ 83%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_engine_hand_off_test.cpp.o
+[ 83%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_spawn_tool_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_file_bindings_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_script_get_table_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_viewport_bindings_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_canvas_draw_bindings_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_midi_note_spacing_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_color_swatch_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_script_utils_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_standard_bindings_test.cpp.o
+[ 85%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_local_transform_lua_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_world_transform_lua_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_rotation_target_lua_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_spin_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_system_codegen_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/prefab_api_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/prefab_parts_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_system_coexistence_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_entity_batch_create_test.cpp.o
+[ 87%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_system_register_test.cpp.o
+[ 89%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_trigger_glow_lua_test.cpp.o
+[ 89%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_usertype_registration_test.cpp.o
+[ 89%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/modifier_lua_test.cpp.o
+[ 89%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/pipeline_groups_test.cpp.o
+[ 89%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/register_system_test.cpp.o
+[ 89%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/system_access_test.cpp.o
+[ 89%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/system_cadence_test.cpp.o
+[ 89%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/system_concurrency_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/sim_clock_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/cycle_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/timer_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/stopwatch_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/lua_sim_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/time_manager_hand_off_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/job/ir_job_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/job/worker_block_queue_test.cpp.o
+[ 91%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/utility/contained_path_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/utility/ir_utility_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/update/collision_response_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/update/rhythmic_launch_rest_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/auto_screenshot_helpers_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/auto_record_pacing_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/audio_capture_rate_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/capture_output_resolution_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/recording_state_test.cpp.o
+[ 92%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/capture_source_test.cpp.o
+[ 94%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/window/window_mode_test.cpp.o
+[ 94%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/window/close_guard_test.cpp.o
+[ 94%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/chunk_coord_test.cpp.o
+[ 94%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/chunk_membership_migration_test.cpp.o
+[ 94%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/chunk_persistence_test.cpp.o
+[ 94%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/hand_off_test.cpp.o
+[ 94%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/tool_spawn_test.cpp.o
+[ 94%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/field_chunk_persistence_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/fog_explored_decay_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/fog_world_field_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/chunk_residency_manager_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/save_trait_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_snapshot_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_snapshot_relations_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/persist_round_trip_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/component_migration_test.cpp.o
+[ 96%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/voxel_set_serialize_test.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_config_missing_table_test.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_config_audio_monitor_test.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_config_gui_pixelated_test.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_config_window_mode_test.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/save_serializers_test.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/codegen/lua_component_codegen_fixtures_claims.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/codegen/lua_system_codegen_fixtures_claims.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/codegen/lod_tier_codegen_fixtures_claims.cpp.o
+[ 98%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/codegen/lua_system_coexistence_fixtures_claims.cpp.o
+[100%] Linking CXX executable ../IrredenEngineTest
+ld: warning: ignoring duplicate libraries: '../engine/script/libIrredenEngineScripting.a', '../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IrredenEngineTest
