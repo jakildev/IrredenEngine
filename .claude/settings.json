@@ -47,7 +47,7 @@
       "Bash(fleet-up:*)", "Bash(fleet-down:*)", "Bash(fleet-babysit:*)",
       "Bash(fleet-assert-worktree:*)", "Bash(fleet-iteration-summary:*)",
       "Bash(fleet-queue-list:*)", "Bash(fleet-survey:*)", "Bash(fleet-plan-lint:*)",
-      "Bash(fleet-pr-claim-feedback:*)", "Bash(fleet-rules-sweep:*)",
+      "Bash(fleet-pr-claim-feedback:*)", "Bash(fleet-rules-sweep:*)", "Bash(fleet-media-push:*)",
       "Bash(fleet-review-verdict:*)", "Bash(fleet-transition:*)",
       "Bash(fleet-rebase:*)", "Bash(fleet-nit-close-for-pr:*)",
       "Bash(fleet-merge-preview:*)",
