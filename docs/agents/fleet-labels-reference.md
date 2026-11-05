@@ -411,4 +411,5 @@ to `fleet:opus` while any of its PRs carries a design-lane label, so the
 opus+-only resume tier has a class to dispatch), and R10 (remove this host's
 `fleet:amending-*` label whose owner is confirmed dead or unvouched past the
 TTL, through `cleanup --gh`'s locked sweep). R2 (same claim reading on a
-wip PR) and R6 stay flag-only. Runs at `fleet-up` boot and on every queue-manager projection change.
+wip PR), R6, and R11 (a task whose same-repo `Blocked by:` ref 404s) stay
+flag-only. Runs at `fleet-up` boot and on every queue-manager projection change.

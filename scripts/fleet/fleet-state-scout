@@ -134,6 +134,9 @@ SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
 # rest after all resolver consumers have shared one in-memory result cache.
 REF_STATE_ETAG_DIR = ETAG_DIR / "reference-state"
 _REF_STATE_KEEP_KEY = object()
+# Refs whose read was a definite HTTP 404 — the number names nothing in the
+# repo (typically a cross-repo ref written without its `Repo#` qualifier).
+_REF_MISSING_KEY = object()
 
 # Identity-qualified GitHub quota and provider usage share this directory.
 USAGE_DIR = STATE_DIR / "usage"
@@ -2976,7 +2979,10 @@ def _resolve_ref_satisfied(repo_slug, ref_str, cache, requires_merge=False):
     Issue refs use the REST issue surface and require `state == closed`.
     Merge-required refs use the pull surface and require a timestamped merge.
     The conditional helper serves a valid cached body on 304; every unreadable
-    or incomplete response fails closed.
+    or incomplete response fails closed. A definite HTTP 404 also fails closed
+    but is recorded in the cache's missing-ref set (`_ref_is_missing`) so the
+    caller can tell "names nothing" from "still open"; timeouts, 5xx, 401 and
+    malformed bodies record nothing.
     """
     key = (repo_slug, ref_str, requires_merge)
     if key in cache:
@@ -2987,10 +2993,14 @@ def _resolve_ref_satisfied(repo_slug, ref_str, cache, requires_merge=False):
         repo_slug, path, cache_dir=REF_STATE_ETAG_DIR)
     cache.setdefault(_REF_STATE_KEEP_KEY, set()).add(cache_path)
     result = False
+    status = {}
     try:
         _changed, body = conditional_get(
             repo_slug, path, cache_dir=REF_STATE_ETAG_DIR, timeout=10,
+            status_out=status,
         )
+        if status.get("http_status") == 404:
+            cache.setdefault(_REF_MISSING_KEY, set()).add(key)
         payload = json.loads(body) if body is not None else None
         if isinstance(payload, dict):
             if requires_merge:
@@ -3004,7 +3014,13 @@ def _resolve_ref_satisfied(repo_slug, ref_str, cache, requires_merge=False):
     return result
 
 
+def _ref_is_missing(repo_slug, ref_str, cache, requires_merge=False):
+    """Whether a prior `_resolve_ref_satisfied` read of this ref was a 404."""
+    return (repo_slug, ref_str, requires_merge) in cache.get(_REF_MISSING_KEY, ())
+
+
 def _prune_ref_state_cache(cache):
+    cache.pop(_REF_MISSING_KEY, None)
     keep = cache.pop(_REF_STATE_KEEP_KEY, set())
     if not REF_STATE_ETAG_DIR.exists():
         return
@@ -3098,6 +3114,17 @@ def resolve_blocked_by(state, ref_cache=None):
                 unresolved.append(ref)
 
             task["has_open_blocker"] = bool(unresolved)
+
+            # A same-repo ref that 404s names nothing here: the task keeps
+            # blocking (fail-closed) but the field lets reconcile and the
+            # survey say the body line is wrong rather than "blocked".
+            missing = [r for r in unresolved
+                       if _ref_is_missing(repo_slug, r, per_tick_cache)
+                       or _ref_is_missing(repo_slug, r, per_tick_cache, True)]
+            if missing:
+                task["blocked_by_unresolvable"] = ", ".join(f"#{r}" for r in missing)
+            else:
+                task.pop("blocked_by_unresolvable", None)
 
             if not unresolved:
                 task["blocked_by"] = "(none)"

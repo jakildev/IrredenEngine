@@ -217,7 +217,8 @@ def cache_entry_path(repo_slug, path, *, params=None, cache_dir=None):
 
 
 def conditional_get(repo_slug, path, *, params=None, accept=None,
-                    cache_dir=None, token=None, timeout=DEFAULT_TIMEOUT_SECONDS):
+                    cache_dir=None, token=None, timeout=DEFAULT_TIMEOUT_SECONDS,
+                    status_out=None):
     """Conditional GET against the GitHub REST API with per-endpoint ETag cache.
 
     Returns (changed, body):
@@ -229,6 +230,12 @@ def conditional_get(repo_slug, path, *, params=None, accept=None,
 
     `cache_dir` defaults to DEFAULT_CACHE_DIR but is injectable so the helper
     carries zero single-host assumptions (Q2 reuse).
+
+    `status_out`, when a dict, receives `http_status` (an int) only when the
+    server answered with an HTTP error other than 304. It stays empty for a
+    transport failure, a missing token, and a success, so a caller that must
+    tell a definite 404 from a transient failure can; every other caller keeps
+    the 2-tuple contract above.
     """
     if cache_dir is None:
         cache_dir = DEFAULT_CACHE_DIR
@@ -237,11 +244,12 @@ def conditional_get(repo_slug, path, *, params=None, accept=None,
     cached_etag, cached_body = _read_cache(path_obj)
 
     return _request(url, path_obj, cached_etag, cached_body,
-                    accept or DEFAULT_ACCEPT, token, timeout, allow_reauth=True)
+                    accept or DEFAULT_ACCEPT, token, timeout, allow_reauth=True,
+                    status_out=status_out)
 
 
 def _request(url, cache_path, cached_etag, cached_body, accept, token,
-             timeout, allow_reauth):
+             timeout, allow_reauth, status_out=None):
     tok = token or auth_token()
     if not tok:
         return (True, None)
@@ -287,7 +295,10 @@ def _request(url, cache_path, cached_etag, cached_body, accept, token,
             fresh = auth_token(refresh=True)
             if fresh:
                 return _request(url, cache_path, cached_etag, cached_body,
-                                accept, fresh, timeout, allow_reauth=False)
+                                accept, fresh, timeout, allow_reauth=False,
+                                status_out=status_out)
+        if status_out is not None:
+            status_out["http_status"] = code
         return (True, None)
     except (urllib.error.URLError, TimeoutError, OSError):
         return (True, None)

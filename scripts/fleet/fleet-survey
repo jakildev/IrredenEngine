@@ -175,6 +175,8 @@ def queue_section(repo_key, repo_state, host):
             buckets["ghost"].append(row)
         elif fleet_task_class._task_blocked(task):
             row["blocked_by"] = task.get("blocked_by")
+            if task.get("blocked_by_unresolvable"):
+                row["blocked_by_unresolvable"] = task["blocked_by_unresolvable"]
             buckets["blocked"].append(row)
         elif fleet_task_class._host_incompatible(task, host):
             row["needs"] = fleet_task_class._required_host(task) or "gl-host"
@@ -436,7 +438,10 @@ def render(report):
                 elif bucket == "in_flight":
                     extra = f"  PR #{r['pr']}"
                 elif bucket == "blocked":
-                    extra = f"  by {r.get('blocked_by')}"
+                    if r.get("blocked_by_unresolvable"):
+                        extra = f"  blocked (unresolvable ref {r['blocked_by_unresolvable']})"
+                    else:
+                        extra = f"  by {r.get('blocked_by')}"
                     if r.get("note"):
                         extra += f"  ({r['note']})"
                 elif bucket == "in_progress":
