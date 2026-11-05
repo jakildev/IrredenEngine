@@ -153,7 +153,11 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   `setComponentOverrides(component, text)` instead of RECIPES or COMPONENTS
   panel coordinates. `applyRecipe` admits whole INT targets and exact stepped FLOAT (`step`)
   lattice targets at four slider trixels per unit or step (`test/module`'s `test_recipe_float_step`);
-  other recipes keep using the raw GUI gestures without occupancy-model updates.
+  other recipes keep using the raw GUI gestures without occupancy-model updates. Stepped FLOAT
+  lattice point `k` is the float32 fused result of `k * step + min`, followed by the range clamp.
+  Binary-fraction minima and steps are naturally exact; an ordinary decimal literal or Lua
+  arithmetic need not reproduce a non-binary lattice point, so copy the error's full-precision
+  `nearest` value when an exact non-binary target is required.
 - Recipe-bound parts use `paintClass(cell, class)` and `expectPartCellClass(part, cell, class | nil, name)` for persistent class masks.
 - Each of those names its list row. The Builder wheels a row below the
   RECIPES or COMPONENTS view into it with the live list's least movement, and

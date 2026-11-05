@@ -192,6 +192,14 @@ IREditor.registerRecipe(
             max = 2.75,
             step = 0.25,
         },
+        {
+            name = "canonical",
+            type = IREditor.ParamType.FLOAT,
+            default = 0.7,
+            min = 0.4,
+            max = 0.9,
+            step = 0.025,
+        },
     },
     function(values, size)
         local x0, y, z = ratioRow(size)
@@ -598,8 +606,9 @@ IREditor.registerSession("test_recipe_float_step", function(session)
     session:expectPartOccupancy(0, column(6), false, "lattice_cell_empty_before_apply")
 
     session:segment("explicit")
-    session:applyRecipe("test_ratio", { ratio = 1.5 })
+    session:applyRecipe("test_ratio", { ratio = 1.5, canonical = 0.7 })
     session:expectRecipeValue(0, "ratio", 1.5, "explicit_ratio_bound")
+    session:expectRecipeValue(0, "canonical", 0.7, "explicit_canonical_bound")
     session:expectPartOccupancy(0, column(6), true, "explicit_lattice_cell_filled")
     session:expectPartOccupancy(0, column(7), false, "explicit_next_lattice_cell_empty")
     session:expectPartOccupancy(0, column(5), false, "explicit_previous_lattice_cell_empty")
@@ -612,6 +621,7 @@ IREditor.registerSession("test_recipe_float_step", function(session)
     session:segment("default")
     session:applyRecipe("test_ratio", {})
     session:expectRecipeValue(1, "ratio", 0.75, "default_ratio_bound")
+    session:expectRecipeValue(1, "canonical", 0.7, "default_canonical_bound")
     session:expectPartOccupancy(1, column(3), true, "default_lattice_cell_filled")
     session:expectPartOccupancy(1, column(4), false, "default_next_lattice_cell_empty")
     session:expectPartOccupancy(1, raw, false, "default_raw_marker_empty")
