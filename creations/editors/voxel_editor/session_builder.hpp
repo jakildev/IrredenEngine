@@ -2846,12 +2846,14 @@ class Builder {
         IRVideo::GuiInputEvent event{};
         event.frameOffset_ = m_frame;
         event.type_ = IRVideo::GuiInputEvent::Type::MOVE;
-        m_current.aims_.push_back(AimFixup{
-            static_cast<int>(m_current.events_.size()),
-            worldAim,
-            std::move(operation),
-            localCell
-        });
+        m_current.aims_.push_back(
+            AimFixup{
+                static_cast<int>(m_current.events_.size()),
+                worldAim,
+                std::move(operation),
+                localCell
+            }
+        );
         m_current.events_.push_back(event);
         m_frame += kFramesPerClickStep;
     }
@@ -3015,23 +3017,27 @@ class Builder {
             if (event.type_ != IRVideo::GuiInputEvent::Type::PRESS ||
                 event.button_ != IRInput::kMouseButtonLeft || sceneAim == nullptr)
                 continue;
-            check.presses_.push_back(SceneUiPress{
-                event.frameOffset_ + 1,
-                sceneAim->operation_,
-                sceneAim->localCell_,
-                sceneAim->worldPoint_
-            });
+            check.presses_.push_back(
+                SceneUiPress{
+                    event.frameOffset_ + 1,
+                    sceneAim->operation_,
+                    sceneAim->localCell_,
+                    sceneAim->worldPoint_
+                }
+            );
         }
         if (!check.presses_.empty()) {
             check.name_ = m_current.label_ + "_scene_press_clear_of_ui";
             m_recipe.sceneUiPressChecks_.push_back(std::move(check));
             SceneUiPressCheck &stored = m_recipe.sceneUiPressChecks_.back();
             m_current.sceneUiPressCheck_ = &stored;
-            m_current.assertions_.push_back(IRPrefab::GuiTest::predicate(
-                &evaluateSceneUiPressCheck,
-                &stored,
-                stored.name_.c_str()
-            ));
+            m_current.assertions_.push_back(
+                IRPrefab::GuiTest::predicate(
+                    &evaluateSceneUiPressCheck,
+                    &stored,
+                    stored.name_.c_str()
+                )
+            );
         }
         m_recipe.segments_.push_back(std::move(m_current));
         m_current = Segment{};
