@@ -16,7 +16,8 @@ that matter:
     so a conflicted PR generates opus dispatch pressure even when the task
     queue is empty or host-locked;
   - feedback class derives from review severity labels (fable opt-in via
-    fleet:fable on the PR, blocking labels -> opus, nits-only -> sonnet);
+    fleet:fable on the PR, blocking labels -> opus, nits-only -> sonnet), and
+    a fable fix degrades to opus while Fable's usage window is walled;
   - the fable concurrency cap skips fable items rather than idling the
     lane, and yields ``defer`` (keep trigger, dispatch nothing) when ONLY
     cap-blocked fable work remains — an empty result would dispatch the
@@ -1772,6 +1773,56 @@ class SweepCooldown(HostSeamCase):
              "semantic_conflict_prs": [self._pr(2417, self.AT_COOLDOWN)]}
         self.assertEqual(fleet_task_class.sweep_cooldown_deferrals(s),
                          [("feedback:engine:50", 300, self.FIVE_MIN_AGO)])
+
+
+
+class FableWalledFeedback(unittest.TestCase):
+    """While Fable's usage window is walled (`FABLE_WALLED`), a fleet:fable
+    feedback fix routes to opus instead of waiting out the reset; a saturated
+    cap (`True`) still holds it for a fable slot. Fresh fable tasks wait
+    either way."""
+
+    FABLE_FIX = {"number": 4867, "repo": "engine",
+                 "labels": ["fleet:fable", "fleet:needs-fix"]}
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._saved = os.environ.get("FLEET_STATE_DIR")
+        os.environ["FLEET_STATE_DIR"] = self._tmp.name
+
+    def tearDown(self):
+        if self._saved is None:
+            os.environ.pop("FLEET_STATE_DIR", None)
+        else:
+            os.environ["FLEET_STATE_DIR"] = self._saved
+        self._tmp.cleanup()
+
+    def test_walled_fable_fix_routes_to_opus(self):
+        walled = fleet_task_class.FABLE_WALLED
+        slice_data = {"feedback_prs": [self.FABLE_FIX]}
+        self.assertEqual(resolve(slice_data, "opus", walled), "opus high 0 1 0")
+        self.assertEqual(pick(slice_data, "opus", walled), ["feedback:engine:4867"])
+        self.assertEqual(pick(slice_data, "fable", walled), [])
+
+    def test_cap_saturated_fable_fix_still_waits_for_fable(self):
+        slice_data = {"feedback_prs": [self.FABLE_FIX]}
+        self.assertEqual(resolve(slice_data, "opus", True), "defer")
+        self.assertEqual(pick(slice_data, "opus", True), [])
+
+    def test_unblocked_fable_fix_stays_fable(self):
+        self.assertEqual(resolve({"feedback_prs": [self.FABLE_FIX]}, "opus", False),
+                         "fable high 0 1 0")
+
+    def test_walled_fable_task_still_waits(self):
+        out = resolve({"tasks_open": [_task("#10", "fable")]}, "opus",
+                      fleet_task_class.FABLE_WALLED)
+        self.assertEqual(out, "defer")
+
+    def test_cli_spelling(self):
+        parse = fleet_task_class.parse_fable_blocked
+        self.assertEqual(parse("walled"), fleet_task_class.FABLE_WALLED)
+        self.assertIs(parse("1"), True)
+        self.assertIs(parse("0"), False)
 
 
 if __name__ == "__main__":

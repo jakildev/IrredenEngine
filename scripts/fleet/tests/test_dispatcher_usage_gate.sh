@@ -25,7 +25,11 @@
 #     type takes the weekly threshold and any other unlisted type names the
 #     fallback; fleet-gate-status reports the scoped wall apart from the
 #     fleet-wide verdict, and reads the dispatcher's conf so a conf-only
-#     scope or threshold override gives both tools the same verdict
+#     scope or threshold override gives both tools the same verdict; a
+#     threshold above 1.0 stops pre-emption but not the rejected wall
+#   - the family breaker: a fresh rejection of an unlisted, already-reset
+#     type holds only the observing session's family, in both tools; a live
+#     account wall is not reported as a one-family hold
 
 set -euo pipefail
 
@@ -70,6 +74,7 @@ mkdir -p "$FLEET_STATE_DIR/usage"
 # override T3 passes). Point FLEET_CONF at an empty file and clear any gate
 # vars already in the caller env so the suite tests the baked defaults.
 export FLEET_CONF=/dev/null
+export FLEET_DISPATCHER_LIMIT_DELAY=900
 for _v in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE' || true); do
     unset "$_v"
 done
@@ -313,6 +318,14 @@ check_contains() {  # $1 = haystack, $2 = needle, $3 = message
     fi
 }
 
+check_absent() {  # $1 = haystack, $2 = needle, $3 = message
+    if [[ "$1" != *"$2"* ]]; then
+        PASS=$((PASS + 1)); echo "  ok: $3"
+    else
+        FAIL=$((FAIL + 1)); echo "  FAIL: $3"; echo "        present: $2"; echo "        in:      $1"
+    fi
+}
+
 feed_session() {  # $1 = model, $2 = one rate_limit_info JSON object
     printf '%s\n' \
         "{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"$1\",\"cwd\":\"/w\",\"session_id\":\"s\"}" \
@@ -429,7 +442,13 @@ for name in ("BUILTIN_PER_TYPE_DEFAULTS", "BUILTIN_FALLBACK", "MODEL_FAMILIES", 
     if d[name] != g[name]:
         bad.append(f"{name}: {d[name]!r} != {g[name]!r}")
 types = ["five_hour", "seven_day", "seven_day_overage_included", "seven_day_opus",
-         "seven_day_sonnet", "seven_day_foo", "daily_tokens", "github_core", "github_search"]
+         "seven_day_sonnet", "seven_day_foo", "daily_tokens", "github_core", "github_search",
+         "five_hour_fable", "fable_weekly", "seven_day_mythos", "untyped"]
+for model in ("claude-fable-5-1", "fable[1m]", "mythos-preview", "claude-opus-5-5[1m]",
+              "sonnet", "haiku", "", None, "gpt-5"):
+    if d["family_of_model"](model) != g["family_of_model"](model):
+        bad.append(f"family_of_model({model!r}): {d['family_of_model'](model)!r}"
+                   f" != {g['family_of_model'](model)!r}")
 envs = [{}, {"FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED": "account"},
         {"FLEET_DISPATCHER_USAGE_SCOPE_DAILY_TOKENS": "opus"},
         {"FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY": "0.5"}, {"FLEET_DISPATCHER_USAGE_GATE": "0.7"}]
@@ -471,10 +490,55 @@ check_contains "$(FLEET_CONF="$SCOPE_CONF" "$GATE_STATUS_TOOL")" "Fleet-wide usa
 THRESHOLD_CONF="$TMPROOT/threshold.conf"
 printf '%s\n' 'FLEET_DISPATCHER_USAGE_SCOPE_SEVEN_DAY_OVERAGE_INCLUDED=account' \
     'FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY_OVERAGE_INCLUDED=1.01' > "$THRESHOLD_CONF"
+assert_starts_with "$(FLEET_CONF="$THRESHOLD_CONF" "$DISPATCHER" --gate-status)" \
+    "closed:seven_day_overage_included rejected util=100% (< 101%" \
+    "threshold conf: dispatcher reads the 1.01 threshold, and the rejected wall still binds"
+assert_starts_with "$(gate_summary "$THRESHOLD_CONF")" \
+    "closed [('seven_day_overage_included', 'account')] 0" \
+    "threshold conf: fleet-gate-status agrees"
+rm -f "$FLEET_STATE_DIR/usage"/seven_day_overage_included*.json
+feed_session 'claude-fable-5-1[1m]' \
+    "{\"status\":\"allowed_warning\",\"utilization\":0.99,\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day_overage_included\"}"
 assert_starts_with "$(FLEET_CONF="$THRESHOLD_CONF" "$DISPATCHER" --gate-status)" "open" \
-    "threshold conf: dispatcher open (a rejected wall reads 100% < 101%)"
+    "threshold conf: a 99% warning under 1.01 does not pre-empt"
 assert_starts_with "$(gate_summary "$THRESHOLD_CONF")" "open [] 0" \
-    "threshold conf: fleet-gate-status open too"
+    "threshold conf: fleet-gate-status agrees on the warning"
+assert_starts_with "$(gate_summary "$SCOPE_CONF")" \
+    "closed [('seven_day_overage_included', 'account')] 0" \
+    "control: the same warning under the default 95% pre-empts in fleet-gate-status"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
+
+echo "T28: the family breaker holds the family a fresh rejection hit, in both tools"
+feed_session 'claude-fable-5-1[1m]' \
+    "{\"status\":\"rejected\",\"resetsAt\":$(( $(date +%s) - 7200 )),\"rateLimitType\":\"some_new_window\"}"
+assert_starts_with "$("$DISPATCHER" --gate-status scoped 'claude-fable-5[1m]')" "closed:fable breaker" \
+    "dispatcher: a Fable session's fresh rejection holds fable with no live window behind it"
+assert_starts_with "$("$DISPATCHER" --gate-status scoped 'claude-opus-4-8[1m]')" "open" \
+    "dispatcher: opus is not held"
+assert_starts_with "$("$DISPATCHER" --gate-status)" "open" "dispatcher: the fleet-wide gate stays open"
+assert_starts_with "$("$GATE_STATUS_TOOL" --json | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(d["gate"], sorted(d["family_breakers"]), len(d["scoped_breaching"]))')" "open ['fable'] 0" \
+    "fleet-gate-status: the breaker holds fable alone, the fleet-wide gate open"
+check_contains "$("$GATE_STATUS_TOOL")" "breaker:   fable hit the some_new_window wall" \
+    "fleet-gate-status: text names the breaker"
+rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
+feed_session 'claude-opus-4-8[1m]' \
+    "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"five_hour\"}"
+assert_starts_with "$("$DISPATCHER" --gate-status claude 'claude-opus-4-8[1m]')" "closed:five_hour rejected" \
+    "an account wall holds opus through its own record"
+assert_starts_with "$("$DISPATCHER" --gate-status scoped)" "open" \
+    "a model-less scoped read does not report the live account wall as a one-family hold"
+assert_starts_with "$("$GATE_STATUS_TOOL" --json | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(d["gate"], {f: b["account_wall"] for f, b in d["family_breakers"].items()})')" \
+    "closed {'opus': True}" "fleet-gate-status: the breaker is flagged as an account wall"
+check_absent "$("$GATE_STATUS_TOOL")" "CLOSED for opus" \
+    "fleet-gate-status: no model-scoped CLOSED line beside the fleet-wide one"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
 healthy_github
 

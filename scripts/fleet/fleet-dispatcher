@@ -473,9 +473,25 @@ read_dispatch_mode() {
 #   5. Final fallback 0.80, named in the status line as the fallback
 #
 # Scope, separately: a type that meters one model family (the Fable-only
-# weekly window, `seven_day_<family>`; FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>)
-# gates only launches on that family and never the fleet-wide gate — see
+# weekly window, any type whose name carries a family token like
+# `seven_day_<family>`; FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>) gates only
+# launches on that family and never the fleet-wide gate — see
 # usage_gate_status.
+#
+# A threshold only decides when to pre-empt. A latched `rejected` record is
+# the wall itself and binds whatever its type's threshold, so a threshold
+# above 1.0 means "never pre-empt", not "launch into the wall".
+#
+# The family breaker: a `rejected` record observed within the last
+# LIMIT_DELAY seconds holds launches on the family of the session that hit it
+# (its `model`), whatever the type's name or scope. It binds where the
+# type-level record does not: a rejection that arrived carrying an
+# already-passed resetsAt (the window reopened on paper but still rejects),
+# or a type whose name scopes it to a family other than the one it rejected.
+# A rejection observed before its own reset lets go once that reset (plus
+# grace) passes. While an account-scoped record is itself binding it holds
+# every family, so a model-less `scoped` read leaves its breaker out and the
+# account wall is not logged as a one-family hold.
 #
 # Conservative against staleness, but resetsAt is authoritative: an
 # observation whose resetsAt + RESET_GRACE_SECONDS is in the past is
@@ -2020,7 +2036,7 @@ usage_gate_status() {
         daemon_identity=app
     fi
     FLEET_USAGE_RUNTIME="${1:-all}" FLEET_USAGE_MODEL="${2:-}" USAGE_DIR="$USAGE_DIR" \
-    FLEET_DAEMON_GH_IDENTITY="$daemon_identity" \
+    FLEET_DAEMON_GH_IDENTITY="$daemon_identity" LIMIT_DELAY="$LIMIT_DELAY" \
     USAGE_STALE_SECONDS="$USAGE_STALE_SECONDS" \
     RESET_GRACE_SECONDS="$RESET_GRACE_SECONDS" \
     FLEET_LIB_DIR="$FLEET_LIB_DIR" python3 - <<'PY'
@@ -2037,6 +2053,10 @@ from fleet_github_identity import quota_gate
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
 reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
+try:
+    breaker_s = int(os.environ.get("LIMIT_DELAY", "900"))
+except ValueError:
+    breaker_s = 900
 
 # Built-in per-type defaults. Used only when neither the per-type env
 # override nor the global env override is set. This lets a fresh
@@ -2091,8 +2111,29 @@ def scope_of(rate_limit_type):
         return override
     if t in BUILTIN_MODEL_SCOPES:
         return BUILTIN_MODEL_SCOPES[t]
-    suffix = t[len("seven_day_"):] if t.startswith("seven_day_") else ""
-    return suffix if suffix in MODEL_FAMILIES else "account"
+    return family_token(t) or "account"
+
+
+def family_token(rate_limit_type):
+    """The model family a type's own name carries as a `_`-separated token
+    (`seven_day_opus`, `five_hour_fable`, `fable_weekly`), else ''."""
+    for token in (rate_limit_type or "").lower().split("_"):
+        family = "fable" if token == "mythos" else token
+        if family in MODEL_FAMILIES:
+            return family
+    return ""
+
+
+def resets_epoch(resets_at):
+    """resetsAt (ISO-8601 string or Unix epoch) as epoch seconds, else None."""
+    if isinstance(resets_at, (int, float)):
+        return float(resets_at)
+    if isinstance(resets_at, str):
+        try:
+            return datetime.fromisoformat(resets_at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+    return None
 
 
 def threshold_for(rate_limit_type):
@@ -2147,6 +2188,7 @@ model_arg = os.environ.get("FLEET_USAGE_MODEL", "")
 want_family = (family_of_model(model_arg) or "unrecognised") if model_arg else ""
 breaches = []  # list of (util_f, threshold, type, resets_at, note, scope_note)
 top_observation = None  # for the all-open log line
+breaker = None  # (age_s, type, family) of the freshest wall a held family hit
 
 for path in sorted(usage_dir.glob("*.json")):
     try:
@@ -2157,6 +2199,23 @@ for path in sorted(usage_dir.glob("*.json")):
     is_github = raw_type.startswith("github")
     if is_github:
         continue
+    if data.get("status") == "rejected" and scope in ("claude", "scoped"):
+        hit_family = family_of_model(data.get("model"))
+        observed_at = data.get("observed_at")
+        reset_s = resets_epoch(data.get("resetsAt"))
+        observed = isinstance(observed_at, (int, float))
+        account_wall = scope_of(raw_type) == "account" and (
+            reset_s + reset_grace_s > now if reset_s is not None
+            else observed and now - int(observed_at) <= stale_s)
+        if (hit_family and observed
+                and (hit_family == want_family
+                     or (not want_family and scope == "scoped" and not account_wall))
+                and 0 <= now - int(observed_at) < breaker_s
+                and not (reset_s is not None and observed_at <= reset_s
+                         and reset_s + reset_grace_s <= now)):
+            age = now - int(observed_at)
+            if breaker is None or age < breaker[0]:
+                breaker = (age, raw_type, hit_family)
     bucket_scope = scope_of(raw_type)
     if bucket_scope == "account":
         if scope == "scoped":
@@ -2222,7 +2281,9 @@ for path in sorted(usage_dir.glob("*.json")):
     th, from_fallback = threshold_for(raw_type)
     note = ", unlisted type, fallback threshold" if from_fallback else ""
     scope_note = f" scope={bucket_scope}" if bucket_scope != "account" else ""
-    if util_f >= th:
+    if util_f >= th or data.get("status") == "rejected":
+        if util_f < th:
+            note += "; a rejected wall binds past its threshold"
         breaches.append((util_f, th, rl_type, resets_at, note, scope_note))
     if top_observation is None or util_f > top_observation[0]:
         top_observation = (util_f, th, rl_type, resets_at, note, scope_note)
@@ -2237,7 +2298,12 @@ if breaches:
     pct = int(round(util_f * 100))
     thr_pct = int(round(th * 100))
     resets_part = f" resets={resets}" if resets else ""
-    print(f"closed:{rl_type} util={pct}% (>= {thr_pct}%{note}){scope_note}{resets_part}")
+    cmp = ">=" if util_f >= th else "<"
+    print(f"closed:{rl_type} util={pct}% ({cmp} {thr_pct}%{note}){scope_note}{resets_part}")
+elif breaker is not None:
+    age, rl_type, family = breaker
+    print(f"closed:{family} breaker — a {family} launch hit the {rl_type} wall {age}s ago"
+          f" (holds {breaker_s}s)")
 elif pane_gate and pane_gate["state"] == "closed":
     print("closed:" + "; ".join(pane_gate["reasons"]))
 elif top_observation is not None:
@@ -2283,8 +2349,9 @@ log_scoped_gate_transition() {
 }
 
 # True while a model-scoped usage window metering the fable class's model is
-# at its threshold. The worker lane then serves the class as it serves a
-# saturated fable cap: fable-class tasks wait and fable plans degrade to opus.
+# at its threshold, or the family breaker holds Fable. The worker lane then
+# serves the class as it serves a saturated fable cap — fable-class tasks
+# wait, fable plans degrade to opus — and fable feedback fixes degrade too.
 fable_model_walled() {
     [[ -n "${CLASS_MODEL[fable]:-}" ]] || return 1
     [[ "$(usage_gate_status scoped "${CLASS_MODEL[fable]}")" == closed:* ]]
@@ -2526,8 +2593,11 @@ resolve_worker_class() {
     [[ -f "$slice" ]] || return 0
     # Published (not local): assign_for_pane's pick walk needs the same
     # answer and must not rescan the dispatch records to re-derive it.
-    if (( $(count_active_for_class fable) >= FABLE_CONCURRENCY_CAP )) \
-        || fable_model_walled; then
+    # `walled` (the Fable usage window) also routes fable feedback fixes to
+    # opus; a saturated cap only makes them wait for a fable slot.
+    if fable_model_walled; then
+        DISPATCH_FABLE_BLOCKED=walled
+    elif (( $(count_active_for_class fable) >= FABLE_CONCURRENCY_CAP )); then
         DISPATCH_FABLE_BLOCKED=1
     fi
     local out

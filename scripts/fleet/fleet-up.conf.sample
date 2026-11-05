@@ -248,14 +248,25 @@
 #   (any other seven_day* type): the seven_day threshold
 #   (any other type): 0.80 — its closed line says "fallback threshold"
 #
+# A threshold decides only when to PRE-EMPT. A latched rejection (the wall
+# itself) binds whatever the threshold, so 1.01 means "never pre-empt", not
+# "launch into the wall".
+#
 # Model-scoped windows: a type that meters one model family rather than the
 # account — seven_day_overage_included (the plan's Fable-only weekly meter)
-# and any seven_day_<family> (seven_day_opus, ...) — never closes the
-# fleet-wide gate. It defers only launches on that family's models, and a
-# walled fable-class model is served like a saturated
-# FLEET_CONCURRENCY_MODEL_FABLE cap (fable tasks wait, fable plans degrade
-# to opus) until the window resets. Scope an unlisted type, or un-scope one:
+# and any type whose name carries a family token (seven_day_opus,
+# five_hour_fable, ...) — never closes the fleet-wide gate. It defers only
+# launches on that family's models, and a walled fable-class model is served
+# like a saturated FLEET_CONCURRENCY_MODEL_FABLE cap (fable tasks wait, fable
+# plans degrade to opus) until the window resets — and fleet:fable feedback
+# fixes degrade to opus rather than wait. Reviewers never run fable, so a
+# Fable wall never holds them. Scope an unlisted type, or un-scope one:
 # FLEET_DISPATCHER_USAGE_SCOPE_<TYPE_UPPER>=fable|opus|sonnet|haiku|account
+#
+# Family breaker: any rejection observed within FLEET_DISPATCHER_LIMIT_DELAY
+# seconds holds launches on the family of the session that hit it, whatever
+# the type's name, scope or reset — the backstop for a limit type this table
+# does not know yet. An unlisted type otherwise scopes account-wide.
 #
 # GitHub pools are sampled by fleet-state-scout (free reads each tick: graphql
 # from GraphQL's own `rateLimit` self-report, core from the X-RateLimit-*

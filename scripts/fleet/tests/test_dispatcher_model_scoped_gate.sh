@@ -19,6 +19,13 @@
 #     Fable wall while the slice serves opus (whole --dispatch-role ticks
 #     against a stubbed tmux), and holds only its own pane: a free pane
 #     behind it still claims and launches the opus task
+#   - a per-type threshold above 1.0 never pre-empts, but the latched
+#     rejection still holds fable (reviewers and opus keep running)
+#   - at the Fable wall a fleet:fable feedback fix resolves and is claimed as
+#     opus work
+#   - the family breaker: a fresh rejection seen by a Fable session holds
+#     fable with no live window behind it, and lets go after LIMIT_DELAY or
+#     once a reset it predates has passed
 #   - controls: with no wall latched the fable class is served as fable; an
 #     opus sidecar, or a sidecar the wrapper would not resume, launches
 
@@ -60,6 +67,8 @@ export FLEET_MODEL_FABLE='claude-fable-5[1m]'
 export FLEET_MODEL_OPUS='claude-opus-4-8[1m]'
 export FLEET_MODEL_SONNET='sonnet'
 export FLEET_CONCURRENCY_MODEL_FABLE=2
+# The family breaker's window (T5d derives its ages from it).
+export FLEET_DISPATCHER_LIMIT_DELAY=900
 
 export FLEET_CLAIM_LOG="$TMPROOT/fleet-claim.log"
 STUB_BIN="$TMPROOT/bin"; mkdir -p "$STUB_BIN"
@@ -144,6 +153,69 @@ assert_eq "$(assign worker)" "target=task:engine:12" "a sonnet task runs through
 clear_walls
 write_slice worker "$OPUS_TASK"
 assert_eq "$(assign worker)" "target=task:engine:11" "control: with no wall the opus task is claimed"
+
+echo "T5b: a threshold above 1.0 never pre-empts, but the wall still binds"
+clear_walls
+export FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY_OVERAGE_INCLUDED=1.01
+printf '{"rateLimitType":"seven_day_overage_included","utilization":0.99,"resetsAt":%s,"observed_at":%s,"status":"allowed_warning"}\n' \
+    "$RESETS" "$(date +%s)" > "$FLEET_STATE_DIR/usage/seven_day_overage_included.json"
+write_slice worker "$FABLE_ONLY"
+assert_eq "$(resolve worker)" \
+    "class=fable model=claude-fable-5[1m] effort=high more=0 defer=0 count=1 plan=0" \
+    "a 99% warning under a 1.01 threshold does not pre-empt"
+wall seven_day_overage_included
+assert_eq "$(resolve worker)" "class= model= effort= more=0 defer=1 count= plan=0" \
+    "the latched rejection holds fable past the 1.01 threshold"
+export FLEET_RUNTIMES=claude
+write_slice sonnet-reviewer "$REVIEW"
+assert_eq "$(assign sonnet-reviewer)" "target=review:engine:3074" \
+    "the Fable wall leaves the sonnet reviewer running"
+write_slice worker "$OPUS_TASK"
+assert_eq "$(assign worker)" "target=task:engine:11" "and the opus task"
+unset FLEET_RUNTIMES FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY_OVERAGE_INCLUDED
+
+echo "T5c: a fable feedback fix degrades to opus at the Fable wall"
+FABLE_FIX='{"tasks_open":[],"feedback_prs":[{"number":4867,"repo":"engine","labels":["fleet:fable","fleet:needs-fix"]}],"needs_plan":[]}'
+clear_walls
+write_slice worker "$FABLE_FIX"
+assert_eq "$(resolve worker)" \
+    "class=fable model=claude-fable-5[1m] effort=high more=0 defer=0 count=1 plan=0" \
+    "control: with no wall the fix is fable work"
+wall seven_day_overage_included
+assert_eq "$(resolve worker)" \
+    "class=opus model=claude-opus-4-8[1m] effort=high more=0 defer=0 count=1 plan=0" \
+    "walled: the fix resolves to opus"
+assert_eq "$(assign worker)" "target=feedback:engine:4867" "and the opus pick walk claims it"
+
+echo "T5d: the family breaker holds the family a fresh rejection hit"
+breaker_wall() { # $1 = type, $2 = observing model, $3 = age, $4 = seconds since its reset (7200)
+    local now; now=$(date +%s)
+    printf '{"rateLimitType":"%s","utilization":1.0,"resetsAt":%s,"observed_at":%s,"status":"rejected","model":"%s"}\n' \
+        "$1" "$(( now - ${4:-7200} ))" "$(( now - $3 ))" "$2" > "$FLEET_STATE_DIR/usage/$1.rejected.json"
+}
+clear_walls
+breaker_wall some_new_window claude-fable-5-1 30
+write_slice worker "$FABLE_ONLY"
+assert_eq "$(resolve worker)" "class= model= effort= more=0 defer=1 count= plan=0" \
+    "a Fable session's fresh rejection holds fable even with no live window behind it"
+export FLEET_RUNTIMES=claude
+write_slice sonnet-reviewer "$REVIEW"
+assert_eq "$(assign sonnet-reviewer)" "target=review:engine:3074" "the sonnet reviewer still runs"
+write_slice worker "$OPUS_TASK"
+assert_eq "$(assign worker)" "target=task:engine:11" "and the opus task"
+unset FLEET_RUNTIMES
+clear_walls
+breaker_wall some_new_window claude-fable-5-1 $(( FLEET_DISPATCHER_LIMIT_DELAY + 100 ))
+write_slice worker "$FABLE_ONLY"
+assert_eq "$(resolve worker)" \
+    "class=fable model=claude-fable-5[1m] effort=high more=0 defer=0 count=1 plan=0" \
+    "control: a rejection older than the breaker window lets one fable launch probe"
+clear_walls
+breaker_wall some_new_window claude-fable-5-1 800 700
+assert_eq "$(resolve worker)" \
+    "class=fable model=claude-fable-5[1m] effort=high more=0 defer=0 count=1 plan=0" \
+    "a rejection seen before its own reset lets go once that reset plus grace passes"
+clear_walls
 
 echo "T6: a reserved Claude worker is gated on the model it resumes"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"

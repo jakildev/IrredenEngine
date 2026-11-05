@@ -20,7 +20,10 @@ that target regardless of its own in-iteration step order:
   2. feedback PRs   — class from review severity: ``fleet:fable`` on the PR
                       routes the fix to fable (reviewer judged the approach
                       itself wrong; fable is opus+ so it also serves a
-                      fable-tagged design-unblocked resume — checked first);
+                      fable-tagged design-unblocked resume — checked first),
+                      or to opus while Fable's usage window is walled
+                      (``FABLE_WALLED``) so a fix never waits out a weekly
+                      reset;
                       ``fleet:design-unblocked`` otherwise routes to opus
                       (tier-4 resume is opus+-only work); a blocking label
                       (``fleet:needs-fix`` / ``human:needs-fix`` /
@@ -43,6 +46,11 @@ for ``high``; opt a task up via ``**Effort:**`` only where the extra depth
 has earned it. Planning dispatches keep ``xhigh`` (``PLAN_EFFORT``): plans
 are the fleet's design surface, the same reason the architect panes run
 xhigh.
+
+``fable_blocked`` is falsy (fable servable), truthy (the concurrency cap is
+saturated), or ``FABLE_WALLED`` (Fable's usage window is at its wall — truthy,
+so everything a saturated cap does applies, and feedback fixes degrade too).
+The CLI spells these ``0`` / ``1`` / ``walled``.
 
 The fable concurrency cap is enforced here by *skipping* fable items when
 the cap is reached — the lane then serves its next non-fable item instead
@@ -82,7 +90,7 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
                                   (this path covers reservation resumes and
                                   a missing/stale slice).
 
-A second CLI mode, ``--pick <slice.json> <class> <fable-blocked 0|1>
+A second CLI mode, ``--pick <slice.json> <class> <fable-blocked 0|1|walled>
 [lane-default]``, prints the ordered dispatch targets for one worker class —
 ``<kind>:<repo>:<N>[:<extra>]`` lines, every claimable work item of that class
 in pickup order, then its planning candidates (``plan:<repo>:<N>``). Its
@@ -122,6 +130,18 @@ CLASS_DEFAULT_EFFORT = {"fable": "high", "opus": "high", "sonnet": "high"}
 # (the same reason the architect panes run xhigh), so fable/opus planning
 # keeps xhigh; the sonnet light-plan lane is mechanical by construction.
 PLAN_EFFORT = {"fable": "xhigh", "opus": "xhigh", "sonnet": "high"}
+
+# `fable_blocked` value meaning the Fable usage window, not the cap, blocks
+# the class. Truthy on purpose: a walled class is also a blocked one.
+FABLE_WALLED = "walled"
+
+
+def parse_fable_blocked(arg):
+    """CLI spelling (`0` / `1` / `walled`) -> False / True / FABLE_WALLED."""
+    if arg == FABLE_WALLED:
+        return FABLE_WALLED
+    return arg == "1"
+
 
 # Review-severity labels that make a feedback fix opus-class. Nits-only
 # feedback (fleet:has-nits) stays sonnet.
@@ -604,6 +624,8 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         if _declined("feedback", pr, "worker") or _sweep_cooldown_age(pr) is not None:
             continue
         cls = feedback_pr_class(pr.get("labels", []))
+        if cls == "fable" and fable_blocked == FABLE_WALLED:
+            cls = "opus"
         yield cls, CLASS_DEFAULT_EFFORT[cls], "work", _target("feedback", pr)
     # A work item this host declined at its current updatedAt is not
     # claimable here: it neither counts toward the election nor reaches the
@@ -1004,18 +1026,18 @@ def main(argv):
         print(json.dumps(shadowed_closeouts(state, argv[3]), separators=(",", ":")))
         return 0
     if argv[1:2] == ["--pick"]:
-        # --pick <slice.json> <class> <fable-blocked 0|1> [lane-default]: the
+        # --pick <slice.json> <class> <fable-blocked 0|1|walled> [lane-default]: the
         # ordered dispatch targets for one worker class (see pick). The
         # dispatcher's assign_for_pane walks these taking the lane's claim.
         if len(argv) not in (5, 6):
             print("usage: fleet_task_class.py --pick <slice.json> <class> "
-                  "<fable-blocked 0|1> [lane-default]", file=sys.stderr)
+                  "<fable-blocked 0|1|walled> [lane-default]", file=sys.stderr)
             return 2
         slice_data = _load_slice(argv[2])
         if slice_data is None:
             return 0  # empty output -> nothing to assign
         lane_default = argv[5] if len(argv) == 6 else "opus"
-        for line in pick(slice_data, argv[3], argv[4] == "1", lane_default):
+        for line in pick(slice_data, argv[3], parse_fable_blocked(argv[4]), lane_default):
             print(line)
         return 0
     if argv[1:2] == ["--sweep-cooldowns"]:
@@ -1073,9 +1095,10 @@ def main(argv):
     # cross-class fan-out re-resolve). Absent -> exclude nothing.
     if len(argv) not in (4, 5):
         print("usage: fleet_task_class.py <slice.json> <lane-default> "
-              "<fable-blocked 0|1> [exclude-classes]", file=sys.stderr)
+              "<fable-blocked 0|1|walled> [exclude-classes]", file=sys.stderr)
         return 2
-    slice_path, lane_default, fable_blocked = argv[1], argv[2], argv[3] == "1"
+    slice_path, lane_default = argv[1], argv[2]
+    fable_blocked = parse_fable_blocked(argv[3])
     exclude = [c for c in (argv[4].split(",") if len(argv) == 5 else []) if c]
     slice_data = _load_slice(slice_path)
     if slice_data is None:
