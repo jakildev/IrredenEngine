@@ -1,0 +1,298 @@
+diff --git a/engine/prefabs/irreden/render/sun_face_query_layout.hpp b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+index 35571ff8d..b6a9c5d55 100644
+--- a/engine/prefabs/irreden/render/sun_face_query_layout.hpp
++++ b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+@@ -38,13 +38,11 @@ constexpr std::uint32_t kSourceFaceCapacityDispatchLimit = 16777216u;
+ constexpr std::uint32_t kSourceFaceRecordWords = 10u;
+ constexpr std::uint32_t kSourceFaceFallbackOffset =
+     kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
+-// Per-texel depth-slab extrema of the primary layer: kSunDepthSlabSlots slots
+-// of (min, max) packed words, each slot owning one slab of kSunDepthSlabWidthUnits
+-// depth units. The slab width equals the receiver's shadow throw, so a
+-// throw-wide window is answered exactly by the max of the slab holding its far
+-// end and the min of the next slab. Slot 0's max word carries the sticky
+-// overflow bit once a texel saw more distinct slabs than it has slots; the
+-// receiver then answers from the nearest word alone.
++// Per-texel primary depth extrema in throw-wide slabs. The far window slab's
++// max and the next slab's min decide depth-only existence. Direct mapping
++// selects slab % slots with unconditional extrema atomics; any min/max slab
++// mismatch invalidates the whole texel. Associative mode claims distinct slabs
++// and stores sticky overflow in slot 0's max. Both fall back to nearest-only.
+ //
+ // Zero slots compiles the layer out: no words, and every primary write and
+ // receiver tap byte-identical to the nearest-only bake. A creation that needs
+@@ -53,6 +51,8 @@ constexpr std::uint32_t kSourceFaceFallbackOffset =
+ // take one), in this constant and both shader twins; the cost that keeps the
+ // default at zero is in docs/design/sun-face-index-capacity.md.
+ constexpr std::uint32_t kSunDepthSlabSlots = 0u;
++// Direct mapping uses per-pixel atomics; false selects associative/cooperative reduction.
++constexpr bool kSunDepthSlabDirectMapped = true;
+ constexpr std::uint32_t kSunDepthSlabWords = 2u;
+ constexpr std::uint32_t kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+ constexpr std::uint32_t kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
+diff --git a/engine/prefabs/irreden/render/sun_shadow_probe.hpp b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
+index f7a4edc38..5e24555be 100644
+--- a/engine/prefabs/irreden/render/sun_shadow_probe.hpp
++++ b/engine/prefabs/irreden/render/sun_shadow_probe.hpp
+@@ -287,8 +287,8 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
+ 
+ // One probe CSV row from a texel's nearest word and its slab planes, stored
+ // every slot's min plane then every slot's max plane at `stride` words each.
+-// The sticky overflow flag lives on max plane 0, the plane right after the
+-// last min plane; an unclaimed min word is EMPTY and carries the same bit.
++// Associative overflow lives on max plane 0, not on the EMPTY min sentinel.
++// Direct extrema stay raw; a slab mismatch in any occupied slot is a collision.
+ inline void writeSunPrimaryDepthProbeRow(
+     std::ostream &output,
+     std::uint32_t cascade,
+@@ -298,17 +298,25 @@ inline void writeSunPrimaryDepthProbeRow(
+     const std::uint32_t *slabPlanes,
+     std::size_t stride,
+     std::size_t column,
+-    std::uint32_t slots
++    std::uint32_t slots,
++    bool directMapped = kSunDepthSlabDirectMapped
+ ) {
+     output << cascade << ',' << x << ',' << y << ',' << nearest;
++    bool collision = false;
+     for (std::uint32_t slot = 0; slot < slots; ++slot) {
+-        output << ',' << slabPlanes[std::size_t(slot) * stride + column] << ','
+-               << (slabPlanes[std::size_t(slots + slot) * stride + column] &
+-                   ~kSunDepthSlabOverflow);
++        const auto low = slabPlanes[std::size_t(slot) * stride + column];
++        const auto rawHigh = slabPlanes[std::size_t(slots + slot) * stride + column];
++        const auto high = directMapped ? rawHigh : rawHigh & ~kSunDepthSlabOverflow;
++        output << ',' << low << ',' << high;
++        if (directMapped && low != 0xFFFFFFFFu &&
++            (low >> 8) / kSunDepthSlabQuantized != (high >> 8) / kSunDepthSlabQuantized) {
++            collision = true;
++        }
+     }
+-    const bool overflow = slots != 0u && (slabPlanes[std::size_t(slots) * stride + column] &
+-                                          kSunDepthSlabOverflow) != 0u;
+-    output << ',' << (overflow ? 1 : 0) << "\n";
++    const bool overflow = !directMapped && slots != 0u &&
++                          (slabPlanes[std::size_t(slots) * stride + column] &
++                           kSunDepthSlabOverflow) != 0u;
++    output << ',' << (overflow ? 1 : 0) << ',' << (collision ? 1 : 0) << "\n";
+ }
+ 
+ // Primary-layer words (nearest plus slab extrema) for the sun texels a
+@@ -334,6 +342,10 @@ inline bool writeSunPrimaryDepthProbe(
+     output << "# max_shadow_throw=" << frame.sunMaxShadowThrow_ << "\n";
+     output << "# slab_width=" << kSunDepthSlabWidthUnits << "\n";
+     output << "# slab_slots=" << kSunDepthSlabSlots << "\n";
++    output << "# slab_mode="
++           << (kSunDepthSlabSlots == 0u ? "disabled"
++                                      : (kSunDepthSlabDirectMapped ? "direct" : "associative"))
++           << "\n";
+     output << "# sun_direction=" << frame.sunDirection_.x << ',' << frame.sunDirection_.y << ','
+            << frame.sunDirection_.z << "\n";
+     output << "# basis_u=" << frame.sunBasisU_.x << ',' << frame.sunBasisU_.y << ','
+@@ -378,7 +390,7 @@ inline bool writeSunPrimaryDepthProbe(
+     for (std::uint32_t slot = 0; slot < kSunDepthSlabSlots; ++slot) {
+         output << ",slab" << slot << "_min,slab" << slot << "_max";
+     }
+-    output << ",overflow\n";
++    output << ",overflow,collision\n";
+     std::vector<std::uint32_t> nearest;
+     std::vector<std::uint32_t> slabs;
+     for (std::uint32_t cascade = 0; cascade < kSourceFaceCascadeCount; ++cascade) {
+diff --git a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+index c87d5f905..d50358e91 100644
+--- a/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
++++ b/engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp
+@@ -216,7 +216,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+         int groupSize_;
+     };
+     RasterBakeDispatch rasterBakeDispatch(bool splatEngaged) const {
+-        if (bakeCooperativeProgram_ != nullptr && splatEngaged && !retainSecondPrimaryDepth_) {
++        if (!IRPrefab::SunShadow::kSunDepthSlabDirectMapped && bakeCooperativeProgram_ != nullptr &&
++            splatEngaged && !retainSecondPrimaryDepth_) {
+             return {bakeCooperativeProgram_, kBakeSunShadowCooperativeGroupSize};
+         }
+         return {
+@@ -1354,7 +1355,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
+             IRRender::getNamedResource<Buffer>("RevoxelizeDetachedParamsBuffer");
+         p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearSunShadowMapProgram");
+         p->bakeProgram_ = IRRender::getNamedResource<ShaderProgram>("BakeSunShadowMapProgram");
+-        if constexpr (IRPrefab::SunShadow::kSunDepthSlabSlots > 0u) {
++        if constexpr (IRPrefab::SunShadow::kSunDepthSlabSlots > 0u &&
++                      !IRPrefab::SunShadow::kSunDepthSlabDirectMapped) {
+             p->bakeCooperativeProgram_ = IRRender::createNamedResource<ShaderProgram>(
+                                              "BakeSunShadowMapCooperativeProgram",
+                                              std::vector{ShaderStage{
+diff --git a/engine/render/src/shaders/ir_sun_depth_slab_write.glsl b/engine/render/src/shaders/ir_sun_depth_slab_write.glsl
+index 393e3a932..7c1220a99 100644
+--- a/engine/render/src/shaders/ir_sun_depth_slab_write.glsl
++++ b/engine/render/src/shaders/ir_sun_depth_slab_write.glsl
+@@ -1,25 +1,22 @@
+ #ifndef IR_SUN_DEPTH_SLAB_WRITE_INCLUDED
+ #define IR_SUN_DEPTH_SLAB_WRITE_INCLUDED
+ 
+-// Primary-layer writer side of the depth-slab extrema in ir_sun_face_query_layout.
+-// The including kernel declares `sunDepthBuf` as a writable std430 buffer on
+-// binding 28 and includes ir_sun_face_query_layout.glsl first. Metal twin:
+-// metal/ir_sun_depth_slab_write.metal.
+-//
+-// Every packed primary write lands in the slot owning its slab: the first
+-// writer of a slab claims the first empty slot with a compare-swap, later
+-// writers of that slab atomically min / max the pair. A slot's slab never
+-// changes once claimed, so a plain load that observes a claimed slot is
+-// final, and a stale EMPTY load is corrected by the swap's returned word.
+-// A texel with more distinct slabs than slots sets the sticky overflow bit on
+-// slot 0's max word; the receiver then answers from the nearest word alone.
+-//
+-// The pair is one slab's reduced (min, max), both members of the texel's
+-// write set; a single write is the pair (depth, depth). Reducing writes before
+-// the merge changes neither the slabs a texel saw nor their extrema.
++// The including kernel supplies the layout and writable slot-28 sunDepthBuf.
++// Direct mapping reduces into slab % slots without loading resident words;
++// differing min/max slabs tell the receiver to discard the texel's slab layer.
++// Associative mapping claims slots and marks overflow on max plane zero.
++// A pair contains extrema from one slab, including every provenance bit.
+ void mergeSunDepthSlabPair(int texelIndex, uint lowDepth, uint highDepth) {
+     if (kSunDepthSlabSlots == 0u) return;
+     const uint slab = sunDepthSlab(lowDepth);
++    if (kSunDepthSlabDirectMapped) {
++        const uint slot = slab % (kSunDepthSlabSlots == 0u ? 1u : kSunDepthSlabSlots);
++        const uint lowIndex = sunDepthSlabMinIndex(texelIndex, slot);
++        const uint highIndex = sunDepthSlabMaxIndex(texelIndex, slot);
++        atomicMin(sunDepthBuf[lowIndex], lowDepth);
++        atomicMax(sunDepthBuf[highIndex], highDepth);
++        return;
++    }
+     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
+         const uint low = sunDepthSlabMinIndex(texelIndex, slot);
+         const uint high = sunDepthSlabMaxIndex(texelIndex, slot);
+diff --git a/engine/render/src/shaders/ir_sun_face_query_layout.glsl b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+index 2806c4184..c12238945 100644
+--- a/engine/render/src/shaders/ir_sun_face_query_layout.glsl
++++ b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+@@ -23,10 +23,12 @@ const uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceMapD
+ // of (min, max) packed words, each slot owning one slab of kSunDepthSlabWidthUnits
+ // depth units. The slab width equals the receiver's shadow throw, so a
+ // throw-wide window (a, a + width) is answered exactly by the max of the slab
+-// holding a and the min of the next slab. Slot 0's max word carries the
+-// sticky overflow bit once a texel saw more distinct slabs than it has slots.
++// holding a and the min of the next slab. Associative mode stores sticky
++// overflow in slot 0's max; direct mode derives collisions from the extrema.
+ // Zero compiles the layer out; opt in with the CPU twin (sun_face_query_layout.hpp).
+ const uint kSunDepthSlabSlots = 0u;
++// Direct slots may contain gaps; unequal extremum slabs invalidate the whole texel.
++const bool kSunDepthSlabDirectMapped = true;
+ const uint kSunDepthSlabWords = 2u;
+ const uint kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+ const uint kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 17b2052ab..623584390 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -160,17 +160,27 @@ bool sunStoredTapBeyondThrow(uint stored, float sunZ, float bias, float maxShado
+ // (sunZ - bias - throw, sunZ - bias) is one slab wide, so the slab holding its
+ // far end answers with its max and the next slab with its min; every candidate
+ // takes the same per-word test, so provenance rejects exactly as a nearest
+-// word would. An overflowed texel or a throw that differs from the slab
++// word would. A collided/overflowed texel or a throw that differs from the slab
+ // width answers from the nearest word alone.
+ bool sunDepthSlabBlocks(int texelIndex, float sunZ, float bias, float maxShadowThrow,
+                         bool surfaceReceiver, ivec2 px, vec2 origin, vec2 texelSz,
+                         vec2 gradUV, vec2 sunUV) {
+     if (kSunDepthSlabSlots == 0u || maxShadowThrow != float(kSunDepthSlabWidthUnits)) return false;
+-    if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
++    if (kSunDepthSlabDirectMapped) {
++        // Any collision disables the whole texel, including otherwise valid slots.
++        for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
++            const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
++            if (low == 0xFFFFFFFFu) continue;
++            const uint high = sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, slot)];
++            if (sunDepthSlab(low) != sunDepthSlab(high)) return false;
++        }
++    } else {
++        if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
++    }
+     const uint farSlab = sunDepthSlab(packSunDepth(sunZ - bias - maxShadowThrow, ivec2(0)));
+     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
+         const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
+-        if (low == 0xFFFFFFFFu) break;
++        if (low == 0xFFFFFFFFu) continue;
+         const uint slab = sunDepthSlab(low);
+         if (slab != farSlab && slab != farSlab + 1u) continue;
+         // Both extrema of a window slab: the far slab's max and the near slab's
+diff --git a/engine/render/src/shaders/metal/ir_sun_depth_slab_write.metal b/engine/render/src/shaders/metal/ir_sun_depth_slab_write.metal
+index 370aab3b7..fcd89d6e8 100644
+--- a/engine/render/src/shaders/metal/ir_sun_depth_slab_write.metal
++++ b/engine/render/src/shaders/metal/ir_sun_depth_slab_write.metal
+@@ -5,18 +5,24 @@
+ #include <metal_atomic>
+ using namespace metal;
+ 
+-// Mirrors shaders/ir_sun_depth_slab_write.glsl: the primary-layer writer side
+-// of the depth-slab extrema in ir_sun_face_query_layout.metal, which the
+-// including kernel includes first. The first writer of a slab claims the
+-// first empty slot with a compare-exchange; later writers of that slab min /
+-// max the pair. A slot's slab never changes once claimed. A texel with more
+-// distinct slabs than slots sets the sticky overflow bit on slot 0's max word.
+-// The pair is one slab's reduced (min, max); a single write is (depth, depth).
++// The including kernel supplies the layout and writable slot-28 sunDepthBuf.
++// Direct mapping reduces into slab % slots without loading resident words;
++// differing min/max slabs tell the receiver to discard the texel's slab layer.
++// Associative mapping claims slots and marks overflow on max plane zero.
++// A pair contains extrema from one slab, including every provenance bit.
+ inline void mergeSunDepthSlabPair(
+     device atomic_uint *sunDepthBuf, int texelIndex, uint lowDepth, uint highDepth
+ ) {
+     if (kSunDepthSlabSlots == 0u) return;
+     const uint slab = sunDepthSlab(lowDepth);
++    if (kSunDepthSlabDirectMapped) {
++        const uint slot = slab % (kSunDepthSlabSlots == 0u ? 1u : kSunDepthSlabSlots);
++        const uint lowIndex = sunDepthSlabMinIndex(texelIndex, slot);
++        const uint highIndex = sunDepthSlabMaxIndex(texelIndex, slot);
++        atomic_fetch_min_explicit(&sunDepthBuf[lowIndex], lowDepth, memory_order_relaxed);
++        atomic_fetch_max_explicit(&sunDepthBuf[highIndex], highDepth, memory_order_relaxed);
++        return;
++    }
+     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
+         const uint low = sunDepthSlabMinIndex(texelIndex, slot);
+         const uint highIndex = sunDepthSlabMaxIndex(texelIndex, slot);
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+index b011b8b83..765f5c40c 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+@@ -22,6 +22,8 @@ constant uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceM
+ // Per-texel depth-slab extrema of the primary layer; mirrors GLSL.
+ // Zero compiles the layer out; opt in with the CPU twin (sun_face_query_layout.hpp).
+ constant uint kSunDepthSlabSlots = 0u;
++// Direct slots may contain gaps; unequal extremum slabs invalidate the whole texel.
++constant bool kSunDepthSlabDirectMapped = true;
+ constant uint kSunDepthSlabWords = 2u;
+ constant uint kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+ constant uint kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index 5cbe6239f..6ce3781d5 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -159,11 +159,21 @@ inline bool sunDepthSlabBlocks(device const uint *sunDepthBuf, int texelIndex, f
+                                float maxShadowThrow, bool surfaceReceiver, int2 px, float2 origin,
+                                float2 texelSz, float2 gradUV, float2 sunUV) {
+     if (kSunDepthSlabSlots == 0u || maxShadowThrow != float(kSunDepthSlabWidthUnits)) return false;
+-    if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
++    if (kSunDepthSlabDirectMapped) {
++        // Any collision disables the whole texel, including otherwise valid slots.
++        for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
++            const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
++            if (low == 0xFFFFFFFFu) continue;
++            const uint high = sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, slot)];
++            if (sunDepthSlab(low) != sunDepthSlab(high)) return false;
++        }
++    } else {
++        if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
++    }
+     const uint farSlab = sunDepthSlab(packSunDepth(sunZ - bias - maxShadowThrow, int2(0)));
+     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
+         const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
+-        if (low == 0xFFFFFFFFu) break;
++        if (low == 0xFFFFFFFFu) continue;
+         const uint slab = sunDepthSlab(low);
+         if (slab != farSlab && slab != farSlab + 1u) continue;
+         // Both extrema of a window slab: the far slab's max and the near slab's

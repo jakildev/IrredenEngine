@@ -1,0 +1,21 @@
+[fleet-jobs] display: none (CoreGraphics online displays: 0)
+[light-verify] --if-changed: 9 of 40 changed path(s) in the trigger surface (first: engine/prefabs/irreden/render/sun_face_query_layout.hpp); running
+[light-verify] target=IRLightingEmissive  backend=macos-debug
+
+[light-verify] === pass: --light-domain-matrix ===
++ fleet-run --timeout 120 IRLightingEmissive --light-domain-matrix --auto-screenshot 10
+ir-run: running debug tree /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/creations/demos/lighting/IRLightingEmissive --light-domain-matrix --auto-screenshot 10 (timeout: 120s) (window mode: offscreen)
+[2026-11-04 21:36:48.267] [ClientLog] [info] Registering lua type LuaEntity
+[2026-11-04 21:36:48.268] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/creations/demos/lighting/scripts/config.lua
+[2026-11-04 21:36:48.268] [ClientLog] [info] Registering lua type LuaEntity
+[2026-11-04 21:36:48.268] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build/creations/demos/lighting/scripts/config.lua
+[2026-11-04 21:36:48.268] [EngineLog] [info] --window-mode / IR_WINDOW_MODE override: window_mode = offscreen
+2026-11-04 21:36:48.343 IRLightingEmissive[14031:18218723] Connection Invalid error for service com.apple.hiservices-xpcservice.
+2026-11-04 21:36:48.343 IRLightingEmissive[14031:18218510] Error received in message reply handler: Connection invalid
+[2026-11-04 21:36:48.346] [EngineLog] [warning] Window mode 'offscreen': accessory activation policy not applied (applied=0, accessory=0); the window still never takes focus.
+[2026-11-04 21:36:48.346] [EngineLog] [info] Discovered 0 display monitors
+2026-11-04 21:36:48.348 IRLightingEmissive[14031:18218510] Failure on line 688 in function id scheduleApplicationNotification(LSNotificationCode, NSWorkspaceNotificationCenter *): noErr == _LSModifyNotification(notificationID, 1, &code, 0, NULL, NULL, NULL)
+Terminated: 15             "$@"
+ir-run: RESULT=NO-DISPLAY exe=IRLightingEmissive exit=69
+[light-verify] ENV-FAIL: Discovered 0 display monitors (the host session has no WindowServer connection; sign in or wake the Aqua session)

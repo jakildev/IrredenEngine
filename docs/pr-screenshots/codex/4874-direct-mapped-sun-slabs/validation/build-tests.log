@@ -1,0 +1,396 @@
+[  0%] Built target luajit_build
+[  0%] Built target enkiTS
+[  4%] Built target rtaudio
+[  4%] Built target rtmidi
+[  4%] Built target IRCanvasStressAssets
+[ 14%] Built target easy_profiler
+[ 14%] Built target fmt
+[ 14%] Built target glm
+[ 28%] Built target meshoptimizer
+[ 38%] Built target glfw
+[ 38%] Built target spdlog
+[ 42%] Built target IrredenEngineMath
+[ 42%] Built target IrredenEngineProfile
+[ 42%] Built target IrredenEngineJob
+[ 42%] Built target IrredenEngineTime
+[ 42%] Built target IrredenEngineUtility
+[ 47%] Built target IrredenEngineEntity
+[ 52%] Built target IrredenEngineAsset
+[ 57%] Built target IrredenEngineSystem
+[ 61%] Built target IrredenEngineAudio
+[ 66%] Built target IrredenEngineCatalog
+[ 66%] Built target IrredenEngineWindow
+[ 66%] Built target IrredenEngineInput
+[ 80%] Built target IrredenEngineRendering
+[ 85%] Built target IrredenEngineVideo
+[ 85%] Built target IrredenEngineCommand
+[ 95%] Built target IrredenEngineWorld
+[ 95%] Built target IrredenEngineScripting
+[ 95%] Built target IrredenEngine
+[100%] Building CXX object creations/demos/canvas_stress/CMakeFiles/IRCanvasStress.dir/main.cpp.o
+[100%] Linking CXX executable IRCanvasStress
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRCanvasStress
+[  0%] Built target luajit_build
+[  0%] Built target enkiTS
+[  4%] Built target rtaudio
+[  4%] Built target rtmidi
+[  4%] Built target IRPerfGridAssets
+[ 14%] Built target easy_profiler
+[ 14%] Built target fmt
+[ 14%] Built target glm
+[ 28%] Built target meshoptimizer
+[ 38%] Built target glfw
+[ 38%] Built target spdlog
+[ 42%] Built target IrredenEngineMath
+[ 42%] Built target IrredenEngineProfile
+[ 42%] Built target IrredenEngineTime
+[ 42%] Built target IrredenEngineJob
+[ 42%] Built target IrredenEngineUtility
+[ 47%] Built target IrredenEngineEntity
+[ 52%] Built target IrredenEngineAsset
+[ 57%] Built target IrredenEngineSystem
+[ 61%] Built target IrredenEngineAudio
+[ 66%] Built target IrredenEngineCatalog
+[ 66%] Built target IrredenEngineWindow
+[ 66%] Built target IrredenEngineInput
+[ 80%] Built target IrredenEngineRendering
+[ 85%] Built target IrredenEngineVideo
+[ 85%] Built target IrredenEngineCommand
+[ 95%] Built target IrredenEngineWorld
+[ 95%] Built target IrredenEngineScripting
+[ 95%] Built target IrredenEngine
+[100%] Building CXX object creations/demos/perf_grid/CMakeFiles/IRPerfGrid.dir/main.cpp.o
+[100%] Linking CXX executable IRPerfGrid
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRPerfGrid
+[  0%] Built target luajit_build
+[  1%] Built target gtest
+[  1%] Built target enkiTS
+[  3%] Built target rtaudio
+[  3%] Built target rtmidi
+[  3%] Built target fmt
+[  7%] Built target easy_profiler
+[  7%] Built target glm
+[ 12%] Built target meshoptimizer
+[ 16%] Built target glfw
+[ 16%] Built target gtest_main
+[ 16%] Built target ir_lua_codegen
+[ 17%] Built target IrredenEngineMath
+[ 17%] Built target spdlog
+[ 17%] Built target IrredenEngineProfile
+[ 17%] Built target IrredenEngineJob
+[ 17%] Built target IrredenEngineTime
+[ 17%] Built target IrredenEngineUtility
+[ 19%] Built target IrredenEngineEntity
+[ 21%] Built target IrredenEngineAsset
+[ 23%] Built target IrredenEngineSystem
+[ 25%] Built target IrredenEngineAudio
+[ 26%] Built target IrredenEngineCatalog
+[ 26%] Built target IrredenEngineWindow
+[ 26%] Built target IrredenEngineInput
+[ 32%] Built target IrredenEngineRendering
+[ 33%] Built target IrredenEngineVideo
+[ 33%] Built target IrredenEngineCommand
+[ 37%] Built target IrredenEngineWorld
+[ 37%] Built target IrredenEngineScripting
+[ 37%] Built target IrredenEngine
+[ 37%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/creation_manifest_test.cpp.o
+[ 37%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/binary_io_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/json_reader_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/json_sidecar_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/key_value_store_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/name_table_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/rig_format_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/sprite_sheet_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/voxel_set_dense_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/voxel_set_hybrid_test.cpp.o
+[ 39%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/voxel_set_rle_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/asset/voxel_set_shapes_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/audio_capture_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/audio_monitor_ring_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/audio_playback_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/synthetic_audio_capture_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_clock_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_note_spacing_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_in_tick_test.cpp.o
+[ 41%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_hand_off_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_message_ring_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/midi_multiport_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/audio/music_theory_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/catalog/catalog_assets_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/catalog/catalog_scan_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/command/default_binding_manifest_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/command/keyboard_dispatch_test.cpp.o
+[ 42%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/command/undo_commands_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/allocation_counter.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/array_transforms_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/command_registry_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/ir_args_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/common/ir_platform_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/archetype_move_storage_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/chunk_bounds_eviction_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/chunked_field_test.cpp.o
+[ 44%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/collision_swept_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/command_randomize_voxels_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/entity_event_handlers_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/entity_manager_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/execute_query_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/field_clearance_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/field_placement_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/field_regions_test.cpp.o
+[ 46%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/grid_destination_capacity_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/grid_rotation_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/grid_span_coverage_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/hitbox_2d_gui_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/hover_detect_reset_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/joint_matrix_upload_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/modifier_quat_runtime_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/modifier_runtime_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/modifier_types_test.cpp.o
+[ 48%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/modifier_vec3_runtime_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/pick_priority_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/propagate_transform_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/rebuild_detached_voxels_guard_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/rotation_mode_set_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/rotation_target_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/sort_archetype_relational_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/store_tie_signal_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/parallel_spawn_test.cpp.o
+[ 50%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/skeleton_components_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/skeleton_skinning_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/skinning_pipeline_consistency_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/spatial_grid_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/system_exclude_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/undo_history_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_bone_slot_seed_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_pool_teardown_test.cpp.o
+[ 51%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_set_anchor_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_set_edit_api_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/sdf_bake_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/ecs/voxel_set_target_canvas_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/physics_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/edt_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/rng_pcg32_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_wrap_test.cpp.o
+[ 53%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_viewport_helpers_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/sun_frustum_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/camera_subpixel_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_color_layout_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_coord_helpers_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_easing_color_sort_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_random_misc_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_trixel_index_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/ir_math_yaw_deformation_test.cpp.o
+[ 55%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/math/sdf_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/profile/process_memory_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/profile/profile_report_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/camera_mouse_rotate_reset_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/camera_pan_pivot_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/camera_yaw_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/camera_zoom_policy_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/canvas_part_test.cpp.o
+[ 57%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/canvas_residency_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/canvas_rotation_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/default_pivot_latch_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/composite_depth_row_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/debug_overlay_world_to_screen_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/detached_revoxelize_groups_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/detached_world_depth_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/entity_canvas_teardown_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/entity_canvas_hitbox_test.cpp.o
+[ 58%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/entity_id_carrier_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_carrier_policy_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/font_maker_source_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_cross_section_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_ghost_policy_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_line_of_sight_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_mode_switch_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_reveal_eval_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_reveal_eval_canvas_test.cpp.o
+[ 60%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_reveal_eval_shape_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_seams_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_subject_adopt_test.cpp.o
+[ 62%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/fog_surface_composition_test.cpp.o
+[100%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_canvas_lifecycle_test.cpp.o
+[100%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_canvas_size_test.cpp.o
+[100%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_cast_subcell_test.cpp.o
+[100%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_store_frame_test.cpp.o
+[100%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_axis_surface_lighting_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/frame_data_sun_layout_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/glitch_math_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/trixel_glitch_math_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gizmo_drag_reset_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gizmo_ring_orientation_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gizmo_view_clearance_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gui_canvas_routing_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gpu_compute_dispatch_test.cpp.o
+[104%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gpu_readback_ring_test.cpp.o
+[109%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gpu_submission_fences_test.cpp.o
+[109%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gpu_timestamp_poll_test.cpp.o
+[109%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/light_volume_boundary_seed_test.cpp.o
+[109%] Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/light_volume_dispatch_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/metal_sticky_untrack_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/named_resource_probe_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/help_overlay_layout_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/rendering_resource_manager_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/opengl_shader_include_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/per_canvas_light_scope_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/perf_hud_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/perf_stats_overlay_reset_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/picking_grid_ray_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/picking_face_normal_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/prefab_system_probe_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/shape_sample_probe_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/run_witness_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/settings_menu_layout_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/trixel_font_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/settings_menu_reset_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/shape_tile_bounds_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_direction_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_lighting_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_shadow_feeder_ring_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_shadow_probe_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sun_record_pool_layout_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/viewport_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_fill_ghost_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_sculpt_grid_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_part_edit_history_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_composite_save_transaction_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_motion_preview_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_scene_io_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_document_lifecycle_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_local_part_edit_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_workarea_framing_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_editor_recipe_reapply_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_pool_config_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_pool_capacity_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_font_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/voxel_text_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sprite_animation_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sprite_components_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/sprite_render_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_list_scroll_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_slider_gesture_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_dropdown_window_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_dropdown_typeahead_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_theme_singleton_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_hit_region_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_image_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_tab_focus_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_keyboard_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/widget_visibility_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/render/gui_layout_audit_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_audio_midi_clock_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_audio_midi_observer_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_audio_monitor_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_collision_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_collision_response_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_catalog_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_command_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_cursor_position_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_input_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_input_enums_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_editor_session_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_hitbox_2d_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_component_codegen_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_component_codegen_second_tu.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_debug_overlay_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_component_register_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_deferred_entity_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_entity_anchor_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_entity_events_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_hit_region_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_values_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_layout_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_image_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_layout_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_voxel_seam_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_text_style_voxel_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_undo_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_hierarchy_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_enum_register_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_persistence_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_print_sink_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_world_snapshot_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_pipeline_register_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_render_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lod_tier_lua_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_fog_revealed_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_fog_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_engine_hand_off_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_spawn_tool_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_file_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_script_get_table_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_viewport_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_canvas_draw_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_midi_note_spacing_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_widget_color_swatch_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_script_utils_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_standard_bindings_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_local_transform_lua_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_world_transform_lua_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_rotation_target_lua_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_spin_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_system_codegen_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/prefab_api_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/prefab_parts_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_system_coexistence_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_entity_batch_create_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_system_register_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_trigger_glow_lua_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/lua_usertype_registration_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/script/modifier_lua_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/pipeline_groups_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/register_system_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/system_access_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/system_cadence_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/system/system_concurrency_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/sim_clock_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/cycle_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/timer_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/stopwatch_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/lua_sim_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/time/time_manager_hand_off_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/job/ir_job_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/job/worker_block_queue_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/utility/contained_path_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/utility/ir_utility_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/update/collision_response_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/update/rhythmic_launch_rest_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/auto_screenshot_helpers_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/auto_record_pacing_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/audio_capture_rate_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/capture_output_resolution_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/recording_state_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/video/capture_source_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/window/window_mode_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/window/close_guard_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/chunk_coord_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/chunk_membership_migration_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/chunk_persistence_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/hand_off_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/tool_spawn_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/field_chunk_persistence_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/fog_explored_decay_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/fog_world_field_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/chunk_residency_manager_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/save_trait_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_snapshot_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_snapshot_relations_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/persist_round_trip_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/component_migration_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/voxel_set_serialize_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_config_missing_table_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_config_audio_monitor_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_config_gui_pixelated_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/world_config_window_mode_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/world/save_serializers_test.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/codegen/lua_component_codegen_fixtures_claims.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/codegen/lua_system_codegen_fixtures_claims.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/codegen/lod_tier_codegen_fixtures_claims.cpp.o
+Building CXX object test/CMakeFiles/IrredenEngineTest.dir/codegen/lua_system_coexistence_fixtures_claims.cpp.o
+Linking CXX executable ../IrredenEngineTest
+ld: warning: ignoring duplicate libraries: '../engine/script/libIrredenEngineScripting.a', '../engine/world/libIrredenEngineWorld.a'
+Built target IrredenEngineTest

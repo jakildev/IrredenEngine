@@ -1,0 +1,30 @@
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 78.646s
+
+OK
+glsl: 107 cooperative write sets agree with the per-pixel writer (153953 spilled writes, 411 dropped at the cascade edge, 39060 overflowed texels)
+metal: 107 cooperative write sets agree with the per-pixel writer (153953 spilled writes, 411 dropped at the cascade edge, 39060 overflowed texels)
+glsl: direct_drop_minimum failed by name
+glsl: direct_drop_maximum failed by name
+glsl: bypass_collision failed by name
+glsl: accept_before_collision_scan failed by name
+glsl: stop_at_empty_slot failed by name
+glsl: direct_stale_clear failed by name
+metal: direct_drop_minimum failed by name
+metal: direct_drop_maximum failed by name
+metal: bypass_collision failed by name
+metal: accept_before_collision_scan failed by name
+metal: stop_at_empty_slot failed by name
+metal: direct_stale_clear failed by name
+glsl: slab extrema counterexample executed; 268435456 bytes for 16 slabs; 67108864 bytes for a 256-unit frame range
+metal: slab extrema counterexample executed; 268435456 bytes for 16 slabs; 67108864 bytes for a 256-unit frame range
+3884100 exact slab queries; 6968 wide-slab mismatches when both window ends share a slab
+glsl direct=False: nearest-two witness: writes -120,-110,2 receiver 10 -> nearest-two lit, slabs blocked
+61750 write sets (200 overflowed, 18440 recovered behind a far nearest word, 48 splat-extrema residuals), every permutation up to 24
+glsl direct=True: nearest-two witness: writes -120,-110,2 receiver 10 -> nearest-two lit, slabs blocked
+61802 write sets (6870 overflowed, 15276 recovered behind a far nearest word, 48 splat-extrema residuals), every permutation up to 24
+metal direct=False: nearest-two witness: writes -120,-110,2 receiver 10 -> nearest-two lit, slabs blocked
+61750 write sets (200 overflowed, 18440 recovered behind a far nearest word, 48 splat-extrema residuals), every permutation up to 24
+metal direct=True: nearest-two witness: writes -120,-110,2 receiver 10 -> nearest-two lit, slabs blocked
+61802 write sets (6870 overflowed, 15276 recovered behind a far nearest word, 48 splat-extrema residuals), every permutation up to 24
