@@ -32,9 +32,9 @@ same authored planes. The old detached outside control fails by 25 levels; both
 corrected regions pass with zero error. The wall/plate self-occlusion fixture also
 passes all three existing checks at yaw 180°.
 
-![Unblocked receiver](../pr-screenshots/codex/detached-receiver-planes/unblocked-comparison.png)
+![Unblocked receiver](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-receiver-planes/unblocked-comparison.png)
 
-![Independent overhead blocker](../pr-screenshots/codex/detached-receiver-planes/blocked-comparison.png)
+![Independent overhead blocker](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-receiver-planes/blocked-comparison.png)
 
 ## Reproduction and evidence
 
@@ -43,12 +43,13 @@ is `989c59cfd1d181731d73644c9c9c29e6b2b80aa2`; final shader diff only adds the
 center correction. Every capture run ended `RESULT=CLEAN`.
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-receiver-planes | tar -x
 fleet-run --timeout 120 IRCanvasStress --only shadowocclusion --probe-staircase --local-trixel-display --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 4 --auto-screenshot 6 --sweep-yaw 3.14159265 3.14159265 1 --source-face-shadows
 python3 scripts/render-sun-occlusion-metric.py --staircase docs/pr-screenshots/codex/detached-receiver-planes/capture-501.png
 python3 scripts/render-sun-occlusion-metric.py --staircase --unblocked docs/pr-screenshots/codex/detached-receiver-planes/capture-500.png
 ```
 
-Evidence directory: `docs/pr-screenshots/codex/detached-receiver-planes/`.
+Evidence directory: [`docs/pr-screenshots/codex/detached-receiver-planes/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-receiver-planes).
 All staircase captures use the recipe above with these changes:
 
 | Captures | State | Changes to recipe |

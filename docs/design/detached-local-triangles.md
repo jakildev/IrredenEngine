@@ -56,7 +56,7 @@ On native Metal, Apple M4 Max, 2560×1440, output scale 2, zoom 16:
 - The final effective-layout metadata change reproduces all five measured frames
   pixel-for-pixel.
 
-![Parent, triangular display, attached control](../pr-screenshots/codex/detached-local-triangles/face-comparison.png)
+![Parent, triangular display, attached control](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-local-triangles/face-comparison.png)
 
 This is a different question from the authored-box oracle. That oracle remains
 unchanged and still exposes camera-dependent revoxelization error. The earlier
@@ -64,18 +64,19 @@ unchanged and still exposes camera-dependent revoxelization error. The earlier
 does not become proof of authored-face fidelity. Larger upright cubes still show
 alternating staircase faces, particularly at 45 degrees:
 
-![Larger probes, matched native-resolution crops](../pr-screenshots/codex/detached-local-triangles/upright-comparison.png)
+![Larger probes, matched native-resolution crops](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-local-triangles/upright-comparison.png)
 
 ## Reproduction and retained evidence
 
 The following captures predate default adoption and use the explicit compatibility flag.
 All capture runs exited cleanly. Source base: `66622d60b` (merged rendering stack).
-Artifacts are under `docs/pr-screenshots/codex/detached-local-triangles/`.
+Artifacts are under [`docs/pr-screenshots/codex/detached-local-triangles/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-local-triangles).
 Captures 352–356 are the initial automatic-pivot normals sweep, which changes
 placement with yaw; 366–370 use a fixed origin; 381–385 repeat the fixed-origin
 sweep after effective-layout metadata was added.
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-local-triangles | tar -x
 fleet-run --timeout 120 IRCanvasStress --only shadowbox --probe-single-voxel --local-trixel-display --pivot-origin --no-spin --no-auto-rotate --no-ao --no-shadows --subdivisions 1 --zoom 16 --debug-overlay normals --auto-screenshot 6 --sweep-yaw 0 1.57079633 5
 python3 scripts/render-local-voxel-metric.py docs/pr-screenshots/codex/detached-local-triangles/capture-368.png --yaw 45
 ```
@@ -151,14 +152,14 @@ The local centroid raster remains useful for screen-space occluder probes and ra
 trixel diagnostics. A rotation-invariant enclosing-sphere bound caps its density
 to private texture capacity; it no longer determines source-face display edges.
 Revoxelized occupancy continues to use local triangle reconstruction and its real
-staircase normals. [World sun casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
+staircase normals. [World sun casting](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/rigid-source-shadow-casters/README.md)
 uses original transformed faces in the finite-face pipeline.
-[World reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
+[World reception](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
 preserves original world normals and interpolates points on each source quad.
 Direct sun visibility is evaluated per fragment using the shared bounded caster
 query; ambient, AO, LUT, local-volume and sky terms remain face-centered. Direct
 visibility is combined with those linear terms before tone mapping. See the
-[continuous surface evidence](../pr-screenshots/codex/continuous-source-face-lighting/README.md).
+[continuous surface evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/continuous-source-face-lighting/README.md).
 Picking and continuously varying local-light transport remain separate work.
 
 [Fixtures, parity controls and retained evidence](detached-projected-face-coverage.md).

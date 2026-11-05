@@ -79,7 +79,7 @@ and nonempty overflow in the overflow fixture. Fog registration ensures compute
 lighting runs instead of presentation lighting. The opt-in diagnostic readback
 blocks for GPU completion and is unsuitable for performance measurements.
 
-The [capture evidence](../pr-screenshots/codex/lighting-density-cleanup/README.md)
+The [capture evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/lighting-density-cleanup/README.md)
 compares these controls and mixed main/detached canvases before and after the
 two-write removal. These are end-to-end regression checks, not isolated kernel
 proofs or a claim that every inherited visual artifact is resolved.
@@ -101,10 +101,10 @@ The original built-in normal overlay followed only the compute route and could
 disagree with finite fragment lighting. The normals diagnostic now shares the
 beauty path's eligibility and finite query; unsupported and fog paths retain
 their compute normal colors.
-The [diagnostic controls](../pr-screenshots/codex/final-surface-normal-diagnostics/README.md)
+The [diagnostic controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/final-surface-normal-diagnostics/README.md)
 compare normal output with the isolated final-fragment probe and preserve all
 seventeen CanvasStress/explored-fog beauty frames byte-for-byte.
-The [receiver-edge evidence](../pr-screenshots/codex/receiver-edge-validation/README.md)
+The [receiver-edge evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/receiver-edge-validation/README.md)
 records the probes, analytical fixtures and before/after controls.
 
 The three inherited macOS reference outliers are reconciled with the existing
@@ -146,7 +146,7 @@ controls check encoding, dispatch selection, yaw and splat restoration. Projecti
 math, device bindings and real buffer ABI remain outside that adapter's proof.
 The test shares brace extraction with the existing visibility-routing controls.
 
-[Native capture evidence](../pr-screenshots/codex/shadow-fallback-cleanup/README.md)
+[Native capture evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-fallback-cleanup/README.md)
 compares legacy beauty, legacy shadow diagnostics and default-path shadow diagnostics
 at cardinal and non-cardinal yaw. These are behavior-preservation controls;
 legacy point-scatter artifacts remain outside this cleanup.
@@ -168,7 +168,7 @@ they do not establish a full multi-World engine restart contract or a speedup.
 All 28 focused timestamp/registration tests pass. Restoring the parent observer
 implementation makes the five new timestamp regressions fail; removing the lookup
 thread guard makes its worker rejection test fail. The
-[native controls](../pr-screenshots/codex/gpu-observer-lifetime/README.md) compare
+[native controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/gpu-observer-lifetime/README.md) compare
 rendered frames with stage timing enabled and disabled.
 
 ## Implemented slice: Metal clear-source snapshots
@@ -189,7 +189,7 @@ drains, so this is a correctness repair and consolidation, not a measured speedu
 Native tests queue distinct patterns and copy each result before submitting once.
 They cover both APIs, alternating APIs, 4/8/16-byte pixels, null clears, R32I scratch
 and partial uploads. All five ordering regressions fail against the parent backend.
-The [native captures](../pr-screenshots/codex/metal-clear-snapshots/README.md)
+The [native captures](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/metal-clear-snapshots/README.md)
 retain unchanged normal and shadow-overlay output for the frozen scene.
 
 ## GRID span-cap classification
@@ -228,7 +228,7 @@ compute sun route, so the reading is not a statement about the production
 route. Parent and head shadow frames are byte-identical except where the
 plate's gained cell lands. Interleaved capture-free Release profiles show no measurable frame or
 `RebuildGridVoxels` mean difference. Commands and results:
-[evidence](../pr-screenshots/claude/4760-grid-destination-capacity/README.md).
+[evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4760-grid-destination-capacity/README.md).
 
 The independent [gather sampling checks](trixel-gather-sampling.md) cover the
 frozen orbit-6 displayed normals and silhouettes at four cardinal camera yaws
@@ -244,7 +244,7 @@ full-occupancy neighbor mask. Rebuilding twice checks that output does not repla
 authored input. A carved plate checks sparse-source preservation; a synthetic
 missing exposed cell checks the surface oracle's rejection path.
 
-The [retained native evidence](../pr-screenshots/codex/grid-span-surface-proof/README.md)
+The [retained native evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/grid-span-surface-proof/README.md)
 records captures from `ad85ada53` and `9dbe0fd44`, before the subsequent renderer
 changes on master. These are historical measurements, not fresh validation of
 the integrated renderer. Detached revoxelization is a different path from CPU

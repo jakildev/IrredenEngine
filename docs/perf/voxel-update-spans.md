@@ -39,7 +39,7 @@ of this stress workload remains as documented in [CPU sampling](native-cpu-sampl
 - IRCanvasStress frozen pose 0.47, nine angles from 0 to 2π, six-frame screenshot
   warmup: all nine RGB images byte-identical to the retained integrated parent
   control (captures 915–923 versus 969–977). Representative 45° and 225° images
-  are in `docs/pr-screenshots/codex/voxel-update-spans/`.
+  are in [`docs/pr-screenshots/codex/voxel-update-spans/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-update-spans).
 - Header conventions and Metal registries pass. OpenGL runtime remains untested
   on this host.
 

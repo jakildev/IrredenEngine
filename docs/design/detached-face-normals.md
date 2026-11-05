@@ -40,12 +40,13 @@ should expose only its three camera-facing sides. No rotated-staircase hypothesi
 is needed to establish that failure. The corrected image still has enlarged,
 rectangular coverage: the independent silhouette defect remains unresolved.
 
-![Normal comparison](../pr-screenshots/codex/detached-triangle-contract/normals-comparison.png)
+![Normal comparison](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-triangle-contract/normals-comparison.png)
 
 Rows share a crop across all three arms; `normal-crops.json` records its rectangle.
 Full frames and numerical output are retained in the same artifact directory.
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-triangle-contract | tar -x
 fleet-run --timeout 120 IRCanvasStress --only shadowbox --probe-single-voxel --no-spin --no-auto-rotate --no-ao --no-shadows --subdivisions 1 --zoom 16 --debug-overlay normals --auto-screenshot 6 --sweep-yaw 0 1.57079633 5
 python3 scripts/render-normal-facing-metric.py docs/pr-screenshots/codex/detached-triangle-contract/capture-326.png --yaw 45
 ```
@@ -65,7 +66,7 @@ fleet-run --timeout 120 IRCanvasStress --only revox,shadowattached,floor --no-sp
 
 Parent-gate captures are 338–342; corrected captures are 329–333.
 
-![Lit upright comparison](../pr-screenshots/codex/detached-triangle-contract/upright-comparison.png)
+![Lit upright comparison](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-triangle-contract/upright-comparison.png)
  Source-shadow box captures 334–337 pass all four
 cardinal oracle checks (IoU .729/.943/.913/.876). The existing detached Lambert
 check passes 12/12 samples with zero channel error (343–346), using

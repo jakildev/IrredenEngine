@@ -39,7 +39,7 @@ colors, preserving its two-level tolerance.
 ## Evidence
 
 Native Apple M4 Max Metal runs all exited `RESULT=CLEAN`. Captures and metric
-results are in `docs/pr-screenshots/codex/staircase-shadow-visibility/`.
+results are in [`docs/pr-screenshots/codex/staircase-shadow-visibility/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/staircase-shadow-visibility).
 
 | Captures | Experiment / result |
 |---|---|
@@ -58,7 +58,7 @@ ambient (48,60,72). The old code fails by 101 color levels. Both outside control
 pass. The unobstructed full frames 472 and 474 are identical; no broad darkening
 is needed. The blocked-frame correction affects 1,936 pixels.
 
-![Before / correction / blocker removed](../pr-screenshots/codex/staircase-shadow-visibility/staircase-comparison.png)
+![Before / correction / blocker removed](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/staircase-shadow-visibility/staircase-comparison.png)
 
 The comparison uses native-size crops (1000,520)–(1512,840). Full frames,
 `metrics.txt`, `comparisons.txt` and `crops.json` retain the evidence.

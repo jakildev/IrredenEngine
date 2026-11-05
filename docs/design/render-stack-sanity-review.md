@@ -58,7 +58,7 @@ Host: Apple M4 Max, macOS, Metal, `macos-debug`, 2560x1440 captures.
 - Fresh normals capture is paired with the shadow capture: zero missing, extra
   or wrong-face pixels across 366592 foreground pixels.
 - Every capture exited `RESULT=CLEAN`. PNGs are retained in
-  `docs/pr-screenshots/codex/render-stack-sanity/`.
+  [`docs/pr-screenshots/codex/render-stack-sanity/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/render-stack-sanity).
 - `git merge-tree --write-tree origin/master HEAD` succeeds. This does not
   substitute for checking GitHub heads again before merging.
 

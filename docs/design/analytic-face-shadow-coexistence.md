@@ -7,7 +7,7 @@ depth pass, and `BAKE_SUN_SHADOW_MAP` adds that depth to the existing face map.
 Voxel depth never enters this extra pass, preserving finite voxel-face coverage.
 The default shadow route and feature defaults are unchanged.
 
-![Roof before and after](../pr-screenshots/codex/analytic-face-shadow-coexistence/roof-comparison.png)
+![Roof before and after](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-face-shadow-coexistence/roof-comparison.png)
 
 The comparison contains native-resolution crops at `(730,480)-(1810,850)`;
 full frames are retained alongside it. These historical detached captures used
@@ -128,9 +128,9 @@ arguments match the common recipe. All runs exit cleanly. The updated stack
 also passes 17 focused default-layout, detached-depth and rebuild-guard tests,
 changed-line formatting, header checks, and both comment/instruction ratchets.
 
-![Normal display, roof shadow enabled](../pr-screenshots/codex/analytic-face-shadow-coexistence/capture-610.png)
+![Normal display, roof shadow enabled](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-face-shadow-coexistence/capture-610.png)
 
-![Normal display, shadows disabled](../pr-screenshots/codex/analytic-face-shadow-coexistence/capture-612.png)
+![Normal display, shadows disabled](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-face-shadow-coexistence/capture-612.png)
 
 The flag-free display also preserves all four source-box shadow checks in
 captures 613–616: IoU .920/.967/.963/.948, area ratio

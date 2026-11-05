@@ -47,16 +47,16 @@ Native macOS, Apple M4 Max, 2560×1440; every capture run exited cleanly.
 GRID passes 5/5; detached and the temporary triangle experiment each fail 5/5.
 The experiment disables dilation and selects local-canvas triangles using the
 previously retained
-[exact patch](../pr-screenshots/codex/detached-trixel-display/no-dilation-local-triangles.patch).
+[exact patch](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-trixel-display/no-dilation-local-triangles.patch).
 It restores a cube-sized silhouette at yaw zero, but leaves a 32.5-pixel vertical
 centroid error there. At intermediate yaw it still renders a cardinal cube
 instead of the authored face projection. Cleaner edges alone are insufficient.
 The patch was restored afterward; the final yaw-zero capture is RGB-identical
 to the baseline. No experimental shader edits ship with this fixture.
 
-![Single-voxel controls](../pr-screenshots/codex/detached-face-selection/single-voxel-comparison.png)
+![Single-voxel controls](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-face-selection/single-voxel-comparison.png)
 
-Full frames under `docs/pr-screenshots/codex/detached-face-selection/`:
+Full frames under [`docs/pr-screenshots/codex/detached-face-selection/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-face-selection):
 168–172 detached, 173–177 GRID, 178–182 temporary triangle experiment, and
 183 restored yaw-zero baseline. The five-view sets use the table's yaw order. Comparison columns use the same native-resolution crop
 within each row; `comparison-crops.json` records those rectangles. Row crops

@@ -21,7 +21,7 @@ Host: Apple M4 Max, macOS 26.5.2 arm64, Apple clang 21.0.0, native launcher `-O2
 Every report records AC power before and after the run, clean source revision
 `5fe9e07918efb6ed32d365f63bfdcb090b732f84`, and both Metal fast and safe math.
 The report key `precise` selects safe math. Source captures are the
-[finite-geometry witnesses](../../pr-screenshots/codex/sun-geometry-capture/README.md):
+[finite-geometry witnesses](../../evidence/sun-geometry-capture/README.md):
 5,164 faces for `far-128` (cardinal/downward sun), 5,676 for
 `oblique-far-128`. The receiver workload is a synthetic 257×257 sun-UV plane:
 66,049 distinct positions over [−12,12]² at depth 2, no repeated grid copies,

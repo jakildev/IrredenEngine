@@ -60,11 +60,11 @@ rows are not additive full-frame GPU accounting.
 
 | Historical saturated million scene | Corrected capacity |
 |---|---|
-| ![Before](../pr-screenshots/codex/overflow-demand-capacity/perf_grid-269.png) | ![After](../pr-screenshots/codex/overflow-demand-capacity/perf_grid-284.png) |
+| ![Before](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/overflow-demand-capacity/perf_grid-269.png) | ![After](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/overflow-demand-capacity/perf_grid-284.png) |
 
 | CanvasStress before | CanvasStress after (identical RGB) |
 |---|---|
-| ![Before](../pr-screenshots/codex/overflow-demand-capacity/canvas_stress-1186.png) | ![After](../pr-screenshots/codex/overflow-demand-capacity/canvas_stress-1215.png) |
+| ![Before](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/overflow-demand-capacity/canvas_stress-1186.png) | ![After](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/overflow-demand-capacity/canvas_stress-1215.png) |
 
 ## Next work
 

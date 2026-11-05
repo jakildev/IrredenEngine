@@ -71,7 +71,7 @@ is clean `463ed00cbbe97b23e961eaa8150afea3b85944cf`. Configurations match; artif
 manifest differences are the binary and the intended hierarchy shader changes.
 Each run's binary fingerprint agrees with its variant's archived manifest.
 
-The [separate native visual controls](../../pr-screenshots/codex/sun-overflow-hierarchy/README.md)
+The [separate native visual controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-overflow-hierarchy/README.md)
 establish the finite-pool coverage repair and attribute five golden mismatches
 to the actual parent too. They do not qualify this cost. Investigate repeated
 hidden-fragment queries in entity-canvas rendering while preserving exact visible

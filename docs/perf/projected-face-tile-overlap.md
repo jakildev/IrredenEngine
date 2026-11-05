@@ -52,7 +52,7 @@ timings, not additive frame budgets. No native OpenGL result is available.
 
 [Raw reports and manifests](projected-face-tile-overlap/) retain all arms.
 All 16 candidate screenshots are RGB-identical to the corresponding original
-captures. [Representative pairs](../pr-screenshots/codex/projected-face-tile-overlap/README.md)
+captures. [Representative pairs](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/projected-face-tile-overlap/README.md)
 show unchanged appearance, not a visual fix. Source and runtime staging were
 restored to the parent implementation after the experiment.
 

@@ -31,7 +31,7 @@ verdict. No rendering default or shader changes accompany this record.
 These representations intentionally differ: direct curves are sampled SDF
 surfaces; the baked subjects are finite occupancy at their authored density.
 They share descriptors, placements and lighting, not identical pixel coverage.
-[Twelve context images](../../../pr-screenshots/codex/sdf-voxel-cost-baseline/README.md)
+[Twelve context images](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-voxel-cost-baseline/README.md)
 show that distinction and the remaining coarse floor-shadow steps. They are not
 before/after images of a fix or an absolute correctness approval.
 

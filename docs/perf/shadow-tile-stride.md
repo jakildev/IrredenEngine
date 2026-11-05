@@ -61,7 +61,7 @@ Logs and the complete screenshot set are omitted from this compact archive.
 ## Correctness evidence
 
 All 32 corresponding capture pairs are RGB-identical. The
-[representative pairs](../pr-screenshots/codex/shadow-tile-stride/README.md)
+[representative pairs](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-tile-stride/README.md)
 show unchanged appearance, not a shadow-quality fix.
 
 Both backend adapters of the candidate pass every width and height from 1 through

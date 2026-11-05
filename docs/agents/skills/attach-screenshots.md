@@ -1,8 +1,8 @@
 # attach-screenshots — shared flow
 
-Capture before/after screenshots for a rendering PR and stage them under
-the **screenshot output root** so the PR body can embed them via raw-URL
-links. Runs an auto-screenshot-capable demo once against the **default
+Capture before/after screenshots for a rendering PR under the
+**screenshot output root**, then publish them to the **media branch** so the
+PR body can embed them via raw-URL links pinned to the published commit. Runs an auto-screenshot-capable demo once against the **default
 branch** and once against the dirty working tree — or, in `--two-ref`
 mode, between two committed refs — pairs the outputs by shot label, and
 prints a markdown snippet for the PR body.
@@ -23,9 +23,10 @@ that needs a repo-specific value names its **delta key** in bold.
 | **default branch** | The ref the "before" pass captures against. | `master` |
 | **default demo** | Fallback demo when the diff touches only engine render code. | `IRShapeDebug` |
 | **visual-file globs** | Paths whose change triggers this skill. | `engine/render/**`, `engine/prefabs/irreden/render/**`, `engine/render/src/shaders/**` (`.glsl`, `.metal`, `.hpp` in shaders dir), `creations/demos/*/src/**`, `creations/demos/*/main*.cpp`, any `*.glsl` / `*.metal` anywhere |
-| **screenshot output root** | Where paired PNGs land, nested by branch/dir name. | `docs/pr-screenshots` |
+| **screenshot output root** | Gitignored local staging root where paired PNGs land, nested by branch/dir name; published at the same path on the **media branch**. | `docs/pr-screenshots` |
+| **media branch** | The orphan branch the captures publish to — never merged, never force-pushed. | `media` |
+| **publish tool** | Commits a staging directory onto the **media branch** without a checkout and prints the commit SHA; `--exists <dir>` answers whether a capture is already published. | `fleet-media-push` |
 | **demo save path** | Where a demo's `--auto-screenshot` run writes PNGs, relative to the build dir. | `build/creations/demos/<demo-dir>/save_files/screenshots` |
-| **sha-pin token** | The literal placeholder emitted in step 8's URLs in place of a deletable branch ref; a downstream consumer (the **PR-create flow**'s step 8, or a feedback-AMEND body edit) substitutes it with the real commit SHA once one exists. | `@COMMIT_SHA@` |
 | **build tool** | The build wrapper. | `fleet-build --target <demo-name>` |
 | **run tool** | The run wrapper. | `fleet-run <demo-name> --auto-screenshot 10` |
 | **clip preset** | `--config-preset` path for the clip capture pass. | `scripts/fleet/clip-preset.lua` |
@@ -49,7 +50,8 @@ cheaper than a reviewer without evidence.
   stashes (`refs/stash` is shared across every worktree on the host —
   `CLAUDE-BASELINE.md` §"Hard rules for autonomous fleet roles"): commit
   the change first and run `--two-ref origin/<default-branch> HEAD`; the
-  PNGs go into the branch's next commit, before the PR opens. The
+  PNGs publish to the **media branch** before the PR opens, and the feature
+  branch never carries them. The
   stash-based default mode is the human / Cursor path for a tree that is
   not ready to commit.
 - A host with a display (WSLg, native Linux X/Wayland, native macOS);
@@ -92,11 +94,10 @@ flow (steps 4–9) runs regardless. Otherwise `CLIP_ENABLED=1`.
 
 ### 4. Output directory
 
-`<screenshot output root>/<BRANCH>/`. Do not `mkdir` it yet — `git stash
-push -u` in step 5 would stash the empty directory and the detach would
-drop it. Steps 5 and 6 `mkdir -p` right before moving PNGs in. Prior
-files there are left in place; the deterministic filenames overwrite
-their own outputs.
+`<screenshot output root>/<BRANCH>/`. The root is gitignored, so neither
+`git stash push -u` nor the detached checkouts carry or drop it. Steps 5
+and 6 `mkdir -p` right before moving PNGs in. Prior files there are left in
+place; the deterministic filenames overwrite their own outputs.
 
 ### 5. "Before" pass (default-branch state)
 
@@ -133,7 +134,7 @@ timeout would mask hangs:
 ```
 
 When `CLIP_ENABLED=1`, also capture a clip (raw captures are never
-committed — only the composed clip step 7 produces is staged). Re-run the
+published — only the composed clip step 7 produces is). Re-run the
 step-3b wiring grep against this detached (before) ref first: a miss means
 the before ref lacks `--auto-record` (the PR that adds the wiring itself, or
 a demo the before ref does not have at all) and skips this capture — no
@@ -172,7 +173,7 @@ crashed; report and exit without staging. When `CLIP_ENABLED=1`, repeat the
 clip capture the same way as step 5, moving `capture.mp4` to
 `<demo-name>-after.mp4`.
 
-### 7. Compose the clip, then stage — do not commit
+### 7. Compose the clip, then publish — do not commit
 
 When `CLIP_ENABLED=1`:
 
@@ -193,14 +194,16 @@ fleet-clip - <demo-name>-after.mp4 \
 standalone compose needs no `mkdir -p` first. It exits 3 (ffmpeg missing) or
 1 (a compose failure) without writing partial output — either way, log
 `attach-screenshots: clip skipped (<reason>)` and continue with the PNG
-flow; the raw `-before.mp4` / `-after.mp4` captures are never committed.
+flow; the raw `-before.mp4` / `-after.mp4` captures are never published.
 
 ```bash
-git add <screenshot output root>/<BRANCH>/
+MEDIA_SHA=$(<publish tool> <screenshot output root>/<BRANCH>)
 ```
 
-The screenshots (and, when composed, the clip pair) ship in the feature
-commit the **PR-create flow** makes next.
+The screenshots (and, when composed, the clip pair) land in one new commit
+on the **media branch**; `MEDIA_SHA` is that commit. Nothing is staged or
+committed on the feature branch — never `git add -f` the staging root. A
+re-run after a recapture publishes again and prints the new SHA.
 
 ### 8. Emit the markdown snippet
 
@@ -212,12 +215,12 @@ commit the **PR-create flow** makes next.
 
 | Before | After |
 |--------|-------|
-| ![](<raw URL base>/@COMMIT_SHA@/<screenshot output root>/<BRANCH>/zoom1_origin-before.png) | ![](<raw URL base>/@COMMIT_SHA@/<screenshot output root>/<BRANCH>/zoom1_origin-after.png) |
+| ![](<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>/zoom1_origin-before.png) | ![](<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>/zoom1_origin-after.png) |
 
 </details>
 
-Clip: ![](<raw URL base>/@COMMIT_SHA@/<screenshot output root>/<BRANCH>/<demo-name>-clip.gif)
-[full clip (mp4)](<raw URL base>/@COMMIT_SHA@/<screenshot output root>/<BRANCH>/<demo-name>-clip.mp4)
+Clip: ![](<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>/<demo-name>-clip.gif)
+[full clip (mp4)](<raw URL base>/<MEDIA_SHA>/<screenshot output root>/<BRANCH>/<demo-name>-clip.mp4)
 
 ... (one `<details>` block per shot label, each followed by the same Clip
 line when `CLIP_ENABLED=1`; omit the Clip line entirely when it is 0)
@@ -226,11 +229,11 @@ line when `CLIP_ENABLED=1`; omit the Clip line entirely when it is 0)
 The Clip line is unchanged (same `<demo-name>-clip.{gif,mp4}` names) whether
 step 7 composed a paired or a single-pane clip.
 
-The ref segment of every URL is the literal **sha-pin token**, never
-`<BRANCH>`: no commit containing the screenshots exists yet, a branch ref
-404s after the branch is deleted post-merge, and any earlier SHA is stale.
-The consumer substitutes it once the commit lands. Only the path segment
-uses the branch name — it is a committed path, resolvable at any ref.
+The ref segment of every URL is `MEDIA_SHA` from step 7, already final —
+nothing downstream substitutes it. Never the **media branch** name (it
+moves; a later publish of the same path would change what an old PR body
+shows) and never a feature-branch SHA (the files are not on that branch).
+Only the path segment uses the branch name.
 
 ### 9. Report
 
@@ -239,7 +242,7 @@ attach-screenshots: <demo-name> (<N> shots)
   before: <screenshot output root>/<BRANCH>/<label>-before.png × N
   after:  <screenshot output root>/<BRANCH>/<label>-after.png × N
   clip:   <screenshot output root>/<BRANCH>/<demo-name>-clip.{mp4,gif} (or "skipped (<reason>)")
-  staged: <path>/ (<2N+> files)
+  published: <media branch>@<MEDIA_SHA> (<2N+> files)
   markdown snippet printed above — paste into PR body
 ```
 
@@ -259,9 +262,9 @@ HEAD)` and resolve `AFTER` before any checkout; derive the output
 directory name from the PR's head ref (a detached HEAD reports `HEAD` —
 never write under `HEAD/`); step 5 is `git checkout --detach
 <before-ref>`, step 6 `git checkout --detach "$AFTER"`, restore is `git
-checkout --detach "$RETURN"`; no stash apply/drop; the PNGs fold into the
-amend commit; the AMEND path's own `gh pr edit --body` substitutes the
-**sha-pin token** against the **post-amend** pushed HEAD, not `$AFTER`.
+checkout --detach "$RETURN"`; no stash apply/drop; nothing folds into the
+amend commit, and the AMEND path's own `gh pr edit --body` pastes the
+snippet as printed (its URLs are already pinned to `MEDIA_SHA`).
 Identical before/after refs → stop. The clip gate (step 3b) and capture
 (steps 5–7) run unchanged against `<before-ref>` / `$AFTER`.
 
@@ -274,19 +277,20 @@ shot — a cardinal-only pair reads as "no visual delta".
 
 ## Failure modes
 
-No partial commits, no orphan PNGs, no leftover stash:
+No partial publishes, no leftover stash:
 
 | Failure | Response |
 |---|---|
 | Clean tree (default mode) | `nothing to capture — tree is clean`; no stash. |
 | On the **default branch** | Refuse. |
 | Demo lacks `--auto-screenshot` | Report; exit without capturing. |
-| Build or run fails in either pass | Restore the stash if mid-before-pass; report; nothing staged. |
+| Build or run fails in either pass | Restore the stash if mid-before-pass; report; nothing published. |
 | Headless host | Run tool exits non-zero with an empty save path; report and recommend a host with a display. On macOS Codex, spell probe switches as pre-executable `fleet-run --env KEY=VALUE <demo> ...` so the allowed fleet-run launcher retains display access. |
-| Shot count mismatch | Report both counts; stage nothing. |
+| Shot count mismatch | Report both counts; publish nothing. |
 | Stash apply conflicts | Never force; the entry survives (`apply`, then `drop` only on a clean apply) — recover by SHA from `git stash list`. |
 | Demo lacks auto-record wiring, or `ffmpeg` absent | `CLIP_ENABLED=0`; log and skip the clip only — the PNG flow is unaffected, never a hard failure. |
-| `fleet-clip` exits non-zero | Log `attach-screenshots: clip skipped (<reason>)`; stage the PNGs, omit the clip pair and its snippet lines. |
+| `fleet-clip` exits non-zero | Log `attach-screenshots: clip skipped (<reason>)`; publish the PNGs, omit the clip pair and its snippet lines. |
+| **Publish tool** exits non-zero | Exit 2 is a usage error (path outside the staging root, a file over GitHub's size cap, the **media branch** missing) — fix and re-run step 7 alone. Exit 1 means the push kept losing races — the PNGs stay staged; re-run step 7 alone. Emit no snippet without a `MEDIA_SHA`. |
 
 ## Recovery
 
@@ -299,7 +303,8 @@ stash@{N}`, confirm with `git status`, re-invoke.
 
 Single-demo capture per invocation against the repo's own demo
 directories; no pixel diffing (reviewers eyeball the pair; a repo may layer
-a diff tool and a pass/fail comparator on these PNGs). Never delete another
-branch's directory under the **screenshot output root** — each branch owns
-its own, and the history is a visual changelog. Not auto-invoked by roles
+a diff tool and a pass/fail comparator on these PNGs). The **media branch**
+only grows — never rewrite, force-push or delete it, or remove another
+branch's directory there; each branch owns its own, every pinned URL
+depends on its history, and that history is the visual changelog. Not auto-invoked by roles
 or the PR-create flow.

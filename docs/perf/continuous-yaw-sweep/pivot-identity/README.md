@@ -27,7 +27,7 @@ maximum. These arms run with stage profiling on and are not comparable with
 the profiling-off tables in the document above them.
 
 `scripts/render-compare.py` on the captures, which are committed full-size
-under `docs/pr-screenshots/claude/million-entity-render-visible-set-identity/`:
+under [`docs/pr-screenshots/claude/million-entity-render-visible-set-identity/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-visible-set-identity):
 the default-pivot pair matches on 80.04% of pixels with a maximum delta of 134
 (the scene is translated about 330 pixels); the pinned pair matches on 100%
 with a maximum delta of 0.

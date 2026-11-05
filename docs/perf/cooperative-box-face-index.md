@@ -57,7 +57,7 @@ or a million-entity target. Native OpenGL performance remains unmeasured.
 - Final shared-implementation timing captures match the original in all
   32 corresponding comparisons (16 per matrix). The exploratory prototype's
   16 captures also match.
-- [Nine full-turn mixed-mode pairs](../pr-screenshots/codex/cooperative-box-face-index/README.md)
+- [Nine full-turn mixed-mode pairs](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/cooperative-box-face-index/README.md)
   have identical RGB pixels. This preserves pre-existing visual artifacts;
   it does not fix them.
 - Both production emission adapters match independent box slab intersections

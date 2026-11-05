@@ -52,8 +52,9 @@ apply there; no display is recorded as `unverifiable on <host>`.
 the same commit:
 
 a. **`attach-screenshots`** — before/after pairs (master vs the committed head in `--two-ref` mode; master vs working tree on the Cursor path)
-   under `docs/pr-screenshots/<branch>/`, embedded in the PR body; skip if
-   that directory already has this branch's screenshots.
+   published to the `media` branch under `docs/pr-screenshots/<branch>/`
+   and embedded in the PR body; skip if `fleet-media-push --exists
+   docs/pr-screenshots/<branch>` already finds this branch's screenshots.
 b. **`render-debug-loop`** — drives an `--auto-screenshot` creation, reads
    each frame, diagnoses against the topic-indexed reference; required by
    `engine/render/CLAUDE.md` "Verifying render changes" for shaders,

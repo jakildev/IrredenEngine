@@ -60,7 +60,7 @@ spreads a common base depth over neighboring storage locations. A slot-derived
 normal, a constant position offset, or a different shadow filter cannot invert
 this many-to-one mapping. Additional winning-surface information is required
 for exact analytical recovery. The
-[receiver/query factorial](../pr-screenshots/codex/sdf-receiver-factorial/README.md)
+[receiver/query factorial](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-receiver-factorial/README.md)
 shows why changing receiver or sampler independently is insufficient in the
 rendered floor fixture.
 
@@ -113,7 +113,7 @@ canvas submissions. This retains the SDF pass winner, not final surface validity
 after another producer overpaints the canvas. The existing occluded X-ray color overlay remains outside the
 opaque ownership guarantee. Its read/modify/write blending is a separate
 ordering problem. Native controls and validation live in the
-[ownership evidence](../pr-screenshots/codex/sdf-winner-ownership/README.md).
+[ownership evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-winner-ownership/README.md).
 
 ## Fragment lighting composition
 
@@ -296,7 +296,7 @@ Layout checks compare producer and receiver declarations. These scalar adapters
 do not replace native backend execution or certify final displayed shadow edges.
 
 Native evidence and exact shadows-disabled controls are in
-[the finite receiver captures](../pr-screenshots/codex/sdf-box-shadow-receiver/README.md).
+[the finite receiver captures](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-box-shadow-receiver/README.md).
 The one-value-per-trixel output still cannot express a shadow boundary within
 one displayed triangle. The captured outlines remain jagged; this is not acceptance
 of the final sharp-shadow objective and no blur was added.
@@ -328,7 +328,7 @@ local lights still use the legacy reconstructed position.
 
 The receiver tests execute production producer/consumer assignments and UNORM8
 roundtrips, with dropped carrier, consumer and sentinel mutations. Native evidence:
-[box lighting normals](../pr-screenshots/codex/sdf-box-lighting-normal/README.md).
+[box lighting normals](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-box-lighting-normal/README.md).
 
 ## Linear lighting composition contract
 
@@ -344,7 +344,7 @@ the fragment samples visibility. The helpers add no new geometry or payload stor
 oracle, plus deferred composition, HDR, debug and alpha checks. Mutations darken
 ambient, tone-map before visibility, or overwrite alpha and must fail.
 
-[Native equivalence captures](../pr-screenshots/codex/surface-lighting-contract/README.md)
+[Native equivalence captures](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/surface-lighting-contract/README.md)
 cover boxes and mixed per-axis geometry; a source-face overlapping-caster probe
 exercises native fragment composition. Analytical SDF fragment payloads remain pending.
 
@@ -361,7 +361,7 @@ hemisphere approximation, not geometry-traced sky visibility.
 
 The finite SDF presentation follow-up must evaluate this term using its actual
 fragment normal; storing only already-lit RGBA8 cannot recover that response.
-See [native and deterministic controls](../pr-screenshots/codex/sky-hemisphere-normal/README.md).
+See [native and deterministic controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sky-hemisphere-normal/README.md).
 
 
 ### Stored owner versus continuous query
@@ -385,13 +385,13 @@ a fractional query distinct from its owner, finite misses whose callee writes
 partial outputs, and mutations that snap the query, lose the sentinel, choose
 the wrong tile or overwrite fallback. Native output remains identical; this
 extraction introduces no storage or passes and does not yet move lighting into
-presentation. [Evidence](../pr-screenshots/codex/selected-surface-query/README.md).
+presentation. [Evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/selected-surface-query/README.md).
 
 
 ## Fragment receiver diagnostic
 
 The same overlay also supports attached per-axis regular and overflow faces;
-their [geometry contract and controls](../pr-screenshots/codex/peraxis-surface-shadow-probe/README.md)
+their [geometry contract and controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/peraxis-surface-shadow-probe/README.md)
 are separate from elected SDF ownership. Yellow denotes conservative margins
 outside those finite voxel faces, where no surface shadow query is made.
 
@@ -413,7 +413,7 @@ binding/restoration helpers for the retained buffers. No dense payload, addition
 draw, dispatch or readback is introduced; eligible draws upload the existing
 128-byte projection record. GPU cost is not yet measured.
 
-[Eight-angle controls](../pr-screenshots/codex/fragment-receiver-probe/README.md)
+[Eight-angle controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/fragment-receiver-probe/README.md)
 show changed edge pixels but residual repeating jagged outlines. Receiver precision
 alone is insufficient in this fixture. Finite caster indexing below resolves the
 repeating teeth in this control; full beauty payload integration remains pending.
@@ -460,7 +460,7 @@ an arbitrary-density sharpness guarantee. Profile large overlapping boxes and
 mixed dense voxel scenes, including spill traversal and memory, before claiming
 scalability.
 
-[Native comparisons](../pr-screenshots/codex/fragment-caster-footprint/README.md)
+[Native comparisons](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/fragment-caster-footprint/README.md)
 show straight boundaries in the fragment diagnostic and normal source-face floor
 rendering. Sampled SDF beauty receivers still require linear lighting/fog
 integration; curved and rotated analytical receiving remain separate work.
@@ -489,7 +489,7 @@ boundaries, point/spot winners and disabled spotlight shaping. Five mutations
 per backend prove detection of lost origin, half-cell offset, strength, spotlight
 gating and absolute cone position. Native Metal spotlight captures at three yaw
 angles and two zoom levels are RGB-identical to the parent; native GL execution
-is still required. [Evidence](../pr-screenshots/codex/surface-light-volume-query/README.md).
+is still required. [Evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/surface-light-volume-query/README.md).
 
 ## Finite analytical-box fragment lighting
 
@@ -538,7 +538,7 @@ their beauty path also skips finite fragment lighting. This overlay changes
 neither the selected owner nor coverage and does not claim a separate geometry
 oracle; the signed-face tests establish that geometry independently.
 
-[Native evidence](../pr-screenshots/codex/finite-box-fragment-lighting/README.md)
+[Native evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/finite-box-fragment-lighting/README.md)
 shows eight camera angles and a straight floor-shadow boundary without blur.
 The composition harness executes 3,456 cases per backend including back/side/
 angled normals, AO, LUT, local light, shadow toggles, HDR and procedural fallback,

@@ -4,7 +4,7 @@ The oblique analytical-box workload reaches the **per-tile limit**, not the
 global face-record limit. At camera yaw 90°, 63 boxes plus the floor request
 64 records and leave every tile complete. One additional box requests 65
 records and makes 132 near-cascade tiles and 56 far-cascade tiles incomplete.
-The [captures](../pr-screenshots/codex/sun-face-index-diagnostics/README.md)
+The [captures](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-face-index-diagnostics/README.md)
 show fine shadow-edge teeth appearing at this boundary.
 
 This is a diagnostic result, not a rendering fix. Geometry changes slightly

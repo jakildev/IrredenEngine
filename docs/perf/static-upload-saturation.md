@@ -36,7 +36,7 @@ position spans.
   This confirms run-to-run instability at that seam; it does not establish its
   cause or fix it. Captures 978–986 and 987–995 retain that comparison locally.
   Representative parent/current screenshots are in
-  `docs/pr-screenshots/codex/static-upload-saturation/`.
+  [`docs/pr-screenshots/codex/static-upload-saturation/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/static-upload-saturation).
 
 ## Performance and remaining work
 

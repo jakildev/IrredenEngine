@@ -26,7 +26,7 @@ wasted launch and measuring dispatch/GPU cost belong to the optimization round.
 Metal, Apple M4 Max, 2560x1440, output scale 2. All runs exited CLEAN. Base is
 `8ff1f02ce233c54f92399d30f9d39aac63a7aa57`. OpenGL runtime is unverified.
 Full captures and the legacy-caster control patch are in
-`docs/pr-screenshots/codex/analytic-box-sun-coverage/`.
+[`docs/pr-screenshots/codex/analytic-box-sun-coverage/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-box-sun-coverage).
 
 | Control | Result |
 |---|---|
@@ -64,7 +64,7 @@ python3 scripts/render-sun-occlusion-metric.py capture-637.png --staircase
 ```
 
 637–639 use the normal receiver. Applying the retained centroid correction from
-`docs/pr-screenshots/codex/detached-shadow-receiver-samples/` produces 640–642.
+[`docs/pr-screenshots/codex/detached-shadow-receiver-samples/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-shadow-receiver-samples) produces 640–642.
 Captures 655–657 add `--probe-grid` to that experimental recipe; the detached
 centroid branch does not affect GRID. Captures 662–665 omit the roof, add
 `--probe-unblocked`, and sweep 0 to 4.71238898 in four shots. 666–669 add
@@ -82,8 +82,8 @@ flag for 658–661. Replace it with `--probe-analytic-sphere` and capture yaw pi
 only for 671; add `--no-shadows` for 672. Captures 640–672 were made with the
 centroid experiment, although only detached receivers enter that branch.
 
-![Finite box shadow on detached staircase](../pr-screenshots/codex/analytic-box-sun-coverage/capture-639.png)
+![Finite box shadow on detached staircase](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-box-sun-coverage/capture-639.png)
 
-![Finite box shadow on attached staircase](../pr-screenshots/codex/analytic-box-sun-coverage/capture-657.png)
+![Finite box shadow on attached staircase](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-box-sun-coverage/capture-657.png)
 
-![Rotated and fractionally translated box](../pr-screenshots/codex/analytic-box-sun-coverage/capture-649.png)
+![Rotated and fractionally translated box](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-box-sun-coverage/capture-649.png)

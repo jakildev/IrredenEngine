@@ -84,6 +84,7 @@ per-pixel owner face the same way. Its contract, controls and native evidence:
 [revoxelized display fidelity](revoxelized-display-fidelity.md).
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-display-artifacts docs/pr-screenshots/claude/million-entity-render-face-parity | tar -x
 # Positive native control: one identity voxel, zoom 16, output scale 2.
 python3 scripts/render-source-face-metric.py docs/pr-screenshots/codex/detached-display-artifacts/capture-1296.png --shape voxel --identity --yaw 0 --iso-scale 64 32 --normals
 # Known failure which the lattice-consistency metric accepts.
@@ -213,7 +214,7 @@ Both lit and shadowed interiors are required, and the only excluded band is one
 screenshot pixel at face boundaries. This models per-source-face lighting, not
 continuous shadow boundaries within a face. Normal colors cannot distinguish
 same-normal surfaces at different depths. Retained failing baseline and exact-ray
-controls: [multi-voxel evidence](../pr-screenshots/codex/source-face-occlusion-oracle/README.md).
+controls: [multi-voxel evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/source-face-occlusion-oracle/README.md).
 
 
 ## Continuous source lighting
@@ -223,7 +224,7 @@ rays from each screenshot pixel's independently reconstructed world surface poin
 Require both lit and occluded interiors after excluding the one-pixel face and
 predicted shadow-boundary bands. Face-center checks remain useful for historical
 controls but cannot certify shadows cutting through the interior of a face.
-[Native evidence](../pr-screenshots/codex/continuous-source-face-lighting/README.md)
+[Native evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/continuous-source-face-lighting/README.md)
 records zero interior errors for the cardinal frame/octahedron controls.
 
 Source records retain linear indirect color, direct-sun RGB plus exposure, and

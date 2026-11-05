@@ -47,7 +47,7 @@ Run native display applications with the required host permissions. An earlier
 sandboxed launch found zero displays and timed out before rendering; it was
 rejected. An earlier screenshot-driven matrix also failed its quiet guard and
 included capture stalls. Neither is used in the tables here. The separately
-retained [fixture images](../../pr-screenshots/codex/cardinal-lighting-controls/README.md)
+retained [fixture images](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/cardinal-lighting-controls/README.md)
 document the subjects without putting captures into these measurements.
 
 ## Observations
@@ -73,7 +73,7 @@ Full results: [frame means](summary.md), [steady tails](budget-summary.md),
 raster overflow, **not** sun-face index completeness. Cull means are per-canvas
 samples, not unique scene entity counts. The known incorrect sixteen-caster
 fallback must not be credited as a speedup; see the
-[coverage diagnostic](../../pr-screenshots/codex/crowded-shadow-overlap/README.md).
+[coverage diagnostic](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/crowded-shadow-overlap/README.md).
 
 ## Separate CPU sample
 

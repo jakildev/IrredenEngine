@@ -68,7 +68,7 @@ closes that reproduction, with independently rounded boundary/exterior controls
 and bounded grazing-face depth. The [finite-index contract](sun-face-index-coverage.md)
 now covers rounded tile boundaries and independently compiled receiver arithmetic.
 Its finite projected envelope retains thin geometry while preventing near-cardinal
-box faces from occupying every tile. The [grazing controls](../pr-screenshots/codex/4523-finite-shadow-envelope/README.md)
+box faces from occupying every tile. The [grazing controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/4523-finite-shadow-envelope/README.md)
 retain ordinary images and measure index-build cost separately from receiver cost.
 The [native query probe](../perf/sun-query-probe/README.md) checks all receivers
 and diagnostic counters for complete 64/256-candidate lists with isolated miss
@@ -81,7 +81,7 @@ overflow and native OpenGL qualification on the TODO; this is not closure of all
 shared voxel shadow defects. Use these controls to select candidate-reduction
 hypotheses, then measure index construction and full-frame cost before adoption.
 
-The [independent GRID receiver polygon controls](../pr-screenshots/codex/receiver-shadow-polygon/README.md)
+The [independent GRID receiver polygon controls](../evidence/receiver-shadow-polygon/README.md)
 now preserve 16 native Metal frames: all eight cardinal on/off cases and four
 intermediate continuous-surface cases match the authored rigid-cube silhouette
 beyond a one-pixel boundary band. The four intermediate default sampled cases
@@ -91,14 +91,14 @@ PR #4597 cardinal capture fails this oracle; the current cardinal capture passes
 No new default or general rendering fix follows from these controls. Next close
 the intermediate receiver defect through the shared geometry route, retaining
 full-scene cost gates before enabling the continuous opt-in more broadly.
-The [camera-phase controls](../pr-screenshots/codex/receiver-shadow-phase/README.md)
+The [camera-phase controls](../evidence/receiver-shadow-phase/README.md)
 extend this to fourteen passing continuous captures: both sides of all four
 cardinals, negative fractional iso positions and noninteger ideal pixel offsets.
 Two sampled controls still fail 18 missing/638 excess pixels each. The oracle
 models snapped Metal camera placement including float32 phase; it does not fit
 shadows or widen the boundary tolerance. Side receivers and live route
 transitions remain open.
-The [oblique-sun controls](../pr-screenshots/codex/receiver-oblique-shadow/README.md)
+The [oblique-sun controls](../evidence/receiver-oblique-shadow/README.md)
 extend the authored-corner oracle to a slanted sun in both X directions, with
 independent oriented-box ray/slab checks and fixed Lambert/ambient colors.
 Integer-position continuous receivers agree with the projected silhouette;
@@ -106,7 +106,7 @@ sampled receiving still misses and adds coverage. Fractional detached caster
 placement exposes a separate mismatch: `CanvasPose::write` rounds
 `worldCellOffset_`, consumed by `bakeVoxelFaces`, while presentation retains
 the owner's fractional translation. The oracle deliberately retains the
-authored center. The [rigid-origin fix](../pr-screenshots/codex/rigid-canvas-world-origin/README.md)
+authored center. The [rigid-origin fix](../evidence/rigid-canvas-world-origin/README.md)
 now shares the exact owner origin between rigid casting and source-face receiving,
 and encodes continuous composite depth after density scaling. All 40 continuous
 native controls pass, including both fractional failures, four quadrants and
@@ -121,7 +121,7 @@ changes; a deliberately rounded caster restores the old receiver colors. The
 zero max delta). The five previously recorded mode-switch/detach/impulse reference
 mismatches remain; the full native suite was not rerun after the refresh.
 
-The [signed-side and live-crossing controls](../pr-screenshots/codex/receiver-side-shadow/README.md)
+The [signed-side and live-crossing controls](../evidence/receiver-side-shadow/README.md)
 qualify eight continuous signed X/Y receiver views and seven frames in one live
 cardinal crossing. All 15 pass the independent projected-corner oracle, outside
 the declared receiver-border, shadow-edge and caster-occlusion exclusions. Four
@@ -130,10 +130,10 @@ this is additional qualification of the continuous route, not a sampled fix.
 Rigid bounds picking now shares compositing's scaled origin encoding and floors
 to hover iso bins. It remains an anchor approximation, not surface picking.
 
-[Fog-compatible continuous receiving](../pr-screenshots/claude/4757-fog-surface-receiving/README.md)
+[Fog-compatible continuous receiving](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4757-fog-surface-receiving/README.md)
 is implemented behind the same opt-in, which stays off until representative cost
 gates pass. Its receiver-shadow geometry also passes the independent oracle under
-[ambient and local-light controls](../pr-screenshots/claude/4757-receiver-shadow-ambient-local-light/README.md).
+[ambient and local-light controls](../evidence/4757-receiver-shadow-ambient-local-light/README.md).
 Next qualify entity mode changes,
 other cardinal crossings, curved/concave side receivers and native Windows/OpenGL
 against independent geometry. Attribute the five existing reference mismatches
@@ -160,7 +160,7 @@ against a historical zero-stage baseline. This is not the Metal receiver
 measurement, and a same-runner parent/head control is needed for attribution.
 Keep complete/no-overflow and crowded controls while reducing hierarchy launch
 and reduction work; preserve readiness publication and exact finite predicates.
-The [overlapping GRID controls](../pr-screenshots/codex/grid-receiver-prepass/README.md)
+The [overlapping GRID controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/grid-receiver-prepass/README.md)
 now reject roughly 23% of candidate fragments with exact decoded-RGBA equality
 in four prepass pairs at intermediate yaw, zoom 1/4 and base subdivisions 1/4.
 These are untimed Metal controls, and both subdivision settings produce the
@@ -171,7 +171,7 @@ On a fog pipeline the surface routes run only under the opt-in and only while th
 main canvas has no line-of-sight source or active glitch subject; otherwise fog
 keeps lighting in compute. Any default promotion must retain a real explicit
 environment opt-out, runtime switch and producer/consumer readiness checks.
-The [resource-free fog composition extraction](../pr-screenshots/codex/fog-surface-composition/README.md)
+The [resource-free fog composition extraction](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/fog-surface-composition/README.md)
 preserves all 13 native full frames and seven crops exactly, with numerical
 GLSL/MSL coverage of rim, cap, treatment band, alpha and observer forwarding.
 It does not enable continuous fog receiving or alter resource bindings. Its
@@ -206,9 +206,9 @@ and unlit pairs. CanvasStress now supports a bounded capture-free profile run;
 screenshots must be separate because readback/write stalls contaminate tails.
 Route samples establish which draw executed, not pixel counts or exact shadow
 coverage. The retained
-[crowded overlap diagnostic](../pr-screenshots/codex/crowded-shadow-overlap/README.md)
+[crowded overlap diagnostic](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/crowded-shadow-overlap/README.md)
 now has an implemented unsorted finite-pool hierarchy and
-[native Metal production evidence](../pr-screenshots/codex/sun-overflow-hierarchy/README.md):
+[native Metal production evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-overflow-hierarchy/README.md):
 the crowded distant-caster receiver crops exactly match their lower-only controls
 under downward and aligned oblique sun. Complete tile lists retain their existing
 path. This fixes the retained finite-pool overflow reproduction; native Windows,
@@ -302,12 +302,12 @@ Proposed next experiment: a conservative per-tile candidate mask before full
 geometry loads, retaining the shared finite-envelope containment proof and
 complete-list/fallback semantics. Do not adopt it without measured net benefit.
 
-The apparent hole in the [tilted baked-shape control](../pr-screenshots/codex/sdf-baked-transform-controls/README.md)
+The apparent hole in the [tilted baked-shape control](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-baked-transform-controls/README.md)
 is a real channel between the cylinder and torus shadows, made into an isolated
 patch by face-center receiving. Independent double-precision box/slab queries
 over production-baked, GRID-rebuilt occupancy preserve the clear ray and identify
 the two neighboring casters. Full-record candidate queries reproduce all six
-original frames exactly. The [receiver comparison](../pr-screenshots/codex/tilted-baked-shadow-gaps/README.md)
+original frames exactly. The [receiver comparison](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/tilted-baked-shadow-gaps/README.md)
 shows the existing continuous-surface path preserving the channel without
 filtering or inflating geometry. ShapeDebug exposes that path through
 `--surface-lighting` and honors `--no-local-lights` in the isolated SDF/voxel
@@ -343,7 +343,7 @@ this attribution does not certify every self-shadow or every render mode.
    controls. Keep #4428's concurrent runner-calibration work separate from
    native throughput qualification.
 3. **Curved receiver correctness — cylinder geometry validated; cost pending.**
-   The [cylinder receiver evidence](../pr-screenshots/codex/cylinder-shadow-receiver/README.md)
+   The [cylinder receiver evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/cylinder-shadow-receiver/README.md)
    covers 240 native pairs, 216 byte-identical unchanged controls, independent
    shader field/ray tests and permanent external/pitched yaw sweeps. Preserve
    elected coverage and displayed normals. Cone and torus remain deferred:
@@ -354,7 +354,7 @@ this attribution does not certify every self-shadow or every render mode.
    rather than suppressing potentially legitimate voxel stairs. Native cost
    qualification and continuous-angle transition coverage remain open.
 4. **Representative authored-LOD scene — implemented, native witnesses validated.**
-   The [six-shot evidence](../pr-screenshots/codex/authored-lod-scene/README.md)
+   The [six-shot evidence](../evidence/authored-lod-scene/README.md)
    covers repeated assets, terrain, moving attachments, lazy/resident first-use
    behavior and origin-pivot zoom/yaw reversal. Initial/restored pixels match
    exactly; one-channel, residency, parent-relation and closed-camera faults
@@ -362,7 +362,7 @@ this attribution does not certify every self-shadow or every render mode.
    assets are not GPU instancing: DENSE variants retain 432 allocated slots and
    select one 216-slot span, whose fine occupancy is a subset. LOD is zoom-based,
    and motion advances only during automatic captures; no performance claim.
-   The [paired finite-face proof](../pr-screenshots/codex/authored-lod-scene/finite-face-proof/README.md)
+   The [paired finite-face proof](../evidence/authored-lod-scene/finite-face-proof/README.md)
    clears the apparent blue-sphere gaps at yaw180: all 17,664 object pixels have
    the independently predicted occupied-cell coverage and nearest face normal.
    Preserve those legitimate steps. Petal/stamen combs and floor-shadow
@@ -387,13 +387,13 @@ bias or by rejecting all same-entity shadows.
 
 ## Active analytic-shadow follow-up
 
-The [analytic caster repair](../pr-screenshots/codex/shape-shadow-sun-space/README.md)
+The [analytic caster repair](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shape-shadow-sun-space/README.md)
 in #4298 gives floor receivers sharp geometric shadows from eligible cone/torus casters:
 its historical 16 edge checks used a receiver-biased origin. The
-[registration follow-up](../pr-screenshots/codex/shadow-receiver-matrix/README.md)
+[registration follow-up](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-receiver-matrix/README.md)
 corrects that origin and the fragment receiver, without blur or dilation.
 Sphere/cylinder share the tested ray path. The
-[sphere receiver repair](../pr-screenshots/codex/shape-shadow-sun-space/sphere-receiver/README.md)
+[sphere receiver repair](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shape-shadow-sun-space/sphere-receiver/README.md)
 now queries the retained sample's true sphere surface without changing its
 displayed face normal. Other curved receivers, fragment reconstruction and
 incomplete-index fallback edges remain open.
@@ -405,7 +405,7 @@ incomplete-index fallback edges remain open.
    about 4.4% higher remaining-frame means and higher shadow-stage costs despite
    the first-use improvement. Attribute and reduce those costs before claiming
    performance neutrality; these results do not establish a throughput gain.
-   A [parameter-hoist experiment](../pr-screenshots/codex/shape-shadow-sun-space/profiles/cascade-hoist/README.md)
+   A [parameter-hoist experiment](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shape-shadow-sun-space/profiles/cascade-hoist/README.md)
    passes routing/PCF controls, but its native comparison was refused by the
    fleet quiet-window guard. It is not adopted; the indexed loop and all
    production shader behavior are preserved. Retry only with paired evidence
@@ -413,7 +413,7 @@ incomplete-index fallback edges remain open.
 2. Coordinate with the existing fog work rather than start another implementation.
    The current dependency and integration checklist is recorded below. Native
    OpenGL visual smoke remains tracked validation debt, not a merge gate by itself.
-3. The [torus surface-band investigation](../pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
+3. The [torus surface-band investigation](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
    now has an executable fractional-sample publisher and finite-face diagnostic.
    Both shader adapters match the independent publisher, which reproduces every
    pixel of the retained yaw-zero normal image. Its finite cube-union comparison
@@ -428,7 +428,7 @@ incomplete-index fallback edges remain open.
    the checker validates the fixture and full encoded depth. Preserve legitimate voxel steps and keep
    continuous curve geometry as a separate comparison. The cardinal AO/local-light
    depth repair in #4308 does not change this producer/gather ownership path.
-4. The [receiver-mode matrix](../pr-screenshots/codex/shadow-receiver-matrix/README.md)
+4. The [receiver-mode matrix](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-receiver-matrix/README.md)
    identifies and fixes a one-storage-texel displacement in continuous SDF BOX
    fragment queries. Rigid, near-contact and analytic caster controls now pass
    all 24 eight-angle SDF-floor edge checks; the rigid SOURCE_FACES control
@@ -451,10 +451,10 @@ Implemented on #4363 with an explicit voxel-producer carrier bit, exact emitted
 microface centers, and world-unit cascade selection. Both shader backends share
 the same contract. The native 720-frame sweep improves every cardinal to below
 1.3; all 716 non-cardinal frames remain byte-identical. The authored-box, analytic
-roof and unblocked-staircase rejection controls pass. [Evidence and limits](../pr-screenshots/codex/4231-cardinal-surface-receiver/README.md).
+roof and unblocked-staircase rejection controls pass. [Evidence and limits](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/4231-cardinal-surface-receiver/README.md).
 
 The full native reference sweep exposed expected shadow changes and inherited
-reference drift; retain the [paired attribution](../pr-screenshots/codex/4231-cardinal-surface-receiver/reference-attribution/README.md)
+reference drift; retain the [paired attribution](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/4231-cardinal-surface-receiver/reference-attribution/README.md)
 when reviewing the deliberate reference refresh. A new thin staircase band was
 checked against independent voxel occupancy: an actual distinct voxel blocks the
 surface-center ray, while the old outward offset misses it. Do not erase genuine
@@ -496,14 +496,14 @@ state, not permission to take over their claims.
 
 ## Current follow-up: finite GRID face coverage
 
-The [cardinal gather follow-up](../pr-screenshots/codex/scatter-boundary-ownership/README.md)
+The [cardinal gather follow-up](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-boundary-ownership/README.md)
 removes normalized-UV rescaling from canvas interpolation. Exact integer ray
 checks across four cardinal views go from 2,848 incorrect output pixels to zero;
 intermediate-angle images are unchanged. The four zero-tolerance gates run in
 CanvasStress; original RGB references remain unchanged. The shared coordinate
 contract lives in [trixel gather sampling](trixel-gather-sampling.md).
 
-The [finite-face investigation](../pr-screenshots/codex/scatter-silhouette-edges/README.md)
+The [finite-face investigation](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-silhouette-edges/README.md)
 replaces continuous GRID dilation/margin classification with exact hardware quads,
 and removes whole-face rejection based only on the depth at face origins. The
 independent orbit ray sweep closes all 673 interior missing samples; non-cardinal
@@ -534,7 +534,7 @@ Next, in order:
    former projection differs at 12 game samples. The earlier 22.5° rejection
    was based on an ideal-ray disagreement that the independent hardware draw
    also exhibits. Keep ray and raster expectations separate; do not add tolerance.
-   The [captured projection replay](../pr-screenshots/codex/scatter-projection-replay/README.md)
+   The [captured projection replay](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-projection-replay/README.md)
    resolves the remaining fine-sweep discrepancy: native exposed-face triangles
    using the actual padded, reflected framebuffer match all 33 current captures
    with zero mismatches. The former projection still differs at 45 game pixels.
@@ -546,7 +546,7 @@ Next, in order:
 2. Profile conservative overflow emission on large rotating populations and high
    effective subdivisions. The scratch-layout follow-up removes the unused mask
    allocation and consolidates consumer offsets, with layout and native GPU-sort
-   tests. Its [paired captures and profiles](../pr-screenshots/codex/peraxis-resolve-scratch-layout/README.md)
+   tests. Its [paired captures and profiles](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/peraxis-resolve-scratch-layout/README.md)
    preserve all 27 images and show no reliable frame-time gain in the fixed-45°
    262,144-entity control (19.247 → 19.323 ms steady Debug frames). The
    [54-run moving-camera/density matrix](../perf/motion-density-controls/README.md)
@@ -562,7 +562,7 @@ Next, in order:
    canvas clips density-scaled producer coordinates, while the gather's
    zoom/effective-density scale limits its footprint to a quarter in each axis.
    The [logical viewport/backing split](trixel-canvas-coverage.md) now restores
-   full cardinal coverage without stretching geometry. Its [native controls](../pr-screenshots/codex/cardinal-canvas-coverage/README.md)
+   full cardinal coverage without stretching geometry. Its [native controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/cardinal-canvas-coverage/README.md)
    retain identical rotated beauty/albedo and cardinal interior pixels, with
    executed texture-lifecycle tests. Logical size also owns the sun cascade and
    fog windows. High-water physical storage preserves requested density but
@@ -654,7 +654,7 @@ The older sections retain their original validation limits and historical eviden
 
 Post-merge follow-up: all final stack CI checks passed and the additional fleet
 recheck approved. Native Windows/OpenGL presentation smoke remains pending.
-The [post-merge audit](../pr-screenshots/codex/postmerge-shadow-correctness/README.md)
+The [post-merge audit](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/postmerge-shadow-correctness/README.md)
 separates valid orbit staircase bands from an actual back-facing +Z ownership
 leak. The continuous per-axis face-selection fix removes that leak in all 17
 tested yaw views while retaining cardinal behavior; strict silhouette-edge
@@ -677,7 +677,7 @@ of leaving their albedo visible. Eight Metal CanvasStress references record the
 intentional receiver change; unchanged beauty controls and independent GRID
 center-ray expectations support that refresh.
 
-[Final captures and validation limits](../pr-screenshots/codex/stack-shadow-wrapup/README.md)
+[Final captures and validation limits](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/stack-shadow-wrapup/README.md)
 record the integration checks. These checks do not establish universal sharp-edge
 correctness or million-entity throughput. Existing orbit banding and strict
 silhouette deviations remain unresolved; image equality between two modes does
@@ -706,13 +706,13 @@ acceptance limits for each step.
 
 ## Current shadow investigation
 
-- Implemented [per-axis caster position agreement](../pr-screenshots/codex/peraxis-shadow-caster-position/README.md):
+- Implemented [per-axis caster position agreement](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/peraxis-shadow-caster-position/README.md):
   finite voxel faces now use the display's signed sixteenth-cell translation
   instead of the subdivision grid when per-axis rendering is active. Executed
   GLSL/Metal geometry controls cover six face directions and density changes;
   four native off-grid views change only floor shadows, while twelve control
   views are identical. This does not enable finite receiving on attached faces.
-- Implemented [per-axis receiver centers](../pr-screenshots/codex/peraxis-shadow-receiver-centers/README.md)
+- Implemented [per-axis receiver centers](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/peraxis-shadow-receiver-centers/README.md)
   for regular and overflow faces. Both use `O - 0.5*positiveAxis`, continuous
   world depth and finite surface queries; all signed faces and encoded fractions
   are checked against displayed square geometry. Native stair controls improve
@@ -729,7 +729,7 @@ acceptance limits for each step.
   zoom. Requested fractional zoom is not assumed to equal rendered zoom. Moving
   screenshot suites remain outside this static guard; camera translation and
   pitch/roll still need their own recorded witnesses.
-- Implemented a [continuous per-axis diagnostic](../pr-screenshots/codex/peraxis-surface-shadow-probe/README.md)
+- Implemented a [continuous per-axis diagnostic](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/peraxis-surface-shadow-probe/README.md)
   for regular and overflow faces. It validates the displayed point
   `P = O + eu*q.x + ev*q.y - kVoxelRasterCellAnchor` using the existing
   dilation-aware interpolated quad parameter, preserving signed face identity and
@@ -745,7 +745,7 @@ acceptance limits for each step.
   margins outside the finite face need an explicit extension policy: the diagnostic
   marks them yellow and skips queries. Beauty integration, dense-index acceptance,
   cardinal transition validation and that margin policy remain pending.
-- Consolidated [surface material preparation and explicit sun terms](../pr-screenshots/codex/surface-lighting-material/README.md)
+- Consolidated [surface material preparation and explicit sun terms](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/surface-lighting-material/README.md)
   across regular/source, overflow and analytical-fragment lighting. AO/palette
   preparation is shared; the existing continuous source path names its linear
   ambient and direct-sun contributions. Ten native normal/sky controls remain
@@ -755,7 +755,7 @@ acceptance limits for each step.
   sparse control's overflow lane alone, before its three regular axis regions.
   Include fog eligibility, margin handling and per-vertex repeated work in that
   decision rather than expanding buffers by default.
-- Added an opt-in [attached presentation-lighting reference](../pr-screenshots/codex/peraxis-surface-lighting/README.md)
+- Added an opt-in [attached presentation-lighting reference](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/peraxis-surface-lighting/README.md)
   that preserves existing albedo storage and shares analytical-surface lighting.
   Continuous finite-face sun queries replace face-center visibility; conservative
   margins sample the nearest finite-face point without changing coverage/depth.
@@ -769,13 +769,13 @@ acceptance limits for each step.
   Three-run Metal controls show a wider-view GPU envelope increase from 5.190
   to 9.922 ms; zoom 4 has far fewer visible overflow faces and is not a scaling
   proof. Disabling shadows lowers the new scatter scope from 5.294 to 0.488 ms.
-  Added [exact zero-contribution query gates](../pr-screenshots/codex/surface-shadow-query-gate/README.md):
+  Added [exact zero-contribution query gates](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/surface-shadow-query-gate/README.md):
   14 native views remain RGB-identical; three fresh run pairs reduce scatter
   scope from 5.308 to 5.198 ms and GPU envelope from 10.007 to 9.815 ms.
   This is modest and does not resolve the wider-view cost. A conservative
   [pre-division face rejection experiment](../perf/finite-shadow-query-pruning.md)
   preserves tested hits but shows no useful native speedup; shaders are restored.
-  Added an opt-in [visibility prepass](../pr-screenshots/codex/peraxis-visible-lighting-probe/final/README.md)
+  Added an opt-in [visibility prepass](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/peraxis-visible-lighting-probe/final/README.md)
   that shares one compiled fragment program and the regular/overflow draw sequence
   between visibility and lighting. Independent programs produced a one-band depth
   disagreement and foreground holes despite passing CPU controls; native captures
@@ -789,7 +789,7 @@ acceptance limits for each step.
   entity or face capacity. Both attached lighting and this extra pass remain
   default-off. Next qualify dense/moving-camera workloads,
   including native OpenGL, before deciding adoption or routing.
-  Added [subdivision and cardinal-lifecycle controls](../pr-screenshots/codex/visibility-subdivision-controls/README.md):
+  Added [subdivision and cardinal-lifecycle controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/visibility-subdivision-controls/README.md):
   nine yaw views at each base density 2, 4 and 8 remain RGB-identical with the
   prepass off/on. Near-cardinal controls exercise both park/unpark and
   release/reallocation. These controls cover global effective subdivision and
@@ -800,7 +800,7 @@ acceptance limits for each step.
   parity does not accept those existing visual defects. Validate dense/incomplete
   tiles, overflow and fog before default adoption; exact shadow-query cost remains
   substantial after this pass. Added diagnostic-only
-  [post-prepass query counters](../pr-screenshots/codex/sun-query-work-counters/README.md):
+  [post-prepass query counters](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-query-work-counters/README.md):
   21 off/on native images match exactly. Six sampled frames show 85.76–97.93%
   of candidate visits rejected by finite-face footprint/degeneracy tests; no
   incomplete lists occur in those fixtures. Reservation order can change the
@@ -834,26 +834,26 @@ acceptance limits for each step.
   separates these cases and sampled non-box SDF casters; no blur or enlarged
   footprint is an acceptance criterion.
 
-- [Rigid SO(3) probes](../pr-screenshots/codex/rigid-voxel-rotation-probes/README.md)
+- [Rigid SO(3) probes](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/rigid-voxel-rotation-probes/README.md)
   expose the existing continuous source-face path without revoxelizing. Fourteen
   single-voxel pose/camera checks pass; two nearly edge-on cases are inconclusive.
-  [Multi-voxel occlusion controls](../pr-screenshots/codex/source-face-occlusion-oracle/README.md)
+  [Multi-voxel occlusion controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/source-face-occlusion-oracle/README.md)
   pass all eight normal/visible-face checks but fail six of eight baseline shadow
   checks. Exact-ray fixture controls pass all eight; caster normals alone do not
-  improve them. [Bounded finite source queries](../pr-screenshots/codex/finite-source-shadow-queries/README.md)
+  improve them. [Bounded finite source queries](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/finite-source-shadow-queries/README.md)
   now pass all eight shadow checks using actual transformed face footprints.
   Tile/record overflow retains approximate fallback; dense temporal transitions
   remain unverified. The mixed-source sampler regression now executes both
   backend surface loops with mutation controls; native tile/bake boundary
   coverage still needs a targeted fixture.
-  [Rigid source casting](../pr-screenshots/codex/rigid-source-shadow-casters/README.md)
+  [Rigid source casting](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/rigid-source-shadow-casters/README.md)
   now projects original transformed faces: 12 aggregate hull checks pass, while
-  all 12 strict edge checks still fail. [Source-face reception](../pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
+  all 12 strict edge checks still fail. [Source-face reception](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/surface-shadow-receiver-controls/README.md)
   now samples continuous face centers; eight relative-position and four normal
   checks pass. The
-  [continuous source-surface gate](../pr-screenshots/codex/continuous-source-shadow-oracle/README.md)
+  [continuous source-surface gate](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/continuous-source-shadow-oracle/README.md)
   rejects all eight prior face-center captures. The
-  [fragment receiver implementation](../pr-screenshots/codex/continuous-source-face-lighting/README.md)
+  [fragment receiver implementation](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/continuous-source-face-lighting/README.md)
   now passes all eight with zero interior errors at unchanged tolerances. It
   interpolates original surface positions and combines direct visibility with
   separate linear lighting terms before tone mapping. Local-volume/sky/AO terms
@@ -862,7 +862,7 @@ acceptance limits for each step.
   making any population-throughput claim.
 
 
-- [Caster/receiver matrix](../pr-screenshots/codex/shadow-receiver-mode-matrix/README.md):
+- [Caster/receiver matrix](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-receiver-mode-matrix/README.md):
   16 mode pairs at eight yaws captured on Metal. The original matrix predates
   rigid source casting and receiving. Both now participate; intermediate GRID
   receivers show interior shadow gaps, and source/SDF contact controls retain
@@ -877,14 +877,14 @@ acceptance limits for each step.
   comparison improves four views without increasing errors in the other twelve;
   remaining errors are explicitly retained in its evidence. This is not complete
   finite shadow coverage.
-- [Strict floor-edge evidence](../pr-screenshots/codex/floor-shadow-plane-sampling/README.md)
+- [Strict floor-edge evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/floor-shadow-plane-sampling/README.md)
   now catches all four cardinal failures missed by aggregate shadow IoU. The
   caster-plane PCF experiment was pixel-identical and rejected. Exact fixture
   visibility per fragment passes all quadrants; per-trixel visibility retains
   small edge failures. Fix map/receiver sampling and carry boundary geometry
   through presentation. The strict oracle now requires measured density and
   known projection instead of inferring precision from SDF floor bounds.
-- [Receiver/query factorial controls](../pr-screenshots/codex/sdf-receiver-factorial/README.md)
+- [Receiver/query factorial controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-receiver-factorial/README.md)
   separate the known-floor experiment: receiver-only worsens all quadrants;
   query-only darkens almost the whole floor. Combined reduces total error but
   still fails all strict checks, with missed pixels at 180° rising from 19 to 48.
@@ -904,10 +904,10 @@ acceptance limits for each step.
   This scalar gate does not accept the remaining rendered shadow failures.
 - Next: resolve finite sampling misses and small GRID floor-shadow boundaries
   across quadrants against ray/face geometry, preserving legitimate partial faces.
-- [Finite voxel queries](../pr-screenshots/codex/finite-voxel-shadow-query/README.md)
+- [Finite voxel queries](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/finite-voxel-shadow-query/README.md)
   retain projected GRID and revoxelized faces alongside rigid source faces.
   GRID casting onto a continuous source floor passes all four strict cardinal
-  edge controls with zero errors. The [revoxelized oracle correction](../pr-screenshots/codex/revoxelized-shadow-oracle/README.md)
+  edge controls with zero errors. The [revoxelized oracle correction](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/revoxelized-shadow-oracle/README.md)
   accounts for its preserved lattice phase: cardinal captures at actual densities 1, 2 and 3
   pass all twelve strict controls, while pre-query captures still fail all four.
   Arbitrary revoxelized rotations and dense overflow remain unaccepted. SDF/GRID receivers still need
@@ -1076,13 +1076,14 @@ Native Metal sweeps exited cleanly. Existing source-shadow checks remain 4/4 aft
 the placement change (yaw-zero IoU .712, the least margin). OpenGL runtime remains
 unverified; the corrected C++ placement is shared by both backends.
 
-Retained evidence: `docs/pr-screenshots/codex/visible-box-oracle/`. Capture 135
+Retained evidence: [`docs/pr-screenshots/codex/visible-box-oracle/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/visible-box-oracle). Capture 135
 uses the original placement from baseline `a2c55707add8ba1a74d55091f17f203c92160084`;
 125–129 use corrected detached placement at 0/22.5/45/67.5/90 degrees; 130–134
 are the GRID controls at the same angles. Captures 136–140 are the corrected
 four-probe scene. For example:
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/visible-box-oracle | tar -x
 python3 scripts/render-visible-box-metric.py docs/pr-screenshots/codex/visible-box-oracle/capture-125.png --placement-only
 python3 scripts/render-visible-box-metric.py docs/pr-screenshots/codex/visible-box-oracle/capture-132.png --yaw 45
 ```
@@ -1101,9 +1102,9 @@ Native Metal box checks: source 4/4, GRID 4/4 and resampled detached 4/4. This
 corrects the half-cell convention, not receiver reconstruction or large-scale
 performance. Current captures 146–149 (source), 150–153 (GRID), 154–157
 (resampled detached), and 158–162 (upright probes at 0/22.5/45/67.5/90 degrees)
-are retained under `docs/pr-screenshots/codex/voxel-shadow-cell-anchor/`.
+are retained under [`docs/pr-screenshots/codex/voxel-shadow-cell-anchor/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-shadow-cell-anchor).
 
-![Centered shadow corners: before and after](../pr-screenshots/codex/voxel-shadow-cell-anchor/upright-comparison.png)
+![Centered shadow corners: before and after](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-shadow-cell-anchor/upright-comparison.png)
 
 The comparison crops the same rectangle from full frames; left is captures
 136–140 (parent), right is 158–162. Face striping at 22.5 degrees and rectangular
@@ -1136,7 +1137,7 @@ also lowers it; retain independent geometry/coverage gates.
 
 ## Shared face-coordinate math
 
-[Projected-face consolidation](../pr-screenshots/codex/projected-face-math/README.md)
+[Projected-face consolidation](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/projected-face-math/README.md)
 shares the determinant and inverse coordinate solve across display sampling,
 voxel face shadow baking and finite source queries. Quadrants, reflection and
 winding are tested; ten native captures preserve their baseline RGB exactly.
@@ -1145,7 +1146,7 @@ ray intersection is not a projected quad and retains its separate implementation
 
 ## SDF receiver prerequisite: opaque ownership
 
-[Deterministic SDF winner publication](../pr-screenshots/codex/sdf-winner-ownership/README.md)
+[Deterministic SDF winner publication](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-winner-ownership/README.md)
 selects one submitted sample at the winning depth before color/identity writes.
 This closes the opaque tie race prerequisite. The same election orders the
 X-ray overlay: an occluded flagged sample contends under its owner key with bit
@@ -1173,7 +1174,7 @@ captures can exercise the same rendering modes.
 
 ### SDF cost experiment and sharp-shadow sampling audit
 
-Surface-query reuse was [tested and rejected](../pr-screenshots/codex/sdf-surface-reuse/README.md):
+Surface-query reuse was [tested and rejected](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-surface-reuse/README.md):
 full-frame RGB stayed identical, but timings do not justify up to 64 MiB of
 additional lane scratch. Production ownership is unchanged. Next split GPU
 measurement into depth, owner election and publication without overlapping
@@ -1193,7 +1194,7 @@ depth handling while unifying the geometry queries.
 
 ### SDF dispatch attribution implemented
 
-[Separate non-nested SDF timers](../pr-screenshots/codex/sdf-pass-timing/README.md)
+[Separate non-nested SDF timers](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-pass-timing/README.md)
 now measure owner clear, depth, election, publication and casting. Fixed-pose
 Metal captures preserve pixels with timing enabled/disabled. In two shadowed
 sphere runs, casting is the largest row (3.024/2.744 ms), while individual
@@ -1204,7 +1205,7 @@ are not an optimization and do not fix sphere speckling or sharp-shadow geometry
 
 ### Finite analytic-box casting optimized
 
-[Separated casting scopes and bounded sample partitioning](../pr-screenshots/codex/analytic-cast-dispatch/README.md)
+[Separated casting scopes and bounded sample partitioning](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/analytic-cast-dispatch/README.md)
 identify and reduce underutilization on large analytic boxes. Metal box casting
 in the sphere/floor fixture falls from 1.028 ms to 0.046/0.059 ms with exact RGB
 parity; a small-box control also improves. This is a dispatch-only optimization,
@@ -1217,7 +1218,7 @@ PCF/fallback/cascade paths.
 
 ### Box-only fallback eliminated
 
-[Box-only submission gating](../pr-screenshots/codex/box-only-cast/README.md)
+[Box-only submission gating](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/box-only-cast/README.md)
 skips non-box clear/raster/resolve/bake for all-box canvas batches. Six full-frame
 Metal comparisons are pixel-identical, including four camera quadrants; the
 mixed sphere/floor control retains all fallback stages. The removed rows total
@@ -1227,7 +1228,7 @@ remain pending.
 
 ### Sphere artifact separated from shadow sampling
 
-[Lighting isolation controls](../pr-screenshots/codex/sdf-lighting-normal-frame/README.md)
+[Lighting isolation controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-lighting-normal-frame/README.md)
 show only 24 of 6,016 sphere pixels changing when shadows are disabled; the
 remaining pattern maps exactly to the three face-slot normal classes. Treat the
 dominant artifact as surface/normal reconstruction work, with the small shadow
@@ -1239,7 +1240,7 @@ where that is the selected representation. No production fix is claimed yet.
 
 ### Main-canvas normal frame corrected
 
-[Explicit main-canvas lighting routing](../pr-screenshots/codex/main-canvas-normal-frame/README.md)
+[Explicit main-canvas lighting routing](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/main-canvas-normal-frame/README.md)
 aligns continuous-yaw slot normals with the shadow lookup, while excluding
 secondary, detached and per-axis routes. Native normals match the independent
 inverse-yaw color expectation, cardinal images remain identical, and shader
@@ -1283,7 +1284,7 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   shapes, lattice rendering, private canvases and finite misses preserve fallback.
 - Validated: executable geometry/selection/layout controls, native Metal box captures,
   and pixel-identical shadows-disabled ownership controls. See
-  [evidence](../pr-screenshots/codex/sdf-box-shadow-receiver/README.md).
+  [evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-box-shadow-receiver/README.md).
 - Still pending: linear material/ambient lighting payload and finite queries at
   actual presentation fragments; analytical Lambert/sky normals; curved/rotated
   receivers; per-texel validity; native OpenGL smoke; GPU profiling of the added
@@ -1296,7 +1297,7 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   Lambert, sky and normal debug through unused RGBA8 alpha. Specialized ordinary
   kernels exclude the carrier path. Shadows-disabled normals remain identical.
 - Native captures and executed shader/mutation controls are recorded in
-  [box lighting normals](../pr-screenshots/codex/sdf-box-lighting-normal/README.md).
+  [box lighting normals](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sdf-box-lighting-normal/README.md).
 - Remaining: preserve linear material/ambient/direct lighting inputs for finite
   per-fragment receiving; use actual fragment coordinates without extrapolating
   finite misses; curved/rotated geometry and native GL smoke. Current shadow
@@ -1314,7 +1315,7 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   `max(-worldNormal.z, 0)` because world +Z points down. Executed six-axis and
   tilted-normal/yaw/AO controls cover both shader backends; native HDR probes
   cover analytical boxes and rotated source faces. Sun-shadow on/off controls
-  are pixel-identical. See [sky evidence](../pr-screenshots/codex/sky-hemisphere-normal/README.md).
+  are pixel-identical. See [sky evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sky-hemisphere-normal/README.md).
 - Next: retain linear SDF inputs and query finite geometry at presentation
   fragments, including sky from the actual fragment normal. The sky sign fix
   does not resolve trixel-sized shadow outlines or add sky occlusion tracing.
@@ -1338,7 +1339,7 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   and restoration serve compute and presentation; ordinary variants omit the path.
 - Native eight-angle comparisons change edges but retain jagged outlines. Default
   beauty controls remain RGB-identical and shadows-disabled controls are black.
-  [Evidence and scope](../pr-screenshots/codex/fragment-receiver-probe/README.md).
+  [Evidence and scope](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/fragment-receiver-probe/README.md).
 - Next: isolate finite caster footprint/sampling with correct camera-frame normals;
   receiver precision alone has not met the sharp-edge objective. Keep legitimate
   voxel steps and do not use blur to hide mismatches.
@@ -1356,7 +1357,7 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
 - Validated: repeating teeth disappear in eight-angle analytical controls;
   normal source-face floor shadows also gain straight boundaries. Independent
   ray/slab oracle, index-overflow and mixed-caster tests pass.
-  [Evidence](../pr-screenshots/codex/fragment-caster-footprint/README.md).
+  [Evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/fragment-caster-footprint/README.md).
 - Next: carry finite receiving into SDF beauty composition while preserving fog,
   AO and local lights; choose/profile compact linear inputs first. Continue
   representation coverage for voxel/revoxelized/rigid casters and receivers.
@@ -1369,7 +1370,7 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
 - Consolidated canvas and overflow volume sampling on both backends, preserving
   caller filtering and world-space spotlight direction. No new GPU storage or
   dispatch. Executable coordinate tests and six pixel-identical native controls
-  cover the extraction; [evidence](../pr-screenshots/codex/surface-light-volume-query/README.md).
+  cover the extraction; [evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/surface-light-volume-query/README.md).
 - Next: use retained descriptor material and existing lighting resources for
   finite SDF fragment lighting, with explicit fog composition. Dense per-trixel
   linear payloads remain an alternative to measure, not a committed requirement.
@@ -1382,7 +1383,7 @@ runs and existing thresholds; add an SDF-active workload to measure election cos
   analytical boxes. AO/material, local light, ambient and sky compose before
   display mapping; finite sun visibility removes the sampled teeth in the
   eight-angle floor-shadow fixture. No blur or dense per-trixel payload.
-  [Evidence](../pr-screenshots/codex/finite-box-fragment-lighting/README.md).
+  [Evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/finite-box-fragment-lighting/README.md).
 - Conservative fallbacks remain for fog pipelines, procedural color, X-ray
   blending, invalid provenance, unsupported shape geometry and finite misses.
 - Next: shared fog composition, then procedural material/curved and rotated

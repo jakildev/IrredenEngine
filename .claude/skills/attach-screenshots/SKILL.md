@@ -1,12 +1,12 @@
 ---
 name: attach-screenshots
 description: >-
-  Captures before/after screenshots for an engine rendering PR and stages
-  them under `docs/pr-screenshots/<branch>/` so the PR body can embed them
-  via raw GitHub URLs — runs an auto-screenshot-capable demo (default
-  `IRShapeDebug`) against origin/master and against the dirty tree, or in
-  `--two-ref` mode between two committed refs (the fleet default, and the
-  feedback-AMEND path),
+  Captures before/after screenshots for an engine rendering PR under
+  `docs/pr-screenshots/<branch>/` and publishes them to the orphan `media`
+  branch so the PR body can embed them via SHA-pinned raw GitHub URLs —
+  runs an auto-screenshot-capable demo (default `IRShapeDebug`) against
+  origin/master and against the dirty tree, or in `--two-ref` mode between
+  two committed refs (the fleet default, and the feedback-AMEND path),
   pairs the shots by label, and prints the markdown snippet. Use when the
   user says "attach screenshots" or a PR touches `engine/render/`,
   `engine/prefabs/irreden/render/`, any `.glsl`/`.metal` shader, or
@@ -27,9 +27,10 @@ Read it first, then apply the deltas below.
 | **default branch** | `master` (`origin/master`); also refuse to run on `main` |
 | **default demo** | `IRShapeDebug` |
 | **visual-file globs** | `engine/render/**`, `engine/prefabs/irreden/render/**`, `engine/render/src/shaders/**`, `creations/demos/*/src/**`, `creations/demos/*/main*.cpp`, any `*.glsl` / `*.metal` |
-| **screenshot output root** | `docs/pr-screenshots` |
+| **screenshot output root** | `docs/pr-screenshots` — gitignored on master; the [`no-plan-files.yml`](../../../.github/workflows/no-plan-files.yml) guard fails a PR that commits it |
+| **media branch** | `media` (`origin/media`) |
+| **publish tool** | `fleet-media-push <dir>` ([`scripts/fleet/fleet-media-push`](../../../scripts/fleet/fleet-media-push)) |
 | **demo save path** | `build/creations/demos/<demo-dir>/save_files/screenshots` (`fleet-run` cd's into the exe's directory, so `save_files/` lands beside the binary; the rotated `.prev.*` sibling is gitignored) |
-| **sha-pin token** | `@COMMIT_SHA@` — `commit-and-push` step 8 substitutes `git rev-parse HEAD`; the feedback-AMEND `gh pr edit --body` step substitutes the post-amend pushed HEAD |
 | **build tool** | `fleet-build --target <demo-name>` |
 | **run tool** | `fleet-run <demo-name> --auto-screenshot 10` — no `--timeout` ([BUILD.md §Timeout choices](../../../docs/agents/BUILD.md#timeout-choices)) |
 | **clip preset** | `scripts/fleet/clip-preset.lua` |

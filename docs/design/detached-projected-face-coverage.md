@@ -44,7 +44,7 @@ Plain detached world-shadow casting/receiving is still unsupported.
 Native Metal, Apple M4 Max, Debug, 2560x1440 PNGs. Parent source is
 `212b4e7153eacb13c6efb222b4378b47e101a091` plus the focus controls.
 Every listed demo run exited cleanly. Full captures and machine-readable
-results are under `docs/pr-screenshots/codex/detached-display-artifacts/`.
+results are under [`docs/pr-screenshots/codex/detached-display-artifacts/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-display-artifacts).
 
 The independent oracle projects the eight corners of every authored occupied
 voxel and unions their convex projected silhouettes. It checks storage coverage
@@ -78,6 +78,7 @@ placement or depth correctness.
 Full-turn recipe (replace index 7 / shape frame with index 3 / octahedron):
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-display-artifacts | tar -x
 fleet-run --timeout 120 IRCanvasStress --only orbit --focus-orbit 7 --no-spin --no-auto-rotate --zoom 4 --debug-overlay normals --no-ao --no-shadows --pivot-origin --sweep-yaw 0 6.283185307 9 --auto-screenshot 6
 python3 scripts/render-detached-face-metric.py docs/pr-screenshots/codex/detached-display-artifacts/capture-1277.png --shape frame --yaw 45 --normals
 ```
@@ -112,15 +113,15 @@ Capture 1303 is pixel-identical to the parent green canary capture 1259.
 
 Before:
 
-![Parent frame](../pr-screenshots/codex/detached-display-artifacts/capture-1260.png)
+![Parent frame](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-display-artifacts/capture-1260.png)
 
 After:
 
-![Projected frame](../pr-screenshots/codex/detached-display-artifacts/capture-1297.png)
+![Projected frame](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-display-artifacts/capture-1297.png)
 
 Higher-density normal overlay:
 
-![Density 3](../pr-screenshots/codex/detached-display-artifacts/capture-1302.png)
+![Density 3](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-display-artifacts/capture-1302.png)
 
 ## Source-geometry rejection controls
 

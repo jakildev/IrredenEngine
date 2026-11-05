@@ -31,7 +31,7 @@ files from parent `28d4416e7` and rebuilding shared lighting assets. Candidate
 sources and assets were restored afterwards. The pixel comparison and native
 performance reports are retained in [light-volume-candidate-pruning/](light-volume-candidate-pruning/).
 Representative paired images are in
-`docs/pr-screenshots/codex/light-volume-candidate-pruning/`.
+[`docs/pr-screenshots/codex/light-volume-candidate-pruning/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/light-volume-candidate-pruning).
 
 The focused reviewer found no correctness or backend-parity blocker. Native
 demo builds pass. OpenGL runtime remains untested.

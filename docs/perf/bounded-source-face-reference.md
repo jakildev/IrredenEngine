@@ -162,7 +162,7 @@ oracle for every displayed surface or shadow mode. The host-side independent
 ray oracle supplies separate coverage of the finite-face predicate and query
 policy. Native OpenGL rendering remains unmeasured.
 
-[Screenshots](../pr-screenshots/codex/bounded-exact-shadow-overflow/README.md),
+[Screenshots](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/bounded-exact-shadow-overflow/README.md),
 [pixel comparisons](bounded-source-face-reference/comparison.json),
 [restoration checks](bounded-source-face-reference/restoration-comparison.json)
 and [probe summaries](bounded-source-face-reference/probe-summary.json) are
@@ -212,7 +212,7 @@ blocker happened to be retained. Checking the global capacity prevents invalid
 reads but cannot prevent this coverage change. Such a query can add missing
 shadow; it cannot reject excess shadow from the indexed fallback after a miss.
 
-The [retained-subset proof and native complete-query controls](../pr-screenshots/codex/shadow-overflow-order-proof/README.md)
+The [retained-subset proof and native complete-query controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-overflow-order-proof/README.md)
 keep this distinction executable. No partial-list query is enabled. The native
 complete-query diagnostic remains default-off: a fixed global small-pool limit
 is still unsuitable for production scene scaling.

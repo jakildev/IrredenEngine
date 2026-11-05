@@ -447,7 +447,7 @@ round-trip**. Every stem/cap occupancy check reads a *mirror-created* cell (the
 recipe only ever clicks the low-x quadrant), so a broken mirror fails the run.
 `author-entity.py mushroom` → **20/20 GUI-ASSERT PASS, determinism gate
 byte-identical**, `mushroom.vxs` committed. Renders in `IRShapeDebug --load-vxs`
-(see `docs/pr-screenshots/`).
+(see [`docs/pr-screenshots/claude-766-symmetry-mushroom/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude-766-symmetry-mushroom)).
 
 Findings:
 
@@ -489,7 +489,7 @@ responsible for clearing — the recipe never clicks past the mirror plane — s
 the run is a second positive fire for the F-1.2 fix, on a larger surface than
 the mushroom. `author-entity.py ant --scene-size 20 20 20` → **43/43 GUI-ASSERT
 PASS, determinism gate byte-identical**, `ant.vxs` committed. Renders in
-`IRShapeDebug --load-vxs` (see `docs/pr-screenshots/`).
+`IRShapeDebug --load-vxs` (see [`docs/pr-screenshots/claude-766-ant/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude-766-ant)).
 
 Findings:
 

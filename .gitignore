@@ -16,6 +16,10 @@ CMakeUserPresets.json
 # runtime output from creations (profile reports, screenshots, perf matrix runs)
 save_files/
 
+# PR screenshot staging root: attach-screenshots and the capture drivers write
+# here, and fleet-media-push publishes it to the orphan `media` branch.
+/docs/pr-screenshots/
+
 # editor files: keep shareable config, ignore local state
 .vscode/*
 !.vscode/settings.json

@@ -56,7 +56,7 @@ All 16 paired zoom-1 captures are RGB-identical. Four additional zoom-8
 cardinal camera pairs are also identical, but the floor is absent and the
 object is clipped, making those unsuitable shadow-quality evidence. After
 restoring production shaders, four zoom-3 captures show the floor and retain
-visible serration around the dense group's shadow. The [screenshots](../pr-screenshots/codex/oblique-box-shadow-controls/README.md)
+visible serration around the dense group's shadow. The [screenshots](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/oblique-box-shadow-controls/README.md)
 are evidence of the fixture and remaining limitations, not a visual fix.
 The final binary also hoists an initialization-time yaw argument read;
 performance matrices precede that equivalent cold-path cleanup.

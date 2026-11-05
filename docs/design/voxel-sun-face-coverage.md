@@ -37,10 +37,10 @@ next consumer. GLSL and Metal kernels implement the same projection.
 
 Captured on macOS Metal, Apple M4 Max, 2560×1440. Both baseline and experimental
 runs shut down cleanly. Full frames and comparison crops are committed under
-[`docs/pr-screenshots/codex/voxel-sun-face-coverage`](../pr-screenshots/codex/voxel-sun-face-coverage).
+[`docs/pr-screenshots/codex/voxel-sun-face-coverage`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-sun-face-coverage).
 The baseline includes the preceding detached world-frame lighting fix.
 
-![Box: legacy above, complete faces below](../pr-screenshots/codex/voxel-sun-face-coverage/box-comparison.png)
+![Box: legacy above, complete faces below](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-sun-face-coverage/box-comparison.png)
 
 The independent box oracle projects authored box bounds along the configured sun
 onto the floor. The floor supplies image scale/origin; the measured shadow does
@@ -72,7 +72,7 @@ Omit `--voxel-face-shadows` for the baseline; add `--probe-grid` and metric
 `--grid` for the GRID fixture. For the concave rotation sweep, replace the
 selection with `--only revox,floor`, use zoom .55 and `--sweep-yaw 0 1.57079633 5`.
 
-![Concave sweep: legacy above, complete faces below](../pr-screenshots/codex/voxel-sun-face-coverage/concave-comparison.png)
+![Concave sweep: legacy above, complete faces below](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-sun-face-coverage/concave-comparison.png)
 
 ## Limits before adoption
 
@@ -128,7 +128,7 @@ this flag does not require `--no-spin`. Add `--screen-lock-detached` to exercise
 overlay exclusion: the orange GRID object continues casting, while detached
 probes no longer cast world shadows or receive world lighting.
 
-![Upright and tilted controls](../pr-screenshots/codex/voxel-sun-face-coverage/probes/attached-detached-comparison.png)
+![Upright and tilted controls](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-sun-face-coverage/probes/attached-detached-comparison.png)
 
 The ten 2560×1440 upright/tilted captures pass the new fixed-scene presence guard. It
 requires substantial orange/cyan/purple populations and visible blue in the
@@ -148,7 +148,7 @@ faces from destination adjacency, and renders through the cardinal single-canvas
 gather. It does not take the same per-axis fragment deformation path. Applying
 that deformation to the already rotated cells would rotate them twice.
 
-![Native pixel detail, magnified 2x](../pr-screenshots/codex/voxel-sun-face-coverage/probes/upright-yaw45-detail.png)
+![Native pixel detail, magnified 2x](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-sun-face-coverage/probes/upright-yaw45-detail.png)
 
 Complete-face casting removes inflated sample splats, but still projects that
 resampled voxel staircase. Fixing this distinction requires retaining the source

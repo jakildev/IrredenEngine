@@ -36,7 +36,7 @@ Fleet benchmark reservations were used; this is not quiet-host Release or
 million-entity qualification. Cardinal geometry does not use the per-axis
 overflow path, so its report's zero overflow sample count is not a queue test.
 
-[Paired full-resolution captures](../../pr-screenshots/codex/cardinal-election-timing/README.md)
+[Paired full-resolution captures](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/cardinal-election-timing/README.md)
 are RGB-identical with profiling on/off at both cardinal and diagonal poses.
 Those separate runs contain screenshot readback and supply no performance
 comparison. Mock device tests check that the new timer writes only its own

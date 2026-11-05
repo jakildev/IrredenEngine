@@ -79,7 +79,7 @@ do not pool its samples with accepted runs.
 
 ## Shadow-index controls and provenance
 
-The [committed bounded box controls](../../pr-screenshots/codex/shadow-index-complete-tiles/cost-controls/README.md)
+The [committed bounded box controls](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/shadow-index-complete-tiles/cost-controls/README.md)
 are linked rather than duplicated. All 24 runs have `quiet=unknown`; they include
 screenshot readback, pacing and grouped battery-powered sessions. Large-span
 warmed means vary from 10.95–15.19 ms before and 10.20–13.91 ms after.

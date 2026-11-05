@@ -16,7 +16,7 @@ The orbit fixture has three complementary checks:
   output RGB pixel, including every pixel in each upscaled game-pixel block.
 - An independent native Metal draw of exposed cube faces, without trixel
   encoding, storage, overflow, depth tie bands, or composition. The retained
-  [source and evidence](../pr-screenshots/codex/scatter-centered-projection/README.md)
+  [source and evidence](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-centered-projection/README.md)
   ground the raster model separately from the engine output.
 
 For an oriented edge from `a` to `b`, coverage uses the integer cross product
@@ -64,7 +64,7 @@ and Y reflection can change finite-precision edge ownership even when their
 composed transform is algebraically identical to a direct screen projection.
 This is separate from trixel encoding and face selection.
 
-In the [33-view captured-input replay](../pr-screenshots/codex/scatter-projection-replay/README.md),
+In the [33-view captured-input replay](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/scatter-projection-replay/README.md),
 independent exposed voxel faces rendered into the actual 1284×722 target,
 then Y-reflected and center-cropped to 1280×720, match every current engine
 pixel. Both the captured float32 matrix and a direct padded/reflected projection

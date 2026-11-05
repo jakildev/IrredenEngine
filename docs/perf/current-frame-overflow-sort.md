@@ -36,7 +36,7 @@ remain outside this sort's eligibility contract.
 
 | Parent | Current-frame sort (identical RGB) |
 |---|---|
-| ![Before](../pr-screenshots/codex/current-frame-overflow-sort/capture-1224.png) | ![After](../pr-screenshots/codex/current-frame-overflow-sort/capture-1233.png) |
+| ![Before](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/current-frame-overflow-sort/capture-1224.png) | ![After](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/current-frame-overflow-sort/capture-1233.png) |
 
 ## Measurements
 

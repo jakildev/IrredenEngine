@@ -30,7 +30,7 @@ predicate; candidate counts do not establish a speedup or full-frame cost.
 
 ```bash
 ir-acquire gpu -- python3 scripts/perf/sun_hierarchy_probe.py \
-  docs/pr-screenshots/codex/sun-geometry-capture/oblique-far-128/index.csv.gz \
+  docs/evidence/sun-geometry-capture/oblique-far-128/index.csv.gz \
   --query-side 257 --spatial --output /tmp/sun-grid-257
 ```
 

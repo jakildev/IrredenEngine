@@ -48,9 +48,9 @@ work remain costs. Hundred-thousand-entity throughput is not established.
 macOS Metal, Apple M4 Max, 2560×1440. Both upright and tilted comparisons keep the
 same geometry, camera, sun and receiver settings as their parent captures.
 
-![Tilted comparison](../pr-screenshots/codex/source-face-shadow-projection/tilted-comparison.png)
+![Tilted comparison](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/source-face-shadow-projection/tilted-comparison.png)
 
-![Upright comparison](../pr-screenshots/codex/source-face-shadow-projection/upright-comparison.png)
+![Upright comparison](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/source-face-shadow-projection/upright-comparison.png)
 
 ```sh
 fleet-run --timeout 120 IRCanvasStress --only revox,shadowattached,floor --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 0.65 --auto-screenshot 6 --sweep-yaw 0 1.57079633 5 --source-face-shadows

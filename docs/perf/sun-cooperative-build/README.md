@@ -64,7 +64,7 @@ readbacks provide that bounded hardware check.
 
 `test_sun_hierarchy_build_probe.py` has ten portable checks for source expansion,
 dispatch plans, readback validation and the independent oracle's failure cases.
-The native engine build passed. All [eleven crowded-shadow screenshots](../../pr-screenshots/codex/sun-cooperative-build/README.md)
+The native engine build passed. All [eleven crowded-shadow screenshots](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-cooperative-build/README.md)
 are unchanged in full RGBA against the retained 14-pass frames.
 
 Replay the isolated test from this checkout with a fresh output directory:

@@ -70,7 +70,7 @@ All three candidate retry captures and all three restored captures are
 RGB-identical to the corresponding parent captures. The four frame-oracle views
 also remain RGB-identical to the parent evidence. The three stalled-batch images
 match too, but provide no valid timing result. `comparison.json` records all
-13 pairs. [Screenshots](../pr-screenshots/codex/finite-shadow-query-pruning/README.md)
+13 pairs. [Screenshots](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/finite-shadow-query-pruning/README.md)
 show unchanged appearance, not a new visual fix. Native OpenGL remains untested.
 
 ## Reproduce the rejected prototype

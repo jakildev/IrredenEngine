@@ -36,7 +36,7 @@ All nine full-turn CanvasStress pairs have identical RGB pixels;
 
 | Parent | Frame accounting (identical RGB) |
 |---|---|
-| ![Before](../pr-screenshots/codex/gpu-frame-accounting/capture-1233.png) | ![After](../pr-screenshots/codex/gpu-frame-accounting/capture-1242.png) |
+| ![Before](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/gpu-frame-accounting/capture-1233.png) | ![After](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/gpu-frame-accounting/capture-1242.png) |
 
 ## Measurements
 

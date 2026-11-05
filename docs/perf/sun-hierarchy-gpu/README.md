@@ -2,7 +2,7 @@
 
 This experiment builds and queries a conservative hierarchy on native Metal.
 Production rendering is unchanged: the crowded shadow hole remains open.
-It reuses the seven [captured geometry pools](../../pr-screenshots/codex/sun-geometry-capture/README.md)
+It reuses the seven [captured geometry pools](../../evidence/sun-geometry-capture/README.md)
 and the production `sourceFaceIndexBounds` and `sourceFaceRaySeparation` helpers.
 No CPU-built topology, sorting, or per-frame geometry readback is proposed for
 the engine. The diagnostic uploads previously captured records to isolate the
@@ -83,7 +83,7 @@ do not replace or subtract the existing production index allocation.
 
 ```bash
 ir-acquire gpu -- python3 scripts/perf/sun_hierarchy_probe.py \
-  docs/pr-screenshots/codex/sun-geometry-capture/far-128/index.csv.gz \
+  docs/evidence/sun-geometry-capture/far-128/index.csv.gz \
   --output /tmp/sun-hierarchy-far128
 ir-acquire gpu -- python3 scripts/perf/sun_hierarchy_probe.py \
   --self-test --output /tmp/sun-hierarchy-controls-new
