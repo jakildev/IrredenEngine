@@ -42,7 +42,7 @@ depth-derived caster. All source-face paths remain experimental/opt-in.
 
 ## Native Metal evidence
 
-Artifacts are under `docs/pr-screenshots/codex/sun-occlusion-response/`.
+Artifacts are under [`docs/pr-screenshots/codex/sun-occlusion-response/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-occlusion-response).
 All runs exited `RESULT=CLEAN` on Apple M4 Max at 2560x1440.
 Before captures use parent `912734b` shaders plus the new fixture; after captures
 use the visibility correction. AO is disabled and no local lights are spawned.

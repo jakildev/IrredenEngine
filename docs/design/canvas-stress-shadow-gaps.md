@@ -62,7 +62,7 @@ private-canvas density tests can exceed the existing canvas-size cap.
 ## Evidence and commands
 
 Full PNGs and experiment patches live in
-`docs/pr-screenshots/codex/detached-raster-phase/`. Experiment base:
+[`docs/pr-screenshots/codex/detached-raster-phase/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-raster-phase). Experiment base:
 `3376dcd0b5d08a3994d309e503526c6c11e5a901` plus the demo canvas-size flag.
 Apply the phase patch first; the zero-offset patch is independent. Build and
 stage before each run. Production confirmation captures use neither patch.
@@ -92,6 +92,7 @@ Existing finite face caster:
 For the staircase experiment:
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-raster-phase | tar -x
 fleet-run --timeout 120 IRCanvasStress --only shadowocclusion --probe-staircase --probe-analytic-blocker --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 4 --auto-screenshot 6 --sweep-yaw 3.14159265 3.92699082 3 --source-face-shadows
 python3 scripts/render-sun-occlusion-metric.py docs/pr-screenshots/codex/detached-raster-phase/capture-704.png --staircase
 python3 scripts/render-sun-occlusion-metric.py docs/pr-screenshots/codex/detached-raster-phase/capture-735.png --staircase

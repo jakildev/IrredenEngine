@@ -70,12 +70,13 @@ alternating staircase faces, particularly at 45 degrees:
 
 The following captures predate default adoption and use the explicit compatibility flag.
 All capture runs exited cleanly. Source base: `66622d60b` (merged rendering stack).
-Artifacts are under `docs/pr-screenshots/codex/detached-local-triangles/`.
+Artifacts are under [`docs/pr-screenshots/codex/detached-local-triangles/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-local-triangles).
 Captures 352–356 are the initial automatic-pivot normals sweep, which changes
 placement with yaw; 366–370 use a fixed origin; 381–385 repeat the fixed-origin
 sweep after effective-layout metadata was added.
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-local-triangles | tar -x
 fleet-run --timeout 120 IRCanvasStress --only shadowbox --probe-single-voxel --local-trixel-display --pivot-origin --no-spin --no-auto-rotate --no-ao --no-shadows --subdivisions 1 --zoom 16 --debug-overlay normals --auto-screenshot 6 --sweep-yaw 0 1.57079633 5
 python3 scripts/render-local-voxel-metric.py docs/pr-screenshots/codex/detached-local-triangles/capture-368.png --yaw 45
 ```

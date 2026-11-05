@@ -160,7 +160,7 @@ introduces a blur or enlarges caster geometry; shadow-map quantization remains.
 
 ## Historical detached Metal evidence
 
-Full frames are retained under `docs/pr-screenshots/codex/surface-shadow-sampling/`.
+Full frames are retained under [`docs/pr-screenshots/codex/surface-shadow-sampling/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/surface-shadow-sampling).
 Capture recipes are the unchanged commands in
 [receiver diagnostics](detached-shadow-receiver-samples.md) and
 [the stress audit](canvas-stress-shadow-gaps.md).

@@ -84,6 +84,7 @@ per-pixel owner face the same way. Its contract, controls and native evidence:
 [revoxelized display fidelity](revoxelized-display-fidelity.md).
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-display-artifacts docs/pr-screenshots/claude/million-entity-render-face-parity | tar -x
 # Positive native control: one identity voxel, zoom 16, output scale 2.
 python3 scripts/render-source-face-metric.py docs/pr-screenshots/codex/detached-display-artifacts/capture-1296.png --shape voxel --identity --yaw 0 --iso-scale 64 32 --normals
 # Known failure which the lattice-consistency metric accepts.

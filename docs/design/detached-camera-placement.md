@@ -12,7 +12,7 @@ mismatch without changing stored trixels, depth keys, shadow geometry or draws.
 Apple M4 Max, Metal, 2560×1440 screenshots, output scale 2. All capture runs
 reported `RESULT=CLEAN`. Parent is `1612a063aa34a5714ea354a53bcbc32aff89ef78`;
 the parent pan run uses that renderer with only the new demo capture option.
-Artifacts live in `docs/pr-screenshots/codex/local-trixel-layout/`.
+Artifacts live in [`docs/pr-screenshots/codex/local-trixel-layout/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/local-trixel-layout).
 
 | Pan arm | Captures | Max residual X/Y (PNG pixels) | Verdict |
 |---|---|---|---|

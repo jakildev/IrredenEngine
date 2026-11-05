@@ -38,7 +38,7 @@ to the rotated authored solid, lighting, depth, or picking.
 
 Apple M4 Max, Metal, `macos-debug`, 2560x1440, zoom 8, effective private
 density 1, AO and shadows off. Retained under
-`docs/pr-screenshots/claude/million-entity-render-face-parity/`.
+[`docs/pr-screenshots/claude/million-entity-render-face-parity/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-face-parity).
 
 | Fixture | Yaw | Occupied cells | Expected = observed pixels | Missing / extra / wrong face |
 |---|---:|---:|---:|---|
@@ -148,9 +148,9 @@ nearest texel centre with the stored finite face. The authored-caster
 captures fail the same gate with false shadow on trixels whose rays clear
 every cell by more than half a cell. At zoom 4 the cube's floor shadow is a
 clean stepped silhouette. Captures under
-`docs/pr-screenshots/claude/million-entity-render-lit-staircase/` (per-face
+[`docs/pr-screenshots/claude/million-entity-render-lit-staircase/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-lit-staircase) (per-face
 measurement, both caster modes) and
-`docs/pr-screenshots/claude/million-entity-render-resampled-casters/`
+[`docs/pr-screenshots/claude/million-entity-render-resampled-casters/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-resampled-casters)
 (the default casters after the retirement, with the authored-caster lit
 captures for comparison).
 

@@ -1076,13 +1076,14 @@ Native Metal sweeps exited cleanly. Existing source-shadow checks remain 4/4 aft
 the placement change (yaw-zero IoU .712, the least margin). OpenGL runtime remains
 unverified; the corrected C++ placement is shared by both backends.
 
-Retained evidence: `docs/pr-screenshots/codex/visible-box-oracle/`. Capture 135
+Retained evidence: [`docs/pr-screenshots/codex/visible-box-oracle/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/visible-box-oracle). Capture 135
 uses the original placement from baseline `a2c55707add8ba1a74d55091f17f203c92160084`;
 125–129 use corrected detached placement at 0/22.5/45/67.5/90 degrees; 130–134
 are the GRID controls at the same angles. Captures 136–140 are the corrected
 four-probe scene. For example:
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/visible-box-oracle | tar -x
 python3 scripts/render-visible-box-metric.py docs/pr-screenshots/codex/visible-box-oracle/capture-125.png --placement-only
 python3 scripts/render-visible-box-metric.py docs/pr-screenshots/codex/visible-box-oracle/capture-132.png --yaw 45
 ```
@@ -1101,7 +1102,7 @@ Native Metal box checks: source 4/4, GRID 4/4 and resampled detached 4/4. This
 corrects the half-cell convention, not receiver reconstruction or large-scale
 performance. Current captures 146–149 (source), 150–153 (GRID), 154–157
 (resampled detached), and 158–162 (upright probes at 0/22.5/45/67.5/90 degrees)
-are retained under `docs/pr-screenshots/codex/voxel-shadow-cell-anchor/`.
+are retained under [`docs/pr-screenshots/codex/voxel-shadow-cell-anchor/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-shadow-cell-anchor).
 
 ![Centered shadow corners: before and after](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/voxel-shadow-cell-anchor/upright-comparison.png)
 

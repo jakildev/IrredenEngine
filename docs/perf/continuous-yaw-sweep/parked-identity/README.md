@@ -27,7 +27,7 @@ frame 76 and are captured after frame 77, at 91.2°; `parked-static-91p2` holds
 91.2° from frame 1.
 
 The captures are committed full-size under
-`docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set/`, one
+[`docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set), one
 file per distinct hash: `cardinal-0deg-parked-set-resident.png`
 (`d145106255ee8f8d`, all three cardinal arms),
 `rotated-91p2deg-unparked-and-settled.png` (`34449f70093ec346`, the unparked

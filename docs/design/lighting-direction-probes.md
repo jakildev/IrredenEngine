@@ -34,7 +34,7 @@ world normal. Any coverage correction must distinguish those input contracts.
 ## Captures and validation
 
 Full frames and RGB comparisons live under
-`docs/pr-screenshots/codex/lighting-direction-probes/`. Crops retain native pixels.
+[`docs/pr-screenshots/codex/lighting-direction-probes/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/lighting-direction-probes). Crops retain native pixels.
 Parent revision: `09e4a8740a84739970288664df6691ba9a6771c1`.
 
 | Captures | Configuration / result |

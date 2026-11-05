@@ -279,7 +279,7 @@ pinned, `--capture-frame` through `fleet-run` directly because
 `repeat_profile.py` refuses it; reports under
 [continuous-yaw-sweep/parked-identity/](continuous-yaw-sweep/parked-identity/),
 the three distinct captures and the diff full-size under
-`docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set/`. Every
+[`docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set). Every
 arm adds `--wave-freeze --no-overlay --config-preset
 configs/perf/million-profiling-off.lua`.
 
@@ -317,7 +317,7 @@ configs/perf/million-profiling-off.lua`.
   every cardinal pose parks the set and every rotated one unparks it) is
   byte-identical at all nine poses between origin/master and this tree; the
   captures and both hash columns are under
-  `docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set/`.
+  [`docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-parked-per-axis-set).
 
 ## The crossing frame's pixels
 

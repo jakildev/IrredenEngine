@@ -56,7 +56,7 @@ to the baseline. No experimental shader edits ship with this fixture.
 
 ![Single-voxel controls](https://raw.githubusercontent.com/jakildev/IrredenEngine/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-face-selection/single-voxel-comparison.png)
 
-Full frames under `docs/pr-screenshots/codex/detached-face-selection/`:
+Full frames under [`docs/pr-screenshots/codex/detached-face-selection/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-face-selection):
 168–172 detached, 173–177 GRID, 178–182 temporary triangle experiment, and
 183 restored yaw-zero baseline. The five-view sets use the table's yaw order. Comparison columns use the same native-resolution crop
 within each row; `comparison-crops.json` records those rectangles. Row crops

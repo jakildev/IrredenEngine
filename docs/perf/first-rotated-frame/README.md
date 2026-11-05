@@ -23,6 +23,6 @@ build and never committed; the file here is the record.
 | `settled-46p8-fullspan.txt` | `--yaw 0.816814 --pivot-origin --auto-profile 80 --capture-frame 77` | fullspan | `f42cdb630fb35288` |
 
 Captures are committed full-size under
-`docs/pr-screenshots/claude/million-entity-render-first-rotated-frame/`, one
+[`docs/pr-screenshots/claude/million-entity-render-first-rotated-frame/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-first-rotated-frame), one
 file per distinct hash (`settled-46p8deg-and-fullspan.png` stands for the
 three `f42cdb630fb35288` arms).

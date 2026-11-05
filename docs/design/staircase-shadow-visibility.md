@@ -39,7 +39,7 @@ colors, preserving its two-level tolerance.
 ## Evidence
 
 Native Apple M4 Max Metal runs all exited `RESULT=CLEAN`. Captures and metric
-results are in `docs/pr-screenshots/codex/staircase-shadow-visibility/`.
+results are in [`docs/pr-screenshots/codex/staircase-shadow-visibility/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/staircase-shadow-visibility).
 
 | Captures | Experiment / result |
 |---|---|

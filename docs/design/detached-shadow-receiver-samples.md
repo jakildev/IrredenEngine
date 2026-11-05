@@ -73,7 +73,7 @@ coverage and receiver positions, then check oblique boundaries against geometry.
 Baseline: `bc0294535` plus the retained `baseline-instrumentation.patch`.
 The diagnostic-only PR retained the same diagnostic; applying `centroid-correction.patch`
 enables the rejected-for-adoption experiment on both backends. Both patches and
-all PNGs are under `docs/pr-screenshots/codex/detached-shadow-receiver-samples/`.
+all PNGs are under [`docs/pr-screenshots/codex/detached-shadow-receiver-samples/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/detached-shadow-receiver-samples).
 Captured on Metal, Apple M4 Max, 2560x1440, output scale 2. Every capture run
 exited cleanly. OpenGL runtime remains unverified.
 

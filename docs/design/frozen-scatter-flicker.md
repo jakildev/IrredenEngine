@@ -67,7 +67,7 @@ stability; `--sweep-yaw 0 6.2831853 9` covers the quadrants.
   the proven coverage class.
 
 Full before/after images and labeled nearest-neighbor 8x crops are retained in
-`docs/pr-screenshots/codex/frozen-scatter-flicker/`. These captures establish this
+[`docs/pr-screenshots/codex/frozen-scatter-flicker/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/frozen-scatter-flicker). These captures establish this
 specific defect, not the absence of every flicker a moving camera might reveal.
 
 Three frozen 64³/yaw45/zoom4 Debug IRPerfGrid runs average 19.370 ms/frame

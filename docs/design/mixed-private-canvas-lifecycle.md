@@ -107,7 +107,7 @@ python3 scripts/tests/test_render_mixed_canvas_metric.py
 
 Apple M4 Max, Metal, `macos-debug`, 2560x1440, zoom 8, private density 1,
 unlit overlay. Retained under
-`docs/pr-screenshots/claude/million-entity-render-mixed-canvas-lifecycle/`.
+[`docs/pr-screenshots/claude/million-entity-render-mixed-canvas-lifecycle/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-mixed-canvas-lifecycle).
 
 | Capture | Frame outside guard (missing / extra / wrong) | Marker centroid error px | Marker area ratio | Lifecycle |
 |---|---|---|---|---|
@@ -139,7 +139,7 @@ inside a local-triangle canvas is the storage caveat on
 ### Lattice evidence
 
 Same host and settings; captures under
-`docs/pr-screenshots/claude/million-entity-render-shape-phase/`. The
+[`docs/pr-screenshots/claude/million-entity-render-shape-phase/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-shape-phase). The
 expectation puts each marker at its nearest lattice cell; the frame column
 is the voxel producer outside the marker guards (missing / extra / wrong
 owner), pixel-exact in every capture, so the lattice module's resample is
@@ -171,7 +171,7 @@ next slice, not placement.
 ### Continuous-yaw evidence
 
 Same host, settings and lattice-aware expectation; captures under
-`docs/pr-screenshots/claude/million-entity-render-sdf-marker-display/`.
+[`docs/pr-screenshots/claude/million-entity-render-sdf-marker-display/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-sdf-marker-display).
 "Before" is the lattice snap alone (the raster still on the analytical
 smooth path off the cardinals); "after" adds the yawed lattice walk.
 

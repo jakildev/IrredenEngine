@@ -46,6 +46,7 @@ Rows share a crop across all three arms; `normal-crops.json` records its rectang
 Full frames and numerical output are retained in the same artifact directory.
 
 ```sh
+git archive origin/media docs/pr-screenshots/codex/detached-triangle-contract | tar -x
 fleet-run --timeout 120 IRCanvasStress --only shadowbox --probe-single-voxel --no-spin --no-auto-rotate --no-ao --no-shadows --subdivisions 1 --zoom 16 --debug-overlay normals --auto-screenshot 6 --sweep-yaw 0 1.57079633 5
 python3 scripts/render-normal-facing-metric.py docs/pr-screenshots/codex/detached-triangle-contract/capture-326.png --yaw 45
 ```

@@ -30,7 +30,7 @@ the build and never committed. Host load 6 to 11 with the fleet live and the
 battery at 28 to 30%: identity does not care about either. Reports, the
 per-arm provenance and the patch under
 [first-rotated-frame/](first-rotated-frame/), captures full-size under
-`docs/pr-screenshots/claude/million-entity-render-first-rotated-frame/`.
+[`docs/pr-screenshots/claude/million-entity-render-first-rotated-frame/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/million-entity-render-first-rotated-frame).
 
 | Arm | Flags | Binary | Lane max entries | Capture SHA-256 |
 |---|---|---|---:|---|

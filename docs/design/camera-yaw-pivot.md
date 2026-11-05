@@ -294,7 +294,7 @@ focus on a pillar at world (8,−8,10) (off-origin, z>0 — the hard case) and s
 yaw. The pillar's centroid holds the exact screen center (measured 1279.5,720.5 vs
 center 1280,720) while the ring of markers orbits it; a broken pivot drifts
 hundreds of px (#1926 measured 1024px). See
-`docs/pr-screenshots/claude/1926-camera-pivot-screen-center/`.
+[`docs/pr-screenshots/claude/1926-camera-pivot-screen-center/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/1926-camera-pivot-screen-center).
 
 The **screen-center default** path (the viewport-center fix above): `shape_debug`
 panned to cameraIso (16,16) and yawed 0/90/180/270/45 holds screen-center content

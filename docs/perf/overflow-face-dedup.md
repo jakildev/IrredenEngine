@@ -26,7 +26,7 @@ compares against that repaired parent rather than accepting image tolerance.
   payload. OpenGL runtime remains untested; shader twins use the same guard.
 
 Representative paired screenshots are in
-`docs/pr-screenshots/codex/overflow-face-dedup/`.
+[`docs/pr-screenshots/codex/overflow-face-dedup/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/overflow-face-dedup).
 
 ## Performance
 

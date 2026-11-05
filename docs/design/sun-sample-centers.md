@@ -44,7 +44,7 @@ stair edges are not claimed as smooth-source geometry.
 
 ## Capture recipes
 
-All images are retained in `docs/pr-screenshots/codex/sun-sample-centers/`.
+All images are retained in [`docs/pr-screenshots/codex/sun-sample-centers/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/sun-sample-centers).
 
 ```sh
 fleet-run --timeout 120 IRCanvasStress --only shadowbox,floor --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 2 --auto-screenshot 6 --sweep-yaw 0 4.71238898 4 --source-face-shadows

@@ -32,7 +32,7 @@ debug-only.
 ## Evidence
 
 Native macOS Metal Debug captures are retained in
-`docs/pr-screenshots/codex/finite-shadow-defaults/`.
+[`docs/pr-screenshots/codex/finite-shadow-defaults/`](https://github.com/jakildev/IrredenEngine/tree/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/codex/finite-shadow-defaults).
 
 - Capture 791: the four rotated GRID solids at zoom 3, yaw 225 degrees,
   frozen pose 0.6. RGB-identical to the earlier explicit finite-caster control
