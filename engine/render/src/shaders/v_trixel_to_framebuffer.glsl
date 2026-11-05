@@ -47,6 +47,9 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     uint fogUnexploredColorPacked;
     ivec4 perAxisStoreFrame;
     vec4 canvasFromPixel;
+    ivec2 mouseFramebufferPixel;
+    int hoverResolveMode;
+    int gatherFilterDiagnostic;
 };
 
 void main() {

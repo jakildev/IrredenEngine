@@ -103,6 +103,21 @@ static_assert(offsetof(HoveredEntityIdLayout, scatterEntityId_) == 16);
 
 enum class TrixelSampleLayout : int { RECTANGULAR = 0, LOCAL_TRIANGLES = 1, SOURCE_FACES = 2 };
 
+/// Colour resolve of the camera-following RECTANGULAR gather
+/// (`FrameDataTrixelToFramebuffer::gatherFilterDiagnostic_`). A measurement
+/// switch, not a presentation setting: docs/design/continuous-camera-zoom.md
+/// § "Filtered minification" records why production stays NEAREST. Depth,
+/// alpha, entity id and hover always come from the nearest texel.
+enum class GatherFilterDiagnostic : int {
+    NEAREST = 0,
+    /// Box-filtered colour over every texel the pixel footprint touches (the
+    /// bleeding control).
+    UNRESTRICTED = 1,
+    /// The same box, restricted to texels that share the nearest texel's
+    /// entity, face slot and flip within a planar depth step.
+    OWNER = 2,
+};
+
 // Prefix is an indexed indirect draw command followed by producer depth bounds.
 struct SourceVoxelFaceHeader {
     std::uint32_t indexCount_ = 6;
@@ -254,7 +269,9 @@ struct FrameDataTrixelToFramebuffer {
     vec4 canvasFromPixel_{0.0f, 0.0f, 0.0f, 0.0f};
     ivec2 mouseFramebufferPixel_{-1, -1};
     int hoverResolveMode_ = 0;
-    int hoverResolvePad_ = 0;
+    /// `GatherFilterDiagnostic` for this gather draw. Zero (every producer's
+    /// default) is the nearest resolve.
+    int gatherFilterDiagnostic_ = 0;
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -303,6 +320,7 @@ static_assert(
     "the gather vertex and fragment blocks declare both members"
 );
 static_assert(offsetof(FrameDataTrixelToFramebuffer, mouseFramebufferPixel_) == 256);
+static_assert(offsetof(FrameDataTrixelToFramebuffer, gatherFilterDiagnostic_) == 268);
 static_assert(
     sizeof(FrameDataTrixelToFramebuffer) == 272,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
