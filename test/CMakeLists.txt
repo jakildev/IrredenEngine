@@ -162,6 +162,7 @@ add_executable(IrredenEngineTest
   render/sun_shadow_probe_test.cpp
   render/sun_record_pool_layout_test.cpp
   render/viewport_test.cpp
+  render/lod_zoom_profile_test.cpp
   render/voxel_editor_fill_ghost_test.cpp
   render/voxel_editor_sculpt_grid_test.cpp
   render/voxel_editor_part_edit_history_test.cpp
@@ -229,6 +230,7 @@ add_executable(IrredenEngineTest
   script/lua_pipeline_register_test.cpp
   script/lua_render_bindings_test.cpp
   script/lod_tier_lua_test.cpp
+  script/lod_zoom_profile_lua_test.cpp
   script/lua_fog_revealed_test.cpp
   script/lua_fog_bindings_test.cpp
   script/lua_engine_hand_off_test.cpp

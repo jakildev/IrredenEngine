@@ -101,6 +101,7 @@
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
+#include <irreden/render/components/component_lod_zoom_profile.hpp>
 #include <irreden/render/components/component_per_axis_surface_lighting.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_perf_hud.hpp>
@@ -396,6 +397,8 @@ IR_SAVE_OPT_IN(IRComponents::C_Camera, 2)
 IR_SAVE_OPT_IN(IRComponents::C_CameraPosition2DIso, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Viewport, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ZoomLevel, 1)
+// The authored zoom -> tier mapping; the tier history it drives is derived.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_LodZoomProfile, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrixelCanvasOrigin, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrixelCanvasRenderBehavior, 1)
 // Versions 1 and 2 were raw struct images. The render serializer owns their
@@ -660,6 +663,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_CameraPosition2DIso,
     IRComponents::C_Viewport,
     IRComponents::C_ZoomLevel,
+    IRComponents::C_LodZoomProfile,
     IRComponents::C_TrixelCanvasOrigin,
     IRComponents::C_TrixelCanvasRenderBehavior,
     IRComponents::C_EntityCanvas,

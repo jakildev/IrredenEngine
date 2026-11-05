@@ -22,6 +22,7 @@
 #include "glitch_fixture.hpp"
 #include "glitch_subject_fixture.hpp"
 #include "lod_scene.hpp"
+#include "lod_zoom_profile_scene.hpp"
 #include "sdf_voxel_scene.hpp"
 
 #include <algorithm>
@@ -62,7 +63,10 @@
 #include <irreden/update/systems/system_prefab_lod_parts.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_gate_voxel_sets_by_lod.hpp>
+#include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
+#include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
+#include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -557,6 +561,9 @@ bool g_cullEvictTest = false;
 bool g_lodDenseSwap = false;
 bool g_lodScene = false;
 IRShapeDebug::LodScene g_lodSceneState;
+// --lod-zoom-profile: see lod_zoom_profile_scene.hpp.
+bool g_lodZoomProfile = false;
+IRShapeDebug::LodZoomProfileScene g_lodZoomProfileState;
 
 // --viewport-portrait: a secondary-viewport fixture. One blue voxel cube and
 // one orange decoy sit in the world at zoom 1; a viewport pinned to a GUI
@@ -1740,6 +1747,12 @@ void registerCliArgs() {
         "bands, captured on either side of the swap; needs --auto-screenshot"
     );
     args.flag(
+        "--lod-zoom-profile",
+        "Replace the scene + capture table with the authored LOD threshold / hysteresis fixture: "
+        "variant pairs in every output mode under fractional zoom, plus two portraits; needs "
+        "--auto-screenshot"
+    );
+    args.flag(
         "--viewport-portrait",
         "Replace the scene + capture table with the secondary-viewport fixture: a world cube at "
         "zoom 1 and its GUI-pinned portrait at zoom 16"
@@ -1818,6 +1831,7 @@ void readCliArgs() {
     g_cullEvictTest = args.getFlag("--cull-evict-test");
     g_lodDenseSwap = args.getFlag("--lod-dense-swap");
     g_lodScene = args.getFlag("--lod-scene");
+    g_lodZoomProfile = args.getFlag("--lod-zoom-profile");
     g_viewportPortrait = args.getFlag("--viewport-portrait");
     g_textSizeSample = args.getFlag("--text-size-sample");
     g_voxelTextSample = args.getFlag("--voxel-text-sample");
@@ -2035,6 +2049,15 @@ int main(int argc, char **argv) {
          g_shapeSampleProbe || !g_loadPrefabPath.empty() || !g_loadVxsPath.empty() ||
          !g_spinShapeType.empty() || IREngine::args().getFlag("--ao-contact-probe"))) {
         IR_LOG_ERROR("--lod-scene cannot be combined with another scene or capture override");
+        return 2;
+    }
+    if (g_lodZoomProfile &&
+        (g_lodScene || g_lodDenseSwap || g_viewportPortrait || g_guiTest || g_zoomSweep ||
+         g_panSweep || g_yawSweep || !g_loadPrefabPath.empty() || g_autoWarmupFrames <= 0)) {
+        IR_LOG_ERROR(
+            "--lod-zoom-profile needs --auto-screenshot and cannot be combined with another "
+            "scene or capture override"
+        );
         return 2;
     }
     if (g_shapeSampleProbe && (g_shapeSampleProbePixel.x < 0 || g_autoWarmupFrames <= 0)) {
@@ -4112,6 +4135,12 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()
     };
+    if (g_lodZoomProfile) {
+        // The fixture's DETACHED and DETACHED_REVOXELIZE pairs draw through
+        // their own canvases.
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>());
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>());
+    }
     if (!g_loadPrefabPath.empty() || g_lodScene || IREngine::args().getFlag("--sdf-voxel-motion")) {
         // After LOD_UPDATE, so the parts follow this tick's tier, and before
         // PROPAGATE_TRANSFORM, so a part spawned this tick is placed this tick
@@ -4249,7 +4278,15 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
     );
-    if (g_viewportPortrait) {
+    if (g_lodZoomProfile) {
+        renderPipeline.insert(
+            std::next(
+                std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId)
+            ),
+            IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>()
+        );
+    }
+    if (g_viewportPortrait || g_lodZoomProfile) {
         // The sync feeds the viewport's pool before the voxel raster reads it;
         // the composite lands on top of the world + GUI composite.
         renderPipeline.insert(
@@ -4895,6 +4932,9 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::LodScene::shots_);
             cfg.settleFrames_ = IRConstants::kPrefabPartsTierSettleTicks + 12;
             cfg.onCaptureFrame_ = [](int shotIndex) { g_lodSceneState.capture(shotIndex); };
+        } else if (g_lodZoomProfile) {
+            IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::LodZoomProfileScene::shots_);
+            cfg.onCaptureFrame_ = [](int shotIndex) { g_lodZoomProfileState.capture(shotIndex); };
         } else if (g_lodDenseSwap) {
             IRVideo::setAutoScreenshotShots(cfg, kLodDenseSwapShots);
         } else if (g_viewportLodSwap) {
@@ -5905,6 +5945,12 @@ void initEntities() {
     }
     if (g_lodScene) {
         g_lodSceneState.initialize(*g_prefabLua);
+        setupCanvasLighting();
+        return;
+    }
+    if (g_lodZoomProfile) {
+        IR_LOG_INFO("--- LOD zoom-profile fixture scene ---");
+        g_lodZoomProfileState.initialize();
         setupCanvasLighting();
         return;
     }

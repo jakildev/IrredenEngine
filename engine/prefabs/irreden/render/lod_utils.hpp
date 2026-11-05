@@ -19,6 +19,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
+#include <irreden/render/lod_zoom_profile.hpp>
 
 #include <cstdint>
 
@@ -28,21 +29,13 @@ inline constexpr std::uint32_t toUnderlying(LodLevel lodLevel) {
     return static_cast<std::uint32_t>(lodLevel);
 }
 
-// Maps the active camera zoom to the discrete LOD tier the renderer should
-// use this frame. Thresholds chosen against the engine's actual zoom range
-// (`kTrixelCanvasZoomMin..kTrixelCanvasZoomMax` = [1.0, 64.0], snapped to
-// powers of two by render_manager.cpp): each tier doubles the previous
-// zoom step so the per-tier ranges align with power-of-2 zoom snaps.
+// The tier the default zoom profile maps @p zoomLevel to, with no history:
+// zoom < 2 -> LOD_4, < 4 -> LOD_3, < 8 -> LOD_2, < 16 -> LOD_1, else LOD_0.
+// LOD_UPDATE and SYNC_VIEWPORT_SUBJECTS select through the camera's
+// IRRender::LodZoomProfile instead (lod_zoom_profile.hpp), which may move
+// these thresholds and add a hysteresis deadband.
 inline LodLevel computeLodLevel(float zoomLevel) {
-    if (zoomLevel >= 16.0f)
-        return LodLevel::LOD_0;
-    if (zoomLevel >= 8.0f)
-        return LodLevel::LOD_1;
-    if (zoomLevel >= 4.0f)
-        return LodLevel::LOD_2;
-    if (zoomLevel >= 2.0f)
-        return LodLevel::LOD_3;
-    return LodLevel::LOD_4;
+    return LodZoomProfile{}.tierAt(zoomLevel);
 }
 
 // The tier LOD_UPDATE wrote this tick, or LOD_4 when no creation registered it

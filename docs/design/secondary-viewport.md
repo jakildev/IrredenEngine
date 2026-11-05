@@ -95,7 +95,9 @@ the world's sun shadow and the fog pass never sees it.
 
 The viewport rasters at its own zoom's subdivision density
 (`IRRender::getVoxelRenderEffectiveSubdivisionsForZoom`) and resolves its own
-tier from that zoom (`IRRender::computeLodLevel`). `SYNC_VIEWPORT_SUBJECTS`
+tier from that zoom: its own `C_LodZoomProfile`, else the main camera's, moved
+from the viewport's own previous tier (`C_ViewportCamera::lodHistory_`;
+[LOD strategy §Phase 1d](lod-strategy.md#phase-1d--zoom-profiles-and-hysteresis-4891)). `SYNC_VIEWPORT_SUBJECTS`
 drops every tagged part whose `[lodMax_ .. lodMin_]` band excludes that tier
 (`IRRender::shouldSkipAtLod`) before laying out the box, so a subject authored
 as co-located variants on disjoint bands, every variant tagged, shows the world

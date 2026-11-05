@@ -18,6 +18,7 @@
 #include <irreden/render/components/component_sprite_animation.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
+#include <irreden/render/components/component_lod_zoom_profile.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
@@ -254,6 +255,37 @@ template <> struct SaveMigration<IRComponents::C_Camera> {
                  return IRAsset::Result<IRComponents::C_Camera>::success(IRComponents::C_Camera{});
              }},
         };
+    }
+};
+
+// The authored thresholds and half-width only; each consumer's tier history
+// is derived and re-seeds from the loaded camera zoom. A record that is not a
+// valid profile fails the load rather than reaching a consumer.
+template <> struct SaveSerialize<IRComponents::C_LodZoomProfile> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_LodZoomProfile &value) {
+        for (const float threshold : value.profile_.thresholds()) {
+            w.writeF32(threshold);
+        }
+        w.writeF32(value.profile_.hysteresisOctaves());
+    }
+
+    static IRAsset::Result<IRComponents::C_LodZoomProfile> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_LodZoomProfile>;
+        IRRender::LodZoomProfile::Thresholds thresholds{};
+        float hysteresis = 0.0f;
+        for (float &threshold : thresholds) {
+            IR_SAVE_READ(threshold, r.readF32());
+        }
+        IR_SAVE_READ(hysteresis, r.readF32());
+        if (const auto why = IRRender::LodZoomProfile::whyInvalid(thresholds, hysteresis)) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_LodZoomProfile: " + std::string{*why}
+            );
+        }
+        return Res::success(
+            IRComponents::C_LodZoomProfile{*IRRender::LodZoomProfile::make(thresholds, hysteresis)}
+        );
     }
 };
 
