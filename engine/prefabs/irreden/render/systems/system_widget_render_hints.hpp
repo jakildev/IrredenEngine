@@ -13,6 +13,7 @@
 #include <irreden/render/gui_text_batch.hpp>
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/widget_theme.hpp>
+#include <irreden/render/widget_keycap.hpp>
 #include <irreden/render/widgets.hpp>
 
 namespace IRSystem {
@@ -73,31 +74,14 @@ template <> struct System<WIDGET_RENDER_HINTS> {
         if (!hintsVisible_ || hotkey.hint_.empty()) {
             return;
         }
-        const IRMath::ivec2 badgeSize(
-            IRPrefab::GuiText::textRunWidth(hotkey.hint_, 1, IRRender::TextSize::SMALL) + 4,
-            IRPrefab::GuiText::glyphHeight(1, IRRender::TextSize::SMALL) + 2
-        );
-        IRRender::fillRect(
+        IRPrefab::Widget::drawKeycap(
             *canvas_,
-            position.pos_,
-            badgeSize,
-            state.focused_ ? theme_.hintFocusedBackground_ : theme_.hintBackground_,
-            IRRender::kWidgetBorderDistance,
-            scratch_
-        );
-        IRPrefab::GuiText::queueGuiText(
+            scratch_,
             textCommands_,
+            position.pos_,
             hotkey.hint_,
-            position.pos_ + IRMath::ivec2(2, 1),
-            canvas_->size_,
-            theme_.hintText_,
-            1,
-            IRComponents::TextAlignH::LEFT,
-            IRComponents::TextAlignV::TOP,
-            0,
-            0,
-            0,
-            IRRender::TextSize::SMALL
+            state.focused_ ? theme_.hintFocusedBackground_ : theme_.hintBackground_,
+            theme_.hintText_
         );
     }
 

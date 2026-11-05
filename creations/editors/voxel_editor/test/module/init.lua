@@ -800,3 +800,35 @@ IREditor.registerSession("test_recipe_reapply", function(session)
     session:expectPartOccupancy(0, cell(5), true, "new_tip_added")
     session:expectRecipeValue(0, "height", 5, "updated_binding")
 end)
+
+IREditor.registerSession("test_dock_rails", function(session)
+    session:segment("all_panels", 4)
+    session:clickGui({380, 42})
+    session:expectCameraZoom(4, true, "workspace_preserves_zoom")
+
+    session:segment("scroll_left_rail", 4)
+    session:wheelGui({208, 500}, 24)
+    session:expectCameraZoom(4, true, "left_rail_owns_scroll")
+
+    session:segment("scroll_right_rail", 4)
+    session:wheelGui({1598, 500}, 24)
+    session:expectCameraZoom(4, true, "right_rail_owns_scroll")
+
+    session:segment("return_rails", 4)
+    session:wheelGui({208, 500}, -24)
+    session:wheelGui({1598, 500}, -24)
+    session:expectCameraZoom(4, true, "return_rails_preserves_zoom")
+
+    session:segment("open_shapes", 4)
+    session:clickGui({350, 68})
+    session:expectCameraZoom(4, true, "shape_panel_preserves_zoom")
+
+    session:segment("scroll_shapes_away", 4)
+    session:wheelGui({1598, 500}, 24)
+    session:expectCameraZoom(4, true, "shape_rail_owns_scroll")
+
+    session:segment("close_scrolled_shapes", 4)
+    session:tapKey(IRInput.Key.ESCAPE)
+    session:wheelGui({1598, 500}, -24)
+    session:expectCameraZoom(4, true, "closing_scrolled_panel_keeps_editor_open")
+end)

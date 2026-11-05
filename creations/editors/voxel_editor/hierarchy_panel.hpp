@@ -1,6 +1,7 @@
 #ifndef IR_VOXEL_EDITOR_HIERARCHY_PANEL_H
 #define IR_VOXEL_EDITOR_HIERARCHY_PANEL_H
 
+#include "editor_widget_geometry.hpp"
 #include "entity_scene.hpp"
 
 #include <irreden/render/trixel_text.hpp>
@@ -130,15 +131,19 @@ class HierarchyPanel {
     bool containsCursor(IRMath::vec2 guiCursor) const {
         if (m_panel == IREntity::kNullEntity || !IRPrefab::Widget::isVisible(m_panel))
             return false;
-        if (contains(guiCursor, kHierarchyPanelPos, kHierarchyPanelSize))
+        if (widgetContainsCursor(m_panel, guiCursor))
             return true;
         if (!IRPrefab::Widget::isDropdownOpen(m_parentDropdown))
             return false;
         const auto layout = IRPrefab::Widget::dropdownStripLayout(m_parentDropdown);
         return contains(
             guiCursor,
-            kHierarchyParentPos + IRMath::ivec2(0, layout.offsetY_),
-            IRMath::ivec2(kHierarchyParentSize.x, layout.rows_ * kHierarchyParentItemHeight)
+            IREntity::getComponent<IRComponents::C_GuiPosition>(m_parentDropdown).pos_ +
+                IRMath::ivec2(0, layout.offsetY_),
+            IRMath::ivec2(
+                IREntity::getComponent<IRComponents::C_Widget>(m_parentDropdown).size_.x,
+                layout.rows_ * kHierarchyParentItemHeight
+            )
         );
     }
 

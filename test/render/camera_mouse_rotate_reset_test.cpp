@@ -92,6 +92,28 @@ TEST_F(CameraMouseRotateResetTest, MissingControlsMakeSettingsNoOp) {
     IRPrefab::Camera::setCursorPivotByDefault(true);
     IRPrefab::Camera::setCursorPivotOptions({.floorHeight_ = 14.5f});
     EXPECT_FALSE(IRPrefab::Camera::cursorPivotByDefault());
+    IRPrefab::Camera::setGestureStartPredicate(+[] { return false; });
+}
+
+TEST_F(CameraMouseRotateResetTest, ViewportPredicateReachesEveryPointerControlAndCanBeCleared) {
+    IRPrefab::Camera::standardControlSystems();
+    const auto verify = [&]<auto Name>(bool (*expected)()) {
+        const auto id = IRSystem::findSystem(Name);
+        ASSERT_NE(id, IRSystem::kNullSystemId);
+        const auto *params = m_system_manager.getSystemParams<IRSystem::System<Name>>(id);
+        EXPECT_EQ(params->canStartGesture_, expected);
+    };
+    const auto deny = +[] { return false; };
+    IRPrefab::Camera::setGestureStartPredicate(deny);
+    verify.template operator()<IRSystem::CAMERA_MOUSE_PAN>(deny);
+    verify.template operator()<IRSystem::CAMERA_MOUSE_ROTATE>(deny);
+    verify.template operator()<IRSystem::CAMERA_KEY_DRAG_PAN>(deny);
+    verify.template operator()<IRSystem::CAMERA_KEY_DRAG_ROTATE>(deny);
+    IRPrefab::Camera::setGestureStartPredicate(nullptr);
+    verify.template operator()<IRSystem::CAMERA_MOUSE_PAN>(nullptr);
+    verify.template operator()<IRSystem::CAMERA_MOUSE_ROTATE>(nullptr);
+    verify.template operator()<IRSystem::CAMERA_KEY_DRAG_PAN>(nullptr);
+    verify.template operator()<IRSystem::CAMERA_KEY_DRAG_ROTATE>(nullptr);
 }
 
 TEST_F(CameraMouseRotateResetTest, KeyOnlyControlsExposeDefaultAndOptions) {
