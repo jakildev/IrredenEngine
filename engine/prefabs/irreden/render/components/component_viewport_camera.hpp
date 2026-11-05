@@ -3,6 +3,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/render/lod_zoom_profile.hpp>
 
 namespace IRComponents {
 
@@ -25,6 +26,9 @@ struct C_ViewportCamera {
     // True while the tagged subject is too large for the shared voxel buffers
     // and is therefore not drawn. Written by SYNC_VIEWPORT_SUBJECTS.
     bool subjectOversize_ = false;
+    // This viewport's previous LOD tier under its zoom profile, independent of
+    // the main camera's. Advanced by SYNC_VIEWPORT_SUBJECTS.
+    IRRender::LodTierHistory lodHistory_{};
 
     C_ViewportCamera() = default;
 
