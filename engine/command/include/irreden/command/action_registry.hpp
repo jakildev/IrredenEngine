@@ -46,8 +46,10 @@ struct ActionSpec {
     /// call this one callable.
     std::function<void()> invoke_;
     /// Non-null makes the action a hold: `invoke_` starts it on the press and
-    /// `release_` ends it once, on the key's release or when its binding
-    /// changes underneath the hold.
+    /// `release_` ends it once, when the last of its chords pressed during the
+    /// hold is released or when its binding changes underneath the hold. A
+    /// second chord pressed mid-hold joins it rather than restarting it, and a
+    /// chord whose press the hold never admitted cannot end it.
     std::function<void()> release_;
     /// Null means always available. An unavailable action neither fires from a
     /// key nor from `invokeAction`.
@@ -161,6 +163,8 @@ class ActionRegistry {
     BindResult
     addChord(std::string_view id, KeyChord chord, ConflictPolicy policy = ConflictPolicy::REJECT);
     /// Swaps @p previous for @p chord at the same position in the action's list.
+    /// When @p chord is already one of the action's chords, @p previous is
+    /// removed instead, so the action never holds a chord twice.
     BindResult replaceChord(
         std::string_view id,
         KeyChord previous,
@@ -230,8 +234,10 @@ class ActionRegistry {
         std::vector<KeyChord> chords_;
         std::vector<ChordRows> rows_;
         std::vector<AdoptedChord> adopted_;
+        /// Chord slots whose press the live hold admitted; empty when no hold
+        /// is live.
+        std::vector<std::size_t> heldSlots_;
         bool registered_ = false;
-        bool holding_ = false;
     };
 
     Action *find(std::string_view id);
@@ -242,7 +248,7 @@ class ActionRegistry {
 
     void onPress(std::size_t index, std::size_t slot);
     const AdoptedChord *adoptedFor(const Action &action, KeyChord chord) const;
-    void onRelease(std::size_t index);
+    void onRelease(std::size_t index, std::size_t slot);
     void endHold(Action &action);
 
     /// Points the action's rows at `chords_`, reusing parked rows before

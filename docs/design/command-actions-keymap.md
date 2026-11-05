@@ -40,9 +40,11 @@ start/end pairing apply to actions exactly as to `createCommand` bindings.
   `isButtonBound`). No `CommandId` is invalidated and the per-frame loop carries
   no tombstones; parked rows are reused by later chords of the same action.
 - **Holds** end through a latch-release row: it fires on the key's release
-  whatever modifiers are held or captured, and the action's own latch decides
-  whether a hold is live. Any binding change ends a live hold first, so a rebind
-  during a held press balances its release exactly once.
+  whatever modifiers are held or captured, and the action records which chord
+  slots the live hold admitted. A second chord pressed mid-hold joins it; the
+  hold ends when the last admitted chord is released, and a release from a slot
+  it never admitted is ignored. Any binding change ends a live hold first, so a
+  rebind during a held press balances its release exactly once.
 - **Conflicts** are scoped by context: two actions may share a chord when their
   contexts are disjoint; a `global` action overlaps every context. A plain
   `createCommand` row that would fire alongside the chord is a conflict that

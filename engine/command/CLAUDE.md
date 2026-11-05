@@ -126,8 +126,8 @@ by keys, widgets (`IRPrefab::Widget::bindAction`), Lua and `invokeAction`
 - Each chord owns ordinary rows: rebinding moves them in place, unbinding parks
   them (inactive, skipped by dispatch and `isButtonBound`), so capture,
   specificity and pairing apply unchanged. A chord's mask is exact.
-- A hold (`release_` set) ends through a latch-release row on key-up, and
-  before any binding change; it never ends twice.
+- A hold (`release_` set) ends when the last chord it admitted is released,
+  and before any binding change; it never ends twice.
 - `adoptNamedCommands(prefix)` turns named `createCommand` rows into actions,
   keeping each chord's body and blocked mask; start/end pairs stay plain.
 - `KeymapStore` (`IRCommand::keymap()`) persists overrides to

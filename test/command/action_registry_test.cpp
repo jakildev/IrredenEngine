@@ -166,6 +166,7 @@ class ActionRegistryTest : public testing::Test {
 
 constexpr KeyChord kK{IRInput::kKeyButtonK, IRInput::kModifierNone};
 constexpr KeyChord kJ{IRInput::kKeyButtonJ, IRInput::kModifierNone};
+constexpr KeyChord kL{IRInput::kKeyButtonL, IRInput::kModifierNone};
 constexpr KeyChord kCtrlK{IRInput::kKeyButtonK, IRInput::kModifierControl};
 
 TEST_F(ActionRegistryTest, IdAndKeyRunTheSameOperation) {
@@ -199,6 +200,18 @@ TEST_F(ActionRegistryTest, ReassignMovesDispatchAndIntrospection) {
     EXPECT_FALSE(registrationNamed("test.stamp", kK));
     EXPECT_TRUE(registrationNamed("test.stamp", kJ));
     EXPECT_TRUE(actions().findAction("test.stamp")->customized_);
+}
+
+TEST_F(ActionRegistryTest, ReplaceOntoAnotherBoundChordKeepsOneCopy) {
+    registerCounter("test.stamp", {kK, kJ, kL});
+    ASSERT_TRUE(actions().replaceChord("test.stamp", kK, kL).ok());
+    EXPECT_EQ(actions().findAction("test.stamp")->chords_, (std::vector<KeyChord>{kJ, kL}))
+        << "the replaced chord goes and the already-bound target is not duplicated";
+    tap(IRInput::kKeyButtonL);
+    EXPECT_EQ(fired("test.stamp"), 1) << "one physical press fires the operation once";
+    tap(IRInput::kKeyButtonK);
+    EXPECT_EQ(fired("test.stamp"), 1);
+    EXPECT_EQ(actions().overrides().at("test.stamp"), (std::vector<KeyChord>{kJ, kL}));
 }
 
 TEST_F(ActionRegistryTest, ClearSecondChordAndRestoreDefaults) {
@@ -360,6 +373,51 @@ TEST_F(HeldActionTest, RebindDuringHoldBalancesTheRelease) {
     tap(IRInput::kKeyButtonJ);
     EXPECT_EQ(m_starts, 2);
     EXPECT_EQ(m_ends, 2);
+}
+
+TEST_F(HeldActionTest, SecondChordPressedMidHoldJoinsIt) {
+    registerHold({kK, kJ});
+    m_input.press(IRInput::kKeyButtonK);
+    tick();
+    m_input.press(IRInput::kKeyButtonJ);
+    tick();
+    EXPECT_EQ(m_starts, 1) << "a second chord joins the live hold";
+    m_input.release(IRInput::kKeyButtonJ);
+    tick();
+    EXPECT_EQ(m_ends, 0) << "the chord that started the hold is still down";
+    m_input.release(IRInput::kKeyButtonK);
+    tick();
+    EXPECT_EQ(m_ends, 1);
+
+    m_input.press(IRInput::kKeyButtonK);
+    tick();
+    m_input.press(IRInput::kKeyButtonJ);
+    tick();
+    m_input.release(IRInput::kKeyButtonK);
+    tick();
+    EXPECT_EQ(m_ends, 1) << "the joined chord keeps the hold alive";
+    m_input.release(IRInput::kKeyButtonJ);
+    tick();
+    EXPECT_EQ(m_starts, 2);
+    EXPECT_EQ(m_ends, 2) << "the hold ends once, on the last admitted release";
+}
+
+TEST_F(HeldActionTest, ReleaseOfAChordTheHoldNeverAdmittedIsIgnored) {
+    registerHold({kK, kJ});
+    m_input.press(IRInput::kKeyButtonJ);
+    tick();
+    ASSERT_EQ(m_starts, 1);
+    m_commands.setKeyboardCaptured(true);
+    m_input.press(IRInput::kKeyButtonK);
+    tick();
+    m_commands.setKeyboardCaptured(false);
+    m_input.release(IRInput::kKeyButtonK);
+    tick();
+    EXPECT_EQ(m_ends, 0) << "K's press was captured, so its release cannot end J's hold";
+    m_input.release(IRInput::kKeyButtonJ);
+    tick();
+    EXPECT_EQ(m_starts, 1);
+    EXPECT_EQ(m_ends, 1);
 }
 
 TEST_F(HeldActionTest, ModifierLiftedFirstStillEndsTheHold) {

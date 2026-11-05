@@ -297,10 +297,14 @@ void ActionRegistry::onPress(std::size_t index, std::size_t slot) {
         return;
     }
     if (action.spec_.release_) {
-        if (action.holding_) {
+        const bool live = !action.heldSlots_.empty();
+        if (std::find(action.heldSlots_.begin(), action.heldSlots_.end(), slot) ==
+            action.heldSlots_.end()) {
+            action.heldSlots_.push_back(slot);
+        }
+        if (live) {
             return;
         }
-        action.holding_ = true;
     }
     const std::function<void()> invoke = action.spec_.invoke_;
     invoke();
@@ -372,15 +376,24 @@ std::size_t ActionRegistry::adoptNamedCommands(
     return registrations.size();
 }
 
-void ActionRegistry::onRelease(std::size_t index) {
-    endHold(m_actions[index]);
+void ActionRegistry::onRelease(std::size_t index, std::size_t slot) {
+    Action &action = m_actions[index];
+    const auto it = std::find(action.heldSlots_.begin(), action.heldSlots_.end(), slot);
+    if (it == action.heldSlots_.end()) {
+        return;
+    }
+    if (action.heldSlots_.size() > 1) {
+        action.heldSlots_.erase(it);
+        return;
+    }
+    endHold(action);
 }
 
 void ActionRegistry::endHold(Action &action) {
-    if (!action.holding_) {
+    if (action.heldSlots_.empty()) {
         return;
     }
-    action.holding_ = false;
+    action.heldSlots_.clear();
     const std::function<void()> release = action.spec_.release_;
     if (release) {
         release();
@@ -417,7 +430,8 @@ void ActionRegistry::syncRows(std::size_t index) {
         }
         ChordRows &rows = m_actions[index].rows_[slot];
         if (hold && !rows.hasRelease_) {
-            rows.release_ = m_commands.createActionRow([this, index]() { onRelease(index); }, true);
+            rows.release_ =
+                m_commands.createActionRow([this, index, slot]() { onRelease(index, slot); }, true);
             rows.hasRelease_ = true;
         }
         const KeyChord chord = m_actions[index].chords_[slot];
@@ -559,8 +573,11 @@ BindResult ActionRegistry::replaceChord(
     if (it == chords.end()) {
         return {BindStatus::NOT_BOUND, {}};
     }
-    *it = chord;
-    chords.erase(std::unique(chords.begin(), chords.end()), chords.end());
+    if (std::find(chords.begin(), chords.end(), chord) != chords.end()) {
+        chords.erase(it);
+    } else {
+        *it = chord;
+    }
     return applyChords(m_index.at(std::string(id)), std::move(chords), policy, chord);
 }
 
