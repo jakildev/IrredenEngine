@@ -180,6 +180,8 @@ add_executable(IrredenEngineTest
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
   render/widget_list_scroll_test.cpp
+  render/widget_slider_snap_fp_contract_off_test.cpp
+  render/widget_slider_snap_fp_contract_on_test.cpp
   render/widget_slider_gesture_test.cpp
   render/widget_dropdown_window_test.cpp
   render/widget_dropdown_typeahead_test.cpp
@@ -298,6 +300,17 @@ add_executable(IrredenEngineTest
   world/world_config_window_mode_test.cpp
   world/save_serializers_test.cpp
 )
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  set_source_files_properties(
+    render/widget_slider_snap_fp_contract_off_test.cpp
+    PROPERTIES COMPILE_OPTIONS "-ffp-contract=off"
+  )
+  set_source_files_properties(
+    render/widget_slider_snap_fp_contract_on_test.cpp
+    PROPERTIES COMPILE_OPTIONS "-ffp-contract=on"
+  )
+endif()
 
 FetchContent_Declare(
     googletest

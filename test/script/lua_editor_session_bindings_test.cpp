@@ -2,6 +2,7 @@
 
 #include "../../creations/editors/voxel_editor/editor_lua_host.hpp"
 
+#include <bit>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -238,6 +239,10 @@ class LuaEditorSessionBindingsTest : public testing::Test {
             IREditor.registerRecipe("wide_int", {
                 { name = "value", type = IREditor.ParamType.INT, default = 1, min = 0, max = 29 },
             }, function(values, size) return {} end)
+            IREditor.registerRecipe("non_binary_float", {
+                { name = "value", type = IREditor.ParamType.FLOAT, default = 0.7, min = 0.4,
+                  max = 0.9, step = 0.025 },
+            }, function(values, size) return { { 7, 6, 5 } } end)
             -- A column at (4, 4) whose top cell is z = 8 - height; its tip
             -- handle sets the height from the dragged cell's z.
             IREditor.registerRecipe("matrix_column", {
@@ -1160,7 +1165,7 @@ TEST_F(LuaEditorSessionBindingsTest, RegisterRecipeRejectsMalformedHandles) {
         EXPECT_NE(std::string(sol::error(result).what()).find(token), std::string::npos)
             << sol::error(result).what();
     }
-    EXPECT_EQ(m_host.recipes().size(), 8u);
+    EXPECT_EQ(m_host.recipes().size(), 9u);
 }
 
 TEST_F(LuaEditorSessionBindingsTest, RegisterRecipeRejectsMalformedSteps) {
@@ -1189,7 +1194,7 @@ TEST_F(LuaEditorSessionBindingsTest, RegisterRecipeRejectsMalformedSteps) {
         EXPECT_NE(what.find("param 'n'"), std::string::npos) << what;
         EXPECT_NE(what.find(token), std::string::npos) << what;
     }
-    EXPECT_EQ(m_host.recipes().size(), 8u);
+    EXPECT_EQ(m_host.recipes().size(), 9u);
     const IRVoxelEditor::RecipeParam &stepped = m_host.recipes()[3].params_.front();
     ASSERT_TRUE(stepped.step_.has_value());
     EXPECT_EQ(*stepped.step_, 0.25f);
@@ -1249,6 +1254,24 @@ TEST_F(LuaEditorSessionBindingsTest, ApplyRecipeAdmitsExactSteppedFloatTargets) 
         EXPECT_TRUE(builder.model().occupied(cell));
         EXPECT_FALSE(builder.model().occupied(cell + IRMath::ivec3(1, 0, 0)));
         EXPECT_FALSE(builder.model().occupied(IRMath::ivec3(1, 9, 9)));
+        const Recipe recipe = builder.finish();
+        EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
+        EXPECT_GT(eventCount(recipe), 0u);
+    }
+}
+
+TEST_F(LuaEditorSessionBindingsTest, NonBinarySteppedFloatLoadsAndAppliesCanonicalTarget) {
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    const IRVoxelEditor::RecipeParam &param = view.recipes_[7].params_.front();
+    const float lattice = IRVoxelEditor::recipeParamLatticeValue(param, 0.7f);
+    EXPECT_EQ(std::bit_cast<uint32_t>(lattice), 0x3f333333u);
+    RecordProperty("canonical_non_binary_lattice_bits", "0x3f333333");
+
+    for (const std::vector<std::pair<std::string, float>> &values :
+         std::vector<std::vector<std::pair<std::string, float>>>{{}, {{"value", lattice}}}) {
+        Builder builder("non_binary", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
+        builder.applyRecipe("non_binary_float", values);
+        EXPECT_TRUE(builder.model().occupied(IRMath::ivec3(7, 6, 5)));
         const Recipe recipe = builder.finish();
         EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
         EXPECT_GT(eventCount(recipe), 0u);

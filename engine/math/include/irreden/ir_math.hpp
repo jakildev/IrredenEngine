@@ -181,6 +181,11 @@ constexpr int roundHalfUp(float value) {
     return static_cast<int>(glm::floor(value + 0.5f));
 }
 
+/// Computes @p x * @p y + @p z with one final rounding.
+inline float fusedMultiplyAdd(float x, float y, float z) {
+    return std::fma(x, y, z);
+}
+
 /// Component-wise round-half-up of a 3-vector. See @ref roundHalfUp.
 constexpr ivec3 roundVec3HalfUp(vec3 value) {
     return ivec3(roundHalfUp(value.x), roundHalfUp(value.y), roundHalfUp(value.z));

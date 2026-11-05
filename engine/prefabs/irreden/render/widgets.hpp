@@ -46,11 +46,10 @@ inline float clampSliderValue(const IRComponents::C_WidgetSlider &slider, float 
 inline float snapSliderValue(float minValue, float maxValue, float step, float value) {
     const float clamped = IRMath::clamp(value, minValue, maxValue);
     const float steps = (clamped - minValue) / step;
-    return IRMath::clamp(
-        minValue + static_cast<float>(IRMath::roundHalfUp(steps)) * step,
-        minValue,
-        maxValue
-    );
+    const float latticeValue =
+        IRMath::fusedMultiplyAdd(static_cast<float>(IRMath::roundHalfUp(steps)), step, minValue);
+    // The fused reconstruction makes every host round k * step + minValue once.
+    return IRMath::clamp(latticeValue, minValue, maxValue);
 }
 
 inline float snapSliderValue(const IRComponents::C_WidgetSlider &slider, float value) {
