@@ -155,6 +155,7 @@
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include "hierarchy_panel.hpp"
 #include "part_edit_history.hpp"
+#include "recipe_reapply.hpp"
 #include "local_part_edit.hpp"
 #include "sculpt_panel.hpp"
 
@@ -3111,32 +3112,19 @@ bool reapplyRecipe(
     if (!evaluateRecipeCells(recipeIndex, binding.values_, binding.mask_, set, oldCells) ||
         !evaluateRecipeCells(recipeIndex, newValues, binding.mask_, set, newCells))
         return false;
-    const auto flatOf = [&set](const RecipeCell &cell) {
-        return static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell.local_, set.size_));
-    };
-    std::vector<std::size_t> newFlats;
-    newFlats.reserve(newCells.size());
-    for (const RecipeCell &cell : newCells)
-        newFlats.push_back(flatOf(cell));
-    std::sort(newFlats.begin(), newFlats.end());
-    const Color fallbackColor = binding.fallbackColor_;
-    for (const RecipeCell &cell : oldCells) {
-        const std::size_t flat = flatOf(cell);
-        if (!std::binary_search(newFlats.begin(), newFlats.end(), flat))
-            applyEditRaw(voxelSetEntity, set, cell.local_, flat, false, fallbackColor, 0);
-    }
-    for (const RecipeCell &cell : newCells) {
-        applyEditRaw(
-            voxelSetEntity,
-            set,
-            cell.local_,
-            flatOf(cell),
-            true,
-            cell.color_.value_or(fallbackColor),
-            0
-        );
-    }
-    set.resyncAfterRawEdits();
+    const auto edits = planRecipeReapply(
+        oldCells,
+        newCells,
+        set.authoredRecords(),
+        set.size_,
+        binding.fallbackColor_,
+        binding.fallbackColor_
+    );
+    if (!edits)
+        return false;
+    for (const RecipeReapplyEdit &edit : *edits)
+        applyEditRaw(voxelSetEntity, set, edit.local_, edit.flat_, edit.place_, edit.color_, 0);
+    set.resyncAfterAuthoredEdits();
     return true;
 }
 
@@ -3478,25 +3466,59 @@ void applyRecipe(int recipeIndex) {
     const Color fallbackColor = kPaletteColors[g_editor.activeSwatchIdx_];
     int written = 0;
     int skipped = 0;
-    for (const RecipeCell &cell : cells) {
-        const ivec3 local = cell.local_;
-        if (local.x < 0 || local.x >= set.size_.x || local.y < 0 || local.y >= set.size_.y ||
-            local.z < 0 || local.z >= set.size_.z) {
-            ++skipped;
-            continue;
-        }
-        const std::size_t flat =
-            static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
-        applyEditRaw(
-            g_sceneVoxelSetEntity,
-            set,
-            local,
-            flat,
-            true,
-            cell.color_.value_or(fallbackColor),
-            0
+    if (beforeBinding && afterBinding && beforeBinding->recipe_ == recipe.name_) {
+        std::vector<RecipeCell> oldCells;
+        if (!evaluateRecipeCells(
+                static_cast<std::size_t>(recipeIndex),
+                beforeBinding->values_,
+                beforeBinding->mask_,
+                set,
+                oldCells
+            ))
+            return;
+        const auto edits = planRecipeReapply(
+            oldCells,
+            cells,
+            set.authoredRecords(),
+            set.size_,
+            beforeBinding->fallbackColor_,
+            fallbackColor
         );
-        ++written;
+        if (!edits)
+            return;
+        for (const RecipeReapplyEdit &edit : *edits) {
+            applyEditRaw(
+                g_sceneVoxelSetEntity,
+                set,
+                edit.local_,
+                edit.flat_,
+                edit.place_,
+                edit.color_,
+                0
+            );
+            ++written;
+        }
+    } else {
+        for (const RecipeCell &cell : cells) {
+            const ivec3 local = cell.local_;
+            if (local.x < 0 || local.x >= set.size_.x || local.y < 0 || local.y >= set.size_.y ||
+                local.z < 0 || local.z >= set.size_.z) {
+                ++skipped;
+                continue;
+            }
+            const std::size_t flat =
+                static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
+            applyEditRaw(
+                g_sceneVoxelSetEntity,
+                set,
+                local,
+                flat,
+                true,
+                cell.color_.value_or(fallbackColor),
+                0
+            );
+            ++written;
+        }
     }
     if (part != nullptr && afterBinding) {
         const std::string partId = part->id_;
