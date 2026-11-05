@@ -33,6 +33,7 @@ namespace IRSystem {
 // remains separate, so start navigation outside interactive GUI controls.
 template <> struct System<CAMERA_KEY_DRAG_PAN> {
     bool dragging_ = false;
+    bool (*canStartGesture_)() = nullptr;
     vec2 dragStartMouse_ = vec2(0.0f);
     vec2 dragStartCameraPos_ = vec2(0.0f);
 
@@ -46,7 +47,8 @@ template <> struct System<CAMERA_KEY_DRAG_PAN> {
             IRInput::checkKeyMouseButton(IRInput::kKeyButtonSpace, IRInput::PRESSED);
         const bool altHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt);
 
-        if (leftPressed && spaceHeld && !altHeld && !dragging_) {
+        if (leftPressed && spaceHeld && !altHeld && !dragging_ &&
+            (!canStartGesture_ || canStartGesture_())) {
             dragging_ = true;
             dragStartMouse_ = IRInput::getMousePositionScreen();
             dragStartCameraPos_ = camPos.pos_;

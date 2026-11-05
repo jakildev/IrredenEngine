@@ -1,6 +1,7 @@
 #ifndef PALETTE_PANEL_H
 #define PALETTE_PANEL_H
 
+#include "editor_widget_geometry.hpp"
 #include "palette_model.hpp"
 
 #include <irreden/render/trixel_text.hpp>
@@ -209,9 +210,7 @@ class PalettePanel {
     }
 
     bool containsCursor(IRMath::vec2 cursor) const {
-        return m_panel != IREntity::kNullEntity && IRPrefab::Widget::isVisible(m_panel) &&
-               cursor.x >= m_position.x && cursor.y >= m_position.y &&
-               cursor.x < m_position.x + m_size.x && cursor.y < m_position.y + m_size.y;
+        return widgetContainsCursor(m_panel, cursor);
     }
 
   private:
