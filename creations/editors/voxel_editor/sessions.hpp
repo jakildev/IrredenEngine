@@ -152,6 +152,7 @@ enum class Id {
     ANIMATION_BOUNDARY,
     SCULPT_WORKFLOW,
     SCULPT_SINGLE_SAVE,
+    LOCAL_CANVAS,
     HIERARCHY_WORKFLOW,
     TIER_SCRUB,
     RADIAL_ARRAY,
@@ -183,12 +184,31 @@ struct AnimationBoundaryCheck {
 
 bool evaluateAnimationBoundaryCheck(const void *context, std::string &actual);
 bool evaluateWorkspaceCheck(const void *context, std::string &actual);
+struct LocalCanvasCheck {
+    bool editing_;
+    bool occupied_;
+};
+bool evaluateLocalCanvasCheck(const void *context, std::string &actual);
+inline IRComponents::C_LocalTransform localCanvasParentTransform() {
+    IRComponents::C_LocalTransform transform{IRMath::vec3(12, 0, 0)};
+    transform.rotation_ = IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), 0.35f);
+    transform.scale_ = IRMath::vec3(1.5f);
+    return transform;
+}
+inline IRComponents::C_LocalTransform localCanvasChildTransform() {
+    IRComponents::C_LocalTransform transform{IRMath::vec3(3, 1, 0)};
+    transform.rotation_ = IRMath::quatAxisAngle(IRMath::vec3(0, 1, 0), 0.4f);
+    transform.scale_ = IRMath::vec3(0.8f);
+    return transform;
+}
 
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
 // unknown name is rejected at parse time with the allowed list; this maps the
 // validated string to the typed id (the "enum, not string-match" rule at the
 // CLI edge, .claude/rules/cpp-lua-enums.md).
 inline Id idFromName(const std::string &name) {
+    if (name == "local_canvas")
+        return Id::LOCAL_CANVAS;
     if (name == "hierarchy_workflow")
         return Id::HIERARCHY_WORKFLOW;
     if (name == "sculpt_workflow")
@@ -2027,6 +2047,49 @@ inline Recipe build(
     const ModuleSessionView *moduleView
 ) {
     switch (id) {
+    case Id::LOCAL_CANVAS: {
+        Builder builder("local_canvas", sceneSize, sceneOrigin);
+        const IRMath::vec3 origin(291, 0, 0);
+        const IRMath::vec2 stageCamera = -IRMath::pos3DtoPos2DIso(origin + IRMath::vec3(2));
+        const auto button = IRMath::vec2(474, 61);
+        builder.segment("open_rotated_child");
+        builder.clickGui(button);
+        builder.segment("draw_local_cells", kSessionZoom, stageCamera);
+        builder.clickGui(sculptButtonCenter(0));
+        builder.dragWorld(origin + IRMath::vec3(1, 2, 4), origin + IRMath::vec3(3, 2, 4));
+        builder.segment("undo_local_stroke", kSessionZoom, stageCamera);
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.segment("redo_local_stroke", kSessionZoom, stageCamera);
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        builder.segment("save_while_editing", kSessionZoom, stageCamera);
+        builder.save();
+        builder.expectPartCount(2, "proxy_is_not_an_authored_part");
+        builder.expectManifestContains("parent = \"part_0\"", "source_parent_saved");
+        builder.segment("done_editing", kSessionZoom, stageCamera);
+        builder.clickGui(button);
+        builder.segment("reopen_original_assembly");
+        builder.reload();
+        builder.expectPartCount(2, "only_authored_parts_reload");
+        Recipe recipe = builder.finish();
+        static constexpr LocalCanvasCheck checks[] = {
+            {true, false},
+            {true, true},
+            {true, false},
+            {true, true},
+            {true, true},
+            {false, true},
+            {false, true}
+        };
+        for (std::size_t i = 0; i < std::size(checks); ++i)
+            recipe.segments_[i].assertions_.push_back(
+                IRPrefab::GuiTest::predicate(
+                    &evaluateLocalCanvasCheck,
+                    &checks[i],
+                    "local_edit_preserves_placement"
+                )
+            );
+        return recipe;
+    }
     case Id::HIERARCHY_WORKFLOW: {
         Builder builder("hierarchy_workflow", sceneSize, sceneOrigin);
         const auto chooseOtherParent = [&]() {

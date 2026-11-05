@@ -112,7 +112,7 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   CORNER part usually fails it): `M`, the twin, the dropdown and `load` refuse.
 - A selected part's gizmo is drawn on its pivot's pixels, in front of the part's
   own content (`EntityScene::partViewClearance`); other content can occlude it.
-- `EntityScene` owns a root and stable part records with optional parent ids. Attachment preserves world pose and rejects cycles; removing a parent detaches children preserving pose. Each part retains its local voxel canvas. Only the selected part receives paint; rotated/scaled/detached parts still require a future local-edit view.
+- `EntityScene` owns a root and stable part records with optional parent ids. Attachment preserves world pose and rejects cycles; removing a parent detaches children preserving pose. Each part retains its local voxel canvas. Only the selected part receives paint. LOCAL EDIT uses an identity GRID proxy for rotated/scaled/detached parts; edits and history target the original authored records, and DONE EDIT restores assembly. Local canvas supports sculpt/color/symmetry/history/save; layers, class painting, loft and joint authoring require leaving that view.
 - A part's LOD band (`lodMax_` fine .. `lodMin_` coarse) is mirrored onto its
   set / shape so the engine's LOD gate previews it; parts stay resident (no
   `PREFAB_LOD_PARTS`). TIER and `,` / `.` pin `C_LodTierOverride` on the root
