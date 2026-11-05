@@ -314,4 +314,3 @@ def interior_mean(owners: Owners, frame: Frame) -> dict[str, tuple[float, float,
                 acc[c] += frame.rgb[i][c]
             acc[3] += 1
     return {body: (r / n, g / n, b / n) for body, (r, g, b, n) in sums.items()}
-
