@@ -740,6 +740,25 @@ IREditor.registerSession("test_unreachable", function(session)
     session:click({ 0, 0, 0 })
 end)
 
+-- This target projects into RECIPES at the default session camera. It is an
+-- expected-failing session: the scene-press assertion must name the swallowed click.
+IREditor.registerSession("test_click_under_panel", function(session)
+    session:addVoxelPart()
+    session:applyRecipe("test_arm", { length = 4 })
+    session:segment("click")
+    session:click({ 12, 8, 4 })
+    session:expectPartOccupancy(0, { 12, 8, 4 }, true, "on_end_filled")
+end)
+
+IREditor.registerSession("test_click_after_focus", function(session)
+    session:addVoxelPart()
+    session:applyRecipe("test_arm", { length = 4 })
+    session:segment("click")
+    session:clickGui({ 580, 87 })
+    session:click({ 12, 8, 4 })
+    session:expectPartOccupancy(0, { 12, 8, 4 }, true, "on_end_filled")
+end)
+
 -- At the default scene size the BAKE slider can hold a radius either side of
 -- 2.0981 for this request, where the sphere gains 32 cells, (7, 7, 5) among
 -- them. bakeSphere refuses it, so the part stays clear and the click has
