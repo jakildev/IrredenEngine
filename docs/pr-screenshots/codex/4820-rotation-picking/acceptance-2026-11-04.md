@@ -7,22 +7,27 @@ tie runs and 288-sample cube probe pass. Removing only the retained-ID binding
 makes the tie probe fail with 5,090 disallowed reads, proving that the hidden
 private canvas exercises the binding lifetime.
 
-The macOS display connection worked in this session. Performance acceptance
-remains blocked: configuring the archived pre-implementation source attempted
-an out-of-sandbox RtAudio package-registry write and received `Operation not
-permitted`. [The exact command](blocked-base-configure.json) records its argv.
-CMake returned zero with a warning, but the denied operation was not retried
-and no baseline build or A/B measurements followed. The manual configuration
-attempt also violated the fleet's configured-tree build rule; a resumed run
-must use a preconfigured baseline tree. This evidence does not close #4820.
+The macOS display connection worked in this session. The resumed performance
+pass reused the configured build tree: it built the implementation's first
+parent (`45cf005a8`), copied that complete tree as the frozen base arm, then
+built current master (`463814f2a`) as the head arm. Five interleaved pairs at
+yaw 0.35 used 300-frame windows with GPU stage timing enabled. Frame means are
+18.662 ms base versus 18.906 ms head (1.013x); the three scoped GPU rows are
+all lower at head mean. [The comparison](performance-comparison.json) retains
+the paired inputs, base spreads, ratios and commands. The earlier denied
+manual configuration remains recorded in
+[the blocked receipt](blocked-base-configure.json), but no fresh configure or
+package-registry write was needed for the completed measurement.
 
-The full ShapeDebug render verifier also fails 19 of 148 checks (ten extra
-runs skipped for missing macOS references). Failures are 180/270-degree rows
-with maximum channel differences of 109–120 against the limit of 64; the full
-table is in [the render report](render-verify-2026-11-04.txt). CanvasStress also
-fails 21 of 59 checks; its table is in the same report. No references were
-re-blessed and no claim is made that criterion 6 passes. OpenGL runtime
-verification remains tracked in #4865.
+The full ShapeDebug render verifier fails 19 of 148 checks (ten extra runs
+skip for missing macOS references), and CanvasStress fails 21 of 59 checks.
+Current master reproduces the earlier report row for row, including the
+ShapeDebug maximum channel deltas of 109–120 and every CanvasStress metric.
+The PR therefore moves no render-verifier row. No reference was re-blessed;
+the inherited macOS reference drift and ten missing references are tracked in
+#4904. The original tables remain in
+[the render report](render-verify-2026-11-04.txt). OpenGL runtime verification
+remains tracked in #4865.
 
 The original fixture-only controls, captures and amendment receipts retain
 their provenance in the [historical evidence](README.md).
