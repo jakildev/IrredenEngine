@@ -1,0 +1,2318 @@
+{
+  "provenance": {
+    "source_revision": "5d93af97cd1aa625995883d8fe641f8330f2e711",
+    "backend": "metal",
+    "build": "debug",
+    "build_type": "Debug",
+    "build_dir": "build",
+    "binary_sha256": "0eebb3615361b3c9ddb1551837ef487014a52442ee8a64a1ad947d8d80e8f475",
+    "sampler": "ir_sun_shadow_sample.metal",
+    "pristine_sampler_sha256": "890ea100e64274cd2d9aa36d64b25e2bd8712cb1b85b85fdbafcd17bec343b2d",
+    "pristine_shader_dir_sha256": "e419d9ebb8503b3b5c39df6c59b577db3781ee7e2d1d408679f61892f59b5a59",
+    "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+    "controller_sha256": "8f04a40b357fe0cc3714e475fc0522d8d817a8179e80d8d8887796c1cc6e18e8",
+    "variant_sampler_sha256": {
+      "production": "890ea100e64274cd2d9aa36d64b25e2bd8712cb1b85b85fdbafcd17bec343b2d",
+      "ablation": "bc6f5d9e56f30b00a383d2f28bd95bfb4f30cb4cdc6df3ef9b429a9c83ef48f0",
+      "entry-shadow": "793fd249dac39cbe8f2c5ed1cb512d0d54c2e37ffae0a87d9978e6e4abd7e359",
+      "entry-lit": "4931c46c9e472ebdd27d364113c92416a8b5e624a8d6344ca42e6f50f687ded6",
+      "hit-cleared": "34ed0630945a474edc8d224da228e20f83c6c1adcfd48dc2a9d835be6a0f8148"
+    },
+    "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "host_gpu": [
+      {
+        "name": "Apple M4 Max",
+        "cores": "32"
+      }
+    ],
+    "python": "3.14.3"
+  },
+  "groups": [
+    {
+      "mode": "counters",
+      "case": "far-128",
+      "pairs": 5,
+      "metrics": {
+        "entityCanvasToFb": {
+          "n": 5,
+          "production_mean": 9.3248,
+          "production_min": 9.088,
+          "production_max": 9.539,
+          "ablation_mean": 6.014,
+          "ablation_min": 5.962,
+          "ablation_max": 6.073,
+          "delta_mean": 3.3107999999999995,
+          "deltas": [
+            3.4659999999999993,
+            3.0919999999999987,
+            3.2350000000000003,
+            3.2509999999999994,
+            3.5100000000000007
+          ],
+          "delta_sd": 0.17389853363384108,
+          "delta_lower_95": 3.1449948109637087,
+          "delta_upper_95": 3.4766051890362903,
+          "share": 0.35505319148936165
+        },
+        "steady_frame_avg": {
+          "n": 5,
+          "production_mean": 77.812,
+          "production_min": 76.75,
+          "production_max": 78.58,
+          "ablation_mean": 74.176,
+          "ablation_min": 73.23,
+          "ablation_max": 74.74,
+          "delta_mean": 3.6359999999999983,
+          "deltas": [
+            3.519999999999996,
+            3.6299999999999955,
+            3.5999999999999943,
+            3.5200000000000102,
+            3.9099999999999966
+          ],
+          "delta_sd": 0.16071714283174426,
+          "delta_lower_95": 3.482762731739306,
+          "delta_upper_95": 3.7892372682606905,
+          "share": 0.04672801110368579
+        },
+        "frame_avg": {
+          "n": 5,
+          "production_mean": 78.024,
+          "production_min": 76.87,
+          "production_max": 78.83,
+          "ablation_mean": 74.392,
+          "ablation_min": 73.39,
+          "ablation_max": 75.05,
+          "delta_mean": 3.6320000000000023,
+          "deltas": [
+            3.480000000000004,
+            3.6799999999999926,
+            3.6200000000000045,
+            3.430000000000007,
+            3.950000000000003
+          ],
+          "delta_sd": 0.20462160198766713,
+          "delta_lower_95": 3.436901613087144,
+          "delta_upper_95": 3.8270983869128608,
+          "share": 0.04654977955500875
+        },
+        "gpu_frame:commandBufferSpans": {
+          "n": 5,
+          "production_mean": 47.2562,
+          "production_min": 46.871,
+          "production_max": 47.926,
+          "ablation_mean": 43.758,
+          "ablation_min": 43.557,
+          "ablation_max": 44.087,
+          "delta_mean": 3.4981999999999998,
+          "deltas": [
+            3.314,
+            3.341000000000001,
+            3.479999999999997,
+            3.517000000000003,
+            3.8389999999999986
+          ],
+          "delta_sd": 0.20944617446971844,
+          "delta_lower_95": 3.298501579172594,
+          "delta_upper_95": 3.6978984208274057,
+          "share": 0.07402626533661191
+        },
+        "gpu_frame:envelope": {
+          "n": 5,
+          "production_mean": 47.2562,
+          "production_min": 46.871,
+          "production_max": 47.926,
+          "ablation_mean": 43.758,
+          "ablation_min": 43.557,
+          "ablation_max": 44.087,
+          "delta_mean": 3.4981999999999998,
+          "deltas": [
+            3.314,
+            3.341000000000001,
+            3.479999999999997,
+            3.517000000000003,
+            3.8389999999999986
+          ],
+          "delta_sd": 0.20944617446971844,
+          "delta_lower_95": 3.298501579172594,
+          "delta_upper_95": 3.6978984208274057,
+          "share": 0.07402626533661191
+        },
+        "gpu_stage:bakeSunShadowMap": {
+          "n": 5,
+          "production_mean": 0.0668,
+          "production_min": 0.066,
+          "production_max": 0.068,
+          "ablation_mean": 0.06720000000000001,
+          "ablation_min": 0.067,
+          "ablation_max": 0.068,
+          "delta_mean": -0.00040000000000000034,
+          "deltas": [
+            0.0,
+            0.0,
+            -0.0020000000000000018,
+            0.0010000000000000009,
+            -0.0010000000000000009
+          ],
+          "delta_sd": 0.001140175425099139,
+          "delta_lower_95": -0.0014871109602979833,
+          "delta_upper_95": 0.0006871109602979825,
+          "share": -0.005988023952095814
+        },
+        "gpu_stage:canvasClear": {
+          "n": 5,
+          "production_mean": 0.0292,
+          "production_min": 0.029,
+          "production_max": 0.03,
+          "ablation_mean": 0.029,
+          "ablation_min": 0.029,
+          "ablation_max": 0.029,
+          "delta_mean": 0.0001999999999999995,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0009999999999999974,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.00044721359549995676,
+          "delta_lower_95": -0.00022639999999999943,
+          "delta_upper_95": 0.0006263999999999984,
+          "share": 0.006849315068493133
+        },
+        "gpu_stage:cardinalSurfaceFb": {
+          "n": 5,
+          "production_mean": 0.445,
+          "production_min": 0.44,
+          "production_max": 0.448,
+          "ablation_mean": 0.42319999999999997,
+          "ablation_min": 0.419,
+          "ablation_max": 0.427,
+          "delta_mean": 0.02180000000000002,
+          "deltas": [
+            0.02100000000000002,
+            0.027000000000000024,
+            0.02200000000000002,
+            0.026000000000000023,
+            0.013000000000000012
+          ],
+          "delta_sd": 0.005540758070878032,
+          "delta_lower_95": 0.016517112213949664,
+          "delta_upper_95": 0.027082887786050377,
+          "share": 0.048988764044943865
+        },
+        "gpu_stage:computeLightVolume": {
+          "n": 5,
+          "production_mean": 0.046,
+          "production_min": 0.046,
+          "production_max": 0.046,
+          "ablation_mean": 0.0464,
+          "ablation_min": 0.046,
+          "ablation_max": 0.047,
+          "delta_mean": -0.00040000000000000034,
+          "deltas": [
+            0.0,
+            0.0,
+            -0.0010000000000000009,
+            0.0,
+            -0.0010000000000000009
+          ],
+          "delta_sd": 0.0005477225575051667,
+          "delta_lower_95": -0.0009222312131613745,
+          "delta_upper_95": 0.0001222312131613738,
+          "share": -0.00869565217391305
+        },
+        "gpu_stage:computeSunShadow": {
+          "n": 5,
+          "production_mean": 0.0494,
+          "production_min": 0.049,
+          "production_max": 0.05,
+          "ablation_mean": 0.034,
+          "ablation_min": 0.034,
+          "ablation_max": 0.034,
+          "delta_mean": 0.0154,
+          "deltas": [
+            0.015,
+            0.016,
+            0.015,
+            0.015,
+            0.016
+          ],
+          "delta_sd": 0.0005477225575051667,
+          "delta_lower_95": 0.014877768786838627,
+          "delta_upper_95": 0.015922231213161376,
+          "share": 0.3117408906882591
+        },
+        "gpu_stage:computeVoxelAO": {
+          "n": 5,
+          "production_mean": 0.020800000000000003,
+          "production_min": 0.02,
+          "production_max": 0.021,
+          "ablation_mean": 0.0216,
+          "ablation_min": 0.021,
+          "ablation_max": 0.023,
+          "delta_mean": -0.0007999999999999993,
+          "deltas": [
+            0.0,
+            0.0,
+            -0.0009999999999999974,
+            -0.0010000000000000009,
+            -0.0019999999999999983
+          ],
+          "delta_sd": 0.0008366600265340749,
+          "delta_lower_95": -0.001597721354860203,
+          "delta_upper_95": -2.278645139795624e-06,
+          "share": -0.03846153846153842
+        },
+        "gpu_stage:fbToScreen": {
+          "n": 5,
+          "production_mean": 0.031,
+          "production_min": 0.031,
+          "production_max": 0.031,
+          "ablation_mean": 0.0308,
+          "ablation_min": 0.03,
+          "ablation_max": 0.031,
+          "delta_mean": 0.00020000000000000017,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0010000000000000009,
+            0.0
+          ],
+          "delta_sd": 0.00044721359549995833,
+          "delta_lower_95": -0.00022640000000000016,
+          "delta_upper_95": 0.0006264000000000005,
+          "share": 0.006451612903225812
+        },
+        "gpu_stage:lightingToTrixel": {
+          "n": 5,
+          "production_mean": 0.0102,
+          "production_min": 0.01,
+          "production_max": 0.011,
+          "ablation_mean": 0.0102,
+          "ablation_min": 0.01,
+          "ablation_max": 0.011,
+          "delta_mean": 0.0,
+          "deltas": [
+            0.0,
+            0.0,
+            -0.0009999999999999992,
+            0.0009999999999999992,
+            0.0
+          ],
+          "delta_sd": 0.000707106781186547,
+          "delta_lower_95": -0.0006741975971478979,
+          "delta_upper_95": 0.0006741975971478979,
+          "share": 0.0
+        },
+        "gpu_stage:trixelToFb": {
+          "n": 5,
+          "production_mean": 0.047,
+          "production_min": 0.047,
+          "production_max": 0.047,
+          "ablation_mean": 0.0476,
+          "ablation_min": 0.047,
+          "ablation_max": 0.049,
+          "delta_mean": -0.0006000000000000005,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0010000000000000009,
+            -0.0020000000000000018
+          ],
+          "delta_sd": 0.0008944271909999167,
+          "delta_lower_95": -0.001452800000000001,
+          "delta_upper_95": 0.0002528000000000002,
+          "share": -0.01276595744680852
+        },
+        "gpu_stage:voxelCardinalElect": {
+          "n": 5,
+          "production_mean": 0.011,
+          "production_min": 0.011,
+          "production_max": 0.011,
+          "ablation_mean": 0.011,
+          "ablation_min": 0.011,
+          "ablation_max": 0.011,
+          "delta_mean": 0.0,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0,
+          "delta_lower_95": 0.0,
+          "delta_upper_95": 0.0,
+          "share": 0.0
+        },
+        "gpu_stage:voxelCompact": {
+          "n": 5,
+          "production_mean": 0.014,
+          "production_min": 0.014,
+          "production_max": 0.014,
+          "ablation_mean": 0.014,
+          "ablation_min": 0.014,
+          "ablation_max": 0.014,
+          "delta_mean": 0.0,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0,
+          "delta_lower_95": 0.0,
+          "delta_upper_95": 0.0,
+          "share": 0.0
+        },
+        "gpu_stage:voxelStage1": {
+          "n": 5,
+          "production_mean": 0.0322,
+          "production_min": 0.032,
+          "production_max": 0.033,
+          "ablation_mean": 0.0322,
+          "ablation_min": 0.032,
+          "ablation_max": 0.033,
+          "delta_mean": 0.0,
+          "deltas": [
+            -0.0010000000000000009,
+            0.0,
+            0.0,
+            0.0010000000000000009,
+            0.0
+          ],
+          "delta_sd": 0.0007071067811865482,
+          "delta_lower_95": -0.0006741975971478991,
+          "delta_upper_95": 0.0006741975971478991,
+          "share": 0.0
+        },
+        "gpu_stage:voxelStage2": {
+          "n": 5,
+          "production_mean": 0.0126,
+          "production_min": 0.012,
+          "production_max": 0.013,
+          "ablation_mean": 0.012799999999999999,
+          "ablation_min": 0.012,
+          "ablation_max": 0.013,
+          "delta_mean": -0.00019999999999999982,
+          "deltas": [
+            -0.0009999999999999992,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0004472135954999576,
+          "delta_lower_95": -0.0006263999999999995,
+          "delta_upper_95": 0.00022639999999999987,
+          "share": -0.015873015873015858
+        },
+        "gpu_stage:voxelSunFaces": {
+          "n": 5,
+          "production_mean": 0.019,
+          "production_min": 0.019,
+          "production_max": 0.019,
+          "ablation_mean": 0.0194,
+          "ablation_min": 0.019,
+          "ablation_max": 0.02,
+          "delta_mean": -0.00040000000000000034,
+          "deltas": [
+            -0.0010000000000000009,
+            -0.0010000000000000009,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0005477225575051667,
+          "delta_lower_95": -0.0009222312131613745,
+          "delta_upper_95": 0.0001222312131613738,
+          "share": -0.02105263157894739
+        }
+      },
+      "entityCanvasToFb_samples": [
+        359
+      ]
+    },
+    {
+      "mode": "counters",
+      "case": "far-128-filler-first",
+      "pairs": 5,
+      "metrics": {
+        "entityCanvasToFb": {
+          "n": 5,
+          "production_mean": 8.9346,
+          "production_min": 8.74,
+          "production_max": 9.085,
+          "ablation_mean": 6.4882,
+          "ablation_min": 6.388,
+          "ablation_max": 6.569,
+          "delta_mean": 2.4464000000000006,
+          "deltas": [
+            2.282000000000001,
+            2.234,
+            2.5309999999999997,
+            2.583,
+            2.602000000000001
+          ],
+          "delta_sd": 0.17476355455300174,
+          "delta_lower_95": 2.2797700486495907,
+          "delta_upper_95": 2.6130299513504105,
+          "share": 0.2738119221901373
+        },
+        "steady_frame_avg": {
+          "n": 5,
+          "production_mean": 105.292,
+          "production_min": 101.85,
+          "production_max": 106.76,
+          "ablation_mean": 98.87400000000001,
+          "ablation_min": 94.65,
+          "ablation_max": 100.17,
+          "delta_mean": 6.4179999999999975,
+          "deltas": [
+            7.199999999999989,
+            5.0,
+            6.400000000000006,
+            6.849999999999994,
+            6.640000000000001
+          ],
+          "delta_sd": 0.8453519976908994,
+          "delta_lower_95": 5.611991203660904,
+          "delta_upper_95": 7.224008796339091,
+          "share": 0.060954298522204894
+        },
+        "frame_avg": {
+          "n": 5,
+          "production_mean": 105.364,
+          "production_min": 102.11,
+          "production_max": 106.7,
+          "ablation_mean": 99.12,
+          "ablation_min": 94.83,
+          "ablation_max": 100.38,
+          "delta_mean": 6.244000000000002,
+          "deltas": [
+            7.280000000000001,
+            5.150000000000006,
+            6.040000000000006,
+            6.299999999999997,
+            6.450000000000003
+          ],
+          "delta_sd": 0.7676783180473427,
+          "delta_lower_95": 5.512049902531604,
+          "delta_upper_95": 6.975950097468401,
+          "share": 0.05926122774382144
+        },
+        "gpu_frame:commandBufferSpans": {
+          "n": 5,
+          "production_mean": 55.4844,
+          "production_min": 53.518,
+          "production_max": 56.611,
+          "ablation_mean": 50.4398,
+          "ablation_min": 47.739,
+          "ablation_max": 51.234,
+          "delta_mean": 5.044599999999998,
+          "deltas": [
+            5.7790000000000035,
+            4.086999999999996,
+            4.7620000000000005,
+            5.201999999999998,
+            5.392999999999994
+          ],
+          "delta_sd": 0.6485293362678375,
+          "delta_lower_95": 4.426253617494657,
+          "delta_upper_95": 5.662946382505339,
+          "share": 0.09091924937459896
+        },
+        "gpu_frame:envelope": {
+          "n": 5,
+          "production_mean": 55.4844,
+          "production_min": 53.518,
+          "production_max": 56.611,
+          "ablation_mean": 50.4398,
+          "ablation_min": 47.739,
+          "ablation_max": 51.234,
+          "delta_mean": 5.044599999999998,
+          "deltas": [
+            5.7790000000000035,
+            4.086999999999996,
+            4.7620000000000005,
+            5.201999999999998,
+            5.392999999999994
+          ],
+          "delta_sd": 0.6485293362678375,
+          "delta_lower_95": 4.426253617494657,
+          "delta_upper_95": 5.662946382505339,
+          "share": 0.09091924937459896
+        },
+        "gpu_stage:bakeSunShadowMap": {
+          "n": 5,
+          "production_mean": 0.09620000000000001,
+          "production_min": 0.096,
+          "production_max": 0.097,
+          "ablation_mean": 0.096,
+          "ablation_min": 0.095,
+          "ablation_max": 0.097,
+          "delta_mean": 0.00020000000000000017,
+          "deltas": [
+            0.0,
+            0.0,
+            -0.0010000000000000009,
+            0.0,
+            0.0020000000000000018
+          ],
+          "delta_sd": 0.0010954451150103333,
+          "delta_lower_95": -0.0008444624263227481,
+          "delta_upper_95": 0.0012444624263227484,
+          "share": 0.0020790020790020804
+        },
+        "gpu_stage:canvasClear": {
+          "n": 5,
+          "production_mean": 0.0926,
+          "production_min": 0.079,
+          "production_max": 0.098,
+          "ablation_mean": 0.06899999999999999,
+          "ablation_min": 0.048,
+          "ablation_max": 0.078,
+          "delta_mean": 0.023600000000000003,
+          "deltas": [
+            0.031,
+            0.016,
+            0.02600000000000001,
+            0.020000000000000004,
+            0.02500000000000001
+          ],
+          "delta_sd": 0.005770615218501404,
+          "delta_lower_95": 0.018097952759199537,
+          "delta_upper_95": 0.02910204724080047,
+          "share": 0.2548596112311015
+        },
+        "gpu_stage:cardinalSurfaceFb": {
+          "n": 5,
+          "production_mean": 0.5314,
+          "production_min": 0.53,
+          "production_max": 0.533,
+          "ablation_mean": 0.503,
+          "ablation_min": 0.5,
+          "ablation_max": 0.507,
+          "delta_mean": 0.028400000000000026,
+          "deltas": [
+            0.030000000000000027,
+            0.026000000000000023,
+            0.030000000000000027,
+            0.029000000000000026,
+            0.027000000000000024
+          ],
+          "delta_sd": 0.0018165902124584966,
+          "delta_lower_95": 0.026667955012131636,
+          "delta_upper_95": 0.030132044987868416,
+          "share": 0.053443733534061025
+        },
+        "gpu_stage:computeLightVolume": {
+          "n": 5,
+          "production_mean": 0.0462,
+          "production_min": 0.046,
+          "production_max": 0.047,
+          "ablation_mean": 0.0464,
+          "ablation_min": 0.046,
+          "ablation_max": 0.047,
+          "delta_mean": -0.00020000000000000017,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -0.0010000000000000009
+          ],
+          "delta_sd": 0.00044721359549995833,
+          "delta_lower_95": -0.0006264000000000005,
+          "delta_upper_95": 0.00022640000000000016,
+          "share": -0.004329004329004333
+        },
+        "gpu_stage:computeSunShadow": {
+          "n": 5,
+          "production_mean": 0.0622,
+          "production_min": 0.062,
+          "production_max": 0.063,
+          "ablation_mean": 0.037,
+          "ablation_min": 0.037,
+          "ablation_max": 0.037,
+          "delta_mean": 0.0252,
+          "deltas": [
+            0.026000000000000002,
+            0.025,
+            0.025,
+            0.025,
+            0.025
+          ],
+          "delta_sd": 0.00044721359549995833,
+          "delta_lower_95": 0.0247736,
+          "delta_upper_95": 0.0256264,
+          "share": 0.40514469453376206
+        },
+        "gpu_stage:computeVoxelAO": {
+          "n": 5,
+          "production_mean": 0.0202,
+          "production_min": 0.02,
+          "production_max": 0.021,
+          "ablation_mean": 0.02,
+          "ablation_min": 0.02,
+          "ablation_max": 0.02,
+          "delta_mean": 0.00020000000000000017,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0010000000000000009,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.00044721359549995833,
+          "delta_lower_95": -0.00022640000000000016,
+          "delta_upper_95": 0.0006264000000000005,
+          "share": 0.00990099009900991
+        },
+        "gpu_stage:fbToScreen": {
+          "n": 5,
+          "production_mean": 0.031,
+          "production_min": 0.031,
+          "production_max": 0.031,
+          "ablation_mean": 0.031,
+          "ablation_min": 0.031,
+          "ablation_max": 0.031,
+          "delta_mean": 0.0,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0,
+          "delta_lower_95": 0.0,
+          "delta_upper_95": 0.0,
+          "share": 0.0
+        },
+        "gpu_stage:lightingToTrixel": {
+          "n": 5,
+          "production_mean": 0.01,
+          "production_min": 0.01,
+          "production_max": 0.01,
+          "ablation_mean": 0.011,
+          "ablation_min": 0.011,
+          "ablation_max": 0.011,
+          "delta_mean": -0.0009999999999999992,
+          "deltas": [
+            -0.0009999999999999992,
+            -0.0009999999999999992,
+            -0.0009999999999999992,
+            -0.0009999999999999992,
+            -0.0009999999999999992
+          ],
+          "delta_sd": 0.0,
+          "delta_lower_95": -0.0009999999999999992,
+          "delta_upper_95": -0.0009999999999999992,
+          "share": -0.09999999999999991
+        },
+        "gpu_stage:trixelToFb": {
+          "n": 5,
+          "production_mean": 0.0416,
+          "production_min": 0.041,
+          "production_max": 0.043,
+          "ablation_mean": 0.041,
+          "ablation_min": 0.041,
+          "ablation_max": 0.041,
+          "delta_mean": 0.0005999999999999992,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0010000000000000009,
+            0.001999999999999995
+          ],
+          "delta_sd": 0.000894427190999914,
+          "delta_lower_95": -0.000252799999999999,
+          "delta_upper_95": 0.0014527999999999974,
+          "share": 0.014423076923076905
+        },
+        "gpu_stage:voxelCardinalElect": {
+          "n": 5,
+          "production_mean": 0.0276,
+          "production_min": 0.024,
+          "production_max": 0.029,
+          "ablation_mean": 0.0212,
+          "ablation_min": 0.016,
+          "ablation_max": 0.024,
+          "delta_mean": 0.006400000000000001,
+          "deltas": [
+            0.008,
+            0.004,
+            0.007000000000000003,
+            0.007000000000000003,
+            0.006000000000000002
+          ],
+          "delta_sd": 0.0015165750888103105,
+          "delta_lower_95": 0.004954007247597694,
+          "delta_upper_95": 0.007845992752402308,
+          "share": 0.23188405797101455
+        },
+        "gpu_stage:voxelCompact": {
+          "n": 5,
+          "production_mean": 0.035199999999999995,
+          "production_min": 0.03,
+          "production_max": 0.038,
+          "ablation_mean": 0.0268,
+          "ablation_min": 0.02,
+          "ablation_max": 0.03,
+          "delta_mean": 0.008399999999999998,
+          "deltas": [
+            0.009999999999999998,
+            0.005999999999999998,
+            0.009999999999999998,
+            0.006999999999999996,
+            0.008999999999999998
+          ],
+          "delta_sd": 0.0018165902124584955,
+          "delta_lower_95": 0.0066679550121316105,
+          "delta_upper_95": 0.010132044987868386,
+          "share": 0.23863636363636362
+        },
+        "gpu_stage:voxelStage1": {
+          "n": 5,
+          "production_mean": 0.072,
+          "production_min": 0.063,
+          "production_max": 0.077,
+          "ablation_mean": 0.056,
+          "ablation_min": 0.042,
+          "ablation_max": 0.062,
+          "delta_mean": 0.015999999999999997,
+          "deltas": [
+            0.020999999999999998,
+            0.010999999999999996,
+            0.019999999999999997,
+            0.011999999999999997,
+            0.015999999999999993
+          ],
+          "delta_sd": 0.004527692569068709,
+          "delta_lower_95": 0.011683029024883301,
+          "delta_upper_95": 0.020316970975116692,
+          "share": 0.22222222222222218
+        },
+        "gpu_stage:voxelStage2": {
+          "n": 5,
+          "production_mean": 0.029599999999999998,
+          "production_min": 0.026,
+          "production_max": 0.031,
+          "ablation_mean": 0.023,
+          "ablation_min": 0.017,
+          "ablation_max": 0.026,
+          "delta_mean": 0.006599999999999999,
+          "deltas": [
+            0.008999999999999998,
+            0.004,
+            0.006999999999999999,
+            0.006999999999999999,
+            0.005999999999999998
+          ],
+          "delta_sd": 0.0018165902124584942,
+          "delta_lower_95": 0.004867955012131614,
+          "delta_upper_95": 0.008332044987868385,
+          "share": 0.22297297297297297
+        },
+        "gpu_stage:voxelSunFaces": {
+          "n": 5,
+          "production_mean": 0.0506,
+          "production_min": 0.044,
+          "production_max": 0.054,
+          "ablation_mean": 0.038,
+          "ablation_min": 0.028,
+          "ablation_max": 0.043,
+          "delta_mean": 0.012599999999999998,
+          "deltas": [
+            0.015999999999999997,
+            0.008,
+            0.013999999999999999,
+            0.011999999999999997,
+            0.012999999999999998
+          ],
+          "delta_sd": 0.0029664793948382642,
+          "delta_lower_95": 0.009771582378784914,
+          "delta_upper_95": 0.015428417621215083,
+          "share": 0.24901185770750986
+        }
+      },
+      "entityCanvasToFb_samples": [
+        359
+      ]
+    },
+    {
+      "mode": "counters",
+      "case": "far-128-filler-first-frozen",
+      "pairs": 5,
+      "metrics": {
+        "entityCanvasToFb": {
+          "n": 5,
+          "production_mean": 6.4326,
+          "production_min": 6.254,
+          "production_max": 6.536,
+          "ablation_mean": 6.3572,
+          "ablation_min": 6.092,
+          "ablation_max": 6.496,
+          "delta_mean": 0.07539999999999995,
+          "deltas": [
+            0.03999999999999915,
+            -0.22500000000000053,
+            0.29600000000000026,
+            0.04100000000000037,
+            0.22500000000000053
+          ],
+          "delta_sd": 0.20231238222115858,
+          "delta_lower_95": -0.117496639653054,
+          "delta_upper_95": 0.2682966396530539,
+          "share": 0.011721543388365506
+        },
+        "steady_frame_avg": {
+          "n": 5,
+          "production_mean": 99.39399999999999,
+          "production_min": 98.55,
+          "production_max": 100.02,
+          "ablation_mean": 98.646,
+          "ablation_min": 97.0,
+          "ablation_max": 100.12,
+          "delta_mean": 0.7479999999999961,
+          "deltas": [
+            1.5499999999999972,
+            -0.5,
+            2.819999999999993,
+            -0.21000000000000796,
+            0.0799999999999983
+          ],
+          "delta_sd": 1.4015955193992296,
+          "delta_lower_95": -0.5883644027943901,
+          "delta_upper_95": 2.084364402794382,
+          "share": 0.0075256051673138835
+        },
+        "frame_avg": {
+          "n": 5,
+          "production_mean": 99.57,
+          "production_min": 98.92,
+          "production_max": 100.16,
+          "ablation_mean": 99.03,
+          "ablation_min": 97.29,
+          "ablation_max": 100.46,
+          "delta_mean": 0.5399999999999977,
+          "deltas": [
+            1.6899999999999977,
+            -0.6200000000000045,
+            2.3700000000000045,
+            -0.6099999999999994,
+            -0.13000000000000966
+          ],
+          "delta_sd": 1.3953852514628382,
+          "delta_lower_95": -0.7904431645433087,
+          "delta_upper_95": 1.8704431645433042,
+          "share": 0.005423320277191903
+        },
+        "gpu_frame:commandBufferSpans": {
+          "n": 5,
+          "production_mean": 50.6972,
+          "production_min": 49.973,
+          "production_max": 51.286,
+          "ablation_mean": 50.2128,
+          "ablation_min": 48.936,
+          "ablation_max": 51.473,
+          "delta_mean": 0.48440000000000083,
+          "deltas": [
+            1.1910000000000025,
+            -0.597999999999999,
+            1.9519999999999982,
+            -0.3719999999999999,
+            0.24900000000000233
+          ],
+          "delta_sd": 1.0739596361130146,
+          "delta_lower_95": -0.5395768948138611,
+          "delta_upper_95": 1.5083768948138627,
+          "share": 0.00955476831067595
+        },
+        "gpu_frame:envelope": {
+          "n": 5,
+          "production_mean": 50.6972,
+          "production_min": 49.973,
+          "production_max": 51.286,
+          "ablation_mean": 50.2128,
+          "ablation_min": 48.936,
+          "ablation_max": 51.473,
+          "delta_mean": 0.48440000000000083,
+          "deltas": [
+            1.1910000000000025,
+            -0.597999999999999,
+            1.9519999999999982,
+            -0.3719999999999999,
+            0.24900000000000233
+          ],
+          "delta_sd": 1.0739596361130146,
+          "delta_lower_95": -0.5395768948138611,
+          "delta_upper_95": 1.5083768948138627,
+          "share": 0.00955476831067595
+        },
+        "gpu_stage:bakeSunShadowMap": {
+          "n": 5,
+          "production_mean": 0.094,
+          "production_min": 0.094,
+          "production_max": 0.094,
+          "ablation_mean": 0.0938,
+          "ablation_min": 0.093,
+          "ablation_max": 0.094,
+          "delta_mean": 0.00020000000000000017,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0010000000000000009,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.00044721359549995833,
+          "delta_lower_95": -0.00022640000000000016,
+          "delta_upper_95": 0.0006264000000000005,
+          "share": 0.002127659574468087
+        },
+        "gpu_stage:canvasClear": {
+          "n": 5,
+          "production_mean": 0.07239999999999999,
+          "production_min": 0.07,
+          "production_max": 0.077,
+          "ablation_mean": 0.0702,
+          "ablation_min": 0.062,
+          "ablation_max": 0.076,
+          "delta_mean": 0.0021999999999999993,
+          "deltas": [
+            0.008999999999999994,
+            -0.0020000000000000018,
+            0.011999999999999997,
+            -0.0040000000000000036,
+            -0.00399999999999999
+          ],
+          "delta_sd": 0.007694153624668534,
+          "delta_lower_95": -0.0051360629877339505,
+          "delta_upper_95": 0.009536062987733948,
+          "share": 0.030386740331491705
+        },
+        "gpu_stage:cardinalSurfaceFb": {
+          "n": 5,
+          "production_mean": 0.4958,
+          "production_min": 0.488,
+          "production_max": 0.501,
+          "ablation_mean": 0.4976,
+          "ablation_min": 0.495,
+          "ablation_max": 0.501,
+          "delta_mean": -0.0018000000000000017,
+          "deltas": [
+            0.0010000000000000009,
+            0.0010000000000000009,
+            0.0020000000000000018,
+            -0.007000000000000006,
+            -0.006000000000000005
+          ],
+          "delta_sd": 0.004324349662087935,
+          "delta_lower_95": -0.0059230917719594895,
+          "delta_upper_95": 0.0023230917719594866,
+          "share": -0.003630496167809604
+        },
+        "gpu_stage:computeLightVolume": {
+          "n": 5,
+          "production_mean": 0.0462,
+          "production_min": 0.046,
+          "production_max": 0.047,
+          "ablation_mean": 0.046,
+          "ablation_min": 0.045,
+          "ablation_max": 0.047,
+          "delta_mean": 0.00020000000000000017,
+          "deltas": [
+            0.0010000000000000009,
+            -0.0010000000000000009,
+            -0.0010000000000000009,
+            0.0010000000000000009,
+            0.0010000000000000009
+          ],
+          "delta_sd": 0.0010954451150103333,
+          "delta_lower_95": -0.0008444624263227481,
+          "delta_upper_95": 0.0012444624263227484,
+          "share": 0.004329004329004333
+        },
+        "gpu_stage:computeSunShadow": {
+          "n": 5,
+          "production_mean": 0.0334,
+          "production_min": 0.033,
+          "production_max": 0.034,
+          "ablation_mean": 0.0328,
+          "ablation_min": 0.032,
+          "ablation_max": 0.033,
+          "delta_mean": 0.0006000000000000005,
+          "deltas": [
+            0.0010000000000000009,
+            0.0,
+            0.0020000000000000018,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0008944271909999167,
+          "delta_lower_95": -0.0002528000000000002,
+          "delta_upper_95": 0.001452800000000001,
+          "share": 0.017964071856287442
+        },
+        "gpu_stage:computeVoxelAO": {
+          "n": 5,
+          "production_mean": 0.02,
+          "production_min": 0.02,
+          "production_max": 0.02,
+          "ablation_mean": 0.0202,
+          "ablation_min": 0.02,
+          "ablation_max": 0.021,
+          "delta_mean": -0.00020000000000000017,
+          "deltas": [
+            0.0,
+            0.0,
+            -0.0010000000000000009,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.00044721359549995833,
+          "delta_lower_95": -0.0006264000000000005,
+          "delta_upper_95": 0.00022640000000000016,
+          "share": -0.010000000000000009
+        },
+        "gpu_stage:fbToScreen": {
+          "n": 5,
+          "production_mean": 0.031,
+          "production_min": 0.031,
+          "production_max": 0.031,
+          "ablation_mean": 0.0314,
+          "ablation_min": 0.031,
+          "ablation_max": 0.032,
+          "delta_mean": -0.00040000000000000034,
+          "deltas": [
+            0.0,
+            0.0,
+            -0.0010000000000000009,
+            0.0,
+            -0.0010000000000000009
+          ],
+          "delta_sd": 0.0005477225575051667,
+          "delta_lower_95": -0.0009222312131613745,
+          "delta_upper_95": 0.0001222312131613738,
+          "share": -0.012903225806451623
+        },
+        "gpu_stage:lightingToTrixel": {
+          "n": 5,
+          "production_mean": 0.0104,
+          "production_min": 0.01,
+          "production_max": 0.011,
+          "ablation_mean": 0.0106,
+          "ablation_min": 0.01,
+          "ablation_max": 0.011,
+          "delta_mean": -0.00019999999999999982,
+          "deltas": [
+            -0.0009999999999999992,
+            -0.0009999999999999992,
+            0.0009999999999999992,
+            -0.0009999999999999992,
+            0.0009999999999999992
+          ],
+          "delta_sd": 0.0010954451150103313,
+          "delta_lower_95": -0.0012444624263227462,
+          "delta_upper_95": 0.0008444624263227465,
+          "share": -0.019230769230769214
+        },
+        "gpu_stage:trixelToFb": {
+          "n": 5,
+          "production_mean": 0.041600000000000005,
+          "production_min": 0.041,
+          "production_max": 0.042,
+          "ablation_mean": 0.041,
+          "ablation_min": 0.04,
+          "ablation_max": 0.042,
+          "delta_mean": 0.0006000000000000005,
+          "deltas": [
+            0.0010000000000000009,
+            0.0,
+            0.0010000000000000009,
+            0.0010000000000000009,
+            0.0
+          ],
+          "delta_sd": 0.0005477225575051667,
+          "delta_lower_95": 7.776878683862635e-05,
+          "delta_upper_95": 0.0011222312131613746,
+          "share": 0.014423076923076933
+        },
+        "gpu_stage:voxelCardinalElect": {
+          "n": 5,
+          "production_mean": 0.0226,
+          "production_min": 0.022,
+          "production_max": 0.024,
+          "ablation_mean": 0.022,
+          "ablation_min": 0.02,
+          "ablation_max": 0.024,
+          "delta_mean": 0.0005999999999999992,
+          "deltas": [
+            0.0019999999999999983,
+            0.0,
+            0.004,
+            -0.0020000000000000018,
+            -0.0010000000000000009
+          ],
+          "delta_sd": 0.0024083189157584595,
+          "delta_lower_95": -0.0016962342737621538,
+          "delta_upper_95": 0.002896234273762152,
+          "share": 0.026548672566371646
+        },
+        "gpu_stage:voxelCompact": {
+          "n": 5,
+          "production_mean": 0.0282,
+          "production_min": 0.027,
+          "production_max": 0.03,
+          "ablation_mean": 0.028,
+          "ablation_min": 0.025,
+          "ablation_max": 0.03,
+          "delta_mean": 0.00020000000000000017,
+          "deltas": [
+            0.002999999999999999,
+            -0.0010000000000000009,
+            0.004,
+            -0.0019999999999999983,
+            -0.002999999999999999
+          ],
+          "delta_sd": 0.003114482300479487,
+          "delta_lower_95": -0.0027695323806956533,
+          "delta_upper_95": 0.0031695323806956535,
+          "share": 0.00709219858156029
+        },
+        "gpu_stage:voxelStage1": {
+          "n": 5,
+          "production_mean": 0.0582,
+          "production_min": 0.057,
+          "production_max": 0.061,
+          "ablation_mean": 0.056799999999999996,
+          "ablation_min": 0.051,
+          "ablation_max": 0.061,
+          "delta_mean": 0.001400000000000004,
+          "deltas": [
+            0.006000000000000005,
+            -0.000999999999999994,
+            0.006999999999999999,
+            -0.0029999999999999957,
+            -0.001999999999999995
+          ],
+          "delta_sd": 0.004722287581247036,
+          "delta_lower_95": -0.0031025094158702153,
+          "delta_upper_95": 0.005902509415870224,
+          "share": 0.024054982817869486
+        },
+        "gpu_stage:voxelStage2": {
+          "n": 5,
+          "production_mean": 0.0242,
+          "production_min": 0.023,
+          "production_max": 0.026,
+          "ablation_mean": 0.0236,
+          "ablation_min": 0.022,
+          "ablation_max": 0.025,
+          "delta_mean": 0.0005999999999999998,
+          "deltas": [
+            0.0020000000000000018,
+            -0.0010000000000000009,
+            0.004,
+            -0.0010000000000000009,
+            -0.0010000000000000009
+          ],
+          "delta_sd": 0.0023021728866442683,
+          "delta_lower_95": -0.0015950283460584294,
+          "delta_upper_95": 0.002795028346058429,
+          "share": 0.02479338842975206
+        },
+        "gpu_stage:voxelSunFaces": {
+          "n": 5,
+          "production_mean": 0.0406,
+          "production_min": 0.039,
+          "production_max": 0.043,
+          "ablation_mean": 0.0392,
+          "ablation_min": 0.035,
+          "ablation_max": 0.042,
+          "delta_mean": 0.0013999999999999985,
+          "deltas": [
+            0.0049999999999999975,
+            0.0,
+            0.005999999999999998,
+            -0.0020000000000000018,
+            -0.0020000000000000018
+          ],
+          "delta_sd": 0.0038470768123342685,
+          "delta_lower_95": -0.002268031493866977,
+          "delta_upper_95": 0.005068031493866974,
+          "share": 0.03448275862068962
+        }
+      },
+      "entityCanvasToFb_samples": [
+        359
+      ]
+    },
+    {
+      "mode": "counters",
+      "case": "far-128-filler-last",
+      "pairs": 5,
+      "metrics": {
+        "entityCanvasToFb": {
+          "n": 5,
+          "production_mean": 8.943,
+          "production_min": 8.804,
+          "production_max": 9.06,
+          "ablation_mean": 6.3754,
+          "ablation_min": 6.185,
+          "ablation_max": 6.535,
+          "delta_mean": 2.5676,
+          "deltas": [
+            2.5250000000000004,
+            2.646,
+            2.697,
+            2.271,
+            2.699
+          ],
+          "delta_sd": 0.18023817575641404,
+          "delta_lower_95": 2.3957502196805596,
+          "delta_upper_95": 2.7394497803194406,
+          "share": 0.28710723470871075
+        },
+        "steady_frame_avg": {
+          "n": 5,
+          "production_mean": 105.14,
+          "production_min": 103.86,
+          "production_max": 106.79,
+          "ablation_mean": 97.618,
+          "ablation_min": 93.71,
+          "ablation_max": 99.57,
+          "delta_mean": 7.522000000000006,
+          "deltas": [
+            10.41000000000001,
+            6.780000000000001,
+            7.530000000000001,
+            6.680000000000007,
+            6.210000000000008
+          ],
+          "delta_sd": 1.6823703516170294,
+          "delta_lower_95": 5.917928198185633,
+          "delta_upper_95": 9.126071801814378,
+          "share": 0.07154270496480888
+        },
+        "frame_avg": {
+          "n": 5,
+          "production_mean": 105.14,
+          "production_min": 103.4,
+          "production_max": 106.65,
+          "ablation_mean": 97.664,
+          "ablation_min": 93.64,
+          "ablation_max": 99.73,
+          "delta_mean": 7.475999999999999,
+          "deltas": [
+            9.760000000000005,
+            6.819999999999993,
+            7.460000000000008,
+            7.039999999999992,
+            6.299999999999997
+          ],
+          "delta_sd": 1.3435326568416606,
+          "delta_lower_95": 6.194996178466273,
+          "delta_upper_95": 8.757003821533726,
+          "share": 0.0711051930758988
+        },
+        "gpu_frame:commandBufferSpans": {
+          "n": 5,
+          "production_mean": 55.0176,
+          "production_min": 53.925,
+          "production_max": 55.955,
+          "ablation_mean": 49.2074,
+          "ablation_min": 46.635,
+          "ablation_max": 50.759,
+          "delta_mean": 5.8102,
+          "deltas": [
+            7.289999999999999,
+            5.577000000000005,
+            5.5589999999999975,
+            5.429000000000002,
+            5.195999999999998
+          ],
+          "delta_sd": 0.8411074247680848,
+          "delta_lower_95": 5.008238231552053,
+          "delta_upper_95": 6.6121617684479475,
+          "share": 0.1056062060140755
+        },
+        "gpu_frame:envelope": {
+          "n": 5,
+          "production_mean": 55.0176,
+          "production_min": 53.925,
+          "production_max": 55.955,
+          "ablation_mean": 49.2074,
+          "ablation_min": 46.635,
+          "ablation_max": 50.759,
+          "delta_mean": 5.8102,
+          "deltas": [
+            7.289999999999999,
+            5.577000000000005,
+            5.5589999999999975,
+            5.429000000000002,
+            5.195999999999998
+          ],
+          "delta_sd": 0.8411074247680848,
+          "delta_lower_95": 5.008238231552053,
+          "delta_upper_95": 6.6121617684479475,
+          "share": 0.1056062060140755
+        },
+        "gpu_stage:bakeSunShadowMap": {
+          "n": 5,
+          "production_mean": 0.0998,
+          "production_min": 0.099,
+          "production_max": 0.1,
+          "ablation_mean": 0.098,
+          "ablation_min": 0.095,
+          "ablation_max": 0.101,
+          "delta_mean": 0.0018000000000000017,
+          "deltas": [
+            0.0,
+            0.0050000000000000044,
+            0.0040000000000000036,
+            -0.0010000000000000009,
+            0.0010000000000000009
+          ],
+          "delta_sd": 0.002588435821108959,
+          "delta_lower_95": -0.0006679684276748765,
+          "delta_upper_95": 0.00426796842767488,
+          "share": 0.018036072144288595
+        },
+        "gpu_stage:canvasClear": {
+          "n": 5,
+          "production_mean": 0.0924,
+          "production_min": 0.085,
+          "production_max": 0.099,
+          "ablation_mean": 0.065,
+          "ablation_min": 0.047,
+          "ablation_max": 0.072,
+          "delta_mean": 0.0274,
+          "deltas": [
+            0.038000000000000006,
+            0.01999999999999999,
+            0.02700000000000001,
+            0.027999999999999997,
+            0.024000000000000007
+          ],
+          "delta_sd": 0.006693280212272609,
+          "delta_lower_95": 0.02101822916111836,
+          "delta_upper_95": 0.03378177083888164,
+          "share": 0.29653679653679654
+        },
+        "gpu_stage:cardinalSurfaceFb": {
+          "n": 5,
+          "production_mean": 0.9551999999999999,
+          "production_min": 0.946,
+          "production_max": 0.964,
+          "ablation_mean": 0.8872,
+          "ablation_min": 0.861,
+          "ablation_max": 0.903,
+          "delta_mean": 0.06799999999999995,
+          "deltas": [
+            0.051999999999999935,
+            0.08999999999999997,
+            0.06299999999999994,
+            0.07399999999999995,
+            0.06099999999999994
+          ],
+          "delta_sd": 0.014577379737113264,
+          "delta_lower_95": 0.05410106047210789,
+          "delta_upper_95": 0.08189893952789201,
+          "share": 0.07118927973199325
+        },
+        "gpu_stage:computeLightVolume": {
+          "n": 5,
+          "production_mean": 0.0518,
+          "production_min": 0.05,
+          "production_max": 0.054,
+          "ablation_mean": 0.0502,
+          "ablation_min": 0.048,
+          "ablation_max": 0.052,
+          "delta_mean": 0.0016,
+          "deltas": [
+            0.0029999999999999957,
+            -0.001999999999999995,
+            0.003999999999999997,
+            0.0030000000000000027,
+            0.0
+          ],
+          "delta_sd": 0.002509980079602224,
+          "delta_lower_95": -0.00079316406458061,
+          "delta_upper_95": 0.00399316406458061,
+          "share": 0.03088803088803089
+        },
+        "gpu_stage:computeSunShadow": {
+          "n": 5,
+          "production_mean": 0.056,
+          "production_min": 0.056,
+          "production_max": 0.056,
+          "ablation_mean": 0.0304,
+          "ablation_min": 0.03,
+          "ablation_max": 0.031,
+          "delta_mean": 0.0256,
+          "deltas": [
+            0.025,
+            0.025,
+            0.026000000000000002,
+            0.026000000000000002,
+            0.026000000000000002
+          ],
+          "delta_sd": 0.0005477225575051667,
+          "delta_lower_95": 0.025077768786838626,
+          "delta_upper_95": 0.026122231213161377,
+          "share": 0.45714285714285713
+        },
+        "gpu_stage:computeVoxelAO": {
+          "n": 5,
+          "production_mean": 0.018199999999999997,
+          "production_min": 0.018,
+          "production_max": 0.019,
+          "ablation_mean": 0.0184,
+          "ablation_min": 0.018,
+          "ablation_max": 0.019,
+          "delta_mean": -0.00020000000000000017,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0010000000000000009,
+            0.0
+          ],
+          "delta_sd": 0.00044721359549995833,
+          "delta_lower_95": -0.0006264000000000005,
+          "delta_upper_95": 0.00022640000000000016,
+          "share": -0.010989010989011
+        },
+        "gpu_stage:fbToScreen": {
+          "n": 5,
+          "production_mean": 0.0316,
+          "production_min": 0.031,
+          "production_max": 0.032,
+          "ablation_mean": 0.031,
+          "ablation_min": 0.031,
+          "ablation_max": 0.031,
+          "delta_mean": 0.0006000000000000005,
+          "deltas": [
+            0.0010000000000000009,
+            0.0010000000000000009,
+            0.0,
+            0.0,
+            0.0010000000000000009
+          ],
+          "delta_sd": 0.0005477225575051667,
+          "delta_lower_95": 7.776878683862635e-05,
+          "delta_upper_95": 0.0011222312131613746,
+          "share": 0.018987341772151913
+        },
+        "gpu_stage:lightingToTrixel": {
+          "n": 5,
+          "production_mean": 0.0114,
+          "production_min": 0.011,
+          "production_max": 0.012,
+          "ablation_mean": 0.0114,
+          "ablation_min": 0.011,
+          "ablation_max": 0.012,
+          "delta_mean": 0.0,
+          "deltas": [
+            -0.0010000000000000009,
+            0.0,
+            0.0010000000000000009,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0007071067811865482,
+          "delta_lower_95": -0.0006741975971478991,
+          "delta_upper_95": 0.0006741975971478991,
+          "share": 0.0
+        },
+        "gpu_stage:trixelToFb": {
+          "n": 5,
+          "production_mean": 0.0516,
+          "production_min": 0.05,
+          "production_max": 0.054,
+          "ablation_mean": 0.0504,
+          "ablation_min": 0.049,
+          "ablation_max": 0.051,
+          "delta_mean": 0.0011999999999999997,
+          "deltas": [
+            -0.000999999999999994,
+            0.001999999999999995,
+            0.0010000000000000009,
+            0.0,
+            0.003999999999999997
+          ],
+          "delta_sd": 0.001923538406167131,
+          "delta_lower_95": -0.000634015746933485,
+          "delta_upper_95": 0.0030340157469334844,
+          "share": 0.023255813953488365
+        },
+        "gpu_stage:voxelCardinalElect": {
+          "n": 5,
+          "production_mean": 0.027200000000000002,
+          "production_min": 0.025,
+          "production_max": 0.029,
+          "ablation_mean": 0.0202,
+          "ablation_min": 0.015,
+          "ablation_max": 0.022,
+          "delta_mean": 0.007000000000000001,
+          "deltas": [
+            0.010000000000000002,
+            0.0049999999999999975,
+            0.007000000000000003,
+            0.008,
+            0.005000000000000001
+          ],
+          "delta_sd": 0.0021213203435596437,
+          "delta_lower_95": 0.004977407208556304,
+          "delta_upper_95": 0.009022592791443698,
+          "share": 0.2573529411764706
+        },
+        "gpu_stage:voxelCompact": {
+          "n": 5,
+          "production_mean": 0.0344,
+          "production_min": 0.032,
+          "production_max": 0.037,
+          "ablation_mean": 0.0252,
+          "ablation_min": 0.018,
+          "ablation_max": 0.028,
+          "delta_mean": 0.009200000000000002,
+          "deltas": [
+            0.014000000000000002,
+            0.007000000000000003,
+            0.008999999999999998,
+            0.009000000000000005,
+            0.007000000000000003
+          ],
+          "delta_sd": 0.0028635642126552704,
+          "delta_lower_95": 0.006469707825158635,
+          "delta_upper_95": 0.01193029217484137,
+          "share": 0.2674418604651163
+        },
+        "gpu_stage:voxelStage1": {
+          "n": 5,
+          "production_mean": 0.07239999999999999,
+          "production_min": 0.068,
+          "production_max": 0.076,
+          "ablation_mean": 0.0522,
+          "ablation_min": 0.039,
+          "ablation_max": 0.057,
+          "delta_mean": 0.020199999999999996,
+          "deltas": [
+            0.034999999999999996,
+            0.014000000000000005,
+            0.018999999999999996,
+            0.018999999999999996,
+            0.013999999999999992
+          ],
+          "delta_sd": 0.008642916174532759,
+          "delta_lower_95": 0.011959330454386607,
+          "delta_upper_95": 0.028440669545613383,
+          "share": 0.2790055248618784
+        },
+        "gpu_stage:voxelStage2": {
+          "n": 5,
+          "production_mean": 0.0292,
+          "production_min": 0.027,
+          "production_max": 0.031,
+          "ablation_mean": 0.0218,
+          "ablation_min": 0.016,
+          "ablation_max": 0.024,
+          "delta_mean": 0.0073999999999999995,
+          "deltas": [
+            0.011,
+            0.006000000000000002,
+            0.006999999999999999,
+            0.006999999999999999,
+            0.005999999999999998
+          ],
+          "delta_sd": 0.002073644135332772,
+          "delta_lower_95": 0.005422864536760316,
+          "delta_upper_95": 0.009377135463239683,
+          "share": 0.25342465753424653
+        },
+        "gpu_stage:voxelSunFaces": {
+          "n": 5,
+          "production_mean": 0.0496,
+          "production_min": 0.046,
+          "production_max": 0.053,
+          "ablation_mean": 0.036199999999999996,
+          "ablation_min": 0.026,
+          "ablation_max": 0.04,
+          "delta_mean": 0.013399999999999999,
+          "deltas": [
+            0.02,
+            0.009000000000000001,
+            0.012999999999999998,
+            0.013999999999999999,
+            0.010999999999999996
+          ],
+          "delta_sd": 0.004159326868617085,
+          "delta_lower_95": 0.009434250759314198,
+          "delta_upper_95": 0.017365749240685797,
+          "share": 0.2701612903225806
+        }
+      },
+      "entityCanvasToFb_samples": [
+        359
+      ]
+    },
+    {
+      "mode": "counters",
+      "case": "far-128-filler-last-frozen",
+      "pairs": 5,
+      "metrics": {
+        "entityCanvasToFb": {
+          "n": 5,
+          "production_mean": 8.6758,
+          "production_min": 8.422,
+          "production_max": 8.998,
+          "ablation_mean": 6.3748,
+          "ablation_min": 6.135,
+          "ablation_max": 6.492,
+          "delta_mean": 2.301,
+          "deltas": [
+            2.527000000000001,
+            2.2939999999999996,
+            2.0340000000000007,
+            2.6049999999999995,
+            2.045000000000001
+          ],
+          "delta_sd": 0.2647479933823859,
+          "delta_lower_95": 2.0485735408892327,
+          "delta_upper_95": 2.5534264591107676,
+          "share": 0.2652204983978423
+        },
+        "steady_frame_avg": {
+          "n": 5,
+          "production_mean": 104.474,
+          "production_min": 103.54,
+          "production_max": 105.42,
+          "ablation_mean": 98.812,
+          "ablation_min": 97.6,
+          "ablation_max": 99.86,
+          "delta_mean": 5.662000000000001,
+          "deltas": [
+            4.209999999999994,
+            5.940000000000012,
+            7.090000000000003,
+            6.059999999999988,
+            5.010000000000005
+          ],
+          "delta_sd": 1.0963895293188477,
+          "delta_lower_95": 4.616637112990899,
+          "delta_upper_95": 6.707362887009102,
+          "share": 0.05419530218044682
+        },
+        "frame_avg": {
+          "n": 5,
+          "production_mean": 104.434,
+          "production_min": 103.5,
+          "production_max": 104.92,
+          "ablation_mean": 98.792,
+          "ablation_min": 97.9,
+          "ablation_max": 99.94,
+          "delta_mean": 5.641999999999999,
+          "deltas": [
+            5.079999999999998,
+            5.599999999999994,
+            6.890000000000001,
+            5.75,
+            4.890000000000001
+          ],
+          "delta_sd": 0.7829878670835205,
+          "delta_lower_95": 4.895452869313663,
+          "delta_upper_95": 6.388547130686334,
+          "share": 0.05402455139130933
+        },
+        "gpu_frame:commandBufferSpans": {
+          "n": 5,
+          "production_mean": 54.372,
+          "production_min": 53.86,
+          "production_max": 55.182,
+          "ablation_mean": 49.8654,
+          "ablation_min": 49.293,
+          "ablation_max": 50.919,
+          "delta_mean": 4.506600000000001,
+          "deltas": [
+            4.567,
+            4.618000000000002,
+            4.583999999999996,
+            4.886000000000003,
+            3.878
+          ],
+          "delta_sd": 0.3745434554227326,
+          "delta_lower_95": 4.1494880271099275,
+          "delta_upper_95": 4.863711972890074,
+          "share": 0.08288457294195543
+        },
+        "gpu_frame:envelope": {
+          "n": 5,
+          "production_mean": 54.372,
+          "production_min": 53.86,
+          "production_max": 55.182,
+          "ablation_mean": 49.8654,
+          "ablation_min": 49.293,
+          "ablation_max": 50.919,
+          "delta_mean": 4.506600000000001,
+          "deltas": [
+            4.567,
+            4.618000000000002,
+            4.583999999999996,
+            4.886000000000003,
+            3.878
+          ],
+          "delta_sd": 0.3745434554227326,
+          "delta_lower_95": 4.1494880271099275,
+          "delta_upper_95": 4.863711972890074,
+          "share": 0.08288457294195543
+        },
+        "gpu_stage:bakeSunShadowMap": {
+          "n": 5,
+          "production_mean": 0.0914,
+          "production_min": 0.089,
+          "production_max": 0.094,
+          "ablation_mean": 0.0922,
+          "ablation_min": 0.09,
+          "ablation_max": 0.095,
+          "delta_mean": -0.0008000000000000007,
+          "deltas": [
+            0.0020000000000000018,
+            -0.0030000000000000027,
+            -0.0020000000000000018,
+            0.0020000000000000018,
+            -0.0030000000000000027
+          ],
+          "delta_sd": 0.002588435821108959,
+          "delta_lower_95": -0.003267968427674879,
+          "delta_upper_95": 0.0016679684276748774,
+          "share": -0.008752735229759308
+        },
+        "gpu_stage:canvasClear": {
+          "n": 5,
+          "production_mean": 0.087,
+          "production_min": 0.084,
+          "production_max": 0.089,
+          "ablation_mean": 0.0672,
+          "ablation_min": 0.063,
+          "ablation_max": 0.071,
+          "delta_mean": 0.019799999999999998,
+          "deltas": [
+            0.017,
+            0.021000000000000005,
+            0.024999999999999994,
+            0.01999999999999999,
+            0.016
+          ],
+          "delta_sd": 0.00356370593624109,
+          "delta_lower_95": 0.01640215112755143,
+          "delta_upper_95": 0.023197848872448565,
+          "share": 0.2275862068965517
+        },
+        "gpu_stage:cardinalSurfaceFb": {
+          "n": 5,
+          "production_mean": 0.9352,
+          "production_min": 0.921,
+          "production_max": 0.947,
+          "ablation_mean": 0.8896000000000001,
+          "ablation_min": 0.881,
+          "ablation_max": 0.905,
+          "delta_mean": 0.045599999999999974,
+          "deltas": [
+            0.040000000000000036,
+            0.05699999999999994,
+            0.040000000000000036,
+            0.05599999999999994,
+            0.03499999999999992
+          ],
+          "delta_sd": 0.010163660757817508,
+          "delta_lower_95": 0.03590936225834439,
+          "delta_upper_95": 0.05529063774165556,
+          "share": 0.04875962360992298
+        },
+        "gpu_stage:computeLightVolume": {
+          "n": 5,
+          "production_mean": 0.0538,
+          "production_min": 0.052,
+          "production_max": 0.055,
+          "ablation_mean": 0.052,
+          "ablation_min": 0.051,
+          "ablation_max": 0.053,
+          "delta_mean": 0.0018000000000000017,
+          "deltas": [
+            0.0030000000000000027,
+            0.0020000000000000018,
+            0.0020000000000000018,
+            0.0010000000000000009,
+            0.0010000000000000009
+          ],
+          "delta_sd": 0.0008366600265340763,
+          "delta_lower_95": 0.0010022786451397967,
+          "delta_upper_95": 0.0025977213548602066,
+          "share": 0.033457249070632
+        },
+        "gpu_stage:computeSunShadow": {
+          "n": 5,
+          "production_mean": 0.055,
+          "production_min": 0.055,
+          "production_max": 0.055,
+          "ablation_mean": 0.0306,
+          "ablation_min": 0.03,
+          "ablation_max": 0.032,
+          "delta_mean": 0.0244,
+          "deltas": [
+            0.024,
+            0.023,
+            0.025,
+            0.025,
+            0.025
+          ],
+          "delta_sd": 0.0008944271909999167,
+          "delta_lower_95": 0.0235472,
+          "delta_upper_95": 0.025252800000000002,
+          "share": 0.44363636363636366
+        },
+        "gpu_stage:computeVoxelAO": {
+          "n": 5,
+          "production_mean": 0.018,
+          "production_min": 0.018,
+          "production_max": 0.018,
+          "ablation_mean": 0.018,
+          "ablation_min": 0.018,
+          "ablation_max": 0.018,
+          "delta_mean": 0.0,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0,
+          "delta_lower_95": 0.0,
+          "delta_upper_95": 0.0,
+          "share": 0.0
+        },
+        "gpu_stage:fbToScreen": {
+          "n": 5,
+          "production_mean": 0.031,
+          "production_min": 0.031,
+          "production_max": 0.031,
+          "ablation_mean": 0.031,
+          "ablation_min": 0.031,
+          "ablation_max": 0.031,
+          "delta_mean": 0.0,
+          "deltas": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0,
+          "delta_lower_95": 0.0,
+          "delta_upper_95": 0.0,
+          "share": 0.0
+        },
+        "gpu_stage:lightingToTrixel": {
+          "n": 5,
+          "production_mean": 0.0112,
+          "production_min": 0.011,
+          "production_max": 0.012,
+          "ablation_mean": 0.0118,
+          "ablation_min": 0.011,
+          "ablation_max": 0.012,
+          "delta_mean": -0.0006000000000000005,
+          "deltas": [
+            0.0,
+            -0.0010000000000000009,
+            -0.0010000000000000009,
+            0.0,
+            -0.0010000000000000009
+          ],
+          "delta_sd": 0.0005477225575051667,
+          "delta_lower_95": -0.0011222312131613746,
+          "delta_upper_95": -7.776878683862635e-05,
+          "share": -0.05357142857142862
+        },
+        "gpu_stage:trixelToFb": {
+          "n": 5,
+          "production_mean": 0.048600000000000004,
+          "production_min": 0.048,
+          "production_max": 0.049,
+          "ablation_mean": 0.0494,
+          "ablation_min": 0.049,
+          "ablation_max": 0.05,
+          "delta_mean": -0.0008000000000000007,
+          "deltas": [
+            -0.0010000000000000009,
+            -0.0010000000000000009,
+            -0.0010000000000000009,
+            0.0,
+            -0.0010000000000000009
+          ],
+          "delta_sd": 0.00044721359549995833,
+          "delta_lower_95": -0.001226400000000001,
+          "delta_upper_95": -0.00037360000000000035,
+          "share": -0.01646090534979425
+        },
+        "gpu_stage:voxelCardinalElect": {
+          "n": 5,
+          "production_mean": 0.0262,
+          "production_min": 0.025,
+          "production_max": 0.028,
+          "ablation_mean": 0.021,
+          "ablation_min": 0.02,
+          "ablation_max": 0.022,
+          "delta_mean": 0.0052,
+          "deltas": [
+            0.004,
+            0.005000000000000001,
+            0.005999999999999998,
+            0.006000000000000002,
+            0.0049999999999999975
+          ],
+          "delta_sd": 0.0008366600265340756,
+          "delta_lower_95": 0.004402278645139796,
+          "delta_upper_95": 0.005997721354860204,
+          "share": 0.19847328244274806
+        },
+        "gpu_stage:voxelCompact": {
+          "n": 5,
+          "production_mean": 0.0334,
+          "production_min": 0.032,
+          "production_max": 0.034,
+          "ablation_mean": 0.0268,
+          "ablation_min": 0.025,
+          "ablation_max": 0.029,
+          "delta_mean": 0.006600000000000001,
+          "deltas": [
+            0.006000000000000002,
+            0.006999999999999999,
+            0.009000000000000001,
+            0.005000000000000001,
+            0.006000000000000002
+          ],
+          "delta_sd": 0.0015165750888103098,
+          "delta_lower_95": 0.005154007247597694,
+          "delta_upper_95": 0.008045992752402307,
+          "share": 0.1976047904191617
+        },
+        "gpu_stage:voxelStage1": {
+          "n": 5,
+          "production_mean": 0.0696,
+          "production_min": 0.067,
+          "production_max": 0.071,
+          "ablation_mean": 0.0554,
+          "ablation_min": 0.053,
+          "ablation_max": 0.058,
+          "delta_mean": 0.0142,
+          "deltas": [
+            0.012000000000000004,
+            0.014000000000000005,
+            0.016000000000000007,
+            0.013999999999999992,
+            0.014999999999999993
+          ],
+          "delta_sd": 0.0014832396974191326,
+          "delta_lower_95": 0.012785791189392458,
+          "delta_upper_95": 0.015614208810607544,
+          "share": 0.20402298850574715
+        },
+        "gpu_stage:voxelStage2": {
+          "n": 5,
+          "production_mean": 0.0284,
+          "production_min": 0.027,
+          "production_max": 0.03,
+          "ablation_mean": 0.023,
+          "ablation_min": 0.022,
+          "ablation_max": 0.024,
+          "delta_mean": 0.0054,
+          "deltas": [
+            0.004,
+            0.005000000000000001,
+            0.007000000000000003,
+            0.005999999999999998,
+            0.005000000000000001
+          ],
+          "delta_sd": 0.0011401754250991386,
+          "delta_lower_95": 0.004312889039702018,
+          "delta_upper_95": 0.0064871109602979826,
+          "share": 0.19014084507042253
+        },
+        "gpu_stage:voxelSunFaces": {
+          "n": 5,
+          "production_mean": 0.0484,
+          "production_min": 0.047,
+          "production_max": 0.049,
+          "ablation_mean": 0.0382,
+          "ablation_min": 0.036,
+          "ablation_max": 0.04,
+          "delta_mean": 0.010200000000000002,
+          "deltas": [
+            0.009000000000000001,
+            0.011000000000000003,
+            0.012000000000000004,
+            0.010000000000000002,
+            0.009000000000000001
+          ],
+          "delta_sd": 0.0013038404810405309,
+          "delta_lower_95": 0.008956841056018983,
+          "delta_upper_95": 0.011443158943981022,
+          "share": 0.2107438016528926
+        }
+      },
+      "entityCanvasToFb_samples": [
+        359
+      ]
+    },
+    {
+      "mode": "synchronized",
+      "case": "far-128",
+      "pairs": 5,
+      "metrics": {
+        "entityCanvasToFb": {
+          "n": 5,
+          "production_mean": 12.097,
+          "production_min": 11.712,
+          "production_max": 12.492,
+          "ablation_mean": 8.838000000000001,
+          "ablation_min": 8.821,
+          "ablation_max": 8.862,
+          "delta_mean": 3.259,
+          "deltas": [
+            3.3840000000000003,
+            3.280999999999999,
+            3.0839999999999996,
+            3.655000000000001,
+            2.891
+          ],
+          "delta_sd": 0.2911073685085973,
+          "delta_lower_95": 2.9814409472764396,
+          "delta_upper_95": 3.53655905272356,
+          "share": 0.26940563776142845
+        },
+        "steady_frame_avg": {
+          "n": 5,
+          "production_mean": 85.32000000000001,
+          "production_min": 84.84,
+          "production_max": 85.93,
+          "ablation_mean": 81.876,
+          "ablation_min": 81.23,
+          "ablation_max": 82.65,
+          "delta_mean": 3.444,
+          "deltas": [
+            3.6099999999999994,
+            3.569999999999993,
+            3.0,
+            3.910000000000011,
+            3.1299999999999955
+          ],
+          "delta_sd": 0.37293431056957305,
+          "delta_lower_95": 3.088422281372971,
+          "delta_upper_95": 3.7995777186270288,
+          "share": 0.040365682137834036
+        },
+        "frame_avg": {
+          "n": 5,
+          "production_mean": 85.444,
+          "production_min": 84.98,
+          "production_max": 86.12,
+          "ablation_mean": 82.104,
+          "ablation_min": 81.43,
+          "ablation_max": 82.85,
+          "delta_mean": 3.3399999999999976,
+          "deltas": [
+            3.549999999999997,
+            3.289999999999992,
+            2.9399999999999977,
+            4.0,
+            2.9200000000000017
+          ],
+          "delta_sd": 0.45238258145070087,
+          "delta_lower_95": 2.9086715818311966,
+          "delta_upper_95": 3.7713284181687987,
+          "share": 0.039089930246711264
+        },
+        "gpu_frame:commandBufferSpans": {
+          "n": 5,
+          "production_mean": 47.8154,
+          "production_min": 47.47,
+          "production_max": 48.47,
+          "ablation_mean": 44.5956,
+          "ablation_min": 44.142,
+          "ablation_max": 45.147,
+          "delta_mean": 3.2197999999999993,
+          "deltas": [
+            3.384999999999998,
+            3.3089999999999975,
+            2.808,
+            3.786999999999999,
+            2.8100000000000023
+          ],
+          "delta_sd": 0.41667697320586244,
+          "delta_lower_95": 2.8225154291310073,
+          "delta_upper_95": 3.6170845708689914,
+          "share": 0.06733813792209203
+        },
+        "gpu_frame:envelope": {
+          "n": 5,
+          "production_mean": 72.8212,
+          "production_min": 72.362,
+          "production_max": 73.427,
+          "ablation_mean": 69.5342,
+          "ablation_min": 68.867,
+          "ablation_max": 70.247,
+          "delta_mean": 3.2869999999999977,
+          "deltas": [
+            3.4949999999999903,
+            3.2269999999999897,
+            2.953000000000003,
+            3.828000000000003,
+            2.932000000000002
+          ],
+          "delta_sd": 0.37984404694558427,
+          "delta_lower_95": 2.9248341283731984,
+          "delta_upper_95": 3.649165871626797,
+          "share": 0.045137954331980215
+        },
+        "gpu_stage:bakeSunShadowMap": {
+          "n": 5,
+          "production_mean": 0.7988,
+          "production_min": 0.686,
+          "production_max": 0.85,
+          "ablation_mean": 0.8433999999999999,
+          "ablation_min": 0.82,
+          "ablation_max": 0.854,
+          "delta_mean": -0.04459999999999997,
+          "deltas": [
+            -0.030000000000000027,
+            0.0050000000000000044,
+            -0.1339999999999999,
+            0.0040000000000000036,
+            -0.06799999999999995
+          ],
+          "delta_sd": 0.05825633012814998,
+          "delta_lower_95": -0.10014504473164093,
+          "delta_upper_95": 0.010945044731640985,
+          "share": -0.05583375062593888
+        },
+        "gpu_stage:buildLightOcclusionGrid": {
+          "n": 5,
+          "production_mean": 1.1762,
+          "production_min": 1.169,
+          "production_max": 1.192,
+          "ablation_mean": 1.1652,
+          "ablation_min": 1.16,
+          "ablation_max": 1.177,
+          "delta_mean": 0.010999999999999987,
+          "deltas": [
+            0.008000000000000007,
+            0.006999999999999895,
+            0.014999999999999902,
+            0.01100000000000012,
+            0.014000000000000012
+          ],
+          "delta_sd": 0.0035355339059327407,
+          "delta_lower_95": 0.007629012014260491,
+          "delta_upper_95": 0.014370987985739483,
+          "share": 0.009352150994728777
+        },
+        "gpu_stage:computeLightVolume": {
+          "n": 5,
+          "production_mean": 0.157,
+          "production_min": 0.155,
+          "production_max": 0.159,
+          "ablation_mean": 0.1588,
+          "ablation_min": 0.157,
+          "ablation_max": 0.164,
+          "delta_mean": -0.0018000000000000017,
+          "deltas": [
+            -0.007000000000000006,
+            0.0,
+            -0.0020000000000000018,
+            0.0,
+            0.0
+          ],
+          "delta_sd": 0.0030331501776206227,
+          "delta_lower_95": -0.004691985504804618,
+          "delta_upper_95": 0.001091985504804615,
+          "share": -0.011464968152866253
+        },
+        "gpu_stage:computeSunShadow": {
+          "n": 5,
+          "production_mean": 0.1856,
+          "production_min": 0.179,
+          "production_max": 0.19,
+          "ablation_mean": 0.1752,
+          "ablation_min": 0.173,
+          "ablation_max": 0.177,
+          "delta_mean": 0.01040000000000001,
+          "deltas": [
+            0.01100000000000001,
+            0.013000000000000012,
+            0.006000000000000005,
+            0.015000000000000013,
+            0.007000000000000006
+          ],
+          "delta_sd": 0.0038470768123342724,
+          "delta_lower_95": 0.006731968506133031,
+          "delta_upper_95": 0.014068031493866989,
+          "share": 0.056034482758620746
+        },
+        "gpu_stage:fbToScreen": {
+          "n": 5,
+          "production_mean": 0.1834,
+          "production_min": 0.182,
+          "production_max": 0.185,
+          "ablation_mean": 0.1822,
+          "ablation_min": 0.182,
+          "ablation_max": 0.183,
+          "delta_mean": 0.001200000000000001,
+          "deltas": [
+            0.0010000000000000009,
+            0.0010000000000000009,
+            0.0020000000000000018,
+            0.0020000000000000018,
+            0.0
+          ],
+          "delta_sd": 0.0008366600265340763,
+          "delta_lower_95": 0.000402278645139796,
+          "delta_upper_95": 0.001997721354860206,
+          "share": 0.006543075245365327
+        },
+        "gpu_stage:resolvePerAxisScreenDepth": {
+          "n": 5,
+          "production_mean": 4.535,
+          "production_min": 4.402,
+          "production_max": 4.695,
+          "ablation_mean": 4.5154,
+          "ablation_min": 4.392,
+          "ablation_max": 4.629,
+          "delta_mean": 0.01959999999999997,
+          "deltas": [
+            0.009999999999999787,
+            0.0009999999999994458,
+            0.038000000000000256,
+            -0.017000000000000348,
+            0.06600000000000072
+          ],
+          "delta_sd": 0.03266955769520046,
+          "delta_lower_95": -0.011549096408082701,
+          "delta_upper_95": 0.050749096408082645,
+          "share": 0.004321940463065044
+        }
+      },
+      "entityCanvasToFb_samples": [
+        360
+      ]
+    }
+  ]
+}

@@ -7,10 +7,11 @@ Release. The exact query is the `queryHierarchy` branch of
 Receivers in a tile that overflowed but kept every record walk the retained
 record pool's hierarchy instead of the tile list.
 
-The macOS/Metal replay and the GL/Metal ratio belong to a separate
-verification run. That run replays this controller unchanged at the same
-source revision and writes its own `macos-metal/` subtree beside
-`windows-opengl/`.
+The macOS/Metal replay of the same controller, at the same source revision,
+is in `macos-metal/`. The GL/Metal classification is in
+[§ macOS/Metal replay and GL/Metal classification](#macosmetal-replay-and-glmetal-classification).
+**The classification is that a residual above 2× remains in both build
+types.**
 
 **Result.** On this host the exact query is a real execution cost, not a
 timer artifact:
@@ -282,10 +283,102 @@ row. The rows are never summed.
   the route, not the pool size: from 5,164 to 71,470 retained records the
   composite stays between 45 and 62 ms.
 
+## macOS/Metal replay and GL/Metal classification
+
+The controller above was replayed unchanged on macOS/Metal. The run used
+`run_matrix.py` `8f04a40b357f…`, the committed file and the hash that scored
+the Windows diagnostic. The worktree was detached at the Windows source
+revision `5d93af97c`, with this directory overlaid untracked. Every measured
+path (`engine`, `creations/demos/canvas_stress`, `scripts/perf`,
+`scripts/verify_common.py`) was clean, so each manifest records
+`head = 5d93af97cd1a…`. Fixture, frame count, camera, cases, pair count,
+variants and statistics are all the controller's own.
+
+| | |
+|---|---|
+| Source | `5d93af97c`, the revision the Windows reports record |
+| Host | macOS 26.5.2 (25F84), Apple M4 Max (32-core GPU, Metal 4), Apple clang 21.0.0 (clang-2100.1.1.101) |
+| Resolution | Game framebuffer 1280×720 (identical runtime `config.lua`, `runtime_scripts_sha256` `c3ab47543e58…` on both hosts), trixel canvases 642×722 on both; only the final screen target differs (2560×1440 on the Retina host, 1280×720 on Windows) |
+| Binaries | Debug `0eebb3615361…`, Release `23e419510623…` (full hashes in `macos-metal/*/provenance.json`) |
+| Pristine sampler | `ir_sun_shadow_sample.metal` `890ea100e642…`; after the last launch both runtime shader sets still hash to their provenance (Debug `e419d9ebb850…`, Release `74e05386a988…`) |
+| Power / quiet | AC power on all 128 launches; all 120 timed arms CLEAN and quiet-window `guarded`, `quiet_attempts_discarded: 0`, each build finished on its first controller launch |
+
+**Positive fire.** Both hosts show the same diagnostic
+(`macos-metal/debug/diagnostic/diagnostic.json`). All 25 captures are CLEAN.
+The Metal frames are 2560 wide, so the controller scales the receiver crop to
+`(1100,712)-(1460,840)`, and every pixel count is 4× the Windows 1× count.
+That is 1,484 entered pixels against 371, and 936 hit pixels against 234.
+The exact query fires on `far-128` and on all three exact-path filler cases.
+In `far-128-filler-first-frozen` the receiver tiles (25 and 36 records) lost
+records, so the route is `sampled-fallback` and the entered and hit counts are
+0. In every case the closing production capture matches the oracle at exact
+RGB across the receiver crop. The retained-record counts, leaf counts and
+receiver tiles match the Windows run. Only the record-lost tile count
+elsewhere in the frozen cases differs (1,266 and 624 on Metal, 683 and 352 on
+Windows). No receiver tile is among them.
+
+**Timing.** `entityCanvasToFb` composite in ms, five pairs per row, against
+the matching Windows row. "Ratio" is GL production over Metal production.
+The Metal delta carries its one-sided 95% bounds. Full tables are in
+`macos-metal/<build>/summary.md`.
+
+| Build | Case | GL production | Metal production (min–max) | Ratio | Metal ablation | Metal delta (95% lower / upper) | Metal share |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Debug | `far-128` | 62.443 | 9.325 (9.09–9.54) | 6.70× | 6.014 | +3.31 (+3.14 / +3.48) | 35.5% |
+| | `far-128-filler-last` | 48.628 | 8.943 (8.80–9.06) | 5.44× | 6.375 | +2.57 (+2.40 / +2.74) | 28.7% |
+| | `far-128-filler-first` | 46.030 | 8.935 (8.74–9.09) | 5.15× | 6.488 | +2.45 (+2.28 / +2.61) | 27.4% |
+| | `far-128-filler-last-frozen` | 46.619 | 8.676 (8.42–9.00) | 5.37× | 6.375 | +2.30 (+2.05 / +2.55) | 26.5% |
+| | `far-128-filler-first-frozen` | 0.964 | 6.433 (6.25–6.54) | 0.15× | 6.357 | +0.08 (−0.12 / +0.27) | 1.2% |
+| | `far-128`, synchronized | 64.303 | 12.097 (11.71–12.49) | 5.32× | 8.838 | +3.26 (+2.98 / +3.54) | 26.9% |
+| Release | `far-128` | 67.728 | 9.085 (8.79–9.41) | 7.46× | 6.038 | +3.05 (+2.81 / +3.29) | 33.5% |
+| | `far-128-filler-last` | 53.098 | 8.861 (8.49–9.00) | 5.99× | 6.523 | +2.34 (+2.25 / +2.42) | 26.4% |
+| | `far-128-filler-first` | 50.239 | 8.989 (8.91–9.11) | 5.59× | 6.455 | +2.53 (+2.42 / +2.65) | 28.2% |
+| | `far-128-filler-last-frozen` | 54.158 | 8.844 (8.64–9.00) | 6.12× | 6.498 | +2.35 (+2.23 / +2.46) | 26.5% |
+| | `far-128-filler-first-frozen` | 0.732 | 6.430 (6.25–6.55) | 0.11× | 6.382 | +0.05 (−0.12 / +0.22) | 0.8% |
+| | `far-128`, synchronized | 69.415 | 12.121 (11.92–12.47) | 5.73× | 8.752 | +3.37 (+3.18 / +3.56) | 27.8% |
+
+On Metal the query is a real but small cost. In `far-128` it moves the
+steady frame (+3.64 ms Debug, +3.30 ms Release) and the GPU command-buffer
+span (+3.50, +3.09) by the same ~3 ms as the composite. The synchronized
+control agrees with the counter delta. The filler steady frames move by
++4.6–7.5 ms, against a composite delta of +2.3–2.6 ms. Their frames run
+near 100 ms against a GPU command-buffer span near 50–55 ms, so they are not
+GPU-bound, and this run does not attribute the difference. The two builds are
+within noise of each other, as on GL.
+
+**Classification.** Debug and Release get the same verdict: **a residual
+above 2× remains.**
+
+- **The 2× test fails everywhere the query runs.** GL production is
+  5.2–6.7× the matching Metal mean on the exact-path cases in Debug, and
+  5.6–7.5× in Release. The tails do not rescue it: the slowest Metal
+  `far-128` arm (9.54 ms Debug, 9.41 ms Release) against the fastest GL arm
+  (60.62 ms, 61.38 ms) is still 6.4× and 6.5×. So the Morton-ordered
+  hierarchy from #4855 has not superseded the GL excess.
+- **The timer-artifact control does not explain it.** On Windows the
+  synchronized control and the frame row move with the timestamp delta (§
+  Timer classification). On Metal the synchronized delta agrees with the
+  counter delta too. The excess is GL execution cost on the RTX 3060 Ti
+  (driver 32.0.15.8180), not attribution.
+- **The query term is where they differ.** The production-minus-ablation
+  delta is 18–20× larger on GL in Debug (`far-128` +61.68 against +3.31 ms)
+  and 19–23× in Release (+67.49 against +3.05 ms).
+- **The base composite runs the other way.** With the branch off, Metal's
+  composite (6.0–6.5 ms) costs 7–8× GL's in Debug (0.76–0.93 ms) and 9–26×
+  in Release (0.23–0.73 ms). That includes the sampled-fallback control,
+  where GL is 0.15× and 0.11× of Metal. That base cost belongs to the Metal composite with the query
+  compiled out, not to the exact query, and this run does not attribute it.
+
+Following this verification run's own rule, the measurements are committed
+and the run stops here. A revised optimization plan for the GL exact-query
+cost is separate work.
+
 ## Replay
 
 From a checkout at the recorded source revision, with this directory present
-and `IRCanvasStress` built in both trees
+(at a revision that predates it, overlay it untracked with
+`git archive origin/master docs/perf/sun-overflowed-tile-query | tar -x`; the
+measured paths stay clean) and `IRCanvasStress` built in both trees
 (`fleet-build --target IRCanvasStress` and `fleet-build --release --target IRCanvasStress`):
 
 ```bash
@@ -295,8 +388,8 @@ python3 docs/perf/sun-overflowed-tile-query/run_matrix.py timing --build debug -
 python3 docs/perf/sun-overflowed-tile-query/run_matrix.py timing --build release --output docs/perf/sun-overflowed-tile-query/<host>-<backend>
 ```
 
-A replay records its own `provenance.json`. `windows-opengl/` stays bound
-to the controller hash that captured it, so `timing` and `diagnose` refuse to
+A replay records its own `provenance.json`. `windows-opengl/` and
+`macos-metal/` stay bound to the controller hash that captured them, so `timing` and `diagnose` refuse to
 extend it with a different controller.
 
 `timing` resumes after an interruption. The controller exits after an arm
@@ -308,7 +401,7 @@ shader set.
 
 ## Retained evidence
 
-`windows-opengl/<build>/` holds the following:
+`windows-opengl/<build>/` and `macos-metal/<build>/` hold the following:
 
 - `provenance.json`, `plan.json` and the `synchronized.lua` preset.
 - One directory per arm, `<mode>/<case>/pair-<n>-<variant>/`. Each holds the
@@ -333,4 +426,6 @@ production and Release `far-128-filler-last-frozen` pair 4 ablation) found no
 quiet window in eight attempts while another fleet pane was active. The
 controller stopped each time. A relaunch re-validated the finished arms and
 re-ran only the stopped one, which then passed on its first attempt. Every
-retained arm records `quiet_attempts_discarded: 0`.
+retained arm records `quiet_attempts_discarded: 0`. The macOS session had no
+stops. Both of its builds completed on their first controller launch, and the
+same log compression and index-CSV drop were applied to `macos-metal/`.

@@ -1,0 +1,28 @@
+{
+  "source_revision": "5d93af97cd1aa625995883d8fe641f8330f2e711",
+  "backend": "metal",
+  "build": "debug",
+  "build_type": "Debug",
+  "build_dir": "build",
+  "binary_sha256": "0eebb3615361b3c9ddb1551837ef487014a52442ee8a64a1ad947d8d80e8f475",
+  "sampler": "ir_sun_shadow_sample.metal",
+  "pristine_sampler_sha256": "890ea100e64274cd2d9aa36d64b25e2bd8712cb1b85b85fdbafcd17bec343b2d",
+  "pristine_shader_dir_sha256": "e419d9ebb8503b3b5c39df6c59b577db3781ee7e2d1d408679f61892f59b5a59",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "controller_sha256": "8f04a40b357fe0cc3714e475fc0522d8d817a8179e80d8d8887796c1cc6e18e8",
+  "variant_sampler_sha256": {
+    "production": "890ea100e64274cd2d9aa36d64b25e2bd8712cb1b85b85fdbafcd17bec343b2d",
+    "ablation": "bc6f5d9e56f30b00a383d2f28bd95bfb4f30cb4cdc6df3ef9b429a9c83ef48f0",
+    "entry-shadow": "793fd249dac39cbe8f2c5ed1cb512d0d54c2e37ffae0a87d9978e6e4abd7e359",
+    "entry-lit": "4931c46c9e472ebdd27d364113c92416a8b5e624a8d6344ca42e6f50f687ded6",
+    "hit-cleared": "34ed0630945a474edc8d224da228e20f83c6c1adcfd48dc2a9d835be6a0f8148"
+  },
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_gpu": [
+    {
+      "name": "Apple M4 Max",
+      "cores": "32"
+    }
+  ],
+  "python": "3.14.3"
+}

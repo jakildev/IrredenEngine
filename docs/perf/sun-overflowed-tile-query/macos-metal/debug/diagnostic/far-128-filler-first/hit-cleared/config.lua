@@ -1,0 +1,1 @@
+config = {window_mode="offscreen", profiling_enabled=false, gpu_stage_timing=false, init_window_width=1280, init_window_height=720, game_resolution_width=1280, game_resolution_height=720, screenshot_output_dir="/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/docs/perf/sun-overflowed-tile-query/macos-metal/debug/diagnostic/far-128-filler-first/hit-cleared"}

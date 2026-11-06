@@ -1,0 +1,95 @@
+{
+  "arm": {
+    "mode": "synchronized",
+    "case": "far-128",
+    "pair": 3,
+    "variant": "production"
+  },
+  "expected": {
+    "build_type": "Debug",
+    "binary_sha256": "0eebb3615361b3c9ddb1551837ef487014a52442ee8a64a1ad947d8d80e8f475",
+    "shader_dir_sha256": "e419d9ebb8503b3b5c39df6c59b577db3781ee7e2d1d408679f61892f59b5a59",
+    "sampler_sha256": "890ea100e64274cd2d9aa36d64b25e2bd8712cb1b85b85fdbafcd17bec343b2d",
+    "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+    "source_revision": "5d93af97cd1aa625995883d8fe641f8330f2e711",
+    "fixture_args": [
+      "--only",
+      "shadowbox,floor",
+      "--probe-source-box",
+      "--probe-floor-mode",
+      "grid",
+      "--probe-floor-span",
+      "40",
+      "--sun-direction",
+      "0",
+      "0",
+      "-1",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--no-ao",
+      "--yaw",
+      "0",
+      "--zoom",
+      "1",
+      "--auto-profile",
+      "--profile-frames",
+      "360",
+      "--window-mode",
+      "offscreen",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "128",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60",
+      "--config-preset",
+      "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/docs/perf/sun-overflowed-tile-query/macos-metal/debug/synchronized.lua"
+    ]
+  },
+  "metrics": {
+    "entityCanvasToFb": 11.919,
+    "entityCanvasToFb_samples": 360,
+    "frame_avg": 85.19,
+    "steady_frame_avg": 84.94,
+    "gpu_frame": {
+      "envelope": 72.648,
+      "commandBufferSpans": 47.47
+    },
+    "gpu_stages": {
+      "buildLightOcclusionGrid": {
+        "avg_ms": 1.192,
+        "samples": 360
+      },
+      "bakeSunShadowMap": {
+        "avg_ms": 0.686,
+        "samples": 360
+      },
+      "computeSunShadow": {
+        "avg_ms": 0.179,
+        "samples": 360
+      },
+      "computeLightVolume": {
+        "avg_ms": 0.155,
+        "samples": 360
+      },
+      "entityCanvasToFb": {
+        "avg_ms": 11.919,
+        "samples": 360
+      },
+      "resolvePerAxisScreenDepth": {
+        "avg_ms": 4.588,
+        "samples": 360
+      },
+      "fbToScreen": {
+        "avg_ms": 0.184,
+        "samples": 360
+      }
+    }
+  },
+  "quiet_attempts_discarded": 0,
+  "restored_shader_dir_sha256": "e419d9ebb8503b3b5c39df6c59b577db3781ee7e2d1d408679f61892f59b5a59"
+}
