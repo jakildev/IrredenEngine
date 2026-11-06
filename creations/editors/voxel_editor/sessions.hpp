@@ -12,6 +12,8 @@
 #include "lod_workflow.hpp"
 #include "viewport_scroll_workflow.hpp"
 #include "region_tools.hpp"
+#include "material_tools_workflow.hpp"
+#include "shapes_workflow.hpp"
 #include "shadow_rotation.hpp"
 #include "sculpt_panel.hpp"
 #include "hierarchy_panel.hpp"
@@ -162,6 +164,8 @@ enum class Id {
     LOD_WORKFLOW,
     VIEWPORT_SCROLL,
     REGION_TOOLS,
+    MATERIAL_TOOLS,
+    SHAPES_WORKFLOW,
     SHADOW_ROTATION,
     ROCK,
     MUSHROOM,
@@ -282,6 +286,10 @@ inline Id idFromName(const std::string &name) {
         return Id::PLACE_BELOW;
     if (name == "fill_ghost")
         return Id::FILL_GHOST;
+    if (name == "shapes_workflow")
+        return Id::SHAPES_WORKFLOW;
+    if (name == "material_tools")
+        return Id::MATERIAL_TOOLS;
     if (name == "region_tools")
         return Id::REGION_TOOLS;
     if (name == "camera_gestures")
@@ -2128,6 +2136,10 @@ inline Recipe build(
     switch (id) {
     case Id::REGION_TOOLS:
         return buildRegionTools(sceneSize, sceneOrigin);
+    case Id::SHAPES_WORKFLOW:
+        return buildShapesWorkflow(sceneSize, sceneOrigin);
+    case Id::MATERIAL_TOOLS:
+        return buildMaterialTools(sceneSize, sceneOrigin);
     case Id::CAMERA_GESTURES:
         return buildCameraGestures();
     case Id::VIEWPORT_SCROLL:
