@@ -122,7 +122,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   the gizmo as a unit, `create*GizmoForAnchor(anchor, viewClearance)` mutates the
   anchor's own `C_LocalTransform`, `kNullEntity` makes a marker drag-inert. A
   positive clearance draws the handles in front of that sphere around the anchor, on the same pixels
-  ([contract](../../../../docs/design/prefab-render-surface.md#view-clearance)). `GIZMO_DRAG` locks its iso-depth plane at press.
+  ([contract](../../../../docs/design/prefab-render-surface.md#view-clearance)). Raw-input tools poll `Camera::GestureOwnership` before editing in INPUT; `GIZMO_DRAG` adopts it automatically. Registered navigation reserves the gesture through release; custom bindings and interrupted-edit policy follow the [ownership contract](../../../../docs/design/camera-gesture-ownership.md). `GIZMO_DRAG` locks its iso-depth plane at press.
 - `Picking::castVoxelRay(RayCastOptions)`: `ISO_LATTICE` (default) resolves the
   iso column; `SCREEN_PIXEL` resolves the face drawn under the cursor — an edit
   pick uses it, with `shapes_ = false` (a shape hit has no face).

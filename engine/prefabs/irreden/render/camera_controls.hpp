@@ -23,6 +23,10 @@
 //   Pan              WASD               (keyboard)
 //   Zoom             +/-                (keyboard)
 //   Close            Escape             (keyboard)
+//
+// Raw-input authoring tools poll Camera::GestureOwnership during INPUT so a
+// camera drag cannot also edit the scene. GIZMO_DRAG adopts it automatically;
+// custom tools own their edit cancellation/commit policy.
 
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_command.hpp>

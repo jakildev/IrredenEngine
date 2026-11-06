@@ -33,7 +33,9 @@ _REPO = Path(__file__).resolve().parents[2]
 
 PILLOW_EXCEPTIONS = frozenset({
     "scripts/editor-screen-alignment.py",
+    "scripts/editor-shadow-rotation.py",
     "scripts/tests/test_editor_screen_alignment.py",
+    "scripts/tests/test_editor_shadow_rotation.py",
     "scripts/pr_capture_common.py",
     "scripts/tests/test_pr_capture_common.py",
     "scripts/render-detached-face-metric.py",
