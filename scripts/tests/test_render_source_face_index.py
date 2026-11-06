@@ -391,7 +391,8 @@ def load_shader(shaders, name, suffix):
 
 
 def shader_to_cpp(source):
-    source = (source.replace("constant uint", "const uint")
+    source = (source.replace("constant bool", "const bool")
+              .replace("constant uint", "const uint")
               .replace("constant FrameDataSun&", "const FrameDataSun&")
               .replace("device atomic_uint*", "atomic_uint*")
               .replace("thread ", "")

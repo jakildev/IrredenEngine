@@ -160,17 +160,27 @@ bool sunStoredTapBeyondThrow(uint stored, float sunZ, float bias, float maxShado
 // (sunZ - bias - throw, sunZ - bias) is one slab wide, so the slab holding its
 // far end answers with its max and the next slab with its min; every candidate
 // takes the same per-word test, so provenance rejects exactly as a nearest
-// word would. An overflowed texel or a throw that differs from the slab
+// word would. A collided/overflowed texel or a throw that differs from the slab
 // width answers from the nearest word alone.
 bool sunDepthSlabBlocks(int texelIndex, float sunZ, float bias, float maxShadowThrow,
                         bool surfaceReceiver, ivec2 px, vec2 origin, vec2 texelSz,
                         vec2 gradUV, vec2 sunUV) {
     if (kSunDepthSlabSlots == 0u || maxShadowThrow != float(kSunDepthSlabWidthUnits)) return false;
-    if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
+    if (kSunDepthSlabDirectMapped) {
+        // Any collision disables the whole texel, including otherwise valid slots.
+        for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
+            const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
+            if (low == 0xFFFFFFFFu) continue;
+            const uint high = sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, slot)];
+            if (sunDepthSlab(low) != sunDepthSlab(high)) return false;
+        }
+    } else {
+        if ((sunDepthBuf[sunDepthSlabMaxIndex(texelIndex, 0u)] & kSunDepthSlabOverflow) != 0u) return false;
+    }
     const uint farSlab = sunDepthSlab(packSunDepth(sunZ - bias - maxShadowThrow, ivec2(0)));
     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
         const uint low = sunDepthBuf[sunDepthSlabMinIndex(texelIndex, slot)];
-        if (low == 0xFFFFFFFFu) break;
+        if (low == 0xFFFFFFFFu) continue;
         const uint slab = sunDepthSlab(low);
         if (slab != farSlab && slab != farSlab + 1u) continue;
         // Both extrema of a window slab: the far slab's max and the near slab's

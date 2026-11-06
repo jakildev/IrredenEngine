@@ -146,6 +146,8 @@ OUT_OF_TREE_SUBJECTS=(
     'scripts/perf/perf_grid_matrix.sh'
     'scripts/perf/repeat_profile.py'
     'scripts/perf/sdf_controls.py'
+    'scripts/perf/sun_depth_slab_capture.py'
+    'scripts/perf/sun_depth_slab_timing.py'
     'scripts/render-verify.py'
 )
 

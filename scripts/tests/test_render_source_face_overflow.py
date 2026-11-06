@@ -435,6 +435,7 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
         code += "SunQueryStats sunQueryStats{};\n"
     code += cases.replace("SAMPLE_CALL", call)
     code = (code.replace("constant uint", "const uint").replace("constant float", "const float")
+            .replace("constant bool", "const bool")
             .replace("pcfOffset.xy", "vec2(pcfOffset)")
             .replace("inout SunQueryStats sunQueryStats", "SunQueryStats &sunQueryStats")
             .replace("thread SunQueryStats &sunQueryStats", "SunQueryStats &sunQueryStats")

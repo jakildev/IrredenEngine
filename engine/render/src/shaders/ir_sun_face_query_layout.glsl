@@ -23,10 +23,12 @@ const uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceMapD
 // of (min, max) packed words, each slot owning one slab of kSunDepthSlabWidthUnits
 // depth units. The slab width equals the receiver's shadow throw, so a
 // throw-wide window (a, a + width) is answered exactly by the max of the slab
-// holding a and the min of the next slab. Slot 0's max word carries the
-// sticky overflow bit once a texel saw more distinct slabs than it has slots.
+// holding a and the min of the next slab. Associative mode stores sticky
+// overflow in slot 0's max; direct mode derives collisions from the extrema.
 // Zero compiles the layer out; opt in with the CPU twin (sun_face_query_layout.hpp).
 const uint kSunDepthSlabSlots = 0u;
+// Direct slots may contain gaps; unequal extremum slabs invalidate the whole texel.
+const bool kSunDepthSlabDirectMapped = true;
 const uint kSunDepthSlabWords = 2u;
 const uint kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
 const uint kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;

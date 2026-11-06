@@ -109,6 +109,7 @@ namespace IRRender {
 using ::Buffer;using ::FrameDataVoxelToCanvas;
 Device* device(){static Device value;return &value;}
 }
+namespace IRPrefab::SunShadow { constexpr bool kSunDepthSlabDirectMapped=false; }
 namespace IRPrefab::Camera {
 float getYaw(){return cameraYaw;}
 std::pair<float,float> computeYawSplit(float yaw){return {0,yaw};}

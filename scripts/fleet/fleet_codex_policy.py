@@ -18,7 +18,8 @@ DISPLAY_VALIDATORS = (
     "scripts/occlusion-fire-verify.py", "scripts/package-smoke.py", "scripts/pivot-verify.py",
     "scripts/render-continuous-zoom-metric.py", "scripts/render-verify.py",
     "scripts/perf/grid_capacity_controls.py", "scripts/perf/repeat_profile.py",
-    "scripts/perf/sdf_controls.py",
+    "scripts/perf/sdf_controls.py", "scripts/perf/sun_depth_slab_capture.py",
+    "scripts/perf/sun_depth_slab_timing.py",
     "scripts/perf/perf_grid_matrix.sh")
 # The fleet-jobs profiles that run a DISPLAY_VALIDATORS script detached;
 # fleet-jobs' DISPLAY_PROFILES names the same set.

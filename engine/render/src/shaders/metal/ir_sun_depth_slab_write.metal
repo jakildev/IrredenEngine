@@ -5,18 +5,24 @@
 #include <metal_atomic>
 using namespace metal;
 
-// Mirrors shaders/ir_sun_depth_slab_write.glsl: the primary-layer writer side
-// of the depth-slab extrema in ir_sun_face_query_layout.metal, which the
-// including kernel includes first. The first writer of a slab claims the
-// first empty slot with a compare-exchange; later writers of that slab min /
-// max the pair. A slot's slab never changes once claimed. A texel with more
-// distinct slabs than slots sets the sticky overflow bit on slot 0's max word.
-// The pair is one slab's reduced (min, max); a single write is (depth, depth).
+// The including kernel supplies the layout and writable slot-28 sunDepthBuf.
+// Direct mapping reduces into slab % slots without loading resident words;
+// differing min/max slabs tell the receiver to discard the texel's slab layer.
+// Associative mapping claims slots and marks overflow on max plane zero.
+// A pair contains extrema from one slab, including every provenance bit.
 inline void mergeSunDepthSlabPair(
     device atomic_uint *sunDepthBuf, int texelIndex, uint lowDepth, uint highDepth
 ) {
     if (kSunDepthSlabSlots == 0u) return;
     const uint slab = sunDepthSlab(lowDepth);
+    if (kSunDepthSlabDirectMapped) {
+        const uint slot = slab % (kSunDepthSlabSlots == 0u ? 1u : kSunDepthSlabSlots);
+        const uint lowIndex = sunDepthSlabMinIndex(texelIndex, slot);
+        const uint highIndex = sunDepthSlabMaxIndex(texelIndex, slot);
+        atomic_fetch_min_explicit(&sunDepthBuf[lowIndex], lowDepth, memory_order_relaxed);
+        atomic_fetch_max_explicit(&sunDepthBuf[highIndex], highDepth, memory_order_relaxed);
+        return;
+    }
     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
         const uint low = sunDepthSlabMinIndex(texelIndex, slot);
         const uint highIndex = sunDepthSlabMaxIndex(texelIndex, slot);

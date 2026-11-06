@@ -38,13 +38,11 @@ constexpr std::uint32_t kSourceFaceCapacityDispatchLimit = 16777216u;
 constexpr std::uint32_t kSourceFaceRecordWords = 10u;
 constexpr std::uint32_t kSourceFaceFallbackOffset =
     kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
-// Per-texel depth-slab extrema of the primary layer: kSunDepthSlabSlots slots
-// of (min, max) packed words, each slot owning one slab of kSunDepthSlabWidthUnits
-// depth units. The slab width equals the receiver's shadow throw, so a
-// throw-wide window is answered exactly by the max of the slab holding its far
-// end and the min of the next slab. Slot 0's max word carries the sticky
-// overflow bit once a texel saw more distinct slabs than it has slots; the
-// receiver then answers from the nearest word alone.
+// Per-texel primary depth extrema in throw-wide slabs. The far window slab's
+// max and the next slab's min decide depth-only existence. Direct mapping
+// selects slab % slots with unconditional extrema atomics; any min/max slab
+// mismatch invalidates the whole texel. Associative mode claims distinct slabs
+// and stores sticky overflow in slot 0's max. Both fall back to nearest-only.
 //
 // Zero slots compiles the layer out: no words, and every primary write and
 // receiver tap byte-identical to the nearest-only bake. A creation that needs
@@ -53,6 +51,8 @@ constexpr std::uint32_t kSourceFaceFallbackOffset =
 // take one), in this constant and both shader twins; the cost that keeps the
 // default at zero is in docs/design/sun-face-index-capacity.md.
 constexpr std::uint32_t kSunDepthSlabSlots = 0u;
+// Direct mapping uses per-pixel atomics; false selects associative/cooperative reduction.
+constexpr bool kSunDepthSlabDirectMapped = true;
 constexpr std::uint32_t kSunDepthSlabWords = 2u;
 constexpr std::uint32_t kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
 constexpr std::uint32_t kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;

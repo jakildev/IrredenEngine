@@ -217,6 +217,14 @@ std::vector<uint> slabWords(uint cascade,int x,int y){
 }
 bool overflowed(uint cascade,int x,int y){
     const uint flag=sunDepthBuf.words[sunDepthSlabMaxIndex(texelOf(cascade,x,y),0u)];
+    if(kSunDepthSlabDirectMapped){
+        for(uint slot=0;slot<kSunDepthSlabSlots;++slot){
+            uint lo=sunDepthBuf.words[sunDepthSlabMinIndex(texelOf(cascade,x,y),slot)];
+            uint hi=sunDepthBuf.words[sunDepthSlabMaxIndex(texelOf(cascade,x,y),slot)];
+            if(lo!=EMPTY && (lo>>8)/65536u!=(hi>>8)/65536u)return true;
+        }
+        return false;
+    }
     return (flag&kSunDepthSlabOverflow)!=0u;
 }
 uint distinctSlabs(const std::vector<uint>& writes){
@@ -243,7 +251,13 @@ void check(uint cascade,const std::vector<uint>& writes,const Receiver& r){
     }
     const bool legacy=oracleWord(nearest,r.z,r.bias,r.surface,px,r.gradUV,uv);
     const bool beyond=r.z-depthOf(nearest)-r.bias>=64.0f;
-    const bool expectOverflow=distinctSlabs(writes)>kSunDepthSlabSlots;
+    bool collision=false;
+    for(uint a:writes)for(uint b:writes){
+        const uint sa=(a>>8)/65536u,sb=(b>>8)/65536u;
+        if(sa!=sb&&sa%kSunDepthSlabSlots==sb%kSunDepthSlabSlots)collision=true;
+    }
+    const bool expectOverflow=kSunDepthSlabDirectMapped?collision:
+        distinctSlabs(writes)>kSunDepthSlabSlots;
     std::vector<uint> order(writes);
     std::vector<uint> firstSlabs;
     uint permutation=0;float firstGot=0;
@@ -305,6 +319,37 @@ int main(){
             require(slabs[slot*2]==EMPTY&&slabs[slot*2+1]==0u,"clear resets poisoned slab words");
         }
         require(sample({2.5f,3.5f},10,cascade,false,{0,0,1},64)==0,"cleared texel casts nothing");
+    }
+    if(kSunDepthSlabDirectMapped){
+        for(uint cascade:{0u,1u}){
+            clearOne(cascade,2,3);
+            WRITE_PRIMARY(texelOf(cascade,2,3),word(2,0));
+            WRITE_PRIMARY(texelOf(cascade,2,3),word(4,0));
+            require(sunDepthBuf.words[sunDepthSlabMinIndex(texelOf(cascade,2,3),2u)]==word(2,0),
+                    "direct minimum write retained");
+            require(sunDepthBuf.words[sunDepthSlabMaxIndex(texelOf(cascade,2,3),2u)]==word(4,0),
+                    "direct maximum write retained");
+            // Slot 2 answers while slot 0 is empty.
+            WRITE_PRIMARY(texelOf(cascade,2,3),word(-220,0));
+            require(sample({2.5f,3.5f},10,cascade,false,{0,0,1},64)==1,
+                    "direct sparse slot recovery");
+            // Slot 0 answers before the colliding, nonqueried slot 1 is visited.
+            clearOne(cascade,2,3);
+            for(uint w:{word(-250,0),word(-58,0),word(65,0)})WRITE_PRIMARY(texelOf(cascade,2,3),w);
+            require(sample({2.5f,3.5f},73,cascade,false,{0,0,1},64)==0,
+                    "direct collision in nonqueried slot disables whole texel");
+            sunDepthBuf.words[kSourceFaceHeaderOffset]=1u;
+            sunDepthBuf.words[kSourceFaceFallbackOffset+texelOf(cascade,2,3)]=word(65,0x89u);
+            require(sample({2.5f,3.5f},73,cascade,false,{0,0,1},64)==1,
+                    "direct collision preserves independent indexed hit");
+            sunDepthBuf.words[kSourceFaceHeaderOffset]=0u;
+            sunDepthBuf.words[kSourceFaceFallbackOffset+texelOf(cascade,2,3)]=EMPTY;
+            for(int slab=2;slab<15;++slab){
+                float z=float(slab*64-512+10);
+                check(cascade,{word(z-128,0),word(z,0)},receiver(z+8,false,{0,0,1}));
+                check(cascade,{word(z-192,0),word(z,0)},receiver(z+8,false,{0,0,1}));
+            }
+        }
     }
     const Receiver flat=receiver(10,false,{0,0,1});
     // Nearest-two loses the third distinct depth behind two distant samples.
@@ -738,7 +783,7 @@ def fills_source():
 
 
 def host_source(suffix, directory, sampler_mutation=None, writer_mutation=None,
-                clear_mutation=None, cooperative=False, window_mutation=None):
+                clear_mutation=None, cooperative=False, window_mutation=None, direct=False):
     writer = writer_source(suffix, directory)
     clear = clear_source(suffix, directory)
     if cooperative:
@@ -770,6 +815,10 @@ def host_source(suffix, directory, sampler_mutation=None, writer_mutation=None,
                              "const uint kSunDepthSlabSlots = 3u;", code)
     if replaced == 0:
         raise ValueError("expected the layout's slot-count constant")
+    code, replaced = re.subn(r"const bool kSunDepthSlabDirectMapped = (?:true|false);",
+                             f"const bool kSunDepthSlabDirectMapped = {str(direct).lower()};", code)
+    if replaced == 0:
+        raise ValueError("expected the layout's direct-map selector")
     return code
 
 
@@ -812,10 +861,11 @@ class SunDepthSlabTest(unittest.TestCase):
     def test_writer_clear_and_receiver_agree_with_oracle(self):
         harness = overflow.SourceFaceOverflowTest()
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
-            with self.subTest(backend=suffix):
-                run = harness.compile_and_run(host_source(suffix, directory))
-                self.assertEqual(run.returncode, 0, run.stderr)
-                print(f"{suffix}: {run.stdout}", end="")
+            for direct in (False, True):
+                with self.subTest(backend=suffix, direct=direct):
+                    run = harness.compile_and_run(host_source(suffix, directory, direct=direct))
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    print(f"{suffix} direct={direct}: {run.stdout}", end="")
 
     def test_mutation_controls(self):
         harness = overflow.SourceFaceOverflowTest()
@@ -906,6 +956,118 @@ class SunDepthSlabTest(unittest.TestCase):
                 self.assertNotEqual(run.returncode, 0)
                 self.assertIn("clear resets poisoned slab words", run.stderr)
 
+
+    def test_zero_slots_write_only_the_nearest_word(self):
+        harness = overflow.SourceFaceOverflowTest()
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            code = host_source(suffix, directory, direct=True)
+            code = code[:code.index(MAIN)] + """
+int main(){
+sunDepthBuf.words.assign(kSourceFaceBufferWords,0xDEADBEEFu);
+sunDepthBuf.words[kSourceFaceCapacityOffset]=kSourceFaceCapacity;
+clearEverything();
+auto previous=sunDepthBuf.words;
+WRITE
+require(sunDepthBuf.words[texelOf(0,2,3)]==word(-120,0),"zero slots retain nearest");
+sunDepthBuf.words[texelOf(0,2,3)]=previous[texelOf(0,2,3)];
+require(sunDepthBuf.words==previous,"zero slots never touch slab storage");
+return 0;}
+""".replace("WRITE", ("writeSunPrimaryDepth(sunDepthBuf,texelOf(0,2,3),word(-120,0));"
+                       if suffix == "metal" else
+                       "writeSunPrimaryDepth(texelOf(0,2,3),word(-120,0));"))
+            code = code.replace("const uint kSunDepthSlabSlots = 3u;",
+                                "const uint kSunDepthSlabSlots = 0u;")
+            run = harness.compile_and_run(code)
+            self.assertEqual(run.returncode, 0, run.stderr)
+
+    def test_direct_mutation_controls(self):
+        harness = overflow.SourceFaceOverflowTest()
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            stores = (
+                ("atomicMin(sunDepthBuf[lowIndex], lowDepth);",
+                 "atomicMax(sunDepthBuf[highIndex], highDepth);") if suffix == "glsl" else
+                ("atomic_fetch_min_explicit(&sunDepthBuf[lowIndex], lowDepth, "
+                 "memory_order_relaxed);",
+                 "atomic_fetch_max_explicit(&sunDepthBuf[highIndex], highDepth, "
+                 "memory_order_relaxed);\n        return;"))
+            for kind, store in zip(("minimum", "maximum"), stores):
+                with self.subTest(backend=suffix, mutation=f"direct_drop_{kind}"):
+                    run = harness.compile_and_run(host_source(
+                        suffix, directory, direct=True, writer_mutation=(store, "")))
+                    self.assertNotEqual(run.returncode, 0)
+                    self.assertIn(f"direct {kind} write retained", run.stderr)
+                    print(f"{suffix}: direct_drop_{kind} failed by name")
+            controls = {
+                "bypass_collision": (
+                    ("if (sunDepthSlab(low) != sunDepthSlab(high)) return false;", ""),
+                    "direct collision in nonqueried slot disables whole texel"),
+                "accept_before_collision_scan": (
+                    ("if (sunDepthSlab(low) != sunDepthSlab(high)) return false;",
+                     "if (sunStoredTapBlocks(low, sunZ, bias, maxShadowThrow, surfaceReceiver, "
+                     "px, origin, texelSz, gradUV, sunUV)) return true;\n"
+                     "            if (sunDepthSlab(low) != sunDepthSlab(high)) return false;"),
+                    "direct collision in nonqueried slot disables whole texel"),
+                "stop_at_empty_slot": (
+                    ("if (low == 0xFFFFFFFFu) continue;", "if (low == 0xFFFFFFFFu) break;"),
+                    "direct sparse slot recovery"),
+            }
+            for name, (mutation, failure) in controls.items():
+                with self.subTest(backend=suffix, mutation=name):
+                    run = harness.compile_and_run(host_source(
+                        suffix, directory, direct=True, sampler_mutation=mutation))
+                    self.assertNotEqual(run.returncode, 0)
+                    self.assertIn(failure, run.stderr)
+                    print(f"{suffix}: {name} failed by name")
+            max_fill = re.search(
+                r"\n\s*fillWords\(\n\s*std::size_t\(kSunDepthSlabMaxPlanesOffset\)[^;]*;",
+                fills_source())[0]
+            run = harness.compile_and_run(host_source(
+                suffix, directory, direct=True, clear_mutation=(max_fill, "")))
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("clear resets poisoned slab words", run.stderr)
+            print(f"{suffix}: direct_stale_clear failed by name")
+
+    def test_direct_dispatch_and_selector_twins(self):
+        selectors = {name: re.search(r"kSunDepthSlabDirectMapped = (true|false);",
+                                     path.read_text())[1]
+                     for name, path in LAYOUT_TWINS.items()}
+        self.assertEqual(len(set(selectors.values())), 1, selectors)
+        source = BAKE_SYSTEM.read_text()
+        dispatch = extract_block(source, "RasterBakeDispatch rasterBakeDispatch(")
+        self.assertIn("!IRPrefab::SunShadow::kSunDepthSlabDirectMapped", dispatch)
+        self.assertRegex(source, r"if constexpr \(\s*"
+                         r"IRPrefab::SunShadow::kSunDepthSlabSlots > 0u &&"
+                         r"\s*!IRPrefab::SunShadow::kSunDepthSlabDirectMapped\s*\)")
+        # Execute the production dispatch against fake program handles in both modes.
+        for direct in (False, True):
+            code = """
+#include <cstdlib>
+struct ShaderProgram {};
+namespace IRPrefab::SunShadow {constexpr bool kSunDepthSlabDirectMapped = DIRECT;}
+constexpr int kBakeSunShadowCooperativeGroupSize=8,kBakeSunShadowGroupSize=16;
+struct System {
+ShaderProgram a,b,c;
+ShaderProgram *bakeCooperativeProgram_=&a,*bakeSecondDepthProgram_=&b,*bakeProgram_=&c;
+bool retainSecondPrimaryDepth_=false;
+struct RasterBakeDispatch {ShaderProgram *program_; int groupSize_;};
+DISPATCH
+};
+int main(){System s;
+for(bool second:{false,true})for(bool splat:{false,true}){
+s.retainSecondPrimaryDepth_=second;
+auto got=s.rasterBakeDispatch(splat);
+auto expected=second?s.bakeSecondDepthProgram_:
+ (!DIRECT&&splat?s.bakeCooperativeProgram_:s.bakeProgram_);
+if(got.program_!=expected)return 1;
+}return 0;}
+""".replace("DISPATCH", dispatch).replace("DIRECT", str(direct).lower())
+            code = "#include <initializer_list>\n" + code
+            harness = overflow.SourceFaceOverflowTest()
+            run = harness.compile_and_run(code)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            mutant = code.replace("!IRPrefab::SunShadow::kSunDepthSlabDirectMapped &&", "")
+            if direct:
+                self.assertNotEqual(harness.compile_and_run(mutant).returncode, 0)
 
     def test_cooperative_window_agrees_with_per_pixel_writer(self):
         harness = overflow.SourceFaceOverflowTest()
