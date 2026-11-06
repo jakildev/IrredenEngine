@@ -1,0 +1,76 @@
+{
+  "host": "macOS / Apple M4 Max / Metal / macos-debug",
+  "base_sha": "45cf005a8",
+  "head_sha": "463814f2a",
+  "pairing": "base then head, repeated five times",
+  "frames_per_run": 300,
+  "command": "fleet-run --build-dir <build-arm> IRShapeDebug --yaw 0.35 --auto-profile 300 --config-preset configs/perf/sdf-on.lua",
+  "grading": {
+    "ratio_limit": 1.1,
+    "stage_absolute_floor": "base run spread for that row",
+    "confidence": "one-sided 95% paired lower bound with t(0.95, 4) = 2.132",
+    "result": "pass on point ratio for both frame rows and all three GPU stage rows"
+  },
+  "metrics": [
+    {
+      "metric": "frame",
+      "base_mean_ms": 18.662,
+      "head_mean_ms": 18.906,
+      "ratio": 1.01307469724574,
+      "base_spread_ms": 1.67,
+      "paired_lower_95_ms": -0.9414111725068217,
+      "pass": true,
+      "base_runs": [18.21, 18.01, 18.56, 19.68, 18.85],
+      "head_runs": [17.79, 19.95, 17.17, 20.31, 19.31]
+    },
+    {
+      "metric": "steady frame",
+      "base_mean_ms": 18.918,
+      "head_mean_ms": 18.55,
+      "ratio": 0.9805476265990063,
+      "base_spread_ms": 1.54,
+      "paired_lower_95_ms": -2.170862868156089,
+      "pass": true,
+      "base_runs": [17.93, 19.47, 19.32, 18.8, 19.07],
+      "head_runs": [17.21, 19.45, 15.99, 20.58, 19.52]
+    },
+    {
+      "metric": "GPU voxelPerAxisOverflow",
+      "base_mean_ms": 0.1088,
+      "head_mean_ms": 0.103,
+      "ratio": 0.9466911764705881,
+      "base_spread_ms": 0.023,
+      "paired_lower_95_ms": -0.020281915044634117,
+      "pass": true,
+      "base_runs": [0.097, 0.12, 0.101, 0.114, 0.112],
+      "head_runs": [0.106, 0.089, 0.101, 0.107, 0.112]
+    },
+    {
+      "metric": "GPU voxelPerAxisFinalize",
+      "base_mean_ms": 0.184,
+      "head_mean_ms": 0.181,
+      "ratio": 0.9836956521739131,
+      "base_spread_ms": 0.026,
+      "paired_lower_95_ms": -0.015774220978204502,
+      "pass": true,
+      "base_runs": [0.172, 0.191, 0.172, 0.187, 0.198],
+      "head_runs": [0.179, 0.168, 0.181, 0.189, 0.188]
+    },
+    {
+      "metric": "GPU perAxisScatter",
+      "base_mean_ms": 0.2592,
+      "head_mean_ms": 0.2536,
+      "ratio": 0.9783950617283951,
+      "base_spread_ms": 0.039,
+      "paired_lower_95_ms": -0.024877807609788017,
+      "pass": true,
+      "base_runs": [0.24, 0.279, 0.244, 0.265, 0.268],
+      "head_runs": [0.25, 0.238, 0.247, 0.264, 0.269]
+    }
+  ],
+  "allocation_bytes": {
+    "entity_id_attachment_default_1284x722_rg32ui": 7416384,
+    "overflow_scratch_before": 12582912,
+    "overflow_scratch_after": 16777216
+  }
+}
