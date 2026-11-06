@@ -3,45 +3,46 @@
 
 #include "editor_picking.hpp"
 
-#include <irreden/render/debug_overlay_draws.hpp>
+#include <irreden/render/depth_tested_primitives.hpp>
 
 namespace IRVoxelEditor {
 
-inline void drawConstructionGrid(IREntity::EntityId target, bool enabled) {
+// The +Z-down support plane is the bottom face of the last editable layer.
+// XY grid boundaries likewise lie half a cell from integer voxel centers.
+inline void appendConstructionGridLines(
+    IRMath::vec3 origin, IRMath::ivec3 size, std::vector<IRPrefab::WorldPrimitiveVertex> &lines
+) {
+    const float floor = static_cast<float>(size.z) - 0.5f;
+    const auto line = [&](IRMath::vec3 from, IRMath::vec3 to) {
+        const IRMath::vec4 color(0.28f, 0.38f, 0.46f, 0.6f);
+        lines.push_back({origin + from, color});
+        lines.push_back({origin + to, color});
+    };
+    for (int x = 0; x <= size.x; ++x)
+        line(
+            {static_cast<float>(x) - 0.5f, -0.5f, floor},
+            {static_cast<float>(x) - 0.5f, static_cast<float>(size.y) - 0.5f, floor}
+        );
+    for (int y = 0; y <= size.y; ++y)
+        line(
+            {-0.5f, static_cast<float>(y) - 0.5f, floor},
+            {static_cast<float>(size.x) - 0.5f, static_cast<float>(y) - 0.5f, floor}
+        );
+}
+
+inline void appendConstructionGrid(
+    IREntity::EntityId target, bool enabled, std::vector<IRPrefab::WorldPrimitiveVertex> &lines
+) {
     if (!enabled || target == IREntity::kNullEntity || !isEditable(target))
         return;
     const auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(target);
     if (set.globalPositions_.empty())
         return;
-    const IRMath::vec3 origin = IRMath::vec3(IRMath::roundVec3HalfUp(set.globalPositions_[0].pos_));
-    const float floor = static_cast<float>(set.size_.z - 1);
-    const auto screen = [](IRMath::vec3 point) {
-        IRMath::vec2 result = IRRender::windowPointsToFramebufferPx(
-            IRMath::vec2(IRRender::worldPos3DToMouseScreenPxExact(point))
-        );
-        result.y = static_cast<float>(IRRender::getViewport().y) - result.y;
-        return result;
-    };
-    const auto line = [&](IRMath::vec3 from, IRMath::vec3 to) {
-        IRDebug::drawLineScreen(
-            screen(origin + from),
-            screen(origin + to),
-            0.28f,
-            0.38f,
-            0.46f,
-            0.6f
-        );
-    };
-    for (int x = 0; x <= set.size_.x; ++x)
-        line(
-            {static_cast<float>(x) - 0.5f, -0.5f, floor},
-            {static_cast<float>(x) - 0.5f, static_cast<float>(set.size_.y) - 0.5f, floor}
-        );
-    for (int y = 0; y <= set.size_.y; ++y)
-        line(
-            {-0.5f, static_cast<float>(y) - 0.5f, floor},
-            {static_cast<float>(set.size_.x) - 0.5f, static_cast<float>(y) - 0.5f, floor}
-        );
+    appendConstructionGridLines(
+        IRMath::vec3(IRMath::roundVec3HalfUp(set.globalPositions_[0].pos_)),
+        set.size_,
+        lines
+    );
 }
 
 } // namespace IRVoxelEditor

@@ -247,6 +247,14 @@ struct WorkspaceMember {
 };
 
 struct EditorState {
+    ScreenAlignmentProbe alignmentProbe_;
+    int alignmentShot_ = -1;
+    unsigned alignmentSamplesSeen_ = 0;
+    bool alignmentSamplesMatch_ = true;
+    std::vector<std::uint8_t> alignmentPixels_;
+    IRPrefab::DepthTestedPrimitives authoringPrimitives_;
+    std::vector<IRPrefab::WorldPrimitiveVertex> authoringLines_;
+    std::vector<IRPrefab::WorldPrimitiveVertex> authoringTriangles_;
     DocumentLifecycle document_;
     DocumentPanel documentPanel_;
     bool documentsEnabled_ = false;
@@ -456,14 +464,12 @@ struct RotateParams {
     float prevMouseX_ = 0.0f;
 };
 
-// Drag-fill state machine: tracks a left-button drag for box/line fill.
-// Ghost entity is created in initEntities and referenced here so the
-// endTick lambda can update its position and visibility each frame.
 struct FillToolState {
     bool dragging_ = false;
     ivec3 dragStartWorld_ = {};
     IREntity::EntityId dragStartEntity_ = IREntity::kNullEntity;
-    IREntity::EntityId ghostEntity_ = IREntity::kNullEntity;
+    bool ghostVisible_ = false;
+    FillGhostBox ghostBox_{};
     ivec3 lastEndWorld_ = {};
     // Alt (place on the far side of the hit face) latched at PRESS, so letting
     // the modifier go mid-drag cannot resolve the stroke's start and end cells
@@ -1004,9 +1010,13 @@ bool evaluatePanThenCtrlBalanced(const void *, std::string &actual) {
 // write is idempotent across the shot's frames and lands before the harness's
 // event phase on the same tick, so the scheduled MOVE injects the fresh pixel
 // (same ordering the probe-map shots rely on).
+void prepareScreenAlignment(int shotIndex);
+
 void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= static_cast<int>(g_session.segments_.size()))
         return;
+    if (g_sessionId == Session::Id::SCREEN_ALIGNMENT)
+        prepareScreenAlignment(shotIndex);
     Session::Segment &segment = g_session.segments_[shotIndex];
     for (const Session::AimFixup &aim : segment.aims_) {
         segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
@@ -2313,12 +2323,7 @@ void applyFillFace(
 // between the two drag cells, or in line mode the run along the drag's
 // dominant axis.
 void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
-    if (g_fillTool.ghostEntity_ == IREntity::kNullEntity)
-        return;
-    auto &ghost = IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_);
-    auto &ghostTransform = IREntity::getComponent<C_LocalTransform>(g_fillTool.ghostEntity_);
-    ghost.flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE | IRMath::SDF::SHAPE_FLAG_HOLLOW |
-                   IRMath::SDF::SHAPE_FLAG_XRAY_OCCLUDED;
+    g_fillTool.ghostVisible_ = true;
 
     ivec3 end = worldB;
     if (lineMode) {
@@ -2335,14 +2340,11 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
             end.z = worldB.z;
     }
     const FillGhostBox box = fillGhostBox(IRMath::min(worldA, end), IRMath::max(worldA, end));
-    ghostTransform.translation_ = box.center_;
-    ghost.params_ = box.params_;
+    g_fillTool.ghostBox_ = box;
 }
 
 void hideSculptGhost() {
-    if (g_fillTool.ghostEntity_ != IREntity::kNullEntity)
-        IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_).flags_ =
-            IRMath::SDF::SHAPE_FLAG_NONE;
+    g_fillTool.ghostVisible_ = false;
 }
 
 void refreshPendingSculptSets() {
@@ -2405,8 +2407,8 @@ std::optional<SculptTarget> sculptTarget(bool erase, bool paint, bool inverted) 
         return SculptTarget{local, target, axis, planeOffset};
     }
     if (!erase && !paint) {
-        if (const auto local = pickEditablePlane(entity, 2, set.size_.z - 1))
-            return SculptTarget{*local, voxelSetCellOrigin(set, world) + *local, 2};
+        if (const auto local = pickEditablePlane(entity, 2, set.size_.z - 1, 0.5f))
+            return SculptTarget{*local, voxelSetCellOrigin(set, world) + *local, 2, 0.5f};
     }
     return std::nullopt;
 }
@@ -2432,6 +2434,120 @@ void applySculptCell(ivec3 local) {
         g_sculpt.bone_,
         g_sculpt.paint_
     );
+}
+
+ivec3 screenAlignmentSourceCell() {
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    return ivec3(set.size_.x / 2, set.size_.y / 2, set.size_.z - 1);
+}
+
+void prepareScreenAlignment(int shotIndex) {
+    const auto phase = screenAlignmentPhase(shotIndex);
+    if (g_editor.alignmentShot_ != shotIndex) {
+        g_editor.alignmentShot_ = shotIndex;
+        g_editor.alignmentSamplesSeen_ = 0;
+        g_editor.alignmentSamplesMatch_ = true;
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        if (phase != ScreenAlignmentPhase::COMMIT && phase != ScreenAlignmentPhase::FLOOR_COMMIT) {
+            set.deactivateAll();
+            if (phase != ScreenAlignmentPhase::GHOST_ONLY &&
+                phase != ScreenAlignmentPhase::FLOOR_HOVER) {
+                const auto flat = IRMath::index3DtoIndex1D(screenAlignmentSourceCell(), set.size_);
+                set.mutableAuthoredRecords()[flat].color_ = Color{224, 64, 32, 255};
+                set.resyncAfterAuthoredEdits();
+            }
+        }
+        g_sculpt.tool_ = SculptTool::BRUSH;
+        g_editor.activeSwatchIdx_ = 4;
+        g_sculpt.showGrid_ = phase == ScreenAlignmentPhase::GRID_ON;
+        hideSculptGhost();
+        IRRender::setDebugOverlay(
+            phase == ScreenAlignmentPhase::NORMALS ? IRRender::DebugOverlayMode::NORMALS
+                                                   : IRRender::DebugOverlayMode::UNLIT
+        );
+    }
+    auto &events = g_session.segments_[shotIndex].events_;
+    const bool floor =
+        phase == ScreenAlignmentPhase::FLOOR_HOVER || phase == ScreenAlignmentPhase::FLOOR_COMMIT;
+    const bool interactive =
+        floor || phase == ScreenAlignmentPhase::HOVER || phase == ScreenAlignmentPhase::COMMIT;
+    const auto cursor =
+        floor ? g_editor.alignmentProbe_.floorCursorWindowPoints(
+                    shotIndex / kScreenAlignmentPhaseCount
+                )
+              : g_editor.alignmentProbe_.cursorWindowPoints(shotIndex / kScreenAlignmentPhaseCount);
+    events[0].screenPx_ = interactive && cursor ? *cursor : ivec2(0);
+    if (phase == ScreenAlignmentPhase::HOVER) {
+        const auto samples = g_editor.alignmentProbe_.hoverCursorWindowPoints(
+            shotIndex / kScreenAlignmentPhaseCount
+        );
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const auto &world = IREntity::getComponent<C_WorldTransform>(g_editor.editableVoxelSet_);
+        const auto source = voxelSetCellOrigin(set, world) + screenAlignmentSourceCell();
+        for (std::size_t i = 0; i < samples.size(); ++i) {
+            events[i].screenPx_ = samples[i];
+            if (IRInput::getMousePositionScreen() != vec2(samples[i]))
+                continue;
+            const auto hit = pickEditable();
+            g_editor.alignmentSamplesSeen_ |= 1u << i;
+            g_editor.alignmentSamplesMatch_ =
+                g_editor.alignmentSamplesMatch_ && hit && hit->voxelPos_ == source &&
+                hit->faceNormal_ == screenAlignmentCase(shotIndex).normal_;
+        }
+    }
+}
+
+void drawAuthoringPrimitives() {
+    if (g_bonePaint.active_ || g_classPaintMode || g_loftTool.active_ ||
+        authoringInteractionBlocked())
+        hideSculptGhost();
+    auto &lines = g_editor.authoringLines_;
+    auto &triangles = g_editor.authoringTriangles_;
+    lines.clear();
+    triangles.clear();
+    appendConstructionGrid(g_editor.editableVoxelSet_, g_sculpt.showGrid_, lines);
+    // Camera controls run after INPUT; refresh an idle hover against the view
+    // that this render pass presents, without applying another edit.
+    if (g_fillTool.ghostVisible_ && !g_fillTool.dragging_ && !g_sculpt.dragging_) {
+        const auto target = sculptTarget(
+            g_eraseMode,
+            g_sculpt.tool_ == SculptTool::PAINT,
+            IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt, 0u)
+        );
+        if (target)
+            updateGhostShape(target->world_, target->world_, false);
+        else
+            hideSculptGhost();
+    }
+    if (g_sessionId == Session::Id::SCREEN_ALIGNMENT && g_editor.alignmentShot_ >= 0) {
+        const auto phase = screenAlignmentPhase(g_editor.alignmentShot_);
+        if (phase == ScreenAlignmentPhase::COMMIT || phase == ScreenAlignmentPhase::FLOOR_COMMIT)
+            hideSculptGhost();
+        if (phase == ScreenAlignmentPhase::OCCLUDED_GHOST ||
+            phase == ScreenAlignmentPhase::GHOST_ONLY) {
+            const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+            const auto &world =
+                IREntity::getComponent<C_WorldTransform>(g_editor.editableVoxelSet_);
+            g_fillTool.ghostVisible_ = true;
+            g_fillTool.ghostBox_ =
+                fillGhostBox(screenAlignmentSourceCell(), screenAlignmentSourceCell());
+            g_fillTool.ghostBox_.center_ += vec3(voxelSetCellOrigin(set, world)) + vec3(0, 0, 1.0f);
+        }
+    }
+    if (g_fillTool.ghostVisible_) {
+        const Color color = kPaletteColors[g_editor.activeSwatchIdx_];
+        const vec4 fill = vec4(color.red_, color.green_, color.blue_, 255) / 255.0f;
+        IRPrefab::appendVisibleBox(
+            g_fillTool.ghostBox_.center_,
+            vec3(g_fillTool.ghostBox_.params_) * 0.5f,
+            vec4(vec3(fill), 0.35f),
+            vec4(0.9f, 0.95f, 1.0f, 0.8f),
+            IRPrefab::Camera::getYaw(),
+            triangles,
+            lines
+        );
+    }
+    g_editor.authoringPrimitives_.draw(lines, triangles);
 }
 
 void updateSculptBrush(bool blocked, Color color, std::uint8_t bone, bool inverted) {
@@ -4835,6 +4951,61 @@ void updateWorkspaces() {
 
 namespace Session {
 
+bool evaluateScreenAlignmentCheck(const void *context, std::string &actual) {
+    const int shot = *static_cast<const int *>(context);
+    const auto framebuffer = IRRender::getViewport();
+    ivec2 window{};
+    IRWindow::getWindowSize(window);
+    auto &pixels = g_editor.alignmentPixels_;
+    pixels.resize(static_cast<std::size_t>(framebuffer.x) * framebuffer.y * 4);
+    const bool captured =
+        IRRender::readDefaultFramebuffer(0, 0, framebuffer.x, framebuffer.y, pixels.data());
+    const bool valid =
+        captured && g_editor.alignmentProbe_.capture(shot, pixels, framebuffer, window);
+    actual = g_editor.alignmentProbe_.result(shot / kScreenAlignmentPhaseCount);
+    const auto phase = screenAlignmentPhase(shot);
+    if (phase == ScreenAlignmentPhase::HOVER) {
+        const auto hit = pickEditable();
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const auto &world = IREntity::getComponent<C_WorldTransform>(g_editor.editableVoxelSet_);
+        const auto source = voxelSetCellOrigin(set, world) + screenAlignmentSourceCell();
+        const auto normal = screenAlignmentCase(shot).normal_;
+        const auto target = source + normal;
+        actual +=
+            hit ? " hit=" + std::to_string(hit->voxelPos_.x) + "," +
+                      std::to_string(hit->voxelPos_.y) + "," + std::to_string(hit->voxelPos_.z) +
+                      " normal=" + std::to_string(hit->faceNormal_.x) + "," +
+                      std::to_string(hit->faceNormal_.y) + "," + std::to_string(hit->faceNormal_.z)
+                : " no-hit";
+        actual += " samples_seen=" + std::to_string(g_editor.alignmentSamplesSeen_) +
+                  " samples_match=" + (g_editor.alignmentSamplesMatch_ ? "yes" : "no");
+        return valid && g_editor.alignmentSamplesSeen_ == 31u && g_editor.alignmentSamplesMatch_ &&
+               hit && hit->voxelPos_ == source && hit->faceNormal_ == normal &&
+               g_fillTool.ghostVisible_ && g_fillTool.ghostBox_.center_ == vec3(target) &&
+               !IRRender::isHoveredTrixelVisible();
+    }
+    if (phase == ScreenAlignmentPhase::FLOOR_HOVER) {
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const auto &world = IREntity::getComponent<C_WorldTransform>(g_editor.editableVoxelSet_);
+        const auto target = voxelSetCellOrigin(set, world) + screenAlignmentSourceCell();
+        actual += " ghost=" + std::to_string(g_fillTool.ghostBox_.center_.x) + "," +
+                  std::to_string(g_fillTool.ghostBox_.center_.y) + "," +
+                  std::to_string(g_fillTool.ghostBox_.center_.z);
+        return valid && g_fillTool.ghostVisible_ && g_fillTool.ghostBox_.center_ == vec3(target);
+    }
+    if (phase == ScreenAlignmentPhase::COMMIT || phase == ScreenAlignmentPhase::FLOOR_COMMIT) {
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const auto target =
+            screenAlignmentSourceCell() +
+            (phase == ScreenAlignmentPhase::COMMIT ? screenAlignmentCase(shot).normal_ : ivec3(0));
+        const auto color = set.voxels_[IRMath::index3DtoIndex1D(target, set.size_)].color_;
+        actual += " placed_alpha=" + std::to_string(color.alpha_);
+        return valid && color.alpha_ != 0 && color.red_ == 60 && color.green_ == 200 &&
+               color.blue_ == 120;
+    }
+    return valid;
+}
+
 bool evaluateWorkareaFocusCheck(const void *context, std::string &actual) {
     const auto &check = *static_cast<const WorkareaFocusCheck *>(context);
     const auto area = visibleEditorWorkarea();
@@ -5138,37 +5309,18 @@ bool evaluatePickCheck(const void *context, std::string &actual) {
     return hit->voxelPos_ == check.worldVoxel_;
 }
 
-// Reads one fill-preview expectation from the main canvas's entity ids: the
-// texels the ghost shape is the nearest surface on. Cardinal camera only, like
-// the pick sweep: viewRayCrossesCells assumes the (1,1,1) view ray.
+// Visibility and bounds contract; screen_alignment independently checks the
+// final framebuffer silhouette, alpha blending and depth occlusion.
 bool evaluateFillGhostCheck(const void *context, std::string &actual) {
     const FillGhostCheck &check = *static_cast<const FillGhostCheck *>(context);
-    if (g_fillTool.ghostEntity_ == IREntity::kNullEntity) {
-        actual = "no-ghost-entity";
-        return false;
-    }
-    const bool flaggedVisible =
-        (IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_).flags_ &
-         IRMath::SDF::SHAPE_FLAG_VISIBLE) != 0u;
-    const auto &canvas =
-        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
-    int owned = 0;
-    int inside = 0;
-    forEachTexelOwnedBy(canvas, g_fillTool.ghostEntity_, [&](IRMath::ivec2 texel, std::size_t) {
-        ++owned;
-        if (viewRayCrossesCells(
-                IRRender::mainCanvasTexelWorldPos3DAtIsoDepth(texel, 0.0f),
-                check.worldLo_,
-                check.worldHi_
-            )) {
-            ++inside;
-        }
-    });
-    actual = std::string(flaggedVisible ? "" : "hidden ") + "texels=" + std::to_string(owned);
+    actual = g_fillTool.ghostVisible_ ? "visible" : "hidden";
     if (!check.expectDrawn_)
-        return !flaggedVisible && owned == 0;
-    actual += " inside=" + std::to_string(inside);
-    return flaggedVisible && owned > 0 && inside == owned;
+        return !g_fillTool.ghostVisible_;
+    const auto expected = fillGhostBox(check.worldLo_, check.worldHi_);
+    const bool matches = g_fillTool.ghostBox_.center_ == expected.center_ &&
+                         g_fillTool.ghostBox_.params_ == expected.params_;
+    actual += matches ? " bounds=match" : " bounds=mismatch";
+    return g_fillTool.ghostVisible_ && matches;
 }
 
 // Reads one recipe occupancy expectation against the live editable set at a
@@ -6213,7 +6365,8 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
-        "fill_ghost | face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | "
+        "fill_ghost | face_pick | screen_alignment | rock | mushroom | ant | bird | tree | "
+        "parts_roundtrip | "
         "tier_scrub | remove_part | undo_history | animation_boundary | sculpt_workflow | "
         "sculpt_single_save | local_canvas | workarea_focus | motion_preview | "
         "radial_array | "
@@ -6228,6 +6381,7 @@ int main(int argc, char **argv) {
          "place_below",
          "fill_ghost",
          "face_pick",
+         "screen_alignment",
          "rock",
          "mushroom",
          "ant",
@@ -6427,6 +6581,13 @@ int main(int argc, char **argv) {
         // Resolve the shot table only now that the recipe sits in the storage
         // it keeps for the whole run — the shots point into its segments.
         IRVoxelEditor::Session::resolveShots(IRVoxelEditor::g_session);
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCREEN_ALIGNMENT) {
+            for (int shot = 0; shot < static_cast<int>(IRVoxelEditor::g_session.shots_.size());
+                 ++shot)
+                IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
+                    static_cast<float>(IRVoxelEditor::screenAlignmentCase(shot).yawDegrees_) *
+                    IRMath::kPi / 180.0f;
+        }
         IR_LOG_INFO(
             "Authoring session '{}': {} segments, {} occupancy checks",
             IRVoxelEditor::g_session.name_,
@@ -6441,6 +6602,7 @@ int main(int argc, char **argv) {
     initSystems();
     initCommands();
     initEntities();
+    IRRender::setHoveredTrixelVisible(false);
     if (!IRVoxelEditor::initModuleUi())
         return exitCleanly(2);
     IRVoxelEditor::initComponentsUi();
@@ -6480,6 +6642,9 @@ static void updateSwatchSelection(const std::vector<IREntity::EntityId> &swatche
 }
 
 void initSystems() {
+    IRVoxelEditor::g_editor.authoringPrimitives_.create();
+    IRVoxelEditor::g_editor.authoringLines_.reserve(256);
+    IRVoxelEditor::g_editor.authoringTriangles_.reserve(18);
     using IRVoxelEditor::RotateParams;
 
     IRVoxelEditor::g_rotationGroupScratch.reserve(IRVoxelEditor::kArrayMaxCount);
@@ -6994,12 +7159,7 @@ void initSystems() {
 
             if (leftReleasedNow && IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
-                if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
-                    )
-                        .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
-                }
+                IRVoxelEditor::hideSculptGhost();
                 const IREntity::EntityId targetEntity = IRVoxelEditor::g_fillTool.dragStartEntity_;
                 if (targetEntity == IREntity::kNullEntity)
                     return;
@@ -7777,14 +7937,9 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<C_Camera>(
-                "EditorConstructionGrid",
+                "EditorAuthoringPrimitives",
                 [](const C_Camera &) {},
-                []() {
-                    IRVoxelEditor::drawConstructionGrid(
-                        IRVoxelEditor::g_editor.editableVoxelSet_,
-                        IRVoxelEditor::g_sculpt.showGrid_
-                    );
-                }
+                []() { IRVoxelEditor::drawAuthoringPrimitives(); }
             ),
             IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
@@ -7860,6 +8015,17 @@ void initCommands() {
     IRPrefab::HelpOverlay::registerToggleCommand();
     // F3 shows the frame-rate HUD.
     IRPrefab::PerfHud::registerToggleCommand();
+
+    IRCommand::createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonF12,
+        []() { IRVideo::requestScreenshot(); },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "SCREENSHOT",
+        "SAVE SCREENSHOT TO SAVE_FILES/SCREENSHOTS"
+    );
 
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -8199,12 +8365,7 @@ void initCommands() {
             }
             if (IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
-                if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
-                    )
-                        .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
-                }
+                IRVoxelEditor::hideSculptGhost();
                 IR_LOG_INFO("Fill drag cancelled (Escape).");
                 return;
             }
@@ -8233,10 +8394,7 @@ void initCommands() {
             auto &loft = IRVoxelEditor::g_loftTool;
             loft.active_ = !loft.active_;
             IRVoxelEditor::g_fillTool.dragging_ = false;
-            if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_)
-                    .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
-            }
+            IRVoxelEditor::hideSculptGhost();
             IR_LOG_INFO("Loft mode: {}", loft.active_ ? "ON" : "OFF");
         },
         IRInput::kModifierNone,
@@ -8878,7 +9036,8 @@ void initEntities() {
     const bool ordinaryWorkspace =
         (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE &&
          !IRVoxelEditor::g_sculpt.referenceScene_) ||
-        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCULPT_WORKFLOW;
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCULPT_WORKFLOW ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCREEN_ALIGNMENT;
     IRVoxelEditor::g_sculpt.tool_ =
         ordinaryWorkspace ? IRVoxelEditor::SculptTool::BRUSH : IRVoxelEditor::SculptTool::BOX;
     IRVoxelEditor::g_sculpt.showGrid_ = ordinaryWorkspace;
@@ -9471,20 +9630,6 @@ void initEntities() {
         {IRVoxelEditor::g_jointRenameBtn, "REN: rename the selected joint to the text at left."},
         {IRVoxelEditor::g_jointReparentBtn, "PAR: reparent selected joint to the index at left."},
     };
-
-    // Ghost preview entity for drag-fill. Invisible until
-    // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
-    // frame and hides it again on RELEASED.
-    IRVoxelEditor::g_fillTool.ghostEntity_ = IREntity::createEntity(
-        C_LocalTransform{vec3(0.0f)},
-        C_ShapeDescriptor{
-            IRRender::ShapeType::BOX,
-            vec4(1.0f, 1.0f, 1.0f, 0.0f),
-            Color{240, 240, 240, 200}
-        }
-    );
-    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_).flags_ =
-        IRMath::SDF::SHAPE_FLAG_NONE;
 
     // Fill-mode status label — top-left of the GUI canvas. Updated each frame
     // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which

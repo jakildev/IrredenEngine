@@ -3,9 +3,8 @@
 
 // Editor-side voxel picking: convert the cursor into a world-space ray
 // (in the engine's isometric projection) and find the first SDF shape
-// or `C_VoxelSetNew` voxel it intersects. The inverse is raster-yaw only,
-// so the recovered world point matches what the voxel rasterizer wrote at
-// any cardinal yaw.
+// or `C_VoxelSetNew` voxel it intersects. Exact screen rays follow continuous
+// camera yaw; lattice rays retain the cardinal raster frame.
 //
 // Two cursor rays, chosen per call (`RayCastOptions::cursorRay_`):
 //
@@ -60,6 +59,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace IRPrefab::Picking {
@@ -139,57 +139,60 @@ struct GridRayHit {
 };
 
 // First occupied cell an infinite line meets in a grid of unit cells, and the
-// face it enters through. Cell `c` spans `[c - 0.5, c + 0.5)` on each axis, for
-// `c` in `[0, size)`; `origin` is any point on the line in that frame and
-// `direction` its per-axis step, each component exactly +1 or -1 (every iso
-// view ray, at any cardinal yaw). The walk is exact: it visits every cell the
-// line crosses in order, so no cell is skipped however short the chord through
-// it. Crossings that tie resolve x, then y, then z.
+// face it enters through. Cell c spans [c - 0.5, c + 0.5). The direction may
+// have zero components but must not be the zero vector. Crossings that tie
+// resolve x, then y, then z; the returned parameter uses the supplied scale.
 template <typename Occupied>
 std::optional<GridRayHit>
-castGridRay(IRMath::vec3 origin, IRMath::ivec3 direction, IRMath::ivec3 size, Occupied &&occupied) {
-    IR_ASSERT(
-        IRMath::abs(direction.x) == 1 && IRMath::abs(direction.y) == 1 &&
-            IRMath::abs(direction.z) == 1,
-        "castGridRay direction components must each be exactly +1 or -1"
-    );
-    if (size.x <= 0 || size.y <= 0 || size.z <= 0)
+castGridRay(IRMath::vec3 origin, IRMath::vec3 direction, IRMath::ivec3 size, Occupied &&occupied) {
+    if (size.x <= 0 || size.y <= 0 || size.z <= 0 || direction == IRMath::vec3(0.0f))
         return std::nullopt;
 
-    // Shift so cell c spans [c, c + 1).
     const IRMath::vec3 start = origin + IRMath::vec3(0.5f);
-    float tEnter = -std::numeric_limits<float>::infinity();
-    float tExit = std::numeric_limits<float>::infinity();
+    const float infinity = std::numeric_limits<float>::infinity();
+    float tEnter = -infinity;
+    float tExit = infinity;
     int axis = 0;
     for (int a = 0; a < 3; ++a) {
         const float extent = static_cast<float>(size[a]);
-        const float tNear = direction[a] > 0 ? -start[a] : start[a] - extent;
-        const float tFar = tNear + extent;
+        if (direction[a] == 0.0f) {
+            if (start[a] < 0.0f || start[a] >= extent)
+                return std::nullopt;
+            continue;
+        }
+        const float first = -start[a] / direction[a];
+        const float last = (extent - start[a]) / direction[a];
+        const float tNear = IRMath::min(first, last);
         if (tNear > tEnter) {
             tEnter = tNear;
             axis = a;
         }
-        tExit = IRMath::min(tExit, tFar);
+        tExit = IRMath::min(tExit, IRMath::max(first, last));
     }
     if (tEnter >= tExit)
         return std::nullopt;
 
     IRMath::ivec3 cell(0);
-    IRMath::vec3 tNext(0.0f);
+    IRMath::ivec3 step(0);
+    IRMath::vec3 tNext(infinity);
+    IRMath::vec3 tDelta(infinity);
     for (int a = 0; a < 3; ++a) {
-        const float at = start[a] + static_cast<float>(direction[a]) * tEnter;
+        const float at = start[a] + direction[a] * tEnter;
         cell[a] = IRMath::clamp(static_cast<int>(IRMath::floor(at)), 0, size[a] - 1);
+        if (direction[a] == 0.0f)
+            continue;
+        step[a] = direction[a] > 0.0f ? 1 : -1;
         if (a == axis)
-            cell[a] = direction[a] > 0 ? 0 : size[a] - 1;
-        tNext[a] = direction[a] > 0 ? static_cast<float>(cell[a] + 1) - start[a]
-                                    : start[a] - static_cast<float>(cell[a]);
+            cell[a] = step[a] > 0 ? 0 : size[a] - 1;
+        tNext[a] = (static_cast<float>(cell[a] + (step[a] > 0 ? 1 : 0)) - start[a]) / direction[a];
+        tDelta[a] = IRMath::abs(1.0f / direction[a]);
     }
 
     float t = tEnter;
     while (true) {
         if (occupied(cell)) {
             IRMath::ivec3 normal(0);
-            normal[axis] = -direction[axis];
+            normal[axis] = -step[axis];
             return GridRayHit{cell, normal, t};
         }
         axis = 0;
@@ -198,11 +201,23 @@ castGridRay(IRMath::vec3 origin, IRMath::ivec3 direction, IRMath::ivec3 size, Oc
         if (tNext.z < tNext[axis])
             axis = 2;
         t = tNext[axis];
-        cell[axis] += direction[axis];
+        cell[axis] += step[axis];
         if (cell[axis] < 0 || cell[axis] >= size[axis])
             return std::nullopt;
-        tNext[axis] += 1.0f;
+        tNext[axis] += tDelta[axis];
     }
+}
+
+// Cardinal lattice callers keep the unit-step contract.
+template <typename Occupied>
+std::optional<GridRayHit>
+castGridRay(IRMath::vec3 origin, IRMath::ivec3 direction, IRMath::ivec3 size, Occupied &&occupied) {
+    IR_ASSERT(
+        IRMath::abs(direction.x) == 1 && IRMath::abs(direction.y) == 1 &&
+            IRMath::abs(direction.z) == 1,
+        "castGridRay direction components must each be exactly +1 or -1"
+    );
+    return castGridRay(origin, IRMath::vec3(direction), size, std::forward<Occupied>(occupied));
 }
 
 namespace detail {
@@ -418,27 +433,20 @@ inline std::optional<RayHit> castIsoLatticeRay(
 // closed-form entry, so they are sampled along the same ray and win only when
 // a sample lands on one in front of the nearest voxel.
 inline std::optional<RayHit> castScreenPixelRay(
-    const std::vector<ShapeSnapshot> &shapes,
-    const std::vector<VoxelSetSnapshot> &voxelSets,
-    IRMath::CardinalIndex cardinalIndex
+    const std::vector<ShapeSnapshot> &shapes, const std::vector<VoxelSetSnapshot> &voxelSets
 ) {
-    // The canvas-frame depth axis is (1,1,1); lifted to the world frame it
-    // keeps unit magnitude on every axis, and canvas depth advances 3 per
-    // unit of ray parameter.
     const IRMath::vec3 rayOrigin = IRRender::mouseWorldPos3DAtIsoDepthExact(0.0f);
-    const IRMath::ivec3 rayDirection =
-        IRMath::roundVec3HalfUp(IRMath::rotateCardinalZInv(IRMath::vec3(1.0f), cardinalIndex));
-    const IRMath::vec3 rayStep(rayDirection);
+    // Exact projection follows continuous yaw; its depth parameter remains in
+    // the cardinal store frame used by the snapshot bounds.
+    const IRMath::vec3 rayStep = IRRender::mouseWorldPos3DAtIsoDepthExact(3.0f) - rayOrigin;
 
     std::optional<RayHit> nearest;
     float nearestDepth = std::numeric_limits<float>::infinity();
     for (const auto &vs : voxelSets) {
-        const std::optional<GridRayHit> hit = castGridRay(
-            rayOrigin - vs.worldOrigin_,
-            rayDirection,
-            vs.size_,
-            [&vs](IRMath::ivec3 local) { return voxelActive(vs, local); }
-        );
+        const std::optional<GridRayHit> hit =
+            castGridRay(rayOrigin - vs.worldOrigin_, rayStep, vs.size_, [&vs](IRMath::ivec3 local) {
+                return voxelActive(vs, local);
+            });
         if (!hit || hit->rayT_ * 3.0f >= nearestDepth)
             continue;
         nearestDepth = hit->rayT_ * 3.0f;
@@ -485,7 +493,7 @@ inline std::optional<RayHit> castVoxelRay(const RayCastOptions &options) {
         return std::nullopt;
 
     if (options.cursorRay_ == CursorRay::SCREEN_PIXEL)
-        return detail::castScreenPixelRay(shapes, voxelSets, cardinalIndex);
+        return detail::castScreenPixelRay(shapes, voxelSets);
     return detail::castIsoLatticeRay(shapes, voxelSets);
 }
 

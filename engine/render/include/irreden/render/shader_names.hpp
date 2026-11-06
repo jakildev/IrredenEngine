@@ -3,6 +3,9 @@
 
 namespace IRRender {
 
+const char *const kFileVertDepthTestedPrimitives = "shaders/v_depth_tested_primitives.glsl";
+const char *const kFileFragDepthTestedPrimitives = "shaders/f_depth_tested_primitives.glsl";
+
 const char *const kFileVertFramebufferToScreen = "shaders/v_framebuffer_to_screen.glsl";
 const char *const kFileFragFramebufferToScreen = "shaders/f_framebuffer_to_screen.glsl";
 

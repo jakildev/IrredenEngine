@@ -7,7 +7,7 @@ Design log, findings and the authoring-session history:
 ## Validators
 
 - `python3 scripts/gui-verify.py IRVoxelEditor` — blank-grid sculpt workflow; `-- --gui-layout-check` also fails layout findings. Add `--reference-scene` for the diagnostic furniture/legacy shot table.
-- `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` runs a named scripted session; `sessions.hpp` owns the complete registry. Core authoring flows are `sculpt_workflow`, `hierarchy_workflow`, `animation_boundary`, `sculpt_single_save`, `local_canvas`, `document_workflow`, `workarea_focus` and `motion_preview`. Include `--gui-layout-check` to gate reachability/layout. `face_pick` compares actual rendered faces with picking, and `text_input_command_capture` checks editor shortcuts under text focus.
+- `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` runs a named scripted session; `sessions.hpp` owns the complete registry. Core authoring flows are `sculpt_workflow`, `hierarchy_workflow`, `animation_boundary`, `sculpt_single_save`, `local_canvas`, `document_workflow`, `workarea_focus` and `motion_preview`. Include `--gui-layout-check` to gate reachability/layout. `face_pick` compares actual rendered faces with picking at yaw zero, and `text_input_command_capture` checks editor shortcuts under text focus.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
@@ -41,9 +41,11 @@ from an edit path.
 
 - **The nearest editable voxel under the cursor is what a click edits.** If a
   pixel of an editable voxel is on screen, clicking it edits that voxel.
-- **The face is the one drawn under the cursor.** The pick casts the
-  `SCREEN_PIXEL` ray, so a voxel's `-x`, `-y` and `-z` faces resolve
-  separately at any zoom the face is visible at.
+- **The face is the one drawn under the cursor.** The
+  `SCREEN_PIXEL` ray follows the full camera yaw and resolves each visible
+  face separately. At yaw zero these are `-x`, `-y`, and `-z`; orbit changes
+  the visible X/Y face signs. The depth parameter stays in the cardinal
+  storage frame used by drag anchors.
 - **Reference furniture never takes a click.** Voxel-set furniture carries
   `C_EditorReference` and is passed through even when drawn in front; SDF
   shapes are left out of the edit pick wholesale (a shape hit has no face). A
@@ -55,9 +57,12 @@ from an edit path.
 - A voxel's underside is never visible from the iso camera; Alt places on the
   far side of the picked face. That is a fact of the view, not of the pick.
 
-The executor for "the face drawn under the cursor" is `face_pick`'s
+The cardinal executor for "the face drawn under the cursor" is `face_pick`'s
 `*_pick_matches_render`, which compares the pick with the main canvas's face
-readback on every editable texel; an aim and a pick share one screen mapping.
+readback on every editable texel at yaw zero. It does not validate continuous
+orbit or cursor-to-window mapping. `screen_alignment` chooses raw mouse points
+from displayed albedo/normal pixels at seven angles, including 30° and 67°;
+`scripts/editor-screen-alignment.py` checks its PNGs for coverage and occlusion.
 
 ## Authoring sessions
 
@@ -65,7 +70,7 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   panel's W / H / D (initially `--scene-size`); Ctrl+Shift+P adds the
   BAKE panel's selected SDF primitive. Tab/Shift+Tab select parts. Ctrl+S and
   Ctrl+O write/read the prefab manifest plus one `.vxs` per voxel part (v3 for nested parents, v2 for flat scenes).
-- Ordinary launch opens a blank grid in Sculpt and fits it into visible free viewport space; FOCUS fits the selected part/local canvas without changing camera yaw. `workarea_focus` validates rotated-child and local-canvas framing around module panels; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. Right-drag orbits the camera.
+- Ordinary launch opens a blank grid in Sculpt and fits it into visible free viewport space; FOCUS fits the selected part/local canvas without changing camera yaw. `workarea_focus` validates rotated-child and local-canvas framing around module panels; diagnostic reference scenes retain seeded furniture. ADD uses `pickEditablePlane` on an empty floor, a hover ghost, and a latched-plane continuous stroke. One stroke is one undo; Escape restores it. PAINT changes occupied cells only. Right-drag orbits the camera. Grid lines sit on the bottom support plane and share voxel depth; the preview is a full translucent cell. F12 saves the composite view to `save_files/screenshots` beside the executable.
 - Assemble exposes hierarchy/LOD/components/arrays; Generate exposes recipes/bake/module panels; Animate exposes single-asset frames/rig tools. Hidden widgets retain state and neither draw nor intercept input. ALL exposes the diagnostic layout.
 - BAKE reads the radius the P1 slider holds, and a scripted drag leaves that
   within `kBakeParamSliderDragDrift` of the request. `bakeSphere` models the
@@ -118,8 +123,8 @@ readback on every editable texel; an aim and a pick share one screen mapping.
   and the `--gui-session` enum list in `main()`.
 - A button left down at a segment's end stays down into the next: `holdBox` /
   `holdPartGizmo` end a segment with the drag held, and `releaseBox` /
-  `releasePartGizmo` end it in a later one. `expectFillGhost` reads the texels the ghost owns, and a ghost inside
-  the voxels an erase drag would carve owns none.
+  `releasePartGizmo` end it in a later one. `expectFillGhost` checks preview visibility and bounds; `screen_alignment`
+  separately proves the final pixel footprint, alpha and solid occlusion.
 - `Session::Builder` is also the Lua authoring ABI. Adding or changing a public
   builder operation requires the matching `IREditor.registerSession` binding,
   conversion coverage, and binding-matrix test in the same change.
