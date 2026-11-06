@@ -1691,7 +1691,10 @@ void registerCliArgs() {
     );
     args.string("--debug-overlay", "Debug overlay mode (e.g. none, depth, normals)", "none");
     args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
-    args.flag("--pivot-origin", "Force the legacy world-origin Z-yaw pivot (#1352 A/B)");
+    args.flag(
+        "--pivot-origin",
+        "Force the legacy world-origin Z-yaw pivot; interactive orbit switches to camera center"
+    );
     args.flag("--cull-validate", "Frozen-cull free-fly validation sweep (#1438)");
     args.string(
         "--load-prefab",

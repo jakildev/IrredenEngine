@@ -126,12 +126,12 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - `Picking::castVoxelRay(RayCastOptions)`: `ISO_LATTICE` (default) resolves the
   iso column; `SCREEN_PIXEL` resolves the face drawn under the cursor — an edit
   pick uses it, with `shapes_ = false` (a shape hit has no face).
-- Cursor orbit anchors on the clicked `SCREEN_PIXEL` surface, else on the cursor
-  ray at the reference world-Z height; `CursorPivot::OrbitAnchor` compensates camera
-  translation on acquire, retains focus on release, hides its marker, and needs
-  pre-destroy notifications forwarded; marker creation is main-thread. Both gestures
-  share `Camera::setCursorPivotByDefault` (Shift reverses); custom geometry supplies `setCursorPivotOptions`' resolver; stable crosses need `DEBUG_OVERLAY` after composition. [Pivot contract](../../../../docs/design/prefab-render-surface.md#cursor-latched-rotation-pivot)
-
+- Cursor orbit anchors on the clicked `SCREEN_PIXEL` surface, else at reference height.
+  `CursorPivot::OrbitAnchor` preserves the view, retains focus on release, hides its
+  marker, receives pre-destroy notifications, and creates it on main. Both gestures
+  share `Camera::setCursorPivotByDefault` (Shift reverses); custom geometry uses
+  `setCursorPivotOptions`' resolver; stable crosses need `DEBUG_OVERLAY`.
+  [Pivot contract](../../../../docs/design/prefab-render-surface.md#cursor-latched-rotation-pivot)
 ## Help overlay and settings menu
 
 - Adopt: splice the systems where the ordering table says, then `registerToggleCommand()` (F1 / Escape);

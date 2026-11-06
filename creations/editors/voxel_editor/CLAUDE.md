@@ -43,7 +43,8 @@ falling back to the current authoring floor, and show a gold anchor while held.
 Release hides the marker and retains the focus; reanchoring preserves the view.
 `Camera::setCursorPivotOptions` supplies the editor resolver to the standard
 controls; the custom right-drag uses the same options.
-Space+left pans without resetting yaw; Home resets camera pan and yaw.
+Space+left pans without resetting yaw; Home resets camera pan and yaw; right-drag
+starts only with no hovered widget and an unblocked document interaction.
 
 Surface edit gestures pick through `IRVoxelEditor::pickEditable()`
 (`editor_picking.hpp`). Never call `IRPrefab::Picking::castVoxelRay()` bare

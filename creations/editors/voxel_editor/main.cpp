@@ -6865,7 +6865,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Middle-drag: pan camera");
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
-    IR_LOG_INFO("  Space: re-center + reset yaw");
+    IR_LOG_INFO("  Space+left: pan camera  Home: re-center + reset yaw");
     IR_LOG_INFO("  Ctrl+Z: undo  Ctrl+Y / Ctrl+Shift+Z: redo");
     IR_LOG_INFO("  X/Y/Z: toggle X/Y/Z mirror symmetry");
     IR_LOG_INFO("  Left/Right arrow: previous/next frame");

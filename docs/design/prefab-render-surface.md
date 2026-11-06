@@ -285,8 +285,9 @@ reanchoring at nonzero yaw leaves the view fixed. Programmatic `ORIGIN`
 rotation without an input gesture remains available. The center policy
 acquires a world point on the current screen-center ray at reference height,
 with the same compensation. Release retains the explicit focus and hides the
-marker; a subsequent pan uses the fixed-focus identity mapping. This avoids
-an inverse live-center transition, which is singular at yaw 120° and 240°.
+marker; subsequent pans and non-gesture yaw use the fixed-focus identity
+mapping. This avoids an inverse live-center transition, which is singular at
+yaw 120° and 240°.
 
 The warm-yellow cross stays at the original press position in logical window
 points, with a six-point radius independent of world zoom or yaw. The

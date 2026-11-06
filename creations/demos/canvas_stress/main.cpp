@@ -2196,7 +2196,10 @@ void registerArgs() {
         "Scale the focused private canvas for density probes (1-4)",
         1
     );
-    args.flag("--pivot-origin", "Fix camera rotation pivot at the world origin");
+    args.flag(
+        "--pivot-origin",
+        "Fix camera rotation pivot at the world origin; interactive orbit switches to camera center"
+    );
     args.number("--yaw", "Initial camera yaw, radians", g_settings.cameraYaw_);
     args.integer(
         "--subdivisions",
