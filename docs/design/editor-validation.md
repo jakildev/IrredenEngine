@@ -68,4 +68,3 @@
   and models the re-apply. After an undo, redo, clear or reload it and `paintClass`
   need a fresh APPLY. `expectRecipeValue`, `expectPartMatchesRecipe` and
   `expectRecipeHandleTexels` read the live binding; the gizmo census skips handles.
-
