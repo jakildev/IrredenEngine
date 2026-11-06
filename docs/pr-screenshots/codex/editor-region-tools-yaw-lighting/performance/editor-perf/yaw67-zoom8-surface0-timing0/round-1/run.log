@@ -1,0 +1,3 @@
+ir-run: running release tree /Users/evinjkill/src/IrredenEngine/build-release
+ir-run: /Users/evinjkill/src/IrredenEngine/build-release/creations/editors/voxel_editor/IRVoxelEditor --profile-frames 360 --profile-yaw 67 --profile-zoom 8 --window-mode offscreen --no-stage-timing (timeout: 90s)
+ir-run: RESULT=ALIVE-TIMEOUT exe=IRVoxelEditor — ran for 90s without crashing, killed by watchdog

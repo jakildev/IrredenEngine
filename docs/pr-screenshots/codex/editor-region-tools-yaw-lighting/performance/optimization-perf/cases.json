@@ -1,0 +1,69 @@
+{
+  "cases": {
+    "per-axis-zoom1-baseline": [
+      1,
+      "baseline"
+    ],
+    "per-axis-zoom1-candidate": [
+      1,
+      "candidate"
+    ],
+    "per-axis-zoom4-baseline": [
+      4,
+      "baseline"
+    ],
+    "per-axis-zoom4-candidate": [
+      4,
+      "candidate"
+    ]
+  },
+  "common": [
+    "--only",
+    "maingrid,gridspin,floor",
+    "--frozen-pose",
+    "0.55",
+    "--probe-floor-mode",
+    "grid",
+    "--probe-floor-span",
+    "40",
+    "--sun-direction",
+    "-0.42",
+    "-0.60",
+    "-0.55",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--no-ao",
+    "--auto-profile",
+    "--profile-frames",
+    "300",
+    "--window-mode",
+    "offscreen",
+    "--yaw",
+    "0.6",
+    "--subdivisions",
+    "1"
+  ],
+  "rounds": 5,
+  "order": "forward/reverse alternating; adjacent baseline/candidate pairs per zoom",
+  "expected_binary_sha256": {
+    "baseline": "91f47effb3ee433a4a0af32825c14cd6cf6b5e7e36f8a5efbb0e0208031aefb3",
+    "candidate": "dd4a1ff40093bb74b1e9e6dfc023787468fe30cf286da66f8c8504c16a8a9b90"
+  },
+  "expected_assets": {
+    "shader_sha256": "2ce8a7f2b586091e13a2e61cd4df78cb6f5bc6c9989960f13e665c646a80577d",
+    "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b"
+  },
+  "expected_render_environment": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "1",
+    "IR_PERAXIS_VISIBILITY_PREPASS": "0",
+    "IR_PERAXIS_VISIBILITY_STATS": "0",
+    "IR_PERAXIS_OVERFLOW_DISABLE": null,
+    "IR_OVERFLOW_LIGHTING_DISABLE": null,
+    "IR_OVERFLOW_FOG_DISABLE": null,
+    "IR_OVERFLOW_COUNT_LOG": null
+  },
+  "host_power": "Battery Power",
+  "outer_quiet_report": "/tmp/irreden-yaw-lighting/optimization-wrapper.quiet",
+  "qualification": "pending outer wrapper exit and quiet report"
+}

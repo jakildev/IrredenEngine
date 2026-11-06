@@ -1,0 +1,135 @@
+[2026-11-02 22:20:39.726] [ClientLog] [info] GUI-ASSERT shot=0 label=camera_gestures_alt_orbit_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.392699 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:39.726] [ClientLog] [info] CaptureCamera: label=camera_gestures_alt_orbit_held yaw=0.392699 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:39.924] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001483.png
+[2026-11-02 22:20:40.034] [ClientLog] [info] GUI-ASSERT shot=1 label=camera_gestures_alt_orbit_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.392699 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:40.034] [ClientLog] [info] CaptureCamera: label=camera_gestures_alt_orbit_release yaw=0.392699 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:40.228] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001484.png
+[2026-11-02 22:20:40.347] [ClientLog] [info] GUI-ASSERT shot=2 label=camera_gestures_alt_orbit_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:40.347] [ClientLog] [info] CaptureCamera: label=camera_gestures_alt_orbit_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:40.541] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001485.png
+[2026-11-02 22:20:40.651] [ClientLog] [info] GUI-ASSERT shot=3 label=camera_gestures_alt_orbit_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:40.651] [ClientLog] [info] CaptureCamera: label=camera_gestures_alt_orbit_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:40.842] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001486.png
+[2026-11-02 22:20:40.969] [ClientLog] [info] GUI-ASSERT shot=4 label=camera_gestures_right_orbit_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.320000 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:40.969] [ClientLog] [info] CaptureCamera: label=camera_gestures_right_orbit_held yaw=0.31999993 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:41.163] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001487.png
+[2026-11-02 22:20:41.282] [ClientLog] [info] GUI-ASSERT shot=5 label=camera_gestures_right_orbit_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:41.282] [ClientLog] [info] CaptureCamera: label=camera_gestures_right_orbit_release yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:41.490] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001488.png
+[2026-11-02 22:20:41.593] [ClientLog] [info] GUI-ASSERT shot=6 label=camera_gestures_right_orbit_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:41.593] [ClientLog] [info] CaptureCamera: label=camera_gestures_right_orbit_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:41.784] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001489.png
+[2026-11-02 22:20:41.895] [ClientLog] [info] GUI-ASSERT shot=7 label=camera_gestures_right_orbit_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:41.895] [ClientLog] [info] CaptureCamera: label=camera_gestures_right_orbit_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:42.084] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001490.png
+[2026-11-02 22:20:42.212] [ClientLog] [info] GUI-ASSERT shot=8 label=camera_gestures_middle_orbit_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.392699 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:42.212] [ClientLog] [info] CaptureCamera: label=camera_gestures_middle_orbit_held yaw=0.392699 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:42.405] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001491.png
+[2026-11-02 22:20:42.532] [ClientLog] [info] GUI-ASSERT shot=9 label=camera_gestures_middle_orbit_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.392699 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:42.532] [ClientLog] [info] CaptureCamera: label=camera_gestures_middle_orbit_release yaw=0.392699 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:42.727] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001492.png
+[2026-11-02 22:20:42.847] [ClientLog] [info] GUI-ASSERT shot=10 label=camera_gestures_middle_orbit_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:42.847] [ClientLog] [info] CaptureCamera: label=camera_gestures_middle_orbit_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:43.038] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001493.png
+[2026-11-02 22:20:43.149] [ClientLog] [info] GUI-ASSERT shot=11 label=camera_gestures_middle_orbit_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:43.149] [ClientLog] [info] CaptureCamera: label=camera_gestures_middle_orbit_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:43.355] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001494.png
+[2026-11-02 22:20:43.492] [ClientLog] [info] GUI-ASSERT shot=12 label=camera_gestures_cursor_orbit_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.392699 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:43.492] [ClientLog] [info] CaptureCamera: label=camera_gestures_cursor_orbit_held yaw=0.392699 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:43.686] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001495.png
+[2026-11-02 22:20:43.796] [ClientLog] [info] GUI-ASSERT shot=13 label=camera_gestures_cursor_orbit_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.392699 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:43.796] [ClientLog] [info] CaptureCamera: label=camera_gestures_cursor_orbit_release yaw=0.392699 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:43.995] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001496.png
+[2026-11-02 22:20:44.097] [ClientLog] [info] GUI-ASSERT shot=14 label=camera_gestures_cursor_orbit_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:44.097] [ClientLog] [info] CaptureCamera: label=camera_gestures_cursor_orbit_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:44.289] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001497.png
+[2026-11-02 22:20:44.399] [ClientLog] [info] GUI-ASSERT shot=15 label=camera_gestures_cursor_orbit_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:44.399] [ClientLog] [info] CaptureCamera: label=camera_gestures_cursor_orbit_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:44.603] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001498.png
+[2026-11-02 22:20:44.730] [ClientLog] [info] GUI-ASSERT shot=16 label=camera_gestures_q_snap_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=-1.570796 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:44.730] [ClientLog] [info] CaptureCamera: label=camera_gestures_q_snap_held yaw=-1.5707964 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:44.921] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001499.png
+[2026-11-02 22:20:45.032] [ClientLog] [info] GUI-ASSERT shot=17 label=camera_gestures_q_snap_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:45.032] [ClientLog] [info] CaptureCamera: label=camera_gestures_q_snap_release yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:45.222] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001500.png
+[2026-11-02 22:20:45.324] [ClientLog] [info] GUI-ASSERT shot=18 label=camera_gestures_q_snap_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:45.324] [ClientLog] [info] CaptureCamera: label=camera_gestures_q_snap_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:45.512] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001501.png
+[2026-11-02 22:20:45.623] [ClientLog] [info] GUI-ASSERT shot=19 label=camera_gestures_q_snap_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:45.623] [ClientLog] [info] CaptureCamera: label=camera_gestures_q_snap_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:45.815] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001502.png
+[2026-11-02 22:20:45.942] [ClientLog] [info] GUI-ASSERT shot=20 label=camera_gestures_e_snap_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=1.570796 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:45.942] [ClientLog] [info] CaptureCamera: label=camera_gestures_e_snap_held yaw=1.5707963 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:46.130] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001503.png
+[2026-11-02 22:20:46.241] [ClientLog] [info] GUI-ASSERT shot=21 label=camera_gestures_e_snap_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:46.241] [ClientLog] [info] CaptureCamera: label=camera_gestures_e_snap_release yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:46.431] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001504.png
+[2026-11-02 22:20:46.533] [ClientLog] [info] GUI-ASSERT shot=22 label=camera_gestures_e_snap_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:46.533] [ClientLog] [info] CaptureCamera: label=camera_gestures_e_snap_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:46.724] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001505.png
+[2026-11-02 22:20:46.844] [ClientLog] [info] GUI-ASSERT shot=23 label=camera_gestures_e_snap_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:46.844] [ClientLog] [info] CaptureCamera: label=camera_gestures_e_snap_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:47.032] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001506.png
+[2026-11-02 22:20:47.160] [ClientLog] [info] GUI-ASSERT shot=24 label=camera_gestures_space_pan_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:47.160] [ClientLog] [info] CaptureCamera: label=camera_gestures_space_pan_held yaw=0 zoom=(8,8) effectiveIso=(5,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:47.348] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001507.png
+[2026-11-02 22:20:47.458] [ClientLog] [info] GUI-ASSERT shot=25 label=camera_gestures_space_pan_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:47.459] [ClientLog] [info] CaptureCamera: label=camera_gestures_space_pan_release yaw=0 zoom=(8,8) effectiveIso=(10,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:47.647] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001508.png
+[2026-11-02 22:20:47.750] [ClientLog] [info] GUI-ASSERT shot=26 label=camera_gestures_space_pan_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:47.750] [ClientLog] [info] CaptureCamera: label=camera_gestures_space_pan_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:47.940] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001509.png
+[2026-11-02 22:20:48.050] [ClientLog] [info] GUI-ASSERT shot=27 label=camera_gestures_space_pan_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:48.050] [ClientLog] [info] CaptureCamera: label=camera_gestures_space_pan_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:48.243] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001510.png
+[2026-11-02 22:20:48.444] [ClientLog] [info] GUI-ASSERT shot=28 label=camera_gestures_brush_interrupt_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.320000 undo=1 ghost=0 hash=5547746182058999081
+[2026-11-02 22:20:48.444] [ClientLog] [info] CaptureCamera: label=camera_gestures_brush_interrupt_held yaw=0.31999993 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:48.636] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001511.png
+[2026-11-02 22:20:48.763] [ClientLog] [info] GUI-ASSERT shot=29 label=camera_gestures_brush_interrupt_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:48.763] [ClientLog] [info] CaptureCamera: label=camera_gestures_brush_interrupt_release yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:48.952] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001512.png
+[2026-11-02 22:20:49.054] [ClientLog] [info] GUI-ASSERT shot=30 label=camera_gestures_brush_interrupt_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=3 yaw=0.000000 undo=1 ghost=1 hash=10411853709651010056
+[2026-11-02 22:20:49.054] [ClientLog] [info] CaptureCamera: label=camera_gestures_brush_interrupt_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:49.244] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001513.png
+[2026-11-02 22:20:49.354] [ClientLog] [info] GUI-ASSERT shot=31 label=camera_gestures_brush_interrupt_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:49.354] [ClientLog] [info] CaptureCamera: label=camera_gestures_brush_interrupt_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:49.542] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001514.png
+[2026-11-02 22:20:49.669] [ClientLog] [info] GUI-ASSERT shot=32 label=camera_gestures_box_interrupt_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.320000 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:49.669] [ClientLog] [info] CaptureCamera: label=camera_gestures_box_interrupt_held yaw=0.31999993 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:49.863] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001515.png
+[2026-11-02 22:20:49.990] [ClientLog] [info] GUI-ASSERT shot=33 label=camera_gestures_box_interrupt_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:49.990] [ClientLog] [info] CaptureCamera: label=camera_gestures_box_interrupt_release yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:50.180] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001516.png
+[2026-11-02 22:20:50.282] [ClientLog] [info] GUI-ASSERT shot=34 label=camera_gestures_box_interrupt_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:50.282] [ClientLog] [info] CaptureCamera: label=camera_gestures_box_interrupt_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:50.475] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001517.png
+[2026-11-02 22:20:50.585] [ClientLog] [info] GUI-ASSERT shot=35 label=camera_gestures_box_interrupt_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:50.585] [ClientLog] [info] CaptureCamera: label=camera_gestures_box_interrupt_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:50.777] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001518.png
+[2026-11-02 22:20:50.904] [ClientLog] [info] GUI-ASSERT shot=36 label=camera_gestures_line_interrupt_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.320000 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:50.904] [ClientLog] [info] CaptureCamera: label=camera_gestures_line_interrupt_held yaw=0.31999993 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:51.094] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001519.png
+[2026-11-02 22:20:51.222] [ClientLog] [info] GUI-ASSERT shot=37 label=camera_gestures_line_interrupt_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:51.222] [ClientLog] [info] CaptureCamera: label=camera_gestures_line_interrupt_release yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:51.411] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001520.png
+[2026-11-02 22:20:51.514] [ClientLog] [info] GUI-ASSERT shot=38 label=camera_gestures_line_interrupt_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=2 yaw=0.000000 undo=1 ghost=1 hash=5547746182058999081
+[2026-11-02 22:20:51.514] [ClientLog] [info] CaptureCamera: label=camera_gestures_line_interrupt_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:51.705] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001521.png
+[2026-11-02 22:20:51.816] [ClientLog] [info] GUI-ASSERT shot=39 label=camera_gestures_line_interrupt_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:51.816] [ClientLog] [info] CaptureCamera: label=camera_gestures_line_interrupt_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:52.007] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001522.png
+[2026-11-02 22:20:52.134] [ClientLog] [info] GUI-ASSERT shot=40 label=camera_gestures_paint_orbit_held kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.392699 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:52.134] [ClientLog] [info] CaptureCamera: label=camera_gestures_paint_orbit_held yaw=0.392699 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:52.326] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001523.png
+[2026-11-02 22:20:52.445] [ClientLog] [info] GUI-ASSERT shot=41 label=camera_gestures_paint_orbit_release kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.392699 undo=0 ghost=0 hash=10932715487595371384
+[2026-11-02 22:20:52.445] [ClientLog] [info] CaptureCamera: label=camera_gestures_paint_orbit_release yaw=0.392699 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:52.640] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001524.png
+[2026-11-02 22:20:52.759] [ClientLog] [info] GUI-ASSERT shot=42 label=camera_gestures_paint_orbit_fresh_click kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=1 ghost=1 hash=14667467035170856372
+[2026-11-02 22:20:52.759] [ClientLog] [info] CaptureCamera: label=camera_gestures_paint_orbit_fresh_click yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:52.948] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001525.png
+[2026-11-02 22:20:53.059] [ClientLog] [info] GUI-ASSERT shot=43 label=camera_gestures_paint_orbit_undo kind=PREDICATE target=0 name=camera_owns_complete_gesture result=PASS actual=cells=1 yaw=0.000000 undo=0 ghost=1 hash=10932715487595371384
+[2026-11-02 22:20:53.059] [ClientLog] [info] CaptureCamera: label=camera_gestures_paint_orbit_undo yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1600,900)
+[2026-11-02 22:20:53.248] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_001526.png
+ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0
+[gui-verify] 44/44 assertions passed
+[gui-verify] 0 layout finding(s) over 44 shot(s)

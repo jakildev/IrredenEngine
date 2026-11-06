@@ -1,0 +1,64 @@
+{
+  "cases": {
+    "yaw30-zoom4-surface0-timing1": [
+      30,
+      4,
+      0,
+      true
+    ],
+    "yaw30-zoom4-surface1-timing1": [
+      30,
+      4,
+      1,
+      true
+    ],
+    "yaw30-zoom4-surface0-timing0": [
+      30,
+      4,
+      0,
+      false
+    ],
+    "yaw30-zoom4-surface1-timing0": [
+      30,
+      4,
+      1,
+      false
+    ],
+    "yaw67-zoom8-surface0-timing1": [
+      67,
+      8,
+      0,
+      true
+    ],
+    "yaw67-zoom8-surface1-timing1": [
+      67,
+      8,
+      1,
+      true
+    ],
+    "yaw67-zoom8-surface0-timing0": [
+      67,
+      8,
+      0,
+      false
+    ],
+    "yaw67-zoom8-surface1-timing0": [
+      67,
+      8,
+      1,
+      false
+    ]
+  },
+  "rounds": 3,
+  "frames": 360,
+  "order": "forward on odd rounds; reverse on even rounds",
+  "window_mode": "offscreen",
+  "artifact_identity": {
+    "binary_sha256": "5ea5f7e4425cb45e52b3f6e0409624bd214b179b5d4e0f47ede244b7020fb3a5",
+    "shader_sha256": "2ce8a7f2b586091e13a2e61cd4df78cb6f5bc6c9989960f13e665c646a80577d",
+    "runtime_scripts_sha256": "27599c62042b88971a12b5cd1a07b57af73a9c44eb89b0816063f9927696f915",
+    "config_sha256": "1a543031eab8475531633ca351ff49f5e04b03a52114d507b0737e29eb0fb916"
+  },
+  "power": "Battery Power",
+  "instrumentation_control": "GPU stage timestamps off; GPU frame envelope retained"
+}

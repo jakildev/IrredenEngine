@@ -1,0 +1,22 @@
+{
+  "command": [
+    "fleet-run",
+    "--release",
+    "--timeout",
+    "45",
+    "IRVoxelEditor",
+    "--profile-frames",
+    "360",
+    "--profile-yaw",
+    "67",
+    "--profile-zoom",
+    "8",
+    "--window-mode",
+    "offscreen",
+    "--no-stage-timing",
+    "--worker-threads",
+    "1"
+  ],
+  "returncode": 0,
+  "clean": true
+}
