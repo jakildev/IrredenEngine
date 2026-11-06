@@ -401,16 +401,14 @@
 
 # --- Smoke-only worker (cross-host) ----------------------------------------
 #
-# FLEET_SMOKE_WORKER=1 tells fleet-dispatcher to serve the smoke-worker
-# role (dispatched to any idle pool pane). Useful when running a second
-# host (e.g. Ubuntu alongside a macOS fleet) that should smoke-test
-# render PRs.
-#
-# When unset or 0, the dispatcher ignores smoke-worker triggers. The
-# worker lane continues to run step-1b smoke as a secondary
-# responsibility — this flag is opt-in extra dedicated capacity.
+# The dispatcher serves the smoke-worker role by default (dispatched to any
+# idle pool pane) so every full-profile host clears its own
+# fleet:needs-<host>-smoke labels; the lane stands down on a tick with no
+# pending smoke for this host. FLEET_SMOKE_WORKER=0 switches it off, for a
+# host that must never spend a pane on smoke. The worker lane still runs
+# step-1b smoke as a secondary responsibility either way.
 
-# FLEET_SMOKE_WORKER=0
+# FLEET_SMOKE_WORKER=1
 
 # --- Host profile (satellite hosts) ----------------------------------------
 #
@@ -430,7 +428,7 @@
 # serves (space- or comma-separated; known names: merger sonnet-reviewer
 # opus-reviewer worker smoke-worker epic-steward design-answerer). It
 # replaces the default list AND the FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD /
-# FLEET_DESIGN_ANSWERER opt-ins: naming smoke-worker enables it, omitting
+# FLEET_DESIGN_ANSWERER knobs: naming smoke-worker enables it, omitting
 # merger disables it. This is the only way to switch a lane off — a
 # FLEET_CONCURRENCY_<ROLE>=0 cap means UNCAPPED, not disabled. Unknown names
 # are dropped with a warning; the served set is on every `config:` line in
