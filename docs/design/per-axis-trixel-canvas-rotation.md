@@ -368,12 +368,14 @@ drift from the cell-path lighting model.
 ### Picking follows the depth-tested owner
 
 The corrected tie fixture and retained main-pool ID buffer are implemented.
-Native Metal capture, sweep, cube and three-run tie repeatability pass; removing
-the retained-ID binding makes the tie probe fail. Full ShapeDebug and
-CanvasStress image acceptance still fails; performance remains pending after a
-sandbox-denied baseline configuration operation. See the
+On native Metal the capture, sweep, cube and three-run tie repeatability checks
+pass, and removing the retained-ID binding makes the tie probe fail. Five
+interleaved base/head performance pairs keep the rotating frame and the three
+scoped GPU rows within their limits. Two items remain open. Full ShapeDebug and
+CanvasStress image acceptance fails, identically on master: the macOS
+references drifted before this work, and #4904 refreshes them. The OpenGL
+runtime run is #4865. See the
 [acceptance receipts](../pr-screenshots/codex/4820-rotation-picking/acceptance-2026-11-04.md).
-Picking remains open until the remaining acceptance evidence is complete.
 
 The scatter writes a decoded entity id to a lazily allocated `RG32UI`
 framebuffer attachment at colour index 1, alongside its unchanged colour.
@@ -789,8 +791,10 @@ sweep degenerates after a single `texelFetch` + branch and does **not** dominate
   the scatter composites them, so rotating voxels show full lighting. See the
   §"Open decisions" → "Lighting / AO placement" resolution.
 - **Picking during rotation.** The attachment, retained pool IDs and corrected
-  tie fixture are implemented; native capture, repeatability and performance
-  acceptance remain open (see §"Picking follows the depth-tested owner").
+  tie fixture are implemented, and native Metal capture, repeatability and
+  performance pass. Image acceptance (#4904, inherited reference drift) and the
+  OpenGL runtime run (#4865) remain open (see §"Picking follows the
+  depth-tested owner").
 - **Compute-compaction pre-pass** (append non-empty cell indices + indirect
   draw args to shrink the scatter instance count). Measured-deferred: the perf
   gate above shows the empty-cell sweep does not dominate, so this is a future
