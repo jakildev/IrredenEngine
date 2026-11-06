@@ -352,6 +352,44 @@ TEST_F(IRJobFixture, ChunksManySmallNodesEachStayWhole) {
     }
 }
 
+TEST(IRJobManagerTest, AutoPoolRepeatedShortChunksCompleteAndPublishWrites) {
+    IRJob::JobManager jobs(IRJob::JobManager::kAutoWorkerCount);
+    const std::vector<int> nodeLengths{1, 3, 17, 5, 31, 2, 9, 63, 4, 11, 7, 23};
+    std::vector<IRJob::RowChunk> scratch;
+    std::vector<std::vector<int>> values;
+    std::atomic<bool> observedWorker{false};
+    for (int length : nodeLengths) {
+        values.emplace_back(length, 0);
+    }
+
+    // Vary idle gaps and completion timing without adding synchronization to
+    // row writes: parallelChunks must publish them before returning. A process
+    // watchdog bounds a lost wakeup; passing stress alone cannot prove ordering.
+    for (int iteration = 0; iteration < 2000; ++iteration) {
+        if (iteration % 16 == 0) {
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+        }
+        IRJob::parallelChunks(nodeLengths, scratch, [&](int node, int begin, int end) {
+            if (!IRJob::isMainThread()) {
+                observedWorker.store(true, std::memory_order_relaxed);
+            }
+            if ((iteration + node) % 31 == 0) {
+                std::this_thread::yield();
+            }
+            for (int row = begin; row < end; ++row) {
+                values[node][row] += node + row + 1;
+            }
+        });
+        for (int node = 0; node < static_cast<int>(nodeLengths.size()); ++node) {
+            for (int row = 0; row < nodeLengths[node]; ++row) {
+                ASSERT_EQ(values[node][row], (iteration + 1) * (node + row + 1))
+                    << "iteration=" << iteration << " node=" << node << " row=" << row;
+            }
+        }
+    }
+    EXPECT_TRUE(observedWorker.load(std::memory_order_relaxed));
+}
+
 TEST_F(IRJobFixture, ChunksBelowBothThresholdsRunSerialOneCallPerNode) {
     // 2 nodes (< minNodes 8) of 100 rows (200 total < minItems 4096) ->
     // serial: fn(i, 0, len) per node on the calling thread.

@@ -6,3 +6,16 @@ Pinned to commit 6ffccbdb1000253d8d513dd7a5ae9226e5023a5c, fetched as a
 SHA256-checked source archive in engine/job/third_party/enkiTS/CMakeLists.txt.
 Set `-DIR_ENKITS_GIT_REF=<branch-or-tag>` at configure time to shallow-clone
 a mutable reference instead.
+
+The default pin includes completion_ordering.patch, a narrow backport of:
+https://github.com/dougbinks/enkiTS/commit/845b837b6a5bb6f0d36d0e594610ba4dad0b81e1
+https://github.com/dougbinks/enkiTS/commit/d1752d0898f4b1aa64a60944aaa9f6bf4b7ebfa4
+Upstream report: https://github.com/dougbinks/enkiTS/issues/91
+Only ten atomic read-modify-write memory orders change. The scheduling
+algorithm and blocking semaphore behavior remain those of the pinned version.
+
+Custom IR_ENKITS_GIT_REF revisions are not patched; their owner must include
+these completion-ordering fixes. Custom revision source, binary, and population
+directories are isolated by revision hash so Git cannot carry default patches
+across a revision switch. The default pin is checked on every
+configure, including already populated and disconnected dependency trees.

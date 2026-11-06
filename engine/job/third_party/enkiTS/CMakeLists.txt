@@ -23,6 +23,8 @@ set(IR_ENKITS_GIT_REF "" CACHE STRING
 # does not pollute our `all` target with example binaries or its test
 # executable. These cache entries must be set BEFORE FetchContent runs
 # enkiTS' CMakeLists.txt.
+include("${CMAKE_CURRENT_LIST_DIR}/isolate_completion_sources.cmake")
+
 set(ENKITS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(ENKITS_BUILD_SHARED   OFF CACHE BOOL "" FORCE)
 set(ENKITS_BUILD_C_INTERFACE OFF CACHE BOOL "" FORCE)
@@ -46,6 +48,12 @@ else()
 endif()
 
 FetchContent_MakeAvailable(enkiTS_src)
+set(FETCHCONTENT_BASE_DIR "${_enkits_original_base}")
+
+if(NOT IR_ENKITS_GIT_REF)
+    set(ENKITS_SOURCE_DIR "${enkits_src_SOURCE_DIR}")
+    include("${CMAKE_CURRENT_LIST_DIR}/apply_completion_ordering.cmake")
+endif()
 
 # Match the lua/luajit pattern: alias the upstream target name to a
 # stable downstream name. enkiTS upstream produces a static lib called
