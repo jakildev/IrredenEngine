@@ -1,5 +1,0 @@
-GUI-ASSERT shot=0 label=workarea_focus_sculpt_focus kind=PREDICATE target=0 name=bounds_clear_visible_panels result=PASS actual=contained=1 local=0 turned=0
-GUI-ASSERT shot=1 label=workarea_focus_generate_focus kind=PREDICATE target=0 name=bounds_clear_visible_panels result=PASS actual=contained=1 local=0 turned=0
-GUI-ASSERT shot=2 label=workarea_focus_turned_focus kind=PREDICATE target=0 name=bounds_clear_visible_panels result=PASS actual=contained=1 local=0 turned=1
-GUI-ASSERT shot=3 label=workarea_focus_local_focus kind=PREDICATE target=0 name=bounds_clear_visible_panels result=PASS actual=contained=1 local=1 turned=0
-GUI-ASSERT shot=4 label=workarea_focus_assembly_focus kind=PREDICATE target=0 name=bounds_clear_visible_panels result=PASS actual=contained=1 local=0 turned=0

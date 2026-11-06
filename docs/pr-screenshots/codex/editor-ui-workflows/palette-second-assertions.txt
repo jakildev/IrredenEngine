@@ -1,8 +1,0 @@
-GUI-ASSERT shot=0 label=palette_workflow_default_color_paints kind=PREDICATE target=0 name=palette_rgb_persistence_and_native_controls result=PASS actual=stage=0 colors=16 selected=4 authored=1
-GUI-ASSERT shot=1 label=palette_workflow_edit_does_not_recolor kind=PREDICATE target=0 name=palette_rgb_persistence_and_native_controls result=PASS actual=stage=1 colors=16 selected=4 authored=1
-GUI-ASSERT shot=2 label=palette_workflow_add_color_second_page kind=PREDICATE target=0 name=palette_rgb_persistence_and_native_controls result=PASS actual=stage=2 colors=17 selected=16 authored=1
-GUI-ASSERT shot=3 label=palette_workflow_new_color_paints kind=PREDICATE target=0 name=palette_rgb_persistence_and_native_controls result=PASS actual=stage=3 colors=17 selected=16 authored=2
-GUI-ASSERT shot=4 label=palette_workflow_save_gpl kind=PREDICATE target=0 name=palette_rgb_persistence_and_native_controls result=PASS actual=stage=4 colors=17 selected=16 authored=2
-GUI-ASSERT shot=5 label=palette_workflow_defaults_do_not_recolor kind=PREDICATE target=0 name=palette_rgb_persistence_and_native_controls result=PASS actual=stage=5 colors=16 selected=0 authored=2
-GUI-ASSERT shot=6 label=palette_workflow_load_saved_palette kind=PREDICATE target=0 name=palette_rgb_persistence_and_native_controls result=PASS actual=stage=6 colors=17 selected=0 authored=2
-GUI-ASSERT shot=7 label=palette_workflow_loaded_color_paints kind=PREDICATE target=0 name=palette_rgb_persistence_and_native_controls result=PASS actual=stage=7 colors=17 selected=16 authored=3
