@@ -1,6 +1,6 @@
 # LOD strategy — artist-driven detail tiers, prefab-manifest composition
 
-**Status:** Phase 1 (#708, #1467, #3966) and Phase 2 (#3975) shipped.
+**Status:** Phase 1 (#708, #1467, #3966, #4891) and Phase 2 (#3975) shipped.
 Phase 3 (cross-tier interpolation) is deferred to its own design pass.
 
 **Decision:** LOD lives at two layers — runtime selection (Phase 1) and
@@ -274,10 +274,10 @@ writer of it: fog's whole-body reveal owns `visible_`, and two owners of one
 flag would overwrite each other's verdict. A set draws only while
 `renders()` — both gates open.
 
-Zoom snaps to powers of two, so tier changes are discrete and the engine adds
-no hysteresis; a creation's policy owns any debounce. `computeLodLevel`'s
-thresholds are unchanged. `lodVoxelScale` is removed: it had no callers, and
-sub-world voxel pitch is ruled out.
+The zoom -> tier mapping itself is a camera's zoom profile (Phase 1d below):
+the default keeps the 2 / 4 / 8 / 16 thresholds with no deadband.
+`lodVoxelScale` is removed: it had no callers, and sub-world voxel pitch is
+ruled out.
 
 `C_VoxelSetNew` persists its authored `lodMin_` / `lodMax_` band in snapshot
 format version 3, so a reloaded set retains its inclusive LOD range.
@@ -288,6 +288,92 @@ recomputes it.
 The `shape_debug --lod-dense-swap` fixture (two co-located DENSE sets on
 disjoint bands) is the reference; render-verify covers it at zoom 2× / 8×, and
 `LodTierLua` covers the read, the pin and the gate headlessly.
+
+### Phase 1d — zoom profiles and hysteresis (#4891)
+
+A camera can render at fractional zoom (`IRPrefab::Camera::setZoomContinuous`),
+so a zoom that wanders across a fixed threshold — 3.99× / 4.01× — would swap
+two disjoint variants on every crossing. A **zoom profile** moves the
+thresholds and adds a deadband around each.
+
+- **Shape.** `C_LodZoomProfile { IRRender::LodZoomProfile profile_ }`: four
+  ascending thresholds and a hysteresis half-width. Threshold `i` is the
+  boundary between `LOD_(4-i)` and the finer `LOD_(3-i)`, in display zoom —
+  the `C_ZoomLevel` scale, `max(x, y)`, the same number
+  `IRRender::getCameraZoom` returns. The half-width `h` is in **octaves** of
+  zoom, so a band is symmetric in log-zoom: `[t / 2^h, t * 2^h]`. The default
+  profile is 2, 4, 8, 16 with `h = 0`, identical to `computeLodLevel`.
+- **Validation.** Every threshold finite and positive, strictly ascending;
+  `h` finite and nonnegative; adjacent bands must not overlap
+  (`t_i * 2^h <= t_(i+1) / 2^h`; touching is allowed).
+  `LodZoomProfile::make` is the only constructor besides the default, so no
+  invalid profile exists. `C_LodZoomProfile::set`, the
+  `IRPrefab::Lod::set*ZoomProfile` setters, the Lua surface and the save
+  reader all apply `whyInvalid`; an invalid write keeps the previous profile.
+- **Crossing rule.** A consumer moving toward finer detail crosses threshold
+  `t` once zoom reaches `t * 2^h`; moving toward coarser detail it crosses
+  once zoom falls strictly below `t / 2^h`; inside a band the tier holds. At
+  `h = 0` the finer tier owns the exact threshold, as before, and the answer
+  is independent of direction. One update resolves every threshold a jump
+  crosses, so 1× -> 64× lands on `LOD_0` in one frame.
+- **History.** Each consumer owns its previous tier in an
+  `IRRender::LodTierHistory`: the main camera's in the `C_ActiveLodLevel`
+  singleton (`history_`), each secondary viewport's in its
+  `C_ViewportCamera::lodHistory_`. A history seeds from `tierAt(zoom)` — the
+  zero-width answer — at creation (first update), after
+  `IRPrefab::Lod::resetMainZoomHistory` / `resetViewportZoomHistory`, and
+  whenever the profile it resolves under differs from the one it was seeded
+  with (a replacement, an in-place `set`, a removal back to the default, a
+  viewport gaining or dropping its own). A seed inside a band therefore takes
+  the finer side of that band's threshold. A nonfinite zoom keeps the
+  previous tier.
+- **Ownership and inheritance.** The main camera (the entity named
+  `"camera"`) owns its optional profile; `LOD_UPDATE` reads it once per
+  tick. A secondary viewport **inherits** the main camera's profile unless it
+  carries its own `C_LodZoomProfile`; `SYNC_VIEWPORT_SUBJECTS` resolves each
+  viewport's tier from its own zoom and its own history, so a portrait and
+  the world never share a deadband state. Viewport zoom still snaps to a
+  power of two.
+- **Configuration surface.** C++: `IRPrefab::Lod::` in
+  `render/lod_zoom_policy.hpp` (`setMainZoomProfile`,
+  `setViewportZoomProfile`, `clear*`, `reset*ZoomHistory`, `mainZoomProfile`,
+  `viewportZoomProfile`, `viewportTier`). Lua: `IREntity.addLuaComponent(e,
+  IRComponent.C_LodZoomProfile, { thresholds = { ... }, hysteresis = h })`,
+  a prefab's `components = { C_LodZoomProfile = { ... } }`, and on a held
+  component `threshold(i)`, `hysteresis` and `set{ ... }`; each raises with
+  the `whyInvalid` reason.
+- **Persistence.** `C_LodZoomProfile` saves its four thresholds and `h`
+  (version 1); a record that is not a valid profile fails the load. The
+  histories are derived and never saved: a loaded world seeds from the
+  loaded zoom. An entity saved before the component existed has none and
+  selects with the default.
+- **Unchanged.** Per-part inclusive bands, `C_LodTierOverride` pins (world
+  consumers only — a viewport still ignores them), and fractional raster
+  sampling (continuous zoom places content independently of the tier) keep
+  their meaning. `computeLodLevel` is the default profile's `tierAt`.
+
+**Three debounce mechanisms, three purposes.** The zoom profile's deadband
+decides *which tier* a camera selects. Above it, a creation's structural
+policy decides *which parts exist* at that tier: `PREFAB_LOD_PARTS` waits for
+a tier to hold `kPrefabPartsTierSettleTicks` before spawning or destroying
+parts, and `resident` parts stay alive out of band (Phase 2). Separately,
+`CANVAS_RESIDENCY` keeps a promote / demote margin around the camera's
+interest region so an entity does not churn between GRID and its own canvas
+([composite canvases](composite-entity-canvases.md#residency)) — a spatial
+budget policy that never reads the LOD tier. None substitutes for another:
+the settle window debounces part churn, not the tier the shape filter and
+DENSE gate see, and the residency margin is about distance, not zoom.
+
+The `shape_debug --lod-zoom-profile` fixture is the reference: GRID,
+DETACHED and DETACHED_REVOXELIZE DENSE pairs, an SDF pair, a pinned control
+and two portraits (one inheriting, one with its own 0.45-octave profile)
+under a fractional zoom sequence that oscillates across 5× at width zero and
+then inside a quarter-octave band. Each capture asserts the resolved tiers,
+the DENSE gate state and the authored records;
+`scripts/render-lod-zoom-profile-metric.py` reads the variant colour inside
+each pair's logged screen box. `LodZoomProfile`, `LodZoomHysteresis`,
+`LodZoomMainCamera`, `LodZoomProfileLua` and the `ViewportTest` profile cases
+cover the rules headlessly.
 
 What Phase 1 explicitly does **not** do:
 
@@ -441,7 +527,8 @@ without a format break. Same escape hatch as `.vxs`.
   rasters its subject at its own camera's zoom-derived density
   (`getVoxelRenderEffectiveSubdivisionsForZoom`), so a portrait at zoom 16 is
   the finest tier while the world draws the same entity coarse. Its subjects'
-  DENSE bands are filtered at the viewport's own zoom-derived tier;
+  DENSE bands are filtered at the viewport's own tier — its zoom under its own
+  or the inherited main zoom profile, from its own history (Phase 1d);
   `C_LodTierOverride` pins the world's tier only and is not read there.
 - **Subdivision-count scaling** (`render_manager.cpp:240-253`). Existing
   per-zoom behavior: subdivision passes per voxel scale with

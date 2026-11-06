@@ -10,9 +10,11 @@
 // edit, a retarget or a destroyed subject needs no notification.
 //
 // A part draws only inside its `[lodMax_ .. lodMin_]` band at the viewport's
-// own zoom-derived tier. `C_LodTierOverride` pins the world's tier and is not
-// read here, so tagging every co-located variant of a subject shows the world
-// its coarse one and a close-up portrait its fine one.
+// own tier: its zoom under its own `C_LodZoomProfile`, else the main camera's,
+// moved from the viewport's previous tier (`C_ViewportCamera::lodHistory_`).
+// `C_LodTierOverride` pins the world's tier and is not read here, so tagging
+// every co-located variant of a subject shows the world its coarse one and a
+// close-up portrait its fine one.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -21,10 +23,12 @@
 
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/components/component_lod_zoom_profile.hpp>
 #include <irreden/render/components/component_viewport_camera.hpp>
 #include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/lod_utils.hpp>
+#include <irreden/render/lod_zoom_policy.hpp>
 #include <irreden/render/viewport.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -61,10 +65,21 @@ template <> struct System<SYNC_VIEWPORT_SUBJECTS> {
                 slot.parts_.clear();
             }
         );
+        if (slotCount_ == 0) {
+            return;
+        }
+        const IRRender::LodZoomProfile mainProfile = IRPrefab::Lod::mainZoomProfile();
         for (std::size_t i = 0; i < slotCount_; ++i) {
+            const IREntity::EntityId viewport = slots_[i].viewport_;
             const IRMath::vec2 zoom =
-                IREntity::getComponent<IRComponents::C_ZoomLevel>(slots_[i].viewport_).zoom_;
-            slots_[i].tier_ = IRRender::computeLodLevel(IRMath::max(zoom.x, zoom.y));
+                IREntity::getComponent<IRComponents::C_ZoomLevel>(viewport).zoom_;
+            const auto own =
+                IREntity::getComponentOptional<IRComponents::C_LodZoomProfile>(viewport);
+            auto &camera = IREntity::getComponent<IRComponents::C_ViewportCamera>(viewport);
+            slots_[i].tier_ = camera.lodHistory_.advance(
+                own.has_value() ? (*own)->profile_ : mainProfile,
+                IRMath::max(zoom.x, zoom.y)
+            );
         }
     }
 

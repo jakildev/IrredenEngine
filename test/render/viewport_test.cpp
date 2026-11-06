@@ -10,9 +10,12 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
+#include <irreden/render/components/component_lod_zoom_profile.hpp>
 #include <irreden/render/components/component_viewport_camera.hpp>
 #include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
+#include <irreden/render/lod_zoom_policy.hpp>
+#include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/render/systems/system_sync_viewport_subjects.hpp>
 #include <irreden/render/viewport.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -618,6 +621,109 @@ TEST_F(ViewportTest, NoVariantInBandEmptiesThePool) {
 
     EXPECT_EQ(poolOf(viewport).getLiveVoxelCount(), 0);
     EXPECT_EQ(Viewport::drawnSubject(viewport), IREntity::kNullEntity);
+}
+
+// ---------------------------------------------------------------------------
+// LOD zoom profiles
+// ---------------------------------------------------------------------------
+
+// The C_ZoomLevel the sync reads, written directly: `Viewport::setCamera`
+// snaps to a power of two, the profile resolver takes any zoom.
+void setViewportZoom(IREntity::EntityId viewport, float zoom) {
+    IREntity::getComponent<C_ZoomLevel>(viewport).zoom_ = vec2(zoom);
+}
+
+IREntity::EntityId makeMainCamera() {
+    const IREntity::EntityId camera = IREntity::createEntity();
+    IREntity::setName(camera, "camera");
+    return camera;
+}
+
+TEST_F(ViewportTest, AViewportInheritsTheMainLodProfileUnlessItCarriesItsOwn) {
+    makeMainCamera();
+    // Under 3, 6, 12, 24 a zoom of 4 is LOD_3 (the coarse variant); under the
+    // default it is LOD_2 (the fine one).
+    ASSERT_TRUE(IRPrefab::Lod::setMainZoomProfile({3.0f, 6.0f, 12.0f, 24.0f}));
+    Viewport::Desc desc{};
+    desc.zoom_ = 4.0f;
+    const IREntity::EntityId viewport = makeViewport(desc);
+    const VariantFamily family = makeVariantFamily();
+    const auto drawn = [&]() {
+        const std::vector<SubjectPart> parts = gather(viewport, {family.coarse_, family.fine_});
+        EXPECT_EQ(parts.size(), 1u);
+        return parts.empty() ? IREntity::kNullEntity : parts[0].entity_;
+    };
+
+    EXPECT_EQ(drawn(), family.coarse_);
+    EXPECT_EQ(IRPrefab::Lod::viewportTier(viewport), LodLevel::LOD_3);
+
+    ASSERT_TRUE(IRPrefab::Lod::setViewportZoomProfile(viewport, {2.0f, 4.0f, 8.0f, 16.0f}));
+    EXPECT_EQ(IRPrefab::Lod::viewportZoomProfile(viewport), IRRender::LodZoomProfile{});
+    EXPECT_EQ(drawn(), family.fine_);
+    EXPECT_FALSE(IRPrefab::Lod::setViewportZoomProfile(viewport, {2.0f, 4.0f, 8.0f, 16.0f}, -1.0f));
+    EXPECT_EQ(drawn(), family.fine_) << "an invalid write keeps the viewport's own profile";
+
+    IRPrefab::Lod::clearViewportZoomProfile(viewport);
+    EXPECT_EQ(IRPrefab::Lod::viewportZoomProfile(viewport), IRPrefab::Lod::mainZoomProfile());
+    EXPECT_EQ(drawn(), family.coarse_);
+
+    // Not a viewport: nothing to configure.
+    EXPECT_FALSE(IRPrefab::Lod::setViewportZoomProfile(family.coarse_, {2.0f, 4.0f, 8.0f, 16.0f}));
+    EXPECT_FALSE(
+        IREntity::getComponentOptional<IRComponents::C_LodZoomProfile>(family.coarse_).has_value()
+    );
+}
+
+TEST_F(ViewportTest, TheMainCameraAndEachViewportKeepTheirOwnLodHistory) {
+    makeMainCamera();
+    ASSERT_TRUE(IRPrefab::Lod::setMainZoomProfile({3.0f, 6.0f, 12.0f, 24.0f}, 0.25f));
+    const IREntity::EntityId closeUp = makeViewport();
+    const IREntity::EntityId wide = makeViewport();
+    const VariantFamily family = makeVariantFamily();
+    const auto drawnIn = [&](IREntity::EntityId viewport) {
+        const std::vector<SubjectPart> parts = gather(viewport, {family.coarse_, family.fine_});
+        EXPECT_EQ(parts.size(), 1u);
+        return parts.empty() ? IREntity::kNullEntity : parts[0].entity_;
+    };
+    const auto writeMain = [](float zoom) {
+        IRSystem::System<IRSystem::LOD_UPDATE>::writeActiveTier(vec2(zoom));
+        return IRRender::getActiveLodLevel();
+    };
+
+    EXPECT_EQ(writeMain(1.0f), LodLevel::LOD_4);
+    setViewportZoom(closeUp, 8.0f);
+    setViewportZoom(wide, 2.0f);
+    EXPECT_EQ(drawnIn(closeUp), family.fine_);
+    EXPECT_EQ(drawnIn(wide), family.coarse_);
+
+    // All three sit inside a deadband now; each holds the tier it came from.
+    // 5.5 is in the 6x band and 3.1 in the 3x band.
+    setViewportZoom(closeUp, 5.5f);
+    setViewportZoom(wide, 5.5f);
+    for (int i = 0; i < 6; ++i) {
+        EXPECT_EQ(writeMain(i % 2 == 0 ? 3.1f : 2.9f), LodLevel::LOD_4);
+        EXPECT_EQ(drawnIn(closeUp), family.fine_) << i;
+        EXPECT_EQ(drawnIn(wide), family.coarse_) << i;
+    }
+    EXPECT_EQ(IRPrefab::Lod::viewportTier(closeUp), LodLevel::LOD_2);
+    EXPECT_EQ(IRPrefab::Lod::viewportTier(wide), LodLevel::LOD_3);
+
+    // A viewport created now seeds from its zoom (5.5 -> LOD_3).
+    const IREntity::EntityId late = makeViewport();
+    setViewportZoom(late, 5.5f);
+    EXPECT_EQ(drawnIn(late), family.coarse_);
+
+    // Leaving the band moves only the viewport that left it, once.
+    setViewportZoom(closeUp, 5.0f);
+    EXPECT_EQ(drawnIn(closeUp), family.coarse_);
+    EXPECT_EQ(drawnIn(wide), family.coarse_);
+    EXPECT_EQ(IRRender::getActiveLodLevel(), LodLevel::LOD_4);
+
+    // A reset re-seeds one viewport from its zoom.
+    IRPrefab::Lod::resetViewportZoomHistory(wide);
+    setViewportZoom(wide, 6.0f);
+    EXPECT_EQ(drawnIn(wide), family.fine_);
+    EXPECT_EQ(IRPrefab::Lod::viewportTier(closeUp), LodLevel::LOD_3);
 }
 
 // ---------------------------------------------------------------------------
