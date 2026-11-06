@@ -57,7 +57,9 @@ it contributes no timing evidence.
 The [AC Release memory qualification](ac-release-memory/README.md) adds 33
 clean guarded runs across density, 16-copy overlap and root/parent motion. It
 retains startup bake scratch/payload, process RSS and Metal process allocation.
-Repeat that bounded slice on Windows/OpenGL. Subdivisions and additional
+The [Windows/OpenGL slice](windows-gl-release-memory/README.md) repeats it on
+the ship host in 66 guarded Release runs, timing-off and timing-on. OpenGL has
+no whole-frame GPU timer and no process GPU-residency counter. Subdivisions and additional
 authored rotation/attachment scales still need separate coverage. The four
 subjects and shared floor are not a large-entity performance workload. The
 earlier rounded-edge miss has a
@@ -68,8 +70,9 @@ Neither attribution closes all voxel shadow defects.
 
 The [AC Release qualification slice](ac-release-qualification/README.md)
 retains matched density, 16-copy overlap and moving-transform measurements. It
-records an overlap-specific baked cost increase; the later memory slice closes
-its process/Metal-residency gap while leaving Windows/OpenGL explicitly open.
+records an overlap-specific baked cost increase. The later memory slices close
+its process-residency gap on Metal and repeat the measurement on
+Windows/OpenGL, where the overlap increase reproduces.
 
 The [native presentation qualification](https://github.com/jakildev/IrredenEngine/blob/d99aba4ccd648fd3c336b5b55fef85dbb8a8aceb/docs/pr-screenshots/claude/4762-sdf-presentation-qualification/README.md)
 crosses moving root/parent transforms with GRID, rigid DETACHED source faces and

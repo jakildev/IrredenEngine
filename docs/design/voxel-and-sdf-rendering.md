@@ -113,7 +113,12 @@ process-owned current allocation; OpenGL's optional NVX counters expose only
 device-wide capacity and availability. The profile manifest and memory summary
 retain those distinct semantics beside the frame/GPU evidence. The
 [AC Release memory qualification](../perf/sdf-voxel-profile/ac-release-memory/README.md)
-uses them across density, population and motion controls. The qualification
+uses them across density, population and motion controls, and the
+[Windows/OpenGL slice](../perf/sdf-voxel-profile/windows-gl-release-memory/README.md)
+repeats it on the ship host. OpenGL has no whole-frame GPU timer, so its
+timing-off control carries no GPU measurement; run it with
+`--allow-unsupported-gpu-frame`, and take GPU cost from the timing-on stage
+rows. The qualification
 matrix in `scripts/perf/sdf_controls.py` crosses each workload arm with stage
 timing on/off. `--suite baseline` preserves the original 16-case reproduction;
 `--case` supports bounded smoke and cross-host slices.
@@ -302,6 +307,20 @@ baseline does not justify automatic migration: it omitted startup/RSS/driver
 residency, population scaling, motion and OpenGL, and its yaw-45 whole-frame result
 reversed the lower baked GPU envelope. Composed/custom recipes and dynamic GPU
 baking remain follow-ups until the new controls produce a bounded result.
+
+The memory slices on Metal and Windows/OpenGL refine that choice for this
+fixture. Startup baking is cheap: about 25 µs at density one and 116 µs at
+density two, with byte-identical payload on both backends. A baked subject
+that moves as a root or a child of a moving parent costs about the same as a
+static one. A moving direct SDF pays in its depth and owner-election passes.
+Both hosts show an overlap-specific baked cost increase in the per-axis
+overflow lane; sixteen overlapping baked copies are slower than the direct
+equivalent on OpenGL. Sixteen baked copies also carry a heavier frame-time tail there.
+Prefer baked occupancy for few, separated or moving lit subjects. Measure
+before baking dense overlapping populations. Neither backend's GPU counters
+attribute driver residency to one scene at this scale: Metal's process
+allocation does not move with copy count, and OpenGL's NVX values are
+device-wide.
 
 ## Current acceptance work
 

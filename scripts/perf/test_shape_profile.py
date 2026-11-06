@@ -208,8 +208,13 @@ class ShapeProfileWitnessTest(unittest.TestCase):
         launched_ns = 1_700_000_000_000_000_000
         for failure in (
             None, "quiet", "stale", "unclean", "config", "pose", "gpu", "frames",
-            "occupancy", "residency",
+            "occupancy", "residency", "gpu-unsupported", "gpu-unsupported-allowed",
+            "gpu-supported-empty-allowed",
         ):
+            accepted = failure in (None, "gpu-unsupported-allowed")
+            allow = ["--allow-unsupported-gpu-frame"] if failure and "allowed" in failure else []
+            timing = "off" if failure and failure.startswith("gpu-") else "on"
+            arguments = [*ARGS[:-1], f"configs/perf/sdf-{timing}.lua"]
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 demo = root / "build/creations/demos/shape_debug"
@@ -219,8 +224,8 @@ class ShapeProfileWitnessTest(unittest.TestCase):
                 (demo / "configs/perf").mkdir(parents=True)
                 (demo / "IRShapeDebug").write_bytes(b"fixture executable")
                 (demo / "scripts/config.lua").write_text("base")
-                preset = demo / "configs/perf/sdf-on.lua"
-                preset.write_text("on")
+                preset = demo / f"configs/perf/sdf-{timing}.lua"
+                preset.write_text(timing)
                 output = root / "results"
 
                 def capture(command, repo, log, binary, seconds, delay):
@@ -252,8 +257,14 @@ class ShapeProfileWitnessTest(unittest.TestCase):
                     text = text.replace("explicit focus on 8", "explicit focus on 0")
                     if failure == "pose":
                         text = text.replace("travel=0.000", "travel=360.000")
-                    if failure == "gpu":
+                    if failure and failure.startswith("gpu"):
                         text = text.replace("voxelStage1 1.000 0.500 2.000 8\n", "")
+                    if failure in ("gpu-unsupported", "gpu-unsupported-allowed"):
+                        text += ("--- GPU frame timing ---\nCoverage: supported=0 attempted=0 "
+                                 "valid=0 invalid=0 commandBuffers=0\n")
+                    if failure == "gpu-supported-empty-allowed":
+                        text += ("--- GPU frame timing ---\nCoverage: supported=1 attempted=8 "
+                                 "valid=0 invalid=8 commandBuffers=0\n")
                     if failure == "frames":
                         text = text.replace("19.000 18.000 18.000", "19.000 18.000")
                     report = demo / "save_files/profile_report.txt"
@@ -268,7 +279,8 @@ class ShapeProfileWitnessTest(unittest.TestCase):
                     patch("repeat_profile.__file__", str(root / "scripts/perf/repeat_profile.py")),
                     patch.dict("os.environ", {"IRREDEN_BUILD_DIR": str(root / "build")}),
                     patch("sys.argv", ["repeat_profile.py", "--target", "IRShapeDebug",
-                                       "--output", str(output), "--repeats", "1", "--", *ARGS]),
+                                       "--output", str(output), "--repeats", "1", *allow,
+                                       "--", *arguments]),
                     patch("repeat_profile.subprocess.check_output", return_value="fixture"),
                     patch("repeat_profile.platform.platform", return_value="fixture host"),
                     patch("repeat_profile.host_power_source", return_value=None),
@@ -277,13 +289,16 @@ class ShapeProfileWitnessTest(unittest.TestCase):
                     patch("repeat_profile.run_profile", side_effect=capture),
                     patch("sys.stdout", new_callable=io.StringIO) as stdout,
                 ):
-                    self.assertEqual(main(), 0 if failure is None else 1, stdout.getvalue())
+                    self.assertEqual(main(), 0 if accepted else 1, stdout.getvalue())
+                    if failure == "gpu-unsupported":
+                        self.assertIn("backend has no whole-frame GPU timer", stdout.getvalue())
                     if failure == "quiet":
                         self.assertIn("quiet window was unguarded", stdout.getvalue())
                     if failure == "config":
                         self.assertIn("configuration changed", stdout.getvalue())
-                self.assertEqual((output / "summary.md").exists(), failure is None)
+                self.assertEqual((output / "summary.md").exists(), accepted)
                 manifest = json.loads((output / "manifest.json").read_text())
+                self.assertEqual(manifest["allow_unsupported_gpu_frame"], bool(allow))
                 self.assertIn("configuration_sha256", manifest)
                 self.assertIn("not witnessed", manifest["pivot_policy"])
 

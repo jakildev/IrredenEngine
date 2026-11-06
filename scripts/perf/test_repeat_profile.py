@@ -33,6 +33,7 @@ from repeat_profile import (
     requested_yaw_step,
     run_profile,
     static_canvas_frame_sweep,
+    windows_power_status,
     witness_checks,
     yaw_pose_mismatch,
 )
@@ -495,13 +496,33 @@ class HostPowerTest(unittest.TestCase):
                 self.assertEqual(host_battery_percent(), charge)
 
     def test_load_is_a_number_or_none_where_the_platform_has_none(self):
-        with patch("repeat_profile.os.getloadavg", return_value=(19.414, 13.0, 9.0)):
+        # create=True: native-Windows os has no getloadavg to patch.
+        with patch("repeat_profile.os.getloadavg", create=True,
+                   return_value=(19.414, 13.0, 9.0)):
             self.assertEqual(host_load(), 19.41)
-        with patch("repeat_profile.os.getloadavg", side_effect=OSError("unobtainable")):
+        with patch("repeat_profile.os.getloadavg", create=True,
+                   side_effect=OSError("unobtainable")):
             self.assertIsNone(host_load())
 
     def test_unknown_is_none_never_a_guess(self):
         self.assertIsNone(self.read("Linux", "Now drawing from 'AC Power'\n"))
+
+    def test_windows_reads_the_ac_line_status(self):
+        statuses = {
+            (1, 128, 255): ("AC Power", None),
+            (1, 8, 97): ("AC Power", 97),
+            (0, 1, 64): ("Battery Power", 64),
+            (255, 128, 255): (None, None),
+            (1, 0, 255): ("AC Power", None),
+        }
+        for status, (source, charge) in statuses.items():
+            with patch("repeat_profile.windows_power_status", return_value=status):
+                self.assertEqual(host_power_source(), source, status)
+                self.assertEqual(host_battery_percent(), charge, status)
+
+    def test_windows_status_is_only_read_on_windows(self):
+        with patch("repeat_profile.platform.system", return_value="Linux"):
+            self.assertIsNone(windows_power_status())
         self.assertIsNone(self.read("Darwin", "unexpected"))
         self.assertIsNone(self.read("Darwin", error=OSError("no pmset")))
 
