@@ -49,7 +49,8 @@ bool isKeyboardButton(int button) {
 
 } // namespace
 
-CommandManager::CommandManager() {
+CommandManager::CommandManager()
+    : m_actions(*this) {
     g_commandManager = this;
     IRE_LOG_INFO("Created CommandManager");
 }
@@ -104,7 +105,8 @@ void CommandManager::rebuildBareGroups() {
     m_rowBareGroup.assign(m_userCommands.size(), kNoBareGroup);
     for (std::size_t row = 0; row < m_userCommands.size(); ++row) {
         const CommandStruct<COMMAND_BUTTON> &command = m_userCommands[row];
-        if (command.getRequiredModifiers() != kModifierNone) {
+        if (!command.isActive() || command.isLatchRelease() ||
+            command.getRequiredModifiers() != kModifierNone) {
             continue;
         }
         std::uint8_t edge = 0;
@@ -139,6 +141,9 @@ void CommandManager::executeUserKeyboardCommands(const KeyMouseInputProbe &input
 
     m_modifierSpecificButtons.clear();
     for (auto &command : m_userCommands) {
+        if (!command.isActive() || command.isLatchRelease()) {
+            continue;
+        }
         if ((m_keyboardCaptured && isKeyboardButton(command.getButton())) ||
             isButtonCaptured(static_cast<IRInput::KeyMouseButtons>(command.getButton()))) {
             continue;
@@ -183,12 +188,22 @@ void CommandManager::executeUserKeyboardCommands(const KeyMouseInputProbe &input
         }
     }
 
-    for (std::size_t row = 0; row < m_userCommands.size(); ++row) {
+    // A body may register or rebind commands; rows it appends wait for the next
+    // frame, when the group table has been rebuilt to cover them.
+    const std::size_t rowCount = m_rowBareGroup.size();
+    for (std::size_t row = 0; row < rowCount; ++row) {
         CommandStruct<COMMAND_BUTTON> &command = m_userCommands[row];
+        if (!command.isActive()) {
+            continue;
+        }
         if (!input.checkButton_(
                 static_cast<IRInput::KeyMouseButtons>(command.getButton()),
                 command.getTriggerStatus()
             )) {
+            continue;
+        }
+        if (command.isLatchRelease()) {
+            command.execute();
             continue;
         }
         const int groupIndex = m_rowBareGroup[row];
@@ -260,12 +275,113 @@ void CommandManager::fireUserCommand(CommandId id) {
     m_userCommands[id].execute();
 }
 
+void CommandManager::rebindUserCommand(
+    CommandId id, int button, KeyModifierMask requiredModifiers, KeyModifierMask blockedModifiers
+) {
+    IR_ASSERT(id < m_userCommands.size(), "rebindUserCommand: id out of range");
+    m_userCommands[id].rebind(button, requiredModifiers, blockedModifiers);
+    m_bareGroupsDirty = true;
+}
+
+void CommandManager::setUserCommandActive(CommandId id, bool active) {
+    IR_ASSERT(id < m_userCommands.size(), "setUserCommandActive: id out of range");
+    m_userCommands[id].setActive(active);
+    m_bareGroupsDirty = true;
+}
+
+CommandId CommandManager::createActionRow(std::function<void()> body, bool latchRelease) {
+    m_userCommands.emplace_back(
+        CommandStruct<COMMAND_BUTTON>{
+            KEY_MOUSE,
+            latchRelease ? RELEASED : PRESSED,
+            static_cast<int>(kNullButton),
+            std::move(body)
+        }
+    );
+    CommandStruct<COMMAND_BUTTON> &row = m_userCommands.back();
+    row.setActive(false);
+    row.setLatchRelease(latchRelease);
+    row.setActionRow(true);
+    m_bareGroupsDirty = true;
+    return static_cast<CommandId>(m_userCommands.size() - 1);
+}
+
+bool CommandManager::plainRowClaimsChord(int button, KeyModifierMask modifiers) const {
+    for (const CommandStruct<COMMAND_BUTTON> &command : m_userCommands) {
+        if (!command.isActive() || command.isActionRow() || command.isLatchRelease() ||
+            command.getType() != KEY_MOUSE || command.getButton() != button) {
+            continue;
+        }
+        const ButtonStatuses status = command.getTriggerStatus();
+        if (status != PRESSED && status != HELD) {
+            continue;
+        }
+        if (!IRInput::modifiersMatch(
+                command.getRequiredModifiers(),
+                command.getBlockedModifiers(),
+                modifiers
+            )) {
+            continue;
+        }
+        if (command.getRequiredModifiers() == kModifierNone && modifiers != kModifierNone) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+std::vector<CommandRegistration> CommandManager::takeAdoptableRegistrations() {
+    std::vector<CommandRegistration> adoptable;
+    std::vector<CommandRegistration> kept;
+    for (CommandRegistration &registration : m_legacyRegistrations) {
+        const CommandStruct<COMMAND_BUTTON> &row = m_userCommands[registration.id];
+        bool paired = false;
+        if (row.getRequiredModifiers() == kModifierNone) {
+            for (const CommandStruct<COMMAND_BUTTON> &other : m_userCommands) {
+                if (other.isActive() && !other.isLatchRelease() &&
+                    other.getTriggerStatus() == RELEASED && other.getButton() == row.getButton() &&
+                    other.getRequiredModifiers() == kModifierNone &&
+                    other.getBlockedModifiers() == row.getBlockedModifiers()) {
+                    paired = true;
+                    break;
+                }
+            }
+        }
+        const bool keyboard = row.getButton() > static_cast<int>(kNullButton) &&
+                              row.getButton() < static_cast<int>(kMouseButtonNull);
+        if (paired || !keyboard || !row.isActive() || row.getType() != KEY_MOUSE) {
+            kept.push_back(std::move(registration));
+        } else {
+            adoptable.push_back(std::move(registration));
+        }
+    }
+    m_legacyRegistrations = std::move(kept);
+    rebuildRegistrations();
+    return adoptable;
+}
+
+void CommandManager::setActionRegistrations(std::vector<CommandRegistration> registrations) {
+    m_actionRegistrations = std::move(registrations);
+    rebuildRegistrations();
+}
+
+void CommandManager::rebuildRegistrations() {
+    m_commandRegistrations = m_legacyRegistrations;
+    m_commandRegistrations.insert(
+        m_commandRegistrations.end(),
+        m_actionRegistrations.begin(),
+        m_actionRegistrations.end()
+    );
+    ++m_registrationGeneration;
+}
+
 bool CommandManager::isButtonBound(
     InputTypes inputType, ButtonStatuses triggerStatus, int button
 ) const {
     for (const CommandStruct<COMMAND_BUTTON> &command : m_userCommands) {
-        if (command.getType() == inputType && command.getTriggerStatus() == triggerStatus &&
-            command.getButton() == button) {
+        if (command.isActive() && !command.isLatchRelease() && command.getType() == inputType &&
+            command.getTriggerStatus() == triggerStatus && command.getButton() == button) {
             return true;
         }
     }
@@ -276,8 +392,8 @@ bool CommandManager::isButtonBound(
     InputTypes inputType, ButtonStatuses triggerStatus, int button, KeyModifierMask heldModifiers
 ) const {
     for (const CommandStruct<COMMAND_BUTTON> &command : m_userCommands) {
-        if (command.getType() == inputType && command.getTriggerStatus() == triggerStatus &&
-            command.getButton() == button &&
+        if (command.isActive() && !command.isLatchRelease() && command.getType() == inputType &&
+            command.getTriggerStatus() == triggerStatus && command.getButton() == button &&
             IRInput::modifiersMatch(
                 command.getRequiredModifiers(),
                 command.getBlockedModifiers(),

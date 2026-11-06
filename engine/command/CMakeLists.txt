@@ -2,6 +2,8 @@ add_library(IrredenEngineCommand STATIC
 
     src/ir_command.cpp
     src/command_manager.cpp
+    src/action_registry.cpp
+    src/keymap_store.cpp
 )
 
 target_compile_options(
@@ -36,4 +38,5 @@ target_link_libraries(
     IrredenEngineVideo
     IrredenEngineWindow
     IrredenEngineSystem
+    IrredenEngineUtility
 )

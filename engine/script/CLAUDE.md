@@ -178,7 +178,7 @@ The [fog selftest](../../creations/demos/fog_demo/scripts/fog_binding_selftest.l
 
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 
-`LuaScript::bindLuaCommands()`; design in [`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md).
+`LuaScript::bindLuaCommands()`; design in [`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md). It binds the action surface too: `IRCommand.registerAction{id, keys, run, ...}`, `invokeAction`, `*ActionKey(s)` mutators returning `ok, IRCommand.BindStatus, conflicts`, `searchActions`; `IRGui.bindAction` badges a control.
 It also binds the `IRInput.onEntity*` hover/click handlers ([input prefabs](../prefabs/irreden/input/CLAUDE.md)).
 Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1 overlay only with `name`/`description`; `isButtonBound` is modifier-blind. A new prefab command needs an
 `IR_BIND_CMD` line in `lua_command_bindings.hpp` and a case in `ir_command.cpp`'s `fireByName`/`bindPrefabCommand`.

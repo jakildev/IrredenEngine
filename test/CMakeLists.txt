@@ -27,7 +27,9 @@ add_executable(IrredenEngineTest
   audio/music_theory_test.cpp
   catalog/catalog_assets_test.cpp
   catalog/catalog_scan_test.cpp
+  command/action_registry_test.cpp
   command/default_binding_manifest_test.cpp
+  command/keymap_store_test.cpp
   command/keyboard_dispatch_test.cpp
   command/undo_commands_test.cpp
   # Replaces the global operator new/delete for the whole binary.
@@ -195,6 +197,7 @@ add_executable(IrredenEngineTest
   render/widget_hit_region_test.cpp
   render/widget_image_test.cpp
   render/widget_tab_focus_test.cpp
+  render/widget_actions_test.cpp
   render/widget_keyboard_test.cpp
   render/widget_visibility_test.cpp
   render/gui_layout_audit_test.cpp

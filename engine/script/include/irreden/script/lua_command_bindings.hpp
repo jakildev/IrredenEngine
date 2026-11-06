@@ -527,6 +527,217 @@ inline void bindCommandFunctions(LuaScript &script) {
     };
 }
 
+// `IRCommand` action surface: stable-id actions with runtime-assignable chords
+// (`engine/command/include/irreden/command/action_registry.hpp`). Chords travel
+// as `chordToken` strings (`"ctrl+shift+K"`), the same spelling the keymap file
+// stores. Lua callables live as long as the action does; `CommandManager`
+// destructs before `sol::state`, as for `createCommand` bodies.
+inline sol::table actionInfoTable(sol::state_view lua, const IRCommand::ActionInfo &info) {
+    sol::table row = lua.create_table();
+    row["id"] = info.id_;
+    row["label"] = info.label_;
+    row["section"] = info.section_;
+    row["description"] = info.description_;
+    row["context"] = info.context_;
+    row["available"] = info.available_;
+    row["customized"] = info.customized_;
+    sol::table keys = lua.create_table();
+    for (const IRCommand::KeyChord &chord : info.chords_) {
+        keys.add(IRCommand::chordToken(chord));
+    }
+    row["keys"] = keys;
+    return row;
+}
+
+inline auto wrapLuaCallable(sol::protected_function fn, std::string what) {
+    return [fn = std::move(fn), what = std::move(what)]() {
+        sol::protected_function_result r = fn();
+        if (!r.valid()) {
+            sol::error e = r;
+            IRE_LOG_ERROR("Lua action {} error: {}", what, e.what());
+        }
+    };
+}
+
+inline std::tuple<bool, lua_Integer, sol::table>
+bindResultTuple(sol::state_view lua, const IRCommand::BindResult &result) {
+    sol::table conflicts = lua.create_table();
+    for (const IRCommand::ActionConflict &conflict : result.conflicts_) {
+        conflicts.add(conflict.actionId_);
+    }
+    return {result.ok(), static_cast<lua_Integer>(result.status_), conflicts};
+}
+
+inline void bindActionFunctions(LuaScript &script) {
+    auto &lua = script.lua();
+    if (!lua["IRCommand"].valid()) {
+        lua["IRCommand"] = lua.create_table();
+    }
+    if (lua["IRCommand"]["registerAction"].valid()) {
+        return;
+    }
+
+    sol::table status = lua.create_table();
+    status["BOUND"] = static_cast<lua_Integer>(IRCommand::BindStatus::BOUND);
+    status["ALREADY_BOUND"] = static_cast<lua_Integer>(IRCommand::BindStatus::ALREADY_BOUND);
+    status["CONFLICT"] = static_cast<lua_Integer>(IRCommand::BindStatus::CONFLICT);
+    status["INVALID_CHORD"] = static_cast<lua_Integer>(IRCommand::BindStatus::INVALID_CHORD);
+    status["UNKNOWN_ACTION"] = static_cast<lua_Integer>(IRCommand::BindStatus::UNKNOWN_ACTION);
+    status["NOT_BOUND"] = static_cast<lua_Integer>(IRCommand::BindStatus::NOT_BOUND);
+    lua["IRCommand"]["BindStatus"] = status;
+
+    // `{ id, label?, section?, description?, context?, keys? = { "ctrl+K" },
+    //    run, release?, available? }`. Returns false for a missing id or `run`
+    // or for a key token that does not parse.
+    lua["IRCommand"]["registerAction"] = [](sol::table desc) -> bool {
+        IRCommand::ActionSpec spec;
+        const auto text = [&desc](const char *key, std::string fallback) {
+            sol::optional<std::string> value = desc[key];
+            return value ? *value : std::move(fallback);
+        };
+        spec.id_ = text("id", "");
+        spec.label_ = text("label", "");
+        spec.section_ = text("section", "");
+        spec.description_ = text("description", "");
+        spec.context_ = text("context", std::string(IRCommand::kGlobalActionContext));
+        if (sol::optional<sol::table> keys = desc["keys"]; keys) {
+            for (std::size_t i = 1; i <= keys->size(); ++i) {
+                const std::optional<IRCommand::KeyChord> chord =
+                    IRCommand::parseChordToken(keys->get<std::string>(i));
+                if (!chord) {
+                    IRE_LOG_ERROR(
+                        "IRCommand.registerAction '{}': bad key '{}'",
+                        spec.id_,
+                        keys->get<std::string>(i)
+                    );
+                    return false;
+                }
+                spec.defaultChords_.push_back(*chord);
+            }
+        }
+        sol::optional<sol::protected_function> run = desc["run"];
+        if (!run) {
+            return false;
+        }
+        spec.invoke_ = wrapLuaCallable(std::move(*run), spec.id_ + " run");
+        if (sol::optional<sol::protected_function> release = desc["release"]; release) {
+            spec.release_ = wrapLuaCallable(std::move(*release), spec.id_ + " release");
+        }
+        if (sol::optional<sol::protected_function> available = desc["available"]; available) {
+            spec.available_ = [fn = std::move(*available)]() {
+                sol::protected_function_result r = fn();
+                return r.valid() && r.get<bool>();
+            };
+        }
+        return IRCommand::registerAction(std::move(spec));
+    };
+
+    lua["IRCommand"]["unregisterAction"] = [](const std::string &id) {
+        IRCommand::actions().unregisterAction(id);
+    };
+    lua["IRCommand"]["invokeAction"] = [](const std::string &id) -> bool {
+        return IRCommand::invokeAction(id);
+    };
+
+    // Mutators return `ok, status, conflicts`: `status` is an
+    // `IRCommand.BindStatus` value and `conflicts` the ids already holding the
+    // chord (`""` for a plain command row). `replace = true` takes the chord
+    // from conflicting actions instead of rejecting.
+    lua["IRCommand"]["addActionKey"] = [](sol::this_state L,
+                                          const std::string &id,
+                                          const std::string &token,
+                                          sol::optional<bool> replace) {
+        const std::optional<IRCommand::KeyChord> chord = IRCommand::parseChordToken(token);
+        const IRCommand::BindResult result =
+            chord ? IRCommand::actions().addChord(
+                        id,
+                        *chord,
+                        replace.value_or(false) ? IRCommand::ConflictPolicy::REPLACE
+                                                : IRCommand::ConflictPolicy::REJECT
+                    )
+                  : IRCommand::BindResult{IRCommand::BindStatus::INVALID_CHORD, {}};
+        return bindResultTuple(L, result);
+    };
+    lua["IRCommand"]["replaceActionKey"] = [](sol::this_state L,
+                                              const std::string &id,
+                                              const std::string &previous,
+                                              const std::string &token,
+                                              sol::optional<bool> replace) {
+        const std::optional<IRCommand::KeyChord> from = IRCommand::parseChordToken(previous);
+        const std::optional<IRCommand::KeyChord> to = IRCommand::parseChordToken(token);
+        const IRCommand::BindResult result =
+            from && to ? IRCommand::actions().replaceChord(
+                             id,
+                             *from,
+                             *to,
+                             replace.value_or(false) ? IRCommand::ConflictPolicy::REPLACE
+                                                     : IRCommand::ConflictPolicy::REJECT
+                         )
+                       : IRCommand::BindResult{IRCommand::BindStatus::INVALID_CHORD, {}};
+        return bindResultTuple(L, result);
+    };
+    lua["IRCommand"]["removeActionKey"] =
+        [](sol::this_state L, const std::string &id, const std::string &token) {
+            const std::optional<IRCommand::KeyChord> chord = IRCommand::parseChordToken(token);
+            const IRCommand::BindResult result =
+                chord ? IRCommand::actions().removeChord(id, *chord)
+                      : IRCommand::BindResult{IRCommand::BindStatus::INVALID_CHORD, {}};
+            return bindResultTuple(L, result);
+        };
+    lua["IRCommand"]["clearActionKeys"] = [](sol::this_state L, const std::string &id) {
+        return bindResultTuple(L, IRCommand::actions().clearChords(id));
+    };
+    lua["IRCommand"]["restoreActionDefaults"] = [](sol::this_state L, const std::string &id) {
+        return bindResultTuple(L, IRCommand::actions().restoreDefaults(id));
+    };
+
+    lua["IRCommand"]["actionKeys"] = [](sol::this_state L, const std::string &id) -> sol::table {
+        sol::state_view lua_view(L);
+        sol::table keys = lua_view.create_table();
+        if (const std::optional<IRCommand::ActionInfo> info = IRCommand::actions().findAction(id)) {
+            for (const IRCommand::KeyChord &chord : info->chords_) {
+                keys.add(IRCommand::chordToken(chord));
+            }
+        }
+        return keys;
+    };
+    lua["IRCommand"]["findAction"] = [](sol::this_state L, const std::string &id) -> sol::object {
+        sol::state_view lua_view(L);
+        if (const std::optional<IRCommand::ActionInfo> info = IRCommand::actions().findAction(id)) {
+            return actionInfoTable(lua_view, *info);
+        }
+        return sol::make_object(lua_view, sol::lua_nil);
+    };
+    lua["IRCommand"]["searchActions"] = [](sol::this_state L,
+                                           sol::optional<std::string> query) -> sol::table {
+        sol::state_view lua_view(L);
+        sol::table rows = lua_view.create_table();
+        for (const IRCommand::ActionInfo &info :
+             IRCommand::actions().searchActions(query.value_or(std::string{}))) {
+            rows.add(actionInfoTable(lua_view, info));
+        }
+        return rows;
+    };
+    lua["IRCommand"]["findActionConflicts"] = [](sol::this_state L,
+                                                 const std::string &token,
+                                                 sol::optional<std::string> context) -> sol::table {
+        sol::state_view lua_view(L);
+        sol::table ids = lua_view.create_table();
+        if (const std::optional<IRCommand::KeyChord> chord = IRCommand::parseChordToken(token)) {
+            for (const IRCommand::ActionConflict &conflict : IRCommand::actions().findConflicts(
+                     *chord,
+                     context.value_or(std::string(IRCommand::kGlobalActionContext))
+                 )) {
+                ids.add(conflict.actionId_);
+            }
+        }
+        return ids;
+    };
+    lua["IRCommand"]["setActionContextActive"] = [](const std::string &context, bool active) {
+        IRCommand::actions().setContextActive(context, active);
+    };
+}
+
 // Expose `IRInput.{onEntityHovered, onEntityUnhovered, onEntityClicked,
 // onRightClick, removeEntityHandler}` over the world's
 // `C_EntityEventHandlers` registry, which `ENTITY_HOVER_DETECT` dispatches, plus

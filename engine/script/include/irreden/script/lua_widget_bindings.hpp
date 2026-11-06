@@ -76,6 +76,7 @@
 #include <irreden/render/gui_layout_audit.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/trixel_font.hpp>
+#include <irreden/render/widget_actions.hpp>
 #include <irreden/render/widgets.hpp>
 
 #include <algorithm>
@@ -846,6 +847,24 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
     gui["clearHotkey"] = [](lua_Integer id) {
         requireWidget<IRComponents::C_Widget>(id, "IRGui.clearHotkey", "live widget");
         IRPrefab::Widget::clearHotkey(static_cast<IREntity::EntityId>(id));
+    };
+    // Makes the widget the control for an `IRCommand.registerAction` id: its
+    // Alt badge shows the action's resolved key. A click still reaches the
+    // widget's own callback, which runs the same operation through
+    // `IRCommand.invokeAction`.
+    gui["bindAction"] = [](lua_Integer id, const std::string &actionId) {
+        requireWidget<IRComponents::C_WidgetState>(id, "IRGui.bindAction", "interactive widget");
+        if (actionId.empty()) {
+            throw sol::error{"IRGui.bindAction: action id must be a non-empty string"};
+        }
+        IRPrefab::Widget::bindAction(static_cast<IREntity::EntityId>(id), actionId);
+    };
+    gui["actionHint"] = [](lua_Integer id) -> std::string {
+        requireWidget<IRComponents::C_Widget>(id, "IRGui.actionHint", "live widget");
+        const auto hotkey = IREntity::getComponentOptional<IRComponents::C_WidgetHotkey>(
+            static_cast<IREntity::EntityId>(id)
+        );
+        return hotkey ? (*hotkey)->hint_ : std::string{};
     };
     gui["hintsVisible"] = []() { return IRPrefab::Widget::hintsVisible(); };
 

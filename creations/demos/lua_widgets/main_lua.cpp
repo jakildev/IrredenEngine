@@ -58,6 +58,9 @@
 //     `IRGui.listSelected` still names row 40).
 //   * shots 23-24 type LO into the long dropdown and pick its first match →
 //     DROPDOWN_TYPEAHEAD_NARROWED / DROPDOWN_TYPEAHEAD_PICKED PASS.
+//   * shots 25-26 press J, then click PULSE → LUA_ACTION PASS (a Lua-registered
+//     action runs once from its key and once from its bound button, whose
+//     badge reads J).
 //
 // Hand-off fixture (opt-in; absent, the demo is unchanged):
 // `--hand-off-fixture button` adds a HAND OFF button whose onClick calls
@@ -119,6 +122,7 @@
 
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/viewport.hpp>
+#include <irreden/render/actions_window.hpp>
 #include <irreden/render/widgets.hpp>
 
 #include <irreden/ir_profile.hpp>
@@ -138,6 +142,10 @@ IRSystem::SystemId g_dispatchId = IRSystem::kNullSystemId;
 
 // Widget ids, published from main.lua via IRTest.setButtons once built.
 IREntity::EntityId g_onClickButton = IREntity::kNullEntity;
+// The PULSE button main.lua binds to its `lua_widgets.pulse` action, and how
+// many times that action has run, published through IRTest.
+IREntity::EntityId g_pulseButton = IREntity::kNullEntity;
+int g_pulseCount = 0;
 IREntity::EntityId g_pollButton = IREntity::kNullEntity;
 IREntity::EntityId g_hoverLabel = IREntity::kNullEntity;
 IREntity::EntityId g_pairedSlider = IREntity::kNullEntity;
@@ -601,7 +609,38 @@ enum GuiTestShotIndex {
     kLongDropdownWheelShot,
     kLongListWheelShot,
     kDropdownTypeaheadShot,
-    kDropdownTypeaheadPickShot
+    kDropdownTypeaheadPickShot,
+    kActionKeyShot,
+    kActionClickShot
+};
+
+// J is `lua_widgets.pulse`'s default key; the PULSE button sits at GUI
+// (40, 20) 120x28, which the 1280-wide window doubles horizontally.
+constexpr IRVideo::GuiInputEvent kActionKeyEvents[] = {
+    {0,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonJ},
+    {1,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(0),
+     IRMath::vec2(0.0f),
+     IRInput::kKeyButtonJ},
+};
+
+constexpr IRVideo::GuiInputEvent kActionClickEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(200, 34)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(200, 34),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(200, 34),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
 };
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
@@ -680,6 +719,12 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
      static_cast<int>(
          sizeof(kDropdownTypeaheadPickEvents) / sizeof(kDropdownTypeaheadPickEvents[0])
      )},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_action_key"},
+     kActionKeyEvents,
+     static_cast<int>(sizeof(kActionKeyEvents) / sizeof(kActionKeyEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_action_click"},
+     kActionClickEvents,
+     static_cast<int>(sizeof(kActionClickEvents) / sizeof(kActionClickEvents[0]))},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 
@@ -1070,7 +1115,7 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             "HOTKEY_HINTS",
             IREntity::kNullEntity,
             held ? "hints_visible" : "hints_hidden",
-            glyphs == (held ? 3u : 0u) && visible == held,
+            glyphs == (held ? 4u : 0u) && visible == held,
             fmt::format("glyphs={} visible={}", glyphs, visible)
         );
     } else if (shotIndex == kHotkeyCheckboxShot) {
@@ -1201,6 +1246,19 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
                 dropdown.selectedIndex_
             )
         );
+    } else if (shotIndex == kActionKeyShot || shotIndex == kActionClickShot) {
+        const int expected = shotIndex == kActionKeyShot ? 1 : 2;
+        const auto hotkey =
+            IREntity::getComponentOptional<IRComponents::C_WidgetHotkey>(g_pulseButton);
+        const std::string badge = hotkey ? (*hotkey)->hint_ : "";
+        logGuiAssert(
+            shotIndex,
+            "LUA_ACTION",
+            g_pulseButton,
+            shotIndex == kActionKeyShot ? "key_runs_lua_action" : "click_runs_same_action",
+            g_pulseCount == expected && badge == "J",
+            fmt::format("pulses={} badge={}", g_pulseCount, badge)
+        );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
             IRPrefab::GuiTest::detail::firedThisShot(g_clickLatch, g_onClickButton);
@@ -1258,6 +1316,7 @@ int main(int argc, char **argv) {
     IRPrefab::Undo::registerUndoCommands();
     initSystems();
     IREngine::runScript("main.lua"); // builds widgets + registers onClick / poll system
+    IRPrefab::ActionsWindow::attachUserKeymap("lua_widgets");
     IREngine::gameLoop();
     return 0;
 }
@@ -1294,6 +1353,10 @@ void registerLuaBindings() {
             IRLuaWidgets::g_pairedField = static_cast<IREntity::EntityId>(field);
         };
         lua["IRTest"]["onClickFired"] = []() { IRLuaWidgets::g_luaOnClickFired = true; };
+        lua["IRTest"]["setPulseButton"] = [](lua_Integer button) {
+            IRLuaWidgets::g_pulseButton = static_cast<IREntity::EntityId>(button);
+        };
+        lua["IRTest"]["actionPulsed"] = [](int count) { IRLuaWidgets::g_pulseCount = count; };
         lua["IRTest"]["onPollFired"] = []() { IRLuaWidgets::g_pollWasClickedSeen = true; };
         lua["IRTest"]["handOffFixture"] = []() {
             return IREngine::args().getEnum("--hand-off-fixture");
@@ -1413,6 +1476,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_RADIO>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
+            IRSystem::System<IRSystem::WIDGET_SYNC_ACTION_HINTS>::create(),
             IRLuaWidgets::g_dispatchId,
             IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
         }
