@@ -1,7 +1,7 @@
 {
   "cpu": {
     "cores": 2,
-    "mhz": 4477,
+    "mhz": 4505,
     "model": "AMD EPYC 9V45 96-Core Processor",
     "threads": 4
   },
