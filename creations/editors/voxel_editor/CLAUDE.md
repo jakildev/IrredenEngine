@@ -54,8 +54,7 @@ Release hides the marker and retains the focus; reanchoring preserves the view.
 `Camera::setCursorPivotOptions` supplies the editor resolver to the standard
 controls; the custom right-drag uses the same options.
 Two-finger scroll: the dominant axis owns each sample; horizontal orbits around the cursor, vertical accumulates fractional zoom steps, and a hovered widget takes scroll ownership (the native `viewport_scroll` session checks both at 30° and 67°).
-Space+left pans without resetting yaw; Home resets camera pan and yaw; right-drag
-starts only with no hovered widget and an unblocked document interaction.
+Space+left pans without resetting yaw; Home resets camera pan and yaw; right-drag starts only with no hovered widget and an unblocked document interaction.
 
 Surface edit gestures pick through `IRVoxelEditor::pickEditable()`
 (`editor_picking.hpp`). Never call `IRPrefab::Picking::castVoxelRay()` bare
