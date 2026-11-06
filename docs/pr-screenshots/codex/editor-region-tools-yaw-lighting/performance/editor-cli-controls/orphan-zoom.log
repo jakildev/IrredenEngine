@@ -1,5 +1,0 @@
-ir-run: running release tree /Users/evinjkill/src/IrredenEngine/build-release
-ir-run: /Users/evinjkill/src/IrredenEngine/build-release/creations/editors/voxel_editor/IRVoxelEditor --window-mode offscreen --profile-zoom 4 (timeout: 60s)
-ir-run: IRVoxelEditor crashed after 1s
-ir-run: RESULT=CRASH exe=IRVoxelEditor exit=2 signal=none
-ir-run: this run FAILED the clean-exit policy — outputs saved before the crash do not make it green. Fix the crash before shipping, whoever introduced it (docs/agents/FLEET.md §"Clean-exit policy").

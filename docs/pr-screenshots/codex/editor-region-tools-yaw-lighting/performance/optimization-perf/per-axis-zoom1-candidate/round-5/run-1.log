@@ -1,4 +1,0 @@
-ir-run: running release tree /Users/evinjkill/src/IrredenEngine/build-release
-ir-run: /Users/evinjkill/src/IrredenEngine/build-release/creations/demos/canvas_stress/IRCanvasStress --only maingrid,gridspin,floor --frozen-pose 0.55 --probe-floor-mode grid --probe-floor-span 40 --sun-direction -0.42 -0.60 -0.55 --no-spin --no-auto-rotate --pivot-origin --no-ao --auto-profile --profile-frames 300 --window-mode offscreen --yaw 0.6 --subdivisions 1 --zoom 1 (timeout: 120s)
-ir-run: IRCanvasStress exited cleanly after 5s
-ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
