@@ -1,8 +1,9 @@
 # fleet-unblock — shared flow
 
 Find what is stuck across the fleet's repos, unblock what the session has
-the authority to unblock, hand the human only what needs a human, and
-file the next work the state calls for. The deterministic half is the
+the authority to unblock, ask the human the decisions in the session,
+hand them only what needs their hands, and file the next work the state
+calls for. The deterministic half is the
 read-only `fleet-survey` tool; the acting half is this flow.
 
 **Cue-only, never auto-run.** Cues: "unblock the fleet", "fleet unblock",
@@ -33,9 +34,10 @@ points here and answers the delta keys below
 ## Hard rules
 
 - **Act only inside the authority table, and only on a cue.** Everything
-  else is staged with its command for the human. Label writes for
-  untriaged issues go through `fleet-triage-sweep apply` so the race guard
-  and the audit log still run.
+  else is a question for the human in the session (Step 6) or, when it
+  needs the human's hands, a listed command. Label writes for untriaged
+  issues go through `fleet-triage-sweep apply` so the race guard and the
+  audit log still run; the human never edits a staging file.
 - **Every close and every approval cites its evidence** in the comment or
   the staging basis: the merged PR, the plan comment, the umbrella, the
   file read. A verdict without a citation is not executed.
@@ -50,15 +52,15 @@ points here and answers the delta keys below
 |---|---|---|
 | Ghost: a queued issue delivered by a merged PR (`shadow_merged_pr` set, no PR in flight, a decline or the thread confirms nothing is left) | closes it: `gh issue close <N> --comment "Delivered by PR #<M>; <residual owner if any>"` | nothing |
 | Unapproved `fleet:task` that is defect-shaped with verifiable forensics, an epic child under a `human:approved` umbrella, or filed by the human with a structured body | stamps `human:approved` plus the body's model label | nothing |
-| Unapproved `fleet:task` that is direction-shaped: a new capability, a public API addition, a Non-goal crossing, a design choice | nothing; reports a one-line recommendation and the question | decides |
-| Untriaged issue | judges per `triage-protocol.md`, writes the staging file, confirms the granted-class entries itself and runs `fleet-triage-sweep apply` | confirms the rest |
+| Unapproved `fleet:task` that is direction-shaped: a new capability, a public API addition, a Non-goal crossing, a design choice | asks the human in the session, one-line recommendation first; stamps the labels an approve answer names | answers |
+| Untriaged issue | judges per `triage-protocol.md`, writes the staging file, confirms the granted-class entries itself, asks the human the rest (Step 4), writes the answers into the file, runs `fleet-triage-sweep apply` and closes each confirmed recommend-close entry | answers one question per entry |
 | Untriaged issue in the `rebless` class (`triage-protocol.md` § Graduation): a reference re-bless or render-verify refresh with a measured table on the named host and a confinement rule in its criteria | stages it with `class` and `bar`, confirms it, and `apply` stamps `fleet:agent-approved` plus the model label | nothing; the stamp shows once in the **decisions tool** |
 | Untriaged issue in the `docs-capture` class: a doc capturing a posted ruling, with the ruling comment and a grep showing the doc lacks it on master | the same | nothing |
 | Untriaged issue in the `plan-residual` class: a residual an approved `## Plan` comment names, with its decision line | the same | nothing |
 | Untriaged issue in the `verification-run` class: a verification run or parity measurement with runnable criteria, a named host and `fleet:no-plan` | the same, with `fleet:no-plan` staged beside the model label | nothing |
 | Untriaged issue in the `objective-row` class: an objective Done-means row filed by the architect or the steward, with the row verbatim and runnable criteria | the same | nothing |
 | `fleet:needs-human` whose open question is factual: does X hold on master, did Y merge, what does the measurement read | gathers the evidence, posts it, removes the label, takes the resulting action (close, approve, unpark) | nothing |
-| `fleet:needs-human` whose question is a product or design call | posts the recommendation and the question in one line | decides |
+| `fleet:needs-human` whose question is a product or design call | asks the human in the session, recommendation first; posts the answer on the thread and takes the resulting action | answers |
 | `fleet:awaiting-infra` park whose named blocker is a ghost | closes the ghost; reconcile R8 lifts the park | nothing |
 | Park whose blocker PR merged but whose issue stays open for a check | the factual needs-human row above | nothing |
 | Park with no parsable `Parked-until:` line | repairs the line when the park comment makes the blocker unambiguous, and says so | nothing |
@@ -68,7 +70,7 @@ points here and answers the delta keys below
 | Orphan claim labels, a stack whose base merged | `architect-protocol.md` self-heal step | nothing |
 | Epic whose only remaining children are ghosts or closed | closes the ghosts; the steward closes the umbrella | nothing |
 | `fleet:approved` PR in the merge queue | nothing | merges |
-| Human-filed issue that should close as not planned, fleet self-config, an objective amendment | nothing; reports it | decides |
+| Human-filed issue that should close as not planned, fleet self-config, an objective amendment | asks; closes, files or edits on the answer | answers |
 
 ## Step 1 — Survey
 
@@ -115,6 +117,21 @@ needs-human items, and the untriaged set through the triage sweep. Each
 executed row gets its citation; each non-granted row gets its one-line
 recommendation and command in the report.
 
+Confirmation is a conversation, not a file edit. After staging, ask the
+human one question per entry the **granted classes** do not cover: the
+recommended verdict as the first option, marked recommended, the other
+verdicts of `triage-protocol.md` § Per-issue judgment beside it, and the
+basis as the question's context (Claude Code's `AskUserQuestion`, up to
+four entries per call; a numbered prompt where the harness has no
+question tool). Write each answer into its entry (`confirmed`, the
+`labels` the answer names), set `human_confirmed` and
+`confirmed_by: "in-session <ISO date>"`, then run `apply`. A confirmed
+recommend-close entry stages no labels; `apply` reports its
+`gh issue close` line (only if it passes the race guard) and never runs
+it, so the session runs exactly the reported lines with the staged
+comment. A deferred answer leaves `confirmed: false`, and the
+entry re-surfaces annotated on the next sweep.
+
 The staging-file write and `fleet-triage-sweep apply` are two separate
 tool calls, each one bare command. A call that chains them, or wraps
 either in `cd &&`, a heredoc or a pipe, is not matched by the repo's
@@ -144,7 +161,13 @@ and name the two proposals that would change that.
 
 Three lists: **executed** (each action with the command that ran and its
 citation), **for the human** (merges, product calls, non-granted rows,
-each with its command), **filed** (issues with numbers). Then append the
+each with its command), **filed** (issues with numbers). Then walk the
+for-the-human list in the session: every item that is a decision the
+session can act on (a product call, a decomposition choice, a close as
+not planned, a self-config change) is one question, recommendation
+first; the answer is executed and posted on the thread (`--body-file`)
+with its citation. Only what needs the human's hands (a merge, a run on
+another host, a GitHub setting) stays a listed command. Then append the
 session's snags to the **feedback file**.
 
 ## Anti-patterns
@@ -157,3 +180,6 @@ session's snags to the **feedback file**.
   can lapse while the label stays (the stalled sweep exempts it).
 - Re-listing the decisions tool's merge queue as a finding.
 - Filing a fleet-infrastructure issue from a source read alone.
+- Handing the human a staging file to flip by hand, or a decision as a
+  report line: the session asks, writes the markers, and acts on the
+  answer.
