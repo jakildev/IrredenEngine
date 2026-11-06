@@ -1,0 +1,28 @@
+{
+  "source_revision": "5d93af97cd1aa625995883d8fe641f8330f2e711",
+  "backend": "opengl",
+  "build": "release",
+  "build_type": "Release",
+  "build_dir": "build-release",
+  "binary_sha256": "ec5a847db78b48dec1ce81cde7f4f82838272b2eb65349f7c2fdfab5b5719b47",
+  "sampler": "ir_sun_shadow_sample.glsl",
+  "pristine_sampler_sha256": "4bb016193aeb971a3d391551ba3458c4927029f465133b825047ac2a78ef4ecc",
+  "pristine_shader_dir_sha256": "74e05386a98804029dc89972c28b6c0bd9042402f4f8192bcfc627b756057073",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "controller_sha256": "8b76606c2daa6bba9ccc99b5575db823dd443b039bb0892985033d0872caecf2",
+  "variant_sampler_sha256": {
+    "production": "4bb016193aeb971a3d391551ba3458c4927029f465133b825047ac2a78ef4ecc",
+    "ablation": "f9431e688ddaa85144432b1af815e548b3c5ea07d129ac1bf800cf255b2719b6",
+    "entry-shadow": "6d70028731744a0c663541544901c04701ebd20d344dc798a47598ed4c3388ab",
+    "entry-lit": "db81c63be013b4de3a69750928bcbd176096f265a378d4f323230e049c546830",
+    "hit-cleared": "d0b2d26b3604beb3321506a75d30ad40c3ccf07fb33675f36b5c0923493be0b8"
+  },
+  "host": "Windows-10-10.0.19045-SP0",
+  "host_gpu": [
+    {
+      "Name": "NVIDIA GeForce RTX 3060 Ti",
+      "DriverVersion": "32.0.15.8180"
+    }
+  ],
+  "python": "3.14.3"
+}

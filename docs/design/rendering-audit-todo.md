@@ -262,6 +262,17 @@ fallback-only canvas overhead and native GL depth behavior before wider adoption
 Then qualify actual analytic/mixed modes,
 moving geometry, OpenGL parity, and production build/query plus full-frame cost. The standalone timings remain separate from these visual
 controls and establish no production FPS gain.
+
+The [Windows/OpenGL exact-query attribution](../perf/sun-overflowed-tile-query/README.md)
+measured the production exact path by turning off only its `queryHierarchy`
+decision, at the same source revision. In the `far-128` CanvasStress fixture
+it is 61.7 ms of a 62.4 ms Debug composite and 67.5 ms of a 67.7 ms Release
+composite on an RTX 3060 Ti. Wherever the frame is not CPU-bound, it moves the
+frame by about the same amount.
+Synchronized timing agrees, so this is shader execution cost, not timer
+attribution. A tile that lost records answers from the sampled layers and
+pays nothing. The Metal replay of the same controller supplies the backend
+comparison.
 The hosted Linux [performance run](https://github.com/jakildev/IrredenEngine/actions/runs/39472592142)
 also reports a zoom-1 mean regression of 11.2% against its class-matched
 baseline (zoom 4: +0.9%). Attribute this with same-revision/base controls before
