@@ -34,7 +34,8 @@ Alt+left-drag and Ctrl+middle-drag resolve an editable surface once at press,
 falling back to the current authoring floor, and show a gold anchor while held.
 Release hides the marker and retains the focus; reanchoring preserves the view.
 `Camera::setCursorPivotOptions` supplies the editor resolver to the standard
-controls; the custom right-drag uses the same options.
+controls; the custom right-drag uses the same options and starts only when no
+widget owns the pointer and document interaction is unblocked.
 Horizontal two-finger scroll orbits the center of the active construction plane.
 Option/Alt+left-drag anchors on the surface or floor beneath the pointer. Vertical
 scroll changes zoom continuously by `--scroll-zoom-rate` octaves per unit (default
