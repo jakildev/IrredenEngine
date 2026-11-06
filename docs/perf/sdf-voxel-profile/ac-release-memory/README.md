@@ -43,7 +43,8 @@ measurements, stable configurations and exit code zero, with no missing
 witnesses. The binary SHA-256 was
 `2a8b52fff1fe03f205d7c81cc9ba2ace94024cf69bbd7b8e661d6326dae4a5b0`.
 
-Windows/OpenGL remains open. When `GL_NVX_gpu_memory_info` is available, the
-same API records dedicated device capacity and current device-wide availability;
-those counters are not process-owned residency and must be compared under their
-own label on the ship host.
+The [Windows/OpenGL slice](../windows-gl-release-memory/README.md) repeats
+these cases on the ship host. There, `GL_NVX_gpu_memory_info` records only
+dedicated device capacity and current device-wide availability. Those counters
+are not process-owned residency, and at this fixture's scale they do not
+resolve per-scene differences.

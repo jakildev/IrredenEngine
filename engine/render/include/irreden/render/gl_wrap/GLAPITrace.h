@@ -1945,6 +1945,8 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glGetQueryObjectui64v);
     INJECT(glGetShaderInfoLog);
     INJECT(glGetShaderiv);
+    INJECT(glGetString);
+    INJECT(glGetStringi);
     INJECT(glGetSubroutineIndex);
     INJECT(glGetSubroutineUniformLocation);
     INJECT(glGetTexImage);
@@ -2173,6 +2175,8 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glGetQueryObjectui64v);
     LOAD_GL_FUNC(glGetShaderInfoLog);
     LOAD_GL_FUNC(glGetShaderiv);
+    LOAD_GL_FUNC(glGetString);
+    LOAD_GL_FUNC(glGetStringi);
     LOAD_GL_FUNC(glGetSubroutineIndex);
     LOAD_GL_FUNC(glGetSubroutineUniformLocation);
     LOAD_GL_FUNC(glGetTexImage);

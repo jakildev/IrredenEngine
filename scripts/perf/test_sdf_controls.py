@@ -1,10 +1,12 @@
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from repeat_profile import shape_profile_arguments
-from sdf_controls import cases, runner_options, summarize_memory, verify_configurations
+from sdf_controls import cases, main, runner_options, summarize_memory, verify_configurations
 
 
 class SdfControlsTest(unittest.TestCase):
@@ -62,6 +64,33 @@ class SdfControlsTest(unittest.TestCase):
         self.assertEqual(
             ("--target", "IRShapeDebug", "--release"), runner_options(True)
         )
+        self.assertEqual(
+            ("--target", "IRShapeDebug", "--release", "--allow-unsupported-gpu-frame"),
+            runner_options(True, allow_unsupported_gpu_frame=True),
+        )
+
+    def test_unsupported_gpu_frame_is_accepted_only_for_timing_off_matrices(self):
+        for case, accepted in (
+            ("density-baked-1-timing-off", True),
+            ("density-baked-1-timing-on", False),
+        ):
+            with (
+                self.subTest(case=case),
+                tempfile.TemporaryDirectory() as temporary,
+                patch("sys.argv", ["sdf_controls.py", "--output", str(Path(temporary) / "out"),
+                                   "--allow-unsupported-gpu-frame", "--case", case]),
+                patch("sdf_controls.run_rounds") as run_rounds,
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                if accepted:
+                    self.assertEqual(main(), 0)
+                    self.assertIn("--allow-unsupported-gpu-frame",
+                                  run_rounds.call_args.kwargs["runner_options"])
+                else:
+                    with self.assertRaises(SystemExit):
+                        main()
+                    self.assertIn("requires every case to be timing-off", stderr.getvalue())
+                    run_rounds.assert_not_called()
 
     def test_memory_summary_distinguishes_process_and_driver_measurements(self):
         with tempfile.TemporaryDirectory() as temporary:

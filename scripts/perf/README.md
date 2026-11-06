@@ -266,7 +266,14 @@ varies density, population, overlap, root/parent motion, GRID/rigid/revoxelized
 presentation and isolated local light, each with GPU stage timing on and off.
 Use `--suite baseline` for the retained 16-case yaw/shadow reproduction, and
 repeat `--case <name>` to run a bounded subset. Pass `--release` to select the
-worktree's supported Release tree directly.
+worktree's supported Release tree directly. OpenGL has no whole-frame GPU timer,
+so a timing-off case there carries no GPU measurement and is rejected by
+default. Run the timing-off cases as their own matrix with
+`--allow-unsupported-gpu-frame`, which `sdf_controls.py` refuses unless every
+selected case is timing-off. The runner then accepts a run whose report
+witnesses `Coverage: supported=0`, and records `gpu_measured: false`. GPU cost
+on OpenGL comes from the timing-on matrix. The manifest's `host_power` reads
+`pmset` on macOS and `GetSystemPowerStatus` on Windows.
 Every accepted ShapeDebug run
 must carry exactly one Release-compatible `SDF-OCCUPANCY` log witness; the
 runner retains its bake time, slot/occupied counts, dense-record bytes, exact

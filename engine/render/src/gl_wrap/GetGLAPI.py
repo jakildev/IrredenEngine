@@ -232,7 +232,7 @@ def main():
 		if l[0:5:] == "GLAPI":
 			func = l.strip()
 			args = func.split("(")
-			funcName = args[0].split()[3]
+			funcName = args[0].split()[-1]
 			if (funcName in WrapFuncs) and (funcName != "glGetError"):
 				Hooks.append("	INJECT(" + funcName + ");\n")
 	Hooks.sort()
@@ -249,7 +249,7 @@ def main():
 		if l[0:5:] == "GLAPI":
 			func = l.strip()
 			args = func.split("(")
-			funcName = args[0].split()[3]
+			funcName = args[0].split()[-1]
 			if funcName in WrapFuncs:
 				Funcs.append("	LOAD_GL_FUNC(" + funcName + ");\n")
 	Funcs.sort();

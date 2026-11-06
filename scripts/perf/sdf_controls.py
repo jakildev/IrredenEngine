@@ -8,6 +8,15 @@ from pathlib import Path
 
 from profile_matrix import run_rounds, summarize, verify_artifacts, write_cases
 
+GPU_SUMMARY_NOTE = (
+    "GPU stage rows are sampled timeline intervals, not additive exclusive costs. "
+    "Timing-off cases retain the GPU frame envelope only on a backend with a whole-frame "
+    "GPU timer (Metal); OpenGL timing-off cases carry no GPU measurement. Compare "
+    "representations within the same pose, shadow and timing mode; finite occupancy "
+    "differs from analytic geometry. Memory evidence is retained separately in "
+    "memory-summary.md."
+)
+
 
 def cases(suite: str = "baseline") -> dict[str, list[str]]:
     if suite == "qualification":
@@ -136,8 +145,12 @@ def summarize_memory(output: Path, selected: dict[str, list[str]]) -> None:
     (output / "memory-summary.md").write_text("\n".join(lines) + "\n")
 
 
-def runner_options(release: bool) -> tuple[str, ...]:
-    return ("--target", "IRShapeDebug", *(("--release",) if release else ()))
+def runner_options(release: bool, allow_unsupported_gpu_frame: bool = False) -> tuple[str, ...]:
+    return (
+        "--target", "IRShapeDebug",
+        *(("--release",) if release else ()),
+        *(("--allow-unsupported-gpu-frame",) if allow_unsupported_gpu_frame else ()),
+    )
 
 
 def main() -> int:
@@ -151,6 +164,11 @@ def main() -> int:
     parser.add_argument("--release", action="store_true",
                         help="Profile the worktree's build-release tree")
     parser.add_argument("--case", action="append", dest="case_names")
+    parser.add_argument(
+        "--allow-unsupported-gpu-frame", action="store_true",
+        help="Accept timing-off runs on a backend with no whole-frame GPU timer (OpenGL); "
+        "every selected case must be a timing-off case",
+    )
     args = parser.parse_args()
     if args.rounds < 1 or args.frames < 2:
         parser.error("rounds must be positive and frames must be at least two")
@@ -162,6 +180,10 @@ def main() -> int:
         parser.error(f"unknown {args.suite} cases: {', '.join(sorted(invalid))}")
     if args.case_names:
         selected = {name: selected[name] for name in args.case_names}
+    if args.allow_unsupported_gpu_frame and any(
+        "configs/perf/sdf-off.lua" not in arguments for arguments in selected.values()
+    ):
+        parser.error("--allow-unsupported-gpu-frame requires every case to be timing-off")
     common = ["--auto-profile", str(args.frames), "--zoom", str(args.zoom),
               "--sdf-voxel-blockers", "--no-ao", "--window-mode", "offscreen"]
     write_cases(output, args.rounds, common, selected, target="IRShapeDebug", suite=args.suite)
@@ -169,16 +191,11 @@ def main() -> int:
     def after_round():
         verify_artifacts(output)
         verify_configurations(output)
-        summarize(output, selected, gpu_note=(
-            "GPU stage rows are sampled timeline intervals, not additive exclusive costs. "
-            "Timing-off cases retain the GPU frame envelope. Compare representations within "
-            "the same pose, shadow and timing mode; finite occupancy differs from analytic "
-            "geometry. Memory evidence is retained separately in memory-summary.md."
-        ))
+        summarize(output, selected, gpu_note=GPU_SUMMARY_NOTE)
         summarize_memory(output, selected)
 
     run_rounds(output, selected, common, args.rounds, after_round,
-               runner_options=runner_options(args.release))
+               runner_options=runner_options(args.release, args.allow_unsupported_gpu_frame))
     return 0
 
 

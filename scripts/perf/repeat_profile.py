@@ -629,14 +629,56 @@ def host_power_report() -> str | None:
         return None
 
 
+def windows_power_status() -> tuple[int, int, int] | None:
+    """GetSystemPowerStatus's (ACLineStatus, BatteryFlag, BatteryLifePercent)
+    on Windows; None elsewhere or where the call fails."""
+    if platform.system() != "Windows":
+        return None
+    import ctypes
+
+    class SystemPowerStatus(ctypes.Structure):
+        _fields_ = [
+            ("ac_line_status", ctypes.c_ubyte),
+            ("battery_flag", ctypes.c_ubyte),
+            ("battery_life_percent", ctypes.c_ubyte),
+            ("system_status_flag", ctypes.c_ubyte),
+            ("battery_life_time", ctypes.c_ulong),
+            ("battery_full_life_time", ctypes.c_ulong),
+        ]
+
+    status = SystemPowerStatus()
+    try:
+        if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
+            return None
+    except (AttributeError, OSError):
+        return None
+    return status.ac_line_status, status.battery_flag, status.battery_life_percent
+
+
+# GetSystemPowerStatus sentinels: ACLineStatus 255 and BatteryLifePercent 255
+# are "unknown"; BatteryFlag bit 128 means the system has no battery.
+WINDOWS_AC_LINE_SOURCES = {0: "Battery Power", 1: "AC Power"}
+WINDOWS_NO_BATTERY_FLAG = 128
+WINDOWS_UNKNOWN_PERCENT = 255
+
+
 def host_power_source() -> str | None:
-    """'AC Power' or 'Battery Power' on macOS; None where it cannot be read."""
+    """'AC Power' or 'Battery Power' on macOS and Windows; None where it cannot be read."""
+    windows = windows_power_status()
+    if windows is not None:
+        return WINDOWS_AC_LINE_SOURCES.get(windows[0])
     drawn = re.search(r"Now drawing from '([^']+)'", host_power_report() or "")
     return drawn.group(1) if drawn else None
 
 
 def host_battery_percent() -> int | None:
-    """Battery charge on macOS; None where it cannot be read or there is no battery."""
+    """Battery charge on macOS and Windows; None where it cannot be read or there is no battery."""
+    windows = windows_power_status()
+    if windows is not None:
+        _, flag, percent = windows
+        if flag & WINDOWS_NO_BATTERY_FLAG or percent == WINDOWS_UNKNOWN_PERCENT:
+            return None
+        return percent
     charge = re.search(r"\t(\d+)%;", host_power_report() or "")
     return int(charge.group(1)) if charge else None
 
@@ -797,6 +839,12 @@ def main() -> int:
         help="Profile the worktree's build-release tree through fleet-run --release",
     )
     parser.add_argument(
+        "--allow-unsupported-gpu-frame",
+        action="store_true",
+        help="Accept a run with no GPU measurement when its report witnesses that the backend "
+        "has no whole-frame GPU timer (Coverage: supported=0), as OpenGL with stage timing off",
+    )
+    parser.add_argument(
         "--render-env",
         action="append",
         default=[],
@@ -886,6 +934,7 @@ def main() -> int:
         "runtime_scripts_sha256": directory_digest(binary.parent / "scripts"),
         "command": command,
         "render_environment": render_environment,
+        "allow_unsupported_gpu_frame": args.allow_unsupported_gpu_frame,
         "runs": [],
     }
     if shape_args is not None:
@@ -944,12 +993,16 @@ def main() -> int:
                 any(stage.avg_ms > 0 for stage in row.gpu_stages)
                 or (row.gpu_frame.supported is True and row.gpu_frame.valid > 0)
             )
+            run["gpu_frame_supported"] = row.gpu_frame.supported
             rows.append(row)
+        gpu_accepted = run.get("gpu_measured") or (
+            args.allow_unsupported_gpu_frame and run.get("gpu_frame_supported") is False
+        )
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         if (
             not clean
             or not fresh
-            or not run.get("gpu_measured")
+            or not gpu_accepted
             or run.get("measurement_failure") is not None
             or (shape_args is not None and (
                 run["quiet"] != "guarded" or not run["configuration_unchanged"]
@@ -966,6 +1019,12 @@ def main() -> int:
                 run.get("overflow_failure"),
                 run.get("measurement_failure"),
             ]
+            if fresh and not gpu_accepted:
+                reasons.append(
+                    "no GPU measurement"
+                    + ("; backend has no whole-frame GPU timer"
+                       if run.get("gpu_frame_supported") is False else "")
+                )
             if shape_args is not None:
                 if run["quiet"] != "guarded":
                     reasons.append(f"quiet window was {run['quiet']}")
