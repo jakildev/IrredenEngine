@@ -1,0 +1,268 @@
+{
+  "pass": true,
+  "framebuffer": [
+    3200,
+    1800
+  ],
+  "roi": [
+    640,
+    270,
+    2560,
+    1530
+  ],
+  "poses": [
+    {
+      "pose": 0,
+      "yaw_degrees": 0,
+      "shadow_pixels": 34300,
+      "shadow_bounds": [
+        660,
+        552,
+        1054,
+        910
+      ]
+    },
+    {
+      "pose": 1,
+      "yaw_degrees": 0.25,
+      "shadow_pixels": 34492,
+      "shadow_bounds": [
+        662,
+        552,
+        1056,
+        910
+      ]
+    },
+    {
+      "pose": 2,
+      "yaw_degrees": 30,
+      "shadow_pixels": 37392,
+      "shadow_bounds": [
+        734,
+        584,
+        1144,
+        886
+      ]
+    },
+    {
+      "pose": 3,
+      "yaw_degrees": 44.75,
+      "shadow_pixels": 38144,
+      "shadow_bounds": [
+        756,
+        604,
+        1228,
+        858
+      ]
+    },
+    {
+      "pose": 4,
+      "yaw_degrees": 45,
+      "shadow_pixels": 38440,
+      "shadow_bounds": [
+        756,
+        604,
+        1230,
+        858
+      ]
+    },
+    {
+      "pose": 5,
+      "yaw_degrees": 45.25,
+      "shadow_pixels": 38064,
+      "shadow_bounds": [
+        758,
+        604,
+        1230,
+        858
+      ]
+    },
+    {
+      "pose": 6,
+      "yaw_degrees": 67,
+      "shadow_pixels": 33524,
+      "shadow_bounds": [
+        814,
+        656,
+        1320,
+        870
+      ]
+    },
+    {
+      "pose": 7,
+      "yaw_degrees": 89.75,
+      "shadow_pixels": 31512,
+      "shadow_bounds": [
+        896,
+        682,
+        1358,
+        860
+      ]
+    },
+    {
+      "pose": 8,
+      "yaw_degrees": 90,
+      "shadow_pixels": 31584,
+      "shadow_bounds": [
+        900,
+        682,
+        1360,
+        860
+      ]
+    },
+    {
+      "pose": 9,
+      "yaw_degrees": 90.25,
+      "shadow_pixels": 31464,
+      "shadow_bounds": [
+        900,
+        682,
+        1356,
+        860
+      ]
+    },
+    {
+      "pose": 10,
+      "yaw_degrees": 90,
+      "shadow_pixels": 31584,
+      "shadow_bounds": [
+        900,
+        682,
+        1360,
+        860
+      ],
+      "reference_pose": 8,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 11,
+      "yaw_degrees": 89.75,
+      "shadow_pixels": 31512,
+      "shadow_bounds": [
+        896,
+        682,
+        1358,
+        860
+      ],
+      "reference_pose": 7,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 12,
+      "yaw_degrees": 67,
+      "shadow_pixels": 33524,
+      "shadow_bounds": [
+        814,
+        656,
+        1320,
+        870
+      ],
+      "reference_pose": 6,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 13,
+      "yaw_degrees": 45.25,
+      "shadow_pixels": 38064,
+      "shadow_bounds": [
+        758,
+        604,
+        1230,
+        858
+      ],
+      "reference_pose": 5,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 14,
+      "yaw_degrees": 45,
+      "shadow_pixels": 38440,
+      "shadow_bounds": [
+        756,
+        604,
+        1230,
+        858
+      ],
+      "reference_pose": 4,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 15,
+      "yaw_degrees": 44.75,
+      "shadow_pixels": 38144,
+      "shadow_bounds": [
+        756,
+        604,
+        1228,
+        858
+      ],
+      "reference_pose": 3,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 16,
+      "yaw_degrees": 30,
+      "shadow_pixels": 37392,
+      "shadow_bounds": [
+        734,
+        584,
+        1144,
+        886
+      ],
+      "reference_pose": 2,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 17,
+      "yaw_degrees": 0.25,
+      "shadow_pixels": 34492,
+      "shadow_bounds": [
+        662,
+        552,
+        1056,
+        910
+      ],
+      "reference_pose": 1,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 18,
+      "yaw_degrees": 0,
+      "shadow_pixels": 34300,
+      "shadow_bounds": [
+        660,
+        552,
+        1054,
+        910
+      ],
+      "reference_pose": 0,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    },
+    {
+      "pose": 19,
+      "yaw_degrees": 0,
+      "shadow_pixels": 34300,
+      "shadow_bounds": [
+        660,
+        552,
+        1054,
+        910
+      ],
+      "reference_pose": 0,
+      "return_on_changed_pixels": 0,
+      "return_off_changed_pixels": 0
+    }
+  ],
+  "failures": [],
+  "surface": 1,
+  "authored_hash": "4199355474554165958"
+}
