@@ -1020,6 +1020,7 @@ void LuaScript::bindLuaCommands() {
     detail::bindCommandNameEnum(*this);
     bindLuaInputEnums();
     detail::bindCommandFunctions(*this);
+    detail::bindActionFunctions(*this);
     detail::bindEntityEvents(*this);
     detail::bindCursorPosition(*this);
 }

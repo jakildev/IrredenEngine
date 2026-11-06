@@ -4,8 +4,10 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_audio.hpp>
 
+#include <irreden/command/action_registry.hpp>
 #include <irreden/command/command.hpp>
 #include <irreden/command/ir_command_types.hpp>
+#include <irreden/command/keymap_store.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 
 #include <cstdint>
@@ -37,6 +39,9 @@ struct CommandRegistration {
     int button;
     ButtonStatuses triggerStatus;
     KeyModifierMask requiredModifiers;
+    /// The row a `createCommand` registration describes; `~0` for an action
+    /// chord, which the action registry owns.
+    CommandId id = ~CommandId{0};
 };
 
 /// The two `IRInput` predicates keyboard dispatch reads live input through:
@@ -86,12 +91,70 @@ class CommandManager {
         );
         m_bareGroupsDirty = true;
         if (!name.empty() && triggerStatus == PRESSED) {
-            m_commandRegistrations.push_back(
-                {std::move(name), std::move(description), button, triggerStatus, requiredModifiers}
+            m_legacyRegistrations.push_back(
+                {std::move(name),
+                 std::move(description),
+                 button,
+                 triggerStatus,
+                 requiredModifiers,
+                 static_cast<CommandId>(m_userCommands.size() - 1)}
             );
-            ++m_registrationGeneration;
+            rebuildRegistrations();
         }
         return static_cast<CommandId>(m_userCommands.size() - 1);
+    }
+
+    /// Moves the row at @p id onto a new trigger in place. Its id, callback and
+    /// trigger status are kept; the bare-group table is rebuilt on the next
+    /// dispatch. A pair admitted on the old button retires when that button's
+    /// release is observed, so the caller balances any hold it started.
+    void rebindUserCommand(
+        CommandId id,
+        int button,
+        KeyModifierMask requiredModifiers,
+        KeyModifierMask blockedModifiers
+    );
+
+    /// Parks (or revives) the row at @p id. A parked row never dispatches and is
+    /// invisible to `isButtonBound`; its id stays valid for `fireUserCommand`.
+    void setUserCommandActive(CommandId id, bool active);
+
+    /// Appends a parked keyboard row owned by the action registry. A
+    /// @p latchRelease row is a `RELEASED` latch (`CommandStruct::isLatchRelease`);
+    /// otherwise the row triggers on `PRESSED`. The caller places it with
+    /// `rebindUserCommand` and revives it with `setUserCommandActive`.
+    CommandId createActionRow(std::function<void()> body, bool latchRelease);
+
+    /// Whether a non-action row would fire alongside an action bound to
+    /// (@p button, @p modifiers): an active `PRESSED` / `HELD` keyboard row that
+    /// accepts that held mask and is not shadowed by the chord's modifier
+    /// specificity (a bare row loses to a chord on its key).
+    bool plainRowClaimsChord(int button, KeyModifierMask modifiers) const;
+
+    /// Takes the named `createCommand` registrations out of the plain half of
+    /// `getCommandRegistrations()` for the action registry to adopt, leaving
+    /// the rows a start/end pair needs (a bare `PRESSED` row whose button and
+    /// blocked mask also carry a `RELEASED` row) where they are.
+    std::vector<CommandRegistration> takeAdoptableRegistrations();
+
+    const CommandStruct<COMMAND_BUTTON> &userCommand(CommandId id) const {
+        return m_userCommands[id];
+    }
+
+    /// Replaces the action half of `getCommandRegistrations()`. The action
+    /// registry publishes every resolved chord here whenever a binding changes.
+    void setActionRegistrations(std::vector<CommandRegistration> registrations);
+
+    ActionRegistry &actions() {
+        return m_actions;
+    }
+
+    const ActionRegistry &actions() const {
+        return m_actions;
+    }
+
+    KeymapStore &keymap() {
+        return m_keymap;
     }
 
     /// Bounds-checked execute of the user command at @p id. Out-of-range
@@ -147,12 +210,12 @@ class CommandManager {
         return m_commandRegistrations;
     }
 
-    /// Monotonic counter bumped every time `m_commandRegistrations` actually
-    /// grows. A consumer that caches text built from the registry compares
-    /// this against its own snapshot to know when to rebuild — commands
-    /// registered after the first rendered frame would otherwise never
-    /// appear. Bumped on append only, so a cache keyed on it costs one
-    /// integer compare per frame in the steady state.
+    /// Monotonic counter bumped every time `getCommandRegistrations()` changes:
+    /// a named registration appended, or an action chord assigned, removed or
+    /// restored. A consumer that caches text built from the registry compares
+    /// this against its own snapshot to know when to rebuild. Never bumped by
+    /// dispatch, so a cache keyed on it costs one integer compare per frame in
+    /// the steady state.
     std::uint32_t getRegistrationGeneration() const {
         return m_registrationGeneration;
     }
@@ -258,7 +321,11 @@ class CommandManager {
     std::unordered_map<int, std::vector<CommandStruct<COMMAND_MIDI_NOTE>>> m_midiNoteDeviceCommands;
     std::unordered_map<int, std::vector<CommandStruct<COMMAND_MIDI_CC>>> m_midiCCDeviceCommands;
     std::vector<CommandStruct<COMMAND_BUTTON>> m_userCommands;
+    std::vector<CommandRegistration> m_legacyRegistrations;
+    std::vector<CommandRegistration> m_actionRegistrations;
     std::vector<CommandRegistration> m_commandRegistrations;
+    ActionRegistry m_actions;
+    KeymapStore m_keymap{m_actions};
 
     /// One bare-mask binding group: `(button, blockedModifiers)` packed into
     /// `key_` (the identity rows pair on), plus which trigger edges have rows.
@@ -303,6 +370,7 @@ class CommandManager {
 
     /// Rebuilds `m_bareGroups` / `m_rowBareGroup` from the binding list.
     void rebuildBareGroups();
+    void rebuildRegistrations();
     std::uint32_t m_registrationGeneration = 0;
 };
 

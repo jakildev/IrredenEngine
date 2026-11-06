@@ -52,12 +52,57 @@ template <> class CommandStruct<COMMAND_BUTTON> {
         return m_blockedModifiers;
     }
 
+    /// An inactive row never dispatches and is invisible to every query; it
+    /// keeps its slot so outstanding `CommandId`s stay valid.
+    bool isActive() const {
+        return m_active;
+    }
+
+    /// A latch-release row fires on its button's release whatever the held
+    /// modifiers, capture or specificity say, and never joins a bare group:
+    /// its body decides whether a hold is live. Action holds use it so a
+    /// chord whose modifier comes up first still ends the hold.
+    bool isLatchRelease() const {
+        return m_latchRelease;
+    }
+
+    void rebind(
+        int button,
+        IRInput::KeyModifierMask requiredModifiers,
+        IRInput::KeyModifierMask blockedModifiers
+    ) {
+        m_button = button;
+        m_requiredModifiers = requiredModifiers;
+        m_blockedModifiers = blockedModifiers;
+    }
+
+    void setActive(bool active) {
+        m_active = active;
+    }
+
+    void setLatchRelease(bool latchRelease) {
+        m_latchRelease = latchRelease;
+    }
+
+    /// True for a row the action registry owns. Such a row dispatches like any
+    /// other; only the action conflict check tells it apart from a plain one.
+    bool isActionRow() const {
+        return m_actionRow;
+    }
+
+    void setActionRow(bool actionRow) {
+        m_actionRow = actionRow;
+    }
+
   private:
     IRInput::InputTypes m_type;
     IRInput::ButtonStatuses m_triggerStatus;
     int m_button;
     IRInput::KeyModifierMask m_requiredModifiers;
     IRInput::KeyModifierMask m_blockedModifiers;
+    bool m_active = true;
+    bool m_latchRelease = false;
+    bool m_actionRow = false;
     std::function<void()> m_func;
 };
 

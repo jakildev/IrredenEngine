@@ -586,4 +586,101 @@ TEST(LuaCommandTeardownTest, TeardownAfterRegistrationIsClean) {
     SUCCEED();
 }
 
+// ---- Actions: stable ids with runtime-assignable chords -------------------
+
+TEST_F(LuaCommandTest, LuaActionRunsFromIdAndFromCpp) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        lua_action_count = 0
+        assert(IRCommand.registerAction{
+            id = "lua.pulse",
+            label = "LUA PULSE",
+            section = "SCRIPT",
+            keys = { "ctrl+J" },
+            run = function() lua_action_count = lua_action_count + 1 end,
+        })
+        assert(IRCommand.invokeAction("lua.pulse"))
+        return IRCommand.actionKeys("lua.pulse")[1]
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<std::string>(), "ctrl+J");
+    EXPECT_TRUE(IRCommand::invokeAction("lua.pulse"));
+    EXPECT_EQ(lua["lua_action_count"].get<int>(), 2);
+    const auto info = IRCommand::actions().findAction("lua.pulse");
+    ASSERT_TRUE(info);
+    EXPECT_EQ(info->label_, "LUA PULSE");
+    EXPECT_EQ(info->section_, "SCRIPT");
+}
+
+TEST_F(LuaCommandTest, LuaActionKeyMutatorsReportConflicts) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        local noop = function() end
+        IRCommand.registerAction{ id = "lua.a", keys = { "K" }, run = noop }
+        IRCommand.registerAction{ id = "lua.b", run = noop }
+        local ok, status, conflicts = IRCommand.addActionKey("lua.b", "K")
+        assert(not ok and status == IRCommand.BindStatus.CONFLICT)
+        assert(conflicts[1] == "lua.a")
+        assert(IRCommand.findActionConflicts("K")[1] == "lua.a")
+        ok = IRCommand.addActionKey("lua.b", "K", true)
+        assert(ok)
+        assert(#IRCommand.actionKeys("lua.a") == 0)
+        assert(IRCommand.replaceActionKey("lua.b", "K", "shift+K"))
+        local hits = IRCommand.searchActions("shift+k")
+        assert(#hits == 1 and hits[1].id == "lua.b" and hits[1].customized)
+        assert(IRCommand.restoreActionDefaults("lua.a"))
+        assert(IRCommand.actionKeys("lua.a")[1] == "K")
+        assert(IRCommand.clearActionKeys("lua.b"))
+        local _, missing = IRCommand.removeActionKey("lua.b", "K")
+        assert(missing == IRCommand.BindStatus.NOT_BOUND)
+        local _, bad = IRCommand.addActionKey("lua.b", "hyper+K")
+        assert(bad == IRCommand.BindStatus.INVALID_CHORD)
+        return IRCommand.findAction("lua.nope") == nil
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_TRUE(result.get<bool>());
+}
+
+TEST_F(LuaCommandTest, LuaActionAvailabilityAndContexts) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        lua_enabled = false
+        IRCommand.registerAction{
+            id = "lua.gated",
+            context = "lua.mode",
+            run = function() end,
+            available = function() return lua_enabled end,
+        }
+        assert(not IRCommand.invokeAction("lua.gated"))
+        IRCommand.setActionContextActive("lua.mode", true)
+        assert(not IRCommand.invokeAction("lua.gated"))
+        lua_enabled = true
+        return IRCommand.invokeAction("lua.gated")
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_TRUE(result.get<bool>());
+}
+
+TEST_F(LuaCommandTest, LuaRegisterActionRejectsBadKeyAndMissingRun) {
+    auto result = m_lua.lua().safe_script(
+        R"(
+        return IRCommand.registerAction{ id = "lua.bad", keys = { "hyper+K" }, run = function() end }
+            or IRCommand.registerAction{ id = "lua.norun" }
+        )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_FALSE(result.get<bool>());
+    EXPECT_FALSE(IRCommand::actions().isRegistered("lua.bad"));
+}
+
 } // namespace

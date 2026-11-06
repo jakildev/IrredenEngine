@@ -7,6 +7,7 @@
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_text_style_lua.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_action.hpp>
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/widgets.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -142,6 +143,24 @@ TEST_F(LuaWidgetValues, SliderOptionsPopulateAndRejectBeforeCreation) {
         EXPECT_FALSE(error(call).empty()) << call;
         EXPECT_EQ(m_entityManager.getLiveEntityCount(), count) << call;
     }
+}
+
+TEST_F(LuaWidgetValues, BindActionShowsTheActionKeyAsTheBadge) {
+    run(R"(
+        IRCommand.registerAction{ id = "lua.tool", keys = { "ctrl+K" }, run = function() end }
+        button = IRGui.makeButton(10, 10, 60, 20, "TOOL")
+        IRGui.bindAction(button, "lua.tool")
+    )");
+    EXPECT_EQ(eval<std::string>("IRGui.actionHint(button)"), "CTRL+K");
+    const auto action =
+        IREntity::getComponentOptional<IRComponents::C_WidgetAction>(entity("button"));
+    ASSERT_TRUE(action);
+    EXPECT_EQ((*action)->actionId_, "lua.tool");
+    EXPECT_NE(error("IRGui.bindAction(button, '')").find("non-empty"), std::string::npos);
+    EXPECT_NE(
+        error("IRGui.bindAction(IRGui.makeLabel(0, 0, 'L'), 'lua.tool')").find("IRGui.bindAction"),
+        std::string::npos
+    );
 }
 
 TEST_F(LuaWidgetValues, CheckboxBuildsReadsAndSets) {
