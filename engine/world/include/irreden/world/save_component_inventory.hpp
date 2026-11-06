@@ -105,6 +105,7 @@
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_perf_hud.hpp>
 #include <irreden/render/components/component_render_cache.hpp>
+#include <irreden/render/components/component_screen_space_marker.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
 #include <irreden/render/components/component_splitter.hpp>
 #include <irreden/render/components/component_sprite.hpp>
@@ -421,6 +422,8 @@ IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_TextStyle, 3)
 IR_SAVE_OPT_IN(IRComponents::C_GuiPosition, 1)
 IR_SAVE_OPT_IN(IRComponents::C_GuiElement, 1)
 IR_SAVE_OPT_IN(IRComponents::C_GuiHoverState, 1)
+// Runtime pointer/gesture visualization, recreated by its controller.
+IR_SAVE_OPT_OUT(IRComponents::C_ScreenSpaceMarker)
 // Version 1 was the raw struct image, before the layout-audit cover flag.
 // Version 3 adds authored visibility.
 IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_Widget, 3)
@@ -680,6 +683,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_GuiPosition,
     IRComponents::C_GuiElement,
     IRComponents::C_GuiHoverState,
+    IRComponents::C_ScreenSpaceMarker,
     IRComponents::C_Widget,
     IRComponents::C_WidgetButton,
     IRComponents::C_WidgetCheckbox,

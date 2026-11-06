@@ -30,6 +30,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_camera.hpp>
+#include <irreden/render/components/component_screen_space_marker.hpp>
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/common/undo.hpp>
@@ -259,6 +260,7 @@ struct EditorState {
     bool shadowRotationSeeded_ = false;
     AuthoredVoxelFingerprint shadowRotationFingerprint_;
     ScreenAlignmentProbe alignmentProbe_;
+    ClickOrbitProbe clickOrbit_;
     int cameraGestureShot_ = -1;
     AuthoredVoxelFingerprint cameraGestureBaseline_;
     AuthoredVoxelFingerprint cameraGestureHeld_;
@@ -478,8 +480,11 @@ void setTransformMode(bool on) {
 }
 
 struct RotateParams {
-    bool firstRotFrame_ = true;
-    float prevMouseX_ = 0.0f;
+    IRPrefab::CursorPivot::OrbitAnchor anchor_;
+    IRPrefab::CursorPivot::FocusOptions focusOptions_;
+    bool dragging_ = false;
+    float startMouseX_ = 0.0f;
+    float startYaw_ = 0.0f;
 };
 
 struct FillToolState {
@@ -1036,6 +1041,7 @@ bool evaluatePanThenCtrlBalanced(const void *, std::string &actual) {
 // (same ordering the probe-map shots rely on).
 void prepareScreenAlignment(int shotIndex);
 void prepareCameraGestures(int shotIndex);
+void prepareClickOrbit(int shotIndex);
 void prepareRegionTools(int shotIndex);
 void prepareShadowRotation(int shotIndex);
 
@@ -1046,6 +1052,8 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
         prepareRegionTools(shotIndex);
     if (g_sessionId == Session::Id::CAMERA_GESTURES)
         prepareCameraGestures(shotIndex);
+    if (g_sessionId == Session::Id::CLICK_ORBIT)
+        prepareClickOrbit(shotIndex);
     if (g_sessionId == Session::Id::SCREEN_ALIGNMENT)
         prepareScreenAlignment(shotIndex);
     if (g_sessionId == Session::Id::SHADOW_ROTATION)
@@ -2145,6 +2153,24 @@ ivec3 voxelSetCellOrigin(const C_VoxelSetNew &set, const C_WorldTransform &world
     return IRMath::roundVec3HalfUp(worldTransform.translation_ + voxelSetLocalOrigin(set));
 }
 
+std::optional<vec3> resolveOrbitFocus(IREntity::EntityId) {
+    if (const auto hit = pickEditable())
+        return hit->worldHitPos_;
+    const auto entity = g_editor.editableVoxelSet_;
+    if (entity == IREntity::kNullEntity)
+        return std::nullopt;
+    const auto set = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
+    const auto world = IREntity::getComponentOptional<C_WorldTransform>(entity);
+    if (!set || !world)
+        return std::nullopt;
+    const float floorHeight =
+        static_cast<float>(
+            voxelSetCellOrigin(*set.value(), *world.value()).z + set.value()->size_.z
+        ) -
+        0.5f;
+    return IRPrefab::CursorPivot::resolveFloorWorld(floorHeight);
+}
+
 // World point of set-local point @p local under the part's whole world
 // transform: the point REBUILD_GRID_VOXELS carries cell @p local to, scaled
 // and turned about the translation. At identity it is the cell origin plus
@@ -2571,6 +2597,74 @@ void prepareRegionTools(int shotIndex) {
     );
     g_editor.regionForeignFingerprint_ =
         authoredVoxelFingerprint(IREntity::getComponent<C_VoxelSetNew>(g_editor.regionForeign_));
+}
+
+ivec3 clickOrbitSourceCell() {
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    return ivec3(set.size_.x / 2 + 2, set.size_.y / 2 - 2, set.size_.z - 5);
+}
+
+vec2 clickOrbitAnchorIso(vec3 focus) {
+    return IRMath::pos3DtoPos2DIsoYawed(focus, IRPrefab::Camera::getYaw()) +
+           IRRender::getEffectiveCameraIso();
+}
+
+void prepareClickOrbit(int shotIndex) {
+    auto &probe = g_editor.clickOrbit_;
+    const auto phase = clickOrbitPhase(shotIndex);
+    if (probe.shot_ != shotIndex) {
+        probe.shot_ = shotIndex;
+        if (phase == ClickOrbitPhase::BASELINE) {
+            auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+            auto records = set.mutableAuthoredRecords();
+            for (auto &record : records)
+                record = C_Voxel{Color{0, 0, 0, 0}};
+            if (!clickOrbitFloor(shotIndex)) {
+                const auto center = clickOrbitSourceCell();
+                for (int z = -1; z <= 1; ++z)
+                    for (int y = -1; y <= 1; ++y)
+                        for (int x = -1; x <= 1; ++x)
+                            records[IRMath::index3DtoIndex1D(center + ivec3(x, y, z), set.size_)] =
+                                C_Voxel{kClickOrbitColor};
+            }
+            set.resyncAfterAuthoredEdits();
+            probe.baseline_ = authoredVoxelFingerprint(set);
+            probe.cursor_.reset();
+            probe.heldFrames_ = 0;
+            probe.heldStable_ = true;
+            IRPrefab::Undo::clear();
+            IRRender::setRotationPivotMode(IRRender::RotationPivotMode::CAMERA_CENTER);
+            IRRender::setDebugOverlay(IRRender::DebugOverlayMode::UNLIT);
+            g_sculpt.tool_ = SculptTool::BRUSH;
+            g_sculpt.showGrid_ = true;
+            g_eraseMode = false;
+        }
+    }
+    if (phase == ClickOrbitPhase::HELD) {
+        ++probe.heldFrames_;
+        probe.heldStable_ =
+            probe.heldStable_ && IRRender::hasRotationPivotFocus() &&
+            IRMath::length(IRRender::getRotationPivotFocus() - probe.focus_) < 0.001f &&
+            IRMath::length(clickOrbitAnchorIso(probe.focus_) - probe.anchorIso_) < 0.001f;
+    }
+    ivec2 window{};
+    IRWindow::getWindowSize(window);
+    const auto preludeCursor = window / 2 + ivec2(90, 30);
+    for (auto &event : g_session.segments_[shotIndex].events_) {
+        if (event.type_ != IRVideo::GuiInputEvent::Type::MOVE)
+            continue;
+        if (phase == ClickOrbitPhase::BASELINE)
+            event.screenPx_ = preludeCursor + (event.frameOffset_ == 0 ? ivec2(0) : ivec2(48, 16));
+        else if (probe.cursor_) {
+            event.screenPx_ = *probe.cursor_;
+            if (phase == ClickOrbitPhase::HELD)
+                event.screenPx_.x += (event.frameOffset_ + 1) * 8;
+            else if (phase == ClickOrbitPhase::IDLE && clickOrbitPansAfterRelease(shotIndex))
+                event.screenPx_ += event.frameOffset_ == 0 ? ivec2(0) : ivec2(48, 16);
+            else if (phase == ClickOrbitPhase::IDLE)
+                event.screenPx_.x += 30;
+        }
+    }
 }
 
 void prepareCameraGestures(int shotIndex) {
@@ -5146,6 +5240,183 @@ bool evaluateRegionToolCheck(const void *context, std::string &actual) {
                0.001f;
 }
 
+bool evaluateClickOrbitCheck(const void *context, std::string &actual) {
+    const int shot = *static_cast<const int *>(context);
+    const auto phase = clickOrbitPhase(shot);
+    auto &probe = g_editor.clickOrbit_;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    const auto &world = IREntity::getComponent<C_WorldTransform>(g_editor.editableVoxelSet_);
+    const vec3 origin = vec3(voxelSetCellOrigin(set, world));
+    const float yaw = IRPrefab::Camera::getYaw();
+    const vec2 effective = IRRender::getEffectiveCameraIso();
+    const bool hasFocus = IRRender::hasRotationPivotFocus();
+    const vec3 focus = IRRender::getRotationPivotFocus();
+    const auto fingerprint = authoredVoxelFingerprint(set);
+    bool passed = fingerprint == probe.baseline_ &&
+                  fingerprint.active_ == (clickOrbitFloor(shot) ? 0u : 27u) &&
+                  !IRPrefab::Undo::canUndo() && !IRPrefab::Undo::canRedo() &&
+                  IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER;
+    const auto framebuffer = IRRender::getViewport();
+    ivec2 window{};
+    IRWindow::getWindowSize(window);
+    probe.pixels_.resize(static_cast<std::size_t>(framebuffer.x) * framebuffer.y * 4);
+    passed = IRRender::readDefaultFramebuffer(
+                 0,
+                 0,
+                 framebuffer.x,
+                 framebuffer.y,
+                 probe.pixels_.data()
+             ) &&
+             passed;
+    int visibleMarkers = 0;
+    bool markerMatches = true;
+    IREntity::forEachComponent<C_ScreenSpaceMarker>([&](IREntity::EntityId entity,
+                                                        const C_ScreenSpaceMarker &marker) {
+        if (!marker.visible_)
+            return;
+        ++visibleMarkers;
+        markerMatches = markerMatches && probe.cursor_ &&
+                        IRMath::length(marker.windowPoint_ - vec2(*probe.cursor_)) < 0.001f &&
+                        !IREntity::getComponentOptional<C_GizmoHandle>(entity) &&
+                        !IREntity::getComponentOptional<C_HitBox2DGui>(entity);
+    });
+    float projectionError = 0.0f;
+    float continuityError = 0.0f;
+    vec2 panWindow(0.0f);
+    if (phase == ClickOrbitPhase::BASELINE) {
+        passed =
+            passed && IRMath::abs(
+                          IRMath::wrapAnglePi(
+                              yaw - static_cast<float>(clickOrbitYaw(shot)) * IRMath::kPi / 180.0f
+                          )
+                      ) < 0.0002f;
+        if (clickOrbitFloor(shot)) {
+            const vec3 floorPoint = origin + vec3(
+                                                 static_cast<float>(set.size_.x / 2 + 3),
+                                                 static_cast<float>(set.size_.y / 2 - 3),
+                                                 static_cast<float>(set.size_.z) - 0.5f
+                                             );
+            probe.cursor_ = IRRender::worldPos3DToMouseScreenPxExact(floorPoint);
+        } else {
+            passed = probe.selectSurfaceCursor(framebuffer, window) && passed;
+        }
+        passed = passed && visibleMarkers == 0 && probe.cursor_.has_value();
+        if (!clickOrbitFloor(shot) && clickOrbitYaw(shot) == 30)
+            passed = passed &&
+                     IRMath::length(IRRender::getCameraPosition2DIso() - vec2(3.0f, -2.0f)) > 0.1f;
+        if (!clickOrbitFloor(shot) && clickOrbitYaw(shot) == 67)
+            passed = passed && IRRender::getCameraZoom().x > 4.0f;
+        probe.yaw_ = yaw;
+        probe.effective_ = effective;
+    } else if (phase == ClickOrbitPhase::PRESSED) {
+        continuityError = IRMath::length(effective - probe.effective_);
+        projectionError =
+            probe.cursor_
+                ? IRMath::length(
+                      IRRender::worldPos3DToWindowPointsExact(focus) - vec2(*probe.cursor_)
+                  )
+                : 1000.0f;
+        bool surface = false;
+        if (clickOrbitFloor(shot)) {
+            surface = IRMath::abs(focus.z - (origin.z + set.size_.z - 0.5f)) < 0.001f;
+        } else {
+            const vec3 relative = IRMath::abs(focus - origin - vec3(clickOrbitSourceCell()));
+            surface =
+                relative.x <= 1.501f && relative.y <= 1.501f && relative.z <= 1.501f &&
+                IRMath::min(
+                    IRMath::abs(relative.x - 1.5f),
+                    IRMath::min(IRMath::abs(relative.y - 1.5f), IRMath::abs(relative.z - 1.5f))
+                ) < 0.002f;
+        }
+        passed = passed && hasFocus && surface && continuityError < 0.001f &&
+                 projectionError < 0.01f && visibleMarkers == 1 && markerMatches &&
+                 IRMath::abs(IRMath::wrapAnglePi(yaw - probe.yaw_)) < 0.0002f;
+        probe.focus_ = focus;
+        probe.anchorIso_ = clickOrbitAnchorIso(focus);
+    } else if (phase == ClickOrbitPhase::HELD) {
+        continuityError = IRMath::length(clickOrbitAnchorIso(probe.focus_) - probe.anchorIso_);
+        passed = passed && hasFocus && visibleMarkers == 1 && markerMatches &&
+                 probe.heldFrames_ > 3 && probe.heldStable_ && continuityError < 0.001f &&
+                 IRMath::abs(IRMath::wrapAnglePi(yaw - probe.yaw_)) > 0.08f;
+        probe.yaw_ = yaw;
+        probe.effective_ = effective;
+        probe.focusWindow_ = IRRender::worldPos3DToWindowPointsExact(focus);
+    } else {
+        continuityError = IRMath::length(effective - probe.effective_);
+        const bool reanchor = phase == ClickOrbitPhase::IDLE && clickOrbitReanchors(shot);
+        const bool pan = phase == ClickOrbitPhase::IDLE && clickOrbitPansAfterRelease(shot);
+        passed = passed && hasFocus && visibleMarkers == 0 && (pan || continuityError < 0.001f) &&
+                 IRMath::abs(IRMath::wrapAnglePi(yaw - probe.yaw_)) < 0.0002f &&
+                 !g_sculpt.dragging_ && !g_fillTool.dragging_;
+        if (pan) {
+            panWindow = IRRender::worldPos3DToWindowPointsExact(focus) - probe.focusWindow_;
+            projectionError = IRMath::length(panWindow - vec2(48.0f, 16.0f));
+            passed = passed && projectionError < 0.01f;
+        }
+        if (reanchor) {
+            projectionError = probe.cursor_ ? IRMath::length(
+                                                  IRRender::worldPos3DToWindowPointsExact(focus) -
+                                                  vec2(*probe.cursor_ + ivec2(30, 0))
+                                              )
+                                            : 1000.0f;
+            passed =
+                passed && IRMath::length(focus - probe.focus_) > 0.1f && projectionError < 0.01f;
+        } else {
+            passed = passed && IRMath::length(focus - probe.focus_) < 0.001f;
+        }
+    }
+    int markerPixels = 0;
+    float markerError = 0.0f;
+    float markerDrift = 0.0f;
+    if (phase == ClickOrbitPhase::PRESSED || phase == ClickOrbitPhase::HELD) {
+        vec2 pixelSum(0.0f);
+        for (int y = 0; y < framebuffer.y; ++y) {
+            for (int x = 0; x < framebuffer.x; ++x) {
+                const auto offset = (static_cast<std::size_t>(y) * framebuffer.x + x) * 4;
+                if (probe.pixels_[offset] != IRPrefab::CursorPivot::kIndicatorColor.red_ ||
+                    probe.pixels_[offset + 1] != IRPrefab::CursorPivot::kIndicatorColor.green_ ||
+                    probe.pixels_[offset + 2] != IRPrefab::CursorPivot::kIndicatorColor.blue_)
+                    continue;
+                ++markerPixels;
+                pixelSum += vec2(x, y) + vec2(0.5f);
+            }
+        }
+        if (markerPixels > 0 && probe.cursor_) {
+            const vec2 centroid = pixelSum / static_cast<float>(markerPixels);
+            const vec2 clickedPixel = vec2(*probe.cursor_) * vec2(framebuffer) / vec2(window);
+            markerError = IRMath::length(centroid - clickedPixel);
+            if (phase == ClickOrbitPhase::PRESSED)
+                probe.markerCentroid_ = centroid;
+            else
+                markerDrift = IRMath::length(centroid - probe.markerCentroid_);
+        } else {
+            markerError = 1000.0f;
+        }
+        passed = passed && markerError <= 2.0f && markerDrift <= 1.0f;
+    }
+    // The harness applies each shot's view before its events. Carry the actual
+    // live view across gesture phases so it cannot reset away a release jump.
+    if (shot + 1 < kClickOrbitShotCount && clickOrbitPhase(shot + 1) != ClickOrbitPhase::BASELINE) {
+        auto &next = g_session.shots_[static_cast<std::size_t>(shot + 1)].render_;
+        next.zoom_ = IRRender::getCameraZoom().x;
+        next.cameraIso_ = IRRender::getCameraPosition2DIso();
+        next.yawRadians_ = yaw;
+        next.hasPivotFocus_ = hasFocus;
+        next.pivotFocusWorld_ = focus;
+    }
+    actual = "cells=" + std::to_string(fingerprint.active_) + " yaw=" + std::to_string(yaw) +
+             " continuity=" + std::to_string(continuityError) +
+             " projection=" + std::to_string(projectionError) +
+             " pan_window=" + std::to_string(panWindow.x) + "," + std::to_string(panWindow.y) +
+             " markers=" + std::to_string(visibleMarkers) +
+             " marker_pixels=" + std::to_string(markerPixels) +
+             " marker_error_px=" + std::to_string(markerError) +
+             " marker_drift_px=" + std::to_string(markerDrift) +
+             " held_frames=" + std::to_string(probe.heldFrames_) +
+             " held_stable=" + std::to_string(probe.heldStable_);
+    return passed;
+}
+
 bool evaluateCameraGestureCheck(const void *context, std::string &actual) {
     const int shot = *static_cast<const int *>(context);
     const int phase = shot % 4;
@@ -6594,7 +6865,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Middle-drag: pan camera");
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
-    IR_LOG_INFO("  Space: re-center + reset yaw");
+    IR_LOG_INFO("  Space+left: pan camera  Home: re-center + reset yaw");
     IR_LOG_INFO("  Ctrl+Z: undo  Ctrl+Y / Ctrl+Shift+Z: redo");
     IR_LOG_INFO("  X/Y/Z: toggle X/Y/Z mirror symmetry");
     IR_LOG_INFO("  Left/Right arrow: previous/next frame");
@@ -6617,6 +6888,7 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | "
+        "click_orbit | "
         "region_tools | rock | "
         "mushroom | ant | bird | tree | "
         "parts_roundtrip | "
@@ -6636,6 +6908,7 @@ int main(int argc, char **argv) {
          "face_pick",
          "screen_alignment",
          "camera_gestures",
+         "click_orbit",
          "region_tools",
          "shadow_rotation",
          "rock",
@@ -6881,6 +7154,11 @@ int main(int argc, char **argv) {
                 IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
                     static_cast<float>(IRVoxelEditor::screenAlignmentCase(shot).yawDegrees_) *
                     IRMath::kPi / 180.0f;
+        }
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CLICK_ORBIT) {
+            for (int shot = 0; shot < IRVoxelEditor::kClickOrbitShotCount; ++shot)
+                IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
+                    static_cast<float>(IRVoxelEditor::clickOrbitYaw(shot)) * IRMath::kPi / 180.0f;
         }
         if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS) {
             for (int shot = 0; shot < IRVoxelEditor::Session::kRegionToolShotCount; ++shot)
@@ -7619,7 +7897,8 @@ void initSystems() {
     // widget chain so an over-gizmo click doesn't trip the scene-
     // edit path either.
     auto rotState = std::make_shared<RotateParams>();
-    auto rotateSystem = IRSystem::createSystem<C_Camera>(
+    rotState->focusOptions_.resolveSurface_ = &IRVoxelEditor::resolveOrbitFocus;
+    auto rotateSystem = IRSystem::createSystem<C_Camera, IRSystem::MainThread>(
         "EditorViewportRotate",
         [](C_Camera &) {},
         [rotState]() {
@@ -7627,22 +7906,40 @@ void initSystems() {
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
             bool rightHeld =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::HELD);
+            bool rightReleased =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::RELEASED);
 
-            if (rightPressed) {
-                rotState->firstRotFrame_ = true;
+            if (rightPressed && !rotState->dragging_ &&
+                !IRVoxelEditor::documentInteractionBlocked() &&
+                IRPrefab::Widget::hoveredWidget() == IREntity::kNullEntity) {
+                rotState->dragging_ = true;
+                rotState->startMouseX_ = IRInput::getMousePositionScreen().x;
+                rotState->startYaw_ = IRPrefab::Camera::getYaw();
+                rotState->anchor_.begin(
+                    IRInput::checkKeyMouseModifiers(IRInput::kModifierShift) !=
+                        IRPrefab::Camera::cursorPivotByDefault(),
+                    rotState->focusOptions_
+                );
             }
 
-            if (rightHeld) {
-                vec2 mouse = IRInput::getMousePositionScreen();
-                if (!rotState->firstRotFrame_) {
-                    float deltaX = mouse.x - rotState->prevMouseX_;
-                    IRPrefab::Camera::rotateYaw(deltaX * IRVoxelEditor::kRotationSensitivity);
-                }
-                rotState->prevMouseX_ = mouse.x;
-                rotState->firstRotFrame_ = false;
+            if (rotState->dragging_ && rightHeld) {
+                const float deltaX = IRInput::getMousePositionScreen().x - rotState->startMouseX_;
+                IRPrefab::Camera::setYaw(
+                    rotState->startYaw_ + deltaX * IRVoxelEditor::kRotationSensitivity
+                );
+                rotState->anchor_.updateIndicator();
+            }
+            if (rotState->dragging_ && (rightReleased || (!rightPressed && !rightHeld))) {
+                rotState->anchor_.end();
+                rotState->dragging_ = false;
             }
         }
     );
+    IREntity::getEntityManager().registerPreDestroyHook([rotState](IREntity::EntityId destroyed) {
+        if (rotState->anchor_.pivotIndicator_ == destroyed)
+            rotState->dragging_ = false;
+        rotState->anchor_.onEntityDestroyed(destroyed);
+    });
 
     // Scrubber + FPS sync. Runs in INPUT, after WIDGET_APPLY_SLIDER
     // so the drag value is already committed to C_WidgetSlider::currentValue_.
@@ -8264,6 +8561,8 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    IRPrefab::Camera::setCursorPivotByDefault(true);
+    IRPrefab::Camera::setCursorPivotOptions(rotState->focusOptions_);
     renderPipeline.push_front(animPlaybackSystem);
     renderPipeline.push_front(rotateSystem);
     renderPipeline.insert(
@@ -8467,7 +8766,7 @@ void initCommands() {
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
-        IRInput::KeyMouseButtons::kKeyButtonSpace,
+        IRInput::KeyMouseButtons::kKeyButtonHome,
         []() {
             IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
             IRPrefab::Camera::setYaw(0.0f);
@@ -9448,6 +9747,7 @@ void initEntities() {
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCULPT_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCREEN_ALIGNMENT ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CAMERA_GESTURES ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CLICK_ORBIT ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS;
     IRVoxelEditor::g_sculpt.tool_ =
         ordinaryWorkspace ? IRVoxelEditor::SculptTool::BRUSH : IRVoxelEditor::SculptTool::BOX;

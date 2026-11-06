@@ -7,6 +7,7 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/camera.hpp>
+#include <irreden/render/camera_gesture.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/cursor_pivot.hpp>
 
@@ -15,32 +16,12 @@ using namespace IRMath;
 
 namespace IRSystem {
 
-// Ctrl + middle-mouse drag: orbit camera (yaw + pitch). Horizontal drag
-// controls Z-yaw, vertical drag controls X-pitch.
-//   - Ctrl + middle-drag         → Z-yaw about the EXACT screen center (the
-//                                   CAMERA_CENTER default; no explicit focus).
-//   - Ctrl + Shift + middle-drag → Z-yaw about the world point under the CURSOR
-//                                   (pinned via IRRender::setRotationPivotFocus,
-//                                   captured once at drag start; reverts to the
-//                                   screen-center default when the drag ends).
-// Middle drag without Ctrl falls through to CAMERA_MOUSE_PAN (unchanged).
-//
-// The cursor pivot latches the CLICKED SURFACE point at its true depth
-// (via IRPrefab::CursorPivot) and shows a marker there for the duration
-// of the drag. `latchByDefault_` swaps which chord gets the cursor latch, so a
-// demo can compare screen-center vs cursor-latched rotation live without a
-// restart; it is off by default, leaving the chords exactly as documented above.
-template <> struct System<CAMERA_MOUSE_ROTATE> {
+// Control + middle drag orbits the clicked surface; Shift inverts the pivot policy.
+template <> struct System<CAMERA_MOUSE_ROTATE> : IRPrefab::CursorPivot::OrbitAnchor {
     static constexpr float kPixelsPerRevolution = 1280.0f;
-
     bool dragging_ = false;
-    bool cursorPivot_ = false;
-    // When set, a plain Ctrl+middle-drag latches the cursor pivot and
-    // Ctrl+Shift+middle-drag takes the screen-center default (the chords swap).
-    bool latchByDefault_ = false;
-    // Spawned on the first cursor-pivot drag, then reused and re-hidden —
-    // never respawned, so a drag costs no structural change after the first.
-    IREntity::EntityId pivotIndicator_ = IREntity::kNullEntity;
+    bool latchByDefault_ = true;
+    IRPrefab::CursorPivot::FocusOptions pivotOptions_;
     vec2 dragStartMouse_ = vec2(0.0f);
     float dragStartYaw_ = 0.0f;
     float dragStartPitch_ = 0.0f;
@@ -48,88 +29,42 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
     void tick(C_Camera &) {}
 
     void endTick() {
-        const bool middlePressed =
+        const bool pressed =
             IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::PRESSED);
-        const bool middleDown =
-            IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::HELD);
-        const bool ctrlHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl);
-        const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
-
-        if (middlePressed && ctrlHeld && !dragging_) {
+        const bool down = IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::HELD);
+        const bool released =
+            IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::RELEASED);
+        const bool modifier = IRPrefab::Camera::gestureInput().control_;
+        const bool shift = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
+        if (pressed && modifier && !dragging_) {
             dragging_ = true;
             dragStartMouse_ = IRInput::getMousePositionScreen();
             dragStartYaw_ = IRPrefab::Camera::getYaw();
             dragStartPitch_ = IRPrefab::Camera::getPitch();
-            // Cursor-pivot mode: pin the SURFACE point under the cursor at its
-            // true depth — captured once, on mouse-down — so yaw rotates about
-            // the feature that was clicked. The other chord clears any focus so
-            // yaw rotates about the screen-center default instead.
-            //
-            // A cursor-pivot click on BACKGROUND has no surface to pin, so it
-            // takes the default pivot outright rather than copying it into an
-            // explicit focus: the default latch acquires the surface under the
-            // crosshair on the drag's first yaw-delta frame, which it cannot do
-            // while an explicit focus owns the pivot. The marker stays hidden —
-            // there is no latched point to mark until that edge acquires.
-            cursorPivot_ = (shiftHeld != latchByDefault_);
-            const auto hit =
-                cursorPivot_ ? IRPrefab::Picking::castVoxelRay(pivotIndicator_) : std::nullopt;
-            if (hit.has_value()) {
-                const vec3 focusWorld = hit->worldHitPos_;
-                IRRender::setRotationPivotFocus(focusWorld);
-                if (pivotIndicator_ == IREntity::kNullEntity) {
-                    pivotIndicator_ = IRPrefab::CursorPivot::createIndicator();
-                }
-                IRPrefab::CursorPivot::showIndicator(pivotIndicator_, focusWorld);
-            } else {
-                IRRender::clearRotationPivotFocus();
-            }
+            begin(shift != latchByDefault_, pivotOptions_);
         }
-
-        if (dragging_ && middleDown) {
-            const vec2 currentMouse = IRInput::getMousePositionScreen();
-            const float deltaX = currentMouse.x - dragStartMouse_.x;
-            const float deltaY = currentMouse.y - dragStartMouse_.y;
-            const float yawDelta = (deltaX / kPixelsPerRevolution) * IRMath::kTwoPi;
-            // negate: screen +Y is down; pitch up requires negative deltaY
-            const float pitchDelta = -(deltaY / kPixelsPerRevolution) * IRMath::kTwoPi;
-            IRPrefab::Camera::setYawPitch(dragStartYaw_ + yawDelta, dragStartPitch_ + pitchDelta);
-        } else {
-            if (dragging_ && cursorPivot_) {
-                // Drag ended: revert to the screen-center default and take the
-                // marker back down (hidden, not destroyed — the next drag
-                // reuses the same entity).
-                IRRender::clearRotationPivotFocus();
-                IRPrefab::CursorPivot::hideIndicator(pivotIndicator_);
-                cursorPivot_ = false;
-            }
+        if (dragging_ && down) {
+            const vec2 delta = IRInput::getMousePositionScreen() - dragStartMouse_;
+            IRPrefab::Camera::setYawPitch(
+                dragStartYaw_ + delta.x / kPixelsPerRevolution * IRMath::kTwoPi,
+                dragStartPitch_ - delta.y / kPixelsPerRevolution * IRMath::kTwoPi
+            );
+            updateIndicator();
+        }
+        if (dragging_ && (released || (!pressed && !down))) {
+            end();
             dragging_ = false;
         }
     }
 
     static SystemId create() {
-        // MainThread is load-bearing, not documentation: `endTick` spawns the
-        // indicator with an eager `IREntity::createEntity` and immediately
-        // `getComponent`s the id it got back. Both are main-thread-only (see
-        // engine/entity/CLAUDE.md) — a multi-system pipeline group fans every
-        // member out onto a worker via IRJob::parallelFor, `endTick` included,
-        // regardless of the system's own Concurrency. The tag makes that a
-        // boot-time FATAL in `validateAllPipelineGroups` instead of a
-        // heisenbug. Not `Spawns`: lifted MUTATOR_IN_PARALLEL_GROUP, so
-        // it would document the mutation without preventing it.
-        SystemId id =
+        const SystemId id =
             registerSystem<CAMERA_MOUSE_ROTATE, C_Camera, MainThread>("CameraMouseRotate");
-        // pivotIndicator_ is not C_Persistent, so IREntity::resetGameplay()
-        // destroys it (destroyAllExceptPreserved destroys per-entity via
-        // destroyEntity, which fires this hook). Null the cached id so
-        // endTick's `pivotIndicator_ == kNullEntity` lazy-respawn guard
-        // rebuilds it on the next cursor-pivot drag instead of reaching
-        // through a dead handle.
         auto *params = getSystemParams<System<CAMERA_MOUSE_ROTATE>>(id);
         IREntity::getEntityManager().registerPreDestroyHook([params](IREntity::EntityId destroyed) {
-            if (params->pivotIndicator_ == destroyed) {
-                params->pivotIndicator_ = IREntity::kNullEntity;
-            }
+            if (params->pivotIndicator_ == destroyed)
+                params->dragging_ = false;
+            params->onEntityDestroyed(destroyed);
         });
         return id;
     }

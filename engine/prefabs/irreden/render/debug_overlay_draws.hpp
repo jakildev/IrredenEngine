@@ -31,6 +31,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/components/component_screen_space_marker.hpp>
 
 #include <array>
 #include <vector>
@@ -188,6 +189,32 @@ inline void drawRectScreen(
     );
     drawLineScreen(topRight, topLeft, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
     drawLineScreen(topLeft, bottomLeft, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
+}
+
+// framebufferScale converts logical window points to physical framebuffer pixels.
+// Screen primitives use bottom-up Y; marker coordinates use top-down Y.
+inline void drawScreenMarker(
+    const IRComponents::C_ScreenSpaceMarker &marker,
+    IRMath::vec2 framebufferSize,
+    IRMath::vec2 framebufferScale
+) {
+    if (!marker.visible_)
+        return;
+    IRMath::vec2 center = marker.windowPoint_ * framebufferScale;
+    center.y = framebufferSize.y - center.y;
+    const IRMath::vec4 color = IRMath::vec4(
+                                   marker.color_.red_,
+                                   marker.color_.green_,
+                                   marker.color_.blue_,
+                                   marker.color_.alpha_
+                               ) /
+                               255.0f;
+    const auto bar = [&](IRMath::vec2 halfExtent) {
+        const auto extent = halfExtent * framebufferScale;
+        drawRectScreen(center - extent, center + extent, color, IRMath::vec4(0.0f));
+    };
+    bar(IRMath::vec2(marker.radiusPoints_, 1.0f));
+    bar(IRMath::vec2(1.0f, marker.radiusPoints_));
 }
 
 inline void drawDotScreen(IRMath::vec2 center, float radius, IRMath::vec4 color) {

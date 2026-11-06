@@ -68,36 +68,43 @@ inline void registerStandardKeyboardCommands() {
     IRCommand::registerCameraCommands();
 }
 
-/// Which middle-drag chord latches the cursor pivot.
-///
-/// Off (the default): Ctrl+Shift+middle-drag rotates about the clicked surface
-/// point, plain Ctrl+middle-drag rotates about the screen-center default. On:
-/// the two chords swap, so plain Ctrl+middle-drag latches the cursor. A demo
-/// binds this to a key to compare the two pivots live — the same drag gesture
-/// under both modes — instead of restarting between them.
-///
-/// No-op (and @ref cursorPivotByDefault reads false) when
-/// `CAMERA_MOUSE_ROTATE` was never registered, so a creation without the
-/// camera controls can call it unconditionally.
-/// @{
+/// Cursor anchoring defaults on for both orbit gestures. Shift reverses the
+/// policy for one drag. Changes apply at the next press; no view is moved here.
+/// Absent systems are ignored; the query returns false if neither exists.
 inline void setCursorPivotByDefault(bool enabled) {
-    const IRSystem::SystemId system = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE);
-    if (system == IRSystem::kNullSystemId) {
-        return;
-    }
-    IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(system)
-        ->latchByDefault_ = enabled;
+    const auto mouse = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE);
+    if (mouse != IRSystem::kNullSystemId)
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(mouse)
+            ->latchByDefault_ = enabled;
+    const auto key = IRSystem::findSystem(IRSystem::CAMERA_KEY_DRAG_ROTATE);
+    if (key != IRSystem::kNullSystemId)
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_KEY_DRAG_ROTATE>>(key)
+            ->latchByDefault_ = enabled;
 }
 
 inline bool cursorPivotByDefault() {
-    const IRSystem::SystemId system = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE);
-    if (system == IRSystem::kNullSystemId) {
-        return false;
-    }
-    return IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(system)
-        ->latchByDefault_;
+    const auto mouse = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE);
+    if (mouse != IRSystem::kNullSystemId)
+        return IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(mouse)
+            ->latchByDefault_;
+    const auto key = IRSystem::findSystem(IRSystem::CAMERA_KEY_DRAG_ROTATE);
+    return key != IRSystem::kNullSystemId &&
+           IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_KEY_DRAG_ROTATE>>(key)
+               ->latchByDefault_;
 }
-/// @}
+
+/// Configure both registered orbit gestures. A creation with custom rendered
+/// geometry supplies a surface resolver matching its authoring/picking contract.
+inline void setCursorPivotOptions(const CursorPivot::FocusOptions &options) {
+    const auto mouse = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE);
+    if (mouse != IRSystem::kNullSystemId)
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(mouse)
+            ->pivotOptions_ = options;
+    const auto key = IRSystem::findSystem(IRSystem::CAMERA_KEY_DRAG_ROTATE);
+    if (key != IRSystem::kNullSystemId)
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_KEY_DRAG_ROTATE>>(key)
+            ->pivotOptions_ = options;
+}
 
 } // namespace IRPrefab::Camera
 

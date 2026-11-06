@@ -126,12 +126,12 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - `Picking::castVoxelRay(RayCastOptions)`: `ISO_LATTICE` (default) resolves the
   iso column; `SCREEN_PIXEL` resolves the face drawn under the cursor — an edit
   pick uses it, with `shapes_ = false` (a shape hit has no face).
-- Cursor pivot: `IRPrefab::CursorPivot::resolveFocusWorld(exclude)` picks at
-  true surface depth and falls back to `IRRender::getDefaultRotationPivotFocus()`;
-  pass the indicator as `exclude`; never add a picking-side anchor compensation.
-  The indicator spawns lazily on first drag, is re-hidden not destroyed, and sets
-  `canvasEntity_ = kNullEntity`; a marker spawned by a post-`SHAPES_TO_TRIXEL` hook misses that frame.
-
+- Cursor orbit anchors on the clicked `SCREEN_PIXEL` surface, else at reference height.
+  `CursorPivot::OrbitAnchor` preserves the view, retains focus on release, hides its
+  marker, receives pre-destroy notifications, and creates it on main. Both gestures
+  share `Camera::setCursorPivotByDefault` (Shift reverses); custom geometry uses
+  `setCursorPivotOptions`' resolver; stable crosses need `DEBUG_OVERLAY`.
+  [Pivot contract](../../../../docs/design/prefab-render-surface.md#cursor-latched-rotation-pivot)
 ## Help overlay and settings menu
 
 - Adopt: splice the systems where the ordering table says, then `registerToggleCommand()` (F1 / Escape);
