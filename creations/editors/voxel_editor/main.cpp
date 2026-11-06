@@ -4198,8 +4198,7 @@ void updateViewportScroll(RotateParams &state) {
     const bool blocked =
         documentInteractionBlocked() || g_editor.lodPreview_.active() || state.dragging_ ||
         IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED) ||
-        buttonNavigating ||
-        IRPrefab::Widget::hoveredWidget() != IREntity::kNullEntity ||
+        buttonNavigating || IRPrefab::Widget::hoveredWidget() != IREntity::kNullEntity ||
         (g_editor.documentsEnabled_ && g_editor.documentPanel_.containsCursor(mouse)) ||
         g_editor.hierarchy_.containsCursor(mouse) || cursorOverPartSizePanel() ||
         cursorOverModuleUi() ||
