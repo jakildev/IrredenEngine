@@ -77,7 +77,7 @@
 // The bands then survive a save, clear and reload into the manifest, the
 // parts' gate and the sliders.
 //
-// `part_sizes` proves a per-part size at creation: the PART SIZE sliders set a
+// `part_sizes` proves a per-part size at creation: the NEW GRID SIZE fields set a
 // 3x3x8 and a 5x5x1 part in one scene, each seated by its own extent, and both
 // extents survive a save, clear and reload. It also holds the two edit tools
 // that depend on the editable set's extent to it: the X mirror plane re-seats
