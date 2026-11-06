@@ -99,6 +99,10 @@ because v1.11's `TaskScheduler.cpp` uses `std::is_pod` (removed in
 C++23, which the rest of the engine builds at). Drop the override
 once we pin to a revision that has migrated off `is_pod`.
 
+The default revision includes the completion-ordering backport documented in
+[`third_party/enkiTS/VERSION`](third_party/enkiTS/VERSION). Configure checks
+the actual dependency sources; partial or conflicting patches are fatal.
+
 ## Thread-local state
 
 Workers register their easy_profiler thread name on first task

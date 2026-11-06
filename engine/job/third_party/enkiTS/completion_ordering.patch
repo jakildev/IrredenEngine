@@ -1,0 +1,86 @@
+--- a/src/TaskScheduler.cpp
++++ b/src/TaskScheduler.cpp
+@@ -470,7 +470,7 @@
+             SubTaskSet taskToRun = SplitTask( subTask, subTask.pTask->m_RangeToRun );
+             SplitAndAddTask( threadNum_, subTask, subTask.pTask->m_RangeToRun );
+             taskToRun.pTask->ExecuteRange( taskToRun.partition, threadNum_ );
+-            int prevCount = taskToRun.pTask->m_RunningCount.fetch_sub(1,std::memory_order_release );
++            int prevCount = taskToRun.pTask->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel );
+             if( gc_TaskStartCount == prevCount )
+             {
+                 TaskComplete( taskToRun.pTask, true, threadNum_ );
+@@ -480,7 +480,7 @@
+         {
+             // the task has already been divided up by AddTaskSetToPipe, so just run it
+             subTask.pTask->ExecuteRange( subTask.partition, threadNum_ );
+-            int prevCount = subTask.pTask->m_RunningCount.fetch_sub(1,std::memory_order_release );
++            int prevCount = subTask.pTask->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel );
+             if( gc_TaskStartCount == prevCount )
+             {
+                 TaskComplete( subTask.pTask, true, threadNum_ );
+@@ -593,15 +593,15 @@
+         return;
+     }
+ 
+-    m_NumThreadsWaitingForTaskCompletion.fetch_add( 1, std::memory_order_acquire );
+-    pCompletable_->m_WaitingForTaskCount.fetch_add( 1, std::memory_order_acquire );
++    m_NumThreadsWaitingForTaskCompletion.fetch_add( 1, std::memory_order_acq_rel );
++    pCompletable_->m_WaitingForTaskCount.fetch_add( 1, std::memory_order_acq_rel );
+     ThreadState prevThreadState = m_pThreadDataStore[threadNum_].threadState.load( std::memory_order_relaxed );
+     m_pThreadDataStore[threadNum_].threadState.store( ENKI_THREAD_STATE_WAIT_TASK_COMPLETION, std::memory_order_seq_cst );
+ 
+     // do not wait on semaphore if task in gc_TaskAlmostCompleteCount state.
+     if( gc_TaskAlmostCompleteCount >= pCompletable_->m_RunningCount.load( std::memory_order_acquire ) || HaveTasks( threadNum_ ) )
+     {
+-        m_NumThreadsWaitingForTaskCompletion.fetch_sub( 1, std::memory_order_release );
++        m_NumThreadsWaitingForTaskCompletion.fetch_sub( 1, std::memory_order_acq_rel );
+     }
+     else
+     {
+@@ -618,7 +618,7 @@
+     }
+ 
+     m_pThreadDataStore[threadNum_].threadState.store( prevThreadState, std::memory_order_release );
+-    pCompletable_->m_WaitingForTaskCount.fetch_sub( 1, std::memory_order_release );
++    pCompletable_->m_WaitingForTaskCount.fetch_sub( 1, std::memory_order_acq_rel );
+ }
+ 
+ void TaskScheduler::WakeThreadsForNewTasks()
+@@ -707,7 +707,7 @@
+             ++numRun;
+         }
+     }
+-    int prevCount = subTask_.pTask->m_RunningCount.fetch_sub( numRun + 1, std::memory_order_release );
++    int prevCount = subTask_.pTask->m_RunningCount.fetch_sub( numRun + 1, std::memory_order_acq_rel );
+     if( numRun + gc_TaskStartCount == prevCount )
+     {
+         TaskComplete( subTask_.pTask, false, threadNum_ );
+@@ -742,7 +742,7 @@
+     subTask.partition.start = 0;
+     subTask.partition.end = pTaskSet_->m_SetSize;
+     SplitAndAddTask( threadNum_, subTask, rangeToSplit );
+-    int prevCount = pTaskSet_->m_RunningCount.fetch_sub(1, std::memory_order_release );
++    int prevCount = pTaskSet_->m_RunningCount.fetch_sub(1, std::memory_order_acq_rel );
+     if( gc_TaskStartCount == prevCount )
+     {
+         TaskComplete( pTaskSet_, true, threadNum_ );
+@@ -824,7 +824,7 @@
+         if( pPinnedTaskSet )
+         {
+             pPinnedTaskSet->Execute();
+-            pPinnedTaskSet->m_RunningCount.fetch_sub(1,std::memory_order_release);
++            pPinnedTaskSet->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel);
+             TaskComplete( pPinnedTaskSet, true, threadNum_ );
+         }
+     } while( pPinnedTaskSet );
+--- a/src/TaskScheduler.h
++++ b/src/TaskScheduler.h
+@@ -473,7 +473,7 @@
+ 
+     inline void ICompletable::OnDependenciesComplete( TaskScheduler* pTaskScheduler_, uint32_t threadNum_ )
+     {
+-        m_RunningCount.fetch_sub( 1, std::memory_order_release );
++        m_RunningCount.fetch_sub( 1, std::memory_order_acq_rel );
+         pTaskScheduler_->TaskComplete( this, true, threadNum_ );
+     }
+ 
