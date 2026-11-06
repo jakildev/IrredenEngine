@@ -1,6 +1,7 @@
 #ifndef IR_COMMAND_H
 #define IR_COMMAND_H
 
+#include <irreden/ir_platform.hpp>
 #include <irreden/ir_input.hpp>
 
 #include <irreden/command/ir_command_types.hpp>
@@ -419,7 +420,9 @@ inline std::string modifierString(IRInput::KeyModifierMask mods) {
     if (mods & IRInput::kModifierControl)
         result += "CTRL+";
     if (mods & IRInput::kModifierAlt)
-        result += "ALT+";
+        result += IRPlatform::kIsMacOS ? "OPTION+" : "ALT+";
+    if (mods & IRInput::kModifierSuper)
+        result += IRPlatform::kIsMacOS ? "CMD+" : "SUPER+";
     return result;
 }
 

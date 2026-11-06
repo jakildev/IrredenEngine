@@ -237,9 +237,11 @@ def parse_run(log, screenshot_directory):
         raise ValueError("F12 did not produce its additional screenshot")
     if set(samples) != set(NORMALS):
         raise ValueError("missing raw cursor/window/framebuffer metadata")
-    for (yaw, phase), (actual_yaw, _, _, _) in poses.items():
+    for (yaw, phase), (actual_yaw, zoom, _, _) in poses.items():
         if abs(math.remainder(actual_yaw - math.radians(yaw), math.tau)) > 0.0001:
             raise ValueError(f"capture yaw differs from label: {yaw}/{phase}: {actual_yaw}")
+        if yaw in (30, 67) and any(value.is_integer() for value in zoom):
+            raise ValueError(f"expected fractional zoom at {yaw}/{phase}, got {zoom}")
     if set(poses) != expected:
         raise ValueError("missing actual camera metadata")
     if (len({pose[1] for pose in poses.values()}) < 2 or

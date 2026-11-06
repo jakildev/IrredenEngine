@@ -1,6 +1,7 @@
 #ifndef SYSTEM_WIDGET_APPLY_TEXT_INPUT_H
 #define SYSTEM_WIDGET_APPLY_TEXT_INPUT_H
 
+#include <irreden/ir_platform.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_math.hpp>
@@ -49,7 +50,17 @@ template <> struct System<WIDGET_APPLY_TEXT_INPUT> {
         }
         pending_.clear();
 
-        const bool shift = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
+        const auto modifiers = IRInput::heldKeyModifiers();
+        if (modifiers & (IRInput::kModifierControl | IRInput::kModifierSuper)) {
+            if (IRPlatform::kIsMacOS && modifiers == IRInput::kModifierSuper) {
+                if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonLeft, IRInput::PRESSED))
+                    pending_.push_back({0, PendingKey::Control::HOME});
+                if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonRight, IRInput::PRESSED))
+                    pending_.push_back({0, PendingKey::Control::END});
+            }
+            return;
+        }
+        const bool shift = (modifiers & IRInput::kModifierShift) != 0;
 
         for (const IRInput::KeyMouseButtons key : IRPrefab::Widget::kTypedKeys) {
             if (IRInput::checkKeyMouseButton(key, IRInput::ButtonStatuses::PRESSED)) {

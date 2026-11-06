@@ -312,7 +312,7 @@ IRCommand.bindPrefab(
     inputType,      -- IRInput.InputType.{KEY_MOUSE,GAMEPAD,MIDI_NOTE,MIDI_CC}
     status,         -- IRInput.ButtonStatus.{PRESSED,HELD,RELEASED,PRESSED_AND_RELEASED,NOT_HELD}
     button,         -- IRInput.Key.X / IRInput.GamepadButton.X / MIDI note/CC integer
-    requiredMods,   -- optional, default 0; bit.bor of IRInput.Modifier.{SHIFT,CONTROL,ALT}
+    requiredMods,   -- optional, default 0; bit.bor of IRInput.Modifier.{SHIFT,CONTROL,ALT,SUPER}
     blockedMods     -- optional, default 0; same shape
 ) -> CommandId
 

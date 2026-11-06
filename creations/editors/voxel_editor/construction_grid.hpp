@@ -30,19 +30,34 @@ inline void appendConstructionGridLines(
         );
 }
 
+struct ConstructionPlane {
+    IRMath::vec3 origin_;
+    IRMath::ivec3 size_;
+
+    IRMath::vec3 center() const {
+        return origin_ + IRMath::vec3(size_.x * 0.5f, size_.y * 0.5f, size_.z) - 0.5f;
+    }
+};
+
+inline std::optional<ConstructionPlane> constructionPlane(IREntity::EntityId target) {
+    if (target == IREntity::kNullEntity || !isEditable(target))
+        return std::nullopt;
+    const auto set = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(target);
+    if (!set || (*set)->globalPositions_.empty())
+        return std::nullopt;
+    return ConstructionPlane{
+        IRMath::vec3(IRMath::roundVec3HalfUp((*set)->globalPositions_[0].pos_)),
+        (*set)->size_
+    };
+}
+
 inline void appendConstructionGrid(
     IREntity::EntityId target, bool enabled, std::vector<IRPrefab::WorldPrimitiveVertex> &lines
 ) {
-    if (!enabled || target == IREntity::kNullEntity || !isEditable(target))
-        return;
-    const auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(target);
-    if (set.globalPositions_.empty())
-        return;
-    appendConstructionGridLines(
-        IRMath::vec3(IRMath::roundVec3HalfUp(set.globalPositions_[0].pos_)),
-        set.size_,
-        lines
-    );
+    if (enabled) {
+        if (const auto plane = constructionPlane(target))
+            appendConstructionGridLines(plane->origin_, plane->size_, lines);
+    }
 }
 
 } // namespace IRVoxelEditor

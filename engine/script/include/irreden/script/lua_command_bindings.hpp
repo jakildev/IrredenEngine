@@ -199,6 +199,7 @@ inline void bindInputEnums(LuaScript &script) {
     modifier["SHIFT"] = static_cast<lua_Integer>(IRInput::kModifierShift);
     modifier["CONTROL"] = static_cast<lua_Integer>(IRInput::kModifierControl);
     modifier["ALT"] = static_cast<lua_Integer>(IRInput::kModifierAlt);
+    modifier["SUPER"] = static_cast<lua_Integer>(IRInput::kModifierSuper);
     lua["IRInput"]["Modifier"] = modifier;
 
     // Keyboard + mouse. Hand-listed against `KeyMouseButtons` in

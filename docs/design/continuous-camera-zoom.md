@@ -55,7 +55,7 @@ one iso unit, `t = p / S` the pitch of one backing texel, and `a` in `[0, 1)`
 a per-axis **raster phase** carried from frame to frame. With `H = c * p - a`:
 
 ```
-gather translation   g = (floor(H) + a - floor(c * S) * t) * kIsoToScreenSign
+gather quad centre   g = (floor(H) + a - floor(c * S) * t) * (1, -1)
 screen residual      r = floor(fract(H) * kIsoToScreenSign * outputScale)
 detached camera term     floor(H) + a - floor(c) * p        (Y-up)
 ```
@@ -64,6 +64,13 @@ The raster has already moved the canvas `floor(c * S)` texels, so the gather
 translation is what lands content on `floor(H) + a + w * p` for a world iso
 coordinate `w`; the final upscale adds `fract(H)`. `IRMath::CameraRasterPhase`
 and the `cameraRaster*` helpers in `ir_math.hpp` are the single implementation.
+
+The gather quad centre is in framebuffer coordinates. Both gather shaders
+map increasing fragment Y to decreasing canvas-texel Y. The gather consumer
+converts the display-oriented translation from `cameraRasterGatherTranslation`
+into this Y-up basis. The final blit applies `cameraRasterScreenResidual`
+using the output backend's screen convention. On Metal these two translations
+have opposite Y signs.
 
 Why each term has the shape it has:
 

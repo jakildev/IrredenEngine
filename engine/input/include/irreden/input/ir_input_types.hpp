@@ -26,7 +26,7 @@ enum ButtonStatuses { NOT_HELD, PRESSED, HELD, RELEASED, PRESSED_AND_RELEASED };
 /// Categories of input source used when registering commands.
 enum InputTypes { KEY_MOUSE, GAMEPAD, MIDI_NOTE, MIDI_CC };
 
-/// Bitmask type for Shift/Ctrl/Alt modifier state.
+/// Bitmask type for keyboard modifier state.
 using KeyModifierMask = uint8_t;
 /// No modifiers held.
 constexpr KeyModifierMask kModifierNone = 0;
@@ -36,7 +36,10 @@ constexpr KeyModifierMask kModifierShift = 1 << 0;
 constexpr KeyModifierMask kModifierControl = 1 << 1;
 /// Alt is held.
 constexpr KeyModifierMask kModifierAlt = 1 << 2;
-constexpr KeyModifierMask kModifierAll = kModifierShift | kModifierControl | kModifierAlt;
+/// Super is held (Command on macOS).
+constexpr KeyModifierMask kModifierSuper = 1 << 3;
+constexpr KeyModifierMask kModifierAll =
+    kModifierShift | kModifierControl | kModifierAlt | kModifierSuper;
 
 constexpr bool
 modifiersMatch(KeyModifierMask required, KeyModifierMask blocked, KeyModifierMask held) {

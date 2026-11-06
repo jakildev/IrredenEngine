@@ -43,8 +43,8 @@ inline const std::array<ScreenAlignmentCase, kScreenAlignmentCaseCount> kScreenA
     {180, 8.0f, {-2.0f, 3.0f}, {0, 1, 0}},
     {270, 4.0f, {2.0f, 1.0f}, {-1, 0, 0}},
     {45, 8.0f, {-3.0f, -2.0f}, {0, 0, -1}},
-    {30, 4.0f, {1.0f, -3.0f}, {0, 0, -1}},
-    {67, 8.0f, {-1.0f, 2.0f}, {0, 0, -1}},
+    {30, 4.25f, {1.0f, -3.0f}, {0, 0, -1}},
+    {67, 7.75f, {-1.0f, 2.0f}, {0, 0, -1}},
 }};
 
 inline const ScreenAlignmentCase &screenAlignmentCase(int shot) {

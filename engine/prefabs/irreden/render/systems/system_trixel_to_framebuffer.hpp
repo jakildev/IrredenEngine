@@ -1174,7 +1174,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     ) {
         const vec2 parityOffsetIso = vec2(behavior.parityOffsetIsoX_, behavior.parityOffsetIsoY_);
         if (zoomFrame != nullptr && behavior.useCameraPositionIso_ && behavior.useCameraZoom_) {
-            return vec2(
+            const vec2 displayTranslation(
                 IRMath::cameraRasterGatherTranslation(
                     *zoomFrame,
                     canvasCameraIso * static_cast<float>(canvasDensity),
@@ -1182,6 +1182,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                     canvasDensity
                 )
             );
+            // Canvas texel Y decreases as the fragment's framebuffer Y increases.
+            // The final screen residual uses the output backend's separate convention.
+            return displayTranslation * vec2(1.0f, -IRPlatform::kIsoToScreenSign.y);
         }
         return snappedGatherTranslation(
             (canvasCameraIso + parityOffsetIso) * vec2(canvasDensity),

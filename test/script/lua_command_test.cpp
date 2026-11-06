@@ -276,12 +276,11 @@ TEST_F(LuaCommandTest, TogglePerfHudCommandNameIsBound) {
 // ---- Modifier mask composition via LuaJIT bit.bor -------------------------
 
 TEST_F(LuaCommandTest, BindPrefabAcceptsBitOrModifierMask) {
-    // Reaches the design doc's Q6 spelling: compose Shift+Ctrl via the
-    // native LuaJIT bit.bor without an IRInput.modMask helper.
     auto &lua = m_lua.lua();
     auto result = lua.safe_script(
         R"(
-        local mods = bit.bor(IRInput.Modifier.CONTROL, IRInput.Modifier.SHIFT)
+        local mods = bit.bor(IRInput.Modifier.SUPER, IRInput.Modifier.SHIFT)
+        assert(IRInput.Modifier.SUPER ~= IRInput.Modifier.CONTROL)
         return IRCommand.bindPrefab(
             IRCommand.CommandName.GUI_ZOOM_IN,
             IRInput.InputType.KEY_MOUSE,

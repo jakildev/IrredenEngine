@@ -105,7 +105,7 @@ inline const IRSystem::System<IRSystem::HELP_OVERLAY> *systemOrNull() {
 // overlay has never been opened (the build is lazy) or the system is absent.
 inline std::string builtText() {
     const auto *system = systemOrNull();
-    return system == nullptr ? std::string{} : system->layout_.text_;
+    return system == nullptr ? std::string{} : system->layout_.text_ + system->secondColumn_.text_;
 }
 
 // Glyph draw commands batched on the most recent frame; 0 while hidden.
@@ -134,7 +134,13 @@ inline GuiRect textLineRect(int line) {
     if (system == nullptr || system->canvas_ == nullptr || line < 0) {
         return {};
     }
-    const std::string &text = system->layout_.text_;
+    const bool second = line >= system->layout_.lineCount_;
+    if (second)
+        line -= system->layout_.lineCount_;
+    const auto &column = second ? system->secondColumn_ : system->layout_;
+    if (line >= column.lineCount_)
+        return {};
+    const std::string &text = column.text_;
     std::size_t lineStart = 0;
     for (int i = 0; i < line; ++i) {
         const std::size_t lineEnd = text.find('\n', lineStart);
@@ -148,8 +154,10 @@ inline GuiRect textLineRect(int line) {
         return {};
     }
     const int fontSize = IRSystem::kHelpOverlayFontSize;
-    const IRMath::ivec2 textOrigin =
-        IRRender::parityAlignedPosition(IRSystem::kHelpOverlayPadding, system->canvas_->size_);
+    const IRMath::ivec2 textOrigin = IRRender::parityAlignedPosition(
+        IRSystem::kHelpOverlayPadding + IRMath::ivec2(second ? system->secondColumnOffset_ : 0, 0),
+        system->canvas_->size_
+    );
     return GuiRect{
         textOrigin + IRMath::ivec2(0, line * IRRender::kGlyphStepY * fontSize),
         IRMath::ivec2(
