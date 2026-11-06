@@ -3,7 +3,12 @@
 #   - R6: an issue carrying fleet:queued + human:owned is flagged (flag-only).
 #   - Deduped, persistence-gated escalation: flag-only drift that survives
 #     N --apply ticks files EXACTLY ONE fleet:state-drift tracking issue, then
-#     refreshes it in place (never a second one), and resets when drift clears.
+#     refreshes it in place (never a second one), and decays over the same
+#     threshold when drift clears: a one-tick gap keeps the count and the
+#     tracker, N absent ticks drop the key and close it.
+#   - A tick whose issue or PR fetch failed, or that did not scan a key's
+#     repo, cannot judge that key absent: its missing count holds and no
+#     tracker closes, however many such ticks run.
 #   - report-only stays pure: it neither advances persistence nor files issues.
 #   - The tracker lookup (`reconcile_open_drift_trackers`) is a REST GET
 #     (`gh api repos/.../issues?labels=fleet:state-drift&state=open`, filtering
@@ -22,6 +27,8 @@
 # resolves the HTTP method as gh does (any parameter flag without --method
 # means POST) and fails a non-GET lookup. Touching $FAIL_LOOKUP makes that
 # `gh api` call exit 1 with no output, modeling a rate-limited/errored lookup.
+# Touching $FAIL_SOURCE makes the label/PR surface fetches (`issue list`,
+# `pr list`) exit 1 the same way.
 
 set -euo pipefail
 
@@ -87,6 +94,7 @@ export TRACKER_LIST="$TMPROOT/tracker.list"; : > "$TRACKER_LIST"
 export TRACKER_NEXT="$TMPROOT/tracker.next"; echo 9001 > "$TRACKER_NEXT"
 # Touch this to make the state-drift `gh api` lookup fail (exit 1, no output).
 export FAIL_LOOKUP="$TMPROOT/fail-lookup.flag"
+export FAIL_SOURCE="$TMPROOT/fail-source.flag"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
 case "$1" in
@@ -101,6 +109,7 @@ case "$1" in
                     head -n1 "$TRACKER_LIST"
                     exit 0
                 fi
+                [[ -f "$FAIL_SOURCE" ]] && exit 1
                 cat "$ISSUES_JSON"
                 exit 0 ;;
             create)
@@ -123,7 +132,7 @@ case "$1" in
         esac ;;
     pr)
         case "$2" in
-            list) cat "$PRS_JSON"; exit 0 ;;
+            list) [[ -f "$FAIL_SOURCE" ]] && exit 1; cat "$PRS_JSON"; exit 0 ;;
             *) exit 0 ;;
         esac ;;
     api)
@@ -171,20 +180,22 @@ GHSTUB
 chmod +x "$STUB_DIR/gh"
 export PATH="$STUB_DIR:$PATH"
 
-persist_count() {
-    # Echo the count for key matching rule:repo:issue:700, or 0 if absent.
-    python3 - "$PERSIST" <<'PY'
-import sys, json
+persist_field() {
+    # Echo field $1 (count / missing) for key matching rule:repo:issue:700,
+    # or 0 if absent.
+    FIELD="$1" python3 - "$PERSIST" <<'PY'
+import os, sys, json
 try:
     s = json.load(open(sys.argv[1]))
 except Exception:
     print(0); raise SystemExit
 for k, v in s.items():
     if k.endswith(":issue:700"):
-        print(v.get("count", 0)); raise SystemExit
+        print(v.get(os.environ["FIELD"], 0)); raise SystemExit
 print(0)
 PY
 }
+persist_count() { persist_field count; }
 
 run_reconcile() { "$FLEET_CLAIM" reconcile "$@" --repo jakildev/IrredenEngine >/dev/null 2>&1; }
 
@@ -229,14 +240,37 @@ create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
 [[ "$edit_n" -ge "1" ]] && ok "tick 4 refreshed the existing tracker via issue edit" || bad "tick 4 did not edit the tracker"
 
-echo "=== Phase 5: drift clears → counter resets + tracker auto-closed ==="
+echo "=== Phase 4b: a source fetch failing past the threshold neither decays the key nor closes the tracker ==="
+# Every failed fetch reads as an empty surface, so the fixture's R6 finding vanishes
+# from these ticks exactly as it would if the drift had cleared.
+touch "$FAIL_SOURCE"
+for _ in 1 2 3 4; do run_reconcile --apply; done
+rm -f "$FAIL_SOURCE"
+c=$(persist_count); [[ "$c" == "4" ]] && ok "four failed-fetch ticks keep the #700 count at 4" || bad "failed fetches changed the count to $c (want 4)"
+m=$(persist_field missing); [[ "$m" == "0" ]] && ok "failed-fetch ticks never advance missing" || bad "missing=$m after failed fetches (want 0)"
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" == "0" ]] && ok "failed-fetch ticks leave the tracker open" || bad "a failed fetch closed the tracker (close count=$close_n)"
+[[ "$(cat "$TRACKER_LIST")" == "9001" ]] && ok "tracker #9001 is still the open tracker" || bad "tracker list after failed fetches: $(cat "$TRACKER_LIST" | tr '\n' ',')"
+
+echo "=== Phase 5: drift clears → the counter decays over the threshold, then the tracker auto-closes ==="
+# A finding absent for one tick (a failed fetch, a label mid-swap) keeps its
+# count and its tracker; only threshold consecutive absent ticks clear both.
 echo '[]' > "$ISSUES_JSON"   # issue 700 no longer queued+human:owned
 run_reconcile --apply
-c=$(persist_count); [[ "$c" == "0" ]] && ok "cleared drift resets #700 counter to 0" || bad "counter not reset (count=$c)"
-create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
-[[ "$create_n" == "1" ]] && ok "no new tracker filed after drift cleared" || bad "filed a tracker after clear (create count=$create_n)"
+c=$(persist_count); [[ "$c" == "4" ]] && ok "one absent tick keeps the #700 count at 4" || bad "one absent tick changed the count to $c (want 4)"
+m=$(persist_field missing); [[ "$m" == "1" ]] && ok "one absent tick records missing=1" || bad "missing=$m after one absent tick (want 1)"
 close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
-[[ "$close_n" == "1" ]] && ok "drift cleared → auto-closed the open tracker exactly once" || bad "tracker not auto-closed on clear (close count=$close_n)"
+[[ "$close_n" == "0" ]] && ok "one absent tick leaves the tracker open" || bad "tracker closed after one absent tick (close count=$close_n)"
+run_reconcile --apply
+m=$(persist_field missing); [[ "$m" == "2" ]] && ok "two absent ticks record missing=2, key still carried" || bad "missing=$m after two absent ticks (want 2)"
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" == "0" ]] && ok "two absent ticks still leave the tracker open" || bad "tracker closed before the threshold (close count=$close_n)"
+run_reconcile --apply
+c=$(persist_count); [[ "$c" == "0" ]] && ok "the third absent tick drops the #700 key" || bad "key outlived the threshold (count=$c)"
+create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
+[[ "$create_n" == "1" ]] && ok "no new tracker filed while drift cleared" || bad "filed a tracker after clear (create count=$create_n)"
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" == "1" ]] && ok "threshold absent ticks → auto-closed the open tracker exactly once" || bad "tracker not auto-closed after the threshold (close count=$close_n)"
 if grep -q '9001' "$CLOSE_LOG"; then ok "auto-close targeted the existing tracker #9001"; else bad "auto-close did not target the tracker number"; fi
 
 # An idempotent re-run with no drift must NOT keep trying to close (tracker gone).
@@ -290,7 +324,10 @@ echo "=== Phase 9: drift clears but the lookup still fails → no gh issue close
 echo '[]' > "$ISSUES_JSON"   # issue 700 no longer queued+human:owned
 close_n_before=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
 rc=0
-run_reconcile --apply || rc=$?
+run_reconcile --apply || rc=$?   # absent tick 1 of the threshold
+run_reconcile --apply || rc=$?   # absent tick 2
+run_reconcile --apply || rc=$?   # absent tick 3: the key drops; the close is what the failed lookup must skip
+c=$(persist_count); [[ "$c" == "0" ]] && ok "the key still decays while the lookup fails" || bad "key did not decay under a failed lookup (count=$c)"
 close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
 [[ "$close_n" == "$close_n_before" ]] && ok "a failed lookup on drift-clear makes no gh issue close call" || bad "a failed lookup on drift-clear closed anyway (close count $close_n_before -> $close_n)"
 [[ "$rc" == "0" ]] && ok "reconcile --apply still exits 0 when the tracker lookup fails" || bad "reconcile --apply exited $rc when the tracker lookup fails (want 0)"
@@ -302,6 +339,26 @@ run_reconcile --apply
 close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
 [[ "$close_n" -eq $((close_n_before + 1)) ]] && ok "a recovered lookup closes the surviving tracker (#9010) once drift stays cleared" || bad "recovered lookup did not close (count $close_n_before -> $close_n)"
 [[ -z "$(cat "$TRACKER_LIST")" ]] && ok "no open trackers remain after recovery" || bad "tracker list not empty after recovery: $(cat "$TRACKER_LIST" | tr '\n' ',')"
+
+echo "=== Phase 10b: a key whose repo this tick did not scan holds its missing count ==="
+python3 - "$PERSIST" <<'PY'
+import sys, json
+p = sys.argv[1]
+s = json.load(open(p))
+s["R6:jakildev/irreden:issue:45"] = {
+    "count": 1, "first_seen": 1, "last_seen": 1, "missing": 0, "rule": "R6",
+    "repo": "jakildev/irreden", "target_kind": "issue", "target": 45,
+    "action": "fixture"}
+json.dump(s, open(p, "w"))
+PY
+for _ in 1 2 3; do run_reconcile --apply; done
+game_missing=$(python3 - "$PERSIST" <<'PY'
+import sys, json
+v = json.load(open(sys.argv[1])).get("R6:jakildev/irreden:issue:45")
+print("dropped" if v is None else v.get("missing"))
+PY
+)
+[[ "$game_missing" == "0" ]] && ok "an unscanned repo's key survives threshold ticks with missing=0" || bad "unscanned repo's key decayed (missing=$game_missing)"
 
 echo "=== Phase 11: lookup shape + stub fidelity ==="
 if grep -q 'fleet:state-drift' "$ISSUE_LIST_LOG"; then bad "the tracker lookup still goes through gh issue list (GraphQL)"; else ok "the tracker lookup never calls gh issue list (GraphQL)"; fi
