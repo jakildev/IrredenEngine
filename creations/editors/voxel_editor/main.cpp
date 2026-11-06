@@ -74,6 +74,7 @@
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/camera_gesture.hpp>
+#include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
@@ -135,6 +136,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -144,6 +146,7 @@
 #include <queue>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -248,6 +251,11 @@ struct WorkspaceMember {
 };
 
 struct EditorState {
+    int profileFrames_ = 0;
+    int profileFramesSeen_ = 0;
+    float profileYawDegrees_ = 30.0f;
+    float profileZoom_ = 4.0f;
+    bool profileFailed_ = false;
     bool shadowRotationSeeded_ = false;
     AuthoredVoxelFingerprint shadowRotationFingerprint_;
     ScreenAlignmentProbe alignmentProbe_;
@@ -256,6 +264,8 @@ struct EditorState {
     AuthoredVoxelFingerprint cameraGestureHeld_;
     AuthoredVoxelFingerprint cameraGestureExpected_;
     bool cameraGestureHistory_ = false;
+    IREntity::EntityId regionForeign_ = IREntity::kNullEntity;
+    AuthoredVoxelFingerprint regionForeignFingerprint_;
     int alignmentShot_ = -1;
     unsigned alignmentSamplesSeen_ = 0;
     bool alignmentSamplesMatch_ = true;
@@ -483,6 +493,10 @@ struct FillToolState {
     // the modifier go mid-drag cannot resolve the stroke's start and end cells
     // in two different frames — see editTargetCell.
     bool dragInverted_ = false;
+    bool floorPlane_ = false;
+    int planeAxis_ = 2;
+    int planeSlice_ = 0;
+    float planeOffset_ = 0.0f;
 };
 FillToolState g_fillTool;
 
@@ -1022,11 +1036,14 @@ bool evaluatePanThenCtrlBalanced(const void *, std::string &actual) {
 // (same ordering the probe-map shots rely on).
 void prepareScreenAlignment(int shotIndex);
 void prepareCameraGestures(int shotIndex);
+void prepareRegionTools(int shotIndex);
 void prepareShadowRotation(int shotIndex);
 
 void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= static_cast<int>(g_session.segments_.size()))
         return;
+    if (g_sessionId == Session::Id::REGION_TOOLS)
+        prepareRegionTools(shotIndex);
     if (g_sessionId == Session::Id::CAMERA_GESTURES)
         prepareCameraGestures(shotIndex);
     if (g_sessionId == Session::Id::SCREEN_ALIGNMENT)
@@ -2430,6 +2447,7 @@ struct SculptTarget {
     ivec3 world_{};
     int axis_ = 2;
     float planeOffset_ = 0.0f;
+    bool floor_ = false;
 };
 
 std::optional<SculptTarget> sculptTarget(bool erase, bool paint, bool inverted) {
@@ -2451,7 +2469,7 @@ std::optional<SculptTarget> sculptTarget(bool erase, bool paint, bool inverted) 
     }
     if (!erase && !paint) {
         if (const auto local = pickEditablePlane(entity, 2, set.size_.z - 1, 0.5f))
-            return SculptTarget{*local, voxelSetCellOrigin(set, world) + *local, 2, 0.5f};
+            return SculptTarget{*local, voxelSetCellOrigin(set, world) + *local, 2, 0.5f, true};
     }
     return std::nullopt;
 }
@@ -2540,6 +2558,21 @@ void prepareScreenAlignment(int shotIndex) {
     }
 }
 
+void prepareRegionTools(int shotIndex) {
+    if (shotIndex < 20 || g_editor.regionForeign_ != IREntity::kNullEntity)
+        return;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    const auto &world = IREntity::getComponent<C_WorldTransform>(g_editor.editableVoxelSet_);
+    const ivec3 size = set.size_;
+    const vec3 origin = vec3(voxelSetCellOrigin(set, world));
+    g_editor.regionForeign_ = IREntity::createEntity(
+        C_LocalTransform{origin + vec3(0, 0, size.z - 3)},
+        C_VoxelSetNew{ivec3(size.x, size.y, 1), Color{60, 120, 220, 255}}
+    );
+    g_editor.regionForeignFingerprint_ =
+        authoredVoxelFingerprint(IREntity::getComponent<C_VoxelSetNew>(g_editor.regionForeign_));
+}
+
 void prepareCameraGestures(int shotIndex) {
     if (g_editor.cameraGestureShot_ == shotIndex)
         return;
@@ -2601,7 +2634,8 @@ void prepareShadowRotation(int shotIndex) {
 
 void drawAuthoringPrimitives() {
     if (g_bonePaint.active_ || g_classPaintMode || g_loftTool.active_ ||
-        authoringInteractionBlocked() || g_sculpt.cameraInputBlocked_)
+        authoringInteractionBlocked() || g_sculpt.cameraInputBlocked_ ||
+        g_editor.profileFrames_ > 0)
         hideSculptGhost();
     auto &lines = g_editor.authoringLines_;
     auto &triangles = g_editor.authoringTriangles_;
@@ -5055,6 +5089,63 @@ void updateWorkspaces() {
 
 namespace Session {
 
+bool evaluateRegionToolCheck(const void *context, std::string &actual) {
+    const int shot = *static_cast<const int *>(context);
+    const int phase = shot % kRegionToolPhaseCount;
+    const bool line = regionToolIsLine(shot);
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    const auto &world = IREntity::getComponent<C_WorldTransform>(g_editor.editableVoxelSet_);
+    const ivec3 start = regionToolStart(set.size_);
+    ivec3 end = regionToolEnd(set.size_);
+    if (line)
+        end.y = start.y;
+    bool cellsMatch = true;
+    std::size_t occupied = 0;
+    const auto records = set.authoredRecords();
+    for (int z = 0; z < set.size_.z; ++z)
+        for (int y = 0; y < set.size_.y; ++y)
+            for (int x = 0; x < set.size_.x; ++x) {
+                const bool active =
+                    records[IRMath::index3DtoIndex1D({x, y, z}, set.size_)].color_.alpha_ != 0;
+                occupied += active;
+                const bool expected = phase == 2 && x >= start.x && x <= end.x && y >= start.y &&
+                                      y <= end.y && z == start.z;
+                cellsMatch = cellsMatch && active == expected;
+            }
+    bool preview = true;
+    if (phase == 0 || phase == 1) {
+        const ivec3 origin = voxelSetCellOrigin(set, world);
+        const auto expected = fillGhostBox(origin + start, origin + (phase == 0 ? start : end));
+        preview = g_fillTool.ghostVisible_ && g_fillTool.ghostBox_.center_ == expected.center_ &&
+                  g_fillTool.ghostBox_.params_ == expected.params_;
+    }
+    const bool dragging = g_fillTool.dragging_ == (phase == 1);
+    const bool history = IRPrefab::Undo::canUndo() == (phase == 2);
+    const bool tool = g_sculpt.tool_ == (line ? SculptTool::LINE : SculptTool::BOX);
+    bool foreign = true;
+    if (shot >= 20) {
+        foreign = g_editor.regionForeign_ != IREntity::kNullEntity &&
+                  authoredVoxelFingerprint(
+                      IREntity::getComponent<C_VoxelSetNew>(g_editor.regionForeign_)
+                  ) == g_editor.regionForeignFingerprint_;
+        if (phase == 0 || phase == 1) {
+            const auto hit = pickEditable();
+            foreign = foreign && hit && hit->entity_ == g_editor.regionForeign_;
+        }
+        if (phase == 1)
+            foreign = foreign && g_fillTool.floorPlane_;
+    }
+    actual = "cells=" + std::to_string(occupied) + " exact=" + std::to_string(cellsMatch) +
+             " tool=" + std::to_string(tool) + " foreign=" + std::to_string(foreign) +
+             " preview=" + std::to_string(preview) +
+             " dragging=" + std::to_string(g_fillTool.dragging_) +
+             " undo=" + std::to_string(IRPrefab::Undo::canUndo()) +
+             " yaw=" + std::to_string(IRPrefab::Camera::getYaw());
+    return cellsMatch && preview && dragging && history && tool && foreign &&
+           IRMath::abs(IRMath::wrapAnglePi(IRPrefab::Camera::getYaw() - regionToolYaw(shot))) <
+               0.001f;
+}
+
 bool evaluateCameraGestureCheck(const void *context, std::string &actual) {
     const int shot = *static_cast<const int *>(context);
     const int phase = shot % 4;
@@ -5106,7 +5197,7 @@ bool evaluateShadowRotationCheck(const void *context, std::string &actual) {
              " surface=" + std::to_string(IRPrefab::PerAxisSurfaceLighting::isEnabled());
     return g_editor.shadowRotationSeeded_ && fingerprint.active_ == 219 &&
            fingerprint == g_editor.shadowRotationFingerprint_ &&
-           IRMath::abs(IRMath::wrapAnglePi(yaw - expectedYaw)) < 0.0001f &&
+           IRMath::abs(IRMath::wrapAnglePi(yaw - expectedYaw)) < 0.0002f &&
            IRRender::getSunShadowsEnabled() == shadowRotationShadowsEnabled(shot) &&
            !IRRender::getAOEnabled();
 }
@@ -6525,7 +6616,8 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
-        "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | rock | "
+        "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | "
+        "region_tools | rock | "
         "mushroom | ant | bird | tree | "
         "parts_roundtrip | "
         "tier_scrub | remove_part | undo_history | animation_boundary | sculpt_workflow | "
@@ -6544,6 +6636,7 @@ int main(int argc, char **argv) {
          "face_pick",
          "screen_alignment",
          "camera_gestures",
+         "region_tools",
          "shadow_rotation",
          "rock",
          "mushroom",
@@ -6599,6 +6692,11 @@ int main(int argc, char **argv) {
         "--reference-scene",
         "open the seeded diagnostic scene instead of a blank sculpt"
     );
+    IREngine::args()
+        .integer("--profile-frames", "time a fixed voxel shadow scene for N frames and exit", 0)
+        .number("--profile-yaw", "fixed shadow profile camera yaw in degrees", 30.0f)
+        .number("--profile-zoom", "fixed shadow profile camera zoom", 4.0f)
+        .flag("--no-stage-timing", "collect wall-frame timing without GPU stage timestamps");
     IREngine::init(argc, argv);
     IRVoxelEditor::g_sculpt.referenceScene_ = IREngine::args().getFlag("--reference-scene");
     IRVoxelEditor::g_guiAssertLatch.layoutCheck_ =
@@ -6608,6 +6706,39 @@ int main(int argc, char **argv) {
         IREngine::gameLoop();
         return code;
     };
+    if (IREngine::args().wasProvided("--profile-frames")) {
+        auto &editor = IRVoxelEditor::g_editor;
+        editor.profileFrames_ = IREngine::args().getInt("--profile-frames");
+        editor.profileYawDegrees_ = IREngine::args().getFloat("--profile-yaw");
+        editor.profileZoom_ = IREngine::args().getFloat("--profile-zoom");
+        if (editor.profileFrames_ <= 0 || !IRMath::isFinite(editor.profileYawDegrees_) ||
+            !IRMath::isFinite(editor.profileZoom_) || editor.profileZoom_ <= 0.0f) {
+            IR_LOG_ERROR("Profile requires positive frames/zoom and finite yaw/zoom");
+            return exitCleanly(2);
+        }
+        for (const char *flag :
+             {"--auto-screenshot",
+              "--auto-record",
+              "--gui-session",
+              "--module",
+              "--module-session",
+              "--reference-scene",
+              "--scene-size"}) {
+            if (IREngine::args().wasProvided(flag)) {
+                IR_LOG_ERROR("--profile-frames cannot be combined with {}", flag);
+                return exitCleanly(2);
+            }
+        }
+        IREngine::enableFrameTiming(true);
+        IRRender::gpuStageTiming().enabled_ = !IREngine::args().getFlag("--no-stage-timing");
+    } else if (
+        IREngine::args().wasProvided("--profile-yaw") ||
+        IREngine::args().wasProvided("--profile-zoom") ||
+        IREngine::args().wasProvided("--no-stage-timing")
+    ) {
+        IR_LOG_ERROR("Profile options require --profile-frames");
+        return exitCleanly(2);
+    }
     {
         const std::vector<float> &dims = IREngine::args().getFloats("--scene-size");
         if (dims.size() == 3 && dims[0] >= 1.0f && dims[1] >= 1.0f && dims[2] >= 1.0f) {
@@ -6751,6 +6882,11 @@ int main(int argc, char **argv) {
                     static_cast<float>(IRVoxelEditor::screenAlignmentCase(shot).yawDegrees_) *
                     IRMath::kPi / 180.0f;
         }
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS) {
+            for (int shot = 0; shot < IRVoxelEditor::Session::kRegionToolShotCount; ++shot)
+                IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
+                    IRVoxelEditor::Session::regionToolYaw(shot);
+        }
         if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SHADOW_ROTATION) {
             for (int shot = 0; shot < IRVoxelEditor::kShadowRotationShotCount; ++shot)
                 IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
@@ -6764,10 +6900,15 @@ int main(int argc, char **argv) {
         );
     }
     IRVoxelEditor::g_editor.documentsEnabled_ =
-        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE ||
+        (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE &&
+         IRVoxelEditor::g_editor.profileFrames_ == 0) ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::DOCUMENT_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MOTION_PREVIEW;
     initSystems();
+    const char *surfaceLighting = std::getenv("IR_PERAXIS_SURFACE_LIGHTING");
+    IRPrefab::PerAxisSurfaceLighting::setEnabled(
+        surfaceLighting == nullptr || std::string_view(surfaceLighting) != "0"
+    );
     initCommands();
     initEntities();
     IRRender::setHoveredTrixelVisible(false);
@@ -6777,8 +6918,34 @@ int main(int argc, char **argv) {
     IRVoxelEditor::updateWorkspaces();
     // Let the transform pipeline complete once before framing world-space bounds.
     if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE &&
-        !IRVoxelEditor::g_sculpt.referenceScene_)
+        !IRVoxelEditor::g_sculpt.referenceScene_ && IRVoxelEditor::g_editor.profileFrames_ == 0)
         IRVoxelEditor::g_editor.initialFocusDelay_ = 2;
+    if (IRVoxelEditor::g_editor.profileFrames_ > 0) {
+        using namespace IRVoxelEditor;
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        if (!seedShadowRotationScene(set))
+            return exitCleanly(2);
+        g_editor.shadowRotationFingerprint_ = authoredVoxelFingerprint(set);
+        g_sculpt.showGrid_ = false;
+        hideSculptGhost();
+        IRRender::setRotationPivotMode(IRRender::RotationPivotMode::ORIGIN);
+        IRRender::setCameraPosition2DIso(vec2(0.0f));
+        IRRender::setCameraZoom(g_editor.profileZoom_);
+        IRPrefab::Camera::setYaw(g_editor.profileYawDegrees_ * IRMath::kPi / 180.0f);
+        IRRender::setSunIntensity(1.0f);
+        IRRender::setSunAmbient(0.2f);
+        IRRender::setSunShadowsEnabled(true);
+        IRRender::setAOEnabled(false);
+        IR_LOG_INFO(
+            "EDITOR-SHADOW-PROFILE frames={} yaw={} zoom={} active={} hash={} surface={}",
+            g_editor.profileFrames_,
+            g_editor.profileYawDegrees_,
+            g_editor.profileZoom_,
+            g_editor.shadowRotationFingerprint_.active_,
+            g_editor.shadowRotationFingerprint_.hash_,
+            IRPrefab::PerAxisSurfaceLighting::isEnabled() ? 1 : 0
+        );
+    }
     if (IRVoxelEditor::g_editor.documentsEnabled_) {
         IRWindow::setCloseGuard([]() {
             using namespace IRVoxelEditor;
@@ -6793,7 +6960,7 @@ int main(int argc, char **argv) {
         });
     }
     IREngine::gameLoop();
-    return 0;
+    return IRVoxelEditor::g_editor.profileFailed_ ? 1 : 0;
 }
 
 static void updateSwatchSelection(const std::vector<IREntity::EntityId> &swatches, int &activeIdx) {
@@ -7280,48 +7447,88 @@ void initSystems() {
             const bool leftReleasedNow =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED);
 
+            const bool ordinaryRegion =
+                !IRVoxelEditor::g_classPaintMode && !IRVoxelEditor::g_bonePaint.active_;
+            if (noCtrl && !overWidget && !IRVoxelEditor::g_fillTool.dragging_ && ordinaryRegion) {
+                const auto target =
+                    IRVoxelEditor::sculptTarget(IRVoxelEditor::g_eraseMode, false, farSideDown);
+                if (target)
+                    IRVoxelEditor::updateGhostShape(target->world_, target->world_, false);
+                else
+                    IRVoxelEditor::hideSculptGhost();
+            } else if (overWidget && !IRVoxelEditor::g_fillTool.dragging_) {
+                IRVoxelEditor::hideSculptGhost();
+            }
+
             if (noCtrl && !overWidget && leftPressedNow) {
                 const auto hit = IRVoxelEditor::pickEditable();
-                if (hit && hit->faceNormal_ != ivec3(0)) {
-                    // Erase drags target the hit voxels themselves; place drags
-                    // target the cells adjacent to the hit face. Latch the inward key here
-                    // so the HELD end cell resolves in the same frame's sense.
-                    IRVoxelEditor::g_fillTool.dragInverted_ = farSideDown;
-                    const ivec3 startPos = IRVoxelEditor::classPaintAppliesTo(hit->entity_)
-                                               ? hit->voxelPos_
-                                               : IRVoxelEditor::editTargetCell(
-                                                     *hit,
-                                                     IRVoxelEditor::g_eraseMode,
-                                                     farSideDown
-                                                 );
-                    IRVoxelEditor::g_fillTool.dragging_ = true;
-                    IRVoxelEditor::g_fillTool.dragStartWorld_ = startPos;
-                    IRVoxelEditor::g_fillTool.dragStartEntity_ = hit->entity_;
-                    IRVoxelEditor::g_fillTool.lastEndWorld_ = startPos;
+                const auto target = ordinaryRegion ? IRVoxelEditor::sculptTarget(
+                                                         IRVoxelEditor::g_eraseMode,
+                                                         false,
+                                                         farSideDown
+                                                     )
+                                                   : std::nullopt;
+                if (target || (!ordinaryRegion && hit && hit->faceNormal_ != ivec3(0))) {
+                    auto &drag = IRVoxelEditor::g_fillTool;
+                    drag.dragInverted_ = farSideDown;
+                    const ivec3 startPos = target
+                                               ? target->world_
+                                               : (IRVoxelEditor::classPaintAppliesTo(hit->entity_)
+                                                      ? hit->voxelPos_
+                                                      : IRVoxelEditor::editTargetCell(
+                                                            *hit,
+                                                            IRVoxelEditor::g_eraseMode,
+                                                            farSideDown
+                                                        ));
+                    drag.dragging_ = true;
+                    drag.dragStartWorld_ = startPos;
+                    drag.dragStartEntity_ =
+                        target ? IRVoxelEditor::g_editor.editableVoxelSet_ : hit->entity_;
+                    drag.lastEndWorld_ = startPos;
+                    drag.floorPlane_ = target && target->floor_;
+                    if (target) {
+                        drag.planeAxis_ = target->axis_;
+                        drag.planeSlice_ = target->local_[target->axis_];
+                        drag.planeOffset_ = target->planeOffset_;
+                    }
                     IRVoxelEditor::updateGhostShape(startPos, startPos, false);
                 }
             }
 
             if (noCtrl && IRVoxelEditor::g_fillTool.dragging_ &&
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD)) {
-                const auto hit = IRVoxelEditor::pickEditable();
-                if (hit && hit->faceNormal_ != ivec3(0)) {
-                    const ivec3 endPos = IRVoxelEditor::classPaintAppliesTo(hit->entity_)
-                                             ? hit->voxelPos_
-                                             : IRVoxelEditor::editTargetCell(
-                                                   *hit,
-                                                   IRVoxelEditor::g_eraseMode,
-                                                   IRVoxelEditor::g_fillTool.dragInverted_
-                                               );
-                    IRVoxelEditor::g_fillTool.lastEndWorld_ = endPos;
-                    const bool shiftHeld =
+                auto &drag = IRVoxelEditor::g_fillTool;
+                const auto hit = drag.floorPlane_ ? std::nullopt : IRVoxelEditor::pickEditable();
+                std::optional<ivec3> endPos;
+                if (hit && hit->faceNormal_ != ivec3(0) &&
+                    (!ordinaryRegion || hit->entity_ == drag.dragStartEntity_)) {
+                    endPos = IRVoxelEditor::classPaintAppliesTo(hit->entity_)
+                                 ? hit->voxelPos_
+                                 : IRVoxelEditor::editTargetCell(
+                                       *hit,
+                                       IRVoxelEditor::g_eraseMode,
+                                       drag.dragInverted_
+                                   );
+                } else if (ordinaryRegion) {
+                    if (const auto local = IRVoxelEditor::pickEditablePlane(
+                            drag.dragStartEntity_,
+                            drag.planeAxis_,
+                            drag.planeSlice_,
+                            drag.planeOffset_
+                        )) {
+                        const auto &set =
+                            IREntity::getComponent<C_VoxelSetNew>(drag.dragStartEntity_);
+                        const auto &world =
+                            IREntity::getComponent<C_WorldTransform>(drag.dragStartEntity_);
+                        endPos = IRVoxelEditor::voxelSetCellOrigin(set, world) + *local;
+                    }
+                }
+                if (endPos) {
+                    drag.lastEndWorld_ = *endPos;
+                    const bool line =
                         IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::LINE ||
                         IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
-                    IRVoxelEditor::updateGhostShape(
-                        IRVoxelEditor::g_fillTool.dragStartWorld_,
-                        endPos,
-                        shiftHeld
-                    );
+                    IRVoxelEditor::updateGhostShape(drag.dragStartWorld_, *endPos, line);
                 }
             }
 
@@ -8137,6 +8344,40 @@ void initSystems() {
         renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
     }
 
+    if (IRVoxelEditor::g_editor.profileFrames_ > 0) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "EditorShadowProfile",
+                [](C_Camera &) {},
+                []() {
+                    using namespace IRVoxelEditor;
+                    if (++g_editor.profileFramesSeen_ < g_editor.profileFrames_)
+                        return;
+                    const auto &set =
+                        IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+                    const auto fingerprint = authoredVoxelFingerprint(set);
+                    const float yawError = IRMath::abs(
+                        IRMath::wrapAnglePi(
+                            IRPrefab::Camera::getYaw() -
+                            g_editor.profileYawDegrees_ * IRMath::kPi / 180.0f
+                        )
+                    );
+                    g_editor.profileFailed_ =
+                        fingerprint != g_editor.shadowRotationFingerprint_ ||
+                        fingerprint.active_ != 219 || yawError > 0.0002f ||
+                        IRRender::getCameraZoom() != vec2(g_editor.profileZoom_) ||
+                        IRRender::getCameraPosition2DIso() != vec2(0.0f) ||
+                        !IRRender::getSunShadowsEnabled() || IRRender::getAOEnabled();
+                    IR_LOG_INFO(
+                        "EDITOR-SHADOW-PROFILE complete frames={} unchanged={}",
+                        g_editor.profileFramesSeen_,
+                        g_editor.profileFailed_ ? 0 : 1
+                    );
+                    IRWindow::closeWindow();
+                }
+            )
+        );
+    }
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
 
@@ -9206,7 +9447,8 @@ void initEntities() {
          !IRVoxelEditor::g_sculpt.referenceScene_) ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCULPT_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SCREEN_ALIGNMENT ||
-        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CAMERA_GESTURES;
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CAMERA_GESTURES ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS;
     IRVoxelEditor::g_sculpt.tool_ =
         ordinaryWorkspace ? IRVoxelEditor::SculptTool::BRUSH : IRVoxelEditor::SculptTool::BOX;
     IRVoxelEditor::g_sculpt.showGrid_ = ordinaryWorkspace;

@@ -11,10 +11,12 @@
 
 namespace IRVoxelEditor {
 
-inline constexpr std::array<float, 20> kShadowRotationYaws{0.0f,   0.25f,  30.0f,  44.75f, 45.0f,
-                                                           45.25f, 67.0f,  89.75f, 90.0f,  90.25f,
-                                                           90.0f,  89.75f, 67.0f,  45.25f, 45.0f,
-                                                           44.75f, 30.0f,  0.25f,  0.0f,   0.0f};
+inline constexpr std::array<float, 40> kShadowRotationYaws{
+    0.0f,   0.25f,   30.0f,  44.75f,  45.0f,  45.25f,  67.0f,  89.75f,  90.0f,  90.25f,
+    90.0f,  89.75f,  67.0f,  45.25f,  45.0f,  44.75f,  30.0f,  0.25f,   0.0f,   0.0f,
+    135.0f, 179.75f, 180.0f, 180.25f, 225.0f, 269.75f, 270.0f, 270.25f, 315.0f, 337.0f,
+    315.0f, 270.25f, 270.0f, 269.75f, 225.0f, 180.25f, 180.0f, 179.75f, 135.0f, 0.0f
+};
 inline constexpr int kShadowRotationShotCount = static_cast<int>(kShadowRotationYaws.size()) * 2;
 
 inline float shadowRotationYawDegrees(int shot) {

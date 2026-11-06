@@ -6,6 +6,7 @@
 #include "session_builder.hpp"
 #include "screen_alignment.hpp"
 #include "camera_gestures.hpp"
+#include "region_tools.hpp"
 #include "shadow_rotation.hpp"
 #include "sculpt_panel.hpp"
 #include "hierarchy_panel.hpp"
@@ -146,6 +147,7 @@ enum class Id {
     FACE_PICK,
     SCREEN_ALIGNMENT,
     CAMERA_GESTURES,
+    REGION_TOOLS,
     SHADOW_ROTATION,
     ROCK,
     MUSHROOM,
@@ -266,6 +268,8 @@ inline Id idFromName(const std::string &name) {
         return Id::PLACE_BELOW;
     if (name == "fill_ghost")
         return Id::FILL_GHOST;
+    if (name == "region_tools")
+        return Id::REGION_TOOLS;
     if (name == "camera_gestures")
         return Id::CAMERA_GESTURES;
     if (name == "screen_alignment")
@@ -2098,6 +2102,8 @@ inline Recipe build(
     const ModuleSessionView *moduleView
 ) {
     switch (id) {
+    case Id::REGION_TOOLS:
+        return buildRegionTools(sceneSize, sceneOrigin);
     case Id::CAMERA_GESTURES:
         return buildCameraGestures();
     case Id::SCREEN_ALIGNMENT:

@@ -24,6 +24,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/surface_lighting_route.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -55,6 +56,7 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     // re-resolved every frame in beginTick. Null unless allocated (rotating).
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+    bool perAxisSurfaceLightingEligible_ = false;
 
     // Lazily-resolved voxel-compaction buffers, restored onto
     // slots 25/26 after dispatchPerAxisSunShadow borrows them for its own
@@ -98,10 +100,11 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-        // Smooth camera Z-yaw: resolve the sun shadow for each per-axis
-        // voxel canvas (reads the shared depth map baked from all four canvases).
+        // Exact presentation queries the shared sun map directly; its per-axis
+        // sampled textures have no consumer. Keep main-canvas shadow production
+        // for SDF/text and every fallback route.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
-            perAxisCanvases_->isAllocated()) {
+            perAxisCanvases_->isAllocated() && !perAxisSurfaceLightingEligible_) {
             program_->use();
             dispatchPerAxisSunShadow(*perAxisCanvases_, canvasTextures, shadow);
         }
@@ -173,6 +176,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
                 perAxisCanvases_ = perAxis.value();
             }
         }
+        perAxisSurfaceLightingEligible_ =
+            perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated() &&
+            findSystem(LIGHTING_TO_TRIXEL) != kNullSystemId &&
+            IRPrefab::PerAxisSurfaceLighting::resolveRoute(perAxisCanvasEntity_).perAxis_;
     }
 
     static SystemId create() {

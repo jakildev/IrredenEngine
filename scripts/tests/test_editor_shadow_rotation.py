@@ -15,6 +15,11 @@ SPEC.loader.exec_module(METRIC)
 
 
 class ShadowRotationMetricTest(unittest.TestCase):
+    def test_wrapped_yaw_preserves_pose_but_rejects_neighbor(self):
+        self.assertTrue(METRIC.yaw_matches(-math.pi + .0001, 180))
+        self.assertTrue(METRIC.yaw_matches(-math.pi / 2, 270))
+        self.assertFalse(METRIC.yaw_matches(math.radians(269.75), 270))
+
     def fixture(self, directory):
         captures, lines = {}, []
         for pose, yaw in enumerate(METRIC.YAWS):

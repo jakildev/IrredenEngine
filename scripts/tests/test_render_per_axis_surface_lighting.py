@@ -164,9 +164,10 @@ ROUTING_ADAPTER = r"""
 #include <cstdio>
 #include <cstring>
 #include <optional>
-enum System {COMPUTE_SUN_SHADOW,TRIXEL_TO_FRAMEBUFFER,FOG_TO_TRIXEL,TRIXEL_GLITCH};
+enum System {COMPUTE_SUN_SHADOW,TRIXEL_TO_FRAMEBUFFER,FOG_TO_TRIXEL,
+             TRIXEL_GLITCH,LIGHTING_TO_TRIXEL};
 constexpr int kNullSystemId=-1;
-bool systems[4];
+bool systems[5];
 int findSystem(System s){return systems[s]?int(s):kNullSystemId;}
 enum class DebugOverlayMode {NONE,AO};
 namespace IRRender {
@@ -195,12 +196,13 @@ struct FrameDataFogObservers {int losSourceMask_=0;};
 FOG_ROUTE
 // The main canvas's fog gates a source, so a registered fog pass keeps compute.
 struct Fog {FrameDataFogObservers observers_{1};} mainFog;
+bool glitchActive=false;
 struct Producer {
     bool perAxisSurfaceLightingEligible_=false,perAxisSurfaceLightingReady_=false;
     bool cardinalSurfaceLightingEligible_=false,cardinalGlitchPresentationActive_=false;
     IRPrefab::PerAxisSurfaceLighting::SurfaceFogRoute surfaceFogRoute_{};
     const Fog* mainCanvasFog_=&mainFog;
-    bool anyGlitchSubjectActive(){return false;}
+    bool anyGlitchSubjectActive(){return glitchActive;}
     Axes* perAxisCanvases_=nullptr;
     const int *mainCanvasTextures_=nullptr,*mainCanvasAO_=nullptr;
     const int *mainCanvasSunShadow_=nullptr,*mainCanvasLightVolume_=nullptr;
@@ -238,13 +240,28 @@ int main(){
         producer.perAxisSurfaceLightingEligible_=true;
         producer.perAxisSurfaceLightingReady_=true;
         IREntity::behaviorLookups=0;
+        systems[LIGHTING_TO_TRIXEL]=true;
         producer.begin();
+        ShadowProducer shadow;
+        shadow.perAxisCanvases_=producer.perAxisCanvases_;
+        currentRouteProducer=&producer;
+        shadow.begin();
         const bool commonResources=on(3)&&on(4)&&on(5)&&on(6);
         const bool commonPipeline=on(7)&&on(8)&&on(10)&&on(11);
-        if(IREntity::behaviorLookups!=int(commonResources&&commonPipeline)){
+        if(IREntity::behaviorLookups!=(1+int(on(1)&&on(2)))*int(commonResources&&commonPipeline)){
             std::fprintf(stderr,"shared behavior lookup\n");return 8;
         }
         const bool expectedEligible=bits==(1u<<15)-1;
+        const bool expectedSampled=on(1)&&on(2)&&!expectedEligible;
+        if(shadow.dispatch(7)!=expectedSampled || shadow.dispatch(8)) {
+            std::fprintf(stderr,"sampled shadow skip must match exact route\n");return 9;
+        }
+        systems[LIGHTING_TO_TRIXEL]=false;
+        shadow.begin();
+        if(shadow.dispatch(7)!=(on(1)&&on(2))) {
+            std::fprintf(stderr,"missing lighting consumer needs sampled shadows\n");return 10;
+        }
+        systems[LIGHTING_TO_TRIXEL]=true;
         if(producer.perAxisSurfaceLightingEligible_!=expectedEligible){
             std::fprintf(stderr,"eligibility %u\n",bits);return 2;
         }
@@ -267,6 +284,31 @@ int main(){
             std::fprintf(stderr,"published readiness\n");return 6;
         }
     }
+    for(bool fog:{false,true})for(bool gated:{false,true})for(bool glitch:{false,true})
+    for(bool hasFog:{false,true})for(bool enabled:{false,true}) {
+        Axes axes{true}; Program program; Producer producer;
+        producer.program_=&program;
+        producer.perAxisCanvases_=&axes;
+        producer.mainCanvasTextures_=producer.mainCanvasAO_=&resource;
+        producer.mainCanvasSunShadow_=producer.mainCanvasLightVolume_=&resource;
+        producer.mainCanvasFog_=hasFog?&mainFog:nullptr;
+        mainFog.observers_.losSourceMask_=gated?1:0;
+        IREntity::hasBehavior=IREntity::behavior.useCameraPositionIso_=true;
+        IREntity::hasSurfaceLighting=true;IREntity::surfaceLighting.enabled_=enabled;
+        IRRender::overlay=IRRender::depth=false;
+        systems[COMPUTE_SUN_SHADOW]=systems[TRIXEL_TO_FRAMEBUFFER]=true;
+        systems[LIGHTING_TO_TRIXEL]=systems[TRIXEL_GLITCH]=true;
+        systems[FOG_TO_TRIXEL]=fog;glitchActive=glitch;
+        ShadowProducer shadow;shadow.perAxisCanvases_=&axes;currentRouteProducer=&producer;
+        shadow.begin();
+        const bool exact=enabled&&(!fog||!hasFog||(!gated&&!glitch));
+        if(shadow.dispatch(7)==exact){std::fprintf(stderr,"live fog fallback\n");return 9;}
+        IREntity::surfaceLighting.enabled_=false;
+        shadow.begin();
+        if(!shadow.dispatch(7)){
+            std::fprintf(stderr,"route toggle restores sampled producer\n");return 9;
+        }
+    }
     if(consume(nullptr)){std::fprintf(stderr,"missing producer\n");return 7;}
     std::printf("131072 readiness combinations\n");
 }
@@ -280,10 +322,10 @@ def routing_harness(variant):
     begin = functions(producer, "beginTick")
     reset = "\n".join(re.findall(
         r"perAxisSurfaceLighting(?:Eligible|Ready)_\s*=\s*false\s*;", begin))
+    route_source = (systems.parent / "surface_lighting_route.hpp").read_text()
     gate = re.search(r"bool worldSurfaceLightingEligible = false;.*?"
-                     r"perAxisSurfaceLightingEligible_\s*=[^;]+;", begin, re.DOTALL)[0]
-    active_scan = braced_block(gate, r"if\s*\(cardinalGlitchPresentationActive_\)")
-    gate = gate.replace(active_scan, "")
+                     r"perAxisSurfaceLightingEligible_\s*=[^;]+;", route_source, re.DOTALL)[0]
+    gate = gate.replace("detail::anyGlitchSubjectActive()", "anyGlitchSubjectActive()")
     lighting_switch = (
         ROOT / "engine/prefabs/irreden/render/per_axis_surface_lighting.hpp").read_text()
     fog_route = ("namespace IRPrefab::PerAxisSurfaceLighting {\n"
@@ -319,11 +361,47 @@ def routing_harness(variant):
     elif variant == "per-axis-voxel-pool":
         gate = gate.replace("perAxisSurfaceLightingEligible_ =",
                             "perAxisSurfaceLightingEligible_ = mainVoxelPool_ != nullptr &&")
+    shadow_source = (systems / "system_compute_sun_shadow.hpp").read_text()
+    shadow_begin = re.search(
+        r"perAxisSurfaceLightingEligible_\s*=[^;]+;",
+        functions(shadow_source, "beginTick"))[0]
+    shadow_tick = braced_block(
+        functions(shadow_source, "tick"),
+        r"if\s*\(\s*entity\s*==\s*perAxisCanvasEntity_\s*&&\s*perAxisCanvases_")
+    shadow_condition = shadow_tick[:shadow_tick.index("{")]
+    if variant == "shadow-always-sampled":
+        shadow_condition = shadow_condition.replace("!perAxisSurfaceLightingEligible_", "true")
+    elif variant == "shadow-always-skipped":
+        shadow_condition = shadow_condition.replace("!perAxisSurfaceLightingEligible_", "false")
+    elif variant == "shadow-missing-consumer":
+        shadow_begin = shadow_begin.replace("findSystem(LIGHTING_TO_TRIXEL) != kNullSystemId &&",
+                                            "")
+    elif variant == "shadow-stale-route":
+        shadow_begin = shadow_begin.replace(
+            "IRPrefab::PerAxisSurfaceLighting::resolveRoute(perAxisCanvasEntity_).perAxis_",
+            "perAxisSurfaceLightingEligible_")
+    shadow_adapter = r"""
+Producer* currentRouteProducer=nullptr;
+namespace IRPrefab::PerAxisSurfaceLighting {
+struct Route {bool perAxis_;};
+Route resolveRoute(int) {
+    currentRouteProducer->begin();
+    return {currentRouteProducer->perAxisSurfaceLightingEligible_};
+}
+}
+struct ShadowProducer {
+    bool perAxisSurfaceLightingEligible_=true;
+    Axes* perAxisCanvases_=nullptr;
+    int perAxisCanvasEntity_=7;
+    void begin(){SHADOW_BEGIN}
+    bool dispatch(int entity){SHADOW_CONDITION {return true;} return false;}
+};
+""".replace("SHADOW_BEGIN", shadow_begin).replace("SHADOW_CONDITION", shadow_condition)
     return (ROUTING_ADAPTER.replace("FOG_ROUTE", fog_route) + "void begin(){" + reset + gate + "}\n"
             "void tick(int entity,const int* shadow){int canvasTextures=0,ao=0;"
             "const auto& behavior=IREntity::behavior;" + skip_detached + publish + "}\n};\n"
             "bool consume(const Producer* lighting_){bool scatterLightingEnabled_=false;"
-            + consume + "return scatterLightingEnabled_;}\n"
+            + consume + "return scatterLightingEnabled_;}\n" + shadow_adapter +
             "bool enabledFromEnv(const char* surfaceLighting){return " + enabled + ";}\n"
             + ROUTING_CASES)
 
@@ -506,7 +584,8 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
         original = routing_harness("production")
         for variant in ("production", "stale-ready", "ready-before-tick", "consumer-eligibility",
                         "fog-accepted", "relight-eligible", "presence-enables",
-                        "per-axis-glitch-gate", "per-axis-voxel-pool"):
+                        "per-axis-glitch-gate", "per-axis-voxel-pool", "shadow-always-sampled",
+                        "shadow-always-skipped", "shadow-missing-consumer", "shadow-stale-route"):
             with self.subTest(variant=variant), tempfile.TemporaryDirectory() as temporary:
                 path = Path(temporary)
                 source = routing_harness(variant)
@@ -522,7 +601,7 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn("131072 readiness combinations", result.stdout)
                 else:
-                    self.assertIn(result.returncode, range(1, 9), result.stderr)
+                    self.assertIn(result.returncode, range(1, 11), result.stderr)
 
 
 if __name__ == "__main__":

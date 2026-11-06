@@ -197,10 +197,10 @@ def source_for(backend):
     systems = ROOT / "engine/prefabs/irreden/render/systems"
     producer = (systems / "system_lighting_to_trixel.hpp").read_text()
     consumer = (systems / "system_trixel_to_framebuffer.hpp").read_text()
+    route_source = (systems.parent / "surface_lighting_route.hpp").read_text()
     gate = re.search(r"bool worldSurfaceLightingEligible = false;.*?"
-                     r"perAxisSurfaceLightingEligible_\s*=[^;]+;", producer, re.DOTALL).group()
-    active_scan = extract_block(gate, "if (cardinalGlitchPresentationActive_) {")
-    gate = gate.replace(active_scan, "")
+                     r"perAxisSurfaceLightingEligible_\s*=[^;]+;", route_source, re.DOTALL).group()
+    gate = gate.replace("detail::anyGlitchSubjectActive()", "anyGlitchSubjectActive()")
     lighting_switch = (
         ROOT / "engine/prefabs/irreden/render/per_axis_surface_lighting.hpp").read_text()
     fog_route = ("namespace IRPrefab::PerAxisSurfaceLighting {\n"
