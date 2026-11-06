@@ -5243,9 +5243,12 @@ reconcile_open_drift_trackers() {
 # reconcile_escalate_drift <findings-jsonl> <state-dir> <threshold>
 #   Persistence-gated, deduped escalation of flag-only drift (R2/R6/...).
 #   Maintains a per-key tick counter in <state-dir>/drift-persistence.json:
-#   every flag-only finding (apply == null) seen this run bumps its counter;
-#   keys NOT seen this run are dropped (drift resolved → counter resets, so a
-#   transient one-tick blip never escalates). When ANY key crosses <threshold>
+#   every flag-only finding (apply == null) seen this run bumps its counter,
+#   and a key NOT seen this run is carried with a missing-tick count instead
+#   of dropped, until it has been absent for <threshold> consecutive ticks.
+#   The two sides are symmetric on purpose: a transient one-tick blip never
+#   escalates, and a one-tick gap in the scan (a fetch that failed, a label
+#   mid-swap) never reads as resolved. When ANY key crosses <threshold>
 #   ticks, file or update a SINGLE open fleet:state-drift tracking issue on the
 #   engine repo (deduped — body refreshed in place, never one issue per tick).
 #   When NO finding remains persistent (all cleared), close any open tracker so
@@ -5316,12 +5319,25 @@ with open(persist_path + ".lock", "a") as _lock_fh:
             "count": int(prev.get("count", 0)) + 1,
             "first_seen": int(prev.get("first_seen", now)),
             "last_seen": now,
+            "missing": 0,
             "rule": f["rule"], "repo": f["repo"],
             "target_kind": f["target_kind"], "target": f["target"],
             "action": f["action"],
         }
 
-    # Only this run's flag-only keys survive — keys absent this run reset to zero.
+    # A key absent this run keeps its count for up to threshold-1 missing
+    # ticks, so the tracker it feeds outlives a one-tick gap in the scan; it
+    # drops, and resets to zero, once it has been absent for threshold ticks.
+    for k, prev in state.items():
+        if k in seen or not isinstance(prev, dict):
+            continue
+        missing = int(prev.get("missing", 0)) + 1
+        if missing >= threshold:
+            continue
+        carried = dict(prev)
+        carried["missing"] = missing
+        seen[k] = carried
+
     with open(persist_path, "w") as fh:
         json.dump(seen, fh, indent=2, sort_keys=True)
         fh.write("\n")
@@ -5364,14 +5380,14 @@ PYEOF
     fi
     if [[ "$persistent_count" -le 0 ]]; then
         rm -f "$body_file"
-        # No persistent drift this run. If a tracker is still open, every row
-        # it lists has cleared, so close it — reconcile filed the tracker and
-        # owns its lifecycle, and a fixed claim surface must not leave a stale
-        # tracker lingering open with findings that no longer reproduce. The
-        # counter reset above means a genuinely-recurring finding re-accrues
-        # from zero and re-files a fresh tracker once it crosses threshold. A
-        # failed lookup neither files nor closes — it retries next tick rather
-        # than reading its own failure as "no tracker".
+        # No persistent drift this run: every row the tracker lists has been
+        # absent for threshold ticks, so close it — reconcile filed the
+        # tracker and owns its lifecycle, and a fixed claim surface must not
+        # leave a stale tracker lingering open with findings that no longer
+        # reproduce. A finding that recurs after that re-accrues from zero and
+        # re-files a fresh tracker once it crosses threshold. A failed lookup
+        # neither files nor closes — it retries next tick rather than reading
+        # its own failure as "no tracker".
         local trackers t lookup_status=0
         trackers=$(reconcile_open_drift_trackers) || lookup_status=$?
         if [[ $lookup_status -ne 0 ]]; then
@@ -5443,10 +5459,12 @@ PYEOF
 #   fleet:queued backing issue — the exact state left when an architect unblock
 #   removed fleet:design-blocked but never added fleet:design-unblocked,
 #   stranding the PR (no resume signal, and the duplicate-claim guard refuses
-#   the queued issue). Mirrors reconcile_escalate_drift's persistence gating: a
+#   the queued issue). Shares reconcile_escalate_drift's persistence gating: a
 #   per-key counter in <state-dir>/design-unblock-heal-persistence.json bumps
-#   each --apply tick a finding recurs and resets when it does not, so a
-#   freshly-opened WIP PR still propagating its claim is never acted on. When a
+#   each --apply tick a finding recurs, so a freshly-opened WIP PR still
+#   propagating its claim is never acted on. Unlike the drift tracker's
+#   counter it resets the first tick a finding is absent: a label that just
+#   landed must never be re-added on the strength of a stale count. When a
 #   finding crosses <threshold> ticks, re-add fleet:design-unblocked so the
 #   worker resume loop adopts the PR (the worker — never reconcile — makes
 #   the resume-or-close call). Idempotent: once the label is back the finding
