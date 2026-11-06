@@ -375,7 +375,7 @@ scoped GPU rows within their limits. Two items remain open. Full ShapeDebug and
 CanvasStress image acceptance fails, identically on master: the macOS
 references drifted before this work, and #4904 refreshes them. The OpenGL
 runtime run is #4865. See the
-[acceptance receipts](../pr-screenshots/codex/4820-rotation-picking/acceptance-2026-11-04.md).
+[acceptance receipts](https://github.com/jakildev/IrredenEngine/blob/d8c1b53b5abad908309be335d43bbf79582129f2/docs/pr-screenshots/codex/4820-rotation-picking/acceptance-2026-11-04.md).
 
 The scatter writes a decoded entity id to a lazily allocated `RG32UI`
 framebuffer attachment at colour index 1, alongside its unchanged colour.
