@@ -12,7 +12,8 @@ Design log, findings and the authoring-session history:
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_class_paint`,
   `test_recipe_handle`, `test_recipe_handle_turned`, `test_radius`, `test_list_scroll`,
-  `test_single`, `test_recipe_pages`, and the failing `test_unreachable`; the header contract
+  `test_single`, `test_recipe_pages`, `test_click_after_focus`, and the failing
+  `test_unreachable` / `test_click_under_panel`; the header contract
   also covers `test_module_files`, `test_module_arg`, and `test_module_arg_absent`.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
@@ -116,6 +117,8 @@ from displayed albedo/normal pixels at seven angles, including 30° and 67°;
   not teach the model a rule the pick does not have.
 - A segment's assertions evaluate once, after all of its events. Arm a
   pre-click check in its own segment.
+- Every world-aimed left press is checked against the editor's UI gate on its
+  consume tick; a swallowed press fails the segment and names its operation and target.
 - Entity sessions author on a bare stage. A session enters transform mode
   (`toggleTransformMode`) only around its gizmo drags and leaves it before
   painting: the model does not know where handles are drawn.

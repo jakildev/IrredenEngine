@@ -373,6 +373,8 @@ class OccupancyModel {
 struct AimFixup {
     int eventIndex_ = 0;
     IRMath::vec3 worldPoint_ = IRMath::vec3(0.0f);
+    std::string operation_;
+    std::optional<IRMath::ivec3> localCell_;
 };
 
 // One cursor MOVE onto a GUI-canvas widget, resolved at shot-run time the same
@@ -686,6 +688,21 @@ struct ComponentValueCheck {
     std::string name_;
 };
 
+struct SceneUiPress {
+    int sampleFrame_ = 0;
+    std::string operation_;
+    std::optional<IRMath::ivec3> localCell_;
+    IRMath::vec3 worldPoint_ = IRMath::vec3(0.0f);
+    bool sampled_ = false;
+    bool landedOnUi_ = false;
+    IRMath::vec2 guiPoint_ = IRMath::vec2(0.0f);
+};
+
+struct SceneUiPressCheck {
+    std::vector<SceneUiPress> presses_;
+    std::string name_;
+};
+
 // One shot's worth of session: a camera framing, the events that fire under it,
 // their aim fixups, and the assertions evaluated once it settles.
 struct Segment {
@@ -696,6 +713,7 @@ struct Segment {
     std::vector<AimFixup> aims_;
     std::vector<GuiAimFixup> guiAims_;
     std::vector<IRPrefab::GuiTest::Assertion> assertions_;
+    SceneUiPressCheck *sceneUiPressCheck_ = nullptr;
 };
 
 // A built session. `shots_` points into `segments_`, so neither collection may
@@ -747,6 +765,7 @@ struct Recipe {
     std::deque<PartExtentCheck> partExtentChecks_;
     std::deque<MirrorCheck> mirrorChecks_;
     std::deque<LoftMaskCheck> loftMaskChecks_;
+    std::deque<SceneUiPressCheck> sceneUiPressChecks_;
     // Build the editor's reference furniture (floor slab, axis bars, centre
     // cube, perimeter gizmos, starter rig, satellite sets) around the editable
     // set instead of the bare stage entity recipes author on.
@@ -786,6 +805,7 @@ inline void resolveShots(Recipe &recipe) {
 // single GUI-ASSERT emitter instead of hand-rolling the log line per check.
 // Defined in main.cpp, where the editable-set entity handle lives.
 bool evaluateOccupancyCheck(const void *context, std::string &actual);
+bool evaluateSceneUiPressCheck(const void *context, std::string &actual);
 bool evaluatePartTransformCheck(const void *context, std::string &actual);
 bool evaluatePartCountCheck(const void *context, std::string &actual);
 bool evaluatePartIdCheck(const void *context, std::string &actual);
@@ -937,7 +957,7 @@ class Builder {
             recordUnreachable("click", target);
             return;
         }
-        emitClick(*aim);
+        emitClick(*aim, "click", target);
         m_model.setMirrored(target, !m_eraseMode, m_symmetry);
     }
 
@@ -950,7 +970,7 @@ class Builder {
             recordUnreachable("clickExpectingNoEdit", target);
             return;
         }
-        emitClick(*aim);
+        emitClick(*aim, "clickExpectingNoEdit", target);
     }
 
     // Single left click on the `normal` face of `anchor`, placing the voxel in
@@ -966,7 +986,7 @@ class Builder {
             recordUnreachable("clickFace", target);
             return;
         }
-        emitClick(*aim);
+        emitClick(*aim, "clickFace", target);
         m_model.setMirrored(target, true, m_symmetry);
     }
 
@@ -999,7 +1019,7 @@ class Builder {
         // One idle frame before the aim, so Alt is already down when the editor
         // samples it at the button PRESS (chordKey's lead, for the same reason).
         m_frame += kFramesPerClickStep;
-        emitClick(*aim);
+        emitClick(*aim, "clickBelow", target);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kKeyButtonLeftAlt);
         m_model.setMirrored(target, true, m_symmetry);
     }
@@ -1014,7 +1034,7 @@ class Builder {
             recordUnreachable("hover", target);
             return;
         }
-        emitMove(*aim);
+        emitMove(*aim, "hover", target);
     }
 
     // Left-drag box fill between two cells. In place mode `a` / `b` are the
@@ -1493,7 +1513,7 @@ class Builder {
             tapKey(IRInput::kKeyButtonU);
             m_classPaintMode = true;
         }
-        emitClick(*aim);
+        emitClick(*aim, "paintClass", local);
     }
 
     // Drag the selected part's recipe handle @p handle to set-local cell
@@ -1624,9 +1644,9 @@ class Builder {
             }
             values = std::move(dragged);
         }
-        emitMove(worldAt);
+        emitMove(worldAt, op);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
-        emitMove(worldTarget);
+        emitMove(worldTarget, op);
         // One idle frame so the drag reads the moved cursor before the release.
         m_frame += kFramesPerClickStep;
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
@@ -1957,9 +1977,9 @@ class Builder {
     }
 
     void dragWorld(IRMath::vec3 from, IRMath::vec3 to) {
-        emitMove(from);
+        emitMove(from, "dragWorld");
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
-        emitMove(to);
+        emitMove(to, "dragWorld");
         m_frame += kFramesPerClickStep;
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
@@ -2808,17 +2828,32 @@ class Builder {
     }
 
     // The editor's press-then-release-without-moving gesture at `worldAim`.
-    void emitClick(IRMath::vec3 worldAim) {
-        emitMove(worldAim);
+    void emitClick(
+        IRMath::vec3 worldAim,
+        std::string operation,
+        std::optional<IRMath::ivec3> localCell = std::nullopt
+    ) {
+        emitMove(worldAim, std::move(operation), localCell);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
 
-    void emitMove(IRMath::vec3 worldAim) {
+    void emitMove(
+        IRMath::vec3 worldAim,
+        std::string operation,
+        std::optional<IRMath::ivec3> localCell = std::nullopt
+    ) {
         IRVideo::GuiInputEvent event{};
         event.frameOffset_ = m_frame;
         event.type_ = IRVideo::GuiInputEvent::Type::MOVE;
-        m_current.aims_.push_back(AimFixup{static_cast<int>(m_current.events_.size()), worldAim});
+        m_current.aims_.push_back(
+            AimFixup{
+                static_cast<int>(m_current.events_.size()),
+                worldAim,
+                std::move(operation),
+                localCell
+            }
+        );
         m_current.events_.push_back(event);
         m_frame += kFramesPerClickStep;
     }
@@ -2916,9 +2951,9 @@ class Builder {
             recordUnreachable((std::string(op) + " end").c_str(), b);
             return false;
         }
-        emitMove(*aimA);
+        emitMove(*aimA, op, a);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
-        emitMove(*aimB);
+        emitMove(*aimB, op, b);
         // One idle frame so the editor's HELD branch samples the moved cursor
         // before a release commits the fill.
         m_frame += kFramesPerClickStep;
@@ -2938,9 +2973,9 @@ class Builder {
             recordError(std::string(op) + " needs an entity-scene part");
             return false;
         }
-        emitMove(from);
+        emitMove(from, op);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
-        emitMove(to);
+        emitMove(to, op);
         // One idle frame so GIZMO_DRAG applies the moved cursor before a
         // release ends the drag.
         m_frame += kFramesPerClickStep;
@@ -2964,6 +2999,46 @@ class Builder {
     void flushSegment() {
         if (m_current.events_.empty() && m_current.assertions_.empty())
             return;
+        const AimFixup *sceneAim = nullptr;
+        SceneUiPressCheck check;
+        for (std::size_t i = 0; i < m_current.events_.size(); ++i) {
+            const IRVideo::GuiInputEvent &event = m_current.events_[i];
+            if (event.type_ == IRVideo::GuiInputEvent::Type::MOVE) {
+                sceneAim = nullptr;
+                const auto found = std::find_if(
+                    m_current.aims_.begin(),
+                    m_current.aims_.end(),
+                    [i](const AimFixup &aim) { return aim.eventIndex_ == static_cast<int>(i); }
+                );
+                if (found != m_current.aims_.end())
+                    sceneAim = &*found;
+                continue;
+            }
+            if (event.type_ != IRVideo::GuiInputEvent::Type::PRESS ||
+                event.button_ != IRInput::kMouseButtonLeft || sceneAim == nullptr)
+                continue;
+            check.presses_.push_back(
+                SceneUiPress{
+                    event.frameOffset_ + 1,
+                    sceneAim->operation_,
+                    sceneAim->localCell_,
+                    sceneAim->worldPoint_
+                }
+            );
+        }
+        if (!check.presses_.empty()) {
+            check.name_ = m_current.label_ + "_scene_press_clear_of_ui";
+            m_recipe.sceneUiPressChecks_.push_back(std::move(check));
+            SceneUiPressCheck &stored = m_recipe.sceneUiPressChecks_.back();
+            m_current.sceneUiPressCheck_ = &stored;
+            m_current.assertions_.push_back(
+                IRPrefab::GuiTest::predicate(
+                    &evaluateSceneUiPressCheck,
+                    &stored,
+                    stored.name_.c_str()
+                )
+            );
+        }
         m_recipe.segments_.push_back(std::move(m_current));
         m_current = Segment{};
     }

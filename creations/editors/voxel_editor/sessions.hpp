@@ -2833,7 +2833,7 @@ inline Recipe build(
         const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
         const IRMath::ivec3 groupEdit = edited;
         // The moved source sits beneath the module panels with the default
-        // camera. Pan these paint shots so their deferred aims reach the scene.
+        // camera. Pan its world gestures so their deferred aims reach the scene.
         const IRMath::vec2 editCameraIso(16.0f, 0.0f);
         const IRMath::vec3 groupAxis(0.0f, 0.0f, 1.0f);
         const IRMath::ivec3 groupPartA = rotateCell(groupEdit, sceneSize, groupAxis, -2, 3);
@@ -2860,7 +2860,7 @@ inline Recipe build(
         // The gizmo is dragged while the source is still clear.
         const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
         const IRMath::vec3 movedPivot = pivot + detail::kGizmoDragPartDelta;
-        builder.segment("move_source");
+        builder.segment("move_source", kSessionZoom, editCameraIso);
         builder.toggleTransformMode();
         builder.dragPartGizmo(
             pivot + detail::kGizmoDragGrabOffset,
