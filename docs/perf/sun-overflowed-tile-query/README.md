@@ -35,7 +35,7 @@ nothing.
 | Resolution | 1280×720 offscreen, 1× output |
 | Binaries | Debug `f3bcc111c3d2…`, Release `ec5a847db78b…` (full hashes in `*/provenance.json`) |
 | Pristine sampler | `ir_sun_shadow_sample.glsl` `4bb016193aeb…`; the runtime copies byte-match the tracked source before, between and after every staged launch |
-| Controller | `run_matrix.py` `8b76606c2daa…`, the committed file; both builds ran it unchanged |
+| Controller | `run_matrix.py` `8b76606c2daa…` ran every capture and timed arm in both builds, unchanged (`*/provenance.json`); the committed file differs from it only in the pixel comparison, and re-scored the retained captures (`scored_by_controller_sha256` in `diagnostic.json`) |
 | Power / quiet | Desktop on mains (`repeat_profile.py` reports no power source on Windows); all 120 retained runs are quiet-window `guarded` |
 
 ## Cases
@@ -121,11 +121,18 @@ last is a second pristine production capture.
   | lost records | sampled fallback |
   | incomplete, records kept, and ready leaves equal `sourceSunHierarchyLeafCount(retained)` (groups of 8, rounded up to a power of two) | exact hierarchy |
 
-- **Entered.** Receiver floor pixels that change against the oracle under
+Every comparison below is exact RGB over every pixel of the named receiver
+crop, with no per-pixel classification.
+
+- **Entered.** Receiver-crop pixels that change against the oracle under
   entry-shadow or entry-lit.
-- **Hit.** Receiver floor pixels that change under hit-cleared.
+- **Hit.** Receiver-crop pixels that change under hit-cleared.
 - **Correctness.** The closing production capture against the oracle,
-  compared as exact RGB on the receiver's floor pixels.
+  with zero mismatches required in the receiver crop.
+
+`run_matrix.py score --build <build>` re-runs these comparisons over a
+retained diagnostic's captures without capturing again. It refuses a frame
+whose bytes no longer hash to what its capture recorded.
 
 **Statistics.** `summarize` pairs each production run with the ablation run
 of the same pair. It reports:
@@ -138,20 +145,29 @@ of the same pair. It reports:
 ## Positive fire and pixel witness (Debug, untimed)
 
 The data is in `windows-opengl/debug/diagnostic/diagnostic.json`. The
-receiver crop is `(550,300)-(730,420)`, the historical 1× crop. Pixels are
-counted on the floor only, meaning pixels that are neutral grey in both
-images: lit (150,152,160) or shadowed (45,46,48). The 128 coincident caster
-boxes z-fight differently on every run. That makes 500–700 blue caster pixels
-in the crop differ between two pristine captures, and those pixels are
-reported separately as `receiver_caster_occlusion_px`.
+historical 1× crop `(550,300)-(730,420)` holds two things: the receiver floor
+with the stack's shadow, and above it the 128 coincident caster boxes. Those
+boxes z-fight differently on every run, so 528–692 of their pixels differ
+between any two captures, including two pristine ones. The controller splits
+that column at row 356:
 
-| Case | Retained records | Ready leaves = leaf count | Entered px (entry-shadow ∪ entry-lit) | Hit px (hit-cleared) | Closing production vs oracle (floor px) |
-|---|---:|---|---:|---:|---:|
-| `far-128` | 5,164 | 1,024 = 1,024 | 371 | 234 | 0 |
-| `far-128-filler-last` | 71,470 | 16,384 = 16,384 | 371 | 234 | 0 |
-| `far-128-filler-first` | 71,470 | 16,384 = 16,384 | 371 | 234 | 0 |
-| `far-128-filler-last-frozen` | 65,536 | 8,192 = 8,192 | 371 | 234 | 0 |
-| `far-128-filler-first-frozen` | 65,536 | 8,192 = 8,192 | **0** | **0** | 0 |
+- **Receiver crop** `(550,356)-(730,420)`, the floor band. Correctness and
+  the entry/hit witnesses are read here, at exact RGB on every pixel.
+- **Stack crop** `(550,300)-(730,356)`, the caster boxes. Their mismatches
+  are reported as `stack_changed_vs_oracle` and kept out of every verdict.
+
+No z-fight mismatch falls inside the receiver crop in any of the 25 captures.
+In the historical crop the caster mismatches end at row 355, and every pixel a
+branch-forcing variant changes lies in rows 356–374. The entered and hit
+counts therefore stay the same in every case, whatever the stack does.
+
+| Case | Retained records | Ready leaves = leaf count | Entered px (entry-shadow ∪ entry-lit) | Hit px (hit-cleared) | Closing production vs oracle, receiver crop (exact RGB) | Stack crop, z-fight px |
+|---|---:|---|---:|---:|---:|---:|
+| `far-128` | 5,164 | 1,024 = 1,024 | 371 | 234 | 0 | 624 |
+| `far-128-filler-last` | 71,470 | 16,384 = 16,384 | 371 | 234 | 0 | 600 |
+| `far-128-filler-first` | 71,470 | 16,384 = 16,384 | 371 | 234 | 0 | 588 |
+| `far-128-filler-last-frozen` | 65,536 | 8,192 = 8,192 | 371 | 234 | 0 | 692 |
+| `far-128-filler-first-frozen` | 65,536 | 8,192 = 8,192 | **0** | **0** | 0 | 588 |
 
 What the table shows:
 
@@ -162,9 +178,13 @@ What the table shows:
   137 lit floor pixels that the query certified as unoccluded.
 - **The frozen filler-first control never enters the branch.** Its receiver
   tiles lost records, so it answers from the sampled layers.
-- **Pristine captures are stable.** All 25 captures exited CLEAN. In every
-  case the closing pristine capture matches the opening oracle on every floor
-  pixel of the crop.
+- **Pristine captures are stable on the receiver.** All 25 captures exited
+  CLEAN. In every case the closing pristine capture matches the opening oracle
+  at exact RGB on every pixel of the receiver crop.
+- **The rest of the frame is not a correctness signal.** Whole-frame
+  mismatches (`frame_changed_vs_oracle`) are 624 for `far-128` and about
+  47,000 for the filler cases, whose 300 coincident filler bodies z-fight the
+  same way. They are reported, never compared.
 
 ## Timing
 
@@ -274,6 +294,10 @@ python3 docs/perf/sun-overflowed-tile-query/run_matrix.py diagnose --build debug
 python3 docs/perf/sun-overflowed-tile-query/run_matrix.py timing --build debug --output docs/perf/sun-overflowed-tile-query/<host>-<backend>
 python3 docs/perf/sun-overflowed-tile-query/run_matrix.py timing --build release --output docs/perf/sun-overflowed-tile-query/<host>-<backend>
 ```
+
+A replay records its own `provenance.json`. `windows-opengl/` stays bound
+to the controller hash that captured it, so `timing` and `diagnose` refuse to
+extend it with a different controller.
 
 `timing` resumes after an interruption. The controller exits after an arm
 finds no quiet window in eight attempts, so on a busy host rerun it until it

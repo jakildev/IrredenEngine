@@ -8,7 +8,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_matrix as rm  # noqa: E402
@@ -142,21 +141,45 @@ class PositiveFireWitness(unittest.TestCase):
         self.assertEqual(self.witness(71470, 8192, tiles)["receiver_tiles"][0]["route"],
                          "sampled-fallback")
 
-    def test_only_floor_to_floor_changes_measure_the_receiver(self):
-        lit, shadow, caster, black = (150, 152, 160), (45, 46, 48), (24, 36, 72), (0, 0, 0)
-        self.assertTrue(rm.floor_pixel(bytes(lit)) and rm.floor_pixel(bytes(shadow)))
-        self.assertFalse(rm.floor_pixel(bytes(caster)) or rm.floor_pixel(bytes(black)))
-        reference = [lit, lit, shadow, caster, black, lit]
-        actual = [lit, shadow, lit, lit, (80, 120, 240), lit]
+    def test_every_rgb_difference_counts_and_the_crop_bounds_it(self):
+        lit, shadow, caster = (150, 152, 160), (45, 46, 48), (24, 36, 72)
+        reference = [lit, lit, shadow, caster, (0, 0, 0), lit]
+        actual = [lit, (150, 152, 161), lit, lit, (80, 120, 240), lit]
+
+        def frame(row):
+            return 3, 2, bytes(v for p in row for v in p)
+
+        self.assertEqual(rm.changed_pixels(frame(actual), frame(reference)), {1, 2, 3, 4})
+        self.assertEqual(rm.changed_pixels(frame(actual), frame(reference), (0, 1, 3, 2)), {3, 4})
+        self.assertEqual(rm.changed_pixels(frame(actual), frame(actual)), set())
+        with self.assertRaises(ValueError):
+            rm.changed_pixels((2, 3, frame(actual)[2]), frame(reference))
+
+    def test_receiver_and_stack_crops_split_the_receiver_column(self):
+        self.assertEqual(rm.STACK_CROP[3], rm.RECEIVER_CROP[1])
+        self.assertEqual((rm.STACK_CROP[0], rm.STACK_CROP[2]),
+                         (rm.RECEIVER_CROP[0], rm.RECEIVER_CROP[2]))
+        self.assertEqual(rm.scaled_crop(rm.RECEIVER_CROP, 1280), (550, 356, 730, 420))
+        self.assertEqual(rm.scaled_crop(rm.RECEIVER_CROP, 2560), rm.RECEIVER_CROP)
+        with self.assertRaises(ValueError):
+            rm.scaled_crop(rm.RECEIVER_CROP, 1000)
+
+    def test_scoring_refuses_a_frame_that_no_longer_matches_its_capture(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = []
-            for name, row in (("a.png", actual), ("r.png", reference)):
-                path = Path(tmp) / name
-                rm.RENDER_COMPARE.write_png(str(path), 3, 2, bytes(v for p in row for v in p), 3)
-                paths.append(path)
-            floor, other = rm.changed_pixels(*paths)
-            self.assertEqual((floor, other), ({1, 2}, {3, 4}))
-            self.assertEqual(rm.changed_pixels(*paths, crop=(0, 1, 3, 2)), (set(), {3, 4}))
+            entry = {}
+            for label in ("oracle", *rm.DIAGNOSTIC_VARIANTS, "production"):
+                path = Path(tmp) / label / "shot.png"
+                path.parent.mkdir()
+                rm.RENDER_COMPARE.write_png(str(path), 1280, 720, bytes(1280 * 720 * 3), 3)
+                entry[label] = {"frame": path.name, "frame_sha256": rm.sha256(path)}
+            entry["oracle"]["index_witness"] = {"hierarchy_ready": False,
+                                                "receiver_tiles": [{"route": "sampled-fallback"}]}
+            rm.score_case(Path(tmp), entry)
+            self.assertEqual(entry["receiver_crop"], (550, 356, 730, 420))
+            self.assertTrue(entry["verdict"]["production_matches_oracle"])
+            (Path(tmp) / "production" / "shot.png").write_bytes(b"tampered")
+            with self.assertRaises(rm.ProvenanceError):
+                rm.score_case(Path(tmp), entry)
 
     def test_verdict(self):
         def entry(route, entered, hit, production=0):

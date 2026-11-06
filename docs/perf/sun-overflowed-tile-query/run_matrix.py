@@ -11,6 +11,8 @@ tracked source, and restores it byte for byte afterwards.
   diagnose   untimed captures: sun-face index probe, pristine production oracle,
              and the branch-forcing variants whose pixel changes prove the exact
              query was entered and hit; a second pristine capture closes it
+  score      re-run the exact-RGB comparison over a retained diagnostic's
+             hash-checked captures without capturing again
   summarize  paired statistics per build from the retained arm records
   restore    write the pristine runtime sampler back after a hard kill
 
@@ -49,7 +51,8 @@ BACKEND, SUFFIX, SUBDIR = (("metal", "metal", "metal/") if sys.platform == "darw
                            else ("opengl", "glsl", ""))
 SAMPLER = f"ir_sun_shadow_sample.{SUFFIX}"
 SOURCE_SAMPLER = ROOT / "engine/render/src/shaders" / SUBDIR / SAMPLER
-SOURCE_PATHS = ("engine", "creations/demos/canvas_stress", "scripts/perf", "scripts/verify_common.py")
+SOURCE_PATHS = ("engine", "creations/demos/canvas_stress", "scripts/perf",
+                "scripts/verify_common.py")
 
 # The historical exhaustion timing fixture's arguments, unchanged.
 COMMON = ["--only", "shadowbox,floor", "--probe-source-box", "--probe-floor-mode", "grid",
@@ -78,9 +81,14 @@ CAPTURE = ["--only", "shadowbox,floor", "--probe-source-box", "--probe-floor-mod
            "--sun-direction", "0", "0", "-1", "--probe-overlapping-source",
            "--probe-overlapping-source-count", "128",
            "--probe-overlapping-source-offset", "0", "0", "-60"]
-# Receiver rectangle in a 2560-wide (2x) framebuffer; 1x hosts capture 1280-wide frames.
-CROP, CROP_FRAME_WIDTH = (1100, 600, 1460, 840), 2560
-FLOOR_CHROMA = 16
+# Rectangles in a 2560-wide (2x) framebuffer; 1x hosts capture 1280-wide frames.
+# The receiver crop is the floor band under the caster stack: it holds every pixel
+# the exact query can change and is compared at exact RGB. The stack crop above it
+# holds the 128 coincident caster boxes, which z-fight differently on every run, so
+# it is reported but never part of the correctness verdict.
+RECEIVER_CROP = (1100, 712, 1460, 840)
+STACK_CROP = (1100, 600, 1460, 712)
+CROP_FRAME_WIDTH = 2560
 LEAF_SIZE = 8
 # The floor directly under the caster stack: the sun points straight down, so
 # the stack's shadow on the receiver crop projects to the origin's sun UV.
@@ -128,7 +136,8 @@ def transform(text, variant):
         return text
     decision = unique_match(DECISION, text, "queryHierarchy decision")
     if variant == ABLATION:
-        return text[:decision.start()] + "const bool queryHierarchy = false;" + text[decision.end():]
+        return (text[:decision.start()] + "const bool queryHierarchy = false;"
+                + text[decision.end():])
     if variant in ("entry-shadow", "entry-lit"):
         value = "1.0" if variant == "entry-shadow" else "0.0"
         return (text[:decision.end()] + f" if (queryHierarchy) return {value};"
@@ -395,7 +404,8 @@ def timing(args):
         args_for_arm = fixture_args(arm, preset)
         if record.exists():
             retained = json.loads(record.read_text())
-            validate_arm(json.loads((directory / "manifest.json").read_text()), retained["expected"])
+            validate_arm(json.loads((directory / "manifest.json").read_text()),
+                         retained["expected"])
             if retained["expected"]["fixture_args"] != args_for_arm or retained["arm"] != arm:
                 raise ProvenanceError(f"{record} declares a different arm")
             continue
@@ -539,7 +549,8 @@ def index_witness(csv_path, receiver_point=RECEIVER_POINT):
             receiver.append({**tile, "route": tile_route(tile, hierarchy_ready)})
     overflowed.sort(key=lambda tile: -tile["count"])
     return {"face_records_requested": requested, "face_record_capacity": capacity,
-            "retained_records": retained, "hierarchy_needed": int(metadata.get("hierarchy_needed", 0)),
+            "retained_records": retained,
+            "hierarchy_needed": int(metadata.get("hierarchy_needed", 0)),
             "hierarchy_ready_leaves": ready, "hierarchy_leaf_count": leaf_count(retained),
             "hierarchy_ready": hierarchy_ready, "receiver_point": list(receiver_point),
             "receiver_sun_uv": [u, v], "receiver_tiles": receiver,
@@ -559,31 +570,21 @@ def read_rgb(path):
     return width, height, b"".join(pixels[i:i + 3] for i in range(0, len(pixels), bpp))
 
 
-def floor_pixel(rgb):
-    """The grid floor, lit or shadowed, is neutral grey; the caster stack is blue
-    and the background black. Coincident casters z-fight differently per run, so
-    only floor-to-floor changes measure the shadow query."""
-    return max(rgb) > 0 and max(rgb) - min(rgb) <= FLOOR_CHROMA
-
-
 def changed_pixels(actual, reference, crop=None):
-    """(floor, other) index sets of the RGB pixels that differ inside crop
-    (x0, y0, x1, y1), or the frame; floor pixels are floor in both images."""
-    aw, ah, a = read_rgb(actual)
-    rw, rh, r = read_rgb(reference)
+    """Index set of every pixel whose RGB differs inside crop (x0, y0, x1, y1), or
+    the frame; actual and reference are (width, height, RGB bytes)."""
+    aw, ah, a = actual
+    rw, rh, r = reference
     if (aw, ah) != (rw, rh):
-        raise ValueError(f"{actual} and {reference} differ in size")
+        raise ValueError(f"frames differ in size: {aw}x{ah} vs {rw}x{rh}")
     x0, y0, x1, y1 = crop or (0, 0, aw, ah)
-    floor, other = set(), set()
+    changed = set()
     for y in range(y0, y1):
         start, end = (y * aw + x0) * 3, (y * aw + x1) * 3
         if a[start:end] == r[start:end]:
             continue
-        for i in range(start, end, 3):
-            pa, pr = a[i:i + 3], r[i:i + 3]
-            if pa != pr:
-                (floor if floor_pixel(pa) and floor_pixel(pr) else other).add(i // 3)
-    return floor, other
+        changed.update(i // 3 for i in range(start, end, 3) if a[i:i + 3] != r[i:i + 3])
+    return changed
 
 
 def case_verdict(entry):
@@ -601,10 +602,36 @@ def case_verdict(entry):
             "production_matches_oracle": entry["production"]["receiver_changed_vs_oracle"] == 0}
 
 
-def scaled_crop(width):
+def scaled_crop(crop, width):
     if CROP_FRAME_WIDTH % width:
         raise ValueError(f"frame width {width} does not divide {CROP_FRAME_WIDTH}")
-    return tuple(value * width // CROP_FRAME_WIDTH for value in CROP)
+    return tuple(value * width // CROP_FRAME_WIDTH for value in crop)
+
+
+def score_case(directory, entry):
+    """Exact-RGB comparison of every variant against the case's oracle, after
+    checking each retained frame still hashes to what its capture recorded."""
+    def frame(label):
+        path = directory / label / entry[label]["frame"]
+        if sha256(path) != entry[label]["frame_sha256"]:
+            raise ProvenanceError(f"{path} does not match its recorded capture hash")
+        return read_rgb(path)
+
+    oracle = frame("oracle")
+    receiver = scaled_crop(RECEIVER_CROP, oracle[0])
+    stack = scaled_crop(STACK_CROP, oracle[0])
+    entry.update(receiver_crop=receiver, stack_crop=stack)
+    receiver_sets = {}
+    for label in (*DIAGNOSTIC_VARIANTS, "production"):
+        shot = frame(label)
+        receiver_sets[label] = changed_pixels(shot, oracle, receiver)
+        for stale in ("receiver_caster_occlusion_px", "frame_caster_occlusion_px"):
+            entry[label].pop(stale, None)
+        entry[label].update(receiver_changed_vs_oracle=len(receiver_sets[label]),
+                            stack_changed_vs_oracle=len(changed_pixels(shot, oracle, stack)),
+                            frame_changed_vs_oracle=len(changed_pixels(shot, oracle)))
+    entry["entry_receiver_px"] = len(receiver_sets["entry-shadow"] | receiver_sets["entry-lit"])
+    entry["verdict"] = case_verdict(entry)
 
 
 def capture(build, directory, case):
@@ -651,22 +678,20 @@ def diagnose(args):
             shot["index_witness"] = index_witness(output / case / label / shot["index"])
             entry[label] = shot
             (output / "diagnostic.json").write_text(json.dumps(report, indent=2) + "\n")
-        oracle = output / case / "oracle" / entry["oracle"]["frame"]
-        crop = scaled_crop(read_rgb(oracle)[0])
-        entry["receiver_crop"] = crop
-        receiver_sets = {}
-        for label in (*DIAGNOSTIC_VARIANTS, "production"):
-            frame = output / case / label / entry[label]["frame"]
-            receiver_sets[label], noise = changed_pixels(frame, oracle, crop)
-            frame_floor, frame_noise = changed_pixels(frame, oracle)
-            entry[label].update(receiver_changed_vs_oracle=len(receiver_sets[label]),
-                                receiver_caster_occlusion_px=len(noise),
-                                frame_changed_vs_oracle=len(frame_floor),
-                                frame_caster_occlusion_px=len(frame_noise))
-        entry["entry_receiver_px"] = len(receiver_sets["entry-shadow"] | receiver_sets["entry-lit"])
-        entry["verdict"] = case_verdict(entry)
+        score_case(output / case, entry)
         (output / "diagnostic.json").write_text(json.dumps(report, indent=2) + "\n")
     print(output / "diagnostic.json")
+
+
+def score(args):
+    """Re-score a retained diagnostic from its hash-checked captures; no capture runs."""
+    path = Path(args.output).resolve() / args.build / "diagnostic" / "diagnostic.json"
+    report = json.loads(path.read_text())
+    for case, entry in report["cases"].items():
+        score_case(path.parent / case, entry)
+    report["scored_by_controller_sha256"] = sha256(Path(__file__))
+    path.write_text(json.dumps(report, indent=2) + "\n")
+    print(path)
 
 
 def restore(args):
@@ -679,7 +704,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("timing", "diagnose", "summarize", "restore"):
+    for name in ("timing", "diagnose", "score", "summarize", "restore"):
         command = sub.add_parser(name)
         command.add_argument("--build", choices=BUILDS, required=True)
         if name != "restore":
@@ -695,6 +720,8 @@ def main():
         timing(args)
     elif args.command == "diagnose":
         diagnose(args)
+    elif args.command == "score":
+        score(args)
     elif args.command == "summarize":
         summarize_build(Path(args.output).resolve() / args.build)
     else:
