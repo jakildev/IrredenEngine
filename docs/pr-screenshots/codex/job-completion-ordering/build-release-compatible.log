@@ -1,0 +1,144 @@
+fleet-build: NOTE — cwd (/Users/evinjkill/src/IrredenEngine) is a main clone, not a fleet worktree.
+             if you edited files in a worktree, this build won't see them (#2402).
+IrredenEngine: Darwin system detected.
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1966 (message):
+  Calling FetchContent_Populate(rtaudio) is deprecated, call
+  FetchContent_MakeAvailable(rtaudio) instead.  Policy CMP0169 can be set to
+  OLD to allow FetchContent_Populate(rtaudio) to be called directly for now,
+  but the ability to call it with declared details will be removed completely
+  in a future version.
+Call Stack (most recent call first):
+  cmake/ir_functions.cmake:8 (FetchContent_Populate)
+  engine/audio/CMakeLists.txt:38 (IrredenEngine_applyPatchOnce)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+fix_rtaudio_target_name_clashes skipped, already marked as applied. To reapply, delete /Users/evinjkill/src/IrredenEngine/build-release/_deps/rtaudio-src/irreden/fix_rtaudio_target_name_clashes_patch_applied.txt.
+-- Checking for module 'jack'
+--   Package 'jack' not found
+-- Checking for module 'libpulse-simple'
+--   Package 'libpulse-simple' not found
+-- Compiling with support for: core
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1966 (message):
+  Calling FetchContent_Populate(rtmidi) is deprecated, call
+  FetchContent_MakeAvailable(rtmidi) instead.  Policy CMP0169 can be set to
+  OLD to allow FetchContent_Populate(rtmidi) to be called directly for now,
+  but the ability to call it with declared details will be removed completely
+  in a future version.
+Call Stack (most recent call first):
+  cmake/ir_functions.cmake:8 (FetchContent_Populate)
+  engine/audio/CMakeLists.txt:84 (IrredenEngine_applyPatchOnce)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+fix_coremidi_singleton_noexcept_violation skipped, already marked as applied. To reapply, delete /Users/evinjkill/src/IrredenEngine/build-release/_deps/rtmidi-src/irreden/fix_coremidi_singleton_noexcept_violation_patch_applied.txt.
+-- Checking for module 'jack'
+--   Package 'jack' not found
+-- Compiling with support for: coremidi
+-- Checking for module 'vorbisfile'
+--   Package 'vorbisfile' not found
+-- libvorbisfile not found. miniaudio_libvorbis will be excluded.
+-- Checking for module 'opusfile'
+--   Package 'opusfile' not found
+-- libopusfile not found. miniaudio_libopus will be excluded.
+-- Found SDL2: /opt/homebrew/lib/libSDL2.dylib
+-- SteamAudio not found. miniaudio_engine_steamaudio will be excluded.
+-- Library list: miniaudio
+-- {fmt} version: 11.2.0
+-- Build type: Release
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1966 (message):
+  Calling FetchContent_Populate(spdlog) is deprecated, call
+  FetchContent_MakeAvailable(spdlog) instead.  Policy CMP0169 can be set to
+  OLD to allow FetchContent_Populate(spdlog) to be called directly for now,
+  but the ability to call it with declared details will be removed completely
+  in a future version.
+Call Stack (most recent call first):
+  engine/profile/CMakeLists.txt:51 (FetchContent_Populate)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Build spdlog: 1.15.3
+-- Build type: Release
+CMake Deprecation Warning at build-release/_deps/easy_profiler-src/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+--
+-- EASY_PROFILER.Core version = 2.1.0
+--
+-- -------- EASY_PROFILER OPTIONS: --------
+--   Use rtdsc as a timer
+--   Default listening port = 28077
+--   Auto-start listening = OFF
+--   Profile self = OFF
+--   Profile self blocks initial status = OFF
+--   Truncate block dynamic names = OFF (may cause crash if using dynamic block names of length >2816 symbols)
+--   Check maximum EASY_VALUE data size = OFF (may cause crash if using EASY_VALUE arrays of total data size >2816 bytes)
+--   Implicit thread registration = ON
+--   Log messages = OFF
+--   Function names pretty-print = OFF
+--   Use EasyProfiler colors palette = ON
+--   Shared library: ON
+-- ------ END EASY_PROFILER OPTIONS -------
+--
+-- Using Qt v5.15.18
+-- IrredenEngineProfile: easy_profiler GUI enabled.
+-- Metal AOT shader precompilation disabled (IRREDEN_METAL_AOT_SHADERS=OFF); shaders compile at runtime.
+-- IrredenEngineVideo: FFmpeg enabled from /opt/homebrew/opt/ffmpeg.
+-- GLM: Version 1.1.0
+-- GLM: Disable -Wc++98-compat warnings
+-- GLM: Build with C++ features auto detection
+CMake Deprecation Warning at build-release/_deps/enkits_src-src/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- Could NOT find Doxygen (missing: DOXYGEN_EXECUTABLE)
+-- Using Cocoa for window creation
+-- macOS-specific code will be compiled.
+-- Configuring done (9.0s)
+-- Generating done (0.8s)
+-- Build files have been written to: /Users/evinjkill/src/IrredenEngine/build-release
+[  0%] Built target luajit_build
+[  0%] Building CXX object _deps/enkits_src-build/CMakeFiles/enkiTS.dir/src/TaskScheduler.cpp.o
+[  0%] Built target fmt
+[  0%] Built target rtaudio
+[  0%] Built target glm
+[ 15%] Built target meshoptimizer
+[ 15%] Built target rtmidi
+[ 26%] Built target easy_profiler
+[ 26%] Built target IrredenEngineMath
+[ 31%] Built target spdlog
+[ 36%] Built target glfw
+[ 36%] Built target IRVoxelEditorAssets
+[ 42%] Built target IrredenEngineProfile
+[ 42%] Built target IrredenEngineUtility
+[ 47%] Built target IrredenEngineTime
+[ 52%] Built target IrredenEngineAsset
+[ 52%] Built target IrredenEngineCatalog
+[ 52%] Linking CXX static library libenkiTS.a
+[ 52%] Built target enkiTS
+[ 52%] Building CXX object engine/job/CMakeFiles/IrredenEngineJob.dir/src/job_manager.cpp.o
+[ 57%] Building CXX object engine/job/CMakeFiles/IrredenEngineJob.dir/src/ir_job.cpp.o
+[ 57%] Linking CXX static library libIrredenEngineJob.a
+[ 57%] Built target IrredenEngineJob
+[ 63%] Built target IrredenEngineEntity
+[ 63%] Built target IrredenEngineSystem
+[ 68%] Built target IrredenEngineAudio
+[ 73%] Built target IrredenEngineWindow
+[ 73%] Built target IrredenEngineInput
+[ 84%] Built target IrredenEngineRendering
+[ 84%] Built target IrredenEngineVideo
+[ 84%] Built target IrredenEngineCommand
+[ 89%] Built target IrredenEngineWorld
+[ 89%] Built target IrredenEngineScripting
+[ 94%] Built target IrredenEngine
+[100%] Linking CXX executable IRVoxelEditor
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRVoxelEditor

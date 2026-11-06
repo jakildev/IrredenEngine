@@ -1,0 +1,4 @@
+ir-run: running release tree /Users/evinjkill/src/IrredenEngine/build-release
+ir-run: /Users/evinjkill/src/IrredenEngine/build-release/creations/editors/voxel_editor/IRVoxelEditor --profile-frames 360 --profile-yaw 30 --profile-zoom 4 --window-mode offscreen (timeout: 90s)
+ir-run: IRVoxelEditor exited cleanly after 7s
+ir-run: RESULT=CLEAN exe=IRVoxelEditor exit=0

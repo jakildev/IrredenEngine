@@ -1,0 +1,2467 @@
+ir-run: running debug tree /Users/evinjkill/src/IrredenEngine/build
+ir-run: /Users/evinjkill/src/IrredenEngine/build/IrredenEngineTest --gtest_filter=IRJob*:WorkerBlockQueueTest.* --gtest_repeat=20 --gtest_break_on_failure (timeout: 180s) (window mode: background)
+Running main() from /Users/evinjkill/src/IrredenEngine/build/_deps/googletest-src/googletest/src/gtest_main.cc
+
+Repeating all tests (iteration 1) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] Global test environment set-up.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.497] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.498] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.498] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (46 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.544] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.544] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.544] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.547] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.547] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.547] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.547] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.547] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.547] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.547] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.547] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.548] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.548] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.548] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (50 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.548] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.548] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.548] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.548] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.548] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (49 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (50 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:20.598] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (101 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 2) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.599] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.599] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.599] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.599] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.599] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.599] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.602] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.603] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.603] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.603] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.603] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.603] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.603] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (50 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (50 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:20.653] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (54 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 3) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.654] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.654] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.654] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.654] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.654] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.654] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.657] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.658] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.658] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.658] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.658] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (49 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (50 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:20.708] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (54 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 4) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.709] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.709] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.709] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.709] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.709] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.709] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.712] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.713] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.713] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (51 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (51 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:20.764] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (55 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 5) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.765] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.765] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.765] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.765] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.765] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.765] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.768] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.769] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.769] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.769] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.769] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.769] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.769] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (49 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (49 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:20.818] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (53 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 6) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.819] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.819] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.819] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.819] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.819] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.819] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.822] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.822] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.822] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.822] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.822] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.822] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.822] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.822] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.823] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.823] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.823] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.823] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.823] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.823] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.823] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.823] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (48 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (49 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:20.872] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (53 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 7) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.873] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.873] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.873] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.873] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.873] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.873] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.876] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.877] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.877] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.877] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.877] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.877] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (49 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (49 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:20.926] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (53 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 8) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.927] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.927] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.927] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.927] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.927] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.927] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.930] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.931] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.931] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.931] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.931] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.931] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.931] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (49 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:20.980] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.980] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (49 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:20.980] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:20.980] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.980] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:20.980] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.981] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:20.981] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:20.981] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:20.981] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (53 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 9) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:20.981] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:20.981] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:20.981] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:20.982] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:20.982] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:20.982] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:20.984] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:20.984] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:20.984] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:20.985] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (50 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.036] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.036] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (51 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (55 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 10) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.037] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.038] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.038] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.038] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.038] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.040] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.040] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.040] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.040] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.041] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (48 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.090] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.090] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (49 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.090] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.090] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (53 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 11) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.091] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.092] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.092] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.094] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.094] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.094] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.094] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.094] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.095] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (54 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (55 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.150] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (59 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 12) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.151] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.151] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.151] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.151] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.151] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.151] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.154] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.155] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.155] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.155] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.155] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.155] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.155] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.155] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (49 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.204] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (49 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (54 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 13) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.205] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.206] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.206] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.206] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.206] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.208] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.208] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.208] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.209] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (51 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (51 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.261] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (56 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 14) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.262] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.262] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.262] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.262] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.262] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.262] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.265] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.266] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.266] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.266] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.266] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.266] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.266] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (50 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (50 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.316] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (54 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 15) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.317] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.317] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.317] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.317] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.317] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.317] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.320] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.321] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.321] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.321] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.321] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.321] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.321] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (50 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.371] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.371] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (50 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.371] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.371] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.371] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.371] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.372] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.372] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.372] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.372] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (54 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 16) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.372] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.372] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.372] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.373] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.373] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.373] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.375] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.375] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.375] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.375] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.375] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.376] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (47 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (48 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.424] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.425] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (52 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 17) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.425] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.425] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.425] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.425] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.425] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.425] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.428] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.428] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.428] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.428] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.428] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.428] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.428] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.429] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (50 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.479] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.479] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (50 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.479] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.479] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (54 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 18) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.480] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.481] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.481] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.483] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.483] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.483] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.483] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.484] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (50 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (50 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.535] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (55 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 19) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.536] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.536] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.536] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.536] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.536] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.536] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.539] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.540] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.540] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.540] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.540] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.540] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (47 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (48 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.588] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[==========] 33 tests from 6 test suites ran. (52 ms total)
+[  PASSED  ] 33 tests.
+
+Repeating all tests (iteration 20) . . .
+
+Note: Google Test filter = IRJob*:WorkerBlockQueueTest.*
+[==========] Running 33 tests from 6 test suites.
+[----------] 17 tests from IRJobFixture
+[ RUN      ] IRJobFixture.WorkerCountMatchesRequested
+[2026-11-02 23:03:21.589] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerCountMatchesRequested (0 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread
+[2026-11-02 23:03:21.589] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsTrueOnConstructingThread (0 ms)
+[ RUN      ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce
+[2026-11-02 23:03:21.589] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForCoversEntireRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.589] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker
+[2026-11-02 23:03:21.589] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ParallelForRunsOnAtLeastOneWorker (0 ms)
+[ RUN      ] IRJobFixture.RunSingleTaskBlocksUntilDone
+[2026-11-02 23:03:21.589] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.RunSingleTaskBlocksUntilDone (2 ms)
+[ RUN      ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker
+[2026-11-02 23:03:21.591] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IsMainThreadReturnsFalseFromPinnedWorker (0 ms)
+[ RUN      ] IRJobFixture.WorkerRngIsSeededFromWorkerId
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.WorkerRngIsSeededFromWorkerId (0 ms)
+[ RUN      ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathThreadRngSharesStorageWithIRJobWorkerRng (0 ms)
+[ RUN      ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.IRMathRandomFromWorkersDoesNotRace (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainParallelCoversRangeExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainBelowThresholdRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.AutoGrainZeroAndNegativeAreNoOps (0 ms)
+[ RUN      ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksSingleLargeNodeSplitsAndCoversExactlyOnce (0 ms)
+[ RUN      ] IRJobFixture.ChunksManySmallNodesEachStayWhole
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksManySmallNodesEachStayWhole (0 ms)
+[ RUN      ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksBelowBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobFixture.ChunksEmptyNodeListIsNoOp
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 2 worker threads
+[       OK ] IRJobFixture.ChunksEmptyNodeListIsNoOp (0 ms)
+[----------] 17 tests from IRJobFixture (3 ms total)
+
+[----------] 5 tests from IRJobManagerTest
+[ RUN      ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 1 worker threads
+[       OK ] IRJobManagerTest.ManagerClearsGlobalPointerOnDestruction (0 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountResolvesToAtLeastOne (0 ms)
+[ RUN      ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager
+[       OK ] IRJobManagerTest.FreeFunctionsAreSafeWithoutManager (0 ms)
+[ RUN      ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites
+[2026-11-02 23:03:21.592] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.593] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoPoolRepeatedShortChunksCompleteAndPublishWrites (53 ms)
+[ RUN      ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial
+[2026-11-02 23:03:21.646] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-11-02 23:03:21.646] [EngineLog] [info] JobManager: started with 10 worker threads
+[       OK ] IRJobManagerTest.AutoWorkerCountNeverResolvesToInlineSerial (0 ms)
+[----------] 5 tests from IRJobManagerTest (54 ms total)
+
+[----------] 1 test from IRJobAutoGrainNoPool
+[ RUN      ] IRJobAutoGrainNoPool.RunsSerialWithoutManager
+[       OK ] IRJobAutoGrainNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobAutoGrainNoPool (0 ms total)
+
+[----------] 1 test from IRJobChunksNoPool
+[ RUN      ] IRJobChunksNoPool.RunsSerialWithoutManager
+[       OK ] IRJobChunksNoPool.RunsSerialWithoutManager (0 ms)
+[----------] 1 test from IRJobChunksNoPool (0 ms total)
+
+[----------] 6 tests from IRJobInlineSerialFixture
+[ RUN      ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal
+[2026-11-02 23:03:21.646] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ManagerReportsZeroWorkersAndStaysGlobal (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread
+[2026-11-02 23:03:21.646] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForCoversRangeOnceOnTheCallingThread (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp
+[2026-11-02 23:03:21.646] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ParallelForEmptyRangeIsNoOp (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall
+[2026-11-02 23:03:21.646] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.AutoGrainAboveThresholdStillRunsSerialSingleCall (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode
+[2026-11-02 23:03:21.646] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.ChunksAboveBothThresholdsRunSerialOneCallPerNode (0 ms)
+[ RUN      ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread
+[2026-11-02 23:03:21.647] [EngineLog] [info] JobManager: started with 0 worker threads (inline-serial: dispatches run on the calling thread)
+[       OK ] IRJobInlineSerialFixture.RunExecutesBodyOnTheCallingThread (0 ms)
+[----------] 6 tests from IRJobInlineSerialFixture (0 ms total)
+
+[----------] 3 tests from WorkerBlockQueueTest
+[ RUN      ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce
+[2026-11-02 23:03:21.647] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.ParallelPushesDrainExactlyOnce (0 ms)
+[ RUN      ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix
+[2026-11-02 23:03:21.647] [EngineLog] [info] JobManager: started with 3 worker threads
+[       OK ] WorkerBlockQueueTest.PartialBlocksDrainOnlyTheirFilledPrefix (0 ms)
+[ RUN      ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame
+[       OK ] WorkerBlockQueueTest.ResetStartsAnEmptyFrame (0 ms)
+[----------] 3 tests from WorkerBlockQueueTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 33 tests from 6 test suites ran. (58 ms total)
+[  PASSED  ] 33 tests.
+ir-run: IrredenEngineTest exited cleanly after 2s
+ir-run: RESULT=CLEAN exe=IrredenEngineTest exit=0

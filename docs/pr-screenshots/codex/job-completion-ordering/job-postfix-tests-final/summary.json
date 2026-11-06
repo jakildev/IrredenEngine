@@ -1,0 +1,39 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IrredenEngineTest",
+    "--gtest_filter=IRJob*:WorkerBlockQueueTest.*",
+    "--gtest_repeat=20",
+    "--gtest_break_on_failure"
+  ],
+  "wrapper_exit": 0,
+  "iterations": 20,
+  "passed_per_iteration": [
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33,
+    33
+  ],
+  "total_passes": 660,
+  "auto_stress_passes": 20,
+  "clean": true,
+  "release_sha256": "39f79be0dd503f007490556d2c727342da11624fd544c0bcd7eac60590836b13"
+}

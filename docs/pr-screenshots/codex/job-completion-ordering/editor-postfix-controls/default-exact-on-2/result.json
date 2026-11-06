@@ -1,0 +1,22 @@
+{
+  "case": "default-exact-on-2",
+  "command": [
+    "fleet-run",
+    "--release",
+    "--timeout",
+    "45",
+    "IRVoxelEditor",
+    "--profile-frames",
+    "120",
+    "--profile-yaw",
+    "30",
+    "--profile-zoom",
+    "4",
+    "--window-mode",
+    "offscreen"
+  ],
+  "wrapper_exit": 0,
+  "surface_environment": null,
+  "validated": true,
+  "workers": "default-auto"
+}

@@ -1,0 +1,107 @@
+{
+  "pinned_revision": "6ffccbdb1000253d8d513dd7a5ae9226e5023a5c",
+  "upstream_commits": [
+    {
+      "sha": "845b837b6a5bb6f0d36d0e594610ba4dad0b81e1",
+      "json_sha256": "490663ac8051ee90f72ae4b8445ab8f18e75f06b218bc7d16b36d0c7bec3719b"
+    },
+    {
+      "sha": "d1752d0898f4b1aa64a60944aaa9f6bf4b7ebfa4",
+      "json_sha256": "4fbccee08a4fb02ee85dd44b6dcac401437f287875ddc2326595f7d3c6070e8d"
+    }
+  ],
+  "backport_patch_sha256": "f214fce36b82971b2e04d080afbb4b7670227cb14c547ff8d8c95927c7e7462c",
+  "matching_operations": 10,
+  "mapping": [
+    {
+      "upstream_commit": "d1752d0898f4b1aa64a60944aaa9f6bf4b7ebfa4",
+      "file": "src/TaskScheduler.cpp",
+      "before": "int prevCount = taskToRun.pTask->m_RunningCount.fetch_sub(1,std::memory_order_release );",
+      "after": "int prevCount = taskToRun.pTask->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel );",
+      "backport_before": "int prevCount = taskToRun.pTask->m_RunningCount.fetch_sub(1,std::memory_order_release );",
+      "backport_after": "int prevCount = taskToRun.pTask->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel );",
+      "argument_adaptation": false
+    },
+    {
+      "upstream_commit": "d1752d0898f4b1aa64a60944aaa9f6bf4b7ebfa4",
+      "file": "src/TaskScheduler.cpp",
+      "before": "int prevCount = subTask.pTask->m_RunningCount.fetch_sub(1,std::memory_order_release );",
+      "after": "int prevCount = subTask.pTask->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel );",
+      "backport_before": "int prevCount = subTask.pTask->m_RunningCount.fetch_sub(1,std::memory_order_release );",
+      "backport_after": "int prevCount = subTask.pTask->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel );",
+      "argument_adaptation": false
+    },
+    {
+      "upstream_commit": "845b837b6a5bb6f0d36d0e594610ba4dad0b81e1",
+      "file": "src/TaskScheduler.cpp",
+      "before": "m_NumThreadsWaitingForTaskCompletion.fetch_add( 1, std::memory_order_acquire );",
+      "after": "m_NumThreadsWaitingForTaskCompletion.fetch_add( 1, std::memory_order_acq_rel );",
+      "backport_before": "m_NumThreadsWaitingForTaskCompletion.fetch_add( 1, std::memory_order_acquire );",
+      "backport_after": "m_NumThreadsWaitingForTaskCompletion.fetch_add( 1, std::memory_order_acq_rel );",
+      "argument_adaptation": false
+    },
+    {
+      "upstream_commit": "845b837b6a5bb6f0d36d0e594610ba4dad0b81e1",
+      "file": "src/TaskScheduler.cpp",
+      "before": "pCompletable_->m_WaitingForTaskCount.fetch_add( 1, std::memory_order_acquire );",
+      "after": "pCompletable_->m_WaitingForTaskCount.fetch_add( 1, std::memory_order_acq_rel );",
+      "backport_before": "pCompletable_->m_WaitingForTaskCount.fetch_add( 1, std::memory_order_acquire );",
+      "backport_after": "pCompletable_->m_WaitingForTaskCount.fetch_add( 1, std::memory_order_acq_rel );",
+      "argument_adaptation": false
+    },
+    {
+      "upstream_commit": "845b837b6a5bb6f0d36d0e594610ba4dad0b81e1",
+      "file": "src/TaskScheduler.cpp",
+      "before": "m_NumThreadsWaitingForTaskCompletion.fetch_sub( 1, std::memory_order_release );",
+      "after": "m_NumThreadsWaitingForTaskCompletion.fetch_sub( 1, std::memory_order_acq_rel );",
+      "backport_before": "m_NumThreadsWaitingForTaskCompletion.fetch_sub( 1, std::memory_order_release );",
+      "backport_after": "m_NumThreadsWaitingForTaskCompletion.fetch_sub( 1, std::memory_order_acq_rel );",
+      "argument_adaptation": false
+    },
+    {
+      "upstream_commit": "845b837b6a5bb6f0d36d0e594610ba4dad0b81e1",
+      "file": "src/TaskScheduler.cpp",
+      "before": "pCompletable_->m_WaitingForTaskCount.fetch_sub( 1, std::memory_order_release );",
+      "after": "pCompletable_->m_WaitingForTaskCount.fetch_sub( 1, std::memory_order_acq_rel );",
+      "backport_before": "pCompletable_->m_WaitingForTaskCount.fetch_sub( 1, std::memory_order_release );",
+      "backport_after": "pCompletable_->m_WaitingForTaskCount.fetch_sub( 1, std::memory_order_acq_rel );",
+      "argument_adaptation": false
+    },
+    {
+      "upstream_commit": "d1752d0898f4b1aa64a60944aaa9f6bf4b7ebfa4",
+      "file": "src/TaskScheduler.cpp",
+      "before": "int prevCount = subTask_.pTask->m_RunningCount.fetch_sub( countToRemove, std::memory_order_release );",
+      "after": "int prevCount = subTask_.pTask->m_RunningCount.fetch_sub( countToRemove, std::memory_order_acq_rel );",
+      "backport_before": "int prevCount = subTask_.pTask->m_RunningCount.fetch_sub( numRun + 1, std::memory_order_release );",
+      "backport_after": "int prevCount = subTask_.pTask->m_RunningCount.fetch_sub( numRun + 1, std::memory_order_acq_rel );",
+      "argument_adaptation": true
+    },
+    {
+      "upstream_commit": "d1752d0898f4b1aa64a60944aaa9f6bf4b7ebfa4",
+      "file": "src/TaskScheduler.cpp",
+      "before": "int prevCount = pTaskSet_->m_RunningCount.fetch_sub(1, std::memory_order_release );",
+      "after": "int prevCount = pTaskSet_->m_RunningCount.fetch_sub(1, std::memory_order_acq_rel );",
+      "backport_before": "int prevCount = pTaskSet_->m_RunningCount.fetch_sub(1, std::memory_order_release );",
+      "backport_after": "int prevCount = pTaskSet_->m_RunningCount.fetch_sub(1, std::memory_order_acq_rel );",
+      "argument_adaptation": false
+    },
+    {
+      "upstream_commit": "d1752d0898f4b1aa64a60944aaa9f6bf4b7ebfa4",
+      "file": "src/TaskScheduler.cpp",
+      "before": "pPinnedTaskSet->m_RunningCount.fetch_sub(1,std::memory_order_release);",
+      "after": "pPinnedTaskSet->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel);",
+      "backport_before": "pPinnedTaskSet->m_RunningCount.fetch_sub(1,std::memory_order_release);",
+      "backport_after": "pPinnedTaskSet->m_RunningCount.fetch_sub(1,std::memory_order_acq_rel);",
+      "argument_adaptation": false
+    },
+    {
+      "upstream_commit": "d1752d0898f4b1aa64a60944aaa9f6bf4b7ebfa4",
+      "file": "src/TaskScheduler.h",
+      "before": "m_RunningCount.fetch_sub( 1, std::memory_order_release );",
+      "after": "m_RunningCount.fetch_sub( 1, std::memory_order_acq_rel );",
+      "backport_before": "m_RunningCount.fetch_sub( 1, std::memory_order_release );",
+      "backport_after": "m_RunningCount.fetch_sub( 1, std::memory_order_acq_rel );",
+      "argument_adaptation": false
+    }
+  ]
+}

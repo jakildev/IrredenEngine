@@ -1,0 +1,15 @@
+test_backport_contains_only_all_ten_atomic_order_changes (__main__.EnkitsCompletionPatchTest.test_backport_contains_only_all_ten_atomic_order_changes) ... FAIL
+
+======================================================================
+FAIL: test_backport_contains_only_all_ten_atomic_order_changes (__main__.EnkitsCompletionPatchTest.test_backport_contains_only_all_ten_atomic_order_changes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enki-final-mutation-hy9eet1s/scripts/tests/test_enkits_completion_patch.py", line 268, in test_backport_contains_only_all_ten_atomic_order_changes
+    self.assertEqual(len(removed), 10)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+AssertionError: 9 != 10
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)

@@ -1,0 +1,169 @@
+=== PROFILE REPORT (360 frames) ===
+Frame time:   avg=19.71ms   p50=20.32ms   p95=21.53ms   p99=22.46ms   min=6.38ms   max=95.03ms
+Steady frame time (first 90 of 360 frames excluded):   avg=19.28ms   p50=20.24ms   p95=21.45ms   p99=22.46ms   min=6.38ms   max=22.76ms
+Update ticks: avg=1.2/frame  max=5
+Entity count: 333 (66 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities
+INPUT    EditorPlaceErase                          15.83     0.037     0.010     0.065     426      46860
+INPUT    WidgetInput                               10.94     0.026     0.007     0.047     426      40896
+INPUT    HitBoxMouseTestGui                         8.01     0.019     0.005     0.038     426      40896
+INPUT    WidgetLuaDispatch                          5.70     0.013     0.005     0.034     426      42600
+INPUT    EditorLayerSync                            5.59     0.013     0.004     0.024     426      46860
+INPUT    EditorPaletteUpdate                        5.40     0.013     0.005     0.022     426      46860
+INPUT    EditorLodPanelSync                         5.30     0.012     0.004     0.024     426      46860
+INPUT    EditorScrubberSync                         5.24     0.012     0.004     0.026     426      46860
+INPUT    EditorRecipes                              5.18     0.012     0.004     0.024     426      46860
+INPUT    EditorDocuments                            5.15     0.012     0.004     0.025     426      46860
+INPUT    EditorMotionPreview                        5.04     0.012     0.004     0.033     426      46860
+INPUT    EditorLoftInput                            5.03     0.012     0.004     0.023     426      46860
+INPUT    EditorPartSizePanelSync                    4.98     0.012     0.004     0.037     426      46860
+INPUT    EditorJointTreeSync                        4.93     0.012     0.004     0.108     426      46860
+INPUT    EditorRecipeHandles                        4.80     0.011     0.004     0.023     426      46860
+INPUT    EditorPartTransformHistory                 4.76     0.011     0.004     0.031     426      46860
+INPUT    EditorBake                                 4.72     0.011     0.004     0.022     426      46860
+INPUT    EditorArray                                4.71     0.011     0.004     0.021     426      46860
+INPUT    EditorBonePaintUpdate                      4.70     0.011     0.004     0.020     426      46860
+INPUT    EditorJointBindSync                        4.43     0.010     0.004     0.019     426      46860
+INPUT    InputKeyMouse                              4.42     0.010     0.001     0.037     426      53250
+INPUT    WidgetApplyDropdown                        2.22     0.005     0.001     0.040     426        852
+INPUT    GizmoHover                                 2.15     0.005     0.001     0.016     426          0
+INPUT    WidgetApplySlider                          2.00     0.005     0.001     0.010     426       6816
+INPUT    WidgetApplyTextInput                       1.80     0.004     0.001     0.029     426        852
+INPUT    WidgetApplyList                            1.71     0.004     0.001     0.022     426       2556
+INPUT    WidgetApplyCheckbox                        1.00     0.002     0.001     0.010     426       1278
+INPUT    CameraScrollZoom                           0.81     0.002     0.001     0.010     426          0
+INPUT    GizmoDrag                                  0.66     0.002     0.000     0.005     426          0
+UPDATE   PropagateTransform                        44.72     0.105     0.043     0.845     426     103092
+UPDATE   RebuildGridVoxelsImplicit                 40.83     0.096     0.026     0.186     426        426
+UPDATE   UpdateVoxelSetChildren                     8.24     0.019     0.005     0.072     426        426
+UPDATE   RebuildDetachedVoxels                      1.61     0.004     0.001     0.017     426        426
+UPDATE   GateVoxelSetsByLod                         1.41     0.003     0.001     0.009     426        426
+UPDATE   RebuildGridVoxels                          1.16     0.003     0.001     0.011     426          0
+UPDATE   GizmoScreenSpaceSize                       1.04     0.002     0.001     0.005     426          0
+UPDATE   LodUpdate                                  0.83     0.002     0.000     0.011     426        426
+UPDATE   PropagateCanvasRotation                    0.76     0.002     0.000     0.007     426          0
+UPDATE   Lifetime                                   0.25     0.001     0.000     0.001     426          0
+RENDER   SingleVoxelToCanvasFirst                 303.65     0.843     0.175    56.932     360        360
+RENDER   WidgetRenderButton                       140.31     0.390     0.149     0.796     360      11880
+RENDER   WidgetRenderColorSwatch                   94.22     0.262     0.101     0.412     360       8640
+RENDER   WidgetRenderPanel                         87.68     0.244     0.086     0.949     360       5040
+RENDER   CanvasToFramebuffer                       78.20     0.217     0.059     0.633     360       1080
+RENDER   BuildLightOcclusionGrid                   61.19     0.170     0.039     0.507     360        360
+RENDER   ComputeVoxelAO                            33.20     0.092     0.028     0.178     360        360
+RENDER   WidgetRenderList                          31.81     0.088     0.032     0.202     360       2160
+RENDER   WidgetRenderDropdown                      27.80     0.077     0.024     0.200     360        720
+RENDER   WidgetRenderCheckbox                      22.76     0.063     0.023     0.107     360       1080
+RENDER   WidgetRenderSlider                        22.10     0.061     0.019     0.139     360       5760
+RENDER   EditorHelpRender                          18.25     0.051     0.016     0.102     360      39600
+RENDER   TextToTrixel                              16.75     0.047     0.007     8.560     360          0
+RENDER   BakeSunShadowMap                          15.52     0.043     0.014     0.076     360        360
+RENDER   WidgetRenderLabel                         15.26     0.042     0.013     0.219     360       3600
+RENDER   LightingToTrixel                          11.06     0.031     0.009     0.080     360        360
+RENDER   GuiCanvasToScreen                         10.65     0.030     0.009     0.077     360        360
+RENDER   FramebufferToScreen                        8.84     0.025     0.008     0.080     360        360
+RENDER   ComputeLightVolume                         6.73     0.019     0.005     0.053     360        360
+RENDER   ComputeSunShadow                           6.59     0.018     0.005     0.099     360        360
+RENDER   EditorLoftRender                           4.66     0.013     0.005     0.044     360      39600
+RENDER   ShapesToTrixel                             3.74     0.010     0.002     0.050     360          0
+RENDER   DebugOverlay                               2.56     0.007     0.003     0.011     360       1440
+RENDER   EntityCanvasToFramebuffer                  1.97     0.005     0.002     0.012     360          0
+RENDER   UpdateJointMatrices                        1.87     0.005     0.001     0.013     360          0
+RENDER   WidgetRenderTextInput                      1.50     0.004     0.001     0.015     360        720
+RENDER   Camera                                     1.39     0.004     0.001     0.009     360        360
+RENDER   EditorAuthoringPrimitives                  1.19     0.003     0.001     0.007     360        360
+RENDER   PerfHud                                    1.17     0.003     0.001     0.007     360        360
+RENDER   UpdateVoxelPositionsGpu                    1.06     0.003     0.001     0.014     360        360
+RENDER   EditorShadowProfile                        1.02     0.003     0.001     0.042     360        360
+RENDER   CameraMousePan                             1.01     0.003     0.001     0.005     360        360
+RENDER   EditorViewportRotate                       1.01     0.003     0.001     0.010     360        360
+RENDER   CameraMouseRotate                          0.89     0.002     0.001     0.008     360        360
+RENDER   EditorAnimPlayback                         0.85     0.002     0.001     0.011     360        360
+RENDER   CameraKeyDragPan                           0.80     0.002     0.001     0.009     360        360
+RENDER   CameraKeyDragRotate                        0.78     0.002     0.001     0.004     360        360
+RENDER   SpritesToScreen                            0.75     0.002     0.000     0.007     360          0
+RENDER   HelpOverlay                                0.72     0.002     0.000     0.004     360        360
+
+--- GPU frame timing ---
+Envelope includes inter-submission gaps; buffer spans include GPU stalls.
+Neither is GPU busy time. commandBuffers counts valid frames only.
+Coverage: supported=1 attempted=360 valid=360 invalid=0 commandBuffers=360
+Metric Avg(ms) Min(ms) Max(ms) Samples
+envelope 5.400 4.537 12.469 360
+commandBufferSpans 5.400 4.537 12.469 360
+
+--- CPU phase timing ---
+Phase                                  Avg(ms)   Max(ms) Samples
+ComputeLightVolume::Clear                0.005     0.033     360
+ComputeLightVolume::Populate             0.000     0.000     360
+ComputeLightVolume::Upload               0.009     0.018     360
+PerAxisCanvas::Allocate                  1.809     1.809       1
+bakeSunShadowMap                         0.043     0.077     360
+buildLightOcclusionGrid                  0.170     0.508     360
+computeLightVolume                       0.019     0.053     360
+computeSunShadow                         0.018     0.099     360
+entityCanvasToFb                         0.006     0.012     360
+fbToScreen                               0.025     0.080     360
+textToTrixel                             0.047     8.560     360
+
+--- Run witness ---
+Camera yaw: first=30.000deg last=30.000deg travel=0.000deg samples=360
+Camera zoom: first=4.000 last=4.000
+Camera zoom range: min=4.000 max=4.000
+Camera pivot: explicit focus on 0 of 360 frames
+Per-axis overflow: maxEntries=12 maxDropped=0 cap=1048576 samples=359
+
+--- Frame times (ms, in order) ---
+95.029 18.967 17.475 17.254 17.295 17.347 18.010 17.719 17.956 18.510
+18.406 18.210 18.934 19.107 19.268 20.735 21.403 19.004 21.410 20.785
+21.553 19.085 20.977 20.928 21.705 21.416 20.903 21.154 21.534 19.330
+20.994 20.719 21.308 21.009 20.665 21.106 19.245 19.242 19.027 20.554
+20.596 21.840 18.965 18.845 18.702 19.613 18.584 19.201 19.294 19.281
+20.744 20.599 21.517 20.949 20.551 20.765 19.838 20.979 20.963 20.732
+21.838 21.389 21.125 20.531 21.284 21.184 20.665 20.623 19.763 19.351
+20.639 20.886 21.690 21.004 21.601 21.026 21.805 21.530 21.263 20.979
+20.305 20.699 21.387 21.141 19.936 20.751 19.132 19.243 19.432 19.095
+20.870 20.378 21.140 22.570 19.124 19.146 21.329 21.450 21.069 20.681
+21.115 21.221 19.211 21.074 20.829 21.324 20.570 20.777 20.864 21.292
+20.577 20.240 20.781 19.625 19.118 20.955 21.248 21.442 21.333 21.171
+20.831 19.069 21.354 21.065 20.865 20.975 21.571 21.861 20.774 21.513
+21.231 22.762 19.243 22.458 19.133 19.090 19.413 19.226 22.359 21.855
+20.766 19.324 21.754 21.112 20.802 21.229 21.148 19.426 20.606 20.997
+21.061 21.143 21.125 20.812 21.335 20.760 20.728 19.189 20.996 20.589
+20.958 20.825 21.411 21.018 21.143 20.932 21.331 20.911 18.768 18.228
+18.089 18.251 18.023 17.919 18.332 18.509 18.232 18.358 19.021 18.689
+17.377 17.931 18.185 17.758 15.912 8.283 8.525 8.188 8.473 8.248
+8.411 8.130 8.555 8.238 8.343 8.281 8.379 8.223 8.410 8.147
+8.552 18.450 18.615 18.449 18.782 18.605 19.056 19.154 19.617 19.588
+19.398 19.337 19.375 19.468 20.251 20.782 20.638 20.108 19.421 20.999
+20.299 21.201 20.947 21.495 18.862 17.314 19.189 18.751 18.742 20.689
+19.386 20.623 19.538 20.821 21.209 20.324 20.544 20.416 21.042 20.314
+20.829 20.377 21.568 20.152 19.162 21.150 19.280 20.188 19.363 19.660
+19.460 20.263 19.707 19.773 19.328 20.114 20.797 20.628 21.209 20.518
+20.518 21.110 21.274 20.378 21.284 21.186 21.305 20.476 20.648 19.319
+18.985 18.585 18.579 18.559 18.707 18.630 19.408 19.697 19.192 19.590
+19.728 20.678 20.229 20.875 20.364 20.591 19.288 21.513 20.773 19.533
+21.075 21.185 20.359 20.340 20.158 19.930 20.853 19.393 19.515 19.537
+20.796 20.771 19.554 19.358 19.090 17.264 18.964 19.841 19.434 21.002
+21.051 20.493 20.884 20.865 19.238 20.351 19.643 19.284 20.944 20.322
+20.649 21.467 20.363 20.300 20.796 21.199 20.446 20.250 20.275 21.430
+20.647 19.267 19.564 18.768 20.487 21.263 20.404 20.187 20.119 19.618
+18.976 18.833 19.294 18.906 19.355 19.921 18.945 20.697 18.835 18.901
+19.222 19.822 19.764 18.840 18.827 18.032 17.288 17.199 6.384 8.821
+
+--- Update ticks (per frame, in order) ---
+1 5 1 1 1 1 2 1 1 1 1 1 1 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 2 1
+1 1 2 1 1 1 2 1 1 1 1 2 1 1 1 1 2 1 1 1 1 1 2 1 1 1 2 1 1 1
+2 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 2 1 1 2 1 1 1 2 1 1 1 1 2 1
+1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 1 2 1
+1 1 2 1 1 1 2 1 1 2 1 1 1 2 1 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1
+2 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 1 2 1 1 1 1 1 1 1 1
+1 1 2 1 1 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 1 1 1 1 1 1 2 1
+1 1 1 1 2 1 1 1 1 2 1 1 1 2 1 1 1 1 1 2 1 1 1 1 2 1 1 1 2 1
+1 1 1 2 1 1 1 2 1 1 1 1 1 2 1 1 1 1 2 1 1 1 2 1 1 1 2 1 1 2
+1 1 1 1 1 1 1 2 1 1 1 1 1 2 1 1 1 2 1 1 1 2 1 1 1 1 2 1 1 1
+1 2 1 1 1 1 1 2 1 1 1 1 2 1 1 1 2 1 1 1 1 2 1 1 1 2 1 1 1 2
+1 1 1 1 1 2 1 1 1 2 1 1 1 1 1 2 1 1 1 1 1 2 1 1 1 1 1 1 1 1
+
+=== END REPORT ===

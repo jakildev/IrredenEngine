@@ -1,0 +1,24 @@
+test_configure_revision_transitions_do_not_carry_default_patch (__main__.EnkitsCompletionPatchTest.test_configure_revision_transitions_do_not_carry_default_patch) ... ERROR
+
+======================================================================
+ERROR: test_configure_revision_transitions_do_not_carry_default_patch (__main__.EnkitsCompletionPatchTest.test_configure_revision_transitions_do_not_carry_default_patch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enki-final-mutation-q4roa_qc/scripts/tests/test_enkits_completion_patch.py", line 256, in test_configure_revision_transitions_do_not_carry_default_patch
+    verify_sources(custom_source, contents)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enki-final-mutation-q4roa_qc/scripts/tests/test_enkits_completion_patch.py", line 246, in verify_sources
+    self.assertEqual({name: (directory / name).read_text() for name in expected}, expected)
+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enkits-completion-63v29rd2/populated/enkits-revisions/28b941f25334960347b096738839b1792a95b6ec603bafbd07b3f6b551bb47bd/enkits_src-src/src/TaskScheduler.cpp'
+
+----------------------------------------------------------------------
+Ran 1 test in 0.941s
+
+FAILED (errors=1)

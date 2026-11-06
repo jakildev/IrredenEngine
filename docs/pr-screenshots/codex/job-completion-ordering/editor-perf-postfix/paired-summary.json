@@ -1,0 +1,114 @@
+[
+  {
+    "yaw": 30,
+    "zoom": 4,
+    "stage_timing": false,
+    "sampled_steady_mean_ms": 15.72,
+    "exact_steady_mean_ms": 17.83,
+    "steady_delta_mean_ms": 2.1099999999999977,
+    "sampled_gpu_envelope_mean_ms": 5.003666666666667,
+    "exact_gpu_envelope_mean_ms": 5.16,
+    "gpu_envelope_delta_mean_ms": 0.15633333333333344,
+    "paired_rounds": [
+      {
+        "round": 1,
+        "steady_delta_ms": 9.329999999999998,
+        "gpu_envelope_delta_ms": 0.5060000000000002
+      },
+      {
+        "round": 2,
+        "steady_delta_ms": -0.05999999999999872,
+        "gpu_envelope_delta_ms": 0.23399999999999999
+      },
+      {
+        "round": 3,
+        "steady_delta_ms": -2.9399999999999995,
+        "gpu_envelope_delta_ms": -0.2709999999999999
+      }
+    ]
+  },
+  {
+    "yaw": 30,
+    "zoom": 4,
+    "stage_timing": true,
+    "sampled_steady_mean_ms": 10.94,
+    "exact_steady_mean_ms": 12.803333333333333,
+    "steady_delta_mean_ms": 1.8633333333333333,
+    "sampled_gpu_envelope_mean_ms": 4.343333333333334,
+    "exact_gpu_envelope_mean_ms": 4.481,
+    "gpu_envelope_delta_mean_ms": 0.13766666666666616,
+    "paired_rounds": [
+      {
+        "round": 1,
+        "steady_delta_ms": 6.549999999999999,
+        "gpu_envelope_delta_ms": 0.23500000000000032
+      },
+      {
+        "round": 2,
+        "steady_delta_ms": -0.9100000000000001,
+        "gpu_envelope_delta_ms": -0.4820000000000002
+      },
+      {
+        "round": 3,
+        "steady_delta_ms": -0.05000000000000071,
+        "gpu_envelope_delta_ms": 0.6599999999999993
+      }
+    ]
+  },
+  {
+    "yaw": 67,
+    "zoom": 8,
+    "stage_timing": false,
+    "sampled_steady_mean_ms": 16.956666666666667,
+    "exact_steady_mean_ms": 19.26,
+    "steady_delta_mean_ms": 2.3033333333333346,
+    "sampled_gpu_envelope_mean_ms": 5.133,
+    "exact_gpu_envelope_mean_ms": 5.241333333333333,
+    "gpu_envelope_delta_mean_ms": 0.10833333333333339,
+    "paired_rounds": [
+      {
+        "round": 1,
+        "steady_delta_ms": 0.379999999999999,
+        "gpu_envelope_delta_ms": 0.09399999999999942
+      },
+      {
+        "round": 2,
+        "steady_delta_ms": 4.979999999999999,
+        "gpu_envelope_delta_ms": 0.1980000000000004
+      },
+      {
+        "round": 3,
+        "steady_delta_ms": 1.5500000000000025,
+        "gpu_envelope_delta_ms": 0.03300000000000036
+      }
+    ]
+  },
+  {
+    "yaw": 67,
+    "zoom": 8,
+    "stage_timing": true,
+    "sampled_steady_mean_ms": 17.193333333333335,
+    "exact_steady_mean_ms": 14.236666666666666,
+    "steady_delta_mean_ms": -2.9566666666666688,
+    "sampled_gpu_envelope_mean_ms": 4.922666666666667,
+    "exact_gpu_envelope_mean_ms": 4.950333333333333,
+    "gpu_envelope_delta_mean_ms": 0.02766666666666584,
+    "paired_rounds": [
+      {
+        "round": 1,
+        "steady_delta_ms": 3.1099999999999994,
+        "gpu_envelope_delta_ms": 0.4639999999999995
+      },
+      {
+        "round": 2,
+        "steady_delta_ms": -8.330000000000002,
+        "gpu_envelope_delta_ms": -0.5289999999999999
+      },
+      {
+        "round": 3,
+        "steady_delta_ms": -3.6500000000000004,
+        "gpu_envelope_delta_ms": 0.1479999999999997
+      }
+    ]
+  }
+]

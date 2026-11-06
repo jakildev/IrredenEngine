@@ -1,0 +1,39 @@
+[
+  {
+    "control": "baseline",
+    "exit_code": 0,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/mutation-baseline.log",
+    "tests": [
+      "EnkitsCompletionPatchTest"
+    ]
+  },
+  {
+    "control": "missing-hunk",
+    "exit_code": 1,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/mutation-missing-hunk.log",
+    "tests": [
+      "EnkitsCompletionPatchTest.test_backport_contains_only_all_ten_atomic_order_changes"
+    ]
+  },
+  {
+    "control": "noop-runner",
+    "exit_code": 1,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/mutation-noop-runner.log",
+    "tests": [
+      "EnkitsCompletionPatchTest.test_applies_all_hunks_and_reapplication_preserves_files"
+    ]
+  },
+  {
+    "control": "partial-reject",
+    "exit_code": 1,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/mutation-partial-reject.log",
+    "tests": [
+      "EnkitsCompletionPatchTest.test_partial_patch_fails_without_mutating_either_file",
+      "EnkitsCompletionPatchTest.test_conflicting_hunk_fails_without_partial_application"
+    ]
+  }
+]

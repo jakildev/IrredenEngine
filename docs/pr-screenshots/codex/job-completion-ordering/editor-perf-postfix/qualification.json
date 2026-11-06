@@ -1,0 +1,15 @@
+{
+  "command": [
+    "ir-acquire",
+    "benchmark",
+    "--",
+    "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "/private/tmp/irreden-yaw-lighting/profile_editor.py",
+    "--output",
+    "/private/tmp/irreden-yaw-lighting/editor-perf-postfix",
+    "--inside-benchmark"
+  ],
+  "wrapper_exit": 0,
+  "quiet_verdict": "GUARDED",
+  "qualified": true
+}

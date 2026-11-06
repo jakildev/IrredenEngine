@@ -1,0 +1,48 @@
+test_configure_revision_transitions_do_not_carry_default_patch (__main__.EnkitsCompletionPatchTest.test_configure_revision_transitions_do_not_carry_default_patch) ... FAIL
+
+======================================================================
+FAIL: test_configure_revision_transitions_do_not_carry_default_patch (__main__.EnkitsCompletionPatchTest.test_configure_revision_transitions_do_not_carry_default_patch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enki-isolation-mutation-efrabyxk/scripts/tests/test_enkits_completion_patch.py", line 204, in test_configure_revision_transitions_do_not_carry_default_patch
+    configure(pin)
+    ~~~~~~~~~^^^^^
+  File "/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enki-isolation-mutation-efrabyxk/scripts/tests/test_enkits_completion_patch.py", line 195, in configure
+    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : -- Configuring incomplete, errors occurred!
+[ 11%] Performing update step for 'enkits_src-populate'
+Previous HEAD position was 499b103 default
+HEAD is now at 8c3c851 custom incompatible
+Index was not unstashed.
+The stash entry is kept in case you need it again.
+The stash entry is kept in case you need it again.
+CMake Error at /private/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enkits-completion-4q342_9k/populated/enkits_src-subbuild/enkits_src-populate-prefix/tmp/enkits_src-populate-gitupdate.cmake:301 (message):
+
+
+  Failed to unstash changes in:
+  '/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enkits-completion-4q342_9k/populated/enkits_src-src'.
+
+  You will have to resolve the conflicts manually
+
+
+make[2]: *** [enkits_src-populate-prefix/src/enkits_src-populate-stamp/enkits_src-populate-update] Error 1
+make[1]: *** [CMakeFiles/enkits_src-populate.dir/all] Error 2
+make: *** [all] Error 2
+
+CMake Error at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1931 (message):
+  Build step for enkits_src failed: 2
+Call Stack (most recent call first):
+  /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1622 (__FetchContent_populateSubbuild)
+  /opt/homebrew/share/cmake/Modules/FetchContent.cmake:2158:EVAL:2 (__FetchContent_doPopulation)
+  /opt/homebrew/share/cmake/Modules/FetchContent.cmake:2158 (cmake_language)
+  /opt/homebrew/share/cmake/Modules/FetchContent.cmake:2399 (__FetchContent_Populate)
+  dependency/CMakeLists.txt:53 (FetchContent_MakeAvailable)
+
+
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.938s
+
+FAILED (failures=1)

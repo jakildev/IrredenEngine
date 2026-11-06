@@ -1,0 +1,16 @@
+test_applies_all_hunks_and_reapplication_preserves_files (__main__.EnkitsCompletionPatchTest.test_applies_all_hunks_and_reapplication_preserves_files) ... FAIL
+
+======================================================================
+FAIL: test_applies_all_hunks_and_reapplication_preserves_files (__main__.EnkitsCompletionPatchTest.test_applies_all_hunks_and_reapplication_preserves_files)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enki-final-mutation-e8fyyumf/scripts/tests/test_enkits_completion_patch.py", line 77, in test_applies_all_hunks_and_reapplication_preserves_files
+    self.assertEqual(self.read_sources(), self.after)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'src[10204 chars]rder_release );\n            if( gc_TaskStartC[18971 chars]n\n'} != {'src[10204 chars]rder_acq_rel );\n            if( gc_TaskStartC[18971 chars]n\n'}
+Diff is 72140 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 1 test in 0.009s
+
+FAILED (failures=1)

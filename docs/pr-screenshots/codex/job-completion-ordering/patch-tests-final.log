@@ -1,0 +1,11 @@
+test_applies_all_hunks_and_reapplication_preserves_files (test_enkits_completion_patch.EnkitsCompletionPatchTest.test_applies_all_hunks_and_reapplication_preserves_files) ... ok
+test_backport_contains_only_all_ten_atomic_order_changes (test_enkits_completion_patch.EnkitsCompletionPatchTest.test_backport_contains_only_all_ten_atomic_order_changes) ... ok
+test_configure_revision_transitions_do_not_carry_default_patch (test_enkits_completion_patch.EnkitsCompletionPatchTest.test_configure_revision_transitions_do_not_carry_default_patch) ... ok
+test_conflicting_hunk_fails_without_partial_application (test_enkits_completion_patch.EnkitsCompletionPatchTest.test_conflicting_hunk_fails_without_partial_application) ... ok
+test_missing_source_fails (test_enkits_completion_patch.EnkitsCompletionPatchTest.test_missing_source_fails) ... ok
+test_partial_patch_fails_without_mutating_either_file (test_enkits_completion_patch.EnkitsCompletionPatchTest.test_partial_patch_fails_without_mutating_either_file) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 2.681s
+
+OK

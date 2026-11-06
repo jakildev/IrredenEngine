@@ -1,0 +1,32 @@
+[
+  {
+    "case": "baseline",
+    "exit_code": 0,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/final-mutations/baseline.log"
+  },
+  {
+    "case": "missing-hunk",
+    "exit_code": 1,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/final-mutations/missing-hunk.log"
+  },
+  {
+    "case": "noop-runner",
+    "exit_code": 1,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/final-mutations/noop-runner.log"
+  },
+  {
+    "case": "partial-reject",
+    "exit_code": 1,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/final-mutations/partial-reject.log"
+  },
+  {
+    "case": "no-custom-isolation",
+    "exit_code": 1,
+    "expected_result_observed": true,
+    "log": "/tmp/irreden-job-ordering/final-mutations/no-custom-isolation.log"
+  }
+]

@@ -1,0 +1,27 @@
+test_partial_patch_fails_without_mutating_either_file (__main__.EnkitsCompletionPatchTest.test_partial_patch_fails_without_mutating_either_file) ... FAIL
+test_conflicting_hunk_fails_without_partial_application (__main__.EnkitsCompletionPatchTest.test_conflicting_hunk_fails_without_partial_application) ... FAIL
+
+======================================================================
+FAIL: test_partial_patch_fails_without_mutating_either_file (__main__.EnkitsCompletionPatchTest.test_partial_patch_fails_without_mutating_either_file)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enki-mutation-imrm2puq/scripts/tests/test_enkits_completion_patch.py", line 89, in test_partial_patch_fails_without_mutating_either_file
+    self.assertEqual(self.read_sources(), original)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'src[10204 chars]rder_acq_rel );\n            if( gc_TaskStartC[18971 chars]n\n'} != {'src[10204 chars]rder_release );\n            if( gc_TaskStartC[18971 chars]n\n'}
+Diff is 71976 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_conflicting_hunk_fails_without_partial_application (__main__.EnkitsCompletionPatchTest.test_conflicting_hunk_fails_without_partial_application)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/var/folders/x3/4t0pjy8s0f71hs9jh6zy58qc0000gn/T/enki-mutation-imrm2puq/scripts/tests/test_enkits_completion_patch.py", line 103, in test_conflicting_hunk_fails_without_partial_application
+    self.assertEqual(self.read_sources(), original)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'src[10204 chars]rder_acq_rel );\n            if( gc_TaskStartC[18973 chars]n\n'} != {'src[10204 chars]rder_release );\n            if( gc_TaskStartC[18973 chars]n\n'}
+Diff is 71978 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.182s
+
+FAILED (failures=2)
