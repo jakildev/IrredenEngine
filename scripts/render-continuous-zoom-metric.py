@@ -41,6 +41,16 @@ too.
 and at snapped zoom 2 and 4, at both yaws, and gates the continuous sweep's
 ``render-jitter-metric`` score at no more than the larger snapped score plus 1.
 
+``filter`` grades the gather-filter diagnostic (``IR_GATHER_FILTER_DIAGNOSTIC``)
+on the ``--gather-filter-fixture`` scene: forward and reverse continuous sweeps
+across the zoom 2 -> 3 density step at yaw 0 and at an intermediate yaw, each
+captured nearest twice, unrestricted and owner-restricted, plus snapped zoom 2
+and 4. ``scripts/gather_filter_metric.py`` documents the counts. The gate is
+the candidate's: zero coverage changes, bleed and owner disagreements in every
+shot, a bleeding unrestricted control and a byte-identical nearest repeat. The
+temporal comparison is reported, not gated. ``filter-grade`` re-grades a kept
+``--output`` directory.
+
 The edge gates need an output scale of 2 or more: at scale 1 the upscale
 residual is always zero and the split has nothing to get wrong. A host whose
 default output scale is 1 passes ``--config-preset
@@ -63,14 +73,17 @@ import importlib.machinery
 import importlib.util
 import json
 import math
+import os
 import re
 import shutil
 import struct
 import subprocess
 import sys
 import zlib
+from collections import Counter
 from pathlib import Path
 
+import gather_filter_metric as gather_filter
 import render_metric_util as util
 import verify_common
 
@@ -261,19 +274,22 @@ class Capture:
         self.preset = ["--config-preset", config_preset] if config_preset else []
         self.timeout = timeout
 
-    def run(self, demo_args: list[str], shots: int) -> tuple[list[Path], list[dict]]:
+    def run(self, demo_args: list[str], shots: int,
+            env: dict[str, str] | None = None) -> tuple[list[Path], list[dict]]:
         """One capture run. The demo's own output goes to ``last_run.log``
         beside the capture directory rather than to stdout: a mode makes up to
         six runs, and their logs would bury the readings."""
         cmd = ["fleet-run", TARGET, *demo_args, *self.preset, "--auto-screenshot", str(shots)]
-        print("+ " + " ".join(cmd), flush=True)
+        prefix = " ".join(f"{key}={value}" for key, value in (env or {}).items())
+        print("+ " + " ".join(filter(None, [prefix, *cmd])), flush=True)
         if self.shots_dir.exists():
             shutil.rmtree(self.shots_dir)
         self.shots_dir.mkdir(parents=True)
         proc = subprocess.run(
             verify_common.platform_launch_argv(cmd), cwd=str(self.root),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
-            errors="replace", timeout=self.timeout)
+            errors="replace", timeout=self.timeout,
+            env={**os.environ, **env} if env else None)
         (self.shots_dir.parent / "continuous_zoom_last_run.log").write_text(
             proc.stdout, encoding="utf-8")
         verdict = verify_common.run_result(proc.stdout)
@@ -403,6 +419,155 @@ def _jitter_mode(capture: Capture) -> dict:
     }
 
 
+FILTER_ARMS = {
+    "nearest": {},
+    "nearest_repeat": {},
+    "unrestricted": {"IR_GATHER_FILTER_DIAGNOSTIC": "unrestricted"},
+    "owner": {"IR_GATHER_FILTER_DIAGNOSTIC": "owner"},
+}
+FILTER_SHOTS = 25
+FILTER_YAWS = {"yaw_0": "0", "yaw_0.4": "0.4"}
+FILTER_SWEEPS = {
+    "forward": ["--zoom-continuous", "--zoom-sweep", "1.8", "2.4", str(FILTER_SHOTS)],
+    "reverse": ["--zoom-continuous", "--zoom-sweep", "2.4", "1.8", str(FILTER_SHOTS)],
+    "snapped": ["--zoom-sweep", "2", "4", "2"],
+}
+
+
+def _filter_capture(capture: Capture, output: Path) -> None:
+    """Every arm of every sweep, kept under ``output/<yaw>/<sweep>/<arm>/``."""
+    for yaw_name, yaw in FILTER_YAWS.items():
+        for sweep_name, sweep in FILTER_SWEEPS.items():
+            shots = int(sweep[-1])
+            for arm, env in FILTER_ARMS.items():
+                frames, _ = capture.run(
+                    ["--gather-filter-fixture", *sweep, "--yaw", yaw], shots, env)
+                target = output / yaw_name / sweep_name / arm
+                target.mkdir(parents=True, exist_ok=True)
+                for stale in target.glob("*.png"):
+                    stale.unlink()
+                for frame in frames:
+                    shutil.copy2(frame, target / frame.name)
+                shutil.copy2(capture.shots_dir.parent / "continuous_zoom_last_run.log",
+                             target / "run.log")
+
+
+def _filter_sweep(directory: Path) -> dict:
+    """Grade one kept sweep: per-shot counts of each arm against nearest, and
+    the per-body temporal difference of each arm."""
+    arms = {arm: sorted((directory / arm).glob("screenshot_*.png")) for arm in FILTER_ARMS}
+    states = parse_states((directory / "nearest" / "run.log").read_text(errors="replace"))
+    if not states or any(len(frames) != len(states) for frames in arms.values()):
+        raise ValueError(f"{directory}: arms and [zoom-calibration] lines disagree")
+    scale = states[0]["scale"]
+    frames = {arm: [gather_filter.Frame(path, scale) for path in paths]
+              for arm, paths in arms.items()}
+    owners = [gather_filter.Owners(frame) for frame in frames["nearest"]]
+    shots = []
+    for index, state in enumerate(states):
+        shot = {"zoom": state["zoom"], "density": state["density"], "scale": state["scale"],
+                "unknown_colors": owners[index].unknown}
+        for arm in ("nearest_repeat", "unrestricted", "owner"):
+            shot[arm] = gather_filter.ownership(owners[index], frames[arm][index])
+        shots.append(shot)
+    means: dict[str, dict[str, list[tuple[float, float, float]]]] = {}
+    for index in range(len(states)):
+        for arm in FILTER_ARMS:
+            for body, mean in gather_filter.interior_mean(owners[index],
+                                                          frames[arm][index]).items():
+                means.setdefault(body, {}).setdefault(arm, []).append(mean)
+    temporal: dict[str, dict[str, list[float]]] = {}
+    registrations = []
+    for index in range(len(states) - 1):
+        reg = gather_filter.registration(owners[index], owners[index + 1])
+        registrations.append(reg["max_residual_px"])
+        for arm in FILTER_ARMS:
+            per_body = gather_filter.temporal(owners[index], owners[index + 1], reg,
+                                              frames[arm][index], frames[arm][index + 1])
+            for body, (difference, _) in per_body.items():
+                temporal.setdefault(body, {}).setdefault(arm, []).append(difference)
+    return {"shots": shots, "temporal": temporal, "interior_means": means,
+            "max_registration_residual_px": max(registrations, default=0.0)}
+
+
+def _sum(shots: list[dict], arm: str, key: str) -> int:
+    return sum(shot[arm][key] for shot in shots)
+
+
+def _filter_summary(graded: dict[str, dict]) -> dict:
+    sweeps = {}
+    for name, sweep in graded.items():
+        shots = sweep["shots"]
+        temporal = {}
+        for body, by_arm in sweep["temporal"].items():
+            mean = {arm: round(sum(values) / len(values), 4) for arm, values in by_arm.items()}
+            paired = [o - n for o, n in zip(by_arm["owner"], by_arm["nearest"])]
+            repeat = [r - n for r, n in zip(by_arm["nearest_repeat"], by_arm["nearest"])]
+            temporal[body] = {
+                "mean": mean,
+                "owner_minus_nearest": round(sum(paired) / len(paired), 4),
+                "repeat_noise": round(max(abs(value) for value in repeat), 4),
+            }
+        mean_spread = {
+            body: {arm: round(_channel_spread(values), 4) for arm, values in by_arm.items()}
+            for body, by_arm in sweep["interior_means"].items()
+        }
+        sweeps[name] = {
+            "zoom": [shots[0]["zoom"], shots[-1]["zoom"]],
+            "density": sorted({shot["density"] for shot in shots}),
+            "scale": sorted({shot["scale"] for shot in shots}),
+            "unknown_colors": sum(shot["unknown_colors"] for shot in shots),
+            "max_registration_residual_px": round(sweep["max_registration_residual_px"], 4),
+            "temporal": temporal,
+            "interior_mean_spread": mean_spread,
+            **{f"{arm}_{key}": _sum(shots, arm, key)
+               for arm in ("nearest_repeat", "unrestricted", "owner")
+               for key in ("coverage_changes", "bleed", "owner_disagreements",
+                           "source_face_differing")},
+            "owner_changed": dict(sum((Counter(shot["owner"]["changed"]) for shot in shots),
+                                      Counter())),
+            "unrestricted_changed": dict(sum((Counter(shot["unrestricted"]["changed"])
+                                              for shot in shots), Counter())),
+        }
+    candidate_clean = all(
+        sweep[f"owner_{key}"] == 0 for sweep in sweeps.values()
+        for key in ("coverage_changes", "bleed", "owner_disagreements"))
+    repeat_clean = all(
+        sweep[f"nearest_repeat_{key}"] == 0 for sweep in sweeps.values()
+        for key in ("coverage_changes", "bleed", "owner_disagreements"))
+    control_bleeds = any(sweep["unrestricted_bleed"] > 0 for sweep in sweeps.values())
+    return {
+        "mode": "filter",
+        "sweeps": sweeps,
+        "candidate_clean": candidate_clean,
+        "repeat_clean": repeat_clean,
+        "unrestricted_control_bleeds": control_bleeds,
+        "pass": candidate_clean and repeat_clean and control_bleeds,
+    }
+
+
+def _channel_spread(means: list[tuple[float, float, float]]) -> float:
+    """Largest per-channel population standard deviation across shots."""
+    spreads = []
+    for channel in range(3):
+        values = [mean[channel] for mean in means]
+        centre = sum(values) / len(values)
+        spreads.append((sum((v - centre) ** 2 for v in values) / len(values)) ** 0.5)
+    return max(spreads)
+
+
+def _filter_grade(output: Path) -> dict:
+    graded = {}
+    for yaw_name in FILTER_YAWS:
+        for sweep_name in FILTER_SWEEPS:
+            directory = output / yaw_name / sweep_name
+            graded[f"{yaw_name}/{sweep_name}"] = _filter_sweep(directory)
+            print(f"[continuous-zoom] graded {yaw_name}/{sweep_name}", flush=True)
+    summary = _filter_summary(graded)
+    (output / "results.json").write_text(json.dumps(summary, indent=2) + "\n")
+    return summary
+
+
 def _gpu(args, mode) -> int:
     try:
         result = mode(Capture(args.config_preset, args.timeout))
@@ -425,6 +590,14 @@ def main(argv: list[str]) -> int:
                               "configs/zoom_calibration_lowres.lua)")
         gpu.add_argument("--timeout", type=int, default=300,
                          help="seconds to wait on each capture run")
+    gpu = modes.add_parser("filter", help="capture and grade the gather-filter diagnostic "
+                                          "(needs a GPU)")
+    gpu.add_argument("--config-preset", default=None)
+    gpu.add_argument("--timeout", type=int, default=300)
+    gpu.add_argument("--output", required=True,
+                     help="directory that keeps every arm's captures and results.json")
+    grade = modes.add_parser("filter-grade", help="re-grade a kept filter --output directory")
+    grade.add_argument("output")
     for name in ("widths", "edge"):
         offline = modes.add_parser(name, help=f"grade one existing sweep on its {name}")
         offline.add_argument("directory", help="screenshot directory of the sweep")
@@ -445,6 +618,18 @@ def main(argv: list[str]) -> int:
         return _gpu(args, _pan_mode)
     if args.mode == "jitter":
         return _gpu(args, _jitter_mode)
+    if args.mode == "filter":
+        output = Path(args.output)
+        return _gpu(args, lambda capture: (_filter_capture(capture, output),
+                                           _filter_grade(output))[1])
+    if args.mode == "filter-grade":
+        try:
+            result = _filter_grade(Path(args.output))
+        except (OSError, ValueError, struct.error, IndexError, zlib.error) as error:
+            print(json.dumps({"error": str(error)}))
+            return 2
+        _result_line(result)
+        return 0 if result["pass"] else 1
     if args.mode == "widths":
         return _offline(args, measure_widths)
     return _offline(args, lambda frames, states: measure_edge(

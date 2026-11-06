@@ -5,7 +5,7 @@ layout(std140, binding = 3) uniform FrameDataIsoTriangles {
     vec4 compositePrefix[16];
     ivec2 mouseFramebufferPixel;
     int hoverResolveMode;
-    int hoverResolvePad;
+    int gatherFilterDiagnostic;
 };
 layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
     uvec2 hoveredEntityId;

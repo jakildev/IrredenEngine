@@ -5,7 +5,7 @@ struct HoverResolveFrame {
     float4 compositePrefix[16];
     int2 mouseFramebufferPixel;
     int hoverResolveMode;
-    int hoverResolvePad;
+    int gatherFilterDiagnostic;
 };
 struct HoverResolveRecord {
     uint2 entityId;

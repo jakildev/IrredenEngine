@@ -82,6 +82,9 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     uint fogUnexploredColorPacked;
     ivec4 perAxisStoreFrame;
     vec4 canvasFromPixel;
+    ivec2 mouseFramebufferPixel;
+    int hoverResolveMode;
+    int gatherFilterDiagnostic;
 };
 
 layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
@@ -114,6 +117,56 @@ float cardinalFogAaFloor(ivec2 pixel, int rawDist, uvec2 rawId) {
 }
 #endif
 
+// GatherFilterDiagnostic (ir_render_types.hpp): any other non-zero mode is unrestricted.
+const int kGatherFilterOwner = 2;
+
+// Whether stored texel `tap` belongs to the surface the nearest texel shows:
+// the same entity, face slot and flip, and a depth no further than the step
+// a planar voxel face takes between those texels. Colour agreement is not
+// evidence of ownership.
+bool gatherFilterTapOwned(ivec2 tap, ivec2 nearest, vec4 tapColor, uvec2 nearestId,
+                          int nearestDist) {
+    if (tapColor.a < 0.1) return false;
+    const uvec2 tapId = decodeEntityId(texelFetch(triangleEntityIds, tap, 0).rg);
+    if (tapId != nearestId) return false;
+    const int tapDist = texelFetch(triangleDistances, tap, 0).r;
+    if ((tapDist & 7) != (nearestDist & 7)) return false;
+    const ivec2 texelStep = abs(tap - nearest);
+    return abs(decodeDepthSingle(tapDist) - decodeDepthSingle(nearestDist)) <=
+        2 * (texelStep.x + texelStep.y);
+}
+
+// Box-filtered colour over the canvas texels the pixel footprint covers,
+// weighted by overlap area. The footprint of a minifying pixel spans at most
+// three texels per axis; a wider one is truncated around its first texel.
+vec3 gatherFilterDiagnosticColor(vec2 origin, ivec2 nearest, vec4 nearestColor,
+                                 int nearestDist, ivec2 textureSize, int mode) {
+    const vec2 halfFootprint = 0.5 * abs(canvasFromPixel.zw);
+    const vec2 lo = origin - halfFootprint;
+    const vec2 hi = origin + halfFootprint;
+    const ivec2 first = max(ivec2(floor(lo)), ivec2(0));
+    const ivec2 last = min(min(ivec2(floor(hi)), first + ivec2(2)), textureSize - 1);
+    const uvec2 nearestId = mode == kGatherFilterOwner
+        ? decodeEntityId(texelFetch(triangleEntityIds, nearest, 0).rg) : uvec2(0u);
+    vec3 sum = vec3(0.0);
+    float weight = 0.0;
+    for (int y = first.y; y <= last.y; ++y) {
+        for (int x = first.x; x <= last.x; ++x) {
+            const vec2 cell = vec2(x, y);
+            const vec2 overlap = max(min(hi, cell + 1.0) - max(lo, cell), vec2(0.0));
+            const float area = overlap.x * overlap.y;
+            if (area <= 0.0) continue;
+            const ivec2 tap = ivec2(x, y);
+            const vec4 tapColor = texelFetch(triangleColors, tap, 0);
+            if (mode == kGatherFilterOwner && tap != nearest &&
+                !gatherFilterTapOwned(tap, nearest, tapColor, nearestId, nearestDist)) continue;
+            sum += tapColor.rgb * area;
+            weight += area;
+        }
+    }
+    return weight > 0.0 ? sum / weight : nearestColor.rgb;
+}
+
 float normalizeDistance(int dist) {
     return float(dist - kMinTriangleDistance) / float(kMaxTriangleDistance - kMinTriangleDistance);
 }
@@ -140,6 +193,11 @@ void main() {
     ivec2 sampleCoord = trixelCanvasReadCoord(displayOrigin, textureSize);
     vec4 color = texelFetch(triangleColors, sampleCoord, 0);
     int rawDist = texelFetch(triangleDistances, sampleCoord, 0).r;
+    // Colour only: depth, alpha, id and hover below stay on the nearest texel.
+    if (gatherFilterDiagnostic != 0 && color.a >= 0.1) {
+        color.rgb = gatherFilterDiagnosticColor(displayOrigin, sampleCoord, color, rawDist,
+                                                textureSize, gatherFilterDiagnostic);
+    }
 #if IR_CARDINAL_LIGHTING
     const bool glitchPresentationOverride =
         cardinalLightingEnabled == 2 &&

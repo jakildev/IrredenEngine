@@ -65,6 +65,9 @@
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
+#include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
+#include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
+#include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
@@ -1387,6 +1390,13 @@ bool g_zoomContinuous = false;
 // capture the same subject.
 bool g_zoomCalibration = false;
 
+// --gather-filter-fixture: with the zoom calibration, replace its cube with the
+// unlit gather-filter fixture (initGatherFilterFixture) that
+// `render-continuous-zoom-metric.py filter` grades. Every owner's palette
+// lies off the checker's r+g+b plane, so a colour mixed across owners is
+// distinguishable from one mixed inside a body.
+bool g_gatherFilterFixture = false;
+
 // One retained owner readback on the first settled capture, before the spin advances.
 bool g_shapeSampleProbe = false;
 bool g_shapeSampleProbeAttempted = false;
@@ -1672,6 +1682,12 @@ void registerCliArgs() {
         "--zoom-calibration",
         "Replace the scene with the continuous-zoom calibration cube (implied by --zoom-sweep)"
     );
+    args.flag(
+        "--gather-filter-fixture",
+        "With --zoom-sweep or --zoom-calibration: the gather-filter fixture (checker bodies in "
+        "each presentation, an SDF box, a touching pair, one voxel, a thin detached bar) instead "
+        "of the cube"
+    );
     args.numbers(
         "--zoom-sweep",
         "Zoom sweep <from> <to> <count> on the calibration cube at a fixed off-origin camera; "
@@ -1852,6 +1868,7 @@ void readCliArgs() {
         g_zoomSweepCount = IRMath::max(2, static_cast<int>(sweep[2]));
     }
     g_zoomCalibration = g_zoomSweep || args.getFlag("--zoom-calibration");
+    g_gatherFilterFixture = g_zoomCalibration && args.getFlag("--gather-filter-fixture");
 
     if (args.wasProvided("--zoom")) {
         const float zoom = args.getFloat("--zoom");
@@ -4151,6 +4168,10 @@ void initSystems() {
             )
         );
     }
+    if (g_gatherFilterFixture) {
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>());
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>());
+    }
     IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
     // Settings menu rides the INPUT pipeline: its widget chain needs
     // the cursor state INPUT_KEY_MOUSE publishes, and polling the widgets in
@@ -4252,6 +4273,14 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
     );
+    if (g_gatherFilterFixture) {
+        renderPipeline.insert(
+            std::next(
+                std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId)
+            ),
+            IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>()
+        );
+    }
     if (g_viewportPortrait) {
         // The sync feeds the viewport's pool before the voxel raster reads it;
         // the composite lands on top of the world + GUI composite.
@@ -5812,6 +5841,83 @@ void initGlitchSubjectFixture() {
     );
 }
 
+// Checker palette: four colours on the plane r + g + b = 380, indexed by the
+// voxel's x and y parity. Every other owner and the black background sits at
+// least 50 off that plane.
+constexpr std::array<Color, 4> kGatherFilterChecker{{
+    Color{200, 60, 120, 255},
+    Color{60, 200, 120, 255},
+    Color{120, 60, 200, 255},
+    Color{60, 120, 200, 255},
+}};
+constexpr ivec3 kGatherFilterBodySize = ivec3(16, 16, 2);
+// One step along (-1, +1, 0) moves two iso columns at a constant iso row.
+constexpr vec3 kGatherFilterColumn = vec3(-1.0f, 1.0f, 0.0f);
+
+void initGatherFilterFixture() {
+    using IRComponents::RotationMode;
+    IR_LOG_INFO("--- Gather-filter fixture scene ---");
+    const vec3 bodyRow = kZoomCalibrationBoxWorld + vec3(0.0f, 0.0f, 6.0f);
+    const std::array<RotationMode, 3> presentations{
+        RotationMode::GRID,
+        RotationMode::DETACHED,
+        RotationMode::DETACHED_REVOXELIZE
+    };
+    for (std::size_t index = 0; index < presentations.size(); ++index) {
+        const float column = (static_cast<float>(index) - 1.0f) * 22.0f;
+        const EntityId body = IREntity::createEntity(
+            C_LocalTransform{bodyRow + kGatherFilterColumn * column},
+            C_VoxelSetNew{kGatherFilterBodySize, kGatherFilterChecker[0], EntityAnchor::CENTER}
+        );
+        IREntity::getComponent<C_VoxelSetNew>(body).editVoxels([](int, C_Voxel &voxel, vec3 p) {
+            const int x = static_cast<int>(IRMath::floor(p.x));
+            const int y = static_cast<int>(IRMath::floor(p.y));
+            voxel.color_ = kGatherFilterChecker[(x & 1) + 2 * (y & 1)];
+        });
+        if (presentations[index] != RotationMode::GRID) {
+            IRPrefab::RotationMode::setMode(body, presentations[index]);
+        }
+    }
+    const vec3 propRow = bodyRow + vec3(0.0f, 0.0f, -30.0f);
+    createSDFShape(
+        propRow + kGatherFilterColumn * -22.0f,
+        IRRender::ShapeType::BOX,
+        vec4(12.0f, 12.0f, 6.0f, 0.0f),
+        Color{20, 60, 120, 255}
+    );
+    // Two flat-colour boxes sharing a face: the touching-owner boundary.
+    IREntity::createEntity(
+        C_LocalTransform{propRow + kGatherFilterColumn * -4.0f},
+        C_VoxelSetNew{ivec3(6), Color{250, 40, 40, 255}, EntityAnchor::CORNER}
+    );
+    IREntity::createEntity(
+        C_LocalTransform{propRow + kGatherFilterColumn * -4.0f + vec3(6.0f, 0.0f, 0.0f)},
+        C_VoxelSetNew{ivec3(6), Color{40, 250, 40, 255}, EntityAnchor::CORNER}
+    );
+    // The one-cell silhouette.
+    IREntity::createEntity(
+        C_LocalTransform{propRow + kGatherFilterColumn * 10.0f},
+        C_VoxelSetNew{ivec3(1), Color{250, 250, 0, 255}, EntityAnchor::CORNER}
+    );
+    // A one-voxel-thick bar turned off the lattice: the thin detached child.
+    const EntityId bar = IREntity::createEntity(
+        C_LocalTransform{
+            propRow + kGatherFilterColumn * 22.0f,
+            IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), IRMath::kPi / 6.0f)
+        },
+        C_VoxelSetNew{ivec3(14, 1, 1), Color{255, 255, 255, 255}, EntityAnchor::CENTER}
+    );
+    IRPrefab::RotationMode::setMode(bar, RotationMode::DETACHED);
+    // Detached canvases need the main canvas's lighting resources bound; the
+    // UNLIT overlay then passes every albedo through unmodulated.
+    setupCanvasLighting();
+    IRRender::setAOEnabled(false);
+    IRRender::setSunShadowsEnabled(false);
+    IRRender::setDebugOverlay(IRRender::DebugOverlayMode::UNLIT);
+    // The sweep shots set this pose per capture; an --auto-profile run keeps it.
+    IRRender::setCameraPosition2DIso(kZoomCalibrationCamera);
+}
+
 void initEntities() {
     if (g_rotationPickMode != RotationPickMode::OFF) {
         initRotationPickFixture();
@@ -5926,6 +6032,10 @@ void initEntities() {
     if (g_pivotVerifyBlock != "off") {
         IR_LOG_INFO("--- Pivot-verify probe scene ({}) ---", g_pivotVerifyBlock);
         initPivotVerifyScene();
+        return;
+    }
+    if (g_gatherFilterFixture) {
+        initGatherFilterFixture();
         return;
     }
     if (g_zoomCalibration) {

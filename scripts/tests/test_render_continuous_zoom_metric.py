@@ -265,5 +265,138 @@ class ContinuousZoomMetricTest(unittest.TestCase):
         self.assertEqual(result["max_backward_px"], 2)
 
 
+import gather_filter_metric as gfm  # noqa: E402
+
+FW, FH = 96, 24
+RED, GREEN = gfm.FLAT_OWNERS[gfm.PAIR_RED], gfm.FLAT_OWNERS[gfm.PAIR_GREEN]
+
+
+def filter_scene(dx=0, body_color=None, pair_join=None):
+    """A framebuffer-resolution scene: two checker bodies (columns 2-11 and
+    70-79, far enough right that the second's source-face fence clears the
+    pair) and a touching red/green pair (rows 16-21), on black."""
+    pixels = [[(0, 0, 0)] * FW for _ in range(FH)]
+    for left in (2, 70):
+        for y in range(2, 12):
+            for x in range(left + dx, left + dx + 10):
+                pixels[y][x] = body_color or gfm.CHECKER_PALETTE[(x & 1) + 2 * (y & 1)]
+    for y in range(16, 22):
+        for x in range(14 + dx, 26 + dx):
+            pixels[y][x] = RED if x < 20 + dx else GREEN
+        if pair_join is not None:
+            pixels[y][20 + dx] = pair_join
+    return pixels
+
+
+def write_filter_capture(path, pixels, scale=2):
+    rows = []
+    for row in pixels:
+        line = b"".join(bytes(rgb) * scale for rgb in row)
+        rows.extend([line] * scale)
+    rmu.write_png(str(path), FW * scale, FH * scale, b"".join(rows), 3)
+
+
+class GatherFilterGradingTest(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+
+    def frame(self, name, pixels):
+        path = self.root / f"{name}.png"
+        write_filter_capture(path, pixels)
+        return gfm.Frame(path, 2)
+
+    def test_reads_one_sample_per_framebuffer_pixel(self):
+        frame = self.frame("nearest", filter_scene())
+        self.assertEqual((frame.width, frame.height), (FW, FH))
+        self.assertEqual(frame.at(14, 16), RED)
+        owners = gfm.Owners(frame)
+        self.assertEqual(owners.unknown, 0)
+        self.assertEqual(owners.name(2 * FW + 3), "checker_grid")
+        self.assertEqual(owners.name(2 * FW + 71), "checker_detached")
+
+    def test_in_plane_checker_mix_is_not_bleed(self):
+        nearest = gfm.Owners(self.frame("nearest", filter_scene()))
+        mixed = self.frame("owner", filter_scene(body_color=(130, 130, 120)))
+        counts = gfm.ownership(nearest, mixed)
+        self.assertEqual(counts["bleed"], 0)
+        self.assertEqual(counts["owner_disagreements"], 0)
+        self.assertEqual(counts["coverage_changes"], 0)
+        self.assertGreater(counts["changed"]["checker_grid"], 0)
+
+    def test_cross_owner_mix_at_the_touching_boundary_is_bleed(self):
+        nearest = gfm.Owners(self.frame("nearest", filter_scene()))
+        blended = self.frame("unrestricted", filter_scene(pair_join=(145, 145, 40)))
+        counts = gfm.ownership(nearest, blended)
+        self.assertEqual(counts["bleed"], 6)
+        self.assertEqual(counts["bleed_boundary"], 6)
+        self.assertEqual(counts["bleed_by_owner"], {"pair_green": 6})
+
+    def test_coverage_change_is_counted_and_fenced_owners_are_not(self):
+        nearest = gfm.Owners(self.frame("nearest", filter_scene()))
+        pixels = filter_scene()
+        pixels[22][14] = RED
+        pixels[5][75] = (0, 0, 0)
+        counts = gfm.ownership(nearest, self.frame("arm", pixels))
+        self.assertEqual(counts["coverage_changes"], 1)
+        self.assertEqual(counts["source_face_differing"], 1)
+
+    def test_registration_recovers_a_whole_pixel_shift(self):
+        first = gfm.Owners(self.frame("a", filter_scene()))
+        second = gfm.Owners(self.frame("b", filter_scene(dx=2)))
+        reg = gfm.registration(first, second)
+        self.assertAlmostEqual(reg["scale"], 1.0, places=6)
+        self.assertAlmostEqual(reg["translation"][0], 2.0, places=6)
+        self.assertAlmostEqual(reg["translation"][1], 0.0, places=6)
+        self.assertNotIn("checker_detached", reg["owners"])
+
+    def test_temporal_difference_is_zero_for_a_rigid_shift_and_not_for_a_recolour(self):
+        a, b = self.frame("a", filter_scene()), self.frame("b", filter_scene(dx=2))
+        first, second = gfm.Owners(a), gfm.Owners(b)
+        reg = gfm.registration(first, second)
+        rigid = gfm.temporal(first, second, reg, a, b)
+        self.assertAlmostEqual(rigid["grid"][0], 0.0, places=9)
+        self.assertGreater(rigid["grid"][1], 0)
+        recoloured = self.frame("c", filter_scene(dx=2, body_color=(130, 130, 120)))
+        self.assertGreater(gfm.temporal(first, second, reg, a, recoloured)["grid"][0], 0.0)
+
+    def test_interior_mean_tracks_the_palette_average(self):
+        frame = self.frame("nearest", filter_scene())
+        means = gfm.interior_mean(gfm.Owners(frame), frame)
+        self.assertEqual(set(means), {"grid"})
+        self.assertAlmostEqual(sum(means["grid"]), gfm.CHECKER_PLANE, places=6)
+
+
+def graded_sweep(owner_bleed=0, repeat_coverage=0, unrestricted_bleed=5):
+    """A _filter_sweep result with one shot and one shot pair."""
+    def counts(bleed=0, coverage=0):
+        return {"coverage_changes": coverage, "bleed": bleed, "owner_disagreements": 0,
+                "source_face_differing": 0, "changed": {}}
+    shot = {"zoom": 2.0, "density": 2, "scale": 2, "unknown_colors": 0,
+            "nearest_repeat": counts(coverage=repeat_coverage),
+            "unrestricted": counts(bleed=unrestricted_bleed), "owner": counts(bleed=owner_bleed)}
+    temporal = {"grid": {"nearest": [10.0], "nearest_repeat": [10.0],
+                         "unrestricted": [5.0], "owner": [5.5]}}
+    means = {"grid": {arm: [(126.0, 126.0, 128.0), (127.0, 125.0, 128.0)]
+                      for arm in ("nearest", "nearest_repeat", "unrestricted", "owner")}}
+    return {"shots": [shot], "temporal": temporal, "interior_means": means,
+            "max_registration_residual_px": 0.5}
+
+
+class GatherFilterSummaryTest(unittest.TestCase):
+    def test_passes_a_clean_candidate_with_a_bleeding_control(self):
+        summary = metric._filter_summary({"yaw_0/forward": graded_sweep()})
+        self.assertTrue(summary["pass"], summary)
+        sweep = summary["sweeps"]["yaw_0/forward"]
+        self.assertEqual(sweep["temporal"]["grid"]["owner_minus_nearest"], -4.5)
+        self.assertEqual(sweep["temporal"]["grid"]["repeat_noise"], 0.0)
+        self.assertEqual(sweep["interior_mean_spread"]["grid"]["owner"], 0.5)
+
+    def test_fails_on_candidate_bleed_repeat_drift_or_a_silent_control(self):
+        for graded in (graded_sweep(owner_bleed=1), graded_sweep(repeat_coverage=1),
+                       graded_sweep(unrestricted_bleed=0)):
+            with self.subTest(graded=graded["shots"][0]):
+                self.assertFalse(metric._filter_summary({"s": graded})["pass"])
+
+
 if __name__ == "__main__":
     unittest.main()

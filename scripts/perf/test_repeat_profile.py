@@ -547,6 +547,7 @@ class ManifestEnvironmentTest(unittest.TestCase):
             "IR_PERAXIS_SURFACE_LIGHTING", "IR_PERAXIS_VISIBILITY_PREPASS",
             "IR_PERAXIS_VISIBILITY_STATS", "IR_PERAXIS_OVERFLOW_DISABLE",
             "IR_OVERFLOW_LIGHTING_DISABLE", "IR_OVERFLOW_FOG_DISABLE", "IR_OVERFLOW_COUNT_LOG",
+            "IR_GATHER_FILTER_DIAGNOSTIC",
         )
         values = (None, "", "0", "1", " enabled \n")
         cases = [dict.fromkeys(names, None)] + [

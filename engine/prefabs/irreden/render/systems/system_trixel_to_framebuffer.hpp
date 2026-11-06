@@ -28,6 +28,7 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
+#include <irreden/render/gather_filter_diagnostic.hpp>
 #include <irreden/ir_profile.hpp>
 
 #include <array>
@@ -142,6 +143,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // them, restoring the cardinal output for A/B triage. Resolved
     // once in create(); default off.
     bool overflowDrawDisabled_ = false;
+    // IR_GATHER_FILTER_DIAGNOSTIC, resolved once in create().
+    IRRender::GatherFilterDiagnostic gatherFilterDiagnostic_ =
+        IRRender::GatherFilterDiagnostic::NEAREST;
     ShaderProgram *hoverResolveProgram_ = nullptr;
     bool scatterHoverPending_ = false;
 
@@ -238,6 +242,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // widget texel shows as its lattice triangle.
         frameData.frameData_.trixelSampleLayout_ =
             static_cast<int>(triangleCanvasTextures.renderedSampleLayout_);
+        frameData.frameData_.gatherFilterDiagnostic_ = IRPrefab::GatherFilter::diagnosticForDraw(
+            gatherFilterDiagnostic_,
+            behavior.useCameraPositionIso_ && behavior.useCameraZoom_,
+            triangleCanvasTextures.renderedSampleLayout_
+        );
         const ivec2 logicalCanvasSize =
             IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_);
         const vec2 textureSize = vec2(triangleCanvasTextures.size_);
@@ -1098,6 +1107,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
+        sys->gatherFilterDiagnostic_ = IRPrefab::GatherFilter::diagnosticFromEnvironment();
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.
         return id;

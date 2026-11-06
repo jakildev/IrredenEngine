@@ -68,6 +68,9 @@ struct FrameDataIsoTriangles {
     uint fogUnexploredColorPacked;
     int4 perAxisStoreFrame;
     float4 canvasFromPixel;
+    int2 mouseFramebufferPixel;
+    int hoverResolveMode;
+    int gatherFilterDiagnostic;
 };
 
 // SSBO populated by the fragment shader when the mouse hovers over a
@@ -89,6 +92,57 @@ struct FragmentOut {
     float4 color [[color(0)]];
     float depth [[depth(any)]];
 };
+
+// GatherFilterDiagnostic (ir_render_types.hpp): any other non-zero mode is unrestricted.
+constant int kGatherFilterOwner = 2;
+
+// GLSL twin: gatherFilterTapOwned in ../ir_trixel_to_framebuffer_body.glsl.
+static bool gatherFilterTapOwned(
+    uint2 tap, uint2 nearest, float4 tapColor, uint2 nearestId, int nearestDist,
+    texture2d<int> triangleDistances, texture2d<uint> triangleEntityIds
+) {
+    if (tapColor.a < 0.1f) return false;
+    const uint2 tapId = decodeEntityId(triangleEntityIds.read(tap).rg);
+    if (any(tapId != nearestId)) return false;
+    const int tapDist = triangleDistances.read(tap).r;
+    if ((tapDist & 7) != (nearestDist & 7)) return false;
+    const int2 texelStep = abs(int2(tap) - int2(nearest));
+    return abs(decodeDepthSingle(tapDist) - decodeDepthSingle(nearestDist)) <=
+        2 * (texelStep.x + texelStep.y);
+}
+
+// GLSL twin: gatherFilterDiagnosticColor in ../ir_trixel_to_framebuffer_body.glsl.
+static float3 gatherFilterDiagnosticColor(
+    float2 origin, uint2 nearest, float4 nearestColor, int nearestDist, float2 textureSize,
+    int mode, float4 canvasFromPixel, texture2d<float> triangleColors,
+    texture2d<int> triangleDistances, texture2d<uint> triangleEntityIds
+) {
+    const float2 halfFootprint = 0.5f * abs(canvasFromPixel.zw);
+    const float2 lo = origin - halfFootprint;
+    const float2 hi = origin + halfFootprint;
+    const int2 first = max(int2(floor(lo)), int2(0));
+    const int2 last = min(min(int2(floor(hi)), first + int2(2)), int2(textureSize) - 1);
+    const uint2 nearestId = mode == kGatherFilterOwner
+        ? decodeEntityId(triangleEntityIds.read(nearest).rg) : uint2(0u);
+    float3 sum = float3(0.0f);
+    float weight = 0.0f;
+    for (int y = first.y; y <= last.y; ++y) {
+        for (int x = first.x; x <= last.x; ++x) {
+            const float2 cell = float2(x, y);
+            const float2 overlap = max(min(hi, cell + 1.0f) - max(lo, cell), float2(0.0f));
+            const float area = overlap.x * overlap.y;
+            if (area <= 0.0f) continue;
+            const uint2 tap = uint2(x, y);
+            const float4 tapColor = triangleColors.read(tap);
+            if (mode == kGatherFilterOwner && any(tap != nearest) &&
+                !gatherFilterTapOwned(tap, nearest, tapColor, nearestId, nearestDist,
+                                      triangleDistances, triangleEntityIds)) continue;
+            sum += tapColor.rgb * area;
+            weight += area;
+        }
+    }
+    return weight > 0.0f ? sum / weight : nearestColor.rgb;
+}
 
 float normalizeDistance(int dist, constant GlobalConstants& globals) {
     return float(dist - globals.kMinTriangleDistance) /
@@ -189,6 +243,12 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 
     float4 color = triangleColors.read(sampleCoord);
     const int rawDist = triangleDistances.read(sampleCoord).r;
+    // Colour only: depth, alpha, id and hover below stay on the nearest texel.
+    if (frameData.gatherFilterDiagnostic != 0 && color.a >= 0.1f) {
+        color.rgb = gatherFilterDiagnosticColor(displayOrigin, sampleCoord, color, rawDist,
+            textureSize, frameData.gatherFilterDiagnostic, frameData.canvasFromPixel,
+            triangleColors, triangleDistances, triangleEntityIds);
+    }
 #if IR_CARDINAL_LIGHTING
     const bool glitchPresentationOverride =
         frameData.cardinalLightingEnabled == 2 &&

@@ -150,8 +150,9 @@ and never enters a snapshot; its policy, zoom, and phase survive
 
 - **Nearest minification shimmers.** Between density steps a backing texel
   covers `z / S` in `(0.5, 1]` framebuffer pixels and the gather drops texels
-  as the ratio changes. A filtered resolve would need an ownership rule for
-  depth, entity id and alpha across a silhouette; there is none.
+  as the ratio changes. An ownership-restricted filter removes about half of
+  it on the paths it reaches, and production stays nearest: see
+  [Filtered minification](#filtered-minification).
 - **Density steps at each integer zoom.** At `z = 2.01` the canvas rasters at
   three texels per unit, not two: more fill, and a larger retained backing the
   first time. Later pulses reuse the capacity.
@@ -161,6 +162,131 @@ and never enters a snapshot; its policy, zoom, and phase survive
 - **`NONE` and `POSITION_ONLY` ignore the zoom for density**, so at a
   fractional zoom a texel there spans a fractional pixel count and magnifies.
   `FULL` is the default.
+
+## Filtered minification
+
+`IR_GATHER_FILTER_DIAGNOSTIC` switches the colour resolve of the gather for
+measurement; it is read once when `TRIXEL_TO_FRAMEBUFFER` and
+`ENTITY_CANVAS_TO_FRAMEBUFFER` are created, and unset it is the nearest
+resolve, byte-identical to a build without it. It is not a presentation
+setting.
+
+| Value | Colour of a drawn pixel |
+|---|---|
+| unset | the nearest texel |
+| `unrestricted` | the area-weighted mean of every texel the pixel footprint covers (the bleeding control) |
+| `owner` | the same mean over the texels that share the nearest texel's entity, face slot and flip, at a depth within the step a planar face takes between them (`2 * (dx + dy)` encoded units); any other tap is dropped |
+
+Depth, alpha, entity id and hover always come from the nearest texel, so
+geometry, occlusion and picking cannot change; only colour can. The footprint
+is the pixel's extent in canvas texels (`canvasFromPixel.zw`), at most three
+texels per axis under `FULL` minification. Only a `RECTANGULAR` canvas that
+follows both camera position and zoom is filtered: the main canvas gather
+(GRID voxels, SDF shapes) and a world-placed detached canvas with that
+layout. The GUI canvas, secondary viewports, screen-locked overlays,
+`LOCAL_TRIANGLES` revoxelized canvases and `SOURCE_FACES` detached canvases
+keep nearest.
+
+### What was measured
+
+`python3 scripts/render-continuous-zoom-metric.py filter --output <dir>` on
+Metal (Apple silicon, output scale 2, framebuffer 1280x720, unlit, `FULL`),
+`IRShapeDebug --gather-filter-fixture`: three 16x16x2 four-colour checker
+bodies (GRID, DETACHED, DETACHED_REVOXELIZE), an SDF box, two touching
+flat-colour boxes, one voxel and a thin DETACHED bar turned 30 degrees, on
+black. Each owner's palette sits at least 50 off the checker's
+`r + g + b = 380` plane, so a mix across owners is distinguishable from a mix
+inside a body. Sweeps run forward and back across the density step,
+`z` 1.80 to 2.40 in 25 shots (`S` 2 then 3), at yaw 0 and 0.4, plus snapped
+`z` 2 and 4; every arm repeats each pose.
+
+| Reading (sum over all six sweeps) | nearest repeat | unrestricted | owner |
+|---|---|---|---|
+| coverage changes (drawn / background flips) | 0 | 0 | 0 |
+| bleed: colour off its nearest owner's palette | 0 | 33,482 | 0 |
+| owner disagreements: colour nearest another owner | 0 | 7,614 | 0 |
+| pixels changed, yaw 0 continuous | 0 | GRID 131,968; SDF 7,742; pair 8,898; voxel 694 | GRID 124,196 |
+
+Motion-compensated temporal difference of the GRID body interior (mean
+`|shot k - registered shot k+1|`, 8-bit units, registration from owner
+centroids, residual at most 0.5 px at yaw 0):
+
+| Sweep | nearest | nearest repeat | unrestricted | owner |
+|---|---|---|---|---|
+| yaw 0, forward | 10.73 | 10.73 | 5.13 | 5.18 |
+| yaw 0, reverse | 10.84 | 10.84 | 5.45 | 5.50 |
+| yaw 0.4, either direction | 10.61 / 10.69 | same | same | same |
+
+Blurring lowers that difference by itself, so the grader also reports the
+shot-to-shot spread of each body's interior mean colour (the largest
+per-channel standard deviation), which a filter preserving each body's
+area-weighted palette holds fixed. At yaw 0 the GRID body's spread falls from
+0.511 (nearest) to 0.113 (owner) and 0.114 (unrestricted) in both
+directions, against 0.0 repeat noise. In every sweep where the candidate is
+inert, all four arms read the same.
+
+What the candidate reaches:
+
+- **Cardinal GRID and SDF content, continuous zoom between density steps.**
+  The only case it changes. On the GRID interior it halves the temporal
+  difference with repeat noise 0.0; the SDF box and flat owners are
+  single-coloured, so restricted taps reproduce the nearest colour exactly.
+- **Snapped zoom** (`z` 2 and 4): byte-identical to nearest in every arm; the
+  footprint is one whole texel.
+- **Yaw 0.4**: GRID voxels go through the per-axis scatter, which rasterizes
+  face quads at framebuffer resolution, so voxel pixels are unchanged in every
+  arm; the gather filters only SDF and overlay content there.
+- **`DETACHED_REVOXELIZE`**: `LOCAL_TRIANGLES`, not filtered; identical in
+  every arm.
+- **`DETACHED` (`SOURCE_FACES`)**: drawn as source faces, never gathered. In
+  `IRShapeDebug`'s pipeline these owners render incompletely and differ
+  between identical runs (about 74,000 differing pixels per 25-shot sweep, lit
+  or unlit), so the grader fences them off with a 16 px margin and reports
+  them apart. They are not a filtering result.
+
+Picking: `gui-verify.py IRShapeDebug -- --continuous-zoom-gui-test` passes
+5/5 under all three values. With the diagnostic unset, the calibration-cube
+sweeps (13 continuous, 6 snapped, 7 at yaw 0.4) match a build of the parent
+commit byte for byte. `render-verify.py --all` on this host fails the same
+checks as the parent build: 57 of 323, all already failing there with the
+same names.
+
+Cost: whole-frame GPU envelope at `z` 2.2, yaw 0, 600 frames, five
+alternating runs per arm on a shared host. Per-run averages spanned
+1.16-3.42 ms (nearest), 1.20-2.18 ms (owner) and 1.26-3.34 ms
+(unrestricted), with best frames at 0.966, 0.972 and 0.975 ms; ir-run flagged one nearest
+run as a quiet-host breach. The
+candidate's cost is below the run-to-run variation here; the fixture covers a
+small share of the framebuffer, so this bounds nothing for a full screen. The
+gather stage was not timed on its own, and no number above adds stages.
+
+OpenGL: the GLSL twin is part of the same gather programs, but no GL host
+has run it yet, so there are no OpenGL readings.
+
+### Decision
+
+Production keeps nearest, and no setting is exposed. The owner rule meets its
+correctness bar on every path it reaches, with zero bleed, zero owner changes
+and zero pick changes, and it halves interior shimmer on cardinal GRID content.
+It still does not justify a default or a preference:
+
+- It covers one presentation path. A camera turn moves GRID voxels onto the
+  scatter, so the softened look would switch off mid-rotation and back at the
+  next cardinal; revoxelized and source-face detached content never get it.
+- The stability is real, and the mean-colour spread drops by more than four
+  times, but it is paid for in sharpness: the filtered checker loses its cell
+  edges ([evidence](https://github.com/jakildev/IrredenEngine/tree/37a3b3ebbbaeae5712628277460270e57cb0717b/docs/pr-screenshots/claude/gather-filter-diagnostic): the nearest / owner / unrestricted
+  crop, `results.json` and the timing runs). Whether that trade suits
+  authored pixel art is a product call this measurement cannot make.
+- Cost is unresolved on this host, and OpenGL is unmeasured.
+
+A proposal for an opt-in presentation policy must bring: the owner rule
+extended to the per-axis scatter and `LOCAL_TRIANGLES` canvases, or an
+accepted yaw-dependent look; the same `filter` readings on OpenGL; lit scenes,
+where AO and per-texel lighting vary within a face; full-screen gather cost
+on a quiet host, Metal and OpenGL; and a sharpness reading beside the
+stability one. Authored LOD variant interpolation is a separate question:
+geometry, not sampling.
 
 ## Validators
 
@@ -176,6 +302,10 @@ and never enters a snapshot; its policy, zoom, and phase survive
   same properties read off `IRShapeDebug` captures of a calibration cube,
   with the snapped policy as the control. `pan` also sweeps the snapped
   policy's own rotated-view pan.
+- `python3 scripts/render-continuous-zoom-metric.py filter --output <dir>` —
+  the gather-filter diagnostic's ownership gate and temporal readings
+  ([Filtered minification](#filtered-minification)); `filter-grade <dir>`
+  re-grades kept captures.
 - `python3 scripts/gui-verify.py IRShapeDebug -- --continuous-zoom-gui-test`
   — hover and drag-pan picking at a continuous zoom of 2.5.
 - `python3 scripts/render-verify.py --all` — the snapped policy against its

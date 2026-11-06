@@ -19,6 +19,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/gather_filter_diagnostic.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
 
 #include <algorithm>
@@ -50,6 +51,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     // in function-local statics.
     std::vector<CanvasInstance> instances_;
     bool capacityWarningEmitted_ = false;
+    // IR_GATHER_FILTER_DIAGNOSTIC, resolved once in create().
+    IRRender::GatherFilterDiagnostic gatherFilterDiagnostic_ =
+        IRRender::GatherFilterDiagnostic::NEAREST;
     std::vector<std::pair<IREntity::EntityId, C_HitBox2D *>> hitboxes_;
     const std::vector<GhostEval::HeldPose> *heldGhostPoses_ = nullptr;
 
@@ -349,6 +353,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
 
         FrameDataTrixelToFramebuffer fd{};
         fd.trixelSampleLayout_ = static_cast<int>(canvasTextures->renderedSampleLayout_);
+        fd.gatherFilterDiagnostic_ = IRPrefab::GatherFilter::diagnosticForDraw(
+            gatherFilterDiagnostic_,
+            !entityCanvas.screenLocked_,
+            canvasTextures->renderedSampleLayout_
+        );
         const std::uint8_t fogBodyFactor =
             IRPrefab::Fog::quantizeRevealFactor(entityCanvas.fogRevealFactor_);
         fd.fogBodyFactorEncoded_ =
@@ -554,6 +563,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             C_WorldTransform,
             AlsoWrites<C_HitBox2D>>("EntityCanvasToFramebuffer");
         IRRender::tagGpuStage(s, "entityCanvasToFb");
+        getSystemParams<System<ENTITY_CANVAS_TO_FRAMEBUFFER>>(s)->gatherFilterDiagnostic_ =
+            IRPrefab::GatherFilter::diagnosticFromEnvironment();
         return s;
     }
 };
