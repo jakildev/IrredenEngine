@@ -1,0 +1,46 @@
+GUI-ASSERT shot=0 label=sculpt_workflow_empty_part kind=PREDICATE target=0 name=empty_part_needs_no_bake result=PASS actual=authored=0 want=0
+GUI-ASSERT shot=1 label=sculpt_workflow_hover_floor kind=PREDICATE target=0 name=hover_previews_first_voxel result=PASS actual=visible bounds=match
+GUI-ASSERT shot=1 label=sculpt_workflow_hover_floor kind=PREDICATE target=0 name=hover_does_not_write result=PASS actual=authored=0 want=0
+GUI-ASSERT shot=2 label=sculpt_workflow_bone_hover_suppressed kind=PREDICATE target=0 name=bone_paint_has_no_stale_add_preview result=PASS actual=hidden
+GUI-ASSERT shot=3 label=sculpt_workflow_bone_hover_restored kind=PREDICATE target=0 name=brush_preview_returns_after_bone_paint result=PASS actual=visible bounds=match
+GUI-ASSERT shot=4 label=sculpt_workflow_class_hover_suppressed kind=PREDICATE target=0 name=class_paint_has_no_stale_add_preview result=PASS actual=hidden
+GUI-ASSERT shot=5 label=sculpt_workflow_class_hover_restored kind=PREDICATE target=0 name=brush_preview_returns_after_class_paint result=PASS actual=visible bounds=match
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_3 result=PASS actual=cell=(3,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_3 result=PASS actual=cell=(3,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_4 result=PASS actual=cell=(4,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_4 result=PASS actual=cell=(4,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_5 result=PASS actual=cell=(5,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_5 result=PASS actual=cell=(5,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_6 result=PASS actual=cell=(6,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_6 result=PASS actual=cell=(6,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_7 result=PASS actual=cell=(7,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_7 result=PASS actual=cell=(7,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_8 result=PASS actual=cell=(8,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_8 result=PASS actual=cell=(8,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_9 result=PASS actual=cell=(9,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_9 result=PASS actual=cell=(9,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_10 result=PASS actual=cell=(10,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_10 result=PASS actual=cell=(10,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_cell_11 result=PASS actual=cell=(11,5,15) occupied=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_pool_11 result=PASS actual=cell=(11,5,15) poolActive=yes want=yes
+GUI-ASSERT shot=6 label=sculpt_workflow_continuous kind=PREDICATE target=0 name=stroke_does_not_stack_on_itself result=PASS actual=authored=9 want=9
+GUI-ASSERT shot=7 label=sculpt_workflow_undo kind=PREDICATE target=0 name=one_undo_removes_whole_stroke result=PASS actual=authored=0 want=0
+GUI-ASSERT shot=8 label=sculpt_workflow_redo kind=PREDICATE target=0 name=redo_restores_whole_stroke result=PASS actual=authored=9 want=9
+GUI-ASSERT shot=9 label=sculpt_workflow_paint kind=PREDICATE target=0 name=paint_changes_existing_color result=PASS actual=cell=(7,5,15) occupied=yes want=yes color=rgb(60,200,120) wantColor=rgb(60,200,120)
+GUI-ASSERT shot=9 label=sculpt_workflow_paint kind=PREDICATE target=0 name=paint_adds_no_geometry result=PASS actual=authored=9 want=9
+GUI-ASSERT shot=10 label=sculpt_workflow_cancel kind=PREDICATE target=0 name=escape_restores_live_stroke result=PASS actual=authored=9 want=9
+GUI-ASSERT shot=10 label=sculpt_workflow_cancel kind=PREDICATE target=0 name=escape_restores_color result=PASS actual=cell=(7,5,15) occupied=yes want=yes color=rgb(60,200,120) wantColor=rgb(60,200,120)
+GUI-ASSERT shot=12 label=sculpt_workflow_clear kind=PREDICATE target=0 name=clear_before_reload result=PASS actual=parts=0 want=0
+GUI-ASSERT shot=13 label=sculpt_workflow_reload kind=PREDICATE target=0 name=stroke_survives_reload result=PASS actual=authored=9 want=9
+GUI-ASSERT shot=13 label=sculpt_workflow_reload kind=PREDICATE target=0 name=paint_survives_reload result=PASS actual=cell=(7,5,15) occupied=yes want=yes color=rgb(60,200,120) wantColor=rgb(60,200,120)
+GUI-ASSERT shot=14 label=sculpt_workflow_mode_interrupt kind=PREDICATE target=0 name=mode_change_preserves_completed_brush_cells result=PASS actual=authored=18 want=18
+GUI-ASSERT shot=15 label=sculpt_workflow_after_mode_interrupt kind=PREDICATE target=0 name=next_stroke_does_not_resume_interrupted_path result=PASS actual=authored=27 want=27
+GUI-ASSERT shot=16 label=sculpt_workflow_undo_after_mode_interrupt kind=PREDICATE target=0 name=undo_removes_only_following_stroke result=PASS actual=authored=18 want=18
+GUI-ASSERT shot=16 label=sculpt_workflow_undo_after_mode_interrupt kind=PREDICATE target=0 name=interrupted_stroke_has_its_own_history result=PASS actual=cell=(7,8,15) occupied=yes want=yes
+GUI-ASSERT shot=16 label=sculpt_workflow_undo_after_mode_interrupt kind=PREDICATE target=0 name=following_stroke_undone result=PASS actual=cell=(7,10,15) occupied=no want=no
+GUI-ASSERT shot=17 label=sculpt_workflow_undo_interrupted_stroke kind=PREDICATE target=0 name=second_undo_removes_interrupted_stroke result=PASS actual=authored=9 want=9
+GUI-ASSERT shot=18 label=sculpt_workflow_workspace_0 kind=PREDICATE target=0 name=workspace_visibility result=PASS actual=workspace=0; palette=1; hierarchy=0; bake=0; animation=0
+GUI-ASSERT shot=19 label=sculpt_workflow_workspace_1 kind=PREDICATE target=0 name=workspace_visibility result=PASS actual=workspace=1; palette=0; hierarchy=1; bake=0; animation=0
+GUI-ASSERT shot=20 label=sculpt_workflow_workspace_2 kind=PREDICATE target=0 name=workspace_visibility result=PASS actual=workspace=2; palette=1; hierarchy=0; bake=1; animation=0
+GUI-ASSERT shot=21 label=sculpt_workflow_workspace_3 kind=PREDICATE target=0 name=workspace_visibility result=PASS actual=workspace=3; palette=0; hierarchy=0; bake=0; animation=1
+GUI-ASSERT shot=22 label=sculpt_workflow_workspace_4 kind=PREDICATE target=0 name=workspace_visibility result=PASS actual=workspace=4; palette=1; hierarchy=1; bake=1; animation=1
