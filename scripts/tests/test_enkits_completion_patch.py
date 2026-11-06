@@ -220,11 +220,14 @@ class EnkitsCompletionPatchTest(unittest.TestCase):
         )
         build = temp / "build"
         populated = temp / "populated"
+        generator = os.environ.get("CMAKE_GENERATOR", "Ninja")
 
         def configure(pin):
             result = subprocess.run(
                 [
                     "cmake",
+                    "-G",
+                    generator,
                     "-S",
                     str(project),
                     "-B",
