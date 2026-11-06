@@ -1,0 +1,92 @@
+{
+  "arm": {
+    "mode": "synchronized",
+    "case": "far-128",
+    "pair": 5,
+    "variant": "ablation"
+  },
+  "expected": {
+    "build_type": "Release",
+    "binary_sha256": "ec5a847db78b48dec1ce81cde7f4f82838272b2eb65349f7c2fdfab5b5719b47",
+    "shader_dir_sha256": "1ced19c9fe140ca1248c7e5af197f890a58cc8c92a4c97b3b966283d05ec4363",
+    "sampler_sha256": "f9431e688ddaa85144432b1af815e548b3c5ea07d129ac1bf800cf255b2719b6",
+    "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+    "source_revision": "5d93af97cd1aa625995883d8fe641f8330f2e711",
+    "fixture_args": [
+      "--only",
+      "shadowbox,floor",
+      "--probe-source-box",
+      "--probe-floor-mode",
+      "grid",
+      "--probe-floor-span",
+      "40",
+      "--sun-direction",
+      "0",
+      "0",
+      "-1",
+      "--no-spin",
+      "--no-auto-rotate",
+      "--pivot-origin",
+      "--no-ao",
+      "--yaw",
+      "0",
+      "--zoom",
+      "1",
+      "--auto-profile",
+      "--profile-frames",
+      "360",
+      "--window-mode",
+      "offscreen",
+      "--subdivisions",
+      "1",
+      "--probe-overlapping-source",
+      "--probe-overlapping-source-count",
+      "128",
+      "--probe-overlapping-source-offset",
+      "0",
+      "0",
+      "-60",
+      "--config-preset",
+      "C:/Users/evinj/src/IrredenEngine/.claude/worktrees/pool-3/docs/perf/sun-overflowed-tile-query/windows-opengl/release/synchronized.lua"
+    ]
+  },
+  "metrics": {
+    "entityCanvasToFb": 1.328,
+    "entityCanvasToFb_samples": 360,
+    "frame_avg": 36.43,
+    "steady_frame_avg": 35.95,
+    "gpu_frame": {},
+    "gpu_stages": {
+      "buildLightOcclusionGrid": {
+        "avg_ms": 4.443,
+        "samples": 360
+      },
+      "bakeSunShadowMap": {
+        "avg_ms": 0.261,
+        "samples": 360
+      },
+      "computeSunShadow": {
+        "avg_ms": 0.134,
+        "samples": 360
+      },
+      "computeLightVolume": {
+        "avg_ms": 0.106,
+        "samples": 360
+      },
+      "entityCanvasToFb": {
+        "avg_ms": 1.328,
+        "samples": 360
+      },
+      "resolvePerAxisScreenDepth": {
+        "avg_ms": 0.019,
+        "samples": 360
+      },
+      "fbToScreen": {
+        "avg_ms": 0.127,
+        "samples": 360
+      }
+    }
+  },
+  "quiet_attempts_discarded": 0,
+  "restored_shader_dir_sha256": "74e05386a98804029dc89972c28b6c0bd9042402f4f8192bcfc627b756057073"
+}
