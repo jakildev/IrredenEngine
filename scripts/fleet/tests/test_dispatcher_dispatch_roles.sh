@@ -117,8 +117,12 @@ pinned_field() { config_line | sed -n 's/^roles=.* pinned-only=\([01]\);.*/\1/p'
 # ======================================================================
 echo "T1: no knob -> the default served set, pinned-only off"
 : > "$FLEET_CONF"
-assert_eq "$(roles_field)" "merger sonnet-reviewer opus-reviewer worker" "default roles"
+assert_eq "$(roles_field)" "merger sonnet-reviewer opus-reviewer worker smoke-worker" "default roles serve smoke"
 assert_eq "$(pinned_field)" "0" "pinned-only defaults off"
+
+echo "T1a: FLEET_SMOKE_WORKER=0 is the only way the default set drops smoke"
+printf 'FLEET_SMOKE_WORKER=0\n' > "$FLEET_CONF"
+assert_eq "$(roles_field)" "merger sonnet-reviewer opus-reviewer worker" "smoke lane switched off"
 
 echo "T1b: the legacy opt-in flags still append"
 printf 'FLEET_SMOKE_WORKER=1\nFLEET_EPIC_STEWARD=1\n' > "$FLEET_CONF"
@@ -127,7 +131,7 @@ assert_eq "$(roles_field)" "merger sonnet-reviewer opus-reviewer worker smoke-wo
 
 echo "T1c: FLEET_DESIGN_ANSWERER appends the design-answerer lane after the steward"
 printf 'FLEET_EPIC_STEWARD=1\nFLEET_DESIGN_ANSWERER=1\n' > "$FLEET_CONF"
-assert_eq "$(roles_field)" "merger sonnet-reviewer opus-reviewer worker epic-steward design-answerer" \
+assert_eq "$(roles_field)" "merger sonnet-reviewer opus-reviewer worker smoke-worker epic-steward design-answerer" \
     "FLEET_DESIGN_ANSWERER appends its role in canonical order"
 
 echo "T2: FLEET_DISPATCH_ROLES is the exact served set, in canonical order"
@@ -267,7 +271,7 @@ assert_contains "$(up_dispatcher_config)" "roles=merger pinned-only=0;" \
 echo "T5c: an explicit empty caller value asks for the default set on both sides"
 out=$(run_fleet_up FLEET_DISPATCH_ROLES=)
 assert_contains "$out" "dispatch roles: <default set>;" "bootstrap gating serves every role"
-assert_contains "$(up_dispatcher_config)" "roles=merger sonnet-reviewer opus-reviewer worker pinned-only=0;" \
+assert_contains "$(up_dispatcher_config)" "roles=merger sonnet-reviewer opus-reviewer worker smoke-worker pinned-only=0;" \
     "the dispatcher serves the default set too"
 
 echo "T5d: --satellite outranks both the conf and the caller's own knobs"

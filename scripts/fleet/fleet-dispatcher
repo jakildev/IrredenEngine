@@ -723,8 +723,8 @@ fi
 
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Panes are a generic pool, so this list — not
-# pane topology — is what enables a role: the smoke-worker and
-# epic-steward roles are opt-in via FLEET_SMOKE_WORKER /
+# pane topology — is what enables a role: the smoke-worker role is on
+# unless FLEET_SMOKE_WORKER=0, and the epic-steward role is opt-in via
 # FLEET_EPIC_STEWARD (conf or env; pre-pool these flags gated the
 # dedicated pane's creation instead). A disabled role's triggers sit
 # unread, same as when its pane didn't exist.
@@ -738,7 +738,10 @@ DISPATCHED_ROLES=(
     "opus-reviewer"
     "worker"
 )
-if [[ "${FLEET_SMOKE_WORKER:-0}" == "1" ]]; then
+# The smoke lane is on by default: every full-profile host clears its own
+# fleet:needs-<host>-smoke debt, and the lane stands down on a tick with no
+# pending smoke for this host. FLEET_SMOKE_WORKER=0 switches it off.
+if [[ "${FLEET_SMOKE_WORKER:-1}" != "0" ]]; then
     DISPATCHED_ROLES+=("smoke-worker")
 fi
 if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
@@ -3445,7 +3448,10 @@ except (OSError, TypeError, ValueError):
 PY
     )
     [[ "$generated_epoch" =~ ^[0-9]+$ ]] || return 1
-    (( generated_epoch >= DISPATCHER_STARTED_EPOCH )) || return 1
+    # A projection the scout wrote before this image started says nothing
+    # about the labels this image serves; it is refreshed within a scout
+    # tick, so the caller keeps the trigger rather than consuming it.
+    (( generated_epoch >= DISPATCHER_STARTED_EPOCH )) || return 2
     SMOKE_SERVABLE_PRS=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
         --smoke-check "$slice" 2>/dev/null) || SMOKE_SERVABLE_PRS=""
     [[ -n "$SMOKE_SERVABLE_PRS" ]]
@@ -3505,10 +3511,24 @@ dispatch_role() {
     # the cycle repeats indefinitely. Consume the trigger here for the same
     # reason the backoff does — the scout re-arms when the projection next
     # changes, which is exactly when this host's own smoke debt would appear.
-    if [[ "$role" == "smoke-worker" ]] && ! smoke_worker_should_fire; then
-        rm -f "$trigger_file"
-        log "smoke-worker: no smoke work pending for this host; standing down — scout re-arms on new work"
-        return
+    if [[ "$role" == "smoke-worker" ]]; then
+        local smoke_gate=0
+        smoke_worker_should_fire || smoke_gate=$?
+        if (( smoke_gate == 2 )); then
+            # Keep the trigger: the next scout tick regenerates the projection
+            # and this tick re-reads it. A scout that never does is the
+            # standing cause note_gate_block escalates.
+            note_gate_block "$role" "projection-predates-image" "smoke-worker: projection predates this dispatcher image; keeping the trigger until the scout regenerates it"
+            return
+        fi
+        if [[ "${DISPATCH_GATE_REASON[$role]:-}" == "projection-predates-image" ]]; then
+            clear_gate_block "$role"
+        fi
+        if (( smoke_gate != 0 )); then
+            rm -f "$trigger_file"
+            log "smoke-worker: no smoke work pending for this host; standing down — scout re-arms on new work"
+            return
+        fi
     fi
 
     # Tier-0 merger: try the zero-token mechanical pass before any LLM.

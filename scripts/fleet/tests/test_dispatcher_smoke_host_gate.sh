@@ -167,6 +167,12 @@ export FLEET_DISPATCHER_STARTED_EPOCH=1767225601
 assert_eq "$(check windows)" "quiet" "pre-boot slice stands down"
 out=$(tick windows)
 assert_absent "$out" "dispatching smoke-worker" "pre-boot slice grants no pane"
+assert_contains "$out" "keeping the trigger until the scout regenerates it" "pre-boot slice is logged as deferred, not as no work"
+if [[ -f "$TRIGGER" ]]; then
+    ok "pre-boot slice leaves the standing trigger for the next scout tick"
+else
+    bad "pre-boot slice leaves the standing trigger for the next scout tick"
+fi
 export FLEET_DISPATCHER_STARTED_EPOCH=0
 
 echo "T2: Windows-pending PR on a Windows host -> fire"

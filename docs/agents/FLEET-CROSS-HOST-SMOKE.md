@@ -14,10 +14,11 @@ span every repo in `state["repos"]`, each record tagged with its `repo`
 an outstanding `fleet:needs-<host>-smoke` label is **smoke debt** — a
 post-merge ledger entry, never a merge gate (§ "Ledger, not a gate").
 
-**Dedicated smoke-only host.** `FLEET_SMOKE_WORKER=1` in
-`~/.fleet/fleet-up.conf` (then restart `fleet-up`) dispatches
-`role-smoke-worker` into idle pool panes to claim smoke labels
-exclusively (`scripts/fleet/fleet-up.conf.sample`). To serve smoke and
+**Every full-profile host serves its own smoke.** The dispatcher serves
+`role-smoke-worker` by default, dispatching it into idle pool panes to
+claim this host's smoke labels; `FLEET_SMOKE_WORKER=0` in
+`~/.fleet/fleet-up.conf` switches the lane off
+(`scripts/fleet/fleet-up.conf.sample`). To serve smoke and
 *nothing else* — or smoke plus `**Host:**`-pinned tasks only, the
 native-Windows satellite — set `FLEET_DISPATCH_ROLES` instead, which
 names the exact roles the host serves and switches the merger and
@@ -255,7 +256,7 @@ profile"):
 
 | Knob | Effect |
 |---|---|
-| `FLEET_DISPATCH_ROLES="smoke-worker worker"` | the exact set of roles the dispatcher serves; replaces the default list and the `FLEET_SMOKE_WORKER` / `FLEET_EPIC_STEWARD` / `FLEET_DESIGN_ANSWERER` opt-ins. The only way to switch a lane off — a zero cap means *uncapped*. |
+| `FLEET_DISPATCH_ROLES="smoke-worker worker"` | the exact set of roles the dispatcher serves; replaces the default list and the `FLEET_SMOKE_WORKER` / `FLEET_EPIC_STEWARD` / `FLEET_DESIGN_ANSWERER` knobs. The only way to switch a lane off — a zero cap means *uncapped*. |
 | `FLEET_WORKER_HOST_PINNED_ONLY=1` | the worker lane elects only items pinned to this host (`needs_host`, inherited by feedback PRs; `fleet:needs-macos-host` on mac; `fleet:needs-gl-host` / `needs_gl_host` with no OS pin on linux or windows); conflicts and plans are never elected; with nothing pinned it stands down rather than launching an unassigned worker. |
 
 `fleet-up` writes the profile to `~/.fleet/state/host-profile` (`full` or
