@@ -206,6 +206,79 @@ class StackRootConflictWake(unittest.TestCase):
         ])
 
 
+class StackedChildConflictWake(unittest.TestCase):
+    """A conflicting child under an approved open upstream is merger work:
+    the upstream's diff is frozen, so the LLM pass can rebase the child onto
+    it. Under an unapproved upstream the child stays parked on the reviewer
+    hold and nothing in the stack wakes the lane."""
+    ROW = [{"repo": "engine", "pr": 102, "signal": "stacked-child-conflict"}]
+
+    def _parent(self, **overrides):
+        values = {"labels": [], "head": "claude/parent"}
+        values.update(overrides)
+        return _pr(101, **values)
+
+    def _child(self, **overrides):
+        values = {"labels": ["fleet:awaiting-upstream-review"],
+                  "mergeable": "CONFLICTING", "base": "claude/parent",
+                  "head": "claude/child", "stack_position": 2}
+        values.update(overrides)
+        return _pr(102, **values)
+
+    def test_upstream_approval_wakes_the_lane(self):
+        before = _state([self._parent(), self._child()])
+        after = _state([self._parent(labels=["fleet:approved"]), self._child()])
+        self.assertEqual(project_merger(before), [])
+        self.assertEqual(project_merger(after), self.ROW)
+        self.assertNotEqual(_hash(before), _hash(after))
+
+    def test_human_approved_upstream_counts(self):
+        state = _state([self._parent(labels=["human:approved"]), self._child()])
+        self.assertEqual(project_merger(state), self.ROW)
+
+    def test_merger_set_labels_leave_row_and_hash_unchanged(self):
+        parent = self._parent(labels=["fleet:approved"])
+        before = _state([parent, self._child()])
+        for label in ("fleet:merger-cooldown", "fleet:changes-made",
+                      "fleet:semantic-conflict"):
+            with self.subTest(label=label):
+                child = self._child(labels=["fleet:awaiting-upstream-review", label])
+                after = _state([parent, child])
+                self.assertEqual(project_merger(after), self.ROW)
+                self.assertEqual(_hash(before), _hash(after))
+
+    def test_row_leaves_when_mergeable_or_parked(self):
+        parent = self._parent(labels=["fleet:approved"])
+        mergeable = _state([parent, self._child(mergeable="MERGEABLE")])
+        self.assertEqual(project_merger(mergeable), [])
+        labels = list(_mod._MERGER_PROJECTION_SKIP_LABELS)
+        labels.extend(prefix + "x" for prefix in _mod._MERGER_LLM_SKIP_PREFIXES)
+        for label in labels:
+            with self.subTest(label=label):
+                parked = _state([parent, self._child(labels=[label])])
+                self.assertEqual(project_merger(parked), [])
+
+    def test_approved_child_is_needs_resolve(self):
+        state = _state([self._parent(labels=["fleet:approved"]),
+                        self._child(labels=["fleet:approved"])])
+        self.assertEqual(project_merger(state), [
+            {"repo": "engine", "pr": 102, "signal": "needs-resolve"},
+        ])
+
+    def test_merged_upstream_hands_over_to_the_root_rule(self):
+        # The upstream left the open list and GitHub retargeted the child to
+        # master: the stack-root rule owns it from here.
+        self.assertEqual(project_merger(_state([self._child(base="master")])), [
+            {"repo": "engine", "pr": 102, "signal": "stack-root-conflict"},
+        ])
+
+    def test_child_is_an_llm_candidate(self):
+        state = _state([self._parent(labels=["fleet:approved"]), self._child()])
+        candidates = slice_merger(state)["merger_candidates"]
+        self.assertEqual([(c["number"], c["signal"]) for c in candidates],
+                         [(102, "llm")])
+
+
 class MergeReadyChurnDoesNotArm(unittest.TestCase):
     """An approved MERGEABLE PR is on the human's merge click, not merger
     work: its appearance and its departure leave the hash alone, so a

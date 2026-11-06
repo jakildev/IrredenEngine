@@ -2709,6 +2709,13 @@ SEMANTIC_CONFLICT_EXCLUDE_LABELS = frozenset({
 # What makes a stacked child's upstream count as reviewed for the
 # fleet:awaiting-upstream-review gate (REVIEWER-PROTOCOL.md step 3).
 _UPSTREAM_APPROVED_LABELS = frozenset({"fleet:approved", "human:approved"})
+
+
+def _upstream_approved(head_labels, base_ref):
+    """True when the open PR whose head is `base_ref` carries an approval
+    label; False for an unapproved upstream and for a base with no open PR
+    (master, or a merged or closed upstream)."""
+    return bool((head_labels.get(base_ref) or set()) & _UPSTREAM_APPROVED_LABELS)
 REVIEW_VERDICT_LABELS = frozenset({
     "fleet:approved", "fleet:needs-fix", "fleet:has-nits",
 })
@@ -2762,11 +2769,6 @@ RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 # its verdict swap, so a handled escalation drops back out of the projection.
 OPUS_REVIEWER_FLAG_LABELS = frozenset({"fleet:needs-opus-recheck"})
 
-# Labels on the upstream PR that lift a stacked child's
-# fleet:awaiting-upstream-review gate (REVIEWER-PROTOCOL.md §"Stack
-# awareness" step 3).
-_UPSTREAM_APPROVAL_LABELS = frozenset({"fleet:approved", "human:approved"})
-
 
 def _review_skipped(labels):
     """True if a PR's label set bars reviewer pickup — exact-name skip
@@ -2793,10 +2795,9 @@ def _upstream_review_gate_holds(pr, labels, head_labels):
     stack issue surfaced once to a human, not repeated review dispatch."""
     if "fleet:awaiting-upstream-review" not in labels:
         return False
-    upstream_labels = head_labels.get(pr.get("baseRefName"))
-    if upstream_labels is None:
+    if head_labels.get(pr.get("baseRefName")) is None:
         return False
-    return not (upstream_labels & _UPSTREAM_APPROVAL_LABELS)
+    return not _upstream_approved(head_labels, pr.get("baseRefName"))
 
 
 # Smoke-worker label sets. Every host label belongs in the pending set:
@@ -3831,7 +3832,7 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     # or the PR is master-based), the gate is stale and the conflict is
     # claimable. Mirror in role-worker.md step 1c.
     if ("fleet:awaiting-upstream-review" in labels and base_labels is not None
-            and not base_labels & _UPSTREAM_APPROVED_LABELS):
+            and not _upstream_approved(head_labels, pr.get("baseRefName"))):
         return False
     return True
 
@@ -4138,13 +4139,15 @@ _MERGER_LLM_SKIP_PREFIXES = ("fleet:amending-", "fleet:claim-")
 def project_merger(state):
     """Stable hash-input rows that represent work requiring a merger tick.
 
-    Besides approved conflicts and orphan checks, an unapproved conflicting
-    native-stack root wakes tier-0 so it can route the PR to the LLM pass.
-    Merger-toggled labels remain outside every row predicate.
+    Besides approved conflicts and orphan checks, two unapproved conflicts
+    wake tier-0 so it can route the PR to the LLM pass: a conflicting
+    native-stack root, and a conflicting stacked child whose open upstream
+    is approved. Merger-toggled labels remain outside every row predicate.
     """
     items = []
     for repo, repo_state in state["repos"].items():
         repo_prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(repo_prs)
         open_parent_heads = {
             candidate.get("headRefName")
             for candidate in repo_prs
@@ -4163,19 +4166,35 @@ def project_merger(state):
                 pr.get("checks"),
             )
             if signal != "needs-resolve":
-                stack_root_conflict = (
+                base_ref = pr.get("baseRefName", "master")
+                unapproved_conflict = (
                     pr.get("mergeable") == "CONFLICTING"
-                    and pr.get("baseRefName", "master") == "master"
                     and "fleet:approved" not in labels
                     and not labels & _MERGER_PROJECTION_SKIP_LABELS
                     and not any(label.startswith(_MERGER_LLM_SKIP_PREFIXES)
                                 for label in labels)
+                )
+                stack_root_conflict = (
+                    unapproved_conflict
+                    and base_ref == "master"
                     and (pr.get("headRefName") in open_child_bases
                          or (isinstance(pr.get("stack_position"), int)
                              and pr["stack_position"] > 1))
                 )
+                # A conflicting child under an approved upstream is stable
+                # work: the upstream's diff is frozen, so the LLM pass can
+                # rebase the child onto it (role-merger step a.5). Under an
+                # unapproved upstream the next amend would redo that
+                # resolution, and the reviewer hold keeps the child parked.
+                stacked_child_conflict = (
+                    unapproved_conflict
+                    and base_ref != "master"
+                    and _upstream_approved(head_labels, base_ref)
+                )
                 if stack_root_conflict:
                     signal = "stack-root-conflict"
+                elif stacked_child_conflict:
+                    signal = "stacked-child-conflict"
                 elif needs_orphan_check(
                         pr, repo_prs, _MERGER_PROJECTION_SKIP_LABELS,
                         open_parent_heads):
