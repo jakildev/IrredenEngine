@@ -7,6 +7,9 @@
 #include "screen_alignment.hpp"
 #include "camera_gestures.hpp"
 #include "click_orbit.hpp"
+#include "palette_workflow.hpp"
+#include "array_workflow.hpp"
+#include "lod_workflow.hpp"
 #include "region_tools.hpp"
 #include "shadow_rotation.hpp"
 #include "sculpt_panel.hpp"
@@ -149,6 +152,9 @@ enum class Id {
     SCREEN_ALIGNMENT,
     CAMERA_GESTURES,
     CLICK_ORBIT,
+    PALETTE_WORKFLOW,
+    ARRAY_WORKFLOW,
+    LOD_WORKFLOW,
     REGION_TOOLS,
     SHADOW_ROTATION,
     ROCK,
@@ -274,6 +280,12 @@ inline Id idFromName(const std::string &name) {
         return Id::REGION_TOOLS;
     if (name == "camera_gestures")
         return Id::CAMERA_GESTURES;
+    if (name == "lod_workflow")
+        return Id::LOD_WORKFLOW;
+    if (name == "array_workflow")
+        return Id::ARRAY_WORKFLOW;
+    if (name == "palette_workflow")
+        return Id::PALETTE_WORKFLOW;
     if (name == "click_orbit")
         return Id::CLICK_ORBIT;
     if (name == "screen_alignment")
@@ -2110,6 +2122,12 @@ inline Recipe build(
         return buildRegionTools(sceneSize, sceneOrigin);
     case Id::CAMERA_GESTURES:
         return buildCameraGestures();
+    case Id::LOD_WORKFLOW:
+        return buildLodWorkflow();
+    case Id::ARRAY_WORKFLOW:
+        return buildArrayWorkflow();
+    case Id::PALETTE_WORKFLOW:
+        return buildPaletteWorkflow(sceneSize, sceneOrigin);
     case Id::CLICK_ORBIT:
         return buildClickOrbit(sceneSize);
     case Id::SCREEN_ALIGNMENT:
@@ -2118,13 +2136,13 @@ inline Recipe build(
         return buildShadowRotation();
     case Id::WORKAREA_FOCUS: {
         Builder builder("workarea_focus", sceneSize, sceneOrigin);
-        const IRMath::vec2 focus(580, 87);
-        const IRMath::vec2 local(474, 61);
+        const IRMath::vec2 focus(910, 69);
+        const IRMath::vec2 local(700, 69);
         builder.segment("sculpt_focus");
-        builder.clickGui({42, 61});
+        builder.clickGui({42, 43});
         builder.clickGui(focus);
         builder.segment("generate_focus");
-        builder.clickGui({210, 61});
+        builder.clickGui({210, 43});
         builder.clickGui(focus);
         builder.segment("turned_focus");
         builder.tapKey(IRInput::kKeyButtonQ);
@@ -2150,7 +2168,7 @@ inline Recipe build(
     }
     case Id::MOTION_PREVIEW: {
         Builder builder("motion_preview", sceneSize, sceneOrigin);
-        const IRMath::vec2 previewButton(578, 61);
+        const IRMath::vec2 previewButton(806, 69);
         const IRMath::vec2 stageCamera = -IRMath::pos3DtoPos2DIso(IRMath::vec3(305, 0, 0));
         builder.segment("open_preview");
         builder.clickGui(previewButton);
@@ -2161,10 +2179,10 @@ inline Recipe build(
         builder.segment("save_authored_pose", kSessionZoom, stageCamera);
         builder.tapKey(IRInput::kKeyButtonDelete);
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
-        builder.clickGui({306, 119});
-        builder.clickGui({441, 199});
+        builder.clickGui({286, 15});
+        builder.clickGui({655, 229});
         builder.segment("cancel_overwrite_keeps_preview", kSessionZoom, stageCamera);
-        builder.clickGui({394, 119});
+        builder.clickGui({366, 15});
         builder.tapKey(IRInput::kKeyButtonEscape);
         builder.segment("play", kSessionZoom, stageCamera);
         builder.clickGui({37, 311});
@@ -2175,7 +2193,7 @@ inline Recipe build(
         builder.segment("done", kSessionZoom, stageCamera);
         builder.clickGui({211, 311});
         builder.segment("reopen_authored_pose");
-        builder.clickGui({482, 119});
+        builder.clickGui({446, 15});
         builder.segment("escape_returns_to_authoring");
         builder.clickGui(previewButton);
         builder.tapKey(IRInput::kKeyButtonEscape);
@@ -2208,7 +2226,7 @@ inline Recipe build(
         Builder builder("local_canvas", sceneSize, sceneOrigin);
         const IRMath::vec3 origin(291, 0, 0);
         const IRMath::vec2 stageCamera = -IRMath::pos3DtoPos2DIso(origin + IRMath::vec3(2));
-        const auto button = IRMath::vec2(474, 61);
+        const auto button = IRMath::vec2(700, 69);
         builder.segment("open_rotated_child");
         builder.clickGui(button);
         builder.segment("draw_local_cells", kSessionZoom, stageCamera);
@@ -2334,66 +2352,66 @@ inline Recipe build(
         Builder builder("document_workflow", sceneSize, sceneOrigin);
         const IRMath::ivec3 cell{3, 3, sceneSize.z - 2};
         const auto rename = [&](int oldLength, std::string_view name) {
-            builder.clickGui({160, 119});
+            builder.clickGui({150, 15});
             builder.tapKey(IRInput::kKeyButtonEnd);
             for (int index = 0; index < oldLength; ++index)
                 builder.tapKey(IRInput::kKeyButtonBackspace);
-            builder.typeText({160, 119}, name);
+            builder.typeText({150, 15}, name);
         };
         builder.segment("overwrite_requires_decision");
         builder.clickGui(sculptButtonCenter(0));
         builder.click(cell);
-        builder.clickGui({390, 119});
+        builder.clickGui({366, 15});
         builder.segment("cancel_preserves_unsaved_asset");
-        builder.clickGui({310, 199});
+        builder.clickGui({531, 229});
         builder.segment("save_as_publishes_named_asset");
-        builder.clickGui({390, 119});
-        builder.clickGui({435, 199});
+        builder.clickGui({366, 15});
+        builder.clickGui({655, 229});
         builder.segment("new_guard_blocks_authoring");
         builder.tapKey(IRInput::kKeyButtonX);
-        builder.clickGui({570, 119});
+        builder.clickGui({526, 15});
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
         builder.segment("cancel_new_keeps_asset");
-        builder.clickGui({310, 199});
+        builder.clickGui({531, 229});
         builder.segment("discard_new_starts_blank");
-        builder.clickGui({570, 119});
-        builder.clickGui({190, 199});
+        builder.clickGui({526, 15});
+        builder.clickGui({407, 229});
         builder.segment("open_restores_named_asset");
-        builder.clickGui({480, 119});
+        builder.clickGui({446, 15});
         builder.segment("failed_open_keeps_current_data");
         rename(5, "missing");
         builder.tapKey(IRInput::kKeyButtonX);
-        builder.clickGui({480, 119});
-        builder.clickGui({190, 199});
+        builder.clickGui({446, 15});
+        builder.clickGui({407, 229});
         builder.segment("save_retries_current_identity");
         rename(7, "draft");
-        builder.clickGui({305, 119});
+        builder.clickGui({286, 15});
         builder.segment("close_requests_confirmation");
         builder.tapKey(IRInput::kKeyButtonX);
         builder.tapKey(IRInput::kKeyButtonEscape);
         builder.segment("cancel_close_preserves_document");
-        builder.clickGui({310, 199});
+        builder.clickGui({531, 229});
         builder.segment("save_changes_then_new");
-        builder.clickGui({570, 119});
-        builder.clickGui({65, 199});
+        builder.clickGui({526, 15});
+        builder.clickGui({283, 229});
         builder.segment("open_after_save_changes");
-        builder.clickGui({480, 119});
+        builder.clickGui({446, 15});
         builder.segment("save_as_changes_identity");
         rename(5, "copy");
-        builder.clickGui({390, 119});
-        builder.clickGui({435, 199});
+        builder.clickGui({366, 15});
+        builder.clickGui({655, 229});
         builder.segment("untitled_save_can_recover_missing_name");
-        builder.clickGui({570, 119});
+        builder.clickGui({526, 15});
         rename(4, "");
         builder.tapKey(IRInput::kKeyButtonX);
-        builder.clickGui({570, 119});
-        builder.clickGui({65, 199});
+        builder.clickGui({526, 15});
+        builder.clickGui({283, 229});
         builder.segment("name_pending_document_and_continue");
-        builder.typeText({160, 119}, "rescue");
-        builder.clickGui({65, 199});
-        builder.clickGui({435, 199});
+        builder.typeText({150, 15}, "rescue");
+        builder.clickGui({283, 229});
+        builder.clickGui({655, 229});
         builder.segment("open_rescued_document");
-        builder.clickGui({480, 119});
+        builder.clickGui({446, 15});
         const IRMath::vec2 renameButton = IRMath::vec2(kSkeletonPanelPos) + IRMath::vec2(103, 81);
         builder.segment("rig_name_saved");
         builder.tapKey(IRInput::kKeyButtonJ);
@@ -2409,9 +2427,9 @@ inline Recipe build(
         builder.typeText(kJointRenameInputCenter, "tip");
         builder.clickGui(renameButton);
         builder.segment("rig_rename_requires_decision");
-        builder.clickGui({570, 119});
+        builder.clickGui({526, 15});
         builder.segment("rig_rename_saved_and_reloaded");
-        builder.clickGui({310, 199});
+        builder.clickGui({531, 229});
         builder.save();
         builder.reload();
         builder.segment("prepare_composite_for_discard_crossing");
@@ -2692,10 +2710,10 @@ inline Recipe build(
 
         for (int workspace = 0; workspace < 5; ++workspace) {
             builder.segment(("workspace_" + std::to_string(workspace)).c_str());
-            builder.clickGui(IRMath::vec2(44 + workspace * 84, 61));
+            builder.clickGui(IRMath::vec2(44 + workspace * 84, 43));
         }
         builder.segment("workspace_return_sculpt");
-        builder.clickGui(IRMath::vec2(44, 61));
+        builder.clickGui(IRMath::vec2(44, 43));
         Recipe recipe = builder.finish();
         static constexpr int workspaceChecks[] = {0, 1, 2, 3, 4};
         for (Segment &segment : recipe.segments_) {

@@ -13,7 +13,7 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kLodPanelPos{506, 240};
+constexpr IRMath::ivec2 kLodPanelPos{1050, 322};
 constexpr IRMath::ivec2 kLodPanelSize{120, 96};
 
 // Tier sliders span the engine's tier numbering, finest .. coarsest.

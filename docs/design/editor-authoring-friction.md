@@ -1083,3 +1083,50 @@ checks preview without writes, exact committed cells, toolbar Undo and Escape.
 Its overlapping-part case requires the raw pick to hit the foreign slab while
 the selected canvas retains the floor plane and the foreign fingerprint stays
 unchanged. Navigation interruption still uses the shared ownership contract.
+
+## Workflow layout, palettes and comparative authoring
+
+The workspace keeps document actions, workflow tabs and sculpt actions in stable
+rows. Sculpt owns a named palette dock; assembly owns hierarchy, per-part LOD
+bands and prospective arrays; generation and animation reveal their relevant
+panels. A persistent instruction area explains the current workflow and the
+hovered panel. Document confirmations hide the underlying widgets because
+widget-type rendering passes do not provide general modal composition.
+
+The interaction choices follow concrete precedents: [Blockbench's mode-specific
+workspace](https://blockbench.net/wiki/guides/blockbench-overview-tips/),
+[Aseprite's explicit palette operations](https://www.aseprite.org/docs/tutorial/color-bar-tutorial/),
+and [Aseprite's tinted onion references](https://www.aseprite.org/docs/onion-skinning/).
+[Voxelator](https://voxelator.com/) also exposes palette import/export alongside
+its painting tools. These are workflow references rather than copied skins.
+
+The palette starts with 16 named engine colors. Select a swatch to paint, edit
+its RGB hex value and press Edit, or press Add to append a new swatch. Pages
+expose up to 256 colors. Load and Save exchange GIMP `.gpl` files; Restore
+Defaults resets the palette only. Voxels retain direct RGB values, so editing
+a swatch never silently recolors existing geometry. Invalid loads leave the
+current palette intact. Palette files are independent of entity documents.
+
+Array Preview draws translucent prospective copies and radial spacing guides
+without creating authored parts. Count means new copies; the source remains.
+Apply creates one undoable operation. Placement transforms are shared by
+preview and commit; GRID uses the same inverse-cell sampling. Detached and
+SDF proposals are identified as voxel approximations, and bounded generation
+refuses oversized previews instead of showing an incomplete proposal. Arrays
+copy the selected part, not its descendants.
+
+Compare LODs captures an isolated, stationary assembly through the actual
+renderer at zoom 16, 8, 4, 2 and 1. The native row preserves physical pixel
+size; the common-scale row uses one shared world aperture, so occupied bounds
+are never independently fitted to hide size differences. The onion panel
+blends a cyan reference and magenta selected tier at that same alignment.
+Capture dimensions and readback work are bounded and clipping is reported.
+Captures refresh on request rather than reading the framebuffer every frame.
+Copy To Tier duplicates the selected voxel part at the same extent, anchor
+and pose with an exclusive target band; its source remains unchanged. An
+overlap warning asks the author to narrow the source band explicitly.
+
+Native validators exercise real controls and inspect authored state and image
+texels. They accompany screenshots because geometric widget checks cannot
+catch every cramped label or misleading preview. Layout currently targets
+at least 1200 by 800 GUI texels; adaptive docking remains separate work.

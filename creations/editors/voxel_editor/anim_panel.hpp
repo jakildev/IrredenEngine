@@ -15,7 +15,7 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kAnimPanelPos{4, 420};
+constexpr IRMath::ivec2 kAnimPanelPos{356, 334};
 constexpr IRMath::ivec2 kAnimPanelSize{120, 72};
 constexpr IRMath::ivec2 kAddFrameButtonPos{kAnimPanelPos.x + 4, kAnimPanelPos.y + 55};
 constexpr IRMath::ivec2 kDuplicateFrameButtonPos{kAnimPanelPos.x + 62, kAnimPanelPos.y + 55};

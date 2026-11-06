@@ -5,8 +5,8 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kArrayPanelPos{682, 20};
-constexpr IRMath::ivec2 kArrayPanelSize{130, 174};
+constexpr IRMath::ivec2 kArrayPanelPos{218, 112};
+constexpr IRMath::ivec2 kArrayPanelSize{130, 246};
 constexpr int kArrayMaxCount = 12;
 constexpr SliderGeometry kArrayCountSliderGeometry{
     IRMath::ivec2(kArrayPanelPos.x + 4, kArrayPanelPos.y + 50), IRMath::ivec2(121, 14)
@@ -38,7 +38,7 @@ constexpr float kArrayYawDegreesPerTrixel =
     (kArrayYawSliderMax - kArrayYawSliderMin) / static_cast<float>(kArrayYawSliderGeometry.size_.x);
 static_assert(kArrayYawDegreesPerTrixel == 3.0f, "COPY YAW's track must be 3 degrees a trixel");
 constexpr IRMath::vec2 kArrayApplyCenter{
-    static_cast<float>(kArrayPanelPos.x + 65), static_cast<float>(kArrayPanelPos.y + 149)
+    static_cast<float>(kArrayPanelPos.x + 65), static_cast<float>(kArrayPanelPos.y + 171)
 };
 
 } // namespace IRVoxelEditor

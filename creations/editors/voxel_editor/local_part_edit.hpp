@@ -8,7 +8,7 @@
 
 namespace IRVoxelEditor {
 
-constexpr IRMath::ivec2 kLocalEditButtonPos{424, 52};
+constexpr IRMath::ivec2 kLocalEditButtonPos{650, 60};
 constexpr IRMath::ivec2 kLocalEditButtonSize{100, 18};
 
 struct EditorStageView {

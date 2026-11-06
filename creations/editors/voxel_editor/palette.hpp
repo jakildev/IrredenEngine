@@ -3,24 +3,16 @@
 
 #include <irreden/ir_math.hpp>
 
-// The editor's paint palette: its colours and the GUI-canvas geometry of the
-// 4x4 swatch grid.
-//
-// The layout constants live here rather than inside initEntities because two
-// callers need them: the editor builds the swatch widgets from them, and an
-// authoring session aims a scripted click at a swatch's centre
-// (Session::Builder::selectPaletteSwatch). A session that hardcoded a screen
-// pixel would silently start clicking the panel background the first time the
-// panel moved, so both sides derive from one description of the grid.
+#include <string_view>
+
+// Default colors and one page of swatch geometry. PalettePanel and
+// Session::Builder share the geometry so scripted clicks follow dock moves.
 
 namespace IRVoxelEditor {
 
 constexpr int kPaletteCount = 16;
 
-// 16 distinct palette colors. Indexed in row-major order across the
-// 4x4 panel grid. Colors are picked to span hue and value so the
-// active-swatch indicator (theme.borderFocused_ outline) reads against
-// every cell.
+// Default indices are stable because authoring sessions select them directly.
 constexpr IRMath::Color kPaletteColors[kPaletteCount] = {
     IRMath::Color{220, 80, 80, 255},
     IRMath::Color{220, 140, 60, 255},
@@ -40,16 +32,32 @@ constexpr IRMath::Color kPaletteColors[kPaletteCount] = {
     IRMath::Color{240, 240, 240, 255},
 };
 
-// Palette panel — fixed dock at the bottom-left of the GUI canvas, so it sits
-// below the iso scene render and never covers the edit target. Sized to fit a
-// 4x4 grid of 20-trixel swatches inside a 120x175-trixel panel — small enough
-// not to crowd the workspace.
-constexpr IRMath::ivec2 kPalettePanelPos{4, 240};
-constexpr IRMath::ivec2 kPalettePanelSize{120, 175};
-constexpr int kPaletteSwatchSize = 20;
-constexpr int kPaletteSwatchGap = 4;
+constexpr std::string_view kPaletteNames[kPaletteCount] = {
+    "Red",
+    "Orange",
+    "Yellow",
+    "Lime",
+    "Green",
+    "Teal",
+    "Blue",
+    "Indigo",
+    "Violet",
+    "Magenta",
+    "Silver",
+    "Gray",
+    "Charcoal",
+    "Sand",
+    "Brown",
+    "White"
+};
+
+constexpr IRMath::ivec2 kPalettePanelPos{4, 112};
+constexpr IRMath::ivec2 kPalettePanelSize{204, 440};
+constexpr int kPaletteSwatchSize = 36;
+constexpr int kPaletteSwatchGap = 8;
 constexpr int kPaletteGridCols = 4;
-constexpr IRMath::ivec2 kPaletteSwatchOrigin{kPalettePanelPos.x + 8, kPalettePanelPos.y + 48};
+constexpr IRMath::ivec2 kPaletteSwatchOffset{12, 56};
+constexpr IRMath::ivec2 kPaletteSwatchOrigin{kPalettePanelPos + kPaletteSwatchOffset};
 
 // Top-left GUI-canvas trixel of swatch @p index (the position its widget is
 // built at).

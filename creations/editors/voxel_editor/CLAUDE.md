@@ -7,6 +7,7 @@ Design log, findings and the authoring-session history:
 ## Validators
 
 - `--profile-frames N --profile-yaw DEGREES --profile-zoom ZOOM` times a fixed 219-cell voxel shadow scene without captures and exits. UI remains present; AO, construction grid and hover feedback are off. The standard profile report includes wall-frame and GPU-stage samples; `--no-stage-timing` supplies an instrumentation control. The editor enables continuous surface lighting by default; `IR_PERAXIS_SURFACE_LIGHTING=0` selects sampled receiving for comparisons, and `1` selects continuous receiving explicitly.
+- `palette_workflow`, `array_workflow`, and `lod_workflow` exercise palette edit/add/GPL round trips, prospective array geometry through Apply/Undo, and actual LOD captures/onion skin/derive/Undo respectively. Use `--gui-layout-check` with each.
 - `python3 scripts/gui-verify.py IRVoxelEditor` — blank-grid sculpt workflow; `-- --gui-layout-check` also fails layout findings. Add `--reference-scene` for the diagnostic furniture/legacy shot table.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` runs a named scripted session; `sessions.hpp` owns the complete registry. Core authoring flows are `sculpt_workflow`, `hierarchy_workflow`, `animation_boundary`, `sculpt_single_save`, `local_canvas`, `document_workflow`, `workarea_focus` and `motion_preview`. Include `--gui-layout-check` to gate reachability/layout. `region_tools` selects Box/Line through the toolbar and checks floor preview, exact commit, Undo and Escape at 30°/67°, including a floor obscured by a different editable part. `camera_gestures` checks camera chords, modifier-first release, interrupted strokes, fresh editing and undo. `click_orbit` drives right, Alt+left and Ctrl+middle orbit over solid surfaces and the empty floor at seven angles, including 120°/240°; it checks cursor-derived focus, visible markers, press/release continuity, reanchoring and unchanged authored voxels, with pan/zoom preludes. `place_below` validates inward placement. `face_pick` compares actual rendered faces with picking at yaw zero, and `text_input_command_capture` checks editor shortcuts under text focus.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
@@ -33,6 +34,15 @@ Design log, findings and the authoring-session history:
   `author.json` (prefab-relative; a new prefab passes them once).
   `python3 scripts/render-verify.py --target IRShapeDebug` then spawns it for
   the `composite_proof_z*` shots.
+
+## Palette and comparison contracts
+
+Palettes use direct RGB: Edit/Add and `.gpl` Load/Save change swatches, never
+existing voxel colors. Arrays preview selected-part copies without descendants;
+SDF and detached proposals are labeled voxel approximations. Apply owns one Undo.
+LOD comparison captures before GUI composition with a fixed view and common world
+aperture. Native-size tiles require integer UI scaling. Copy To Tier preserves
+voxel extent and records; it does not decimate or narrow the source LOD band.
 
 ## Picking contract
 
