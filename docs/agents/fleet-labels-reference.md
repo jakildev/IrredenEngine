@@ -230,7 +230,11 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
 - `fleet:awaiting-upstream-review` — **reviewer**, on a stacked child whose
   upstream is not yet approved; cleared on the next pass or by any verdict
   edge. Keeps an approved child from pulling an unapproved parent in via a
-  coupled stack merge.
+  coupled stack merge. A child that goes CONFLICTING under the hold is
+  merger work once its upstream is approved (the scout's
+  `stacked-child-conflict` row): tier-0 routes it to the LLM pass, which
+  rebases it onto its base, and the reviewer admits it when it is
+  MERGEABLE again. No lane touches it while the upstream is unapproved.
 - `human:re-review` — **human** pushed commits and wants a re-review;
   cleared by the verdict edge.
 - `human:hold` — **human**, on a PR: `fleet-automerge` never merges it;
