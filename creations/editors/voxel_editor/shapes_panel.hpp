@@ -1,6 +1,7 @@
 #ifndef SHAPES_PANEL_H
 #define SHAPES_PANEL_H
 
+#include "editor_widget_geometry.hpp"
 #include "primitive_shapes.hpp"
 #include "integer_stepper.hpp"
 #include "sculpt_panel.hpp"
@@ -146,14 +147,15 @@ class ShapesPanel {
     }
 
     void setVisible(bool visible) {
+        m_visible = visible;
         for (auto widget : m_widgets)
             IRPrefab::Widget::setVisible(widget, visible);
     }
     bool visible() const {
-        return m_panel != IREntity::kNullEntity && IRPrefab::Widget::isVisible(m_panel);
+        return m_visible;
     }
     bool containsCursor(IRMath::vec2 cursor) const {
-        return visible() && guiPointInRect(cursor, kShapesPanelPos, kShapesPanelSize);
+        return widgetContainsCursor(m_panel, cursor);
     }
     const std::vector<IREntity::EntityId> &widgets() const {
         return m_widgets;
@@ -165,6 +167,7 @@ class ShapesPanel {
     }
 
   private:
+    bool m_visible = false;
     IREntity::EntityId m_panel = IREntity::kNullEntity;
     IREntity::EntityId m_dropdown = IREntity::kNullEntity;
     IREntity::EntityId m_spawn = IREntity::kNullEntity;

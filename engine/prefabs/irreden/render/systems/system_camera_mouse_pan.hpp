@@ -17,6 +17,7 @@ namespace IRSystem {
 
 template <> struct System<CAMERA_MOUSE_PAN> {
     bool dragging_ = false;
+    bool (*canStartGesture_)() = nullptr;
     vec2 dragStartMouse_ = vec2(0.0f);
     vec2 dragStartCameraPos_ = vec2(0.0f);
 
@@ -26,7 +27,7 @@ template <> struct System<CAMERA_MOUSE_PAN> {
         const bool middleDown =
             IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::HELD);
 
-        if (middlePressed && !dragging_) {
+        if (middlePressed && !dragging_ && (!canStartGesture_ || canStartGesture_())) {
             // Yield to CAMERA_MOUSE_ROTATE when Ctrl is held.
             if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl)) {
                 dragging_ = true;

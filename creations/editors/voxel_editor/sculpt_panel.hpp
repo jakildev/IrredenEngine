@@ -16,17 +16,19 @@ struct SculptToolbarButton {
     int left_;
     int width_;
     std::optional<SculptTool> tool_;
+    int shortcutNumber_ = 0;
 };
 
 // Array indices are stable gesture IDs used by editor sessions.
 inline constexpr std::array<SculptToolbarButton, 12> kSculptButtons{{
-    {"BRUSH", "Brush: drag across the floor or a face to add voxels.", 4, 55, SculptTool::BRUSH},
-    {"ERASE", "Erase: drag over voxels to remove them.", 62, 55, SculptTool::BRUSH},
+    {"BRUSH", "Brush: drag across the floor or a face to add voxels.", 4, 55, SculptTool::BRUSH, 1},
+    {"ERASE", "Erase: drag over voxels to remove them.", 62, 55, SculptTool::BRUSH, 2},
     {"RECOLOR",
      "Recolor: drag over occupied voxels with the active color.",
      120,
      55,
-     SculptTool::PAINT},
+     SculptTool::PAINT,
+     3},
     {"FILL BOX IN CURRENT PART",
      "Box fill: drag between two cells to fill the current part.",
      662,
@@ -36,7 +38,8 @@ inline constexpr std::array<SculptToolbarButton, 12> kSculptButtons{{
      "Line: drag between two cells. Shift+drag up/down to draw vertically.",
      383,
      45,
-     SculptTool::LINE},
+     SculptTool::LINE,
+     7},
     {"NEW PART",
      "New Part: create an empty part using the New Grid Size dimensions.",
      431,
@@ -49,17 +52,20 @@ inline constexpr std::array<SculptToolbarButton, 12> kSculptButtons{{
      "Bucket: click inside a closed outline to fill it on one plane.",
      178,
      55,
-     SculptTool::BUCKET},
+     SculptTool::BUCKET,
+     4},
     {"COLOR PICKER",
      "Color Picker: sample a visible voxel, then recolor with its RGB.",
      236,
      85,
-     SculptTool::PICKER},
+     SculptTool::PICKER,
+     5},
     {"SHAPES",
      "Shapes: stamp a voxel part, drag its dimensions, or box-fill the current part.",
      324,
      56,
-     std::nullopt},
+     std::nullopt,
+     6},
 }};
 constexpr IRMath::ivec2 kSculptToolbarPos{4, 60};
 constexpr IRMath::ivec2 kSculptToolbarSize{633, 18};

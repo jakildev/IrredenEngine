@@ -68,6 +68,28 @@ inline void registerStandardKeyboardCommands() {
     IRCommand::registerCameraCommands();
 }
 
+/// Restrict new pointer gestures to a creation's viewport. Existing drags keep
+/// their release cleanup. A null predicate restores unrestricted starts.
+/// Configure after standardControlSystems(); absent systems are ignored.
+inline void setGestureStartPredicate(bool (*predicate)()) {
+    if (const auto id = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_PAN);
+        id != IRSystem::kNullSystemId)
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_PAN>>(id)
+            ->canStartGesture_ = predicate;
+    if (const auto id = IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE);
+        id != IRSystem::kNullSystemId)
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(id)
+            ->canStartGesture_ = predicate;
+    if (const auto id = IRSystem::findSystem(IRSystem::CAMERA_KEY_DRAG_PAN);
+        id != IRSystem::kNullSystemId)
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_KEY_DRAG_PAN>>(id)
+            ->canStartGesture_ = predicate;
+    if (const auto id = IRSystem::findSystem(IRSystem::CAMERA_KEY_DRAG_ROTATE);
+        id != IRSystem::kNullSystemId)
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_KEY_DRAG_ROTATE>>(id)
+            ->canStartGesture_ = predicate;
+}
+
 /// Cursor anchoring defaults on for both orbit gestures. Shift reverses the
 /// policy for one drag. Changes apply at the next press; no view is moved here.
 /// Absent systems are ignored; the query returns false if neither exists.
