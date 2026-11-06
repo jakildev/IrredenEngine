@@ -17,6 +17,7 @@
 #include "bake_panel.hpp"
 #include "component_records.hpp"
 #include "components_panel.hpp"
+#include "editor_actions.hpp"
 #include "lod_panel.hpp"
 #include "loft_panel.hpp"
 #include "module_session_view.hpp"
@@ -747,6 +748,7 @@ struct Recipe {
     std::deque<PartExtentCheck> partExtentChecks_;
     std::deque<MirrorCheck> mirrorChecks_;
     std::deque<LoftMaskCheck> loftMaskChecks_;
+    std::deque<ActionCheck> actionChecks_;
     // Build the editor's reference furniture (floor slab, axis bars, centre
     // cube, perimeter gizmos, starter rig, satellite sets) around the editable
     // set instead of the bare stage entity recipes author on.
@@ -1052,6 +1054,29 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, key);
         m_cameraTurned =
             m_cameraTurned || key == IRInput::kKeyButtonQ || key == IRInput::kKeyButtonE;
+    }
+
+    // Press a key and leave it down past the segment's end, so the segment's
+    // capture sees it held (Alt shows control badges); releaseKey lets it up.
+    void holdKey(IRInput::KeyMouseButtons key) {
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, key);
+    }
+
+    void releaseKey(IRInput::KeyMouseButtons key) {
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, key);
+    }
+
+    // Assert a fact about the action catalog or the Actions window
+    // (`ActionCheckKind` in editor_actions.hpp names each reading of
+    // `actionId`, `text` and `expected`).
+    void expectAction(
+        ActionCheckKind kind, std::string actionId, std::string text, int expected, std::string name
+    ) {
+        addPredicateCheck(
+            m_recipe.actionChecks_,
+            ActionCheck{kind, std::move(actionId), std::move(text), expected, std::move(name)},
+            &evaluateActionCheck
+        );
     }
 
     // Tap a key while a modifier is held. The modifier leads the key by two

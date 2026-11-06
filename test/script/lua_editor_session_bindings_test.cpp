@@ -49,6 +49,7 @@ IR_SESSION_PREDICATE_STUB(evaluateComponentValueCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartExtentCheck)
 IR_SESSION_PREDICATE_STUB(evaluateMirrorCheck)
 IR_SESSION_PREDICATE_STUB(evaluateLoftMaskCheck)
+IR_SESSION_PREDICATE_STUB(evaluateActionCheck)
 #undef IR_SESSION_PREDICATE_STUB
 
 } // namespace IRVoxelEditor::Session
@@ -345,6 +346,8 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:releaseBox()
         s:tapKey(IRInput.Key.SPACE)
         s:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.S)
+        s:holdKey(IRInput.Key.LEFT_ALT)
+        s:releaseKey(IRInput.Key.LEFT_ALT)
         s:toggleEraseMode()
         s:toggleEraseMode()
         s:toggleTransformMode()
@@ -421,6 +424,7 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:expectPartModeDropdown(0, "part_mode_dropdown")
         s:expectEditorInput(IREditor.EditorInputCheckKind.SELECTED_PART_NO_TEXT_FOCUS,
                             0, "editor_input")
+        s:expectAction(IREditor.ActionCheckKind.KEYS, "editor.tool.erase", "U", 0, "action")
         s:expectPoolActive({8, 8, 14}, true, "pool_active")
         s:expectVoxelColor({8, 8, 14}, 1, "voxel_color")
         s:expectPick({8, 8, 14}, "pick")
@@ -597,6 +601,10 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:setComponentOverrides('EngineComponent', {})",
         "session:clickGui({0})",
         "session:tapKey(9999)",
+        "session:holdKey(9999)",
+        "session:releaseKey('alt')",
+        "session:expectAction(9999, 'editor.tool.erase', '', 0, 'bad')",
+        "session:expectAction('KEYS', 'editor.tool.erase', '', 0, 'bad')",
         "session:expectRotationMode(0, 9999, 'bad')",
         "session:expectPartTurnAxis(0, {0,1}, 10, 'bad')",
         "session:holdPartGizmo({0,0,0}, {1,0}, {1,0,0})",
