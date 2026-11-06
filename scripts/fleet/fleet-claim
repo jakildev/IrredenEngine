@@ -4354,18 +4354,26 @@ cmd_reconcile() {
     work=$(mktemp -d)
 
     # ---- gather per-repo label/PR surfaces -------------------------------
-    local repo safe
+    # A failed fetch is classified as an empty surface, so it is counted:
+    # the drift tracker must not read its absent findings as resolved.
+    local repo safe source_failures=0
     for repo in "${repos[@]}"; do
         safe="${repo//\//_}"
-        gh issue list --repo "$repo" --state open \
-            --search "label:\"fleet:queued\"" \
-            --json number,labels,state --limit 300 \
-            > "$work/issues-$safe.json" 2>/dev/null \
-            || echo "[]" > "$work/issues-$safe.json"
-        gh pr list --repo "$repo" --state open \
-            --json number,headRefName,labels,body --limit 300 \
-            > "$work/prs-$safe.json" 2>/dev/null \
-            || echo "[]" > "$work/prs-$safe.json"
+        if ! gh issue list --repo "$repo" --state open \
+                --search "label:\"fleet:queued\"" \
+                --json number,labels,state --limit 300 \
+                > "$work/issues-$safe.json" 2>/dev/null; then
+            echo "[]" > "$work/issues-$safe.json"
+            source_failures=$((source_failures + 1))
+            echo "fleet-claim reconcile: $repo issue fetch failed; drift decay frozen this tick" >&2
+        fi
+        if ! gh pr list --repo "$repo" --state open \
+                --json number,headRefName,labels,body --limit 300 \
+                > "$work/prs-$safe.json" 2>/dev/null; then
+            echo "[]" > "$work/prs-$safe.json"
+            source_failures=$((source_failures + 1))
+            echo "fleet-claim reconcile: $repo PR fetch failed; drift decay frozen this tick" >&2
+        fi
     done
 
     # ---- gather host-local surfaces --------------------------------------
@@ -5174,7 +5182,8 @@ PYEOF
     # clear escalates to a single deduped fleet:state-drift issue after it
     # survives N --apply ticks.
     if [[ $do_apply -eq 1 ]]; then
-        reconcile_escalate_drift "$findings" "$state_dir" "${FLEET_RECONCILE_DRIFT_TICKS:-3}"
+        reconcile_escalate_drift "$findings" "$state_dir" "${FLEET_RECONCILE_DRIFT_TICKS:-3}" \
+            "$source_failures" "${repos[*]}"
     fi
 
     # ---- write the structured drift report -------------------------------
@@ -5240,7 +5249,7 @@ reconcile_open_drift_trackers() {
         2>/dev/null
 }
 
-# reconcile_escalate_drift <findings-jsonl> <state-dir> <threshold>
+# reconcile_escalate_drift <findings-jsonl> <state-dir> <threshold> <source-failures> <scanned-repos>
 #   Persistence-gated, deduped escalation of flag-only drift (R2/R6/...).
 #   Maintains a per-key tick counter in <state-dir>/drift-persistence.json:
 #   every flag-only finding (apply == null) seen this run bumps its counter,
@@ -5248,7 +5257,11 @@ reconcile_open_drift_trackers() {
 #   of dropped, until it has been absent for <threshold> consecutive ticks.
 #   The two sides are symmetric on purpose: a transient one-tick blip never
 #   escalates, and a one-tick gap in the scan (a fetch that failed, a label
-#   mid-swap) never reads as resolved. When ANY key crosses <threshold>
+#   mid-swap) never reads as resolved. A tick only judges a key absent when
+#   its scan could have seen it: while <source-failures> is non-zero, or for
+#   a key whose repo is outside <scanned-repos>, the key is carried with its
+#   missing count unchanged, and a degraded tick never closes a tracker.
+#   When ANY key crosses <threshold>
 #   ticks, file or update a SINGLE open fleet:state-drift tracking issue on the
 #   engine repo (deduped — body refreshed in place, never one issue per tick).
 #   When NO finding remains persistent (all cleared), close any open tracker so
@@ -5256,6 +5269,7 @@ reconcile_open_drift_trackers() {
 #   Mutates local state + a GH issue, so cmd_reconcile only calls it on --apply.
 reconcile_escalate_drift() {
     local findings="$1" state_dir="$2" threshold="$3"
+    local source_failures="${4:-0}" scanned_repos="${5:-}"
     local persist_file="$state_dir/drift-persistence.json"
     local now body_file
     now=$(date +%s)
@@ -5264,7 +5278,8 @@ reconcile_escalate_drift() {
 
     local persistent_count
     persistent_count=$(NOW="$now" THRESHOLD="$threshold" PERSIST="$persist_file" \
-        BODY="$body_file" python3 - "$findings" <<'PYEOF'
+        BODY="$body_file" SOURCE_FAILURES="$source_failures" \
+        SCANNED_REPOS="$scanned_repos" python3 - "$findings" <<'PYEOF'
 import sys, os, json
 try:
     import fcntl  # POSIX-only; absent on native-Windows python
@@ -5279,6 +5294,8 @@ now = int(os.environ["NOW"])
 threshold = int(os.environ["THRESHOLD"])
 persist_path = os.environ["PERSIST"]
 body_path = os.environ["BODY"]
+degraded = os.environ.get("SOURCE_FAILURES", "0") != "0"
+scanned = set(os.environ.get("SCANNED_REPOS", "").split())
 
 def load(p, default):
     try:
@@ -5330,6 +5347,9 @@ with open(persist_path + ".lock", "a") as _lock_fh:
     # drops, and resets to zero, once it has been absent for threshold ticks.
     for k, prev in state.items():
         if k in seen or not isinstance(prev, dict):
+            continue
+        if degraded or prev.get("repo") not in scanned:
+            seen[k] = dict(prev)
             continue
         missing = int(prev.get("missing", 0)) + 1
         if missing >= threshold:
@@ -5387,7 +5407,12 @@ PYEOF
         # reproduce. A finding that recurs after that re-accrues from zero and
         # re-files a fresh tracker once it crosses threshold. A failed lookup
         # neither files nor closes — it retries next tick rather than reading
-        # its own failure as "no tracker".
+        # its own failure as "no tracker", and neither does a tick whose
+        # source fetch failed, which cannot tell a clear from a gap.
+        if [[ "$source_failures" != "0" ]]; then
+            echo "  reconcile --apply: $source_failures source fetch(es) failed; not auto-closing the drift tracker this tick" >&2
+            return 0
+        fi
         local trackers t lookup_status=0
         trackers=$(reconcile_open_drift_trackers) || lookup_status=$?
         if [[ $lookup_status -ne 0 ]]; then
