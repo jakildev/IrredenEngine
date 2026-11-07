@@ -2,7 +2,7 @@
 
 ## Validators
 
-- `actions_workflow`, then `actions_restart` with the same isolated `IR_PREFS_DIR`, validate action search, invocation, conflict replacement, badges and keymap persistence.
+- `actions_workflow`, then `actions_restart` with the same isolated `IR_PREFS_DIR`, validate action search, invocation, conflict replacement, badges and keymap persistence. Run closes Actions before executing in the editor; the replay also checks modal tool-key isolation, camera reset, self-toggle and close/reopen. Actions coordinates resolve against the live GUI canvas.
 
 - `material_tools` exercises closed-outline fill, open-outline rejection, Brush, sampled and selected Recolor, and undo/redo through the visible controls at 30°/67°. `shapes_workflow` checks all five primitives and dimension entry through Shapes, including stamp and drag placement.
 - `--profile-frames N --profile-yaw DEGREES --profile-zoom ZOOM` times a fixed 219-cell voxel shadow scene without captures and exits. UI remains present; AO, construction grid and hover feedback are off. The standard profile report includes wall-frame and GPU-stage samples; `--no-stage-timing` supplies an instrumentation control. The editor enables continuous surface lighting by default; `IR_PERAXIS_SURFACE_LIGHTING=0` selects sampled receiving for comparisons, and `1` selects continuous receiving explicitly.

@@ -25,9 +25,9 @@ struct EditorActionRow {
 
 // One row per sculpt toolbar button, in button order.
 inline constexpr std::array<EditorActionRow, 12> kSculptToolbarActions{{
-    {"editor.tool.add", "ADD TOOL", "TOOLS"},
+    {"editor.tool.add", "BRUSH TOOL", "TOOLS"},
     {"editor.tool.erase", "ERASE TOOL", "TOOLS"},
-    {"editor.tool.paint", "PAINT TOOL", "TOOLS"},
+    {"editor.tool.paint", "RECOLOR TOOL", "TOOLS"},
     {"editor.tool.box", "BOX TOOL", "TOOLS"},
     {"editor.tool.line", "LINE TOOL", "TOOLS"},
     {"editor.part.new_voxel", "NEW VOXEL PART", "PARTS"},

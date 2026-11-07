@@ -53,7 +53,7 @@ inline Recipe buildActionsWorkflow(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOr
     using IRPrefab::ActionsWindow::Button;
     Builder builder("actions_workflow", sceneSize, sceneOrigin);
     const IRPrefab::ActionsWindow::Layout layout =
-        IRPrefab::ActionsWindow::layoutAt(actionsWindowOrigin());
+        IRPrefab::ActionsWindow::layoutAt(IRMath::ivec2(0));
     const auto clickButton = [&](Button which) {
         builder.clickGui(detail::actionsRectCenter(layout.button(which)));
     };
@@ -72,9 +72,9 @@ inline Recipe buildActionsWorkflow(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOr
     builder.expectAction(
         ActionCheckKind::LISTED,
         "",
-        "editor.toggle_help",
+        "editor.screenshot,editor.toggle_help",
         0,
-        "key_search_finds_help_by_f1"
+        "key_search_finds_f1_and_f12"
     );
 
     builder.segment("run_unbound");
@@ -83,9 +83,10 @@ inline Recipe buildActionsWorkflow(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOr
     clickButton(Button::RUN);
     builder.expectAction(ActionCheckKind::KEYS, detail::kGridId, "", 0, "grid_has_no_key");
     builder.expectAction(ActionCheckKind::RUNS, detail::kGridId, "", 1, "run_fires_unbound_once");
-    builder.expectAction(ActionCheckKind::STATUS, "", "RAN TOGGLE GRID", 0, "run_reports");
+    builder.expectAction(ActionCheckKind::WINDOW_OPEN, "", "", 0, "run_closes_actions");
 
     builder.segment("assign_conflict");
+    detail::openActionsWindow(builder);
     detail::replaceActionSearch(builder, layout, "erase tool");
     builder.clickGui(IRMath::vec2(layout.rowCenter(0)));
     clickButton(Button::ASSIGN);
@@ -113,13 +114,48 @@ inline Recipe buildActionsWorkflow(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOr
 
     builder.segment("badge_released");
     builder.releaseKey(IRInput::kKeyButtonLeftAlt);
+
+    builder.segment("modal_input");
+    detail::openActionsWindow(builder);
+    builder.tapKey(IRInput::kKeyButton1);
+    builder.expectAction(ActionCheckKind::RUNS, "editor.tool.add", "", 0, "modal_blocks_tool_key");
+    builder.expectAction(ActionCheckKind::WINDOW_OPEN, "", "", 1, "modal_remains_open");
+
+    builder.segment("run_shapes");
+    detail::replaceActionSearch(builder, layout, "shapes tool");
+    builder.clickGui(IRMath::vec2(layout.rowCenter(0)));
+    clickButton(Button::RUN);
+    builder.expectAction(ActionCheckKind::RUNS, "editor.tool.shapes", "", 1, "run_shapes_once");
+    builder.expectAction(ActionCheckKind::WINDOW_OPEN, "", "", 0, "shapes_closes_modal");
+
+    builder.segment("run_reset", 8.0f);
+    detail::openActionsWindow(builder);
+    detail::replaceActionSearch(builder, layout, "reset camera");
+    builder.clickGui(IRMath::vec2(layout.rowCenter(0)));
+    clickButton(Button::RUN);
+    builder.expectCameraZoom(4.0f, true, "run_resets_zoom");
+    builder.expectAction(ActionCheckKind::WINDOW_OPEN, "", "", 0, "reset_closes_modal");
+
+    builder.segment("run_self_toggle");
+    detail::openActionsWindow(builder);
+    detail::replaceActionSearch(builder, layout, "actions window");
+    builder.clickGui(IRMath::vec2(layout.rowCenter(0)));
+    clickButton(Button::RUN);
+    builder.expectAction(ActionCheckKind::WINDOW_OPEN, "", "", 0, "self_toggle_closes");
+
+    builder.segment("reopen_after_self_toggle");
+    detail::openActionsWindow(builder);
+    builder.expectAction(ActionCheckKind::WINDOW_OPEN, "", "", 1, "self_toggle_can_reopen");
+    builder.segment("close_after_self_toggle");
+    builder.tapKey(IRInput::kKeyButtonEscape);
+    builder.expectAction(ActionCheckKind::WINDOW_OPEN, "", "", 0, "escape_closes");
     return builder.finish();
 }
 
 inline Recipe buildActionsRestart(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     Builder builder("actions_restart", sceneSize, sceneOrigin);
     const IRPrefab::ActionsWindow::Layout layout =
-        IRPrefab::ActionsWindow::layoutAt(actionsWindowOrigin());
+        IRPrefab::ActionsWindow::layoutAt(IRMath::ivec2(0));
 
     builder.segment("restored");
     builder.holdKey(IRInput::kKeyButtonLeftAlt);
@@ -138,6 +174,11 @@ inline Recipe buildActionsRestart(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOri
     detail::replaceActionSearch(builder, layout, "erase tool");
     builder.holdKey(IRInput::kKeyButtonLeftAlt);
     builder.expectAction(ActionCheckKind::ROW_CONTAINS, detail::kEraseToolId, "= U", 0, "list_u");
+    builder.segment("close_after_restart");
+    builder.releaseKey(IRInput::kKeyButtonLeftAlt);
+    detail::openActionsWindow(builder);
+    builder.expectAction(ActionCheckKind::WINDOW_OPEN, "", "", 0, "toggle_closes_actions");
+    builder.holdKey(IRInput::kKeyButtonLeftAlt);
     builder.expectAction(ActionCheckKind::BADGE, detail::kEraseToolId, "U", 0, "badge_agrees");
 
     builder.segment("released");
