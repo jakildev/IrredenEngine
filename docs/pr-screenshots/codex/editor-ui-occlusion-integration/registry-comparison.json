@@ -1,0 +1,2208 @@
+{
+  "baseline": "c7627354cae3994fcfa50346ec4a3efdcd8e6176",
+  "final": "6a57c385727d256a11d3e37525ef9dd797a5702f",
+  "platform": "macOS Metal",
+  "existing_cases": 73,
+  "final_cases": 75,
+  "assertions": 1524,
+  "passing_assertions": 1490,
+  "focused_unit_tests": 273,
+  "note": "none is the enum sentinel, not a registered recipe; excluded. Workspace pair uses the editor's fixed save_files/gui_layout_workflow.cfg; workspace_controls resets it before workspace_restore. Final two control rows replaced by reruns at 6a57c3857; C++ binary unchanged from full run, only these two Lua fixtures changed.",
+  "comparison": [
+    {
+      "id": "builtin:drag_probe",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 16,
+      "after_assertions": 22,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:place_below",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 7,
+      "after_assertions": 10,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:fill_ghost",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 32,
+      "after_assertions": 36,
+      "before_failure_names": [
+        "one_no_ghost_before_press",
+        "one_no_ghost_after_release",
+        "row_no_ghost_before_press",
+        "row_no_ghost_after_release",
+        "slab_no_ghost_before_press",
+        "slab_no_ghost_after_release",
+        "carve_no_ghost_before_press",
+        "carve_no_ghost_after_release"
+      ],
+      "after_failure_names": [
+        "one_no_ghost_before_press",
+        "one_no_ghost_after_release",
+        "row_no_ghost_before_press",
+        "row_no_ghost_after_release",
+        "slab_no_ghost_before_press",
+        "slab_no_ghost_after_release",
+        "carve_no_ghost_before_press",
+        "carve_no_ghost_after_release"
+      ],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [
+          "carve_no_ghost_after_release",
+          "carve_no_ghost_before_press",
+          "one_no_ghost_after_release",
+          "one_no_ghost_before_press",
+          "row_no_ghost_after_release",
+          "row_no_ghost_before_press",
+          "slab_no_ghost_after_release",
+          "slab_no_ghost_before_press"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [
+          "carve_no_ghost_after_release",
+          "carve_no_ghost_before_press",
+          "one_no_ghost_after_release",
+          "one_no_ghost_before_press",
+          "row_no_ghost_after_release",
+          "row_no_ghost_before_press",
+          "slab_no_ghost_after_release",
+          "slab_no_ghost_before_press"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:face_pick",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 10,
+      "after_assertions": 14,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:screen_alignment",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 70,
+      "after_assertions": 70,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:camera_gestures",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 44,
+      "after_assertions": 44,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:click_orbit",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 70,
+      "after_assertions": 70,
+      "before_failure_names": [
+        "click_origin_stays_anchored",
+        "click_origin_stays_anchored",
+        "click_origin_stays_anchored",
+        "click_origin_stays_anchored"
+      ],
+      "after_failure_names": [
+        "click_origin_stays_anchored",
+        "click_origin_stays_anchored",
+        "click_origin_stays_anchored",
+        "click_origin_stays_anchored"
+      ],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [
+          "click_origin_stays_anchored",
+          "click_origin_stays_anchored",
+          "click_origin_stays_anchored",
+          "click_origin_stays_anchored"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [
+          "click_origin_stays_anchored",
+          "click_origin_stays_anchored",
+          "click_origin_stays_anchored",
+          "click_origin_stays_anchored"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:viewport_scroll",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 15,
+      "after_assertions": 15,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:palette_workflow",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 8,
+      "after_assertions": 11,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:array_workflow",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 10,
+      "after_assertions": 10,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:lod_workflow",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 9,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:region_tools",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 35,
+      "after_assertions": 35,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:material_tools",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 12,
+      "after_assertions": 19,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:shapes_workflow",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 22,
+      "after_assertions": 29,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:workspace_controls",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 19,
+      "after_assertions": 19,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:workspace_restore",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 2,
+      "after_assertions": 2,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:shadow_rotation",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 80,
+      "after_assertions": 80,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:rock",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 20,
+      "after_assertions": 26,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:mushroom",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 20,
+      "after_assertions": 23,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:ant",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 43,
+      "after_assertions": 48,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:bird",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 29,
+      "after_assertions": 34,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:tree",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 27,
+      "after_assertions": 33,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:parts_roundtrip",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 19,
+      "after_assertions": 23,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:remove_part",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 40,
+      "after_assertions": 45,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:undo_history",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 16,
+      "after_assertions": 18,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:animation_boundary",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 20,
+      "after_assertions": 20,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:sculpt_workflow",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 46,
+      "after_assertions": 51,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:sculpt_single_save",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 38,
+      "after_assertions": 40,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:document_workflow",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 28,
+      "after_assertions": 29,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:local_canvas",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 10,
+      "after_assertions": 11,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:motion_preview",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 11,
+      "after_assertions": 11,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:workarea_focus",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 5,
+      "after_assertions": 5,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:hierarchy_workflow",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 18,
+      "after_assertions": 18,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:tier_scrub",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 27,
+      "after_assertions": 27,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:radial_array",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 9,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:linear_array",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 8,
+      "after_assertions": 8,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:nway_symmetry",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 8,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:mode_preview",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 21,
+      "after_assertions": 22,
+      "before_failure_names": [
+        "part_starts_grid",
+        "rotated_part_keeps_authored_occupancy",
+        "rotated_part_rejected_by_edit_pick",
+        "detached_allocates_private_canvas",
+        "part_cycles_to_detached",
+        "detached_array_copies_created",
+        "detached_array_copies_allocate_canvases",
+        "detached_array_copy_reconciles_canvas",
+        "detached_array_undo_restores_source",
+        "detached_array_undo_releases_copy_canvases",
+        "part_cycles_back_to_grid",
+        "preview_twin_owns_private_canvas",
+        "preview_source_respects_band_and_tier_pin",
+        "preview_twin_copies_band_and_tier_pin",
+        "preview_does_not_change_authored_mode",
+        "preview_recreated_before_selection_change",
+        "new_part_changes_selection"
+      ],
+      "after_failure_names": [
+        "part_starts_grid",
+        "rotated_part_keeps_authored_occupancy",
+        "rotated_part_rejected_by_edit_pick",
+        "detached_allocates_private_canvas",
+        "part_cycles_to_detached",
+        "detached_array_copies_created",
+        "detached_array_copies_allocate_canvases",
+        "detached_array_copy_reconciles_canvas",
+        "detached_array_undo_restores_source",
+        "detached_array_undo_releases_copy_canvases",
+        "part_cycles_back_to_grid",
+        "preview_twin_owns_private_canvas",
+        "preview_source_respects_band_and_tier_pin",
+        "preview_twin_copies_band_and_tier_pin",
+        "preview_does_not_change_authored_mode",
+        "preview_recreated_before_selection_change",
+        "new_part_changes_selection"
+      ],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [
+          "detached_allocates_private_canvas",
+          "detached_array_copies_allocate_canvases",
+          "detached_array_copies_created",
+          "detached_array_copy_reconciles_canvas",
+          "detached_array_undo_releases_copy_canvases",
+          "detached_array_undo_restores_source",
+          "new_part_changes_selection",
+          "part_cycles_back_to_grid",
+          "part_cycles_to_detached",
+          "part_starts_grid",
+          "preview_does_not_change_authored_mode",
+          "preview_recreated_before_selection_change",
+          "preview_source_respects_band_and_tier_pin",
+          "preview_twin_copies_band_and_tier_pin",
+          "preview_twin_owns_private_canvas",
+          "rotated_part_keeps_authored_occupancy",
+          "rotated_part_rejected_by_edit_pick"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [
+          "detached_allocates_private_canvas",
+          "detached_array_copies_allocate_canvases",
+          "detached_array_copies_created",
+          "detached_array_copy_reconciles_canvas",
+          "detached_array_undo_releases_copy_canvases",
+          "detached_array_undo_restores_source",
+          "new_part_changes_selection",
+          "part_cycles_back_to_grid",
+          "part_cycles_to_detached",
+          "part_starts_grid",
+          "preview_does_not_change_authored_mode",
+          "preview_recreated_before_selection_change",
+          "preview_source_respects_band_and_tier_pin",
+          "preview_twin_copies_band_and_tier_pin",
+          "preview_twin_owns_private_canvas",
+          "rotated_part_keeps_authored_occupancy",
+          "rotated_part_rejected_by_edit_pick"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:mode_preview_shots",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 3,
+      "after_assertions": 3,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:part_mode_cycle",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 28,
+      "after_assertions": 28,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:corner_part_revox_refused",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 14,
+      "after_assertions": 14,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:parts_scroll",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 8,
+      "after_assertions": 8,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:module_loaded",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 17,
+      "after_assertions": 17,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:component_attach",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 9,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:component_field_page",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 9,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:component_field_key",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 9,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [
+          "{\"a\": \"718\", \"b\": \"719\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_attach\", \"shot\": \"1\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}",
+          "{\"a\": \"718\", \"b\": \"719\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_set_field\", \"shot\": \"2\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}",
+          "{\"a\": \"735\", \"b\": \"736\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_array_copy\", \"shot\": \"3\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}",
+          "{\"a\": \"735\", \"b\": \"736\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_save\", \"shot\": \"4\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}",
+          "{\"a\": \"754\", \"b\": \"755\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_reload\", \"shot\": \"6\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}"
+        ],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [
+          "{\"a\": \"718\", \"b\": \"719\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_attach\", \"shot\": \"1\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}",
+          "{\"a\": \"718\", \"b\": \"719\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_set_field\", \"shot\": \"2\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}",
+          "{\"a\": \"735\", \"b\": \"736\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_array_copy\", \"shot\": \"3\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}",
+          "{\"a\": \"735\", \"b\": \"736\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_save\", \"shot\": \"4\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}",
+          "{\"a\": \"754\", \"b\": \"755\", \"h\": \"11\", \"kind\": \"text-over-widget\", \"label\": \"component_field_key_reload\", \"shot\": \"6\", \"w\": \"5\", \"x\": \"1070\", \"y\": \"552\"}"
+        ],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:text_input_command_capture",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 101,
+      "after_assertions": 101,
+      "before_failure_names": [
+        "tab_walk_wraps_candidate_cycle"
+      ],
+      "after_failure_names": [
+        "tab_walk_wraps_candidate_cycle"
+      ],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [
+          "tab_walk_wraps_candidate_cycle"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [
+          "tab_walk_wraps_candidate_cycle"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:actions_workflow",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 25,
+      "after_assertions": 25,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:actions_restart",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 7,
+      "after_assertions": 7,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:part_sizes",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 12,
+      "after_assertions": 12,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:part_gizmo_reach",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 20,
+      "after_assertions": 24,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:part_ring_turn",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 13,
+      "after_assertions": 17,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "builtin:composite_proof",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 79,
+      "after_assertions": 79,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_module_files",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 1,
+      "after_assertions": 1,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_module_arg",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 1,
+      "after_assertions": 1,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_module_arg_absent",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 1,
+      "after_assertions": 1,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_parts",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 8,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_recipe_attach",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 8,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_recipe_pages",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 4,
+      "after_assertions": 4,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_class_paint",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 21,
+      "after_assertions": 25,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_recipe_handle",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 25,
+      "after_assertions": 29,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_recipe_handle_turned",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 11,
+      "after_assertions": 12,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_recipe_float_step",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 20,
+      "after_assertions": 21,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_list_scroll",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 9,
+      "after_assertions": 9,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_single",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 1,
+      "after_assertions": 2,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_radius",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 3,
+      "after_assertions": 4,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_yaw",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 2,
+      "after_assertions": 2,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_unreachable",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 0,
+      "after_assertions": 0,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": [
+          "ir-run: RESULT=CRASH exe=IRVoxelEditor exit=1 signal=none"
+        ]
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": [
+          "ir-run: RESULT=CRASH exe=IRVoxelEditor exit=1 signal=none"
+        ]
+      }
+    },
+    {
+      "id": "module:test_click_under_panel",
+      "comparison": "added",
+      "before_returncode": null,
+      "after_returncode": 1,
+      "before_assertions": null,
+      "after_assertions": 2,
+      "before_failure_names": null,
+      "after_failure_names": [
+        "on_end_filled",
+        "test_click_under_panel_click_scene_press_clear_of_ui"
+      ],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": null,
+      "after_failure_signature": {
+        "failure_names": [
+          "on_end_filled",
+          "test_click_under_panel_click_scene_press_clear_of_ui"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_click_after_focus",
+      "comparison": "added",
+      "before_returncode": null,
+      "after_returncode": 0,
+      "before_assertions": null,
+      "after_assertions": 2,
+      "before_failure_names": null,
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": null,
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_bake_radius_guard",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 0,
+      "after_assertions": 0,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": [
+          "ir-run: RESULT=CRASH exe=IRVoxelEditor exit=1 signal=none"
+        ]
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": [
+          "ir-run: RESULT=CRASH exe=IRVoxelEditor exit=1 signal=none"
+        ]
+      }
+    },
+    {
+      "id": "module:test_recipe_reapply",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 16,
+      "after_assertions": 17,
+      "before_failure_names": [
+        "manual_color_applied",
+        "manual_color_preserved"
+      ],
+      "after_failure_names": [
+        "manual_color_applied",
+        "manual_color_preserved"
+      ],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [
+          "manual_color_applied",
+          "manual_color_preserved"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [
+          "manual_color_applied",
+          "manual_color_preserved"
+        ],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "module:test_dock_rails",
+      "comparison": "same_verdict",
+      "before_returncode": 0,
+      "after_returncode": 0,
+      "before_assertions": 7,
+      "after_assertions": 7,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": []
+      }
+    },
+    {
+      "id": "fixture:module_cpp_collision",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 0,
+      "after_assertions": 0,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": [
+          "ir-run: RESULT=CRASH exe=IRVoxelEditor exit=2 signal=none"
+        ]
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": [
+          "ir-run: RESULT=CRASH exe=IRVoxelEditor exit=2 signal=none"
+        ]
+      }
+    },
+    {
+      "id": "fixture:module_session_escape",
+      "comparison": "same_verdict",
+      "before_returncode": 1,
+      "after_returncode": 1,
+      "before_assertions": 0,
+      "after_assertions": 0,
+      "before_failure_names": [],
+      "after_failure_names": [],
+      "changed_failure_categories": [],
+      "added_failures": {},
+      "removed_failures": {},
+      "before_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": [
+          "ir-run: RESULT=CRASH exe=IRVoxelEditor exit=2 signal=none"
+        ]
+      },
+      "after_failure_signature": {
+        "failure_names": [],
+        "layout_findings": [],
+        "missing_shots": [],
+        "environment_failed": false,
+        "crash_timeout_environment_diagnostics": [
+          "ir-run: RESULT=CRASH exe=IRVoxelEditor exit=2 signal=none"
+        ]
+      }
+    }
+  ]
+}
