@@ -15,6 +15,7 @@ namespace IRVoxelEditor::Session {
         return true;                                                                               \
     }
 IR_SESSION_PREDICATE_STUB(evaluateOccupancyCheck)
+IR_SESSION_PREDICATE_STUB(evaluateSceneUiPressCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartTransformCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartCountCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartIdCheck)

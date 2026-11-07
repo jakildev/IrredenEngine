@@ -72,4 +72,4 @@
   need a fresh APPLY. `expectRecipeValue`, `expectPartMatchesRecipe` and
   `expectRecipeHandleTexels` read the live binding; the gizmo census skips handles.
 
-World-aimed left presses are checked against the editor UI gate on their consume tick. A swallowed press fails its segment and names the operation, target and GUI position. `test_click_under_panel` must fail that check; `test_click_after_focus` must pass after returning focus to the scene.
+World-aimed left presses emitted by `Session::Builder` are checked against the editor UI gate on their consume tick. A swallowed press fails its segment and names the operation, target and GUI position. `test_click_under_panel` must fail that check; `test_click_after_focus` must pass after returning focus to the scene.
