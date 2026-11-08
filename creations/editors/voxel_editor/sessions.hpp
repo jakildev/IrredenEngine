@@ -3585,9 +3585,13 @@ inline Recipe build(
         Builder builder("part_sizes", sceneSize, sceneOrigin);
         constexpr int kStem = 0;
         constexpr int kFrame = 1;
+        static constexpr int kAllWorkspace = 4;
         const IRMath::ivec3 stemSize(3, 3, 8);
         const IRMath::ivec3 frameSize(5, 5, 1);
         constexpr float kTolerance = 0.001f;
+
+        builder.segment("all_workspace_stepper");
+        builder.clickGui(IRMath::vec2(partSizeStepPos(0, 1) + kIntegerStepSize / 2));
 
         builder.segment("stem");
         builder.setPartSize(stemSize);
@@ -3654,7 +3658,15 @@ inline Recipe build(
         builder.reload();
         builder.expectPartExtent(kStem, stemSize, "stem_extent_survives_reload");
         builder.expectPartExtent(kFrame, frameSize, "frame_extent_survives_reload");
-        return builder.finish();
+        Recipe recipe = builder.finish();
+        recipe.segments_.front().assertions_.push_back(
+            IRPrefab::GuiTest::predicate(
+                &evaluateWorkspaceCheck,
+                &kAllWorkspace,
+                "part_size_stepper_preserves_all_workspace"
+            )
+        );
+        return recipe;
     }
     case Id::PART_GIZMO_REACH: {
         Builder builder("part_gizmo_reach", sceneSize, sceneOrigin);

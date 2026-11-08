@@ -5956,10 +5956,11 @@ void registerEditorActions() {
     registerEditorAction(kFocusAction, []() { focusEditorWorkarea(); });
     for (int axis = 0; axis < kPartSizeAxisCount; ++axis) {
         const auto index = static_cast<std::size_t>(axis);
-        const auto revealField = []() {
+        const auto revealField = [index]() {
             IRPrefab::ActionsWindow::setOpen(false);
             g_editor.actionsGuard_.prepare();
-            selectWorkspace(0);
+            if (!IRPrefab::Widget::isVisible(g_partDimensions[index].widgets()[1]))
+                selectWorkspace(0);
         };
         registerEditorAction(kPartSizeFocusActions[index], [index, revealField]() {
             revealField();
