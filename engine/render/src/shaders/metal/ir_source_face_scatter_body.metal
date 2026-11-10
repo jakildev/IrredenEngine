@@ -69,7 +69,7 @@ vertex SourceFaceVertex IR_SOURCE_FACE_VERTEX(
         out.position = float4(2.0, 2.0, 2.0, 1.0);
         return out;
     }
-    const SourceVoxelFace face = sourceFaces.faces[sourceOrder[128u + instanceId * 3u + 1u]];
+    const SourceVoxelFace face = sourceFaces.faces[sourceOrder[128u + instanceId * kFaceSortRecordWords + 1u]];
     const int faceId = int(face.centerAndFace.w);
     const int axis = faceId >> 1;
     float3 eu, ev;

@@ -371,10 +371,11 @@ void main() {
             sourceFaces[index].worldCenterAndAO = vec4(0.0);
             sourceFaces[index].owner = uvec4(packedEntityId, 0u, 0u);
             // Unique source keys make coplanar draw ownership independent of append order.
-            const uint order = 128u + index * 3u;
+            const uint order = 128u + index * kFaceSortRecordWords;
             perAxisWinnerIds[order] = voxelIndex * 3u + uint(slot);
             perAxisWinnerIds[order + 1u] = index;
             perAxisWinnerIds[order + 2u] = 0u;
+            perAxisWinnerIds[order + 3u] = 0u;
             atomicAdd(perAxisWinnerIds[1u], 1u);
             return;
         }

@@ -1306,6 +1306,8 @@ const uint kSourceLightingHDR = 2u;
 const uint kSourceLightingShadow = 3u;
 const uint kSourceLightingAOShadow = 4u;
 
+const uint kFaceSortRecordWords = 4u;
+
 // owner.z selects color interpretation; owner.xy retain packed entity identity.
 struct SourceVoxelFace {
     vec4 centerAndFace;

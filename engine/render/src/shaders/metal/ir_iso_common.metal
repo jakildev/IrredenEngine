@@ -1293,6 +1293,8 @@ constant uint kSourceLightingHDR = 2u;
 constant uint kSourceLightingShadow = 3u;
 constant uint kSourceLightingAOShadow = 4u;
 
+constant uint kFaceSortRecordWords = 4u;
+
 // owner.z selects color interpretation; owner.xy retain packed entity identity.
 struct SourceVoxelFace {
     float4 centerAndFace;

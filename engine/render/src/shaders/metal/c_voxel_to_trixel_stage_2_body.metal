@@ -350,10 +350,11 @@ kernel void IR_STAGE2_KERNEL_NAME(
             sourceFaces.faces[index].worldCenterAndAO = float4(0.0);
             sourceFaces.faces[index].owner = uint4(packedEntityId, 0u, 0u);
             // Unique source keys make coplanar draw ownership independent of append order.
-            const uint order = 128u + index * 3u;
+            const uint order = 128u + index * kFaceSortRecordWords;
             atomic_store_explicit(&perAxisWinnerIds[order], voxelIndex * 3u + uint(slot), memory_order_relaxed);
             atomic_store_explicit(&perAxisWinnerIds[order + 1u], index, memory_order_relaxed);
             atomic_store_explicit(&perAxisWinnerIds[order + 2u], 0u, memory_order_relaxed);
+            atomic_store_explicit(&perAxisWinnerIds[order + 3u], 0u, memory_order_relaxed);
             atomic_fetch_add_explicit(&perAxisWinnerIds[1u], 1u, memory_order_relaxed);
             return;
         }
