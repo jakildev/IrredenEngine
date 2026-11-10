@@ -207,6 +207,27 @@ class Routing(unittest.TestCase):
         self.assertEqual(values, [runtime.choose_runtime("task", {}, f"task:engine:{n}", self.env)
                                   for n in range(1, 100)])
 
+    def test_sandbox_decline_steers_or_withholds_by_runtime_policy(self):
+        record = {"issue": "#4402", "repo": "engine",
+                  "updatedAt": "2026-10-16T00:00:00Z"}
+        data = {"tasks_open": [record]}
+        with tempfile.TemporaryDirectory() as temp:
+            declined = Path(temp) / "declined"
+            declined.mkdir()
+            (declined / "task-engine-4402").write_text(
+                f"{record['updatedAt']}\nSandbox policy rejects git push --force-with-lease\n"
+                "worker\nruntime=codex\n")
+            with patch.dict(runtime.os.environ, {"FLEET_STATE_DIR": temp}, clear=False):
+                self.assertEqual(runtime.route(data, "task:engine:4402", "worker", "opus",
+                                               "opus", "high", self.env)[0], "claude")
+                with self.assertRaisesRegex(ValueError, "decline memory"):
+                    runtime.route(data, "task:engine:4402", "worker", "opus", "opus",
+                                  "high", {**self.env, "FLEET_WORKER_RUNTIME": "codex"})
+                claude_pin = dict(record, labels=["fleet:runtime-claude"])
+                self.assertEqual(runtime.route({"tasks_open": [claude_pin]},
+                                               "task:engine:4402", "worker", "opus",
+                                               "opus", "high", self.env)[0], "claude")
+
     def test_pin_and_class_are_independent(self):
         data = {"tasks_open": [{"id": "#905", "labels": ["fleet:runtime-codex"]}]}
         self.assertEqual(runtime.route(data, "task:engine:905", "worker", "fable",

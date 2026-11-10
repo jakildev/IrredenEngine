@@ -64,6 +64,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import fleet_task_class  # noqa: E402
@@ -722,6 +723,74 @@ class DispatchTargets(HostSeamCase):
                 self.assertEqual(pick_role({"candidate_prs": [pr]}, "sonnet-reviewer"), [])
             finally:
                 os.environ.pop("FLEET_STATE_DIR", None)
+
+    def test_decline_reason_classes_use_transient_ttl_and_runtime_scope(self):
+        reasons = {
+            "host": (
+                "RESULT=NO-DISPLAY exit=69",
+                "CoreGraphics online displays 0",
+                "GPU lock held by orphan pid 123",
+                "Metal GPU capture lease did not become available",
+            ),
+            "sandbox": (
+                "Sandbox policy rejects git push --force-with-lease",
+                "kill -TERM 123: operation not permitted",
+                "exceeded the Codex command window",
+            ),
+        }
+        for expected_class, class_reasons in reasons.items():
+            for reason in class_reasons:
+                self.assertEqual(fleet_task_class.decline_reason_class(reason),
+                                 expected_class)
+        with tempfile.TemporaryDirectory() as state_dir:
+            declined = Path(state_dir) / "declined"
+            declined.mkdir()
+            task = {"issue": "#4402", "repo": "engine", "model": "opus",
+                    "updatedAt": "2026-10-16T00:00:00Z"}
+            path = declined / "task-engine-4402"
+            with mock.patch.dict(os.environ, {
+                    "FLEET_STATE_DIR": state_dir, "FLEET_RUNTIMES": "codex",
+                    "FLEET_WORKER_RUNTIME": "balanced"}, clear=False):
+                for expected_class, class_reasons in reasons.items():
+                    for reason in class_reasons:
+                        with self.subTest(reason=reason):
+                            path.write_text(f"{task['updatedAt']}\n{reason}\nworker\nruntime=codex\n")
+                            self.assertEqual(
+                                fleet_task_class._decline_metadata("task", task, "worker")
+                                ["class"], expected_class)
+                            recent = time.time() - \
+                                (fleet_task_class.DECLINE_TRANSIENT_TTL_SECONDS - 60)
+                            os.utime(path, (recent, recent))
+                            self.assertTrue(fleet_task_class._declined(
+                                "task", task, "worker"))
+                            expired = time.time() - \
+                                (fleet_task_class.DECLINE_TRANSIENT_TTL_SECONDS + 1)
+                            os.utime(path, (expired, expired))
+                            self.assertFalse(fleet_task_class._declined(
+                                "task", task, "worker"))
+                for reason in ("already merged", "would break its lease",
+                               "pending-sweep claim window",
+                               "acceptance window unavailable"):
+                    path.write_text(f"{task['updatedAt']}\n{reason}\nworker\n")
+                    expired = time.time() - \
+                        (fleet_task_class.DECLINE_TRANSIENT_TTL_SECONDS + 1)
+                    os.utime(path, (expired, expired))
+                    self.assertTrue(fleet_task_class._declined("task", task, "worker"))
+
+                path.write_text(f"{task['updatedAt']}\nSandbox policy rejects git push\n"
+                                "worker\nruntime=codex\n")
+                env = {"FLEET_RUNTIMES": "claude,codex",
+                       "FLEET_WORKER_RUNTIME": "balanced"}
+                self.assertFalse(fleet_task_class._declined(
+                    "task", task, "worker", env=env))
+                self.assertTrue(fleet_task_class._declined(
+                    "task", task, "worker", env={**env, "FLEET_RUNTIMES": "codex"}))
+                path.write_text(f"{task['updatedAt']}\nRESULT=NO-DISPLAY\n"
+                                "worker\nruntime=codex\n")
+                self.assertTrue(fleet_task_class._declined(
+                    "task", task, "worker", env=env))
+                self.assertEqual(fleet_task_class.declined_deferrals(
+                    {"tasks_open": [task]}), ["task:engine:4402"])
 
     def test_verdict_replay_target_has_its_own_decline_memory(self):
         # The stranded-review shape: a sonnet `review:` decline at the PR's

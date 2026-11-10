@@ -43,6 +43,7 @@ import fleet_completion  # noqa: E402
 import fleet_epic_membership  # noqa: E402
 import fleet_github  # noqa: E402
 import fleet_github_identity  # noqa: E402
+import fleet_merge_class  # noqa: E402
 import fleet_poll_topology  # noqa: E402
 import fleet_review_replay  # noqa: E402
 import fleet_task_class  # noqa: E402
@@ -90,6 +91,18 @@ def load_pairs(pairs):
             raise SystemExit(f"fleet-survey: expected <repo>=<file>, got {pair!r}")
         out[key] = json.loads(Path(path).read_text(encoding="utf-8"))
     return out
+
+
+def survey_runtime_env(fleet_home, base_env=None):
+    runtime_env = dict(base_env or os.environ)
+    conf = Path(fleet_home) / "fleet-up.conf"
+    if not conf.is_file():
+        return runtime_env
+    parsed = fleet_merge_class.parse_conf_text(conf.read_text(encoding="utf-8"))
+    for name in ("FLEET_RUNTIMES", "FLEET_WORKER_RUNTIME", "FLEET_CROSS_PROVIDER_REVIEW"):
+        if name not in runtime_env and parsed.get(name) is not None:
+            runtime_env[name] = parsed[name]
+    return runtime_env
 
 
 # --- sections ---------------------------------------------------------------
@@ -155,9 +168,10 @@ def task_title(task):
     return task.get("summary") or task.get("title") or ""
 
 
-def queue_section(repo_key, repo_state, host):
-    buckets = {"claimable_here": [], "pinned_away": [], "ghost": [], "in_flight": [],
-               "blocked": [], "in_progress": []}
+def queue_section(repo_key, repo_state, host, runtime_env=None):
+    runtime_env = runtime_env or os.environ
+    buckets = {"claimable_here": [], "pinned_away": [], "ghost": [], "declined": [],
+               "in_flight": [], "blocked": [], "in_progress": []}
     for task in repo_state.get("tasks", {}).get("in_progress", []):
         buckets["in_progress"].append({"id": task.get("id"), "owner": task.get("owner"),
                                        "title": task_title(task)})
@@ -173,6 +187,14 @@ def queue_section(repo_key, repo_state, host):
         elif closeout:
             row.update(closeout)
             buckets["ghost"].append(row)
+        elif fleet_task_class._declined("task", classified, "worker", env=runtime_env):
+            metadata = fleet_task_class._decline_metadata("task", classified, "worker")
+            reason = metadata["reason"].removeprefix("declined this iteration: ")[:80]
+            row.update({"target": f"task:{repo_key}:{str(task.get('id')).lstrip('#')}",
+                        "age_seconds": metadata["age_seconds"],
+                        "role": metadata["role"] or "-",
+                        "runtime": metadata["runtime"] or "-", "reason": reason})
+            buckets["declined"].append(row)
         elif fleet_task_class._task_blocked(task):
             row["blocked_by"] = task.get("blocked_by")
             if task.get("blocked_by_unresolvable"):
@@ -339,7 +361,7 @@ def untriaged_section(open_issues):
 
 
 def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path,
-           alerts_dir=None, now=None):
+           alerts_dir=None, now=None, runtime_env=None):
     now = now or datetime.now(timezone.utc)
     alerts_dir = alerts_dir or Path(
         os.environ.get("FLEET_ALERTS_DIR", Path.home() / ".fleet/alerts"))
@@ -355,7 +377,7 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path,
             continue
         open_issues = {int(i["number"]): i for i in issues_by_repo[key]}
         prs = prs_by_repo.get(key, [])
-        queue = queue_section(key, repo_state, host)
+        queue = queue_section(key, repo_state, host, runtime_env)
         ghosts = {int(str(r["id"]).lstrip("#")): r["shadow_pr"] for r in queue["ghost"]}
         listings[key] = (open_issues, {pr["number"]: pr for pr in prs}, ghosts)
         queues[key] = queue
@@ -423,7 +445,7 @@ def render(report):
     for key, repo in report["repos"].items():
         q = repo["queue"]
         out.append(f"\n## {key}: queue")
-        for bucket in ("claimable_here", "pinned_away", "ghost", "in_flight", "blocked",
+        for bucket in ("claimable_here", "pinned_away", "ghost", "declined", "in_flight", "blocked",
                        "in_progress"):
             rows = q[bucket]
             gated = " (gated: main clone stale)" if bucket == "claimable_here" \
@@ -435,6 +457,9 @@ def render(report):
                     extra = f"  <- merged PR #{r['shadow_pr']}; declined: {r['reason']}"
                 elif bucket == "pinned_away":
                     extra = f"  needs {r['needs']}"
+                elif bucket == "declined":
+                    extra = (f"  {r['target']} age={r['age_seconds']}s role={r['role']} "
+                             f"runtime={r['runtime']} reason={r['reason']}")
                 elif bucket == "in_flight":
                     extra = f"  PR #{r['pr']}"
                 elif bucket == "blocked":
@@ -527,9 +552,11 @@ def main(argv=None):
     log_path = args.log
     if log_path is None and not hermetic:
         log_path = fleet_home / "logs" / "dispatcher.log"
+    runtime_env = survey_runtime_env(fleet_home)
     report = survey(state, issues, prs, args.host or fleet_task_class._current_host(),
                     args.usage_dir or fleet_home / "state" / "usage", log_path,
-                    args.alerts_dir or os.environ.get("FLEET_ALERTS_DIR") or fleet_home / "alerts")
+                    args.alerts_dir or os.environ.get("FLEET_ALERTS_DIR") or fleet_home / "alerts",
+                    runtime_env=runtime_env)
     print(json.dumps(report, indent=2) if args.json else render(report))
     return 0
 

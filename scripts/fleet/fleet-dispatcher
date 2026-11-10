@@ -1661,9 +1661,9 @@ assess_target_completion() {
 # escalation is standing"), and the sonnet and opus reviewers share the
 # `review` kind, so an unscoped record let a sonnet decline hide the same
 # PR from the opus lane it was escalated to. $1 = target, $2 = updated_at,
-# $3 = detail, $4 = role, $5 = dispatch-snapshotted shadow PR.
+# $3 = detail, $4 = role, $5 = dispatch-snapshotted shadow PR, $6 = runtime.
 remember_decline() {
-    local f shadow="${5:-}" prior=""
+    local f shadow="${5:-}" runtime="${6:-}" prior=""
     f="$STATE_DIR/declined/$(fleet_target_key "$1")"
     [[ -n "$2" ]] || return 0
     mkdir -p "${f%/*}" 2>/dev/null || true
@@ -1671,11 +1671,9 @@ remember_decline() {
         prior=$(sed -n 's/^shadow_merged_pr=\([0-9][0-9]*\)$/\1/p' "$f" | head -n 1)
         [[ "$prior" =~ ^[0-9]+$ ]] && shadow="$prior"
     fi
-    if [[ "$shadow" =~ ^[0-9]+$ ]]; then
-        printf '%s\n%s\n%s\nshadow_merged_pr=%s\n' "$2" "$3" "${4:-}" "$shadow" > "$f" 2>/dev/null || true
-    else
-        printf '%s\n%s\n%s\n' "$2" "$3" "${4:-}" > "$f" 2>/dev/null || true
-    fi
+    printf '%s\n%s\n%s\n' "$2" "$3" "${4:-}" > "$f" 2>/dev/null || return 0
+    [[ "$shadow" =~ ^[0-9]+$ ]] && printf 'shadow_merged_pr=%s\n' "$shadow" >> "$f" 2>/dev/null
+    [[ -n "$runtime" ]] && printf 'runtime=%s\n' "$runtime" >> "$f" 2>/dev/null
 }
 
 # An abandoned target: the pane exited with its claim label standing and no
@@ -1957,7 +1955,7 @@ cleanup_stale_dispatches() {
                 finished)  claimed=yes; target_complete "$target" ;;
                 declined)
                     claimed=no
-                    remember_decline "$target" "$updated" "$detail" "$role" "$shadow"
+                    remember_decline "$target" "$updated" "$detail" "$role" "$shadow" "$runtime"
                     rm -f "$STATE_DIR/abandoned/$(fleet_target_key "$target")"
                     ;;
                 abandoned) claimed=no; handle_abandoned_target "$target" "$agent" "$role" ;;
@@ -2714,6 +2712,7 @@ prune_claim_refusals_for_walk() {  # $1 = role  $2 = class  $3 = current picks
 # each deferral logs once per PR state rather than once per tick.
 # Daemon-lifetime, like CLAIM_REFUSED_AT.
 declare -A SWEEP_COOLDOWN_LOGGED=()
+DECLINE_STANDDOWN_FINGERPRINT=""
 
 # Log each worker-lane target fleet_task_class withholds for a sweep cooldown
 # (a sweep just removed a claim it could not vouch was dead, so the PR's
@@ -2733,6 +2732,13 @@ note_sweep_cooldowns() {
         SWEEP_COOLDOWN_LOGGED[$target]="$updated"
         log "deferring $target: claim swept ${age}s ago (cooldown ${cooldown}s)"
     done <<< "$lines"
+}
+
+decline_standdown_count() {
+    local slice="$STATE_DIR/projections/worker.json"
+    [[ -f "$slice" ]] || { printf '0\n'; return; }
+    FLEET_STATE_DIR="$STATE_DIR" python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
+        --declined "$slice" 2>/dev/null | tr -d '\r' | awk 'NF { count++ } END { print count + 0 }'
 }
 
 # Why the last "claim budget spent" tick actually stalled: route-failed,
@@ -3202,9 +3208,12 @@ assign_for_pane() {
         # duplicated here.
         if [[ -n "${FLEET_RUNTIMES:-}" ]]; then
             local route
+            local route_rc=0
             route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" route "$slice" "$line" \
                 "$role" "$route_class" "${DISPATCH_MODEL:-${ROLE_MODEL[$role]}}" \
-                "${DISPATCH_EFFORT:-${ROLE_EFFORT[$role]}}" "$route_claude_gate") || {
+                "${DISPATCH_EFFORT:-${ROLE_EFFORT[$role]}}" "$route_claude_gate") || route_rc=$?
+            if (( route_rc != 0 )); then
+                    (( route_rc == 3 )) && continue
                     if [[ "$role" == "merger" ]]; then
                         # The PR left the merger's candidate set since tier-0
                         # named it (a skip label, a merge); a line that cannot
@@ -3214,7 +3223,7 @@ assign_for_pane() {
                         continue
                     fi
                     ASSIGN_BLOCK_REASON="route-failed"; runtime_blocked=1; continue;
-                }
+            fi
             route="${route//$'\r'/}"
             read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT <<< "$route"
             if [[ "$ASSIGN_RUNTIME" == claude ]]; then
@@ -3709,7 +3718,21 @@ dispatch_role() {
                 && ! role_has_reservation "$role" \
                 && ! role_has_abandon_pin "$role"; then
                 rm -f "$trigger_file"
-                log "$role: slice routed no claimable work and no reservation pending; standing down — scout re-arms on new work"
+                local decline_count decline_targets decline_fingerprint
+                decline_count=$(decline_standdown_count)
+                if (( decline_count > 0 )); then
+                    decline_targets=$(FLEET_STATE_DIR="$STATE_DIR" \
+                        python3 "$FLEET_LIB_DIR/fleet_task_class.py" --declined \
+                        "$STATE_DIR/projections/worker.json" 2>/dev/null | tr -d '\r')
+                    decline_fingerprint=$(printf '%s' "$decline_targets" | _fleet_digest_stdin)
+                    if [[ "$DECLINE_STANDDOWN_FINGERPRINT" != "$decline_fingerprint" ]]; then
+                        log "$role: slice routed no claimable work and no reservation pending; standing down; $decline_count withheld by decline memory"
+                        DECLINE_STANDDOWN_FINGERPRINT="$decline_fingerprint"
+                    fi
+                else
+                    DECLINE_STANDDOWN_FINGERPRINT=""
+                    log "$role: slice routed no claimable work and no reservation pending; standing down — scout re-arms on new work"
+                fi
                 return
             fi
             claim_headroom=-1
