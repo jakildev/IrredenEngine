@@ -1684,7 +1684,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
                 triangleCanvasTextures.sourceFaceOrder_ = IRRender::createResource<Buffer>(
                     nullptr,
-                    (std::size_t{128} + std::size_t{kFaceSortRecordWords} * orderCapacity) * sizeof(std::uint32_t),
+                    (std::size_t{128} + std::size_t{kFaceSortRecordWords} * orderCapacity) *
+                        sizeof(std::uint32_t),
                     BUFFER_STORAGE_DYNAMIC,
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_PerAxisResolveScratch
