@@ -12,6 +12,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/spatial_pivot_state.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 
@@ -854,5 +855,64 @@ TEST_F(CameraZoomPolicyTest, SpatialRenderMappingsUseTheSameCameraQuaternion) {
     EXPECT_TRUE(IRRender::isSpatialViewEnabled());
     EXPECT_EQ(IRRender::getViewRotation(), IRPrefab::Camera::getRotationQuat());
     EXPECT_NEAR(IRMath::length(restored - point), 0.0f, 1e-5f);
+}
+
+TEST(SpatialPivotState, SettingFocusCanPreserveTheDisplayedView) {
+    const IRMath::vec2 effectiveCameraIso(14.0f, -9.0f);
+    const IRMath::vec3 focusWorld(3.0f, -5.0f, 7.0f);
+    const IRMath::vec4 rotation = IRMath::uprightOrbitRotation(0.7f, -0.35f, 0.2f);
+    const IRMath::vec2 rawCameraIso = IRRender::detail::SpatialPivotState::cameraIsoPreservingView(
+        effectiveCameraIso,
+        focusWorld,
+        rotation
+    );
+
+    const IRMath::vec2 restored = IRMath::orthographicPivotOffset(
+        rawCameraIso,
+        focusWorld,
+        IRMath::orthographicViewBasis(rotation)
+    );
+    EXPECT_NEAR(IRMath::length(restored - effectiveCameraIso), 0.0f, 1e-5f);
+}
+
+TEST(SpatialPivotState, AbsoluteFocusedShotDoesNotInheritThePreviousFocus) {
+    using IRRender::detail::SpatialPivotState;
+    const IRMath::vec2 cameraIso(21.0f, -13.0f);
+    const IRMath::vec4 rotation = IRMath::uprightOrbitRotation(0.9f, -0.4f, 0.15f);
+    const IRMath::vec3 firstFocus(-8.0f, 2.0f, 4.0f);
+    const IRMath::vec3 secondFocus(5.0f, -6.0f, 11.0f);
+    const auto effective = [&](const SpatialPivotState &state) {
+        return state.effectiveCameraIso(cameraIso, IRMath::vec3(0.0f), rotation);
+    };
+
+    SpatialPivotState sequential;
+    sequential.setFocus(firstFocus);
+    sequential.setFocus(secondFocus);
+
+    SpatialPivotState isolated;
+    isolated.setFocus(secondFocus);
+
+    EXPECT_EQ(effective(sequential), effective(isolated));
+}
+
+TEST(SpatialPivotState, AbsoluteDefaultShotReseedsAfterAnExplicitFocus) {
+    using IRRender::detail::SpatialPivotState;
+    const IRMath::vec2 cameraIso(21.0f, -13.0f);
+    const IRMath::vec4 rotation = IRMath::uprightOrbitRotation(0.9f, -0.4f, 0.15f);
+    const IRMath::vec3 firstFocus(-8.0f, 2.0f, 4.0f);
+    const IRMath::vec3 shotDefault(5.0f, -6.0f, 11.0f);
+    const auto effective = [&](const SpatialPivotState &state) {
+        return state.effectiveCameraIso(cameraIso, IRMath::vec3(0.0f), rotation);
+    };
+
+    SpatialPivotState sequential;
+    sequential.setFocus(firstFocus);
+    sequential.clearFocus(true);
+    sequential.reseedDefault(shotDefault);
+
+    SpatialPivotState isolated;
+    isolated.reseedDefault(shotDefault);
+
+    EXPECT_EQ(effective(sequential), effective(isolated));
 }
 } // namespace

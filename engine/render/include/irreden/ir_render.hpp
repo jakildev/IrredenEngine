@@ -447,11 +447,18 @@ RotationPivotMode getRotationPivotMode();
 /// the z=0 world point under screen center. Choosing the focus (cursor under the
 /// pointer, the selected entity, a scene centroid, or a depth probe of the
 /// screen-center pixel) is a creation-level policy; pass the resolved world
-/// point here, typically once per frame.
+/// point here, typically once per frame. In spatial CAMERA_CENTER mode this
+/// preserves the displayed view by moving the raw camera, which also clears
+/// its current C_Velocity2DIso through setCameraPosition2DIso.
 void setRotationPivotFocus(vec3 focusWorld);
-/// Drop the explicit pivot focus, reverting to the screen-center z=0
-/// pivot point. Idempotent.
+/// Drop the explicit pivot focus. Spatial view retains the previous focus as
+/// its default pivot; legacy view returns to the live screen-center pivot.
+/// Idempotent.
 void clearRotationPivotFocus();
+/// Re-seed spatial view's default pivot from the current view center. Capture
+/// systems use this after applying an absolute camera pose with no explicit
+/// focus so the pose cannot inherit another shot's orbit anchor.
+void reseedSpatialDefaultRotationPivotFocus();
 /// True when an explicit pivot focus is set (see @ref setRotationPivotFocus).
 bool hasRotationPivotFocus();
 /// The explicit pivot focus world point. Meaningful only when

@@ -68,7 +68,6 @@ void logCaptureCameraState(const char *label) {
 // pivot-focus and cull-freeze handling can't drift between them.
 void applyShotCameraState(const AutoScreenshotShot &shot) {
     IRRender::setCameraZoom(shot.zoom_);
-    IRRender::setCameraPosition2DIso(shot.cameraIso_);
     if (shot.hasViewRotation_) {
         IRPrefab::Camera::setSpatialViewEnabled(true);
         IRPrefab::Camera::setRotationQuat(shot.viewRotation_);
@@ -82,6 +81,10 @@ void applyShotCameraState(const AutoScreenshotShot &shot) {
         IRRender::setRotationPivotFocus(shot.pivotFocusWorld_);
     } else {
         IRRender::clearRotationPivotFocus();
+    }
+    IRRender::setCameraPosition2DIso(shot.cameraIso_);
+    if (IRPrefab::Camera::isSpatialViewEnabled() && !shot.hasPivotFocus_) {
+        IRRender::reseedSpatialDefaultRotationPivotFocus();
     }
     // FREEZE pins the cull viewport at this shot's pose (snapshotted on the next
     // updateCullViewport, within the settle frames) so later shots can free-fly
