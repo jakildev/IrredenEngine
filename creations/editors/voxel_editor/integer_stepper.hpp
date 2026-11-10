@@ -2,6 +2,7 @@
 #define INTEGER_STEPPER_H
 
 #include <irreden/render/widgets.hpp>
+#include <irreden/render/widget_actions.hpp>
 #include <array>
 
 namespace IRVoxelEditor {
@@ -38,6 +39,11 @@ class IntegerStepper {
     }
     void update() {
         using namespace IRPrefab::Widget;
+        if (IREntity::getComponentOptional<IRComponents::C_WidgetAction>(m_minus)) {
+            invokeIfClicked(m_minus);
+            invokeIfClicked(m_plus);
+            return;
+        }
         const int delta =
             static_cast<int>(wasClicked(m_plus)) - static_cast<int>(wasClicked(m_minus));
         if (delta != 0)

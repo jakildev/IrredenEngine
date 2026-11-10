@@ -44,6 +44,8 @@
 #include <irreden/render/picking.hpp>
 
 // Widget framework
+#include <irreden/render/actions_window.hpp>
+#include <irreden/render/widget_actions.hpp>
 #include <irreden/render/widgets.hpp>
 
 // GUI-test assertions
@@ -85,8 +87,8 @@
 #include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
-#include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_hints.hpp>
+#include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_image.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_color_swatch.hpp>
@@ -161,6 +163,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <map>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -187,6 +190,8 @@
 #include "editor_picking.hpp"
 #include "entity_scene.hpp"
 #include "sessions.hpp"
+#include "editor_actions.hpp"
+#include "editor_actions_guard.hpp"
 
 // Scene save/load
 #include "scene_io.hpp"
@@ -292,6 +297,7 @@ struct EditorState {
     DocumentPanel documentPanel_;
     EditorShortcutHints shortcutHints_;
     EditorHelpGuard helpGuard_;
+    EditorActionsGuard actionsGuard_;
     bool documentsEnabled_ = false;
     bool documentCloseApproved_ = false;
     bool documentEscapeHandled_ = false;
@@ -377,8 +383,9 @@ bool documentInteractionBlocked() {
 }
 
 bool authoringInteractionBlocked() {
-    return g_editor.helpGuard_.blocked() || documentInteractionBlocked() ||
-           g_editor.motionPreview_.active() || g_editor.lodPreview_.active();
+    return IRPrefab::ActionsWindow::isOpen() || g_editor.helpGuard_.blocked() ||
+           documentInteractionBlocked() || g_editor.motionPreview_.active() ||
+           g_editor.lodPreview_.active();
 }
 
 bool canStartEditorCameraGesture() {
@@ -1091,12 +1098,16 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     // sized from the live framebuffer, so a swatch's screen pixel is no more
     // bakeable at recipe-build time than a scene voxel's is.
     for (const Session::GuiAimFixup &aim : segment.guiAims_) {
+        IRMath::vec2 guiPoint = aim.guiTrixel_;
+        if (g_sessionId == Session::Id::ACTIONS_WORKFLOW ||
+            g_sessionId == Session::Id::ACTIONS_RESTART)
+            guiPoint += IRMath::vec2(actionsWindowOrigin());
         segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
             IRRender::guiTrixelToScreenPx(
                 (g_sessionId == Session::Id::WORKSPACE_CONTROLS ||
                  g_sessionId == Session::Id::WORKSPACE_RESTORE)
-                    ? Session::resolveWorkspaceAim(aim.guiTrixel_)
-                    : aim.guiTrixel_
+                    ? Session::resolveWorkspaceAim(guiPoint)
+                    : guiPoint
             );
     }
     IRPrefab::GuiTest::onFrame(
@@ -3191,7 +3202,7 @@ void activateSculptButton(std::size_t i) {
 void updateSculptToolbar() {
     for (std::size_t i = 0; i < g_sculpt.buttons_.size(); ++i) {
         if (IRPrefab::Widget::wasClicked(g_sculpt.buttons_[i]))
-            activateSculptButton(i);
+            IRCommand::invokeAction(kSculptToolbarActions[i].id_);
     }
     if (const auto request = g_editor.shapesPanel_.update()) {
         finishSculptStroke();
@@ -5770,6 +5781,23 @@ void updateLodComparison() {
     }
 }
 
+void selectWorkspace(std::size_t i) {
+    if (static_cast<Workspace>(i) != Workspace::SCULPT)
+        closeLocalPartEdit();
+    finishSculptStroke();
+    finishPartEdits();
+    g_fillTool.dragging_ = false;
+    hideSculptGhost();
+    g_editor.shapesPanel_.setVisible(false);
+    g_editor.workspace_ = static_cast<Workspace>(i);
+    g_loftTool.active_ = false;
+    if (g_editor.workspace_ != Workspace::ANIMATE && g_editor.workspace_ != Workspace::ALL) {
+        g_bonePaint.active_ = false;
+        g_jointTool.active_ = false;
+        g_anim.playing_ = false;
+    }
+}
+
 void updateWorkspaces() {
     if (g_editor.helpGuard_.blocked())
         return;
@@ -5779,7 +5807,7 @@ void updateWorkspaces() {
     g_editor.shapesPanel_.setVisible(g_editor.shapesPanel_.visible());
     if (g_editor.localEditButton_ != IREntity::kNullEntity) {
         if (IRPrefab::Widget::wasClicked(g_editor.localEditButton_))
-            toggleLocalPartEdit();
+            IRCommand::invokeAction(kLocalEditAction.id_);
         const auto *part = g_entityScene.selectedPart();
         IRPrefab::Widget::setDisabled(
             g_editor.localEditButton_,
@@ -5801,23 +5829,8 @@ void updateWorkspaces() {
         IRPrefab::Widget::setLabelText(g_editor.documentStatusLabel_, std::move(status));
     }
     for (std::size_t i = 0; i < g_editor.workspaceButtons_.size(); ++i) {
-        if (IRPrefab::Widget::wasClicked(g_editor.workspaceButtons_[i])) {
-            if (static_cast<Workspace>(i) != Workspace::SCULPT)
-                closeLocalPartEdit();
-            finishSculptStroke();
-            finishPartEdits();
-            g_fillTool.dragging_ = false;
-            hideSculptGhost();
-            g_editor.shapesPanel_.setVisible(false);
-            g_editor.workspace_ = static_cast<Workspace>(i);
-            g_loftTool.active_ = false;
-            if (g_editor.workspace_ != Workspace::ANIMATE &&
-                g_editor.workspace_ != Workspace::ALL) {
-                g_bonePaint.active_ = false;
-                g_jointTool.active_ = false;
-                g_anim.playing_ = false;
-            }
-        }
+        if (IRPrefab::Widget::wasClicked(g_editor.workspaceButtons_[i]))
+            IRCommand::invokeAction(kWorkspaceActions[i].id_);
         constexpr const char *labels[] = {"SCULPT", "ASSEMBLE", "GENERATE", "ANIMATE", "ALL TOOLS"};
         const bool selected = static_cast<std::size_t>(g_editor.workspace_) == i;
         IRPrefab::Widget::setButtonLabel(
@@ -5880,7 +5893,7 @@ void updateWorkspaces() {
         g_editor.documentStatus_ = g_editor.docks_.status();
     if (g_editor.focusButton_ != IREntity::kNullEntity &&
         IRPrefab::Widget::wasClicked(g_editor.focusButton_))
-        focusEditorWorkarea();
+        IRCommand::invokeAction(kFocusAction.id_);
     if (IRPrefab::Widget::wasClicked(g_editor.resetViewButton_))
         resetEditorView();
     if (IRPrefab::Widget::wasClicked(g_editor.resetLayoutButton_))
@@ -5896,6 +5909,225 @@ void updateWorkspaces() {
         }
     }
 }
+
+// Times each editor-registered action ran, by id: what a session's
+// `ActionCheckKind::RUNS` reads to prove a chord or a click fired exactly once.
+std::unordered_map<std::string, int> g_editorActionRuns;
+
+void registerEditorAction(
+    const EditorActionRow &row, std::function<void()> body, int shortcut = 0
+) {
+    IRCommand::ActionSpec spec;
+    spec.id_ = row.id_;
+    spec.label_ = row.label_;
+    spec.section_ = row.section_;
+    if (shortcut)
+        spec.defaultChords_ = {
+            {static_cast<IRInput::KeyMouseButtons>(IRInput::kKeyButton0 + shortcut),
+             IRInput::kModifierNone}
+        };
+    spec.available_ = [id = std::string(row.id_)]() {
+        return !documentInteractionBlocked() && !g_editor.helpGuard_.blocked() &&
+               !g_editor.motionPreview_.active() && !g_editor.lodPreview_.active() &&
+               !g_sculpt.cameraInputBlocked_ &&
+               (g_editor.actionsGuard_.invoking() || IRPrefab::ActionsWindow::isOpen() ||
+                IRPrefab::Widget::actionWidget(id) != IREntity::kNullEntity);
+    };
+    spec.invoke_ = [id = std::string(row.id_), body = std::move(body)]() {
+        ++g_editorActionRuns[id];
+        body();
+    };
+    IRCommand::registerAction(std::move(spec));
+}
+
+// Register every action before loading keymap overrides.
+void registerEditorActions() {
+    IRCommand::actions().adoptNamedCommands("editor", adoptedCommandSection);
+    static_assert(kSculptToolbarActions.size() == kSculptButtons.size());
+    for (std::size_t i = 0; i < kSculptToolbarActions.size(); ++i)
+        registerEditorAction(
+            kSculptToolbarActions[i],
+            [i]() { activateSculptButton(i); },
+            kSculptButtons[i].shortcutNumber_
+        );
+    for (std::size_t i = 0; i < kWorkspaceActions.size(); ++i)
+        registerEditorAction(kWorkspaceActions[i], [i]() { selectWorkspace(i); });
+    registerEditorAction(kLocalEditAction, []() { toggleLocalPartEdit(); });
+    registerEditorAction(kFocusAction, []() { focusEditorWorkarea(); });
+    for (int axis = 0; axis < kPartSizeAxisCount; ++axis) {
+        const auto index = static_cast<std::size_t>(axis);
+        const auto revealField = [index]() {
+            IRPrefab::ActionsWindow::setOpen(false);
+            g_editor.actionsGuard_.prepare();
+            if (!IRPrefab::Widget::isVisible(g_partDimensions[index].widgets()[1]))
+                selectWorkspace(0);
+        };
+        registerEditorAction(kPartSizeFocusActions[index], [index, revealField]() {
+            revealField();
+            IRPrefab::Widget::focus(g_partDimensions[index].widgets()[1]);
+        });
+        registerEditorAction(kPartSizeIncreaseActions[index], [index, revealField]() {
+            revealField();
+            const auto field = g_partDimensions[index].widgets()[1];
+            IRPrefab::Widget::setNumberFieldValue(
+                field,
+                IRPrefab::Widget::numberFieldValue(field) + 1
+            );
+        });
+        registerEditorAction(kPartSizeDecreaseActions[index], [index, revealField]() {
+            revealField();
+            const auto field = g_partDimensions[index].widgets()[1];
+            IRPrefab::Widget::setNumberFieldValue(
+                field,
+                IRPrefab::Widget::numberFieldValue(field) - 1
+            );
+        });
+    }
+    IRPrefab::ActionsWindow::registerToggleAction();
+    if (const auto load = IRPrefab::ActionsWindow::attachUserKeymap("voxel_editor");
+        load && load->status_ != IRCommand::KeymapLoadStatus::LOADED &&
+        load->status_ != IRCommand::KeymapLoadStatus::MISSING) {
+        IR_LOG_WARN("Keymap not applied: {}", load->message_);
+    }
+}
+
+void bindEditorActionWidgets() {
+    for (std::size_t i = 0; i < g_sculpt.buttons_.size(); ++i) {
+        IRPrefab::Widget::bindAction(g_sculpt.buttons_[i], kSculptToolbarActions[i].id_);
+        g_editor.shortcutHints_.add(g_sculpt.buttons_[i], kSculptToolbarActions[i].label_);
+    }
+    for (std::size_t i = 0; i < g_editor.workspaceButtons_.size() && i < kWorkspaceActions.size();
+         ++i)
+        IRPrefab::Widget::bindAction(g_editor.workspaceButtons_[i], kWorkspaceActions[i].id_);
+    if (g_editor.localEditButton_ != IREntity::kNullEntity)
+        IRPrefab::Widget::bindAction(g_editor.localEditButton_, kLocalEditAction.id_);
+    if (g_editor.focusButton_ != IREntity::kNullEntity)
+        IRPrefab::Widget::bindAction(g_editor.focusButton_, kFocusAction.id_);
+    for (int axis = 0; axis < kPartSizeAxisCount; ++axis) {
+        const auto index = static_cast<std::size_t>(axis);
+        const auto widgets = g_partDimensions[index].widgets();
+        IRPrefab::Widget::bindAction(widgets[0], kPartSizeDecreaseActions[index].id_);
+        IRPrefab::Widget::bindAction(widgets[1], kPartSizeFocusActions[index].id_);
+        IRPrefab::Widget::bindAction(widgets[2], kPartSizeIncreaseActions[index].id_);
+    }
+    for (const auto &[widget, id] : IRPrefab::Widget::actionWidgets())
+        g_editor.shortcutHints_.add(widget, "");
+}
+
+namespace Session {
+
+namespace {
+
+std::string joinedKeys(const IRCommand::ActionInfo &info) {
+    std::string keys;
+    for (const IRCommand::KeyChord &chord : info.chords_)
+        keys += (keys.empty() ? "" : " ") + IRCommand::chordToken(chord);
+    return keys;
+}
+
+// Panels and labels are surfaces, not actionable controls.
+bool auditEditorActions(std::string &actual) {
+    std::map<std::string, std::vector<std::string>> sections;
+    for (const auto &[widget, id] : IRPrefab::Widget::actionWidgets()) {
+        const auto info = IRCommand::actions().findAction(id);
+        sections[info ? info->section_ : "UNREGISTERED"].push_back(info ? info->label_ : id);
+    }
+    std::vector<IREntity::EntityId> required(g_sculpt.buttons_.begin(), g_sculpt.buttons_.end());
+    required.insert(
+        required.end(),
+        g_editor.workspaceButtons_.begin(),
+        g_editor.workspaceButtons_.end()
+    );
+    required.push_back(g_editor.localEditButton_);
+    required.push_back(g_editor.focusButton_);
+    for (const auto &dimension : g_partDimensions) {
+        const auto widgets = dimension.widgets();
+        required.insert(required.end(), widgets.begin(), widgets.end());
+    }
+    int unbound = 0;
+    for (const IREntity::EntityId widget : required) {
+        if (widget == IREntity::kNullEntity ||
+            !IREntity::getComponentOptional<IRComponents::C_WidgetAction>(widget))
+            ++unbound;
+    }
+    int otherControls = 0;
+    IREntity::forEachComponent<C_Widget>([&](IREntity::EntityId id, C_Widget &widget) {
+        if (widget.kind_ == IRComponents::WidgetKind::PANEL ||
+            widget.kind_ == IRComponents::WidgetKind::LABEL ||
+            !IREntity::getComponentOptional<IRComponents::C_WidgetState>(id) ||
+            IREntity::getComponentOptional<IRComponents::C_WidgetAction>(id))
+            return;
+        ++otherControls;
+    });
+    const bool steps = IRCommand::actions().isRegistered(kPartSizeIncreaseActions[0].id_) &&
+                       IRCommand::actions().isRegistered(kPartSizeDecreaseActions[0].id_);
+    for (const auto &[section, labels] : sections) {
+        actual += section + "[";
+        for (std::size_t i = 0; i < labels.size(); ++i)
+            actual += (i == 0 ? "" : ",") + labels[i];
+        actual += "] ";
+    }
+    actual += "required_unbound=" + std::to_string(unbound) +
+              " other_controls_unbound=" + std::to_string(otherControls) +
+              (steps ? " steps=registered" : " steps=missing");
+    return unbound == 0 && steps && sections.contains("TOOLS") && sections.contains("VIEW") &&
+           sections.contains("PART SIZE") && sections.contains("WORKSPACES");
+}
+
+} // namespace
+
+bool evaluateActionCheck(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const ActionCheck *>(context);
+    const auto info = IRCommand::actions().findAction(check.actionId_);
+    switch (check.kind_) {
+    case ActionCheckKind::KEYS:
+        actual = info ? joinedKeys(*info) : "<unregistered>";
+        return info && actual == check.text_;
+    case ActionCheckKind::RUNS: {
+        const auto found = g_editorActionRuns.find(check.actionId_);
+        const int runs = found == g_editorActionRuns.end() ? 0 : found->second;
+        actual = std::to_string(runs);
+        return runs == check.expected_;
+    }
+    case ActionCheckKind::BADGE: {
+        const IREntity::EntityId widget = IRPrefab::Widget::actionWidget(check.actionId_);
+        const auto hotkey =
+            widget == IREntity::kNullEntity
+                ? std::nullopt
+                : IREntity::getComponentOptional<IRComponents::C_WidgetHotkey>(widget);
+        actual = hotkey ? (*hotkey)->hint_ : "<no widget>";
+        return hotkey && (*hotkey)->hint_ == check.text_ && IRPrefab::Widget::hintsVisible();
+    }
+    case ActionCheckKind::LISTED: {
+        for (const std::string &id : IRPrefab::ActionsWindow::listedActionIds())
+            actual += (actual.empty() ? "" : ",") + id;
+        return actual == check.text_;
+    }
+    case ActionCheckKind::ROW_CONTAINS: {
+        const auto ids = IRPrefab::ActionsWindow::listedActionIds();
+        const auto rows = IRPrefab::ActionsWindow::listedRowText();
+        for (std::size_t i = 0; i < ids.size() && i < rows.size(); ++i) {
+            if (ids[i] == check.actionId_) {
+                actual = rows[i];
+                return actual.find(check.text_) != std::string::npos;
+            }
+        }
+        actual = "<not listed>";
+        return false;
+    }
+    case ActionCheckKind::STATUS:
+        actual = IRPrefab::ActionsWindow::statusText();
+        return actual.find(check.text_) != std::string::npos;
+    case ActionCheckKind::WINDOW_OPEN:
+        actual = IRPrefab::ActionsWindow::isOpen() ? "1" : "0";
+        return (IRPrefab::ActionsWindow::isOpen() ? 1 : 0) == check.expected_;
+    case ActionCheckKind::AUDIT:
+        return auditEditorActions(actual);
+    }
+    return false;
+}
+
+} // namespace Session
 
 namespace Session {
 
@@ -7981,8 +8213,8 @@ int main(int argc, char **argv) {
         "mode_preview | "
         "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
-        "component_field_key | text_input_command_capture | part_sizes | part_gizmo_reach | "
-        "part_ring_turn | composite_proof",
+        "component_field_key | text_input_command_capture | actions_workflow | "
+        "actions_restart | part_sizes | part_gizmo_reach | part_ring_turn | composite_proof",
         {"none",
          "drag_probe",
          "place_below",
@@ -8031,6 +8263,8 @@ int main(int argc, char **argv) {
          "component_field_page",
          "component_field_key",
          "text_input_command_capture",
+         "actions_workflow",
+         "actions_restart",
          "part_sizes",
          "part_gizmo_reach",
          "part_ring_turn",
@@ -9838,7 +10072,9 @@ void initSystems() {
         "EditorHelpPrepare",
         [](const C_GuiElement &) {},
         []() {
-            if (IRVoxelEditor::g_editor.helpGuard_.prepare()) {
+            const bool helpOpened = IRVoxelEditor::g_editor.helpGuard_.prepare();
+            const bool actionsOpened = IRVoxelEditor::g_editor.actionsGuard_.prepare();
+            if (helpOpened || actionsOpened) {
                 IRVoxelEditor::settleDocumentEdits();
                 IRVoxelEditor::setTransformMode(false);
             }
@@ -9847,7 +10083,10 @@ void initSystems() {
     const auto helpCaptureSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorHelpCapture",
         [](const C_GuiElement &) {},
-        []() { IRVoxelEditor::g_editor.helpGuard_.capture(); }
+        []() {
+            IRVoxelEditor::g_editor.helpGuard_.capture();
+            IRVoxelEditor::g_editor.actionsGuard_.capture();
+        }
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
@@ -9863,6 +10102,8 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
+         IRSystem::System<IRSystem::WIDGET_SYNC_ACTION_HINTS>::create(),
+         IRSystem::System<IRSystem::ACTIONS_WINDOW>::create(),
          documentSystem,
          motionPreviewSystem,
          scrollSystem,
@@ -9943,7 +10184,6 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
-            IRSystem::createSystem<IRSystem::WIDGET_RENDER_HINTS>(),
             helpRenderSystem,
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
         }
@@ -10042,29 +10282,6 @@ void initCommands() {
     // both halves or neither, and no per-creation mask is needed.
     IRPrefab::Camera::registerStandardKeyboardCommands({.omit_ = {IRCommand::CLOSE_WINDOW}});
     IRPrefab::Undo::materialize();
-    for (std::size_t i = 0; i < IRVoxelEditor::kSculptButtons.size(); ++i) {
-        const auto &button = IRVoxelEditor::kSculptButtons[i];
-        if (button.shortcutNumber_ == 0)
-            continue;
-        IRCommand::createCommand(
-            IRInput::KEY_MOUSE,
-            IRInput::PRESSED,
-            IRInput::kKeyButton0 + button.shortcutNumber_,
-            [i]() {
-                using namespace IRVoxelEditor;
-                if (authoringInteractionBlocked() || IRPrefab::HelpOverlay::isVisible() ||
-                    g_sculpt.cameraInputBlocked_ || i >= g_sculpt.buttons_.size())
-                    return;
-                const auto &widget = IREntity::getComponent<C_Widget>(g_sculpt.buttons_[i]);
-                if (widget.visible_ && !widget.disabled_)
-                    activateSculptButton(i);
-            },
-            IRInput::kModifierNone,
-            IRInput::kModifierAll,
-            button.label_,
-            button.help_
-        );
-    }
     const auto historyCommand =
         [](IRInput::KeyMouseButtons key, unsigned required, unsigned excluded, bool redo) {
             IRCommand::createCommand(
@@ -11192,6 +11409,7 @@ void initCommands() {
         "LOAD RIG",
         "LOAD SKELETON FROM .RIG FILE"
     );
+    IRVoxelEditor::registerEditorActions();
 }
 
 void initEntities() {
@@ -11222,7 +11440,9 @@ void initEntities() {
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ARRAY_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOD_WORKFLOW ||
-        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::VIEWPORT_SCROLL;
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::VIEWPORT_SCROLL ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ACTIONS_WORKFLOW ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ACTIONS_RESTART;
     IRVoxelEditor::g_sculpt.tool_ =
         ordinaryWorkspace ? IRVoxelEditor::SculptTool::BRUSH : IRVoxelEditor::SculptTool::BOX;
     IRVoxelEditor::g_sculpt.showGrid_ = ordinaryWorkspace;
@@ -11965,6 +12185,7 @@ void initEntities() {
     IRVoxelEditor::g_helpEntries.push_back(
         {g_editor.resetLayoutButton_, "Restore the default panel slots and save the layout."}
     );
+    IRVoxelEditor::bindEditorActionWidgets();
     g_editor.documentStatusLabel_ =
         IRPrefab::Widget::makeLabel(ivec2(4, 88), "", {}, IRRender::TextSize::SMALL);
     if (g_editor.documentsEnabled_) {
