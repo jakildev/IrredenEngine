@@ -34,6 +34,17 @@ void injectGuiInputEvent(const GuiInputEvent &event) {
     }
 }
 
+void detail::applyCameraPolicyForShot(
+    const AutoScreenshotShot &shot, const AutoScreenshotCameraBaseline &baseline
+) {
+    const auto policy = cameraPolicyForShot(shot, baseline);
+    IRPrefab::Camera::setSpatialViewEnabled(policy.spatialViewEnabled_);
+    IRPrefab::Camera::setRotationQuat(policy.rotation_);
+    if (!shot.hasViewRotation_) {
+        IRPrefab::Camera::setYaw(shot.yawRadians_);
+    }
+}
+
 namespace {
 
 // Private anchors: never attached to any entity, so the per-entity tick
@@ -66,14 +77,22 @@ void logCaptureCameraState(const char *label) {
 // freeze) before the settle window. Shared by the auto-screenshot and GUI-test
 // cyclers — `GuiTestShot::render_` is an AutoScreenshotShot — so the per-shot
 // pivot-focus and cull-freeze handling can't drift between them.
-void applyShotCameraState(const AutoScreenshotShot &shot) {
-    IRRender::setCameraZoom(shot.zoom_);
-    if (shot.hasViewRotation_) {
-        IRPrefab::Camera::setSpatialViewEnabled(true);
-        IRPrefab::Camera::setRotationQuat(shot.viewRotation_);
-    } else {
-        IRPrefab::Camera::setYaw(shot.yawRadians_);
+struct ShotCameraCycleState {
+    bool baselineCaptured_ = false;
+    detail::AutoScreenshotCameraBaseline baseline_{};
+};
+
+void applyShotCameraState(const AutoScreenshotShot &shot, ShotCameraCycleState &cameraCycle) {
+    if (!cameraCycle.baselineCaptured_) {
+        cameraCycle.baseline_ = {
+            IRPrefab::Camera::isSpatialViewEnabled(),
+            IRPrefab::Camera::getRotationQuat(),
+        };
+        cameraCycle.baselineCaptured_ = true;
     }
+
+    IRRender::setCameraZoom(shot.zoom_);
+    detail::applyCameraPolicyForShot(shot, cameraCycle.baseline_);
     // Set or clear the explicit Z-yaw pivot point of interest so a regression
     // shot can pin tall / off-center content; clearing keeps shots with no
     // focus on the legacy screen-center pivot.
@@ -98,6 +117,7 @@ void applyShotCameraState(const AutoScreenshotShot &shot) {
 
 struct CyclingState {
     AutoScreenshotConfig config_;
+    ShotCameraCycleState cameraCycle_{};
     int warmupRemaining_ = 0;
     int currentShot_ = 0;
     int settleCounter_ = 0;
@@ -186,7 +206,7 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
                     shot.yawRadians_,
                     static_cast<int>(shot.cullAction_)
                 );
-                applyShotCameraState(shot);
+                applyShotCameraState(shot, state->cameraCycle_);
                 state->settleCounter_ = state->config_.settleFrames_;
                 state->screenshotPending_ = false;
                 return;
@@ -325,6 +345,7 @@ IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
 
     struct GuiTestState {
         GuiTestConfig config_;
+        ShotCameraCycleState cameraCycle_{};
         int warmupRemaining_ = 0;
         int currentShot_ = 0;
         // -1 = camera not applied yet for this shot; 0+ = frames since camera apply
@@ -364,7 +385,7 @@ IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
                     shot.render_.yawRadians_,
                     shot.numInputs_
                 );
-                applyShotCameraState(shot.render_);
+                applyShotCameraState(shot.render_, state->cameraCycle_);
                 state->shotFrame_ = 0;
                 return;
             }

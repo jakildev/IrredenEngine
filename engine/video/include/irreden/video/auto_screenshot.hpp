@@ -91,6 +91,32 @@ struct AutoScreenshotShot {
     vec4 viewRotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
 
+namespace detail {
+
+struct AutoScreenshotCameraBaseline {
+    bool spatialViewEnabled_ = false;
+    vec4 rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+};
+
+struct AutoScreenshotCameraPolicy {
+    bool spatialViewEnabled_ = false;
+    vec4 rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+};
+
+inline AutoScreenshotCameraPolicy
+cameraPolicyForShot(const AutoScreenshotShot &shot, const AutoScreenshotCameraBaseline &baseline) {
+    if (shot.hasViewRotation_) {
+        return {true, shot.viewRotation_};
+    }
+    return {baseline.spatialViewEnabled_, baseline.rotation_};
+}
+
+void applyCameraPolicyForShot(
+    const AutoScreenshotShot &shot, const AutoScreenshotCameraBaseline &baseline
+);
+
+} // namespace detail
+
 /// Declarative config for @c createAutoScreenshotSystem. @c shots_ /
 /// @c numShots_ point at a shot table owned by the caller — it must outlive
 /// the game loop.
