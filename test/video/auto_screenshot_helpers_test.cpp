@@ -66,6 +66,22 @@ TEST(AutoScreenshotBinderTest, DeducesCountForSingleElementTable) {
     EXPECT_EQ(config.numShots_, 1);
 }
 
+TEST(AutoScreenshotBinderTest, MixedPoseTablePreservesExplicitSpatialOptIn) {
+    const AutoScreenshotShot shots[]{
+        {.yawRadians_ = 0.5f},
+        {.hasViewRotation_ = true,
+         .viewRotation_ = IRMath::uprightOrbitRotation(0.7f, -0.4f, 0.2f)},
+    };
+    AutoScreenshotConfig config{};
+    IRVideo::setAutoScreenshotShots(config, shots);
+    ASSERT_EQ(config.numShots_, 2);
+    EXPECT_FALSE(config.shots_[0].hasViewRotation_);
+    EXPECT_EQ(config.shots_[0].viewRotation_, IRMath::vec4(0, 0, 0, 1));
+    EXPECT_FLOAT_EQ(config.shots_[0].yawRadians_, 0.5f);
+    EXPECT_TRUE(config.shots_[1].hasViewRotation_);
+    EXPECT_EQ(config.shots_[1].viewRotation_, shots[1].viewRotation_);
+}
+
 // The seam the helper closes: a rebind must move the pointer and the count
 // together. A hand-written pairing is two independent edits, so re-pointing
 // `shots_` while leaving a larger `numShots_` behind reads past the table.

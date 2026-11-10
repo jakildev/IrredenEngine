@@ -41,10 +41,43 @@ void setDevice(RenderDevice *renderDevice) {
 vec2 getCameraPosition2DIso() {
     return getRenderManager().getCameraPosition2DIso();
 }
+bool isSpatialViewEnabled() {
+    return IRPrefab::Camera::isSpatialViewEnabled();
+}
+vec4 getViewRotation() {
+    return IRPrefab::Camera::getViewRotation();
+}
+vec2 projectWorldToView(vec3 world) {
+    if (!isSpatialViewEnabled())
+        return IRMath::pos3DtoPos2DIsoYawed(world, IRPrefab::Camera::getYaw());
+    return IRMath::projectOrthographic(world, IRMath::orthographicViewBasis(getViewRotation()));
+}
+float viewDepth(vec3 world) {
+    return IRMath::orthographicDepth(world, IRMath::orthographicViewBasis(getViewRotation()));
+}
+vec3 unprojectView(vec2 iso, float depth) {
+    if (!isSpatialViewEnabled())
+        return IRMath::isoPixelToPos3DYawed(iso, depth, IRPrefab::Camera::getYaw());
+    return IRMath::unprojectOrthographic(
+        iso,
+        depth,
+        IRMath::orthographicViewBasis(getViewRotation())
+    );
+}
 vec2 getEffectiveCameraIso() {
     const vec2 cameraIso = getRenderManager().getCameraPosition2DIso();
     if (getRenderManager().getRotationPivotMode() == RotationPivotMode::ORIGIN) {
         return cameraIso;
+    }
+    if (isSpatialViewEnabled()) {
+        const vec3 focus = getRenderManager().hasRotationPivotFocus()
+                               ? getRenderManager().getRotationPivotFocus()
+                               : getRenderManager().getDefaultRotationPivotFocus();
+        return IRMath::orthographicPivotOffset(
+            cameraIso,
+            focus,
+            IRMath::orthographicViewBasis(getViewRotation())
+        );
     }
     // Both CAMERA_CENTER branches pivot about a camera that carries the
     // default pivot's view offset — the residue of re-anchoring the default
@@ -83,6 +116,8 @@ vec2 getEffectiveCameraIso() {
     return IRMath::cameraYawPivotOffset(pivotCameraIso, cameraFocusWorld, visualYaw);
 }
 float getCameraPanYaw() {
+    if (isSpatialViewEnabled())
+        return 0.0f;
     return cameraPanYawForPivot(
         getRenderManager().getRotationPivotMode(),
         getRenderManager().hasRotationPivotFocus(),
@@ -234,6 +269,19 @@ ivec2 guiTrixelToScreenPx(vec2 guiTrixel) {
     const vec2 screenPx = outputViewPxToWindowPoints(outputViewPx);
     return ivec2(IRMath::round(screenPx.x), IRMath::round(screenPx.y));
 }
+vec2 windowPointsToGuiTrixel(vec2 windowPoint) {
+    const auto guiCanvas = getCanvas("gui");
+    if (guiCanvas == IREntity::kNullEntity)
+        return vec2(0);
+    const vec2 guiSize(IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas).size_);
+    const vec2 fbRes(
+        IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer")
+            .getResolutionPlusBuffer()
+    );
+    const vec2 outputView =
+        windowPointsToFramebufferPx(windowPoint) - outputViewOriginFramebufferPx();
+    return outputView / vec2(getOutputScaleFactor()) / fbRes * guiSize;
+}
 vec2 getGameResolution() {
     return getRenderManager().getGameResolution();
 }
@@ -270,6 +318,8 @@ namespace {
 // sits half a texel below its geometric projection. The texel is one
 // subdivided iso unit, hence the divide.
 vec2 displayedIsoBias() {
+    if (isSpatialViewEnabled())
+        return vec2(0.0f);
     // Continuous-yaw scatter emits geometric face quads, not gathered rectangles.
     if (IRPrefab::Camera::getYawSplit().second != 0.0f)
         return vec2(0.0f);
@@ -296,11 +346,18 @@ IRMath::CardinalIndex rasterCardinalIndex() {
 } // namespace
 
 float canvasIsoDepthOfWorldPos(vec3 worldPos) {
+    if (isSpatialViewEnabled())
+        return viewDepth(worldPos);
     const vec3 rotated = IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex());
     return static_cast<float>(IRMath::pos3DtoDistance(rotated));
 }
 
 vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
+    if (isSpatialViewEnabled())
+        return windowPointsToDisplayedWorldPos3DAtViewDepth(
+            IRInput::getMousePosition(),
+            canvasIsoDepth
+        );
     // Screen-to-world picking uses the raster-yaw inverse only:
     //   world = R_z(-rasterYaw) · isoPixelToPos3D · screen
     // isoPixelToPos3D recovers the unique 3D point at the requested depth
@@ -320,6 +377,8 @@ namespace {
 // World point at @p canvasIsoDepth behind what the main canvas displays at
 // camera-relative canvas iso position @p displayedIso.
 vec3 displayedIsoToWorldPos3D(vec2 displayedIso, float canvasIsoDepth) {
+    if (isSpatialViewEnabled())
+        return unprojectView(displayedIso, canvasIsoDepth);
     const auto cardinal = rasterCardinalIndex();
     if (IRPrefab::Camera::getYawSplit().second == 0.0f) {
         return IRMath::rotateCardinalZInv(
@@ -342,6 +401,11 @@ vec3 displayedIsoToWorldPos3D(vec2 displayedIso, float canvasIsoDepth) {
 } // namespace
 
 vec3 mouseWorldPos3DAtIsoDepthExact(float canvasIsoDepth) {
+    if (isSpatialViewEnabled())
+        return windowPointsToDisplayedWorldPos3DAtViewDepth(
+            IRInput::getMousePosition(),
+            canvasIsoDepth
+        );
     return displayedIsoToWorldPos3D(
         mouseCanvasIso() - IRRender::getEffectiveCameraIso(),
         canvasIsoDepth
@@ -365,6 +429,8 @@ vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth) {
 }
 
 ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
+    if (isSpatialViewEnabled())
+        return canvasIsoToMouseScreenPx(projectWorldToView(worldPos));
     const float yaw = IRPrefab::Camera::getYaw();
     if (IRPrefab::Camera::computeYawSplit(yaw).second != 0.0f) {
         return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIsoYawed(worldPos, yaw));
@@ -376,11 +442,40 @@ ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
 }
 
 vec2 worldPos3DToWindowPointsExact(vec3 worldPos) {
+    if (isSpatialViewEnabled())
+        return canvasIsoToMouseWindowPoints(projectWorldToView(worldPos));
     const vec2 iso =
         IRPrefab::Camera::getYawSplit().second == 0.0f
             ? IRMath::pos3DtoPos2DIso(IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex()))
             : IRMath::pos3DtoPos2DIsoYawed(worldPos, IRPrefab::Camera::getYaw());
     return canvasIsoToMouseWindowPoints(iso + displayedIsoBias());
+}
+
+vec3 windowPointsToWorldPos3DAtViewDepth(vec2 windowPoint, float depth) {
+    const vec2 outputView =
+        windowPointsToFramebufferPx(windowPoint) - outputViewOriginFramebufferPx();
+    const vec2 iso = outputView / getTriangleStepSizeScreen() -
+                     getMainCanvasSizeTrixels() / getCameraZoom() / vec2(2.0f) -
+                     getEffectiveCameraIso() - displayedIsoBias();
+    return unprojectView(iso, depth);
+}
+
+vec2 cameraRasterCorrectionFramebufferPx() {
+    const auto cameraIso = getEffectiveCameraIso();
+    const auto zoom = getCameraZoom();
+    return IRPrefab::Camera::rasterCorrectionFramebufferPx(
+        cameraIso,
+        zoom,
+        getOutputScaleFactor(),
+        IRPrefab::Camera::zoomFrame(cameraIso, zoom)
+    );
+}
+
+vec3 windowPointsToDisplayedWorldPos3DAtViewDepth(vec2 windowPoint, float depth) {
+    const auto geometricPoint = framebufferPxToWindowPoints(
+        windowPointsToFramebufferPx(windowPoint) - cameraRasterCorrectionFramebufferPx()
+    );
+    return windowPointsToWorldPos3DAtViewDepth(geometricPoint, depth);
 }
 
 ivec2 worldPos3DToMouseScreenPxExact(vec3 worldPos) {

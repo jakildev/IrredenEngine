@@ -56,8 +56,8 @@ namespace IRSystem {
 //   viewClearance_ + (the farthest extent, from the anchor, of any cleared
 //                     handle that shares its anchor)
 //
-// along the direction the yawed iso projection is constant in, at the
-// camera's continuous yaw. The handle keeps every pixel it covers with a
+// along the direction the current view projection is constant in. The
+// handle keeps every pixel it covers with a
 // clearance of 0 and sorts nearer than the whole sphere of that radius
 // around its anchor.
 //
@@ -71,7 +71,7 @@ namespace IRSystem {
 // - The displacement is a `TRANSFORM_TRANSLATION` modifier, which
 //   `PROPAGATE_TRANSFORM` adds after the parent chain, so the anchor's
 //   rotation and scale do not turn or stretch it.
-// - Camera pitch is outside the contract (GRID rendering is Z-yaw only).
+// - Spatial cameras use their full view basis, including elevation and roll.
 //
 // The yaw is read here, in UPDATE. A system that turns the camera later in
 // the frame (a RENDER-phase rotate) is followed one frame late.
@@ -131,11 +131,12 @@ template <> struct System<GIZMO_SCREEN_SPACE_SIZE> {
         const float yaw = IRPrefab::Camera::getYaw();
         const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(yaw);
         const IRMath::vec3 depthStep =
-            residualYaw == 0.0f ? IRMath::rotateCardinalZInv(
-                                      IRMath::vec3(1.0f),
-                                      IRMath::rasterYawCardinalIndex(rasterYaw)
-                                  )
-                                : IRMath::isoPixelToPos3DYawed(IRMath::vec2(0.0f), 3.0f, yaw);
+            IRRender::isSpatialViewEnabled() ? IRRender::unprojectView(IRMath::vec2(0.0f), 3.0f)
+            : residualYaw == 0.0f            ? IRMath::rotateCardinalZInv(
+                                                   IRMath::vec3(1.0f),
+                                                   IRMath::rasterYawCardinalIndex(rasterYaw)
+                                               )
+                                  : IRMath::isoPixelToPos3DYawed(IRMath::vec2(0.0f), 3.0f, yaw);
         const float stepLength = IRMath::length(depthStep);
         const auto translationField = IRPrefab::TransformModifier::translationField();
 

@@ -4,7 +4,8 @@
 // Editor-side voxel picking: convert the cursor into a world-space ray
 // (in the engine's isometric projection) and find the first SDF shape
 // or `C_VoxelSetNew` voxel it intersects. Exact screen rays follow continuous
-// camera yaw; lattice rays retain the cardinal raster frame.
+// camera orientation; lattice rays retain the cardinal raster frame unless
+// the camera opts into a spatial view, where both use its full view basis.
 //
 // Two cursor rays, chosen per call (`RayCastOptions::cursorRay_`):
 //
@@ -260,6 +261,8 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, const RayCastOptions &o
     std::vector<ShapeSnapshot> snapshot;
     if (!options.shapes_)
         return snapshot;
+    const bool spatial = IRRender::isSpatialViewEnabled();
+    const auto view = IRMath::orthographicViewBasis(IRRender::getViewRotation());
     IREntity::forEachComponent<IRComponents::C_ShapeDescriptor>(
         [&](IREntity::EntityId id, IRComponents::C_ShapeDescriptor &sd) {
             if (!takesPart(id, options))
@@ -288,8 +291,10 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, const RayCastOptions &o
             // Iso depth in the rotated canvas frame = sum components of
             // the rotated world position. The shape's iso-depth bounds
             // span its bounding-box projection onto the (1,1,1) axis.
-            const float center = rotatedPos.x + rotatedPos.y + rotatedPos.z;
-            const float halfRange = boundHalf.x + boundHalf.y + boundHalf.z;
+            const float center = spatial ? IRMath::orthographicDepth(worldPos, view)
+                                         : rotatedPos.x + rotatedPos.y + rotatedPos.z;
+            const float halfRange = spatial ? IRMath::dot(IRMath::abs(view.depth_), boundHalf)
+                                            : boundHalf.x + boundHalf.y + boundHalf.z;
 
             snapshot.push_back(
                 {id,
@@ -308,6 +313,8 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, const RayCastOptions &o
 inline std::vector<VoxelSetSnapshot>
 gatherVisibleVoxelSets(IRMath::CardinalIndex cardinalIndex, const RayCastOptions &options) {
     std::vector<VoxelSetSnapshot> snapshot;
+    const bool spatial = IRRender::isSpatialViewEnabled();
+    const auto view = IRMath::orthographicViewBasis(IRRender::getViewRotation());
     IREntity::forEachComponent<IRComponents::C_VoxelSetNew>([&](IREntity::EntityId id,
                                                                 IRComponents::C_VoxelSetNew &vs) {
         if (!takesPart(id, options))
@@ -339,8 +346,10 @@ gatherVisibleVoxelSets(IRMath::CardinalIndex cardinalIndex, const RayCastOptions
             worldOrigin + (IRMath::vec3(vs.size_) - IRMath::vec3(1.0f)) * 0.5f;
         const IRMath::vec3 bboxHalf = IRMath::vec3(vs.size_) * 0.5f;
         const IRMath::vec3 rotatedCenter = IRMath::rotateCardinalZ(bboxCenter, cardinalIndex);
-        const float center = rotatedCenter.x + rotatedCenter.y + rotatedCenter.z;
-        const float halfRange = bboxHalf.x + bboxHalf.y + bboxHalf.z;
+        const float center = spatial ? IRMath::orthographicDepth(bboxCenter, view)
+                                     : rotatedCenter.x + rotatedCenter.y + rotatedCenter.z;
+        const float halfRange = spatial ? IRMath::dot(IRMath::abs(view.depth_), bboxHalf)
+                                        : bboxHalf.x + bboxHalf.y + bboxHalf.z;
 
         snapshot.push_back(
             {id,
@@ -436,8 +445,8 @@ inline std::optional<RayHit> castScreenPixelRay(
     const std::vector<ShapeSnapshot> &shapes, const std::vector<VoxelSetSnapshot> &voxelSets
 ) {
     const IRMath::vec3 rayOrigin = IRRender::mouseWorldPos3DAtIsoDepthExact(0.0f);
-    // Exact projection follows continuous yaw; its depth parameter remains in
-    // the cardinal store frame used by the snapshot bounds.
+    // The inverse projection and snapshot bounds share one depth convention:
+    // continuous view depth in spatial mode, cardinal store depth otherwise.
     const IRMath::vec3 rayStep = IRRender::mouseWorldPos3DAtIsoDepthExact(3.0f) - rayOrigin;
 
     std::optional<RayHit> nearest;

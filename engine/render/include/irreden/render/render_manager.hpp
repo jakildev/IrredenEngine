@@ -217,6 +217,8 @@ class RenderManager {
     // policy itself lives in DefaultPivotLatch so it is testable with no GPU;
     // this class owns only the readback it admits.
     DefaultPivotLatch m_defaultPivotLatch;
+    vec3 m_spatialDefaultPivotFocus = vec3(0.0f);
+    bool m_spatialDefaultPivotInitialized = false;
     bool defaultPivotOwnsDepth() const;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;

@@ -393,9 +393,9 @@ IR_SAVE_OPT_IN(IRComponents::C_TriangleCanvasBackground, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrianglesOnlySet, 1)
 IR_SAVE_OPT_IN(IRComponents::C_LightSource, 1)
 IR_SAVE_OPT_IN(IRComponents::C_LightBlocker, 1)
-// Version 2 carries the authored zoom policy; version 1 was an empty marker
-// and reads back through SaveMigration<C_Camera> as policy off.
-IR_SAVE_OPT_IN(IRComponents::C_Camera, 2)
+// Version 3 adds the authored spatial-view policy as a second boolean byte.
+// Versions 1 (empty marker) and 2 (zoom policy) migrate with spatial view off.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_Camera, 3)
 IR_SAVE_OPT_IN(IRComponents::C_CameraPosition2DIso, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Viewport, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ZoomLevel, 1)

@@ -12,6 +12,7 @@
 #include <irreden/script/lua_input_bindings.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/time/ir_time_types.hpp>
+#include <irreden/video/auto_screenshot.hpp>
 
 #include <sol/sol.hpp>
 
@@ -56,9 +57,8 @@ class LuaInputBindingsTest : public testing::Test {
     }
 
     lua_Integer evalInt(const char *expr) {
-        auto result = m_lua.lua().safe_script(
-            std::string("return ") + expr, sol::script_pass_on_error
-        );
+        auto result =
+            m_lua.lua().safe_script(std::string("return ") + expr, sol::script_pass_on_error);
         EXPECT_TRUE(result.valid()) << expr;
         return result.get<lua_Integer>();
     }
@@ -113,14 +113,8 @@ TEST_F(LuaInputBindingsTest, ButtonStatusesValuesMatchCpp) {
 // ButtonStatuses and ButtonStatus (singular) must agree on ordinals so
 // both tables can be used interchangeably as trigger status arguments.
 TEST_F(LuaInputBindingsTest, ButtonStatusesAgreesWithButtonStatus) {
-    EXPECT_EQ(
-        evalInt("IRInput.ButtonStatuses.PRESSED"),
-        evalInt("IRInput.ButtonStatus.PRESSED")
-    );
-    EXPECT_EQ(
-        evalInt("IRInput.ButtonStatuses.NOT_HELD"),
-        evalInt("IRInput.ButtonStatus.NOT_HELD")
-    );
+    EXPECT_EQ(evalInt("IRInput.ButtonStatuses.PRESSED"), evalInt("IRInput.ButtonStatus.PRESSED"));
+    EXPECT_EQ(evalInt("IRInput.ButtonStatuses.NOT_HELD"), evalInt("IRInput.ButtonStatus.NOT_HELD"));
 }
 
 // ---- Synthetic-input function presence ------------------------------------
@@ -131,6 +125,50 @@ TEST_F(LuaInputBindingsTest, SyntheticInputFunctionsBound) {
     EXPECT_TRUE(isFunction("IRInput.injectButton"));
     EXPECT_TRUE(isFunction("IRInput.injectMouseMove"));
     EXPECT_TRUE(isFunction("IRInput.injectScroll"));
+    EXPECT_TRUE(isFunction("IRInput.injectPointerGesture"));
+    EXPECT_TRUE(isFunction("IRInput.pointerGestures"));
+}
+
+TEST_F(LuaInputBindingsTest, PointerGestureEnumsMatchCpp) {
+    EXPECT_EQ(
+        evalInt("IRInput.PointerGestureKind.MAGNIFY"),
+        static_cast<lua_Integer>(IRInput::PointerGestureKind::MAGNIFY)
+    );
+    EXPECT_EQ(
+        evalInt("IRInput.PointerGestureSource.UNKNOWN"),
+        static_cast<lua_Integer>(IRInput::PointerGestureSource::UNKNOWN)
+    );
+    EXPECT_EQ(
+        evalInt("IRInput.PointerGestureSource.PRECISE_SCROLL"),
+        static_cast<lua_Integer>(IRInput::PointerGestureSource::PRECISE_SCROLL)
+    );
+    EXPECT_EQ(
+        evalInt("IRInput.PointerGesturePhase.CANCELLED"),
+        static_cast<lua_Integer>(IRInput::PointerGesturePhase::CANCELLED)
+    );
+}
+
+TEST_F(LuaInputBindingsTest, PointerGestureRejectsInvalidMetadataBeforeInjection) {
+    for (const char *fields :
+         {"kind='MAGNIFY'",
+          "kind=2",
+          "source=0.5",
+          "source=99",
+          "phase=64",
+          "momentumPhase=-1",
+          "modifiers=16",
+          "x=0/0",
+          "y=math.huge",
+          "magnification=math.huge",
+          "windowX='12'",
+          "windowY=math.huge",
+          "directionInverted=1"}) {
+        const auto result = m_lua.lua().safe_script(
+            std::string("IRInput.injectPointerGesture({") + fields + "})",
+            sol::script_pass_on_error
+        );
+        EXPECT_FALSE(result.valid()) << fields;
+    }
 }
 
 // ---- Scroll query + C_MouseScroll binding presence ------------------------
@@ -187,8 +225,7 @@ class LuaInputInjectionTest : public testing::Test {
         if (!glfwInit()) {
             GTEST_SKIP() << "glfwInit failed — headless host, injection path skipped";
         }
-        IRWindow::g_irglfwWindow =
-            reinterpret_cast<IRWindow::IRGLFWWindow *>(m_window_sentinel);
+        IRWindow::g_irglfwWindow = reinterpret_cast<IRWindow::IRGLFWWindow *>(m_window_sentinel);
         m_entity_manager.emplace();
         m_input_manager.emplace();
         m_command_manager.emplace();
@@ -330,6 +367,175 @@ TEST_F(LuaInputInjectionTest, LuaScrollQueryReadsInjectedEvents) {
     EXPECT_EQ(after.get<int>(0), 2);
     EXPECT_DOUBLE_EQ(after.get<double>(1), 0.5);
     EXPECT_DOUBLE_EQ(after.get<double>(2), 2.0);
+}
+
+#ifndef IR_RELEASE
+TEST_F(LuaInputInjectionTest, PointerGestureRequiresSyntheticModeBeforeQueuing) {
+    EXPECT_THROW(IRInput::injectPointerGesture({}), std::runtime_error);
+    IRInput::beginSyntheticInput();
+    pumpInputFrame();
+    EXPECT_TRUE(IRInput::pointerGestures().empty());
+}
+#endif
+
+TEST_F(LuaInputInjectionTest, PointerGesturesPreserveOrderMetadataAndZeroPhases) {
+    IRInput::beginSyntheticInput();
+    IRInput::PointerGestureEvent event;
+    event.kind_ = IRInput::PointerGestureKind::MAGNIFY;
+    event.phase_ = IRInput::PointerGesturePhase::BEGAN;
+    event.windowPoint_ = {120.5, 80.25};
+    IRInput::injectPointerGesture(event);
+    event.kind_ = IRInput::PointerGestureKind::SCROLL;
+    event.source_ = IRInput::PointerGestureSource::PRECISE_SCROLL;
+    event.phase_ = IRInput::PointerGesturePhase::CHANGED;
+    event.scroll_ = {0.75, -1.25};
+    event.modifiers_ = IRInput::kModifierShift;
+    event.directionInverted_ = true;
+    IRInput::injectPointerGesture(event);
+    event.kind_ = IRInput::PointerGestureKind::MAGNIFY;
+    event.magnification_ = 0.125;
+    event.scroll_ = {0.0, 0.0};
+    IRInput::injectPointerGesture(event);
+    event.magnification_ = 0.0;
+    event.phase_ = IRInput::PointerGesturePhase::CANCELLED;
+    IRInput::injectPointerGesture(event);
+    event.kind_ = IRInput::PointerGestureKind::SCROLL;
+    event.phase_ = IRInput::PointerGesturePhase::NONE;
+    event.momentumPhase_ = IRInput::PointerGesturePhase::ENDED;
+    IRInput::injectPointerGesture(event);
+    pumpInputFrame();
+    for (const auto stage : IRInput::kTrackedEvents) {
+        IRInput::getInputManager().advanceInputState(stage);
+        const auto events = IRInput::pointerGestures();
+        ASSERT_EQ(events.size(), 5u);
+        EXPECT_EQ(events[0].kind_, IRInput::PointerGestureKind::MAGNIFY);
+        EXPECT_EQ(events[0].phase_, IRInput::PointerGesturePhase::BEGAN);
+        EXPECT_DOUBLE_EQ(events[0].magnification_, 0.0);
+        EXPECT_EQ(events[1].source_, IRInput::PointerGestureSource::PRECISE_SCROLL);
+        EXPECT_EQ(events[1].scroll_, IRMath::dvec2(0.75, -1.25));
+        EXPECT_EQ(events[1].windowPoint_, IRMath::dvec2(120.5, 80.25));
+        EXPECT_EQ(events[1].modifiers_, IRInput::kModifierShift);
+        EXPECT_TRUE(events[1].directionInverted_);
+        EXPECT_DOUBLE_EQ(events[2].magnification_, 0.125);
+        EXPECT_EQ(events[3].phase_, IRInput::PointerGesturePhase::CANCELLED);
+        EXPECT_EQ(events[4].momentumPhase_, IRInput::PointerGesturePhase::ENDED);
+        EXPECT_EQ(IRInput::scrollDelta(), -1);
+        EXPECT_EQ(IRInput::scrollOffset(), IRMath::vec2(0.75f, -1.25f));
+    }
+    int scrollEntities = 0;
+    IREntity::forEachComponent<IRComponents::C_MouseScroll>(
+        [&](IREntity::EntityId, IRComponents::C_MouseScroll &) { ++scrollEntities; }
+    );
+    EXPECT_EQ(scrollEntities, 1);
+    pumpInputFrame();
+    EXPECT_TRUE(IRInput::pointerGestures().empty());
+    EXPECT_EQ(IRInput::scrollDelta(), 0);
+    EXPECT_EQ(IRInput::scrollOffset(), IRMath::vec2(0.0f));
+}
+
+TEST_F(LuaInputInjectionTest, LegacyScrollCapturesCursorAndModifiersAtInjection) {
+    IRInput::beginSyntheticInput();
+    IRInput::injectMouseMove({120, 80});
+    IRInput::injectButton(IRInput::kKeyButtonLeftShift, IRInput::PRESSED);
+    IRInput::injectButton(IRInput::kKeyButtonRightShift, IRInput::PRESSED);
+    IRInput::injectButton(IRInput::kKeyButtonLeftShift, IRInput::RELEASED);
+    IRInput::injectScroll(0.5, 1.0);
+    IRInput::injectButton(IRInput::kKeyButtonRightShift, IRInput::RELEASED);
+    IRInput::injectMouseMove({500, 400});
+    IRInput::injectScroll(0.0, -1.0);
+    pumpInputFrame();
+    const auto events = IRInput::pointerGestures();
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].windowPoint_, IRMath::dvec2(120, 80));
+    EXPECT_EQ(events[0].modifiers_, IRInput::kModifierShift);
+    EXPECT_EQ(events[0].source_, IRInput::PointerGestureSource::UNKNOWN);
+    EXPECT_EQ(events[1].windowPoint_, IRMath::dvec2(500, 400));
+    EXPECT_EQ(events[1].modifiers_, IRInput::kModifierNone);
+    EXPECT_EQ(IRInput::getMousePosition(), IRMath::vec2(500, 400));
+    EXPECT_EQ(IRInput::scrollDelta(), 0);
+    EXPECT_EQ(IRInput::scrollOffset(), IRMath::vec2(0.5f, 0.0f));
+}
+
+TEST_F(LuaInputInjectionTest, GuiReplayDispatchesGesturePayloadAndLegacyEventsInOrder) {
+    IRInput::beginSyntheticInput();
+    IRVideo::GuiInputEvent event;
+    event.screenPx_ = {80, 60};
+    IRVideo::injectGuiInputEvent(event);
+    event.type_ = IRVideo::GuiInputEvent::Type::PRESS;
+    event.button_ = IRInput::kKeyButtonLeftShift;
+    IRVideo::injectGuiInputEvent(event);
+    event.type_ = IRVideo::GuiInputEvent::Type::SCROLL;
+    event.scroll_ = {0.5f, 1.0f};
+    IRVideo::injectGuiInputEvent(event);
+    event.type_ = IRVideo::GuiInputEvent::Type::POINTER_GESTURE;
+    event.pointerGesture_.kind_ = IRInput::PointerGestureKind::MAGNIFY;
+    event.pointerGesture_.phase_ = IRInput::PointerGesturePhase::BEGAN;
+    event.pointerGesture_.windowPoint_ = {95.25, 110.5};
+    IRVideo::injectGuiInputEvent(event);
+    event.pointerGesture_.phase_ = IRInput::PointerGesturePhase::CHANGED;
+    event.pointerGesture_.magnification_ = -0.125;
+    IRVideo::injectGuiInputEvent(event);
+    event.pointerGesture_.phase_ = IRInput::PointerGesturePhase::ENDED;
+    event.pointerGesture_.magnification_ = 0.0;
+    IRVideo::injectGuiInputEvent(event);
+    event.type_ = IRVideo::GuiInputEvent::Type::RELEASE;
+    IRVideo::injectGuiInputEvent(event);
+    pumpInputFrame();
+    const auto gestures = IRInput::pointerGestures();
+    ASSERT_EQ(gestures.size(), 4u);
+    EXPECT_EQ(gestures[0].kind_, IRInput::PointerGestureKind::SCROLL);
+    EXPECT_EQ(gestures[0].modifiers_, IRInput::kModifierShift);
+    EXPECT_EQ(gestures[1].phase_, IRInput::PointerGesturePhase::BEGAN);
+    EXPECT_EQ(gestures[1].windowPoint_, IRMath::dvec2(95.25, 110.5));
+    EXPECT_DOUBLE_EQ(gestures[2].magnification_, -0.125);
+    EXPECT_EQ(gestures[3].phase_, IRInput::PointerGesturePhase::ENDED);
+    EXPECT_DOUBLE_EQ(gestures[3].magnification_, 0.0);
+    EXPECT_EQ(IRInput::getMousePosition(), IRMath::vec2(80, 60));
+    EXPECT_EQ(IRInput::heldKeyModifiers(), IRInput::kModifierNone);
+    EXPECT_EQ(IRInput::scrollDelta(), 1);
+    EXPECT_EQ(IRInput::scrollOffset(), IRMath::vec2(0.5f, 1.0f));
+}
+
+TEST_F(LuaInputInjectionTest, LuaPointerGestureRoundTripAndLegacyIsolation) {
+    auto result = m_lua->lua().safe_script(
+        R"(
+        IRInput.beginSyntheticInput()
+        IRInput.injectPointerGesture({
+            kind=IRInput.PointerGestureKind.MAGNIFY,
+            phase=IRInput.PointerGesturePhase.BEGAN,
+            magnification=0.25, windowX=45.5, windowY=90.25,
+            modifiers=IRInput.Modifier.SHIFT
+        })
+        IRInput.injectPointerGesture({
+            kind=IRInput.PointerGestureKind.SCROLL,
+            source=IRInput.PointerGestureSource.PRECISE_SCROLL,
+            phase=IRInput.PointerGesturePhase.CHANGED,
+            momentumPhase=IRInput.PointerGesturePhase.BEGAN,
+            x=0.5, y=-0.75, directionInverted=true
+        })
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    pumpInputFrame();
+    result = m_lua->lua().safe_script(
+        R"(
+        local events=IRInput.pointerGestures()
+        assert(#events==2)
+        assert(events[1].kind==IRInput.PointerGestureKind.MAGNIFY)
+        assert(events[1].phase==IRInput.PointerGesturePhase.BEGAN)
+        assert(events[1].magnification==0.25)
+        assert(events[1].windowX==45.5 and events[1].windowY==90.25)
+        assert(events[1].modifiers==IRInput.Modifier.SHIFT)
+        assert(events[2].source==IRInput.PointerGestureSource.PRECISE_SCROLL)
+        assert(events[2].momentumPhase==IRInput.PointerGesturePhase.BEGAN)
+        assert(events[2].directionInverted)
+        local x,y=IRInput.scrollOffset()
+        assert(x==0.5 and y==-0.75 and IRInput.scrollDelta()==-1)
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
 }
 
 // isSyntheticInputActive() reflects the mode set by beginSyntheticInput().

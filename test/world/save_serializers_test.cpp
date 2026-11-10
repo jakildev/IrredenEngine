@@ -363,29 +363,46 @@ TEST(SaveSerializers, EntityCanvasRoundTripClearsTransientFogGhostVerdict) {
 // defined value. Set here to the value that would read as "policy on" if the
 // migrator trusted it.
 TEST(SaveSerializers, CameraV1MigrationRestoresTheSnappedZoomPolicy) {
-    const std::uint8_t undefinedMarkerByte = 0xFF;
-    IRAsset::MemoryBinaryWriter writer;
-    writer.writeBytes(&undefinedMarkerByte, sizeof(undefinedMarkerByte));
-
-    const auto migrators = IRWorld::SaveMigration<C_Camera>::migrators();
-    ASSERT_EQ(migrators.size(), 1u);
-    ASSERT_EQ(migrators.front().first, 1u);
-    IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "camera-v1");
-    const IRAsset::Result<C_Camera> restored = migrators.front().second(reader);
-
+    const auto restored = migrate<C_Camera>(1, {0xFF});
     ASSERT_TRUE(restored.ok()) << restored.status_.message_;
     EXPECT_FALSE(restored.value_.continuousZoom_);
-    EXPECT_EQ(reader.remaining(), 0u);
-    EXPECT_EQ(IRWorld::saveVersion<C_Camera>(), 2u);
+    EXPECT_FALSE(restored.value_.spatialViewEnabled_);
+    EXPECT_EQ(IRWorld::SaveMigration<C_Camera>::migrators().size(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_Camera>(), 3u);
 }
 
-TEST(SaveSerializers, CameraZoomPolicyRoundTrips) {
-    C_Camera continuous;
-    continuous.continuousZoom_ = true;
-    EXPECT_TRUE(roundTrip(continuous).continuousZoom_);
-    EXPECT_FALSE(roundTrip(C_Camera{}).continuousZoom_);
-    expectReserializesIdentically(continuous);
-    expectConsumesAllBytes(continuous);
+TEST(SaveSerializers, CameraV2MigrationPreservesZoomAndDisablesSpatialView) {
+    for (std::uint8_t zoom : {0, 1}) {
+        const auto restored = migrate<C_Camera>(2, {zoom});
+        ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+        EXPECT_EQ(restored.value_.continuousZoom_, zoom != 0);
+        EXPECT_FALSE(restored.value_.spatialViewEnabled_);
+    }
+    EXPECT_FALSE(migrate<C_Camera>(1, {}).ok());
+    EXPECT_FALSE(migrate<C_Camera>(2, {}).ok());
+}
+
+TEST(SaveSerializers, CameraZoomAndSpatialPoliciesRoundTripIndependently) {
+    for (bool zoom : {false, true}) {
+        for (bool spatial : {false, true}) {
+            C_Camera camera;
+            camera.continuousZoom_ = zoom;
+            camera.spatialViewEnabled_ = spatial;
+            const auto restored = roundTrip(camera);
+            EXPECT_EQ(restored.continuousZoom_, zoom);
+            EXPECT_EQ(restored.spatialViewEnabled_, spatial);
+            EXPECT_EQ(
+                serialize(camera),
+                (std::vector<std::uint8_t>{
+                    static_cast<std::uint8_t>(zoom),
+                    static_cast<std::uint8_t>(spatial)
+                })
+            );
+            expectReserializesIdentically(camera);
+            expectConsumesAllBytes(camera);
+            expectTruncationIsRecoverable(camera);
+        }
+    }
 }
 
 TEST(SaveSerializers, GizmoHandleV1MigrationPreservesEveryFieldAndDefaultsViewClearance) {
@@ -1805,6 +1822,7 @@ TEST_F(DefaultRegistryTest, CameraZoomPolicySurvivesALoadAndThePhaseDoesNot) {
     const IRWorld::SaveRegistry registry = IRWorld::makeDefaultSaveRegistry();
     C_Camera camera;
     camera.continuousZoom_ = true;
+    camera.spatialViewEnabled_ = true;
     C_CameraZoomFrameState state;
     state.published_ = true;
     state.sample_.phase_ = IRMath::dvec2(0.25, 0.75);
@@ -1819,6 +1837,7 @@ TEST_F(DefaultRegistryTest, CameraZoomPolicySurvivesALoadAndThePhaseDoesNot) {
     ASSERT_TRUE(result.ok()) << result.status_.message_;
     ASSERT_TRUE(m_entity_manager.entityExists(carrier));
     EXPECT_TRUE(IREntity::getComponent<C_Camera>(carrier).continuousZoom_);
+    EXPECT_TRUE(IREntity::getComponent<C_Camera>(carrier).spatialViewEnabled_);
     EXPECT_FALSE(IREntity::getComponentOptional<C_CameraZoomFrameState>(carrier).has_value());
 }
 

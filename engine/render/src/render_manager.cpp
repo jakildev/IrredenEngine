@@ -267,11 +267,26 @@ RotationPivotMode RenderManager::getRotationPivotMode() const {
 }
 
 void RenderManager::setRotationPivotFocus(vec3 focusWorld) {
+    const bool preserveView = IRPrefab::Camera::isSpatialViewEnabled() &&
+                              m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER;
+    const vec2 previous = preserveView ? IRRender::getEffectiveCameraIso() : vec2(0.0f);
     m_rotationPivotFocus = focusWorld;
     m_hasRotationPivotFocus = true;
+    if (preserveView)
+        setCameraPosition2DIso(
+            previous - IRMath::orthographicPivotOffset(
+                           vec2(0.0f),
+                           focusWorld,
+                           IRMath::orthographicViewBasis(IRPrefab::Camera::getViewRotation())
+                       )
+        );
 }
 
 void RenderManager::clearRotationPivotFocus() {
+    if (IRPrefab::Camera::isSpatialViewEnabled() && m_hasRotationPivotFocus) {
+        m_spatialDefaultPivotFocus = m_rotationPivotFocus;
+        m_spatialDefaultPivotInitialized = true;
+    }
     m_hasRotationPivotFocus = false;
 }
 
@@ -303,6 +318,8 @@ vec2 RenderManager::getViewCenterIso() const {
 }
 
 vec3 RenderManager::getDefaultRotationPivotFocus() const {
+    if (IRPrefab::Camera::isSpatialViewEnabled() && m_spatialDefaultPivotInitialized)
+        return m_spatialDefaultPivotFocus;
     // The anchor under the viewport center — the POINT is derived live from
     // the current camera, only the DEPTH and the view offset are held. That
     // split is load-bearing, not a style choice: `isoPixelToPos3D`'s depth
@@ -324,10 +341,14 @@ float RenderManager::getViewReferenceHeight() const {
     if (m_rotationPivotMode == RotationPivotMode::ORIGIN) {
         return 0.0f;
     }
+    if (IRPrefab::Camera::isSpatialViewEnabled())
+        return m_hasRotationPivotFocus ? m_rotationPivotFocus.z : getDefaultRotationPivotFocus().z;
     return m_hasRotationPivotFocus ? m_rotationPivotFocus.z : m_defaultPivotLatch.surfaceHeight();
 }
 
 void RenderManager::stampDefaultPivotSourceFrame() {
+    if (IRPrefab::Camera::isSpatialViewEnabled())
+        return;
     const vec2 cameraIso = getCameraPosition2DIso();
     const float visualYaw = IRPrefab::Camera::getYaw();
     const DefaultPivotSourceFrame frame{
@@ -350,6 +371,14 @@ bool RenderManager::defaultPivotOwnsDepth() const {
 
 void RenderManager::updateDefaultRotationPivotFocus() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+    if (IRPrefab::Camera::isSpatialViewEnabled()) {
+        if (!m_spatialDefaultPivotInitialized) {
+            m_spatialDefaultPivotFocus = m_defaultPivotLatch.focus(getViewCenterIso());
+            m_spatialDefaultPivotInitialized = true;
+        }
+        return;
+    }
+    m_spatialDefaultPivotInitialized = false;
 
     // Observed in EVERY pivot mode, ahead of the mode gate, so the settle state
     // tracks every frame. The whole decision — the gesture-start edge, and
