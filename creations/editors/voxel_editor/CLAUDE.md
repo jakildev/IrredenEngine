@@ -10,6 +10,13 @@ Design log, findings and the authoring-session history:
 
 ## Palette and comparison contracts
 
+Picker reads unlit voxel RGB. An unsaved sampled color is a transient foreground
+selection (index -1); Add persists it as a swatch. Recolor changes occupied cells
+only. Bucket fills the nearest visible enclosed four-connected empty region on
+one local axis plane; an open boundary rejects the operation before mutation.
+Bucket does not expand through symmetry. Shapes creates a new voxel part in the
+active color with integer X/Y/Z extents, using closed cell/solid intersection.
+
 Palettes use direct RGB: Edit/Add and `.gpl` Load/Save change swatches, never
 existing voxel colors. Arrays preview selected-part copies without descendants;
 SDF and detached proposals are labeled voxel approximations. Apply owns one Undo.

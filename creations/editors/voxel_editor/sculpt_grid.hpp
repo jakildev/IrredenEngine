@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <cstdint>
+#include <vector>
 
 namespace IRVoxelEditor {
 
@@ -32,6 +33,62 @@ inline std::optional<IRMath::ivec3> pickSculptPlane(
     IRMath::ivec3 cell = IRMath::roundVec3HalfUp(rayOrigin + distance * rayDirection);
     cell[axis] = slice;
     return cellInBounds(cell, size) ? std::optional{cell} : std::nullopt;
+}
+
+// An empty route to an in-plane edge escapes the outline. Collect before
+// editing so a leaking region never leaves a partially filled slice.
+template <typename IsOccupied>
+std::vector<IRMath::ivec3> enclosedPlaneCells(
+    IRMath::ivec3 seed, IRMath::ivec3 size, int normalAxis, IsOccupied &&isOccupied
+) {
+    if (normalAxis < 0 || normalAxis > 2 || !cellInBounds(seed, size))
+        return {};
+    const int u = (normalAxis + 1) % 3;
+    const int v = (normalAxis + 2) % 3;
+    const auto onEdge = [&](IRMath::ivec3 cell) {
+        return cell[u] == 0 || cell[v] == 0 || cell[u] == size[u] - 1 || cell[v] == size[v] - 1;
+    };
+    if (onEdge(seed) || isOccupied(seed))
+        return {};
+    // Every four-connected enclosure blocks each straight escape ray. This
+    // rejects blank candidate slices without allocating a plane-sized visit map.
+    for (int axis : {u, v}) {
+        for (int step : {-1, 1}) {
+            auto probe = seed;
+            do {
+                probe[axis] += step;
+                if (isOccupied(probe))
+                    break;
+                if (onEdge(probe))
+                    return {};
+            } while (true);
+        }
+    }
+    const auto index = [&](IRMath::ivec3 cell) {
+        return static_cast<std::size_t>(cell[v]) * size[u] + cell[u];
+    };
+    std::vector<bool> visited(static_cast<std::size_t>(size[u]) * size[v]);
+    std::vector<IRMath::ivec3> cells{seed};
+    visited[index(seed)] = true;
+    for (std::size_t next = 0; next < cells.size(); ++next) {
+        const auto cell = cells[next];
+        for (int axis : {u, v}) {
+            for (int step : {-1, 1}) {
+                auto neighbor = cell;
+                neighbor[axis] += step;
+                const auto slot = index(neighbor);
+                if (visited[slot])
+                    continue;
+                visited[slot] = true;
+                if (isOccupied(neighbor))
+                    continue;
+                if (onEdge(neighbor))
+                    return {};
+                cells.push_back(neighbor);
+            }
+        }
+    }
+    return cells;
 }
 
 // Includes both endpoints and visits every intermediate cell even when the

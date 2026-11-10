@@ -68,9 +68,9 @@ class PalettePanel {
     // data changes. Palette choices are independent of document edit history.
     bool update(EditorPalette &palette, int &selected) {
         using namespace IRPrefab::Widget;
-        selected = IRMath::clamp(selected, 0, palette.size() - 1);
+        selected = IRMath::clamp(selected, EditorPalette::kSampled, palette.size() - 1);
         bool changed = selected != m_lastSelected;
-        if (changed)
+        if (changed && selected >= 0)
             m_page = selected / kPaletteCount;
         bool redraw =
             changed || palette.size() != m_lastSize || isVisible(m_panel) != m_lastVisible;
@@ -148,7 +148,7 @@ class PalettePanel {
 
     void refresh(const EditorPalette &palette, int selected) {
         using namespace IRPrefab::Widget;
-        selected = IRMath::clamp(selected, 0, palette.size() - 1);
+        selected = IRMath::clamp(selected, EditorPalette::kSampled, palette.size() - 1);
         const int pages = (palette.size() + kPaletteCount - 1) / kPaletteCount;
         m_page = IRMath::clamp(m_page, 0, pages - 1);
         const bool visible = isVisible(m_panel);
@@ -160,15 +160,15 @@ class PalettePanel {
             if (present)
                 setColorSwatchColor(m_swatches[slot], palette.color(index));
         }
-        const auto &entry = palette.entries()[static_cast<std::size_t>(selected)];
-        const auto color = entry.color_;
-        const auto name = entry.name_.empty() ? "Color" : entry.name_;
-        setLabelText(
-            m_selected,
-            clipped(
-                std::to_string(selected + 1) + "/" + std::to_string(palette.size()) + " " + name
-            )
-        );
+        const auto color = palette.color(selected);
+        const auto selectionLabel = [&]() -> std::string {
+            if (selected == EditorPalette::kSampled)
+                return "Sampled color";
+            const auto &entry = palette.entries()[static_cast<std::size_t>(selected)];
+            return std::to_string(selected + 1) + "/" + std::to_string(palette.size()) + " " +
+                   (entry.name_.empty() ? "Color" : entry.name_);
+        };
+        setLabelText(m_selected, clipped(selectionLabel()));
         setLabelText(
             m_rgb,
             "R " + std::to_string(color.red_) + "  G " + std::to_string(color.green_) + "  B " +
@@ -176,11 +176,20 @@ class PalettePanel {
         );
         setTextInputValue(m_hex, paletteHex(color));
         setLabelText(m_pageLabel, std::to_string(m_page + 1) + " / " + std::to_string(pages));
+        setDisabled(m_edit, selected == EditorPalette::kSampled);
         setDisabled(m_previous, m_page == 0);
         setDisabled(m_next, m_page + 1 == pages);
         m_lastSelected = selected;
         m_lastSize = palette.size();
         m_lastVisible = visible;
+    }
+
+    void selectSample(EditorPalette &palette, int &selected, IRMath::Color color) {
+        selected = palette.sample(color);
+        if (selected >= 0)
+            m_page = selected / kPaletteCount;
+        m_status = selected < 0 ? "Picked RGB / Add to save" : "Picked palette color";
+        refresh(palette, selected);
     }
 
     IREntity::EntityId panel() const {
