@@ -75,6 +75,11 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     // Frame the store is keyed in: .xy = store cell of the frame's iso origin,
     // .z = cardinal index of its view. std140 offset 224.
     ivec4 perAxisStoreFrame;
+    vec4 canvasFromPixel;
+    ivec2 mouseFramebufferPixel;
+    int hoverResolveMode;
+    int gatherFilterDiagnostic;
+    vec4 cameraViewRotation;
 };
 
 flat out vec4 vColor;
@@ -254,7 +259,9 @@ void main() {
     const ivec2 reprojBase = perAxisBase + ivec2(1);
     const vec2 centeredCornerIso =
         (vec2(reprojBase) - 0.5 * vec2(canvasSize)) +
-        pos3DtoPos2DIsoYawedCellAnchor(worldCorner, visualYaw);
+        (spatialViewEnabled(cameraViewRotation)
+            ? spatialViewIso(worldCorner - kVoxelRasterCellAnchor, cameraViewRotation)
+            : pos3DtoPos2DIsoYawedCellAnchor(worldCorner, visualYaw));
 
     // Center before projection: adding a large canvas origin first loses the
     // fractional bits that decide finite-face raster coverage at shared edges.
@@ -312,12 +319,14 @@ void main() {
     // (vCellTieOffset); added to this continuous key it would be a per-axis depth bias of
     // 1 / encScale world units per rank, enough for a face hidden behind a
     // neighbouring surface to win pixels along their shared edge.
-    const float cornerKey = scatterCompositeDepthKey(worldCorner, visualYaw, encScale);
+    const float cornerKey = (spatialViewEnabled(cameraViewRotation)
+        ? spatialViewDepth(worldCorner - kVoxelRasterCellAnchor, cameraViewRotation) * encScale
+        : scatterCompositeDepthKey(worldCorner, visualYaw, encScale));
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
     vDepthSlope = vec2(
-        yawedIsoDistance(eu, visualYaw),
-        yawedIsoDistance(ev, visualYaw)
+        (spatialViewEnabled(cameraViewRotation) ? spatialViewDepth(eu, cameraViewRotation) : yawedIsoDistance(eu, visualYaw)),
+        (spatialViewEnabled(cameraViewRotation) ? spatialViewDepth(ev, cameraViewRotation) : yawedIsoDistance(ev, visualYaw))
     ) * (encScale / depthRange);
     // Overflow entries sit two tie bands BEHIND everything else,
     // so an entry can never beat an

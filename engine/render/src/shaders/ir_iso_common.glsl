@@ -1081,6 +1081,31 @@ vec3 rotateByInverseQuat(vec3 v, vec4 q) {
     return rotateByQuat(v, vec4(-q.xyz, q.w));
 }
 
+// Zero is the opt-out sentinel; unit quaternions map view vectors to world vectors.
+bool spatialViewEnabled(vec4 viewRotation) {
+    return dot(viewRotation, viewRotation) > 0.5;
+}
+vec2 spatialViewIso(vec3 worldPosition, vec4 viewRotation) {
+    vec3 view = rotateByInverseQuat(worldPosition, viewRotation);
+    return vec2(-view.x + view.y, -view.x - view.y + 2.0 * view.z);
+}
+float spatialViewDepth(vec3 worldPosition, vec4 viewRotation) {
+    return dot(rotateByInverseQuat(worldPosition, viewRotation), vec3(1.0));
+}
+
+vec3 viewToWorldVector(vec3 position, vec4 viewRotation, float yawC, float yawS) {
+    return spatialViewEnabled(viewRotation) ? rotateByQuat(position, viewRotation)
+        : vec3(yawC * position.x - yawS * position.y,
+               yawS * position.x + yawC * position.y, position.z);
+}
+
+vec3 trixelCanvasPixelToWorld3DSpatial(ivec2 pixel, int rawDepth, ivec2 canvasOrigin,
+                                    vec2 cameraOffset, ivec2 renderOptions, vec4 viewRotation) {
+    ivec2 iso = trixelCanvasPixelToIsoRel(pixel, canvasOrigin, cameraOffset, renderOptions);
+    vec3 position = isoPixelToPos3D(iso.x, iso.y, float(rawDepth));
+    return rotateByQuat(position / float(effectiveTrixelSubdivisionScale(renderOptions)), viewRotation);
+}
+
 // The two in-plane unit model axes (e_u, e_v) a face's scatter quad spans, by
 // axis = faceId >> 1 (0=X spans y,z; 1=Y spans x,z; 2=Z spans x,y) — matching
 // faceSpanCorner's cornerSel.x -> e_u, cornerSel.y -> e_v ordering. Returned in

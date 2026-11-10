@@ -8,6 +8,7 @@ inline float2 shapeYawCosSin(ShapeProjectionData projection) {
 // roundHalfUp `origin`, except smooth yaw off the lattice walk, which places the
 // unsnapped position. Casters and receivers of the drawn surface both use it.
 inline float3 shapeRenderedCenter(float3 worldPosition, ShapeProjectionData projection) {
+    if (spatialViewEnabled(projection.cameraViewRotation)) return worldPosition;
     bool smoothMode = projection.voxelRenderOptions.x != 0 &&
                       projection.voxelRenderOptions.y > 1;
     if (projection.smoothYawEnabled != 0 && (smoothMode || projection.latticeShapes == 0))
@@ -20,6 +21,7 @@ inline float3 shapeRenderedCenter(float3 worldPosition, ShapeProjectionData proj
 }
 
 inline int2 shapeRenderedOriginIso(float3 center, ShapeProjectionData projection, int density) {
+    if (spatialViewEnabled(projection.cameraViewRotation)) return roundHalfUp(spatialViewIso(center * float(density), projection.cameraViewRotation));
     float2 yaw = shapeYawCosSin(projection);
     return projection.smoothYawEnabled != 0
         ? roundHalfUp(pos3DtoPos2DIsoYawed(center * float(density), projection.visualYaw))
@@ -34,7 +36,7 @@ inline int2 shapeRenderedOriginIso(float3 center, ShapeProjectionData projection
 inline float shapeCanvasIsoDepth(float3 position, ShapeProjectionData projection) {
     float yaw = projection.smoothYawEnabled != 0 ? projection.visualYaw : projection.rasterYaw;
     int scale = projection.voxelRenderOptions.x != 0 ? max(projection.voxelRenderOptions.y, 1) : 1;
-    return yawedIsoDistance(position, yaw) * float(scale);
+    return (spatialViewEnabled(projection.cameraViewRotation) ? spatialViewDepth(position, projection.cameraViewRotation) : yawedIsoDistance(position, yaw)) * float(scale);
 }
 
 // Finite analytical geometry only: lattice, hollow and entity-rotated shapes
@@ -60,6 +62,31 @@ inline bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projecti
         projection.frameCanvasOffset, projection.voxelRenderOptions);
     float2 relativeIso = canvasPixel - float2(frameOffset + originIso);
     float3 halfExtent = (shape.params.xyz - 1.0) * (0.5 * float(density)) + float3(0.5);
+    if (spatialViewEnabled(projection.cameraViewRotation)) {
+        float3 rayOrigin = rotateByQuat(isoPositionToPos3D(relativeIso, 0.0), projection.cameraViewRotation);
+        float3 rayDirection = rotateByQuat(float3(1.0 / 3.0), projection.cameraViewRotation);
+        float nearDepth = -1e30;
+        float farDepth = 1e30;
+        normal = float3(0.0);
+        for (int axis = 0; axis < 3; ++axis) {
+            if (abs(rayDirection[axis]) < 1e-7) {
+                if (abs(rayOrigin[axis]) > halfExtent[axis]) return false;
+                continue;
+            }
+            float a = (-halfExtent[axis] - rayOrigin[axis]) / rayDirection[axis];
+            float b = (halfExtent[axis] - rayOrigin[axis]) / rayDirection[axis];
+            float entry = min(a, b);
+            if (entry > nearDepth) {
+                nearDepth = entry;
+                normal = float3(0.0);
+                normal[axis] = rayDirection[axis] > 0.0 ? -1.0 : 1.0;
+            }
+            farDepth = min(farDepth, max(a, b));
+            if (nearDepth > farDepth) return false;
+        }
+        position = center + (rayOrigin + nearDepth * rayDirection) / float(density);
+        return true;
+    }
     float entry, exitDepth;
     if (!boxSurfaceIntervalYaw(relativeIso.x, relativeIso.y, halfExtent,
                               yaw.x, yaw.y, entry, exitDepth, normal)) {

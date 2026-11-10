@@ -64,6 +64,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec4 _overflowSortStepPadding;
     uniform vec4 _detachedViewToWorldPadding;
     uniform ivec4 perAxisStoreFrame;
+    ivec4 _fogCeilingPadding;
+    vec4 cameraViewRotation;
 };
 
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -209,7 +211,9 @@ void main() {
     if (caster) {
         const int rawDepth = decodeDepthSingle(encoded);
         vec3 pos3D;
-        if (residualYaw != 0.0) {
+        if (spatialViewEnabled(cameraViewRotation)) {
+        pos3D = trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cameraViewRotation);
+    } else if (residualYaw != 0.0) {
             pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
                 pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
             );
@@ -227,7 +231,7 @@ void main() {
         sunProj = sunSpaceProject(pos3D, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
     }
     int radius = 0;
-    if (residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
+    if (!spatialViewEnabled(cameraViewRotation) && residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
         radius = int(sunSplatMaxTexels);
     }
     bakeCascadeCooperative(caster, sunProj, cascadeOriginUV_0, cascadeTexelSize_0, 0, radius);
@@ -253,7 +257,9 @@ void main() {
     // Main SDF/text depth follows visual yaw. Per-axis and detached resolves
     // have cardinal-layout depth; their dispatches supply zero residual yaw.
     vec3 pos3D;
-    if (residualYaw != 0.0) {
+    if (spatialViewEnabled(cameraViewRotation)) {
+        pos3D = trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cameraViewRotation);
+    } else if (residualYaw != 0.0) {
         pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
         );
@@ -280,7 +286,7 @@ void main() {
     // them for the dense per-axis resolve, but keeps them for detached point
     // scatter (docs/design/sun-shadow-bake-coverage.md).
     int radius = 0;
-    if (residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
+    if (!spatialViewEnabled(cameraViewRotation) && residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
         radius = int(sunSplatMaxTexels);
     }
 

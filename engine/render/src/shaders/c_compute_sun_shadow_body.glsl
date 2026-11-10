@@ -61,6 +61,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // origin, .z = cardinal index of the view the key positions are rotated
     // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
     uniform ivec4 perAxisStoreFrame;
+    ivec4 _fogCeilingPadding;
+    vec4 cameraViewRotation;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
@@ -134,7 +136,10 @@ void main() {
 
     vec3 pos3D;
     vec3 normal;
-    if (residualYaw != 0.0) {
+    if (spatialViewEnabled(cameraViewRotation)) {
+        pos3D = trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cameraViewRotation);
+        normal = rotateByQuat(faceOutwardNormal(face), cameraViewRotation);
+    } else if (residualYaw != 0.0) {
         // Smooth-yaw receive. While rotating, voxels leave the single canvas
         // (per-axis scatter) and its remaining SDF/text content is stored at the
         // FULL visualYaw with view-frame depth — recover with the matching smooth

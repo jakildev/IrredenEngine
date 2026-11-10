@@ -497,12 +497,32 @@ struct C_VoxelPool {
     // the same way — the cardinal-snapped chunk bounds otherwise drop off-center
     // chunks mid-rotation. The continuous-yaw bounds change every frame, so
     // they bypass the cardinal-index cache and force a fresh recompute on the
-    // next cardinal-path call.
+    // next cardinal-path call. A non-null spatialView uses the full camera
+    // basis instead of yaw; the world-AABB cache remains camera-independent.
     void rebuildChunkBounds(
         CardinalIndex cardinalIndex = CardinalIndex::k0,
         bool useContinuousYaw = false,
-        float visualYaw = 0.0f
+        float visualYaw = 0.0f,
+        const IRMath::OrthographicViewBasis *spatialView = nullptr
     ) {
+        const auto projectBounds = [&](vec3 worldMin, vec3 worldMax) {
+            if (spatialView == nullptr) {
+                return IRMath::isoAABBOfWorldAABBUnderYaw(
+                    worldMin - vec3(0.5f),
+                    worldMax - vec3(0.5f),
+                    visualYaw
+                );
+            }
+            const vec3 center = (worldMin + worldMax) * 0.5f - vec3(0.5f);
+            const vec3 halfExtent = (worldMax - worldMin) * 0.5f;
+            const vec2 isoCenter = IRMath::projectOrthographic(center, *spatialView);
+            // Support extents contain all eight corners without per-voxel work.
+            const vec2 isoHalf(
+                IRMath::dot(IRMath::abs(spatialView->isoX_), halfExtent),
+                IRMath::dot(IRMath::abs(spatialView->isoY_), halfExtent)
+            );
+            return IsoBounds2D{isoCenter - isoHalf, isoCenter + isoHalf};
+        };
         // Detached re-voxelize pool: the GPU scatter compute owns
         // binding 5, so the CPU global mirror does not track the per-frame
         // rotation. Drive the chunk-visibility gate from the conservative
@@ -517,10 +537,9 @@ struct C_VoxelPool {
             // Cell-anchor shift: the raster projects cell positions
             // half a cell toward the origin under yaw, so the gate's bound
             // translates the same way to keep covering the rendered mass.
-            const IsoBounds2D iso = IRMath::isoAABBOfWorldAABBUnderYaw(
-                m_staticReVoxelizeBound->worldMin_ - vec3(0.5f),
-                m_staticReVoxelizeBound->worldMax_ - vec3(0.5f),
-                visualYaw
+            const IsoBounds2D iso = projectBounds(
+                m_staticReVoxelizeBound->worldMin_,
+                m_staticReVoxelizeBound->worldMax_
             );
             for (ChunkBounds &cb : m_chunkBounds) {
                 cb.isoMin_ = iso.min_;
@@ -535,7 +554,7 @@ struct C_VoxelPool {
 
         const int chunkCount = getChunkCount();
 
-        if (useContinuousYaw) {
+        if (useContinuousYaw || spatialView != nullptr) {
             m_chunkBounds.assign(static_cast<std::size_t>(chunkCount), ChunkBounds{});
             // Closed-form O(chunks) cull region: project each chunk's
             // cached static world-AABB under the live yaw instead of
@@ -555,11 +574,7 @@ struct C_VoxelPool {
                 // Cell-anchor shift — matches the compact cull's
                 // anchored per-voxel projection, keeping this gate a
                 // conservative superset of the per-voxel iso bounds.
-                const IsoBounds2D iso = IRMath::isoAABBOfWorldAABBUnderYaw(
-                    wb.worldMin_ - vec3(0.5f),
-                    wb.worldMax_ - vec3(0.5f),
-                    visualYaw
-                );
+                const IsoBounds2D iso = projectBounds(wb.worldMin_, wb.worldMax_);
                 m_chunkBounds[c].isoMin_ = iso.min_;
                 m_chunkBounds[c].isoMax_ = iso.max_;
             }

@@ -79,6 +79,8 @@ inline float3 singleCanvasPixelToWorld3D(
         finiteCoverage
     );
 #endif
+    if (spatialViewEnabled(frameData.cameraViewRotation))
+        return trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset, frameData.voxelRenderOptions, frameData.cameraViewRotation);
 #if IR_AO_SMOOTH_YAW
     return trixelCanvasPixelToWorld3DSmoothYaw(
         pixel,
@@ -157,6 +159,8 @@ kernel void IR_AO_KERNEL_NAME(
     // solid. The tangent pair is polarity-invariant.
     int flip = decodeFlipRoute(encoded, frameData.perAxisRoute);
     int faceId = frameData.visibleFaceIds[slot] ^ flip;
+    const bool spatialSingle = frameData.perAxisRoute == 0 && spatialViewEnabled(frameData.cameraViewRotation);
+    if (spatialSingle) faceId = (slot * 2) ^ flip;
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
     // (per-axis / single-canvas, and the flip carrier).
     int rawDepth = decodeDepthRoute(encoded, frameData.perAxisRoute);
@@ -181,6 +185,7 @@ kernel void IR_AO_KERNEL_NAME(
     // before iso projection so the neighbour-sample iso direction matches
     // where the rasterizer wrote the +tangent neighbour at this cardinal.
     float3 worldOutward = float3(faceOutwardNormal6I(faceId));
+    if (spatialSingle) worldOutward = rotateByQuat(worldOutward, frameData.cameraViewRotation);
     int3 t1;
     int3 t2;
     if (faceId == kFaceZNeg || faceId == kFaceZPos) {
@@ -225,6 +230,7 @@ kernel void IR_AO_KERNEL_NAME(
 
         int neighbourFaceId = frameData.visibleFaceIds[decodeSlot(neighbourEncoded)] ^
             decodeFlipRoute(neighbourEncoded, frameData.perAxisRoute);
+        if (spatialSingle) neighbourFaceId = (decodeSlot(neighbourEncoded) * 2) ^ decodeFlipSingle(neighbourEncoded);
         if (neighbourFaceId == faceId) continue;
 
         int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, frameData.perAxisRoute);
@@ -248,7 +254,7 @@ kernel void IR_AO_KERNEL_NAME(
 
         float receiverFacing = max(dot(separation, worldOutward), 0.0);
         float occluderFacing = max(
-            dot(-separation, float3(faceOutwardNormal6I(neighbourFaceId))), 0.0
+            dot(-separation, spatialSingle ? rotateByQuat(float3(faceOutwardNormal6I(neighbourFaceId)), frameData.cameraViewRotation) : float3(faceOutwardNormal6I(neighbourFaceId))), 0.0
         );
         float facing = receiverFacing * occluderFacing;
         if (facing <= 0.0) continue;

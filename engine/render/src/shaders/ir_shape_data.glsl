@@ -16,6 +16,7 @@ struct ShapeProjectionData {
     int smoothYawEnabled;
     int latticeShapes;
     vec4 faceDeform[3];
+    vec4 cameraViewRotation;
 };
 
 struct ShapeDescriptor {

@@ -57,6 +57,11 @@ struct FrameDataIsoTriangles {
     // Frame the store is keyed in: .xy = store cell of the frame's iso origin,
     // .z = cardinal index of its view. std140 offset 224.
     int4 perAxisStoreFrame;
+    float4 canvasFromPixel;
+    int2 mouseFramebufferPixel;
+    int hoverResolveMode;
+    int gatherFilterDiagnostic;
+    float4 cameraViewRotation;
 };
 
 #include "ir_peraxis_scatter_interface.metal"
@@ -208,7 +213,9 @@ vertex VertexOut v_peraxis_scatter(
     // off the cardinal frames at non-cardinal yaw. Matches the GLSL twin.
     const int2 reprojBase = frameData.perAxisBase + int2(1);
     const float2 centeredCornerIso = (float2(reprojBase) - 0.5f * float2(canvasSize)) +
-        pos3DtoPos2DIsoYawedCellAnchor(worldCorner, frameData.visualYaw);
+        (spatialViewEnabled(frameData.cameraViewRotation)
+            ? spatialViewIso(worldCorner - kVoxelRasterCellAnchor, frameData.cameraViewRotation)
+            : pos3DtoPos2DIsoYawedCellAnchor(worldCorner, frameData.visualYaw));
 
     // Center before projection to preserve the subpixel edge coordinates.
     float2 quadPos;
@@ -263,14 +270,16 @@ vertex VertexOut v_peraxis_scatter(
     // per-axis depth bias of 1 / encScale world units per rank, enough for a
     // face hidden behind a neighbouring surface to win pixels along their
     // shared edge. Matches the GLSL twin.
-    const float cornerKey = scatterCompositeDepthKey(worldCorner, frameData.visualYaw, encScale);
+    const float cornerKey = (spatialViewEnabled(frameData.cameraViewRotation)
+        ? spatialViewDepth(worldCorner - kVoxelRasterCellAnchor, frameData.cameraViewRotation) * encScale
+        : scatterCompositeDepthKey(worldCorner, frameData.visualYaw, encScale));
     const float depthRange =
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.depth =
         (cornerKey + float(frameData.distanceOffset - globals.kMinTriangleDistance)) / depthRange;
     out.depthSlope = float2(
-        yawedIsoDistance(eu, frameData.visualYaw),
-        yawedIsoDistance(ev, frameData.visualYaw)
+        (spatialViewEnabled(frameData.cameraViewRotation) ? spatialViewDepth(eu, frameData.cameraViewRotation) : yawedIsoDistance(eu, frameData.visualYaw)),
+        (spatialViewEnabled(frameData.cameraViewRotation) ? spatialViewDepth(ev, frameData.cameraViewRotation) : yawedIsoDistance(ev, frameData.visualYaw))
     ) * (encScale / depthRange);
     // Overflow entries sit two tie bands BEHIND everything else,
     // so an entry can never beat an

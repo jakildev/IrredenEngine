@@ -83,6 +83,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // origin, .z = cardinal index of the view the key positions are rotated
     // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
     uniform ivec4 perAxisStoreFrame;
+    ivec4 _fogCeilingPadding;
+    vec4 cameraViewRotation;
 };
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
@@ -266,7 +268,10 @@ void main() {
     const int slot = decodeSlot(encoded);
     const int faceId = sourceMode ? int(sourceFaces[sourceIndex].centerAndFace.w) : visibleFaceIds[slot] ^ decodeFlipRoute(encoded, perAxisRoute);
     vec3 worldNormal = faceOutwardNormal6(faceId);
-    if (normalOptions.x != 0 && !detachedCanvas && perAxisRoute == 0 && residualYaw != 0.0) {
+    if (normalOptions.x != 0 && !detachedCanvas && perAxisRoute == 0 && spatialViewEnabled(cameraViewRotation)) {
+        worldNormal = rotateByQuat(faceOutwardNormal(slot), cameraViewRotation);
+        if (decodeFlipRoute(encoded, perAxisRoute) != 0) worldNormal = -worldNormal;
+    } else if (normalOptions.x != 0 && !detachedCanvas && perAxisRoute == 0 && residualYaw != 0.0) {
         worldNormal = rotateYawZInv(faceOutwardNormal(slot), visualYaw);
         if (decodeFlipRoute(encoded, perAxisRoute) != 0) worldNormal = -worldNormal;
     }
@@ -445,7 +450,9 @@ void main() {
             ? worldReceivePos
             : (perAxisRoute != 0
                 ? perAxisCellToWorld3DSubCell(pixel, encoded, faceId, perAxisStoreFrame)
-                : (residualYaw != 0.0
+                : (spatialViewEnabled(cameraViewRotation)
+                    ? trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cameraViewRotation)
+                    : residualYaw != 0.0
                     ? trixelCanvasPixelToWorld3DSmoothYaw(
                           pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset,
                           voxelRenderOptions, visualYaw

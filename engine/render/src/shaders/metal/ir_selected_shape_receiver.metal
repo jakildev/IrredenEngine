@@ -46,7 +46,7 @@ inline bool selectedShapeBoxUsesWorldFaceSlot(int2 ownerPixel, int ownerWidth,
     ShapeDescriptor shape = receiverShapes[shapeIndex];
     bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
                       receiverFrame.voxelRenderOptions.y > 1;
-    return shape.shapeType == SHAPE_BOX && (shape.flags & 1u) == 0u &&
+    return !spatialViewEnabled(receiverFrame.cameraViewRotation) && shape.shapeType == SHAPE_BOX && (shape.flags & 1u) == 0u &&
            abs(shape.rotation.w) >= 0.9999 && receiverFrame.smoothYawEnabled != 0 &&
            (smoothMode || receiverFrame.latticeShapes == 0);
 }

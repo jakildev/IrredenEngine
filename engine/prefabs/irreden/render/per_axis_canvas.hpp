@@ -65,6 +65,18 @@ inline IRMath::ivec2 storeSize() {
 // The store pass, every pass that inverts a store cell, and the framebuffer
 // scatter each call this from the same camera state.
 inline IRMath::ivec4 storeFrame(IRMath::ivec2 size) {
+    if (IRRender::isSpatialViewEnabled()) {
+        const float depth = IRRender::hasRotationPivotFocus()
+                                ? IRRender::viewDepth(IRRender::getRotationPivotFocus())
+                                : 0.0f;
+        const auto center = IRRender::unprojectView(-IRRender::getEffectiveCameraIso(), depth);
+        const auto projected = IRMath::pos3DtoPos2DIso(center);
+        const IRMath::ivec2 anchor(
+            IRMath::roundHalfUp(-projected.x),
+            IRMath::roundHalfUp(-projected.y)
+        );
+        return IRMath::ivec4(IRMath::trixelOriginOffsetZ1(size) + anchor, 0, 0);
+    }
     const float visualYaw = IRPrefab::Camera::getYaw();
     const IRMath::CardinalIndex cardinal =
         IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
@@ -158,7 +170,7 @@ inline void syncAllocationToCameraYaw() {
     // the render path-select gate in system_voxel_to_trixel share the identical
     // predicate — they can never disagree about whether the per-axis textures
     // should be live.
-    const bool rotating = residualYaw != 0.0f;
+    const bool rotating = IRRender::isSpatialViewEnabled() || residualYaw != 0.0f;
 
     // Face storage covers the logical viewport; the resolve uses the density-scaled backing.
     IRMath::ivec2 size{0, 0};

@@ -106,6 +106,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // rotated footprint are not dropped from the cardinal-snapped viewport.
     // yawCosVisual_/yawSinVisual_ are cos/sin(visualYaw_).
     bool smoothYaw_ = false;
+    vec4 cameraViewRotation_ = vec4(0.0f);
     float yawCosVisual_ = 1.0f;
     float yawSinVisual_ = 0.0f;
     // Tier state captured at beginTick: the active tier LOD_UPDATE wrote in the
@@ -153,7 +154,16 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 sizeForExtent = ax + ay + az;
             }
             vec2 shapeIsoPosition;
-            if (smoothYaw_) {
+            if (IRMath::dot(cameraViewRotation_, cameraViewRotation_) > 0.5f) {
+                const auto inverse = IRMath::quatInverse(cameraViewRotation_);
+                sizeForExtent =
+                    IRMath::abs(IRMath::rotateVectorByQuat(vec3(sizeForExtent.x, 0, 0), inverse)) +
+                    IRMath::abs(IRMath::rotateVectorByQuat(vec3(0, sizeForExtent.y, 0), inverse)) +
+                    IRMath::abs(IRMath::rotateVectorByQuat(vec3(0, 0, sizeForExtent.z), inverse));
+                shapeIsoPosition = IRMath::pos3DtoPos2DIso(
+                    IRMath::rotateVectorByQuat(pose->translation_, inverse)
+                );
+            } else if (smoothYaw_) {
                 // Continuous-yaw cull: project the center at the full visualYaw
                 // and grow the iso half-extent by the continuous |c|,|s| (up to
                 // the sqrt(2) footprint at +/-45deg) so off-center shapes inside
@@ -256,7 +266,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         // Smooth camera Z-yaw: continuous-yaw cull/footprint inside a
         // residual bracket. cos/sin of the full visualYaw (not the cardinal
         // table) so the rotated footprint grows to the true sqrt(2) extent.
-        smoothYaw_ = (residualYaw_ != 0.0f);
+        cameraViewRotation_ =
+            IRRender::isSpatialViewEnabled() ? IRRender::getViewRotation() : vec4(0.0f);
+        smoothYaw_ = IRRender::isSpatialViewEnabled() || (residualYaw_ != 0.0f);
         yawCosVisual_ = IRMath::cos(visualYaw_);
         yawSinVisual_ = IRMath::sin(visualYaw_);
 
@@ -362,7 +374,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // cardinal rasterYaw + faceDeform path.
             const bool canvasSmoothYaw = smoothYaw_ && (canvasId == mainCanvas || entityCanvas);
             frameData_.smoothYawEnabled = canvasSmoothYaw ? 1 : 0;
-            frameData_.latticeShapes = entityCanvas ? 1 : 0;
+            frameData_.cameraViewRotation =
+                (canvasId == mainCanvas || entityCanvas) ? cameraViewRotation_ : vec4(0.0f);
+            frameData_.latticeShapes = entityCanvas && !IRRender::isSpatialViewEnabled() ? 1 : 0;
             // Residual yaw is folded into faceDeform per-face for the shapes
             // shader. Identity at residualYaw == 0.
             const mat2 fdX = IRMath::faceDeformationMatrix(IRMath::kXFace, residualYaw);
@@ -387,12 +401,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 // local-triangle gather reads, so the shape's hexagons come out
                 // as bow ties. Zero on a plain DETACHED or shape-only canvas.
                 const vec3 phase = canvasTextures.renderedCellOffset_;
-                const vec4 worldPhase(
-                    yawCosVisual_ * phase.x - yawSinVisual_ * phase.y,
-                    yawSinVisual_ * phase.x + yawCosVisual_ * phase.y,
-                    phase.z,
-                    0.0f
-                );
+                const vec4 worldPhase =
+                    IRMath::dot(cameraViewRotation_, cameraViewRotation_) > 0.5f
+                        ? vec4(IRMath::rotateVectorByQuat(phase, cameraViewRotation_), 0.0f)
+                        : vec4(
+                              yawCosVisual_ * phase.x - yawSinVisual_ * phase.y,
+                              yawSinVisual_ * phase.x + yawCosVisual_ * phase.y,
+                              phase.z,
+                              0.0f
+                          );
                 for (GPUShapeDescriptor &shape : gpuShapes) {
                     shape.worldPosition -= worldPhase;
                 }
@@ -411,9 +428,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     canvasSmoothYaw,
                     visualYaw,
                     yawCosVisual_,
-                    yawSinVisual_
+                    yawSinVisual_,
+                    frameData_.cameraViewRotation
                 },
-                entityCanvas,
+                frameData_.latticeShapes != 0,
                 shapeCanvasReachableIso(
                     frameData_.trixelCanvasOffsetZ1,
                     frameData_.cameraTrixelOffset,
@@ -537,15 +555,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                         renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
                     );
                 }
-                const bool hasNonBoxCasters =
-                    std::any_of(
-                        gpuShapes.begin(),
-                        gpuShapes.end(),
-                        [](const GPUShapeDescriptor &shape) {
-                            return shape.shapeType !=
-                                   static_cast<std::uint32_t>(IRMath::SDF::ShapeType::BOX);
-                        }
-                    );
+                const bool hasNonBoxCasters = std::any_of(
+                    gpuShapes.begin(),
+                    gpuShapes.end(),
+                    [](const GPUShapeDescriptor &shape) {
+                        return shape.shapeType !=
+                               static_cast<std::uint32_t>(IRMath::SDF::ShapeType::BOX);
+                    }
+                );
                 Texture2D *casterDepth = nullptr;
                 if (hasNonBoxCasters) {
                     IRRender::GpuSubStageScope timing("shapeCastClear");

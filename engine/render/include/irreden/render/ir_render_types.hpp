@@ -78,7 +78,7 @@ static_assert(sizeof(GpuSpriteInstance) == 48, "GpuSpriteInstance must remain 48
 /// project into a GpuSpriteInstance during upload.
 struct SpriteRenderEntry {
     ResourceId textureHandle_ = 0;
-    int isoDepth_ = 0; ///< pos3DtoDistance(world); larger = farther
+    int isoDepth_ = 0;            ///< pos3DtoDistance(world); larger = farther
     vec2 screenPos_ = vec2(0.0f); ///< quad origin, viewport pixels
     vec2 size_ = vec2(0.0f);      ///< viewport pixels: C_Sprite::size_ × output scale
     vec4 uvRect_ = vec4(0.0f, 0.0f, 1.0f, 1.0f);
@@ -275,7 +275,13 @@ struct FrameDataTrixelToFramebuffer {
     /// `GatherFilterDiagnostic` for this gather draw. Zero (every producer's
     /// default) is the nearest resolve.
     int gatherFilterDiagnostic_ = 0;
+    // Zero disables spatial view; otherwise a unit view-to-world quaternion (xyzw).
+    vec4 cameraViewRotation_ = vec4(0.0f);
 };
+static_assert(
+    offsetof(FrameDataTrixelToFramebuffer, cameraViewRotation_) == 272,
+    "Spatial view quaternion must append after the gather diagnostic fields"
+);
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
     "FrameDataTrixelToFramebuffer::visibleFaceIds_ must land at offset 128 "
@@ -325,7 +331,7 @@ static_assert(
 static_assert(offsetof(FrameDataTrixelToFramebuffer, mouseFramebufferPixel_) == 256);
 static_assert(offsetof(FrameDataTrixelToFramebuffer, gatherFilterDiagnostic_) == 268);
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 272,
+    sizeof(FrameDataTrixelToFramebuffer) == 288,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
     "perAxisBase_ / visualYaw_ / visibleFaceIds_ and scatterFbResolution_ at "
@@ -873,6 +879,7 @@ struct FrameDataVoxelToCanvas {
     // instead of scanning the sources per face, so a FIELD voxel on a frame
     // with no ceiling pays nothing. .yzw unused.
     ivec4 fogCeilingEnabled_ = ivec4(0, 0, 0, 0);
+    vec4 cameraViewRotation_ = vec4(0.0f);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -1217,14 +1224,23 @@ struct GPUShapesFrameData {
     vec4 faceDeform[3] = {
         vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f)
     };
+    vec4 cameraViewRotation = vec4(0.0f);
 };
+static_assert(
+    offsetof(GPUShapesFrameData, cameraViewRotation) == 128,
+    "Shape spatial view quaternion must append after face deformation"
+);
+static_assert(
+    offsetof(FrameDataVoxelToCanvas, cameraViewRotation_) == 288,
+    "Voxel spatial view quaternion must append after the fog ceiling flag"
+);
 static_assert(
     offsetof(GPUShapesFrameData, faceDeform) == 80,
     "GPUShapesFrameData::faceDeform must align at the 16-byte boundary "
     "GLSL std140 enforces for vec4 arr[3]"
 );
 static_assert(
-    sizeof(GPUShapesFrameData) == 128, "GPUShapesFrameData size must mirror its std140 GLSL block"
+    sizeof(GPUShapesFrameData) == 144, "GPUShapesFrameData size must mirror its std140 GLSL block"
 );
 static_assert(
     offsetof(FrameDataVoxelToCanvas, faceDeform_) == 80,
@@ -1302,7 +1318,7 @@ static_assert(
     "voxel face-selection stages declare it after perAxisStoreFrame_"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 288,
+    sizeof(FrameDataVoxelToCanvas) == 304,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
     "(fogCeilingEnabled_ ivec4 append: 272 + 16 = 288)"
 );

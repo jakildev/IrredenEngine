@@ -192,7 +192,9 @@ kernel void IR_SUN_BAKE_KERNEL_NAME(
     if (caster) {
         const int rawDepth = decodeDepthSingle(encoded);
         float3 pos3D;
-        if (frameData.residualYaw != 0.0) {
+        if (spatialViewEnabled(frameData.cameraViewRotation)) {
+        pos3D = trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset, frameData.voxelRenderOptions, frameData.cameraViewRotation);
+    } else if (frameData.residualYaw != 0.0) {
             pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
                 pixel, rawDepth, frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset,
                 frameData.voxelRenderOptions, frameData.visualYaw
@@ -217,7 +219,7 @@ kernel void IR_SUN_BAKE_KERNEL_NAME(
         );
     }
     int radius = 0;
-    if (frameData.residualYaw == 0.0 && sunFrameData.sunSplatMaxTexels > 0.0) {
+    if (!spatialViewEnabled(frameData.cameraViewRotation) && frameData.residualYaw == 0.0 && sunFrameData.sunSplatMaxTexels > 0.0) {
         radius = int(sunFrameData.sunSplatMaxTexels);
     }
     bakeCascadeCooperative(
@@ -248,7 +250,9 @@ kernel void IR_SUN_BAKE_KERNEL_NAME(
     // Main SDF/text depth follows visual yaw. Per-axis and detached resolves
     // have cardinal-layout depth; their dispatches supply zero residual yaw.
     float3 pos3D;
-    if (frameData.residualYaw != 0.0) {
+    if (spatialViewEnabled(frameData.cameraViewRotation)) {
+        pos3D = trixelCanvasPixelToWorld3DSpatial(pixel, rawDepth, frameData.trixelCanvasOffsetZ1, frameData.frameCanvasOffset, frameData.voxelRenderOptions, frameData.cameraViewRotation);
+    } else if (frameData.residualYaw != 0.0) {
         pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
             pixel,
             rawDepth,
@@ -288,7 +292,7 @@ kernel void IR_SUN_BAKE_KERNEL_NAME(
     // them for the dense per-axis resolve, but keeps them for detached point
     // scatter (docs/design/sun-shadow-bake-coverage.md).
     int radius = 0;
-    if (frameData.residualYaw == 0.0 &&
+    if (!spatialViewEnabled(frameData.cameraViewRotation) && frameData.residualYaw == 0.0 &&
         sunFrameData.sunSplatMaxTexels > 0.0) {
         radius = int(sunFrameData.sunSplatMaxTexels);
     }

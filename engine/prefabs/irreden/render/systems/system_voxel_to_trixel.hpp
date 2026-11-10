@@ -133,10 +133,11 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     IsoBounds2D viewport,
     CardinalIndex cardinalIndex = CardinalIndex::k0,
     bool useContinuousYaw = false,
-    float visualYaw = 0.0f
+    float visualYaw = 0.0f,
+    const IRMath::OrthographicViewBasis *spatialView = nullptr
 ) {
     static thread_local std::vector<std::uint32_t> mask;
-    pool.rebuildChunkBounds(cardinalIndex, useContinuousYaw, visualYaw);
+    pool.rebuildChunkBounds(cardinalIndex, useContinuousYaw, visualYaw, spatialView);
     int chunkCount = pool.getChunkCount();
     mask.assign(chunkCount, 0);
 
@@ -1684,7 +1685,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
                 triangleCanvasTextures.sourceFaceOrder_ = IRRender::createResource<Buffer>(
                     nullptr,
-                    (std::size_t{128} + std::size_t{kFaceSortRecordWords} * orderCapacity) * sizeof(std::uint32_t),
+                    (std::size_t{128} + std::size_t{kFaceSortRecordWords} * orderCapacity) *
+                        sizeof(std::uint32_t),
                     BUFFER_STORAGE_DYNAMIC,
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_PerAxisResolveScratch
@@ -1744,7 +1746,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // this `!= 0` path-select predicate matches the per-axis allocation gate
         // exactly, preventing a near-cardinal residual from freeing textures
         // while this path still reads them.
-        const bool rotating = frameData_.residualYaw_ != 0.0f;
+        const bool rotating = IRRender::isSpatialViewEnabled() || frameData_.residualYaw_ != 0.0f;
         if (revoxInverse || canvasLocalRotation.isDetached()) {
             // Model-space canvas domain: EVERY detached canvas (forward-scatter
             // and re-voxelize alike, at any rotation) rasters its pool in its
@@ -1765,12 +1767,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 allVisibleChunkScratch_.data()
             );
         } else {
+            const bool spatial = IRRender::isSpatialViewEnabled();
+            const auto view = spatial
+                                  ? IRMath::orthographicViewBasis(frameData_.cameraViewRotation_)
+                                  : IRMath::OrthographicViewBasis{};
             const auto &uploadMask = buildChunkVisibilityMask(
                 voxelPool,
                 chunkVp,
                 chunkCardinal,
                 rotating,
-                frameData_.visualYaw_
+                frameData_.visualYaw_,
+                spatial ? &view : nullptr
             );
             chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
         }

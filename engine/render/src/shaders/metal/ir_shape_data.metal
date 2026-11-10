@@ -34,6 +34,7 @@ struct ShapeProjectionData {
     // of IRMath::faceDeformationMatrix(face, residualYaw). Identity when
     // residualYaw==0. Mirrors the GLSL `vec4 faceDeform[3]`.
     float4 faceDeform[3];
+    float4 cameraViewRotation;
 };
 
 struct ShapeDescriptor {

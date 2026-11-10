@@ -27,6 +27,10 @@ visually interpolates between the 90° cardinals instead of snapping. Read
 voxel emits) and [`iso-depth-axis-invariant.md`](iso-depth-axis-invariant.md)
 first; this builds directly on both.
 
+Spatial view retains cardinal face storage but projects finite faces and their
+depth through a full camera quaternion. Its elevation/roll contract is defined
+in [orthographic view and cardinal storage frames](iso-depth-axis-invariant.md).
+
 ## Store frame — the nearest-cardinal view, anchored on the view center
 
 Every producer and consumer of the per-axis stores agrees on one mapping
@@ -937,9 +941,9 @@ deformed geometry.
   scalar, computed identically regardless of which axis-canvas it lands on. It
   does **not** vary per canvas. That is what makes the framebuffer composite
   valid: overlay the three canvases, take the nearest distance per framebuffer
-  pixel, and the correct face wins. Holds for **yaw only** — Z-yaw preserves
-  the iso-depth axis so the metric stays comparable; pitch/roll would break it
-  (see iso-depth-axis-invariant.md).
+  pixel, and the correct face wins. The stored scalar must be decoded in its
+  storage frame before computing display depth. Spatial view uses the rotated
+  depth axis described in [the projection contract](iso-depth-axis-invariant.md).
 
 ## Pipeline
 

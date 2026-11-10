@@ -254,6 +254,10 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
         frameData.cardinalLightingEnabled == 2 &&
         glitchPresentationOverrides.read(sampleCoord).r >= 0.5f;
 #endif
+#if IR_SHAPE_RECEIVER
+    bool spatialShapeDepthValid = false;
+    float spatialShapeDepth = 0.0;
+#endif
 #if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
     if (color.a >= 0.1) {
         float3 position = float3(0.0), normal = float3(0.0);
@@ -262,6 +266,8 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
                                      receiverFrame, receiverShapes, receiverOwners, receiverTiles,
                                      true,
                                      position, normal)) {
+            spatialShapeDepthValid = spatialViewEnabled(receiverFrame.cameraViewRotation);
+            spatialShapeDepth = shapeCanvasIsoDepth(position, receiverFrame);
             float visibility = sunFrameData.shadowsEnabled == 0 ? 1.0 :
                 worldShapeSurfaceSunShadowFactor(position, normal, shapeCanvasIsoDepth(position, receiverFrame),
                     frameData.casterViewToWorld,
@@ -273,17 +279,22 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 
 
 #if IR_SHAPE_LIGHTING
-    if (!glitchPresentationOverride && color.a >= 0.1 && lighting.lightingEnabled != 0) {
+    if (color.a >= 0.1 && ((!glitchPresentationOverride && lighting.lightingEnabled != 0) ||
+        spatialViewEnabled(receiverFrame.cameraViewRotation))) {
         float3 position = float3(0.0), normal = float3(0.0);
         if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x),
                                      shapeFragmentQueryPixel(originRaw, int2(textureSize)),
                                      receiverFrame, receiverShapes, receiverOwners, receiverTiles,
                                      true,
-                                     position, normal))
-            color.rgb = shapeSurfaceLighting(sampleCoord, int(textureSize.x), position, normal,
+                                     position, normal)) {
+            spatialShapeDepthValid = spatialViewEnabled(receiverFrame.cameraViewRotation);
+            spatialShapeDepth = shapeCanvasIsoDepth(position, receiverFrame);
+            if (!glitchPresentationOverride && lighting.lightingEnabled != 0)
+                color.rgb = shapeSurfaceLighting(sampleCoord, int(textureSize.x), position, normal,
                 shapeCanvasIsoDepth(position, receiverFrame), frameData.casterViewToWorld, color.rgb, receiverShapes, receiverOwners, receiverTiles,
                 lighting, volumeParams, sunFrameData, sunDepthBuf, lights,
                 paletteLUT, surfaceAO, lightVolume, lightVolumeId);
+        }
     }
 #endif
 
@@ -327,6 +338,10 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     // scatterFbResolution.w != 0: the per-axis scatter co-renders this frame.
     int base = roundHalfUp(float(compositeCanvasDistance(
         rawDist, frameData.scatterFbResolution.w != 0.0f)) * depthScale);
+#if IR_SHAPE_RECEIVER
+    // Finite GRID faces and analytic boxes must compare the same fragment ray.
+    if (spatialShapeDepthValid) base = roundHalfUp(spatialShapeDepth * 8.0 * depthScale);
+#endif
     // Priority and color/depth select the same stored cell.
     int tier = frameData.depthPriorityMode;
     if (frameData.anyPerTrixelPriority != 0) {

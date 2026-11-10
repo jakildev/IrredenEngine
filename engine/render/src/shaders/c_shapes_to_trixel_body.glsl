@@ -49,6 +49,7 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
     // Identity at residualYaw==0.
     uniform vec4 faceDeform[3];
+    uniform vec4 cameraViewRotation;
 };
 
 layout(std430, binding = 20) readonly buffer ShapeBuffer {
@@ -604,6 +605,38 @@ int generalDepthSearchEntityRot(ivec2 isoRel, uint shapeType, vec4 params,
     return kInvalidDepth;
 }
 
+int spatialSurfaceDepth(ivec2 isoRel, uint shapeType, vec4 params, bool hollow,
+                               float dExtent, vec4 viewRotation, vec4 entityRotation) {
+    vec3 origin = rotateByInverseQuat(rotateByQuat(isoToLocal3D(isoRel, 0.0), viewRotation), entityRotation);
+    vec3 direction = rotateByInverseQuat(rotateByQuat(normalize(vec3(1.0)), viewRotation), entityRotation);
+    float nearDepth = -dExtent / sqrt(3.0);
+    float farDepth = dExtent / sqrt(3.0);
+    if (!hollow && shapeType == SHAPE_BOX) {
+        vec3 extent = params.xyz * 0.5 + vec3(0.5);
+        for (int axis = 0; axis < 3; ++axis)
+            if (!sdfRaySlab(origin[axis], direction[axis], -extent[axis], extent[axis], nearDepth, farDepth))
+                return kInvalidDepth;
+        int depth = int(ceil(nearDepth * sqrt(3.0) - kSdfBiasEpsilon));
+        return float(depth) <= farDepth * sqrt(3.0) + kSdfBiasEpsilon ? depth : kInvalidDepth;
+    }
+    bool analytic = shapeType == SHAPE_SPHERE || shapeType == SHAPE_CYLINDER ||
+                    shapeType == SHAPE_CONE || shapeType == SHAPE_TORUS;
+    if (!hollow && analytic) {
+        float entry;
+        if (!sdfRayHit(shapeType, params, origin, direction, 0.5, nearDepth, farDepth, entry))
+            return kInvalidDepth;
+        return int(ceil(entry * sqrt(3.0) - kSdfBiasEpsilon));
+    }
+    for (int depth = int(floor(-dExtent)); depth <= int(ceil(dExtent)); ++depth) {
+        vec3 local = rotateByInverseQuat(rotateByQuat(isoToLocal3D(isoRel, float(depth)),
+                                                    viewRotation), entityRotation);
+        float distance = evaluateSDF(local, shapeType, params);
+        if (distance <= 0.5 + kSdfBiasEpsilon &&
+            (!hollow || distance >= -0.5 - kSdfBiasEpsilon)) return depth;
+    }
+    return kInvalidDepth;
+}
+
 // Snap-mode lattice walk. At sub=1 the analytical SDF entry point isn't
 // on the integer lattice, which can miss the true front-most voxel; so we
 // walk the (isoX + isoY) even sublattice in steps of 3 along the iso
@@ -761,7 +794,7 @@ void main() {
     vec3 worldPos = shape.worldPosition.xyz;
     // viewPos = R_z(-yaw) · worldPos. Camera yaws by +yaw, so world coords
     // appear rotated by -yaw from the view's POV.
-    vec3 viewPos = yawZero
+    vec3 viewPos = spatialViewEnabled(cameraViewRotation) ? rotateByInverseQuat(worldPos, cameraViewRotation) : yawZero
         ? worldPos
         : vec3( yawC * worldPos.x + yawS * worldPos.y,
                -yawS * worldPos.x + yawC * worldPos.y,
@@ -823,7 +856,11 @@ void main() {
     // (and symmetrically for Y).  Use this expanded half-extent for the iso
     // footprint check and the generalDepthSearch range so the full rotated
     // shape stays inside the search window.
-    vec3 boundingHalfView = yawZero
+    vec3 boundingHalfView = spatialViewEnabled(cameraViewRotation)
+        ? abs(rotateByInverseQuat(vec3(boundingHalf.x, 0, 0), cameraViewRotation)) +
+          abs(rotateByInverseQuat(vec3(0, boundingHalf.y, 0), cameraViewRotation)) +
+          abs(rotateByInverseQuat(vec3(0, 0, boundingHalf.z), cameraViewRotation))
+        : yawZero
         ? boundingHalf
         : yawGrownIsoHalfExtent(boundingHalf, yawC, yawS);
     ivec3 extentScaled = ivec3(ceil(boundingHalfView)) + ivec3(1);
@@ -833,7 +870,8 @@ void main() {
     // pos3DtoPos2DIsoYawed) reposition so SDF and voxels share the same screen
     // placement). Cardinal path keeps the integer cardinal-snap origin.
     ivec2 originIsoScaled = (smoothYaw && !latticeWalk)
-        ? roundHalfUp(pos3DtoPos2DIsoYawed(worldPos * float(sub), visualYaw))
+        ? roundHalfUp(spatialViewEnabled(cameraViewRotation) ? spatialViewIso(worldPos * float(sub), cameraViewRotation)
+            : pos3DtoPos2DIsoYawed(worldPos * float(sub), visualYaw))
         : pos3DtoPos2DIso(originScaled);
     ivec2 isoExtentScaled = ivec2(
         extentScaled.x + extentScaled.y,
@@ -865,7 +903,10 @@ void main() {
     // the analytical path.
     int surfaceD;
     bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
-    if (hasEntityRotation && shape.shapeType != SHAPE_SPHERE) {
+    if (spatialViewEnabled(cameraViewRotation)) {
+        surfaceD = spatialSurfaceDepth(isoPixelRel, shape.shapeType, paramsScaled, hollow,
+                                       dExtent, cameraViewRotation, shape.rotation);
+    } else if (hasEntityRotation && shape.shapeType != SHAPE_SPHERE) {
         surfaceD = generalDepthSearchEntityRot(
             isoPixelRel, shape.shapeType, paramsScaled, hollow, dExtent,
             yawC, yawS, shape.rotation);
@@ -890,11 +931,7 @@ void main() {
 
 #if IR_SHAPE_PASS == 2
     const vec3 fogViewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
-    const vec3 fogWorldOffset = vec3(
-        yawC * fogViewOffset.x - yawS * fogViewOffset.y,
-        yawS * fogViewOffset.x + yawC * fogViewOffset.y,
-        fogViewOffset.z
-    );
+    const vec3 fogWorldOffset = viewToWorldVector(fogViewOffset, cameraViewRotation, yawC, yawS);
     const vec3 fogWorldSample = worldPos + fogWorldOffset / float(sub);
     if (!((shape.flags & FLAG_FOG_BODY) != 0u) && 1 != 0 && fogShadowVisionCircleCount > 0 &&
         !fogFieldCastsSunShadow(fogWorldSample, false, 1,
@@ -910,10 +947,8 @@ void main() {
     if (smoothYaw && !latticeWalk) {
         vec3 viewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
         // worldOffset = R_z(+visualYaw) * viewOffset (view -> world).
-        vec3 worldOffset = vec3(yawC * viewOffset.x - yawS * viewOffset.y,
-                                yawS * viewOffset.x + yawC * viewOffset.y,
-                                viewOffset.z);
-        if (shape.shapeType == SHAPE_BOX && !hollow && !hasEntityRotation) {
+        vec3 worldOffset = viewToWorldVector(viewOffset, cameraViewRotation, yawC, yawS);
+        if (shape.shapeType == SHAPE_BOX && !hollow && !hasEntityRotation && !spatialViewEnabled(cameraViewRotation)) {
             boxFaceSlot = shapeBoxFaceSlot(isoPixelRel, paramsScaled.xyz * 0.5,
                                            yawC, yawS, cardinalIndex);
         }
@@ -933,7 +968,8 @@ void main() {
         // scatter (v_peraxis_scatter) scales to the same subdivided magnitude, so
         // SDF + voxels co-sort at every zoom — a base-resolution scatter key
         // against this ×sub depth lets the SDF floor out-scale and clip the voxels.
-        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw));
+        baseDepth = roundHalfUp(spatialViewEnabled(cameraViewRotation) ? spatialViewDepth(worldSurface, cameraViewRotation)
+            : yawedIsoDistance(worldSurface, visualYaw));
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = cardinalShapeStoredDepth(

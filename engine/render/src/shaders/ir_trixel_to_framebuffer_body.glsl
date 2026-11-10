@@ -203,12 +203,18 @@ void main() {
         cardinalLightingEnabled == 2 &&
         texelFetch(glitchPresentationOverrides, sampleCoord, 0).r >= 0.5;
 #endif
+#if IR_SHAPE_RECEIVER
+    bool spatialShapeDepthValid = false;
+    float spatialShapeDepth = 0.0;
+#endif
 #if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
     if (color.a >= 0.1) {
         vec3 position = vec3(0.0), normal = vec3(0.0);
         if (selectedShapeBoxReceiver(sampleCoord, textureSize.x,
                                      shapeFragmentQueryPixel(originRaw, textureSize), true,
                                      position, normal)) {
+            spatialShapeDepthValid = spatialViewEnabled(receiverFrame.cameraViewRotation);
+            spatialShapeDepth = shapeCanvasIsoDepth(position, receiverFrame);
             float visibility = shadowsEnabled == 0 ? 1.0 :
                 worldShapeSurfaceSunShadowFactor(position, normal, shapeCanvasIsoDepth(position, receiverFrame),
                     casterViewToWorld);
@@ -219,13 +225,18 @@ void main() {
 
 
 #if IR_SHAPE_LIGHTING
-    if (!glitchPresentationOverride && color.a >= 0.1 && lightingEnabled != 0) {
+    if (color.a >= 0.1 && ((!glitchPresentationOverride && lightingEnabled != 0) ||
+        spatialViewEnabled(receiverFrame.cameraViewRotation))) {
         vec3 position = vec3(0.0), normal = vec3(0.0);
         if (selectedShapeBoxReceiver(sampleCoord, textureSize.x,
                                      shapeFragmentQueryPixel(originRaw, textureSize), true,
-                                     position, normal))
-            color.rgb = shapeSurfaceLighting(sampleCoord, textureSize.x, position, normal,
+                                     position, normal)) {
+            spatialShapeDepthValid = spatialViewEnabled(receiverFrame.cameraViewRotation);
+            spatialShapeDepth = shapeCanvasIsoDepth(position, receiverFrame);
+            if (!glitchPresentationOverride && lightingEnabled != 0)
+                color.rgb = shapeSurfaceLighting(sampleCoord, textureSize.x, position, normal,
                 shapeCanvasIsoDepth(position, receiverFrame), casterViewToWorld, color.rgb);
+        }
     }
 #endif
 
@@ -270,6 +281,10 @@ void main() {
     // scatterFbResolution.w != 0: the per-axis scatter co-renders this frame.
     int base = roundHalfUp(
         float(compositeCanvasDistance(rawDist, scatterFbResolution.w != 0.0)) * depthScale);
+#if IR_SHAPE_RECEIVER
+    // Finite GRID faces and analytic boxes must compare the same fragment ray.
+    if (spatialShapeDepthValid) base = roundHalfUp(spatialShapeDepth * 8.0 * depthScale);
+#endif
     // Match voxel-to-trixel write: texture coord = trixelOriginOffsetZ1 + canvasOffset + worldIndex
     // canvasOffset is already scaled by subdivisions in smooth mode (CPU side)
     // mouseHoveredTriangleIndex is base space; scale to subdivided space for comparison

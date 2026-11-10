@@ -88,6 +88,7 @@ inline void buildVoxelFrameData(
     frameData.detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
     frameData.detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     frameData.perAxisStoreFrame_ = ivec4(0);
+    frameData.cameraViewRotation_ = vec4(0.0f);
 
     // A non-zero `canvasRotation` marks a detached entity canvas (the main
     // world canvas keeps the all-zero `C_CanvasLocalRotation::kSentinelNoRotation`
@@ -126,8 +127,8 @@ inline void buildVoxelFrameData(
         frameData.residualYaw_ = 0.0f;
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(0.0f);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
-    // Nonzero marks resampled occupancy; 1 additionally requests legacy
-    // dilation, while 2 preserves the local triangle lattice footprint.
+        // Nonzero marks resampled occupancy; 1 additionally requests legacy
+        // dilation, while 2 preserves the local triangle lattice footprint.
         frameData.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
             static_cast<int>(visibleFaces[1]),
@@ -192,6 +193,26 @@ inline void buildVoxelFrameData(
                 canvasRotation.worldPlaced_ ? 1.0f : 0.0f
             );
         }
+        return;
+    }
+
+    if (IRRender::isSpatialViewEnabled()) {
+        frameData.cameraViewRotation_ = IRRender::getViewRotation();
+        frameData.visualYaw_ = 0.0f;
+        frameData.rasterYaw_ = 0.0f;
+        frameData.residualYaw_ = 0.0f;
+        const auto faces =
+            IRMath::visibleTriplet(IRMath::quatInverse(frameData.cameraViewRotation_));
+        frameData.visibleFaceIds_ = ivec4(
+            static_cast<int>(faces[0]),
+            static_cast<int>(faces[1]),
+            static_cast<int>(faces[2]),
+            0
+        );
+        frameData.perAxisStoreFrame_ =
+            IRPrefab::PerAxisCanvas::storeFrame(IRPrefab::PerAxisCanvas::storeSize());
+        for (auto &deform : frameData.faceDeform_)
+            deform = vec4(1, 0, 0, 1);
         return;
     }
 

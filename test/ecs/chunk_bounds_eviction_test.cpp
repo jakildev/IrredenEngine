@@ -134,6 +134,91 @@ TEST_F(ChunkBoundsEvictionTest, ContinuousYawViewportHasNoDepthCutoff) {
     }
 }
 
+TEST_F(ChunkBoundsEvictionTest, SpatialViewportCullsOffscreenChunksAtEveryDepth) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    const IsoBounds2D viewport{vec2(-4), vec2(4)};
+    for (float azimuth : {0.0f, 0.23f, 0.79f, 1.17f, 3.26f}) {
+        for (float elevation : {-1.4f, -0.37f, 0.0f, 0.23f, 0.79f, 1.4f}) {
+            for (float roll : {0.0f, 0.31f, 1.57f}) {
+                const auto rotation = IRMath::uprightOrbitRotation(azimuth, elevation, roll);
+                const auto view = IRMath::orthographicViewBasis(rotation);
+                for (float depth : {-10000.0f, 0.0f, 10000.0f}) {
+                    SCOPED_TRACE(
+                        ::testing::Message() << "azimuth=" << azimuth << " elevation=" << elevation
+                                             << " roll=" << roll << " depth=" << depth
+                    );
+                    const vec3 onRay = IRMath::unprojectOrthographic(vec2(0), depth, view);
+                    const vec3 offRay = IRMath::unprojectOrthographic(vec2(40, 0), depth, view);
+                    for (int i = 0; i < kChunk; ++i) {
+                        seedSlot(pool, i, onRay + vec3(0.5f), true);
+                        seedSlot(pool, kChunk + i, offRay + vec3(0.5f), true);
+                    }
+                    pool.markCullBoundsDirty(0, 2 * kChunk);
+                    const auto &mask = IRSystem::buildChunkVisibilityMask(
+                        pool,
+                        viewport,
+                        CardinalIndex::k0,
+                        false,
+                        0.0f,
+                        &view
+                    );
+                    ASSERT_EQ(mask.size(), 2u);
+                    EXPECT_EQ(mask[0], 1u);
+                    EXPECT_EQ(mask[1], 0u);
+                }
+            }
+        }
+    }
+}
+
+TEST_F(ChunkBoundsEvictionTest, SpatialBoundsContainCornersAndReuseWorldCache) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    const vec3 lo(-11, -5, -9);
+    const vec3 hi(7, 13, 3);
+    for (int corner = 0; corner < 8; ++corner) {
+        seedSlot(
+            pool,
+            corner,
+            vec3(corner & 1 ? hi.x : lo.x, corner & 2 ? hi.y : lo.y, corner & 4 ? hi.z : lo.z),
+            true
+        );
+    }
+    pool.markCullBoundsDirty(0, kChunk);
+    for (float elevation : {-1.2f, -0.27f, 0.0f, 0.19f, 0.81f, 1.3f}) {
+        const auto view =
+            IRMath::orthographicViewBasis(IRMath::uprightOrbitRotation(0.37f, elevation, 0.29f));
+        pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f, &view);
+        const auto counters = pool.consumeCullRebuildCounters();
+        EXPECT_EQ(counters.worldChunks_, elevation == -1.2f ? 2u : 0u);
+        EXPECT_EQ(counters.worldSlots_, elevation == -1.2f ? 2u * kChunk : 0u);
+        const auto &bounds = pool.getChunkBounds()[0];
+        for (int corner = 0; corner < 8; ++corner) {
+            const vec3 point(
+                corner & 1 ? hi.x : lo.x,
+                corner & 2 ? hi.y : lo.y,
+                corner & 4 ? hi.z : lo.z
+            );
+            const vec2 projected = IRMath::projectOrthographic(point - vec3(0.5f), view);
+            EXPECT_LE(bounds.isoMin_.x, projected.x + 0.0001f);
+            EXPECT_LE(bounds.isoMin_.y, projected.y + 0.0001f);
+            EXPECT_GE(bounds.isoMax_.x, projected.x - 0.0001f);
+            EXPECT_GE(bounds.isoMax_.y, projected.y - 0.0001f);
+        }
+    }
+    const auto view =
+        IRMath::orthographicViewBasis(IRMath::uprightOrbitRotation(1.17f, -0.37f, 0.23f));
+    seedSlot(pool, 0, vec3(999, -22, -3), true);
+    pool.markCullBoundsDirty(0, 1);
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f, &view);
+    const auto counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.worldChunks_, 1u);
+    EXPECT_EQ(counters.worldSlots_, static_cast<std::size_t>(kChunk));
+
+    pool.rebuildChunkBounds(CardinalIndex::k90);
+    expectBoundsMatchOracle(pool, 0, CardinalIndex::k90);
+    expectBoundsMatchOracle(pool, 1, CardinalIndex::k90);
+}
+
 TEST_F(ChunkBoundsEvictionTest, StaticChunkReentersViewportAcrossFullYawTurn) {
     C_VoxelPool pool = makeTwoChunkPool(vec3(80.5f, 0.5f, 0.5f));
     const vec2 target = IRMath::pos3DtoPos2DIsoYawed(vec3(80, 0, 0), IRMath::kHalfPi);

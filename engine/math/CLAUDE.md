@@ -56,12 +56,12 @@ Helpers:
 **Never inline these equations in system code.** Always call the helpers
 so there's one place to fix a coordinate-system bug.
 
-The (1,1,1) iso-depth axis is the load-bearing geometry behind the
-closed-form `isoPixelToPos3D` inverse and every "sum of components =
-depth" shortcut in picking / hitbox / gizmo / SDF cull. World-camera
-rotation around any axis other than Z silently breaks those shortcuts;
-see [`docs/design/iso-depth-axis-invariant.md`](../../docs/design/iso-depth-axis-invariant.md)
-for the full consumer map and the cost of widening to SO(3).
+The (1,1,1) depth axis belongs to the unrotated projection and cardinal
+storage frames. Spatial view rotates the orthogonal projection rows and
+uses their dot products for display depth and the exact inverse. Never
+apply a storage-frame sum to a displayed ray; the
+[projection contract](../../docs/design/iso-depth-axis-invariant.md)
+defines both frames and their conversions.
 
 ## Rotation primitives (Z-yaw)
 

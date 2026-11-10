@@ -330,7 +330,10 @@ kernel void IR_COMPACT_KERNEL_NAME(
                 // same continuous yaw the per-axis scatter raster uses (cardinal
                 // snap drops off-center voxels), widened by the sqrt2 face
                 // footprint.
-                if (frameData.residualYaw != 0.0f) {
+                if (spatialViewEnabled(frameData.cameraViewRotation)) {
+                    isoPos = roundHalfUp(spatialViewIso(float3(voxelPosRaw) - kVoxelRasterCellAnchor, frameData.cameraViewRotation));
+                    cullMargin = 3;
+                } else if (frameData.residualYaw != 0.0f) {
                     // Cell-anchor projection so the cull tests the
                     // same screen position the scatter renders at.
                     isoPos = roundHalfUp(
