@@ -70,14 +70,7 @@ vec2 getEffectiveCameraIso() {
         return cameraIso;
     }
     if (isSpatialViewEnabled()) {
-        const vec3 focus = getRenderManager().hasRotationPivotFocus()
-                               ? getRenderManager().getRotationPivotFocus()
-                               : getRenderManager().getDefaultRotationPivotFocus();
-        return IRMath::orthographicPivotOffset(
-            cameraIso,
-            focus,
-            IRMath::orthographicViewBasis(getViewRotation())
-        );
+        return getRenderManager().getSpatialEffectiveCameraIso();
     }
     // Both CAMERA_CENTER branches pivot about a camera that carries the
     // default pivot's view offset — the residue of re-anchoring the default
@@ -585,6 +578,10 @@ void setRotationPivotFocus(vec3 focusWorld) {
 
 void clearRotationPivotFocus() {
     getRenderManager().clearRotationPivotFocus();
+}
+
+void reseedSpatialDefaultRotationPivotFocus() {
+    getRenderManager().reseedSpatialDefaultRotationPivotFocus();
 }
 
 bool hasRotationPivotFocus() {
