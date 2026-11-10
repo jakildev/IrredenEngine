@@ -1,6 +1,7 @@
 #ifndef DOCUMENT_PANEL_H
 #define DOCUMENT_PANEL_H
 
+#include "editor_widget_geometry.hpp"
 #include "document_lifecycle.hpp"
 
 #include <irreden/render/trixel_text.hpp>
@@ -139,20 +140,17 @@ class DocumentPanel {
         return DocumentPanelAction::NONE;
     }
 
+    const auto &commandButtons() const {
+        return m_commands;
+    }
+
     const std::vector<IREntity::EntityId> &widgets() const {
         return m_widgets;
     }
 
     bool containsCursor(IRMath::vec2 cursor) const {
-        return !m_widgets.empty() &&
-               ((IRPrefab::Widget::isVisible(m_widgets.front()) &&
-                 cursor.x >= kDocumentPanelPos.x && cursor.y >= kDocumentPanelPos.y &&
-                 cursor.x < kDocumentPanelPos.x + kDocumentPanelSize.x &&
-                 cursor.y < kDocumentPanelPos.y + kDocumentPanelSize.y) ||
-                (IRPrefab::Widget::isVisible(m_modal) && cursor.x >= kDocumentModalPos.x &&
-                 cursor.y >= kDocumentModalPos.y &&
-                 cursor.x < kDocumentModalPos.x + kDocumentModalSize.x &&
-                 cursor.y < kDocumentModalPos.y + kDocumentModalSize.y));
+        return !m_widgets.empty() && (widgetContainsCursor(m_widgets.front(), cursor) ||
+                                      widgetContainsCursor(m_modal, cursor));
     }
 
   private:

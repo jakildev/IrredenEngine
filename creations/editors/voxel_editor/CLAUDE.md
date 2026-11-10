@@ -34,7 +34,8 @@ Alt+left-drag and Ctrl+middle-drag resolve an editable surface once at press,
 falling back to the current authoring floor, and show a gold anchor while held.
 Release hides the marker and retains the focus; reanchoring preserves the view.
 `Camera::setCursorPivotOptions` supplies the editor resolver to the standard
-controls; the custom right-drag uses the same options.
+controls; the custom right-drag uses the same options and starts only when no
+widget owns the pointer and document interaction is unblocked.
 Horizontal two-finger scroll orbits the center of the active construction plane.
 Option/Alt+left-drag anchors on the surface or floor beneath the pointer. Vertical
 scroll changes zoom continuously by `--scroll-zoom-rate` octaves per unit (default
@@ -76,6 +77,15 @@ readback on every editable texel at yaw zero. It does not validate continuous
 orbit or cursor-to-window mapping. `screen_alignment` chooses raw mouse points
 from displayed albedo/normal pixels at seven angles, including 30° and 67°;
 `scripts/editor-screen-alignment.py` checks its PNGs for coverage and occlusion.
+
+## Workspace controls
+
+`workspace_controls` checks shortcuts, hints, live panel hit geometry, camera ownership, snapping and reset at 30°/67°. Run `workspace_restore` afterward to prove persistence in a fresh process. Both use `save_files/gui_layout_workflow.cfg`, separate from personal preferences. The neutral module session `test_dock_rails`, run with an isolated `IR_EDITOR_LAYOUT_PATH`, audits scrolled controls and requires the camera zoom to remain fixed.
+
+- Backtick and F1 toggle the keyboard help menu. Help owns pointer and keyboard input until closed with either key or Escape. Focused text fields consume backtick.
+- Hold Option/Alt to show bordered shortcut keycaps. Labels resolve from registered command bindings. The primary tools use 1 Brush, 2 Erase, 3 Recolor, 4 Bucket, 5 Color Picker, 6 Shapes and 7 Line. Controls without a shortcut remain unlabeled. Runtime user keymap assignment belongs to the shared command Actions system.
+- Drag a panel title to float it or snap it into a side rail. Reset Layout restores default slots. Ordinary launches persist placement in `save_files/editor_layout.cfg` beside the executable, with `IR_EDITOR_LAYOUT_PATH` available for isolated preferences and opt-in layout validation in scripted sessions. Document files do not contain workspace layout.
+- Panel hit testing and camera-start ownership use live widget positions. A moved panel blocks editing, orbit and zoom within its visible bounds. FOCUS accounts for side rails and floating panels.
 
 ## Authoring sessions
 

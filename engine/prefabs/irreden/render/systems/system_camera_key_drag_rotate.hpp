@@ -20,6 +20,7 @@ namespace IRSystem {
 template <> struct System<CAMERA_KEY_DRAG_ROTATE> : IRPrefab::CursorPivot::OrbitAnchor {
     static constexpr float kPixelsPerRevolution = 1280.0f;
     bool dragging_ = false;
+    bool (*canStartGesture_)() = nullptr;
     bool latchByDefault_ = true;
     IRPrefab::CursorPivot::FocusOptions pivotOptions_;
     vec2 dragStartMouse_ = vec2(0.0f);
@@ -36,7 +37,7 @@ template <> struct System<CAMERA_KEY_DRAG_ROTATE> : IRPrefab::CursorPivot::Orbit
             IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED);
         const bool modifier = IRPrefab::Camera::gestureInput().alt_;
         const bool shift = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
-        if (pressed && modifier && !dragging_) {
+        if (pressed && modifier && !dragging_ && (!canStartGesture_ || canStartGesture_())) {
             dragging_ = true;
             dragStartMouse_ = IRInput::getMousePositionScreen();
             dragStartYaw_ = IRPrefab::Camera::getYaw();
