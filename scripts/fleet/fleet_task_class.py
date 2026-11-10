@@ -747,6 +747,8 @@ def _declined(kind, record, role=None, extra=None, env=None):
                                      declined_runtime=declined_runtime)
     except fleet_runtime.DeclinedRuntimeWithheld:
         return True
+    except ValueError:
+        return False
     return False
 
 

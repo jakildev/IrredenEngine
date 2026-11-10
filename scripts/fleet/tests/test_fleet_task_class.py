@@ -785,6 +785,10 @@ class DispatchTargets(HostSeamCase):
                     "task", task, "worker", env=env))
                 self.assertTrue(fleet_task_class._declined(
                     "task", task, "worker", env={**env, "FLEET_RUNTIMES": "codex"}))
+                task["labels"] = ["fleet:runtime-claude", "fleet:runtime-codex"]
+                self.assertFalse(fleet_task_class._declined(
+                    "task", task, "worker", env=env))
+                task.pop("labels")
                 path.write_text(f"{task['updatedAt']}\nRESULT=NO-DISPLAY\n"
                                 "worker\nruntime=codex\n")
                 self.assertTrue(fleet_task_class._declined(
