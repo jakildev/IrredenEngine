@@ -1,0 +1,26 @@
+Native Metal captures; original, unmodified PNGs (2560x1440).
+Game resolution: 1280x720. Each selected frame is sweep_yaw_1 (second of three).
+Actual zoom=(1.5,1.5), effectiveIso=(0,0), subdivisions=2, cull=0.
+All angles below are radians; azimuth0.8464847 is approximately48.5 degrees.
+Camera orientation is uprightOrbitRotation(azimuth, elevation, roll), view-to-world.
+CaptureCamera yaw is the quaternion's legacy Z-yaw extraction, not orbit azimuth.
+The comparison fixture uses world priority and is raised above the SDF floor.
+Captures contain the source-face stride fix and opt-in spatial renderer.
+
+mixed-above-azimuth48_5-zoom1_5.png
+Source screenshot_000033.png; CaptureCamera yaw=0.95277.
+Azimuth=0.8464847; elevation=0.5; roll=0.2.
+fleet-run IRCanvasStress --only compare,maingrid,floor --no-spin --no-auto-rotate --pivot-origin --spatial-view --elevation .5 --roll .2 --sweep-yaw .5235988 1.1693706 3 --zoom 1.5 --auto-screenshot 10
+
+mixed-below-azimuth48_5-zoom1_5.png
+Source screenshot_000030.png; CaptureCamera yaw=0.87117696.
+Azimuth=0.8464847; elevation=-0.4; roll=0.2.
+The SDF floor hides the world-priority cubes; orange extends outside its silhouette.
+Text labels are overlay annotations and remain visible through the floor.
+fleet-run IRCanvasStress --only compare,maingrid,floor --no-spin --no-auto-rotate --pivot-origin --spatial-view --elevation -.4 --roll .2 --sweep-yaw .5235988 1.1693706 3 --zoom 1.5 --auto-screenshot 10
+
+rigid-rolled-azimuth48_5-zoom1_5.png
+Source screenshot_000036.png; CaptureCamera yaw=0.95277.
+Azimuth=0.8464847; elevation=0.5; roll=0.2.
+SOURCE_FACES: filled cyan cube, authored orange frame and purple single voxel.
+fleet-run IRCanvasStress --only rigid,floor --no-spin --no-auto-rotate --pivot-origin --spatial-view --elevation .5 --roll .2 --sweep-yaw .5235988 1.1693706 3 --zoom 1.5 --auto-screenshot 10
