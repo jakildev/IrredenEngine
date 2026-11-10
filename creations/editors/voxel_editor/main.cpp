@@ -173,6 +173,7 @@
 
 // Geometry of the fill tool's drag preview.
 #include "fill_ghost.hpp"
+#include "navigation_preferences.hpp"
 #include "construction_grid.hpp"
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include "hierarchy_panel.hpp"
@@ -268,6 +269,7 @@ struct WorkspaceMember {
 };
 
 struct EditorState {
+    NavigationPreferences navigation_;
     float homeZoom_ = 4.0f;
     float scrollZoomRate_ = 0.125f;
     int profileFrames_ = 0;
@@ -283,6 +285,13 @@ struct EditorState {
     AuthoredVoxelFingerprint cameraGestureBaseline_;
     AuthoredVoxelFingerprint cameraGestureHeld_;
     AuthoredVoxelFingerprint cameraGestureExpected_;
+    int spatialShot_ = -1;
+    AuthoredVoxelFingerprint spatialFingerprint_;
+    vec3 spatialAnchor_{0};
+    vec2 spatialAnchorWindow_{0};
+    vec2 spatialAnchorRasterCorrection_{0};
+    int spatialPrepareFrames_ = 0;
+    vec2 spatialCamera_{0};
     bool cameraGestureHistory_ = false;
     IREntity::EntityId regionForeign_ = IREntity::kNullEntity;
     AuthoredVoxelFingerprint regionForeignFingerprint_;
@@ -548,6 +557,12 @@ struct RotateParams {
     IRTime::TimePoint lastScroll_{};
     float startMouseX_ = 0.0f;
     float startYaw_ = 0.0f;
+    vec2 startMouse_{0};
+    IRMath::OrbitAngles startOrbit_{};
+    IRInput::KeyMouseButtons dragButton_ = IRInput::kMouseButtonRight;
+    bool rolling_ = false;
+    std::array<bool, 2> pointerStream_{};
+    std::array<bool, 2> pointerOwned_{};
 };
 
 struct FillToolState {
@@ -563,7 +578,7 @@ struct FillToolState {
     bool dragInverted_ = false;
     bool floorPlane_ = false;
     bool verticalLine_ = false;
-    float startPointerY_ = 0.0f;
+    vec2 startPointer_{0};
     int planeAxis_ = 2;
     int planeSlice_ = 0;
     float planeOffset_ = 0.0f;
@@ -1092,6 +1107,8 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
         prepareScreenAlignment(shotIndex);
     if (g_sessionId == Session::Id::SHADOW_ROTATION)
         prepareShadowRotation(shotIndex);
+    if (g_sessionId == Session::Id::SPATIAL_NAVIGATION)
+        Session::prepareSpatialNavigation(shotIndex);
     if (shotIndex != g_sessionAssertShotIndex) {
         g_sessionAssertShotIndex = shotIndex;
         g_sessionAssertFrame = 0;
@@ -1118,6 +1135,12 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
                     ? Session::resolveWorkspaceAim(guiPoint)
                     : guiPoint
             );
+    }
+    if (g_sessionId == Session::Id::SPATIAL_NAVIGATION)
+        Session::resolveSpatialNavigationDragAims(segment, shotIndex);
+    for (auto &event : segment.events_) {
+        if (event.type_ == IRVideo::GuiInputEvent::Type::POINTER_GESTURE)
+            event.pointerGesture_.windowPoint_ = IRMath::dvec2(event.screenPx_);
     }
     if (segment.sceneUiPressCheck_ != nullptr) {
         for (Session::SceneUiPress &press : segment.sceneUiPressCheck_->presses_) {
@@ -2262,10 +2285,15 @@ ivec3 voxelSetCellOrigin(const C_VoxelSetNew &set, const C_WorldTransform &world
     return IRMath::roundVec3HalfUp(worldTransform.translation_ + voxelSetLocalOrigin(set));
 }
 
-int verticalVoxelDragDelta(vec3 worldStart, float pointerDeltaY) {
-    const float step = IRRender::worldPos3DToWindowPointsExact(worldStart + vec3(0, 0, 1)).y -
-                       IRRender::worldPos3DToWindowPointsExact(worldStart).y;
-    return IRMath::abs(step) > 0.001f ? IRMath::roundHalfUp(pointerDeltaY / step) : 0;
+int verticalVoxelDragDelta(vec3 worldStart, vec2 pointerDelta) {
+    const vec2 step = IRRender::worldPos3DToWindowPointsExact(worldStart + vec3(0, 0, 1)) -
+                      IRRender::worldPos3DToWindowPointsExact(worldStart);
+    const float lengthSquared = IRMath::dot(step, step);
+    if (lengthSquared < 0.25f)
+        return IRMath::roundHalfUp(
+            pointerDelta.y / IRMath::max(1.0f, IRRender::getCameraZoom().y * 2.0f)
+        );
+    return IRMath::roundHalfUp(IRMath::dot(pointerDelta, step) / lengthSquared);
 }
 
 ConstructionPlane editorStampPlane() {
@@ -2864,8 +2892,7 @@ ivec3 clickOrbitSourceCell() {
 }
 
 vec2 clickOrbitAnchorIso(vec3 focus) {
-    return IRMath::pos3DtoPos2DIsoYawed(focus, IRPrefab::Camera::getYaw()) +
-           IRRender::getEffectiveCameraIso();
+    return IRRender::projectWorldToView(focus) + IRRender::getEffectiveCameraIso();
 }
 
 void prepareClickOrbit(int shotIndex) {
@@ -3031,7 +3058,7 @@ void drawAuthoringPrimitives() {
             vec3(g_fillTool.ghostBox_.params_) * 0.5f,
             vec4(vec3(fill), 0.35f),
             vec4(0.9f, 0.95f, 1.0f, 0.8f),
-            IRPrefab::Camera::getYaw(),
+            IRPrefab::Camera::getViewRotation(),
             triangles,
             lines
         );
@@ -3039,14 +3066,14 @@ void drawAuthoringPrimitives() {
     if (g_editor.shapesPanel_.visible() && !authoringInteractionBlocked() &&
         !g_sculpt.cameraInputBlocked_)
         g_editor.shapePlacement_.append(
-            IRPrefab::Camera::getYaw(),
+            IRRender::unprojectView(vec2(0), 3.0f),
             g_editor.palette_.color(g_editor.activeSwatchIdx_),
             triangles,
             lines
         );
     if (g_editor.arrayPreviewEnabled_ && !authoringInteractionBlocked() &&
         (g_editor.workspace_ == Workspace::ASSEMBLE || g_editor.workspace_ == Workspace::ALL))
-        g_editor.arrayPreview_.append(IRPrefab::Camera::getYaw(), triangles, lines);
+        g_editor.arrayPreview_.append(IRRender::unprojectView(vec2(0), 3.0f), triangles, lines);
     g_editor.authoringPrimitives_.draw(lines, triangles);
 }
 
@@ -3147,11 +3174,11 @@ void updateShapePlacement(bool blocked) {
             commit();
         return;
     }
-    const float mouseY = IRInput::getMousePosition().y;
+    const vec2 pointer = IRInput::getMousePosition();
     if (draft.phase() == ShapePlacementPhase::HEIGHT) {
         const auto base = vec3(draft.proposal()->lower_);
         const int previousHeight = draft.proposal()->size_.z;
-        draft.sizeHeight(verticalVoxelDragDelta(base, mouseY - draft.releaseY()));
+        draft.sizeHeight(verticalVoxelDragDelta(base, pointer - draft.releasePointer()));
         if (draft.proposal()->size_.z != previousHeight)
             panel.showStatus(
                 "Height " + std::to_string(draft.proposal()->size_.z) + " / click to place"
@@ -3176,7 +3203,7 @@ void updateShapePlacement(bool blocked) {
     if (size != previousSize)
         panel.showStatus("Base " + std::to_string(size.x) + " x " + std::to_string(size.y));
     if (release) {
-        draft.finishFootprint(mouseY);
+        draft.finishFootprint(pointer);
         panel.showStatus("Move up / click to set height");
     }
 }
@@ -4478,8 +4505,131 @@ bool cursorOverPartSizePanel() {
     return widgetContainsCursor(g_partSizePanel, IRPrefab::Layout::mousePositionInGuiTrixels());
 }
 
+void panEditorView(vec2 windowDelta) {
+    const auto delta =
+        IRRender::windowPointsToFramebufferPx(windowDelta) / IRRender::getTriangleStepSizeScreen();
+    IRRender::setCameraPosition2DIso(IRRender::getCameraPosition2DIso() + delta);
+}
+
+void zoomEditorAt(vec2 windowPoint, float octaves) {
+    const auto anchor = IRRender::windowPointsToWorldPos3DAtViewDepth(windowPoint, 0.0f);
+    const float zoom = IRMath::pow(
+        2.0f,
+        IRMath::clamp(
+            IRMath::log2(IRRender::getCameraZoom().x) + octaves,
+            IRMath::log2(IRConstants::kTrixelCanvasZoomMin.x),
+            IRMath::log2(IRConstants::kTrixelCanvasZoomMax.x)
+        )
+    );
+    IRRender::setCameraZoom(zoom);
+    panEditorView(windowPoint - IRRender::worldPos3DToWindowPointsExact(anchor));
+}
+
+void updateSpatialViewportScroll(RotateParams &state) {
+    using Phase = IRInput::PointerGesturePhase;
+    const auto now = IRTime::Clock::now();
+    if (state.scrollOrbit_ && !state.pointerStream_[0] &&
+        now - state.lastScroll_ > IRTime::MilliSeconds(180)) {
+        state.anchor_.end();
+        state.scrollOrbit_ = false;
+    }
+    const bool buttonNavigating = state.dragging_ || state.buttonNavigation_.poll();
+    for (const auto &event : IRInput::pointerGestures()) {
+        const bool magnify = event.kind_ == IRInput::PointerGestureKind::MAGNIFY;
+        const std::size_t stream = magnify ? 1 : 0;
+        const bool ended = IRWindow::hasGesturePhase(event.phase_, Phase::ENDED) ||
+                           IRWindow::hasGesturePhase(event.phase_, Phase::CANCELLED);
+        const bool began = IRWindow::hasGesturePhase(event.phase_, Phase::BEGAN);
+        const bool phased = event.phase_ != Phase::NONE;
+        const auto canStart = [&]() {
+            const auto point = IRRender::windowPointsToGuiTrixel(vec2(event.windowPoint_));
+            if (authoringInteractionBlocked() || g_editor.docks_.contains(point))
+                return false;
+            bool hit = false;
+            IREntity::forEachComponent<C_Widget>([&](IREntity::EntityId id,
+                                                     const C_Widget &widget) {
+                if (!hit && widget.visible_)
+                    hit = widgetContainsCursor(id, point);
+            });
+            return !hit;
+        };
+        if (began || (phased && !state.pointerStream_[stream] && !ended)) {
+            state.pointerStream_[stream] = true;
+            state.pointerOwned_[stream] = canStart() && !buttonNavigating;
+        }
+        const bool owned = state.pointerStream_[stream] ? state.pointerOwned_[stream] : canStart();
+        const bool blocked = !owned || buttonNavigating || authoringInteractionBlocked();
+        if (blocked) {
+            state.anchor_.end();
+            state.scrollOrbit_ = false;
+        }
+        if (ended) {
+            state.pointerStream_[stream] = false;
+            state.pointerOwned_[stream] = false;
+            if (!magnify) {
+                state.anchor_.end();
+                state.scrollOrbit_ = false;
+            }
+        }
+        // Momentum belongs to the OS scroll animation, not to a held camera gesture.
+        if (blocked || event.momentumPhase_ != Phase::NONE ||
+            IRWindow::hasGesturePhase(event.phase_, Phase::CANCELLED))
+            continue;
+        g_sculpt.viewportScrolled_ = true;
+        const auto &preferences = g_editor.navigation_;
+        if (event.kind_ == IRInput::PointerGestureKind::MAGNIFY) {
+            zoomEditorAt(
+                vec2(event.windowPoint_),
+                static_cast<float>(event.magnification_) * preferences.pinchZoomRate_
+            );
+            continue;
+        }
+        const bool trackpad = preferences.scrollMode_ == NavigationScrollMode::TRACKPAD ||
+                              (preferences.scrollMode_ == NavigationScrollMode::AUTO &&
+                               event.source_ == IRInput::PointerGestureSource::PRECISE_SCROLL);
+        const auto delta = vec2(event.scroll_);
+        if (delta == vec2(0))
+            continue;
+        if (!trackpad) {
+            state.anchor_.end();
+            state.scrollOrbit_ = false;
+            zoomEditorAt(vec2(event.windowPoint_), delta.y * g_editor.scrollZoomRate_);
+            continue;
+        }
+        if ((event.modifiers_ & IRInput::kModifierShift) != 0) {
+            state.anchor_.end();
+            state.scrollOrbit_ = false;
+            panEditorView(delta * (10.0f * preferences.panSensitivity_));
+            continue;
+        }
+        if (!state.scrollOrbit_) {
+            const auto center = editorPlaneCenter();
+            state.anchor_.beginAt(center, IRRender::worldPos3DToWindowPointsExact(center), true);
+            state.scrollOrbit_ = true;
+        }
+        auto orbit = IRPrefab::Camera::getOrbitAngles();
+        IRPrefab::Camera::setOrbitAngles(
+            orbit.azimuth_ + delta.x * preferences.orbitSensitivity_,
+            orbit.elevation_ + delta.y * preferences.orbitSensitivity_,
+            orbit.roll_
+        );
+        state.anchor_.indicatorWindowPoint_ =
+            IRRender::worldPos3DToWindowPointsExact(state.anchor_.focusWorld_);
+        state.anchor_.updateIndicator();
+        state.lastScroll_ = now;
+        if (ended) {
+            state.anchor_.end();
+            state.scrollOrbit_ = false;
+        }
+    }
+}
+
 void updateViewportScroll(RotateParams &state) {
     g_sculpt.viewportScrolled_ = false;
+    if (IRRender::isSpatialViewEnabled()) {
+        updateSpatialViewportScroll(state);
+        return;
+    }
     const bool buttonNavigating = state.buttonNavigation_.poll();
     const vec2 delta = IRInput::scrollOffset();
     if (delta == vec2(0) && !state.scrollOrbit_)
@@ -6183,6 +6333,94 @@ bool evaluateActionCheck(const void *context, std::string &actual) {
 
 namespace Session {
 
+IREntity::EntityId spatialNavigationEditableEntity() {
+    return g_editor.editableVoxelSet_;
+}
+
+void prepareSpatialNavigation(int shot) {
+    if (g_editor.spatialShot_ == shot) {
+        if (++g_editor.spatialPrepareFrames_ == 1)
+            g_editor.spatialAnchorRasterCorrection_ =
+                IRRender::cameraRasterCorrectionFramebufferPx();
+        return;
+    }
+    g_editor.spatialShot_ = shot;
+    g_editor.spatialPrepareFrames_ = 0;
+    const auto &spec = spatialNavigationCases()[shot];
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    auto records = set.mutableAuthoredRecords();
+    for (auto &voxel : records)
+        voxel = C_Voxel{Color{0, 0, 0, 0}};
+    const ivec3 center(set.size_.x / 2, set.size_.y / 2, set.size_.z - 3);
+    for (int z = -2; z <= 0; ++z)
+        for (int y = -2; y <= 2; ++y)
+            for (int x = -2; x <= 2; ++x)
+                records[IRMath::index3DtoIndex1D(center + ivec3(x, y, z), set.size_)] =
+                    C_Voxel{Color{98, 175, 120, 255}};
+    set.resyncAfterAuthoredEdits();
+    g_editor.spatialFingerprint_ = authoredVoxelFingerprint(set);
+    IRPrefab::Undo::clear();
+    g_editor.navigation_ = NavigationPreferences{};
+    g_editor.homeZoom_ = 4;
+    g_editor.scrollZoomRate_ = .125f;
+    g_sculpt.tool_ = SculptTool::BRUSH;
+    g_sculpt.showGrid_ = true;
+    IRRender::setDebugOverlay(IRRender::DebugOverlayMode::NORMALS);
+    resetEditorView();
+    IRPrefab::Camera::setOrbitAngles(
+        spec.initial_.azimuth_,
+        spec.initial_.elevation_,
+        spec.initial_.roll_
+    );
+    IRRender::setCameraZoom(spec.initialZoom_);
+    g_editor.spatialCamera_ = IRRender::getCameraPosition2DIso();
+    g_editor.spatialAnchorWindow_ = vec2(IRRender::guiTrixelToScreenPx(spatialNavigationAim()));
+    g_editor.spatialAnchor_ =
+        IRRender::windowPointsToWorldPos3DAtViewDepth(g_editor.spatialAnchorWindow_, 0);
+}
+
+bool evaluateSpatialNavigationEditorWitness(int shot, std::string &actual) {
+    using Op = SpatialNavigationOperation;
+    const auto operation = spatialNavigationCases()[shot].operation_;
+    const auto fingerprint =
+        authoredVoxelFingerprint(IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_));
+    bool valid = fingerprint.hash_ == g_editor.spatialFingerprint_.hash_ &&
+                 fingerprint.active_ == g_editor.spatialFingerprint_.active_ &&
+                 !IRPrefab::Undo::canUndo();
+    actual = "authoredUnchanged=" + std::to_string(valid);
+    if (operation == Op::PINCH || operation == Op::WHEEL) {
+        const float error = IRMath::length(
+            IRRender::worldPos3DToWindowPointsExact(g_editor.spatialAnchor_) -
+            g_editor.spatialAnchorWindow_
+        );
+        actual += " anchorErrorPoints=" + std::to_string(error);
+        valid = valid && error < .01f;
+        const auto displayedDelta =
+            IRRender::windowPointsToFramebufferPx(
+                IRRender::worldPos3DToWindowPointsExact(g_editor.spatialAnchor_) -
+                g_editor.spatialAnchorWindow_
+            ) +
+            IRRender::cameraRasterCorrectionFramebufferPx() -
+            g_editor.spatialAnchorRasterCorrection_;
+        actual += " displayedAnchorErrorPixels=" + std::to_string(displayedDelta.x) + "," +
+                  std::to_string(displayedDelta.y);
+        valid = valid &&
+                IRMath::max(IRMath::abs(displayedDelta.x), IRMath::abs(displayedDelta.y)) <= 1.01f;
+    }
+    if (operation == Op::PRECISE_PAN || operation == Op::SPACE_PAN)
+        valid = valid &&
+                IRMath::length(IRRender::getCameraPosition2DIso() - g_editor.spatialCamera_) > .1f;
+    if (operation == Op::ORBIT || operation == Op::UI_CROSSING)
+        valid = valid && IRRender::hasRotationPivotFocus() &&
+                IRMath::length(IRRender::getRotationPivotFocus() - editorPlaneCenter()) < .001f;
+    if (operation == Op::RESET_KEY || operation == Op::RESET_BUTTON) {
+        std::string reset;
+        valid = viewportHomeWitness(reset) && valid;
+        actual += " " + reset;
+    }
+    return valid;
+}
+
 bool viewportPlaneWitness(int phase, std::string &actual) {
     std::vector<IRPrefab::WorldPrimitiveVertex> grid;
     appendConstructionGrid(g_editor.editableVoxelSet_, true, grid);
@@ -6845,8 +7083,14 @@ bool evaluateScreenAlignmentCheck(const void *context, std::string &actual) {
     pixels.resize(static_cast<std::size_t>(framebuffer.x) * framebuffer.y * 4);
     const bool captured =
         IRRender::readDefaultFramebuffer(0, 0, framebuffer.x, framebuffer.y, pixels.data());
-    const bool valid =
-        captured && g_editor.alignmentProbe_.capture(shot, pixels, framebuffer, window);
+    const bool valid = captured && g_editor.alignmentProbe_.capture(
+                                       shot,
+                                       pixels,
+                                       framebuffer,
+                                       window,
+                                       IRRender::projectWorldToView(vec3(0, 0, .5f)) *
+                                           IRRender::getTriangleStepSizeScreen()
+                                   );
     actual = g_editor.alignmentProbe_.result(shot / kScreenAlignmentPhaseCount);
     const auto phase = screenAlignmentPhase(shot);
     if (phase == ScreenAlignmentPhase::HOVER) {
@@ -8258,7 +8502,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  V: toggle erase-fill mode (left-click place/box/line/face gestures erase)");
     IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
-    IR_LOG_INFO("  Two-finger scroll: horizontal orbits the editing plane, vertical zooms");
+    IR_LOG_INFO("  Two-finger swipe: orbit yaw/pitch; pinch: zoom under pointer; Shift+swipe: pan");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
     IR_LOG_INFO("  Home: reset camera; Space+left: pan");
     if constexpr (IRPlatform::kIsMacOS)
@@ -8285,7 +8529,8 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | "
-        "click_orbit | viewport_scroll | palette_workflow | array_workflow | lod_workflow | "
+        "click_orbit | viewport_scroll | spatial_navigation | palette_workflow | array_workflow | "
+        "lod_workflow | "
         "region_tools | material_tools | shapes_workflow | workspace_controls | workspace_restore "
         "| rock | "
         "mushroom | ant | bird | tree | "
@@ -8308,6 +8553,7 @@ int main(int argc, char **argv) {
          "camera_gestures",
          "click_orbit",
          "viewport_scroll",
+         "spatial_navigation",
          "palette_workflow",
          "array_workflow",
          "lod_workflow",
@@ -8388,6 +8634,8 @@ int main(int argc, char **argv) {
         .number("--profile-yaw", "fixed shadow profile camera yaw in degrees", 30.0f)
         .number("--profile-zoom", "fixed shadow profile camera zoom", 4.0f)
         .flag("--no-stage-timing", "collect wall-frame timing without GPU stage timestamps");
+    IREngine::args().flag("--legacy-view", "use the yaw-only camera for compatibility validation");
+    IREngine::args().string("--scroll-input", "scroll device: auto, wheel, or trackpad", "auto");
     IREngine::init(argc, argv);
     IRVoxelEditor::g_sculpt.referenceScene_ = IREngine::args().getFlag("--reference-scene");
     IRVoxelEditor::g_guiAssertLatch.layoutCheck_ =
@@ -8677,6 +8925,41 @@ int main(int argc, char **argv) {
         }
         IRVoxelEditor::g_editor.docks_.configure(path);
     }
+    {
+        auto &editor = IRVoxelEditor::g_editor;
+        auto &preferences = editor.navigation_;
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::NONE &&
+            editor.profileFrames_ == 0 && IRPrefab::ActionsWindow::userPreferencesAllowed()) {
+            const char *overridePath = std::getenv("IR_EDITOR_NAVIGATION_PATH");
+            const std::filesystem::path path =
+                overridePath && *overridePath ? overridePath : "save_files/editor_navigation.cfg";
+            if (std::filesystem::exists(path)) {
+                if (!preferences.load(path))
+                    IR_LOG_WARN("Invalid navigation preferences: {}", path.string());
+            } else if (!preferences.save(path)) {
+                IR_LOG_WARN("Could not save navigation defaults: {}", path.string());
+            }
+        }
+        if (IREngine::args().wasProvided("--home-zoom"))
+            preferences.homeZoom_ = editor.homeZoom_;
+        if (IREngine::args().wasProvided("--scroll-zoom-rate"))
+            preferences.wheelZoomRate_ = editor.scrollZoomRate_;
+        if (IREngine::args().wasProvided("--scroll-input")) {
+            const auto mode = IREngine::args().getString("--scroll-input");
+            if (mode == "wheel")
+                preferences.scrollMode_ = IRVoxelEditor::NavigationScrollMode::WHEEL;
+            else if (mode == "trackpad")
+                preferences.scrollMode_ = IRVoxelEditor::NavigationScrollMode::TRACKPAD;
+            else if (mode == "auto")
+                preferences.scrollMode_ = IRVoxelEditor::NavigationScrollMode::AUTO;
+            else {
+                IR_LOG_ERROR("--scroll-input must be auto, wheel, or trackpad");
+                return exitCleanly(2);
+            }
+        }
+        editor.homeZoom_ = preferences.homeZoom_;
+        editor.scrollZoomRate_ = preferences.wheelZoomRate_;
+    }
     initEntities();
     IRRender::setHoveredTrixelVisible(false);
     if (!IRVoxelEditor::initModuleUi())
@@ -8890,10 +9173,10 @@ void initSystems() {
             }
             constexpr const char *guides[] = {
                 IRPlatform::kIsMacOS
-                    ? "Swipe: orbit floor / zoom. Option+drag: orbit pointer. Space+drag: pan. "
-                      "Cmd+0: reset. Backtick: keys. Hold Option: shortcuts."
-                    : "Swipe: orbit floor / zoom. Alt+drag: orbit pointer. Space+drag: pan. "
-                      "Home: reset. Backtick: keys. Hold Alt: shortcuts.",
+                    ? "Swipe: orbit / pinch: zoom. Option+drag: pivot; +Shift: roll. "
+                      "Space+drag: pan. Cmd+0: reset. Backtick: keys."
+                    : "Right-drag: orbit / wheel: zoom. Alt+drag: pivot; +Shift: roll. "
+                      "Space+drag: pan. Home: reset. Backtick: keys.",
                 "Select a part. Set its parent or LOD band. Preview radial/linear copies before "
                 "Apply.",
                 "Choose a shape or recipe. Set its parameters, then apply to the selected part.",
@@ -9290,7 +9573,7 @@ void initSystems() {
                         ordinaryRegion &&
                         IRVoxelEditor::g_sculpt.tool_ == IRVoxelEditor::SculptTool::LINE &&
                         IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
-                    drag.startPointerY_ = IRInput::getMousePosition().y;
+                    drag.startPointer_ = IRInput::getMousePosition();
                     if (target) {
                         drag.planeAxis_ = target->axis_;
                         drag.planeSlice_ = target->local_[target->axis_];
@@ -9315,7 +9598,7 @@ void initSystems() {
                     const auto origin = IRVoxelEditor::voxelSetCellOrigin(set, world);
                     const int dz = IRVoxelEditor::verticalVoxelDragDelta(
                         vec3(drag.dragStartWorld_),
-                        IRInput::getMousePosition().y - drag.startPointerY_
+                        IRInput::getMousePosition() - drag.startPointer_
                     );
                     endPos = drag.dragStartWorld_;
                     endPos->z = IRMath::clamp(endPos->z + dz, origin.z, origin.z + set.size_.z - 1);
@@ -9453,6 +9736,52 @@ void initSystems() {
             if (IRVoxelEditor::g_editor.lodPreview_.active()) {
                 rotState->anchor_.end();
                 rotState->dragging_ = false;
+                return;
+            }
+            if (IRRender::isSpatialViewEnabled()) {
+                const auto pressed = [](IRInput::KeyMouseButtons button) {
+                    return IRInput::checkKeyMouseButton(button, IRInput::PRESSED);
+                };
+                const bool alt = IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt);
+                const bool control = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl);
+                const bool cursorOrbit = (alt && pressed(IRInput::kMouseButtonLeft)) ||
+                                         (control && pressed(IRInput::kMouseButtonMiddle));
+                if (!rotState->dragging_ && (pressed(IRInput::kMouseButtonRight) || cursorOrbit) &&
+                    IRVoxelEditor::canStartEditorCameraGesture()) {
+                    rotState->dragging_ = true;
+                    rotState->dragButton_ =
+                        pressed(IRInput::kMouseButtonRight)  ? IRInput::kMouseButtonRight
+                        : pressed(IRInput::kMouseButtonLeft) ? IRInput::kMouseButtonLeft
+                                                             : IRInput::kMouseButtonMiddle;
+                    rotState->rolling_ =
+                        alt && IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
+                    rotState->startMouse_ = IRInput::getMousePosition();
+                    rotState->startOrbit_ = IRPrefab::Camera::getOrbitAngles();
+                    if (cursorOrbit)
+                        rotState->anchor_.begin(true, rotState->focusOptions_);
+                    else {
+                        const auto center = IRVoxelEditor::editorPlaneCenter();
+                        rotState->anchor_
+                            .beginAt(center, IRRender::worldPos3DToWindowPointsExact(center), true);
+                    }
+                }
+                if (rotState->dragging_) {
+                    const auto delta = (IRInput::getMousePosition() - rotState->startMouse_) *
+                                       IRVoxelEditor::g_editor.navigation_.dragSensitivity_;
+                    const auto start = rotState->startOrbit_;
+                    IRPrefab::Camera::setOrbitAngles(
+                        start.azimuth_ + (rotState->rolling_ ? 0.0f : delta.x),
+                        start.elevation_ + (rotState->rolling_ ? 0.0f : delta.y),
+                        start.roll_ + (rotState->rolling_ ? delta.x : 0.0f)
+                    );
+                    rotState->anchor_.updateIndicator();
+                    if (IRInput::checkKeyMouseButton(rotState->dragButton_, IRInput::RELEASED) ||
+                        (!pressed(rotState->dragButton_) &&
+                         !IRInput::checkKeyMouseButton(rotState->dragButton_, IRInput::HELD))) {
+                        rotState->anchor_.end();
+                        rotState->dragging_ = false;
+                    }
+                }
                 return;
             }
             bool rightPressed =
@@ -10175,6 +10504,17 @@ void initSystems() {
     IRPrefab::Camera::setGestureStartPredicate(IRVoxelEditor::canStartEditorCameraGesture);
     IRPrefab::Camera::setCursorPivotByDefault(true);
     IRPrefab::Camera::setCursorPivotOptions(rotState->focusOptions_);
+    const auto legacyRotateStart = []() {
+        return !IRRender::isSpatialViewEnabled() && IRVoxelEditor::canStartEditorCameraGesture();
+    };
+    IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_MOUSE_ROTATE>>(
+        IRSystem::findSystem(IRSystem::CAMERA_MOUSE_ROTATE)
+    )
+        ->canStartGesture_ = legacyRotateStart;
+    IRSystem::getSystemParams<IRSystem::System<IRSystem::CAMERA_KEY_DRAG_ROTATE>>(
+        IRSystem::findSystem(IRSystem::CAMERA_KEY_DRAG_ROTATE)
+    )
+        ->canStartGesture_ = legacyRotateStart;
     renderPipeline.push_front(animPlaybackSystem);
     renderPipeline.push_front(rotateSystem);
     renderPipeline.insert(
@@ -10445,8 +10785,18 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonQ,
         []() {
-            auto q = static_cast<int>(IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi));
-            IRPrefab::Camera::setYaw(static_cast<float>(q - 1) * IRMath::kHalfPi);
+            if (IRRender::isSpatialViewEnabled()) {
+                const auto orbit = IRPrefab::Camera::getOrbitAngles();
+                IRPrefab::Camera::setOrbitAngles(
+                    (IRMath::round(orbit.azimuth_ / IRMath::kHalfPi) - 1) * IRMath::kHalfPi,
+                    orbit.elevation_,
+                    orbit.roll_
+                );
+            } else {
+                auto q =
+                    static_cast<int>(IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi));
+                IRPrefab::Camera::setYaw(static_cast<float>(q - 1) * IRMath::kHalfPi);
+            }
         },
         IRInput::kModifierNone,
         IRInput::kModifierNone,
@@ -10459,8 +10809,18 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonE,
         []() {
-            auto q = static_cast<int>(IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi));
-            IRPrefab::Camera::setYaw(static_cast<float>(q + 1) * IRMath::kHalfPi);
+            if (IRRender::isSpatialViewEnabled()) {
+                const auto orbit = IRPrefab::Camera::getOrbitAngles();
+                IRPrefab::Camera::setOrbitAngles(
+                    (IRMath::round(orbit.azimuth_ / IRMath::kHalfPi) + 1) * IRMath::kHalfPi,
+                    orbit.elevation_,
+                    orbit.roll_
+                );
+            } else {
+                auto q =
+                    static_cast<int>(IRMath::round(IRPrefab::Camera::getYaw() / IRMath::kHalfPi));
+                IRPrefab::Camera::setYaw(static_cast<float>(q + 1) * IRMath::kHalfPi);
+            }
         },
         IRInput::kModifierNone,
         IRInput::kModifierNone,
@@ -11472,6 +11832,7 @@ void initEntities() {
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ARRAY_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::LOD_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::VIEWPORT_SCROLL ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SPATIAL_NAVIGATION ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ACTIONS_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::ACTIONS_RESTART;
     IRVoxelEditor::g_sculpt.tool_ =
@@ -11482,6 +11843,7 @@ void initEntities() {
     const bool sessionScene =
         ordinaryWorkspace || (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE &&
                               !IRVoxelEditor::g_session.referenceFurniture_);
+    IRPrefab::Camera::setSpatialViewEnabled(!IREngine::args().getFlag("--legacy-view"));
     IRPrefab::Camera::setZoomContinuous(true);
     if (ordinaryWorkspace)
         IRRender::setCameraZoom(4.0f);

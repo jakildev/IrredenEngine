@@ -25,7 +25,8 @@ restriction of orthographic projection. World up is negative Z.
 
 Spatial view is opt-in through `Camera::setSpatialViewEnabled`. With it off,
 the existing cardinal/yaw producers, projection helpers and depth quantization
-retain their behavior.
+retain their behavior. The voxel editor enables spatial view by default;
+`--legacy-view` supports comparisons against the compatibility path.
 
 With spatial view enabled:
 
@@ -47,7 +48,14 @@ The half-cell anchor in voxel-face storage is a raster convention. Raw world
 projection helpers do not silently subtract it. Consumers decoding stored cell
 corners must restore their storage-frame anchor before using world-view APIs.
 
-## Validation
+## Navigation and validation
+
+[Editor spatial navigation](editor-spatial-navigation.md) documents the upright
+orbit, deliberate roll, cursor-anchored zoom and platform controls.
+[Editor validation](editor-validation.md) owns native replay commands. The
+`spatial_navigation` session checks intermediate azimuths and elevations,
+underside views, near-pole clamps, roll, unchanged authoring state, gesture
+ownership, and rendered signed faces against picking.
 
 `IRCanvasStress --spatial-view --elevation RADIANS --roll RADIANS` applies the
 same full camera to mixed GRID, detached and SDF content. Its existing yaw

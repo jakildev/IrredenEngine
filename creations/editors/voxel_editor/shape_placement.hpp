@@ -55,12 +55,18 @@ class ShapePlacement {
             p.size_ = {side, side, 1};
         }
     }
-    void finishFootprint(float mouseY) {
+    void finishFootprint(IRMath::vec2 pointer) {
         m_phase = ShapePlacementPhase::HEIGHT;
-        m_releaseY = mouseY;
+        m_releasePointer = pointer;
+    }
+    void finishFootprint(float mouseY) {
+        finishFootprint(IRMath::vec2(0, mouseY));
+    }
+    IRMath::vec2 releasePointer() const {
+        return m_releasePointer;
     }
     float releaseY() const {
-        return m_releaseY;
+        return m_releasePointer.y;
     }
     void sizeHeight(int zDelta) {
         auto &p = *m_proposal;
@@ -71,7 +77,7 @@ class ShapePlacement {
     // Retain merged exterior faces in part-local coordinates. Cursor movement
     // translates the surface without rebuilding the voxel volume.
     void append(
-        float yaw,
+        IRMath::vec3 ray,
         IRMath::Color color,
         std::vector<IRPrefab::WorldPrimitiveVertex> &out,
         std::vector<IRPrefab::WorldPrimitiveVertex> &lines
@@ -81,7 +87,6 @@ class ShapePlacement {
         const auto &p = *m_proposal;
         if (m_meshShape != p.shape_ || m_meshSize != p.size_)
             rebuild(p.shape_, p.size_);
-        const auto ray = IRMath::isoPixelToPos3DYawed(IRMath::vec2(0), 3.0f, yaw);
         const auto rgb = IRMath::vec3(color.red_, color.green_, color.blue_) / 255.0f;
         for (const auto &face : m_faces) {
             if (ray[face.axis_] * face.sign_ >= 0)
@@ -98,14 +103,23 @@ class ShapePlacement {
                 out.push_back({position, tint});
             }
         }
-        if (!m_contourYaw || *m_contourYaw != yaw) {
+        if (!m_contourRay || *m_contourRay != ray) {
             rebuildContour(ray);
-            m_contourYaw = yaw;
+            m_contourRay = ray;
         }
         for (const auto point : m_contour)
             lines.push_back(
                 {IRMath::vec3(p.lower_) + point, IRMath::vec4(0.88f, 0.96f, 1.0f, 0.85f)}
             );
+    }
+
+    void append(
+        float yaw,
+        IRMath::Color color,
+        std::vector<IRPrefab::WorldPrimitiveVertex> &out,
+        std::vector<IRPrefab::WorldPrimitiveVertex> &lines
+    ) {
+        append(IRMath::isoPixelToPos3DYawed(IRMath::vec2(0), 3.0f, yaw), color, out, lines);
     }
 
   private:
@@ -117,13 +131,13 @@ class ShapePlacement {
     };
     ShapePlacementPhase m_phase = ShapePlacementPhase::HOVER;
     IRMath::ivec3 m_anchor{0};
-    float m_releaseY = 0;
+    IRMath::vec2 m_releasePointer{0};
     std::optional<ShapePlacementProposal> m_proposal;
     PrimitiveShape m_meshShape = PrimitiveShape::CUBE;
     IRMath::ivec3 m_meshSize{0};
     std::vector<std::uint8_t> m_cells;
     std::vector<FaceRun> m_faces;
-    std::optional<float> m_contourYaw;
+    std::optional<IRMath::vec3> m_contourRay;
     std::vector<IRMath::vec3> m_contour;
 
     bool occupied(IRMath::ivec3 cell) const {
@@ -190,7 +204,7 @@ class ShapePlacement {
     }
 
     void rebuild(PrimitiveShape shape, IRMath::ivec3 size) {
-        m_contourYaw.reset();
+        m_contourRay.reset();
         m_meshShape = shape;
         m_meshSize = size;
         m_faces.clear();

@@ -2,6 +2,8 @@
 
 ## Validators
 
+- `spatial_navigation` exercises full-angle engine view navigation, cursor-anchored pinch/wheel zoom, roll, pan, UI ownership and unchanged authored voxels. It samples displayed signed face normals against picking at intermediate azimuths/elevations, near the horizon, below the floor and near both poles. `--legacy-view` selects the compatibility renderer for baseline comparisons.
+
 - `actions_workflow`, then `actions_restart` with the same isolated `IR_PREFS_DIR`, validate action search, invocation, conflict replacement, badges and keymap persistence. Run closes Actions before executing in the editor; the replay also checks modal tool-key isolation, camera reset, self-toggle and close/reopen. Actions coordinates resolve against the live GUI canvas.
 
 - `material_tools` exercises closed-outline fill, open-outline rejection, Brush, sampled and selected Recolor, and undo/redo through the visible controls at 30°/67°. `shapes_workflow` checks all five primitives and dimension entry through Shapes, including stamp and drag placement.

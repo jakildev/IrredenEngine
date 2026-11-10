@@ -181,8 +181,17 @@ def measure_case(images, yaw, sample):
     require(union > 0 and common / union >= 0.95, "floor_click_recreates_source_cell_footprint")
     floor_cursor = sample["floor_cursor"]
     floor_pixel = tuple(math.floor(floor_cursor[i] * size[i] / window[i]) for i in range(2))
-    support_center = ((support[0][0] + support[1][0]) / 2,
-                      (support[0][1] + support[1][1]) / 2)
+    top_face = intersection(source, color_mask(images["normals"], (128, 128, 0)))
+    top_bounds = top_face.getbbox()
+    source_bounds = source.getbbox()
+    if top_bounds is None:
+        raise ValueError("source top face is absent")
+    # Opposite face centers reflect through the projected cube center; extreme
+    # silhouette columns can belong to one edge at a diagonal camera angle.
+    support_center = tuple(
+        source_bounds[i] + source_bounds[i + 2] - 1
+        - (top_bounds[i] + top_bounds[i + 2] - 1) / 2
+        for i in range(2))
     require(all(abs(floor_pixel[i] - support_center[i]) <= size[i] / window[i] + 1
                 for i in range(2)), "floor_cursor_comes_from_rendered_support_footprint")
     metrics["failures"] = failures

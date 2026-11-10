@@ -11,6 +11,7 @@
 #include "array_workflow.hpp"
 #include "lod_workflow.hpp"
 #include "viewport_scroll_workflow.hpp"
+#include "spatial_navigation_session.hpp"
 #include "workspace_controls_workflow.hpp"
 #include "region_tools.hpp"
 #include "material_tools_workflow.hpp"
@@ -165,6 +166,7 @@ enum class Id {
     ARRAY_WORKFLOW,
     LOD_WORKFLOW,
     VIEWPORT_SCROLL,
+    SPATIAL_NAVIGATION,
     REGION_TOOLS,
     MATERIAL_TOOLS,
     SHAPES_WORKFLOW,
@@ -306,6 +308,8 @@ inline Id idFromName(const std::string &name) {
         return Id::CAMERA_GESTURES;
     if (name == "viewport_scroll")
         return Id::VIEWPORT_SCROLL;
+    if (name == "spatial_navigation")
+        return Id::SPATIAL_NAVIGATION;
     if (name == "lod_workflow")
         return Id::LOD_WORKFLOW;
     if (name == "array_workflow")
@@ -2162,6 +2166,8 @@ inline Recipe build(
         return buildCameraGestures();
     case Id::VIEWPORT_SCROLL:
         return buildViewportScroll();
+    case Id::SPATIAL_NAVIGATION:
+        return buildSpatialNavigation();
     case Id::LOD_WORKFLOW:
         return buildLodWorkflow();
     case Id::ARRAY_WORKFLOW:
