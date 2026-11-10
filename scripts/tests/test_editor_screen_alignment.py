@@ -167,7 +167,7 @@ def completed_log():
             label = f"screen_alignment_yaw{yaw}_{phase}"
             lines.append(f"GUI-ASSERT label={label} result=PASS actual=cursor=28,24 "
                          "sample=56,48 framebuffer=112,96 window=56,48 floor_cursor=28,28")
-            zoom = 4 if yaw == 90 else 8
+            zoom = {30: 4.25, 67: 7.75, 90: 4}.get(yaw, 8)
             lines.append(f"CaptureCamera: label={label} yaw={math.radians(yaw)} "
                          f"zoom=({zoom},{zoom}) effectiveIso=({yaw},0) gameResolution=(112,96)")
             lines.append(f"Saved screenshot: screenshot_{label}.png")
@@ -195,6 +195,11 @@ class EditorScreenAlignmentLogTest(unittest.TestCase):
     def test_actual_camera_yaw_must_match_case(self):
         log = completed_log().replace("yaw=0.5235987755982988", "yaw=0.0")
         with self.assertRaisesRegex(ValueError, "yaw differs"):
+            ORACLE.parse_run(log, Path("/screenshots"))
+
+    def test_snapped_zoom_at_an_intermediate_yaw_fails(self):
+        log = completed_log().replace("zoom=(4.25,4.25)", "zoom=(4,4)")
+        with self.assertRaisesRegex(ValueError, "expected fractional zoom"):
             ORACLE.parse_run(log, Path("/screenshots"))
 
 

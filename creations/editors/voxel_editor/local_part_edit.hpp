@@ -15,6 +15,7 @@ struct EditorStageView {
     IRMath::vec2 cameraIso_{};
     float zoom_ = 1.0f;
     float yaw_ = 0.0f;
+    float pitch_ = 0.0f;
     IRRender::RotationPivotMode pivotMode_ = IRRender::RotationPivotMode::CAMERA_CENTER;
     std::optional<IRMath::vec3> pivotFocus_;
 
@@ -22,6 +23,7 @@ struct EditorStageView {
         cameraIso_ = IRRender::getCameraPosition2DIso();
         zoom_ = IRRender::getCameraZoom().x;
         yaw_ = IRPrefab::Camera::getYaw();
+        pitch_ = IRPrefab::Camera::getPitch();
         pivotMode_ = IRRender::getRotationPivotMode();
         pivotFocus_ = IRRender::hasRotationPivotFocus()
                           ? std::optional{IRRender::getRotationPivotFocus()}
@@ -39,7 +41,7 @@ struct EditorStageView {
     }
 
     void restore() const {
-        IRRender::setCameraVisualYaw(yaw_ * 180.0f / IRMath::kPi);
+        IRPrefab::Camera::setYawPitch(yaw_, pitch_);
         IRRender::setRotationPivotMode(pivotMode_);
         if (pivotFocus_)
             IRRender::setRotationPivotFocus(*pivotFocus_);

@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <irreden/render/systems/system_widget_apply_number_field.hpp>
+#include <irreden/render/systems/system_widget_apply_text_input.hpp>
+#include <irreden/ir_platform.hpp>
 #include <irreden/command/command_manager.hpp>
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/input/input_manager.hpp>
@@ -81,6 +84,55 @@ class WidgetKeyboardPipelineTest : public testing::Test {
     std::optional<IRCommand::CommandManager> commandManager_;
     alignas(std::max_align_t) char windowSentinel_[1];
 };
+
+TEST_F(WidgetKeyboardPipelineTest, FocusedTextHandlesCommandWithoutTypingShortcutLetters) {
+    systemManager_.appendToPipeline(
+        IRTime::Events::INPUT,
+        IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>()
+    );
+    auto editor = IRPrefab::Widget::makeTextInput({0, 0}, {100, 18}, "oak");
+    IRPrefab::Widget::focus(editor);
+    frame();
+    for (auto super : {IRInput::kKeyButtonLeftSuper, IRInput::kKeyButtonRightSuper}) {
+        press(super);
+        EXPECT_EQ(IRInput::heldKeyModifiers(), IRInput::kModifierSuper);
+        press(IRInput::kKeyButtonS);
+        release(IRInput::kKeyButtonS);
+        if constexpr (IRPlatform::kIsMacOS) {
+            press(IRInput::kKeyButtonLeft);
+            EXPECT_EQ(
+                IREntity::getComponent<IRComponents::C_WidgetTextInput>(editor).cursorPos_,
+                0
+            );
+            release(IRInput::kKeyButtonLeft);
+            press(IRInput::kKeyButtonRight);
+            EXPECT_EQ(
+                IREntity::getComponent<IRComponents::C_WidgetTextInput>(editor).cursorPos_,
+                3
+            );
+            release(IRInput::kKeyButtonRight);
+        }
+        release(super);
+        EXPECT_TRUE(commandManager_->isKeyboardCaptured());
+        EXPECT_EQ(IRPrefab::Widget::textInputValue(editor), "oak");
+    }
+}
+
+TEST_F(WidgetKeyboardPipelineTest, CommandZeroDoesNotReplaceFocusedNumberDraft) {
+    systemManager_.appendToPipeline(
+        IRTime::Events::INPUT,
+        IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>()
+    );
+    const auto field = IRPrefab::Widget::makeNumberField({0, 0}, {80, 18}, 42, 0, 100);
+    IRPrefab::Widget::focus(field);
+    frame();
+    press(IRInput::kKeyButtonLeftSuper);
+    press(IRInput::kKeyButton0);
+    release(IRInput::kKeyButton0);
+    release(IRInput::kKeyButtonLeftSuper);
+    press(IRInput::kKeyButtonEnter);
+    EXPECT_EQ(IRPrefab::Widget::numberFieldValue(field), 42);
+}
 
 TEST_F(WidgetKeyboardPipelineTest, TabTraversesWidgetsInReadingOrderAndWraps) {
     const auto button =

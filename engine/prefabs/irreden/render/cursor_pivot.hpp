@@ -164,10 +164,15 @@ struct OrbitAnchor {
     IRMath::vec2 indicatorWindowPoint_ = IRMath::vec2(0.0f);
 
     void begin(bool cursorPivot = true, const FocusOptions &options = {}) {
-        cursorPivot_ = cursorPivot;
-        indicatorWindowPoint_ = IRInput::getMousePositionScreen();
-        focusWorld_ = cursorPivot ? resolveFocusWorld(pivotIndicator_, options)
-                                  : resolveCenterWorld(IRRender::getViewReferenceHeight());
+        const auto focus = cursorPivot ? resolveFocusWorld(pivotIndicator_, options)
+                                       : resolveCenterWorld(IRRender::getViewReferenceHeight());
+        beginAt(focus, IRInput::getMousePositionScreen(), cursorPivot);
+    }
+
+    void beginAt(IRMath::vec3 focus, IRMath::vec2 windowPoint, bool showMarker) {
+        focusWorld_ = focus;
+        indicatorWindowPoint_ = windowPoint;
+        cursorPivot_ = showMarker;
         setFocusPreservingView(focusWorld_);
         // The hidden center marker also supplies the gameplay-reset lifetime signal.
         if (pivotIndicator_ == IREntity::kNullEntity)

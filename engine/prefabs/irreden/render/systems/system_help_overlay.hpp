@@ -16,6 +16,7 @@
 #include <irreden/render/widget_theme.hpp>
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -67,13 +68,15 @@ template <> struct System<HELP_OVERLAY> {
     // Text is rebuilt only when one of its two inputs changed: the command
     // registry grew — without that signal, a command registered after the
     // first visible frame would never appear — or the GUI canvas changed
-    // width, which is what the rows are wrapped to. `kUnbuiltGeneration`
+    // dimensions, which determine wrapping and column count. `kUnbuiltGeneration`
     // forces the first build even against a world with zero registered
     // commands.
     static constexpr std::uint32_t kUnbuiltGeneration = ~std::uint32_t{0};
     std::uint32_t cachedGeneration_ = kUnbuiltGeneration;
-    int cachedCanvasWidth_ = 0;
+    IRMath::ivec2 cachedCanvasSize_{};
     IRPrefab::HelpOverlay::WrappedText layout_;
+    IRPrefab::HelpOverlay::WrappedText secondColumn_;
+    int secondColumnOffset_ = 0;
 
     // Background panel as last painted, in GUI-canvas trixels. Zero-sized
     // until the overlay is first drawn.
@@ -120,10 +123,10 @@ template <> struct System<HELP_OVERLAY> {
         theme_ = IRPrefab::Widget::defaultTheme();
 
         const std::uint32_t generation = IRCommand::getCommandManager().getRegistrationGeneration();
-        if (generation != cachedGeneration_ || canvas_->size_.x != cachedCanvasWidth_) {
+        if (generation != cachedGeneration_ || canvas_->size_ != cachedCanvasSize_) {
             buildText();
             cachedGeneration_ = generation;
-            cachedCanvasWidth_ = canvas_->size_.x;
+            cachedCanvasSize_ = canvas_->size_;
         }
         if (layout_.text_.empty()) {
             return;
@@ -142,6 +145,15 @@ template <> struct System<HELP_OVERLAY> {
             theme_.textIdle_,
             kHelpOverlayFontSize
         );
+        if (!secondColumn_.text_.empty())
+            IRPrefab::GuiText::queueGuiText(
+                textCmds_,
+                secondColumn_.text_,
+                kHelpOverlayPadding + IRMath::ivec2(secondColumnOffset_, 0),
+                canvas_->size_,
+                theme_.textIdle_,
+                kHelpOverlayFontSize
+            );
         lastGlyphCommandCount_ = static_cast<int>(textCmds_.size());
         IRPrefab::GuiText::dispatchGuiText(textCmds_);
     }
@@ -161,63 +173,65 @@ template <> struct System<HELP_OVERLAY> {
     }
 
   private:
-    // One row per registered PRESSED binding, key column left-aligned to a
-    // fixed width so the descriptions form a readable second column:
-    //
-    //   COMMANDS
-    //
-    //   ESC             CLOSE WINDOW - CLOSE THE WINDOW AND EXIT
-    //   W               CAMERA UP - PAN THE CAMERA UP WHILE HELD
-    //   F1              TOGGLE HELP - SHOW OR HIDE THIS COMMAND LIST
-    //
-    // A row wider than the canvas wraps onto continuation lines that hang at
-    // the description column, so a narrow GUI canvas (a portrait game
-    // resolution, a large gui_scale) loses no text off its right edge.
-    //
-    // The header deliberately does NOT name the close key: the toggle binds
-    // through the same named path as everything else, so it appears as its own
-    // row above with whatever key this creation chose (F1 by default, but
-    // random_voxels uses G and two others use backtick). A hardcoded
-    // "(F1 TO CLOSE)" header would be wrong in three of the five adopters.
-    //
-    // Built only when the registry generation or the canvas width changes, so
-    // this allocates at most once per registration burst or canvas resize
-    // rather than per frame.
     void buildText() {
-        const auto &registrations = IRCommand::getCommandManager().getCommandRegistrations();
-
+        const std::span rows{IRCommand::getCommandManager().getCommandRegistrations()};
         layout_.clear();
-        if (registrations.empty()) {
+        secondColumn_.clear();
+        secondColumnOffset_ = 0;
+        if (rows.empty())
+            return;
+
+        constexpr int charWidth = IRRender::kGlyphStepX * kHelpOverlayFontSize;
+        const int fullWidth =
+            IRMath::max(1, (canvas_->size_.x - 2 * kHelpOverlayPadding.x) / charWidth);
+        const auto writeColumn = [](IRPrefab::HelpOverlay::WrappedText &output,
+                                    auto registrations,
+                                    int width,
+                                    bool title) {
+            output.clear();
+            if (title) {
+                output.appendRow("", "COMMANDS", 0, width);
+                output.appendLine("");
+            }
+            std::string body;
+            for (const auto &row : registrations) {
+                body = row.name;
+                if (!row.description.empty())
+                    body += " - " + row.description;
+                output.appendRow(
+                    IRCommand::modifierString(row.requiredModifiers) +
+                        IRCommand::keyButtonToString(row.button),
+                    body,
+                    kHelpOverlayBindingColumnChars,
+                    width
+                );
+            }
+        };
+        writeColumn(layout_, rows, fullWidth, true);
+        const int singleHeight =
+            IRRender::textBlockHeight(layout_.lineCount_, kHelpOverlayFontSize);
+        constexpr int gapChars = 3;
+        const int columnWidth = (fullWidth - gapChars) / 2;
+        if (singleHeight <= canvas_->size_.y - 2 * kHelpOverlayPadding.y || rows.size() < 2 ||
+            columnWidth <
+                kHelpOverlayBindingColumnChars + IRPrefab::HelpOverlay::kMinHangingLineChars)
+            return;
+
+        // Split at a command boundary so a wrapped description always stays
+        // with its shortcut. Keep the one-column wrap if splitting makes it taller.
+        const auto split = rows.size() / 2;
+        writeColumn(layout_, rows.first(split), columnWidth, true);
+        writeColumn(secondColumn_, rows.subspan(split), columnWidth, false);
+        const auto height = IRRender::textBlockHeight(
+            IRMath::max(layout_.lineCount_, secondColumn_.lineCount_),
+            kHelpOverlayFontSize
+        );
+        if (height >= singleHeight) {
+            writeColumn(layout_, rows, fullWidth, true);
+            secondColumn_.clear();
             return;
         }
-
-        // The panel is inset by the same margin on both sides, so the text
-        // may span the canvas less twice its left padding.
-        const int maxLineChars = IRMath::max(
-            (canvas_->size_.x - 2 * kHelpOverlayPadding.x) /
-                (IRRender::kGlyphStepX * kHelpOverlayFontSize),
-            1
-        );
-
-        layout_.text_.reserve(registrations.size() * 64 + 32);
-        layout_.appendRow("", "COMMANDS", 0, maxLineChars);
-        layout_.appendLine("");
-
-        std::string body;
-        for (const auto &registration : registrations) {
-            body = registration.name;
-            if (!registration.description.empty()) {
-                body += " - ";
-                body += registration.description;
-            }
-            layout_.appendRow(
-                IRCommand::modifierString(registration.requiredModifiers) +
-                    IRCommand::keyButtonToString(registration.button),
-                body,
-                kHelpOverlayBindingColumnChars,
-                maxLineChars
-            );
-        }
+        secondColumnOffset_ = (columnWidth + gapChars) * charWidth;
     }
 
     // Panel behind the text. `measureText` has no fontSize parameter (it
@@ -225,8 +239,15 @@ template <> struct System<HELP_OVERLAY> {
     // counts collected during the build and scaled here — keeping the two in
     // sync through one multiply rather than a second measuring pass.
     void paintBackground() {
-        const int textW = layout_.maxLineChars_ * IRRender::kGlyphStepX * kHelpOverlayFontSize;
-        const int textH = IRRender::textBlockHeight(layout_.lineCount_, kHelpOverlayFontSize);
+        constexpr int charWidth = IRRender::kGlyphStepX * kHelpOverlayFontSize;
+        const int textW = IRMath::max(
+            layout_.maxLineChars_ * charWidth,
+            secondColumnOffset_ + secondColumn_.maxLineChars_ * charWidth
+        );
+        const int textH = IRRender::textBlockHeight(
+            IRMath::max(layout_.lineCount_, secondColumn_.lineCount_),
+            kHelpOverlayFontSize
+        );
 
         panelPos_ = IRMath::ivec2{
             kHelpOverlayPadding.x - kHelpOverlayBgPadding.x,

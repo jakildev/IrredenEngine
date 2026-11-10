@@ -4,7 +4,9 @@
 #include "palette.hpp"
 #include "session_builder.hpp"
 
+#include <irreden/ir_platform.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/lod_utils.hpp>
 #include <irreden/render/components/component_screen_space_marker.hpp>
 #include <irreden/render/widgets.hpp>
 
@@ -12,7 +14,7 @@
 
 namespace IRVoxelEditor::Session {
 
-inline constexpr int kViewportScrollShotCount = 12;
+inline constexpr int kViewportScrollShotCount = IRPlatform::kIsMacOS ? 15 : 14;
 
 inline IRMath::vec2 viewportScrollAim(int shot) {
     return shot < 6 ? IRMath::vec2(800, 650) : IRMath::vec2(835, 670);
@@ -22,8 +24,13 @@ inline float viewportScrollYaw(int shot) {
     return (shot < 6 ? 30.0f : 67.0f) * IRMath::kPi / 180.0f;
 }
 
+bool viewportPlaneWitness(int phase, std::string &actual);
+bool viewportHomeWitness(std::string &actual);
+
 inline bool evaluateViewportScroll(const void *context, std::string &actual) {
     const int shot = *static_cast<const int *>(context);
+    if (shot >= 12)
+        return viewportHomeWitness(actual);
     const int phase = shot % 6;
     const float yaw = IRPrefab::Camera::getYaw();
     const float zoom = IRRender::getCameraZoom().x;
@@ -31,47 +38,43 @@ inline bool evaluateViewportScroll(const void *context, std::string &actual) {
     const float expectedYaw = viewportScrollYaw(shot) + (phase == 0   ? .08f
                                                          : phase == 1 ? -.02f
                                                                       : 0.0f);
-    const float expectedZoom = phase == 3 ? 8.0f : phase == 4 ? 2.0f : 4.0f;
-    const IRMath::vec2 firstAim(IRRender::guiTrixelToScreenPx(viewportScrollAim(shot)));
-    bool retainedFirstAim = false;
-    bool markerVisible = false;
-    IREntity::forEachComponent<IRComponents::C_ScreenSpaceMarker>(
-        [&](IREntity::EntityId, const IRComponents::C_ScreenSpaceMarker &marker) {
-            retainedFirstAim =
-                retainedFirstAim || IRMath::length(marker.windowPoint_ - firstAim) < .001f;
-            markerVisible = markerVisible || marker.visible_;
-        }
-    );
-    const bool markerMatches = phase == 0 ? retainedFirstAim && IRRender::hasRotationPivotFocus()
-                                          : phase != 2 || !markerVisible;
+    constexpr std::array expectedZooms{4.0f, 4.0f, 4.26856160f, 8.45143418f, 3.66801617f, 4.0f};
+    const float expectedZoom = expectedZooms[phase];
+    const auto activeLod = IRRender::getActiveLodLevel();
+    const auto expectedLod = phase == 3   ? IRRender::LodLevel::LOD_1
+                             : phase == 4 ? IRRender::LodLevel::LOD_3
+                                          : IRRender::LodLevel::LOD_2;
+    std::string plane;
+    const bool markerMatches = viewportPlaneWitness(phase, plane);
     actual = "yaw=" + std::to_string(yaw) + " expectedYaw=" + std::to_string(expectedYaw) +
              " zoom=" + std::to_string(zoom) + " expectedZoom=" + std::to_string(expectedZoom) +
-             " widgetHovered=" + std::to_string(widgetHovered) +
-             " firstAim=" + std::to_string(retainedFirstAim) +
-             " markerVisible=" + std::to_string(markerVisible);
+             " lod=" + std::to_string(static_cast<int>(activeLod)) +
+             " widgetHovered=" + std::to_string(widgetHovered) + " " + plane;
     return IRMath::abs(IRMath::wrapAnglePi(yaw - expectedYaw)) < .0001f &&
            IRMath::abs(zoom - expectedZoom) < .0001f && widgetHovered == (phase == 5) &&
-           markerMatches;
+           markerMatches && activeLod == expectedLod && IRPrefab::Camera::isZoomContinuous();
 }
 
 inline Recipe buildViewportScroll() {
     Recipe recipe;
     recipe.name_ = "viewport_scroll";
-    static constexpr std::array checks{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+    static constexpr std::array checks{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
     constexpr std::array labels{
         "horizontal_jitter",
         "reverse",
         "vertical_partial",
-        "vertical_threshold",
+        "vertical_lod_threshold",
         "vertical_reverse",
         "palette_isolation"
     };
     const auto palette = paletteSwatchCenterGuiTrixel(4);
-    for (const int shot : checks) {
+    for (int shot = 0; shot < kViewportScrollShotCount; ++shot) {
         const int phase = shot % 6;
         const auto viewport = viewportScrollAim(shot);
         Segment segment;
-        segment.zoom_ = 4;
+        segment.zoom_ = shot >= 12 || phase == 3 ? 7.75f : 4.0f;
+        if (shot >= 12)
+            segment.cameraIso_ = {40, -30};
         segment.label_ = "scroll_" + std::to_string(shot < 6 ? 30 : 67) + "_" + labels[phase];
         const auto move = [&](int frame, IRMath::vec2 point) {
             IRVideo::GuiInputEvent event{};
@@ -96,7 +99,23 @@ inline Recipe buildViewportScroll() {
                 segment.events_.push_back(event);
             };
         move(0, phase == 3 || phase == 5 ? palette : viewport);
-        if (phase == 0) {
+        if (shot >= 12) {
+            segment.label_ = shot == 14   ? "command_zero"
+                             : shot == 12 ? "home_key"
+                                          : "reset_view_button";
+            using Type = IRVideo::GuiInputEvent::Type;
+            const auto key = shot == 14   ? IRInput::kKeyButton0
+                             : shot == 12 ? IRInput::kKeyButtonHome
+                                          : IRInput::kMouseButtonLeft;
+            if (shot == 14)
+                button(2, Type::PRESS, IRInput::kKeyButtonLeftSuper);
+            if (shot == 13)
+                move(1, {1012, 69});
+            button(3, Type::PRESS, key);
+            button(5, Type::RELEASE, key);
+            if (shot == 14)
+                button(6, Type::RELEASE, IRInput::kKeyButtonLeftSuper);
+        } else if (phase == 0) {
             // Each horizontal movement carries vertical noise; the sum of that
             // noise alone exceeds a zoom step if the axes are not exclusive.
             scroll(2, .5f, .375f);

@@ -1,6 +1,7 @@
 #ifndef IR_VOXEL_EDITOR_SESSION_BUILDER_H
 #define IR_VOXEL_EDITOR_SESSION_BUILDER_H
 
+#include <irreden/ir_platform.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_video.hpp>
@@ -1059,11 +1060,24 @@ class Builder {
     // Ctrl+Z and Ctrl+Y replay history the model does not keep, so after
     // either no part's recipe binding is known until it is APPLYed again.
     void chordKey(IRInput::KeyMouseButtons modifier, IRInput::KeyMouseButtons key) {
-        const bool control = modifier == IRInput::kKeyButtonLeftControl ||
-                             modifier == IRInput::kKeyButtonRightControl;
-        if (control && (key == IRInput::kKeyButtonZ || key == IRInput::kKeyButtonY))
+        const bool historyModifier =
+            modifier == IRInput::kKeyButtonLeftControl ||
+            modifier == IRInput::kKeyButtonRightControl ||
+            (IRPlatform::kIsMacOS && (modifier == IRInput::kKeyButtonLeftSuper ||
+                                      modifier == IRInput::kKeyButtonRightSuper));
+        if (historyModifier && (key == IRInput::kKeyButtonZ || key == IRInput::kKeyButtonY))
             forgetBindings();
         emitChord(modifier, key);
+    }
+
+    void chordKey(
+        IRInput::KeyMouseButtons first,
+        IRInput::KeyMouseButtons second,
+        IRInput::KeyMouseButtons key
+    ) {
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, first);
+        chordKey(second, key);
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, first);
     }
 
   private:
@@ -2177,7 +2191,7 @@ class Builder {
 
   public:
     void toggleRotationalSymmetry() {
-        chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+        chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonLeftAlt, IRInput::kKeyButtonY);
     }
 
     void expectCanvasCount(int expectedOffset, std::string name) {
