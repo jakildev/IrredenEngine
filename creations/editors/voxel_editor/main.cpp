@@ -929,6 +929,8 @@ static_assert(
 // g_guiAssertLatch is the caller-owned latch the harness's onAssertFrame_
 // callback threads through onFrame (CLICK_FIRES latches the one-frame pulse).
 IRPrefab::GuiTest::LatchState g_guiAssertLatch;
+int g_sessionAssertShotIndex = -1;
+int g_sessionAssertFrame = 0;
 std::vector<IRPrefab::GuiTest::Assertion> g_shotAssertions[kNumGuiTestShots];
 
 // Erase-fill probe check: after synthetic V toggled erase mode
@@ -1071,6 +1073,7 @@ void prepareRegionTools(int shotIndex);
 void prepareArrayWorkflow(int shotIndex);
 void prepareLodWorkflowShot();
 void prepareShadowRotation(int shotIndex);
+bool cursorOverEditorUi();
 
 void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= static_cast<int>(g_session.segments_.size()))
@@ -1089,6 +1092,12 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
         prepareScreenAlignment(shotIndex);
     if (g_sessionId == Session::Id::SHADOW_ROTATION)
         prepareShadowRotation(shotIndex);
+    if (shotIndex != g_sessionAssertShotIndex) {
+        g_sessionAssertShotIndex = shotIndex;
+        g_sessionAssertFrame = 0;
+    } else {
+        ++g_sessionAssertFrame;
+    }
     Session::Segment &segment = g_session.segments_[shotIndex];
     for (const Session::AimFixup &aim : segment.aims_) {
         segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
@@ -1109,6 +1118,15 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
                     ? Session::resolveWorkspaceAim(guiPoint)
                     : guiPoint
             );
+    }
+    if (segment.sceneUiPressCheck_ != nullptr) {
+        for (Session::SceneUiPress &press : segment.sceneUiPressCheck_->presses_) {
+            if (press.sampled_ || press.sampleFrame_ != g_sessionAssertFrame)
+                continue;
+            press.sampled_ = true;
+            press.landedOnUi_ = cursorOverEditorUi();
+            press.guiPoint_ = IRPrefab::Layout::mousePositionInGuiTrixels();
+        }
     }
     IRPrefab::GuiTest::onFrame(
         g_guiAssertLatch,
@@ -4522,6 +4540,40 @@ void updateViewportScroll(RotateParams &state) {
     );
 }
 
+bool cursorOverEditorUi() {
+    const IRMath::vec2 cursor = IRPrefab::Layout::mousePositionInGuiTrixels();
+    if (g_editor.shapesPanel_.containsCursor(cursor) || g_editor.docks_.contains(cursor) ||
+        IRPrefab::Widget::hoveredWidget() != IREntity::kNullEntity ||
+        g_editor.hierarchy_.containsCursor(cursor) ||
+        guiPointInRect(cursor, kSculptToolbarPos, kSculptToolbarSize) ||
+        IRPrefab::Widget::isHovered(g_editor.palettePanel_) ||
+        IRPrefab::Widget::isHovered(g_layerPanel) || IRPrefab::Widget::isHovered(g_partsPanel) ||
+        IRPrefab::Widget::isHovered(g_lodPanel) || IRPrefab::Widget::isHovered(g_arrayPanel) ||
+        IRPrefab::Widget::isHovered(g_arrayTypeList) ||
+        IRPrefab::Widget::isHovered(g_arrayCountSlider) ||
+        IRPrefab::Widget::isHovered(g_arrayDistanceSlider) ||
+        IRPrefab::Widget::isHovered(g_arrayStepYSlider) ||
+        IRPrefab::Widget::isHovered(g_arrayStepZSlider) ||
+        IRPrefab::Widget::isHovered(g_arrayYawSlider) ||
+        IRPrefab::Widget::isHovered(g_arrayApplyButton) ||
+        IRPrefab::Widget::isHovered(g_bakePanel) ||
+        IRPrefab::Widget::isHovered(g_bonePaint.bonePanel_) ||
+        IRPrefab::Widget::isHovered(g_skeletonPanel) ||
+        (g_editor.documentsEnabled_ && g_editor.documentPanel_.containsCursor(cursor)) ||
+        cursorOverPartSizePanel() || cursorOverModuleUi()) {
+        return true;
+    }
+    for (IREntity::EntityId swatch : g_editor.paletteSwatches_) {
+        if (IRPrefab::Widget::isHovered(swatch))
+            return true;
+    }
+    for (IREntity::EntityId swatch : g_bonePaint.boneSwatches_) {
+        if (IRPrefab::Widget::isHovered(swatch))
+            return true;
+    }
+    return false;
+}
+
 // What ATTACH targets: the root while ROOT is checked, else the selected part.
 // Nullopt outside entity-scene mode or with no part selected.
 std::optional<int> componentTarget() {
@@ -7227,6 +7279,38 @@ bool evaluateOccupancyCheck(const void *context, std::string &actual) {
            color.blue_ == want.blue_;
 }
 
+bool evaluateSceneUiPressCheck(const void *context, std::string &actual) {
+    const auto &check = *static_cast<const Session::SceneUiPressCheck *>(context);
+    actual.clear();
+    bool pass = true;
+    for (const Session::SceneUiPress &press : check.presses_) {
+        if (press.sampled_ && !press.landedOnUi_)
+            continue;
+        if (!actual.empty())
+            actual += "; ";
+        actual += press.operation_;
+        if (press.localCell_) {
+            const IRMath::ivec3 cell = *press.localCell_;
+            actual += " cell=(" + std::to_string(cell.x) + "," + std::to_string(cell.y) + "," +
+                      std::to_string(cell.z) + ")";
+        } else {
+            actual += " world=(" + std::to_string(press.worldPoint_.x) + "," +
+                      std::to_string(press.worldPoint_.y) + "," +
+                      std::to_string(press.worldPoint_.z) + ")";
+        }
+        if (press.sampled_) {
+            actual += " gui=(" + std::to_string(press.guiPoint_.x) + "," +
+                      std::to_string(press.guiPoint_.y) + ") landed on editor UI";
+        } else {
+            actual += " was not sampled";
+        }
+        pass = false;
+    }
+    if (pass)
+        actual = std::to_string(check.presses_.size()) + " scene press(es) clear of editor UI";
+    return pass;
+}
+
 bool evaluatePartTransformCheck(const void *context, std::string &actual) {
     const PartTransformCheck &check = *static_cast<const PartTransformCheck *>(context);
     if (check.partIndex_ < 0 ||
@@ -9068,60 +9152,7 @@ void initSystems() {
                 IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
             }
 
-            bool overWidget = IRVoxelEditor::g_editor.shapesPanel_.containsCursor(
-                                  IRPrefab::Layout::mousePositionInGuiTrixels()
-                              ) ||
-                              IRPrefab::Widget::hoveredWidget() != IREntity::kNullEntity ||
-                              IRVoxelEditor::g_editor.hierarchy_.containsCursor(
-                                  IRPrefab::Layout::mousePositionInGuiTrixels()
-                              ) ||
-                              IRVoxelEditor::guiPointInRect(
-                                  IRPrefab::Layout::mousePositionInGuiTrixels(),
-                                  IRVoxelEditor::kSculptToolbarPos,
-                                  IRVoxelEditor::kSculptToolbarSize
-                              ) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_partsPanel) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_lodPanel) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayPanel) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayTypeList) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayCountSlider) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayDistanceSlider) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayStepYSlider) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayStepZSlider) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayYawSlider) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayApplyButton) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel) ||
-                              (IRVoxelEditor::g_editor.documentsEnabled_ &&
-                               IRVoxelEditor::g_editor.documentPanel_.containsCursor(
-                                   IRPrefab::Layout::mousePositionInGuiTrixels()
-                               )) ||
-                              IRVoxelEditor::cursorOverPartSizePanel() ||
-                              IRVoxelEditor::cursorOverModuleUi() ||
-                              IRVoxelEditor::g_editor.docks_.contains(
-                                  IRPrefab::Layout::mousePositionInGuiTrixels()
-                              );
-            if (!overWidget) {
-                const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
-                for (int i = 0; i < n; ++i) {
-                    if (IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.paletteSwatches_[i])) {
-                        overWidget = true;
-                        break;
-                    }
-                }
-            }
-            if (!overWidget) {
-                const int n = static_cast<int>(IRVoxelEditor::g_bonePaint.boneSwatches_.size());
-                for (int i = 0; i < n; ++i) {
-                    if (IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.boneSwatches_[i])) {
-                        overWidget = true;
-                        break;
-                    }
-                }
-            }
+            bool overWidget = IRVoxelEditor::cursorOverEditorUi();
 
             // In transform mode a gizmo handle under the cursor owns the click,
             // the same way a widget does: GIZMO_DRAG starts its drag on this

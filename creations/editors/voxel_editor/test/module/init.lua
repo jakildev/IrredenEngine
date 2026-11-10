@@ -740,6 +740,25 @@ IREditor.registerSession("test_unreachable", function(session)
     session:click({ 0, 0, 0 })
 end)
 
+-- The arm's -Y face projects inside GRID at 22x zoom. This is an
+-- expected-failing session: the scene-press assertion must name the swallowed click.
+IREditor.registerSession("test_click_under_panel", function(session)
+    session:addVoxelPart()
+    session:applyRecipe("test_arm", { length = 4 })
+    session:segment("click", 22)
+    session:click({ 12, 7, 5 })
+    session:expectPartOccupancy(0, { 12, 7, 5 }, true, "on_end_filled")
+end)
+
+IREditor.registerSession("test_click_after_focus", function(session)
+    session:addVoxelPart()
+    session:applyRecipe("test_arm", { length = 4 })
+    session:segment("click", 22)
+    session:clickGui({ 910, 69 })
+    session:click({ 12, 7, 5 })
+    session:expectPartOccupancy(0, { 12, 7, 5 }, true, "on_end_filled")
+end)
+
 -- At the default scene size the BAKE slider can hold a radius either side of
 -- 2.0981 for this request, where the sphere gains 32 cells, (7, 7, 5) among
 -- them. bakeSphere refuses it, so the part stays clear and the click has
