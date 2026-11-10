@@ -203,4 +203,47 @@ TEST(PickingGridRay, NegativeDirectionComponentEntersThePositiveFace) {
     EXPECT_EQ(hit->faceNormal_, ivec3(1, 0, 0));
 }
 
+TEST(PickingGridRay, SpatialProjectionSelectsVisibleFacesAboveAndBelowWithRoll) {
+    const Cells cells{{{4, 4, 4}}};
+    const ivec3 normals[] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
+    for (float azimuth : {0.0f, 0.31f, 0.77f, 1.13f, 2.6f, 4.9f}) {
+        for (float elevation : {-1.4f, -0.4f, 0.0f, 0.6154797f, 1.4f}) {
+            for (float roll : {-0.7f, 0.0f, 0.3f}) {
+                const auto view = IRMath::orthographicViewBasis(
+                    IRMath::uprightOrbitRotation(azimuth, elevation, roll)
+                );
+                for (ivec3 normal : normals) {
+                    if (IRMath::dot(vec3(normal), view.depth_) >= -0.01f)
+                        continue;
+                    const vec3 face = vec3(kAnchor) + vec3(normal) * 0.5f;
+                    const auto iso = IRMath::projectOrthographic(face, view);
+                    const vec3 origin = IRMath::unprojectOrthographic(iso, 0.0f, view);
+                    const auto hit = castGridRay(origin, view.depth_, kGridSize, cells);
+                    ASSERT_TRUE(hit);
+                    EXPECT_EQ(hit->cell_, kAnchor);
+                    EXPECT_EQ(hit->faceNormal_, normal);
+                    const auto entered = origin + view.depth_ * hit->rayT_;
+                    // A grazing ray amplifies subpixel projection roundoff
+                    // along the surface. Its normal coordinate and displayed
+                    // position remain well-conditioned and must agree tightly.
+                    EXPECT_NEAR(IRMath::dot(entered - face, vec3(normal)), 0.0f, 3e-6f);
+                    // Scale roundoff to the float point and projection rows,
+                    // allowing eight arithmetic rounding steps. For this fixture
+                    // the bound is below 0.01 framebuffer pixel even at zoom 64
+                    // with a 2x output scale; exact cell/face checks stay above.
+                    const float projectionRoundoff =
+                        8.0f * std::numeric_limits<float>::epsilon() *
+                        IRMath::max(1.0f, IRMath::length(entered)) *
+                        (IRMath::length(view.isoX_) + IRMath::length(view.isoY_));
+                    EXPECT_NEAR(
+                        IRMath::length(IRMath::projectOrthographic(entered, view) - iso),
+                        0.0f,
+                        projectionRoundoff
+                    );
+                }
+            }
+        }
+    }
+}
+
 } // namespace

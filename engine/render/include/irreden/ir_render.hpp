@@ -192,6 +192,15 @@ void fillGuiRect(ivec2 pos, ivec2 size, Color color);
 
 /// Camera position in isometric 2-D canvas space (trixel units).
 vec2 getCameraPosition2DIso();
+/// Whether the world renderer uses the camera's full orientation.
+bool isSpatialViewEnabled();
+/// Unit view-to-world quaternion; legacy world views retain only camera yaw.
+vec4 getViewRotation();
+/// Geometric world/view mappings, before camera translation, display zoom or
+/// voxel-cell raster anchoring. Depth is continuous, in unscaled iso units.
+vec2 projectWorldToView(vec3 world);
+float viewDepth(vec3 world);
+vec3 unprojectView(vec2 iso, float depth);
 /// Camera iso offset corrected for the active @ref RotationPivotMode. Producers
 /// that position world content relative to the camera should read THIS, not
 /// @ref getCameraPosition2DIso, so Z-yaw pivots about the camera focus rather
@@ -264,6 +273,8 @@ ivec2 mouseMainFramebufferPixel();
 /// hardcode a screen coordinate. Returns @c ivec2(0) when the GUI canvas or
 /// main framebuffer is missing — not a per-frame call.
 ivec2 guiTrixelToScreenPx(vec2 guiTrixel);
+/// Native top-left logical window points to GUI trixels, without cursor state.
+vec2 windowPointsToGuiTrixel(vec2 windowPoint);
 /// Logical game resolution before any output upscaling.
 vec2 getGameResolution();
 /// Main canvas size in trixels.
@@ -375,6 +386,15 @@ ivec2 worldPos3DToMouseScreenPxExact(vec3 worldPos);
 /// Unrounded window-point form of @ref worldPos3DToMouseScreenPxExact for
 /// continuous geometry overlays. Follows the displayed projection at every yaw.
 vec2 worldPos3DToWindowPointsExact(vec3 worldPos);
+/// Inverse of worldPos3DToWindowPointsExact at continuous viewDepth(worldPos).
+/// Input uses native top-left logical window points on every backend.
+vec3 windowPointsToWorldPos3DAtViewDepth(vec2 windowPoint, float depth);
+/// Current raster compositor offset from the continuous geometric projection,
+/// in top-down output framebuffer pixels, including the carried zoom phase.
+vec2 cameraRasterCorrectionFramebufferPx();
+/// Spatial picking inverse: includes the compositor's camera raster offset.
+/// Use the continuous inverse above for cursor-anchored zoom and camera math.
+vec3 windowPointsToDisplayedWorldPos3DAtViewDepth(vec2 windowPoint, float depth);
 struct MouseTrixelPick {
     IREntity::EntityId entity_ = IREntity::kNullEntity;
     int priority_ = 0;

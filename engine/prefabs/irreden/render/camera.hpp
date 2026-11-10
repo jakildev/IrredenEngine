@@ -7,10 +7,9 @@
 // code run before the camera is fully wired without crashing.
 //
 // Rotation lives in C_LocalTransform.rotation_ (the same SQT quaternion
-// every entity uses). The primary convention is ZX composition:
-// q = qZ(yaw) × qX(pitch). The GRID trixel rasterizer extracts only
-// Z-yaw for its cardinal/residual split; DETACHED canvases use the full
-// quaternion via system_propagate_canvas_rotation.
+// every entity uses). The compatibility controls use ZX composition:
+// q = qZ(yaw) × qX(pitch). Spatial view projects all world content through
+// the full quaternion; its upright controls expose azimuth/elevation/roll.
 //
 // Zoom policy lives in C_Camera.continuousZoom_. The zoom VALUE stays in
 // C_ZoomLevel and is written through IRRender::setCameraZoom; this header
@@ -144,6 +143,39 @@ inline float getPitch() {
     if (auto *t = detail::cameraTransform())
         return detail::pitchFromQuat(t->rotation_);
     return 0.0f;
+}
+
+inline bool isSpatialViewEnabled() {
+    const auto *camera = detail::cameraComponent<IRComponents::C_Camera>();
+    return camera != nullptr && camera->spatialViewEnabled_;
+}
+
+/// Change projection policy at a frame boundary, before geometry producers run.
+inline void setSpatialViewEnabled(bool enabled) {
+    if (auto *camera = detail::cameraComponent<IRComponents::C_Camera>())
+        camera->spatialViewEnabled_ = enabled;
+}
+
+/// View-to-world quaternion. Legacy world projection intentionally ignores pitch.
+inline IRMath::vec4 getViewRotation() {
+    return isSpatialViewEnabled() ? getRotationQuat()
+                                  : IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), getYaw());
+}
+
+inline IRMath::OrbitAngles getOrbitAngles() {
+    return IRMath::decomposeOrbitAngles(getRotationQuat());
+}
+
+/// Upright azimuth/elevation orbit with independent roll; elevations below
+/// zero reveal the underside without flipping the world's vertical direction.
+inline void setOrbitAngles(float azimuth, float elevation, float roll = 0.0f) {
+    setRotationQuat(
+        IRMath::uprightOrbitRotation(
+            azimuth,
+            IRMath::clamp(elevation, -detail::kPitchLimit, detail::kPitchLimit),
+            roll
+        )
+    );
 }
 
 /// Set both yaw and pitch in one call. Composes as qZ(yaw) × qX(pitch).
@@ -348,6 +380,16 @@ screenResidual(IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom, IRMath::ivec2
     if (const IRMath::CameraRasterPhase *frame = zoomFrame(effectiveCameraIso, zoom))
         return IRMath::cameraRasterScreenResidual(*frame, scaleFactor);
     return IRMath::cameraSubPixelOffsets(effectiveCameraIso, zoom, scaleFactor).screenPxResidual_;
+}
+
+/// Shared camera compositor correction; kept here for prefab callers.
+inline IRMath::vec2 rasterCorrectionFramebufferPx(
+    IRMath::vec2 cameraIso,
+    IRMath::vec2 zoom,
+    IRMath::ivec2 outputScale,
+    const IRMath::CameraRasterPhase *frame
+) {
+    return IRMath::cameraRasterCorrectionFramebufferPx(cameraIso, zoom, outputScale, frame);
 }
 
 } // namespace IRPrefab::Camera

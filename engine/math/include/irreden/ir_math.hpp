@@ -835,6 +835,75 @@ constexpr vec3 isoPixelToPos3DYawed(const vec2 iso, float yawedIsoDepth, float v
     return vec3(view.x * c - view.y * s, view.x * s + view.y * c, view.z);
 }
 
+/// Orthogonal projection rows in world coordinates. Their squared lengths
+/// remain 2, 6 and 3, preserving the engine's iso units and depth scale.
+struct OrthographicViewBasis {
+    vec3 isoX_{-1.0f, 1.0f, 0.0f};
+    vec3 isoY_{-1.0f, -1.0f, 2.0f};
+    vec3 depth_{1.0f, 1.0f, 1.0f};
+};
+
+/// @p viewToWorld is a unit quaternion; geometry remains in authored world units.
+inline OrthographicViewBasis orthographicViewBasis(vec4 viewToWorld) {
+    return {
+        rotateVectorByQuat(vec3(-1.0f, 1.0f, 0.0f), viewToWorld),
+        rotateVectorByQuat(vec3(-1.0f, -1.0f, 2.0f), viewToWorld),
+        rotateVectorByQuat(vec3(1.0f), viewToWorld)
+    };
+}
+
+inline vec2 projectOrthographic(vec3 world, const OrthographicViewBasis &basis) {
+    return vec2(glm::dot(world, basis.isoX_), glm::dot(world, basis.isoY_));
+}
+
+inline float orthographicDepth(vec3 world, const OrthographicViewBasis &basis) {
+    return glm::dot(world, basis.depth_);
+}
+
+inline vec3 unprojectOrthographic(vec2 iso, float depth, const OrthographicViewBasis &basis) {
+    return basis.isoX_ * (iso.x / 2.0f) + basis.isoY_ * (iso.y / 6.0f) +
+           basis.depth_ * (depth / 3.0f);
+}
+
+/// Keeps the fixed world focus at its unrotated screen position. A camera
+/// translation remains a one-for-one screen translation at every orientation.
+inline vec2
+orthographicPivotOffset(vec2 cameraIso, vec3 focus, const OrthographicViewBasis &basis) {
+    return cameraIso + projectOrthographic(focus, OrthographicViewBasis{}) -
+           projectOrthographic(focus, basis);
+}
+
+/// Azimuth follows camera yaw. Positive elevation looks down toward +Z;
+/// world up is -Z. Roll rotates around the view's forward depth axis.
+struct OrbitAngles {
+    float azimuth_ = 0.0f;
+    float elevation_ = 0.6154797087f;
+    float roll_ = 0.0f;
+};
+
+inline vec4 uprightOrbitRotation(float azimuth, float elevation, float roll = 0.0f) {
+    const float tilt = OrbitAngles{}.elevation_ - elevation;
+    const vec4 yaw = quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), azimuth);
+    const vec4 pitch = quatAxisAngle(glm::normalize(vec3(-1.0f, 1.0f, 0.0f)), tilt);
+    const vec4 bank = quatAxisAngle(glm::normalize(vec3(1.0f)), roll);
+    return quatMul(quatMul(yaw, pitch), bank);
+}
+
+/// Decomposes a unit camera quaternion away from the elevation poles.
+inline OrbitAngles decomposeOrbitAngles(vec4 rotation) {
+    const auto basis = orthographicViewBasis(rotation);
+    const vec3 forward = glm::normalize(basis.depth_);
+    OrbitAngles result;
+    result.azimuth_ = glm::atan(forward.y, forward.x) - kQuarterPi;
+    result.elevation_ = glm::asin(glm::clamp(forward.z, -1.0f, 1.0f));
+    const auto upright =
+        orthographicViewBasis(uprightOrbitRotation(result.azimuth_, result.elevation_));
+    const vec3 right = glm::normalize(upright.isoX_);
+    const vec3 actual = glm::normalize(basis.isoX_);
+    result.roll_ = glm::atan(glm::dot(actual, glm::cross(forward, right)), glm::dot(actual, right));
+    return result;
+}
+
 /// Exact inverse of `pos3DtoPos2DIsoYawed` on the plane `z == zLevel`: the
 /// world point at that height whose yawed iso projection is @p iso. The
 /// projection is a bijection per z plane (its 2×2 in-plane part is
@@ -1580,14 +1649,18 @@ inline IsoBounds2D sunFrustumUVBounds(
     const vec3 &vHat,
     const vec3 &sunDir,
     CardinalIndex cardinalIndex,
-    const vec3 &sweep
+    const vec3 &sweep,
+    const vec4 *viewRotation = nullptr
 ) {
+    const auto view = viewRotation ? orthographicViewBasis(*viewRotation) : OrthographicViewBasis{};
     vec2 uvMin(std::numeric_limits<float>::max());
     vec2 uvMax(std::numeric_limits<float>::lowest());
     for (float depth : {depthMin, depthMax}) {
         for (int y : {isoMin.y, isoMax.y}) {
             for (int x : {isoMin.x, isoMax.x}) {
-                const vec3 corner = rotateCardinalZInv(isoPixelToPos3D(x, y, depth), cardinalIndex);
+                const vec3 corner =
+                    viewRotation ? unprojectOrthographic(vec2(x, y), depth, view)
+                                 : rotateCardinalZInv(isoPixelToPos3D(x, y, depth), cardinalIndex);
                 for (const vec3 &offset : {vec3(0.0f), sweep}) {
                     const vec2 uv(sunSpaceProject(corner + offset, uHat, vHat, sunDir));
                     uvMin = glm::min(uvMin, uv);
@@ -1814,6 +1887,24 @@ inline dvec2 cameraRasterDetachedOffset(const CameraRasterPhase &sample) {
 /// pixel lattice.
 inline vec2 cameraSnappedDetachedOffset(const vec2 cameraIso, const vec2 framebufferPxPerCell) {
     return IRMath::floor(IRMath::fract(cameraIso) * framebufferPxPerCell) * vec2(1.0f, -1.0f);
+}
+
+/// Difference between geometric camera placement and the raster compositor,
+/// in top-down output framebuffer pixels. Pure: the caller supplies the
+/// published zoom phase, or nullptr for the snapped placement policy.
+inline vec2 cameraRasterCorrectionFramebufferPx(
+    vec2 cameraIso, vec2 zoom, ivec2 outputScale, const CameraRasterPhase *frame
+) {
+    const vec2 pitch(cameraZoomPitch(zoom));
+    const vec2 detached = frame != nullptr ? vec2(cameraRasterDetachedOffset(*frame))
+                                           : cameraSnappedDetachedOffset(cameraIso, pitch);
+    const vec2 residual =
+        frame != nullptr
+            ? vec2(cameraRasterScreenResidual(*frame, outputScale))
+            : vec2(cameraSubPixelOffsets(cameraIso, zoom, outputScale).screenPxResidual_);
+    const vec2 rasterCamera = floor(cameraIso) * pitch + detached * vec2(1, -1);
+    return (rasterCamera - cameraIso * pitch) * vec2(outputScale) +
+           residual * IRPlatform::kIsoToScreenSign;
 }
 
 /// Inverse iso projection selecting the 3D position at a specific Z level,

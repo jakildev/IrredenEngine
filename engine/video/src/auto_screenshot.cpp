@@ -14,6 +14,26 @@
 
 namespace IRVideo {
 
+void injectGuiInputEvent(const GuiInputEvent &event) {
+    switch (event.type_) {
+    case GuiInputEvent::Type::MOVE:
+        IRInput::injectMouseMove(event.screenPx_);
+        break;
+    case GuiInputEvent::Type::PRESS:
+        IRInput::injectButton(event.button_, IRInput::ButtonStatuses::PRESSED);
+        break;
+    case GuiInputEvent::Type::RELEASE:
+        IRInput::injectButton(event.button_, IRInput::ButtonStatuses::RELEASED);
+        break;
+    case GuiInputEvent::Type::SCROLL:
+        IRInput::injectScroll(event.scroll_.x, event.scroll_.y);
+        break;
+    case GuiInputEvent::Type::POINTER_GESTURE:
+        IRInput::injectPointerGesture(event.pointerGesture_);
+        break;
+    }
+}
+
 namespace {
 
 // Private anchors: never attached to any entity, so the per-entity tick
@@ -49,7 +69,12 @@ void logCaptureCameraState(const char *label) {
 void applyShotCameraState(const AutoScreenshotShot &shot) {
     IRRender::setCameraZoom(shot.zoom_);
     IRRender::setCameraPosition2DIso(shot.cameraIso_);
-    IRPrefab::Camera::setYaw(shot.yawRadians_);
+    if (shot.hasViewRotation_) {
+        IRPrefab::Camera::setSpatialViewEnabled(true);
+        IRPrefab::Camera::setRotationQuat(shot.viewRotation_);
+    } else {
+        IRPrefab::Camera::setYaw(shot.yawRadians_);
+    }
     // Set or clear the explicit Z-yaw pivot point of interest so a regression
     // shot can pin tall / off-center content; clearing keeps shots with no
     // focus on the legacy screen-center pivot.
@@ -363,23 +388,7 @@ IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
                     const auto &ev = shot.inputs_[i];
                     if (ev.frameOffset_ != state->shotFrame_)
                         continue;
-                    switch (ev.type_) {
-                    case GuiInputEvent::Type::MOVE:
-                        IRInput::injectMouseMove(ev.screenPx_);
-                        break;
-                    case GuiInputEvent::Type::PRESS:
-                        IRInput::injectButton(ev.button_, IRInput::ButtonStatuses::PRESSED);
-                        break;
-                    case GuiInputEvent::Type::RELEASE:
-                        IRInput::injectButton(ev.button_, IRInput::ButtonStatuses::RELEASED);
-                        break;
-                    case GuiInputEvent::Type::SCROLL:
-                        IRInput::injectScroll(
-                            static_cast<double>(ev.scroll_.x),
-                            static_cast<double>(ev.scroll_.y)
-                        );
-                        break;
-                    }
+                    injectGuiInputEvent(ev);
                 }
                 ++state->shotFrame_;
                 return;

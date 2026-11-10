@@ -4,6 +4,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_platform.hpp>
 #include <irreden/window/close_guard.hpp>
+#include <irreden/window/pointer_gesture.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -174,6 +175,7 @@ class IRGLFWWindow {
     void addMouseButtonPressedToProcess(int button);
     void addMouseButtonReleasedToProcess(int button);
     void addScrollToProcess(double xoffset, double yoffset);
+    void addPointerGestureToProcess(const PointerGestureEvent &event);
     /// @}
 
     /// @name Event-queue drain accessors (called by InputManager each frame)
@@ -193,6 +195,9 @@ class IRGLFWWindow {
     inline std::queue<std::pair<double, double>> &getScrollsToProcess() {
         return m_scrollsToProcess;
     }
+    inline std::queue<PointerGestureEvent> &getPointerGesturesToProcess() {
+        return m_pointerGesturesToProcess;
+    }
     /// @}
 
   private:
@@ -209,6 +214,8 @@ class IRGLFWWindow {
     std::queue<int> m_mouseButtonsPressedToProcess;
     std::queue<int> m_mouseButtonsReleasedToProcess;
     std::queue<std::pair<double, double>> m_scrollsToProcess;
+    std::queue<PointerGestureEvent> m_pointerGesturesToProcess;
+    void *m_pointerGestureMonitor = nullptr;
 };
 
 /// GLFW error callback — logs the error message.

@@ -82,6 +82,10 @@ vec2 scrollOffset() {
     return getInputManager().getScrollOffset();
 }
 
+std::span<const PointerGestureEvent> pointerGestures() {
+    return getInputManager().getPointerGestures();
+}
+
 void beginSyntheticInput() {
     getInputManager().beginSyntheticInput();
 }
@@ -100,6 +104,10 @@ void injectButton(KeyMouseButtons button, ButtonStatuses status) {
 
 void injectScroll(double xOffset, double yOffset) {
     getInputManager().injectScroll(xOffset, yOffset);
+}
+
+void injectPointerGesture(const PointerGestureEvent &event) {
+    getInputManager().injectPointerGesture(event);
 }
 
 } // namespace IRInput

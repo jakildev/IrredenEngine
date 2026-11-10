@@ -123,4 +123,43 @@ TEST(SunFrustumBounds, ObliqueBasisMatchesLinearCenterExtentOracle) {
     }
 }
 
+TEST(SunFrustumBounds, SpatialViewMatchesWorldSupportBoundsAboveAndBelow) {
+    const vec3 direction = IRMath::normalize(vec3(-.3f, -.2f, -.93f));
+    vec3 uHat, vHat;
+    IRMath::buildOrthonormalBasis(direction, uHat, vHat);
+    const vec3 sweep(4.5f, -3, 7.25f);
+    for (float elevation : {-1.4f, -.4f, 0.0f, .7f, 1.4f}) {
+        const auto rotation = IRMath::uprightOrbitRotation(1.1693706f, elevation, .37f);
+        const auto bounds = IRMath::sunFrustumUVBounds(
+            {-12, -24},
+            {24, 48},
+            -12,
+            36,
+            uHat,
+            vHat,
+            direction,
+            CardinalIndex::k0,
+            sweep,
+            &rotation
+        );
+        // Independent support-function oracle: rotate the slab's center and
+        // three half-extent vectors, then add the world-space sweep segment.
+        const vec3 center = IRMath::rotateVectorByQuat(vec3(-1, 5, 8), rotation) + sweep * .5f;
+        const vec3 extents[] = {
+            IRMath::rotateVectorByQuat(vec3(-9, 9, 0), rotation),
+            IRMath::rotateVectorByQuat(vec3(-6, -6, 12), rotation),
+            IRMath::rotateVectorByQuat(vec3(8), rotation),
+            sweep * .5f
+        };
+        vec2 projectedCenter, halfExtent(0);
+        const vec3 sunAxes[] = {uHat, vHat};
+        for (int axis = 0; axis < 2; ++axis) {
+            projectedCenter[axis] = IRMath::dot(center, sunAxes[axis]);
+            for (auto extent : extents)
+                halfExtent[axis] += IRMath::abs(IRMath::dot(extent, sunAxes[axis]));
+        }
+        expectBounds(bounds, projectedCenter - halfExtent, projectedCenter + halfExtent);
+    }
+}
+
 } // namespace

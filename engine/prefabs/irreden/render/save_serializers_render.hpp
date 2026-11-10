@@ -236,11 +236,29 @@ template <> struct SaveMigration<IRComponents::C_GizmoHandle> {
     }
 };
 
+// Camera v3: u8 continuous zoom, u8 spatial view. Historical v2 was the
+// raw image of one bool; v1 was an empty marker with an unspecified byte.
+template <> struct SaveSerialize<IRComponents::C_Camera> {
+    static void write(IRAsset::BinaryWriter &writer, const IRComponents::C_Camera &value) {
+        writer.writeU8(value.continuousZoom_ ? 1 : 0);
+        writer.writeU8(value.spatialViewEnabled_ ? 1 : 0);
+    }
+
+    static IRAsset::Result<IRComponents::C_Camera> read(IRAsset::BinaryReader &reader) {
+        using Res = IRAsset::Result<IRComponents::C_Camera>;
+        IRComponents::C_Camera value;
+        IR_SAVE_READ_BOOL(value.continuousZoom_, reader.readU8());
+        IR_SAVE_READ_BOOL(value.spatialViewEnabled_, reader.readU8());
+        return Res::success(value);
+    }
+};
+
 template <> struct SaveMigration<IRComponents::C_Camera> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_Camera>>>
     migrators() {
         return {
-            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_Camera> {
+            {1u,
+             [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_Camera> {
                  // Consumed and discarded: read as the policy flag, the byte
                  // would turn the continuous zoom on from uninitialized memory.
                  detail::CameraV1 old{};
@@ -252,6 +270,12 @@ template <> struct SaveMigration<IRComponents::C_Camera> {
                      );
                  }
                  return IRAsset::Result<IRComponents::C_Camera>::success(IRComponents::C_Camera{});
+             }},
+            {2u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_Camera> {
+                 using Res = IRAsset::Result<IRComponents::C_Camera>;
+                 IRComponents::C_Camera value;
+                 IR_SAVE_READ_BOOL(value.continuousZoom_, reader.readU8());
+                 return Res::success(value);
              }},
         };
     }

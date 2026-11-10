@@ -19,6 +19,11 @@ namespace IRWindow {
 void platformPrepareWindowMode(WindowMode mode);
 void platformApplyWindowMode(GLFWwindow *window, WindowMode mode);
 
+// The returned token belongs to this window; remove it before GLFW destruction.
+// A null token leaves input on the GLFW fallback path.
+void *platformInstallPointerGestures(IRGLFWWindow &window);
+void platformRemovePointerGestures(void *monitor);
+
 } // namespace IRWindow
 
 #endif /* IR_WINDOW_PLATFORM_H */

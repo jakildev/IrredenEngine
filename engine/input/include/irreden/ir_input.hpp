@@ -55,6 +55,11 @@ int scrollDelta();
 /// This frame's raw summed scroll offset `(x, y)`. Zero on a frame with no event.
 IRMath::vec2 scrollOffset();
 
+/// Ordered scroll and magnification events, unchanged across INPUT / UPDATE /
+/// RENDER. The view expires at the next InputManager::tick(). Phases survive
+/// zero deltas; magnification never contributes to the legacy scroll totals.
+std::span<const PointerGestureEvent> pointerGestures();
+
 /// @name Synthetic input (headless GUI/mouse verification harness)
 /// Flip the active `InputManager` to consume injected events instead of GLFW
 /// for the rest of the run, so a headless run can move the cursor and press
@@ -71,6 +76,9 @@ void injectMouseMove(IRMath::ivec2 screenPx);
 void injectButton(KeyMouseButtons button, ButtonStatuses status);
 /// Enqueue a scroll delta, applied at the next frame boundary.
 void injectScroll(double xOffset, double yOffset);
+/// Enqueue complete gesture metadata without changing the cursor snapshot.
+/// Uses the same ordered frame stream as native input, including zero deltas.
+void injectPointerGesture(const PointerGestureEvent &event);
 /// @}
 
 /// @name Internal input counters (used by input systems, not for general use)

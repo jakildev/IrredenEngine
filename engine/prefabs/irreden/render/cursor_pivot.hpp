@@ -32,8 +32,9 @@ struct FocusOptions {
 
 namespace detail {
 
-// The isometric cursor ray always has a nonzero world-Z component.
 inline IRMath::vec3 pointAtHeight(IRMath::vec3 origin, IRMath::vec3 direction, float height) {
+    if (IRMath::abs(direction.z) < 1e-4f)
+        return IRMath::vec3(origin.x, origin.y, height);
     return origin + direction * ((height - origin.z) / direction.z);
 }
 
@@ -42,10 +43,18 @@ preserveViewCamera(IRMath::vec2 rawCamera, IRMath::vec2 oldEffective, IRMath::ve
     return rawCamera + oldEffective - newEffective;
 }
 
-inline IRMath::vec3 indicatorWorldPosition(IRMath::vec3 focus, float yaw, float radius) {
+inline IRMath::vec3 indicatorWorldPosition(IRMath::vec3 focus, IRMath::vec3 ray, float radius) {
     // Conservative voxel depth keys cover a whole cell, even for a surface hit.
     const float clearance = IRMath::max(1.0f, IRMath::ceil(radius));
-    return focus - IRMath::isoPixelToPos3DYawed(IRMath::vec2(0.0f), 3.0f, yaw) * clearance;
+    return focus - ray * clearance;
+}
+
+inline IRMath::vec3 indicatorWorldPosition(IRMath::vec3 focus, float yaw, float radius) {
+    return indicatorWorldPosition(
+        focus,
+        IRMath::isoPixelToPos3DYawed(IRMath::vec2(0.0f), 3.0f, yaw),
+        radius
+    );
 }
 
 } // namespace detail
@@ -53,6 +62,12 @@ inline IRMath::vec3 indicatorWorldPosition(IRMath::vec3 focus, float yaw, float 
 inline IRMath::vec3 resolveFloorWorld(float height) {
     const auto origin = IRRender::mouseWorldPos3DAtIsoDepthExact(0.0f);
     const auto direction = IRRender::mouseWorldPos3DAtIsoDepthExact(3.0f) - origin;
+    if (IRRender::isSpatialViewEnabled() && IRMath::abs(direction.z) < 1e-4f) {
+        const auto focus = IRRender::hasRotationPivotFocus()
+                               ? IRRender::getRotationPivotFocus()
+                               : IRRender::getDefaultRotationPivotFocus();
+        return origin + direction * (IRRender::viewDepth(focus) / 3.0f);
+    }
     return detail::pointAtHeight(origin, direction, height);
 }
 
@@ -84,6 +99,12 @@ resolveFocusWorld(IREntity::EntityId excludeEntity, const FocusOptions &options)
 inline IRMath::vec3 resolveCenterWorld(float height) {
     const auto iso =
         IRRender::getRenderManager().getCanvasCenterIso() - IRRender::getEffectiveCameraIso();
+    if (IRRender::isSpatialViewEnabled())
+        return detail::pointAtHeight(
+            IRRender::unprojectView(iso, 0.0f),
+            IRRender::unprojectView(IRMath::vec2(0), 3.0f),
+            height
+        );
     const float yaw = Camera::getYaw();
     return detail::pointAtHeight(
         IRMath::isoPixelToPos3DYawed(iso, 0.0f, yaw),
@@ -95,6 +116,15 @@ inline IRMath::vec3 resolveCenterWorld(float height) {
 // An explicit pivot has identity camera-translation derivative, including at
 // yaw angles where the live-center pan inverse is singular.
 inline void setFocusPreservingView(IRMath::vec3 focusWorld) {
+    if (IRRender::isSpatialViewEnabled()) {
+        const auto effective = IRRender::getEffectiveCameraIso();
+        IRRender::setRotationPivotMode(IRRender::RotationPivotMode::CAMERA_CENTER);
+        IRRender::setRotationPivotFocus(focusWorld);
+        IRRender::setCameraPosition2DIso(
+            IRRender::getCameraPosition2DIso() + effective - IRRender::getEffectiveCameraIso()
+        );
+        return;
+    }
     const auto oldEffective = IRRender::getEffectiveCameraIso();
     const auto rawCamera = IRRender::getCameraPosition2DIso();
     IRRender::setRotationPivotMode(IRRender::RotationPivotMode::CAMERA_CENTER);
@@ -166,7 +196,12 @@ struct OrbitAnchor {
     void begin(bool cursorPivot = true, const FocusOptions &options = {}) {
         const auto focus = cursorPivot ? resolveFocusWorld(pivotIndicator_, options)
                                        : resolveCenterWorld(IRRender::getViewReferenceHeight());
-        beginAt(focus, IRInput::getMousePositionScreen(), cursorPivot);
+        beginAt(
+            focus,
+            IRRender::isSpatialViewEnabled() ? IRInput::getMousePosition()
+                                             : IRInput::getMousePositionScreen(),
+            cursorPivot
+        );
     }
 
     void beginAt(IRMath::vec3 focus, IRMath::vec2 windowPoint, bool showMarker) {
@@ -192,7 +227,13 @@ struct OrbitAnchor {
         const float radius = kIndicatorRadius / IRMath::max(IRRender::getCameraZoom().x, 1e-3f);
         showIndicator(
             pivotIndicator_,
-            detail::indicatorWorldPosition(focusWorld_, Camera::getYaw(), radius),
+            detail::indicatorWorldPosition(
+                focusWorld_,
+                IRRender::isSpatialViewEnabled()
+                    ? IRRender::unprojectView(IRMath::vec2(0), 3.0f)
+                    : IRMath::isoPixelToPos3DYawed(IRMath::vec2(0), 3.0f, Camera::getYaw()),
+                radius
+            ),
             radius
         );
     }

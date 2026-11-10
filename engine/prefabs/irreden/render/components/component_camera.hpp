@@ -11,6 +11,9 @@ struct C_Camera {
     /// invariant on the way out.
     bool continuousZoom_ = false;
 
+    /// Full camera orientation participates in world projection when enabled.
+    bool spatialViewEnabled_ = false;
+
     // Default
     C_Camera() {}
 };

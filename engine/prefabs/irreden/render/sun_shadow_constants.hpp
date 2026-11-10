@@ -62,13 +62,20 @@ inline IRMath::vec3 getFrameSunDirection() {
 struct ShadowFeederParams {
     IRMath::vec3 sunDir_ = IRMath::vec3(0.0f);
     float sweepDistance_ = 0.0f;
+    IRMath::vec3 viewSunDir_ = IRMath::vec3(0.0f);
+    bool spatialView_ = false;
 };
 
 inline ShadowFeederParams frameShadowFeederParams() {
     if (!IRRender::getSunShadowsEnabled()) {
         return {};
     }
-    return {getFrameSunDirection(), kSunShadowMaxDistance};
+    const auto sun = getFrameSunDirection();
+    const bool spatial = IRRender::isSpatialViewEnabled();
+    const auto viewSun =
+        spatial ? IRMath::rotateVectorByQuat(sun, IRMath::quatInverse(IRRender::getViewRotation()))
+                : sun;
+    return {sun, kSunShadowMaxDistance, viewSun, spatial};
 }
 
 // The shared frozen-or-live cull viewport at @p margin, widened to the
@@ -81,7 +88,7 @@ inline ShadowFeederParams frameShadowFeederParams() {
 inline IRMath::IsoBounds2D shadowFeederCullViewport(int margin, const ShadowFeederParams &params) {
     return IRMath::shadowFeederIsoBounds(
         IRRender::getCullViewport().isoViewport(margin),
-        params.sunDir_,
+        params.spatialView_ ? params.viewSunDir_ : params.sunDir_,
         params.sweepDistance_
     );
 }
@@ -91,7 +98,7 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(
 ) {
     return IRMath::shadowFeederIsoBounds(
         cull.isoViewport(margin),
-        params.sunDir_,
+        params.spatialView_ ? params.viewSunDir_ : params.sunDir_,
         params.sweepDistance_
     );
 }
@@ -145,7 +152,8 @@ inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
     const IRMath::vec3 &vHat,
     const IRMath::vec3 &sunDir,
     IRMath::CardinalIndex cardinalIndex,
-    const IRMath::vec3 &sweep
+    const IRMath::vec3 &sweep,
+    const IRMath::vec4 *viewRotation = nullptr
 ) {
     return IRMath::sunFrustumUVBounds(
         IRMath::ivec2(isoBounds.min_),
@@ -156,7 +164,8 @@ inline IRMath::IsoBounds2D sunBakeFrustumUVBounds(
         vHat,
         sunDir,
         cardinalIndex,
-        sweep
+        sweep,
+        viewRotation
     );
 }
 
@@ -198,6 +207,8 @@ feederSubCap(const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, in
     const auto &cull = IRRender::getCullViewport();
     const IRMath::IsoBounds2D isoBounds = cull.isoViewportForCanvas(cull.canvasSize_, 0);
     const IRMath::vec3 sweep = -dir * kSunShadowMaxDistance;
+    const auto viewRotation = IRRender::getViewRotation();
+    const auto *spatialRotation = IRRender::isSpatialViewEnabled() ? &viewRotation : nullptr;
 
     int cap = 1;
     for (const auto &range : kSunCascadeDepthRanges) {
@@ -209,7 +220,8 @@ feederSubCap(const IRMath::vec3 &sunDir, IRMath::CardinalIndex cardinalIndex, in
             vHat,
             dir,
             cardinalIndex,
-            sweep
+            sweep,
+            spatialRotation
         );
         const float extent = IRMath::max(uv.max_.x - uv.min_.x, uv.max_.y - uv.min_.y);
         if (extent > 0.0f) {
