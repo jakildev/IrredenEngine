@@ -4,47 +4,27 @@
 #include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/ir_math.hpp>
 
-#include "anim_panel.hpp"
-
-// The PART SIZE panel: the W / H / D extent the next Ctrl+P voxel part is
-// created at, and a read-only readout of the selected voxel part's extent.
-// Shared by the editor, which builds the widgets, and by sessions that drag a
-// scripted cursor along these tracks (see anim_panel.hpp for why the geometry
-// is shared).
-//
-// The sliders are creation parameters: they do not follow the selection and
-// never resize an existing part.
+#include "integer_stepper.hpp"
 
 namespace IRVoxelEditor {
-
 constexpr IRMath::ivec2 kPartSizePanelPos{4, 660};
-constexpr IRMath::ivec2 kPartSizePanelSize{120, 96};
-
+constexpr IRMath::ivec2 kPartSizePanelSize{204, 134};
 constexpr int kPartSizeAxisCount = 3;
-constexpr int kPartSizeSliderPitch = 18;
-constexpr IRMath::ivec2 kPartSizeSliderSize{111, 14};
-constexpr IRMath::ivec2 kPartSizeReadoutPos{kPartSizePanelPos.x + 4, kPartSizePanelPos.y + 78};
-
-// Track geometry for axis 0 (W, x), 1 (H, y) or 2 (D, z).
-constexpr SliderGeometry partSizeSliderGeometry(int axis) {
-    return SliderGeometry{
-        IRMath::ivec2(
-            kPartSizePanelPos.x + 4,
-            kPartSizePanelPos.y + 20 + axis * kPartSizeSliderPitch
-        ),
-        kPartSizeSliderSize
-    };
+constexpr IRMath::ivec2 partSizeRowPos(int axis) {
+    return kPartSizePanelPos + IRMath::ivec2(98, 23 + axis * 22);
 }
+constexpr IRMath::ivec2 partSizeFieldPos(int axis) {
+    return integerFieldPos(partSizeRowPos(axis));
+}
+constexpr IRMath::ivec2 partSizeStepPos(int axis, int direction) {
+    return integerStepPos(partSizeRowPos(axis), direction);
+}
+constexpr IRMath::ivec2 kPartSizeCreatePos{kPartSizePanelPos + IRMath::ivec2(8, 92)};
+constexpr IRMath::ivec2 kPartSizeCreateSize{184, 18};
+constexpr IRMath::ivec2 kPartSizeReadoutPos{kPartSizePanelPos + IRMath::ivec2(8, 116)};
 
-// A track spans 1 .. max(kPartSizeSliderFloorMax, the scene's own extent on
-// that axis), so a --scene-size larger than the floor is still reachable.
-constexpr float kPartSizeSliderMin = 1.0f;
-constexpr int kPartSizeSliderFloorMax = 32;
-
-constexpr float partSizeSliderMax(int sceneAxisSize) {
-    return static_cast<float>(
-        sceneAxisSize > kPartSizeSliderFloorMax ? sceneAxisSize : kPartSizeSliderFloorMax
-    );
+constexpr int partSizeMax(int sceneAxisSize) {
+    return IRMath::max(64, sceneAxisSize);
 }
 
 // World z of a voxel set's far (local z == size.z - 1) layer: the seed ground
