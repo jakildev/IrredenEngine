@@ -468,6 +468,45 @@ TEST_F(CameraZoomPolicyTest, ScreenResidualFollowsThePublishedFrame) {
     EXPECT_EQ(IRPrefab::Camera::screenResidual(camera, zoomValue, scale), snapped);
 }
 
+TEST(CameraRasterCorrection, SnappedPlacementMatchesTheDisplayedRaster) {
+    const vec2 camera(17.25f, -4.75f);
+    const vec2 zoomValue(2.5f);
+    const ivec2 outputScale(4, 4);
+
+    const vec2 correction =
+        IRMath::cameraRasterCorrectionFramebufferPx(camera, zoomValue, outputScale, nullptr);
+    const float screenYSign = IRPlatform::kIsoToScreenSign.y;
+    const float expectedCorrectionY = screenYSign > 0.0f ? -0.5f : 0.5f;
+    EXPECT_NEAR(correction.x, 0.0f, 1e-6f);
+    EXPECT_NEAR(correction.y, expectedCorrectionY, 1e-6f);
+
+    const vec2 pitch(IRMath::cameraZoomPitch(zoomValue));
+    const vec2 displayed = camera * pitch + correction / vec2(outputScale);
+    EXPECT_NEAR(displayed.x, 86.25f, 1e-6f);
+    EXPECT_NEAR(displayed.y, -11.875f + expectedCorrectionY / 4.0f, 1e-6f);
+}
+
+TEST(CameraRasterCorrection, PublishedPhaseMatchesTheDisplayedRaster) {
+    const vec2 camera(17.25f, -4.75f);
+    const vec2 zoomValue(2.5f);
+    const ivec2 outputScale(4, 4);
+    const IRMath::CameraRasterPhase frame{
+        dvec2(camera),
+        IRMath::cameraZoomPitch(zoomValue),
+        dvec2(0.125, 0.375),
+    };
+
+    const vec2 correction =
+        IRMath::cameraRasterCorrectionFramebufferPx(camera, zoomValue, outputScale, &frame);
+    EXPECT_NEAR(correction.x, -0.5f, 1e-6f);
+    EXPECT_NEAR(correction.y, 0.0f, 1e-6f);
+
+    const vec2 pitch(frame.pitch_);
+    const vec2 displayed = camera * pitch + correction / vec2(outputScale);
+    EXPECT_NEAR(displayed.x, 86.125f, 1e-6f);
+    EXPECT_NEAR(displayed.y, -11.875f, 1e-6f);
+}
+
 // --- which canvases the camera places ----------------------------------------
 
 using TrixelToFramebuffer = IRSystem::System<IRSystem::TRIXEL_TO_FRAMEBUFFER>;

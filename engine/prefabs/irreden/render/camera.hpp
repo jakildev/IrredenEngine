@@ -66,9 +66,9 @@ inline std::pair<float, float> computeYawSplit(float visualYaw) {
 namespace detail {
 
 template <typename Component> inline Component *cameraComponent() {
-    const IREntity::EntityId camera = IREntity::getEntity("camera");
-    if (camera == IREntity::kNullEntity)
+    if (!IREntity::getEntityManager().hasName("camera"))
         return nullptr;
+    const IREntity::EntityId camera = IREntity::getEntity("camera");
     auto opt = IREntity::getComponentOptional<Component>(camera);
     if (!opt.has_value())
         return nullptr;
