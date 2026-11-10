@@ -37,7 +37,7 @@ struct ivec4 {
  int x=0,y=0,z=0,w=0;
  ivec4()=default;ivec4(int a,int b,int c,int d):x(a),y(b),z(c),w(d){}
 };
-struct vec4 {vec4()=default;vec4(ivec2,float){};};
+struct vec4 {vec4()=default;explicit vec4(float){};vec4(ivec2,float){};};
 enum class BufferTarget {UNIFORM,SHADER_STORAGE};
 enum class TextureAccess {READ_ONLY,WRITE_ONLY};
 enum class TextureFormat {R32I,RG32UI};
@@ -52,6 +52,7 @@ struct FrameDataVoxelToCanvas {
  int perAxisRoute_=97;
  ivec2 canvasSizePixels_,trixelCanvasOffsetZ1_,voxelRenderOptions_;
  float visualYaw_=0,rasterYaw_=0,residualYaw_=0;
+ vec4 cameraViewRotation_;
 };
 struct FrameDataSun {int shadowsEnabled_=1;float sunSplatMaxTexels_=6;ivec4 fogCeilingEnabled_;};
 struct Buffer {
@@ -104,10 +105,13 @@ struct Device {
 namespace IREntity {using EntityId=int;}
 namespace IRMath {
 using ::ivec2;int max(int a,int b){return a>b?a:b;}int divCeil(int a,int b){return (a+b-1)/b;}
+float dot(vec4,vec4){return 0;}
 }
 namespace IRRender {
 using ::Buffer;using ::FrameDataVoxelToCanvas;
 Device* device(){static Device value;return &value;}
+bool isSpatialViewEnabled(){return false;}
+vec4 getViewRotation(){return {};}
 }
 namespace IRPrefab::Camera {
 float getYaw(){return cameraYaw;}
@@ -248,6 +252,8 @@ vec2 frameCanvasOffset{.25f,-.75f};
 int inputEncoded=0;
 float residualYaw=0,visualYaw=.35f,rasterYaw=1.5707964f,sunSplatMaxTexels=0;
 vec4 sunBasisU{},sunBasisV{},sunDirection{};
+vec4 cameraViewRotation{};
+bool spatialViewEnabled(vec4){return false;}
 vec2 cascadeOriginUV_0{1,2},cascadeOriginUV_1{3,4};
 vec2 cascadeTexelSize_0{.5f,.25f},cascadeTexelSize_1{2,4};
 constexpr int kCascadeTexelCount=4096;
@@ -263,6 +269,10 @@ vec3 trixelCanvasPixelToWorld3D(ivec2 p,int depth,ivec2 z,vec2 offset,ivec2 opti
 vec3 trixelCanvasPixelToWorld3DSmoothYaw(
  ivec2 p,int depth,ivec2 z,vec2 offset,ivec2 options,float yaw){
  checkInput(p,z,offset,options);return {float(depth),yaw,1};
+}
+vec3 trixelCanvasPixelToWorld3DSpatial(
+ ivec2 p,int depth,ivec2 z,vec2 offset,ivec2 options,vec4){
+ checkInput(p,z,offset,options);return {float(depth),0,2};
 }
 vec3 sunSpaceProject(vec3 p,vec4,vec4,vec4){return p;}
 void bakeCascadeBox(vec3 p,vec2 origin,vec2 texel,int offset,int radius){
@@ -464,13 +474,18 @@ class LegacyShadowBakeTest(unittest.TestCase):
     def test_dispatches_and_route_restoration(self):
         source = cpu_source()
         self.execute(source)
+        yaw_restore = re.search(
+            r"sys_\.patchFrameYawSplit\(\s*visualYaw_,\s*residualYaw_,.*?\);",
+            source,
+            re.DOTALL,
+        ).group()
         mutations = (
             ("builder_route", "frameData.perAxisRoute_ = 0;", "", 3),
             ("store_route", "frameData_.perAxisRoute_ = 0;", "", 1),
             ("scope_route", "const int kSingleCanvasRoute = 0;",
              "const int kSingleCanvasRoute = 1;", 5),
             ("per_axis_splat", "patchSunSplatRadius(0.0f);", "", 12),
-            ("yaw_restore", "sys_.patchFrameYawSplit(visualYaw_, residualYaw_);", "", 16),
+            ("yaw_restore", yaw_restore, "", 16),
             ("splat_restore", "sys_.patchSunSplatRadius(radiusTexels_);", "", 17),
         )
         for name, before, after, expected in mutations:

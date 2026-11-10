@@ -234,9 +234,12 @@ def source_for(backend):
     disabled = re.search(r"if \((?:frameData\.)?lightingEnabled == 0\) \{\s*return;\s*\}",
                          compute).group()
     # The shape branch also has a lighting gate; the cardinal branch owns the provenance read.
-    condition = next(match.group() for match in re.finditer(
-        r"if \(!glitchPresentationOverride[^\{]+\{", fragment)
-        if "isCardinalVoxelSurface" in match.group())
+    condition = re.search(
+        r"if \(!glitchPresentationOverride && color\.a >= 0\.1[^\{]+"
+        r"isCardinalVoxelSurface\([^)]*\)\) \{",
+        fragment,
+        re.DOTALL,
+    ).group()
     predicates = (helpers + "\nbool skip(){" + disabled.replace("return;", "return false;")
                   + skip.replace("return;", "return true;") + "return false;}\n"
                   + "bool fragment(){" + condition + "return true;}return false;}\n")
@@ -260,7 +263,11 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
             source = source_for(backend)
             variants = {
                 "production": source,
-                "lighting_disabled": replace_once(source, "lightingEnabled != 0", "true"),
+                "lighting_disabled": replace_once(
+                    source,
+                    "lightingEnabled != 0",
+                    "true",
+                ),
                 "stale_ready": replace_once(source, "cardinalSurfaceLightingReady_ = false;", ""),
                 "eligible_not_ready": replace_once(
                     source, "lighting_->cardinalSurfaceLightingReady_",
@@ -273,7 +280,9 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
                     "mainVoxelPool_ != nullptr &&",
                 ),
                 "destination_relighting": replace_once(
-                    source, "!glitchPresentationOverride &&", "true &&"
+                    source,
+                    "!glitchPresentationOverride && color.a >= 0.1",
+                    "true && color.a >= 0.1",
                 ),
                 "cut_face": source.replace("!decodeCutFace(rawId)", "true"),
             }
@@ -345,8 +354,10 @@ class CardinalSurfaceLightingTest(unittest.TestCase):
             self.assertLess(lighting.index(refresh), lighting.index(empty))
 
             shape_gate = re.search(
-                r"#if IR_SHAPE_LIGHTING\s*if \(!glitchPresentationOverride",
+                r"#if IR_SHAPE_LIGHTING.*?spatialViewEnabled"
+                r"\(receiverFrame.cameraViewRotation\)",
                 gather,
+                re.DOTALL,
             )
             self.assertIsNotNone(shape_gate)
 

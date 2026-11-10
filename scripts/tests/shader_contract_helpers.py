@@ -28,7 +28,7 @@ def extract_block(source, marker):
 def extract_function(source, name):
     match = re.search(
         r"^[ \t]*(?:(?:inline|constexpr|static) )*(?:void|bool|uint|int|float|vec[234]|float[234]) "
-        + re.escape(name) + r"\([^)]*\)\s*\{", source, re.MULTILINE)
+        + re.escape(name) + r"\([^{};]*\)\s*\{", source, re.MULTILINE)
     if match is None:
         raise ValueError(f"missing function {name}")
     return extract_block(source, match.group())

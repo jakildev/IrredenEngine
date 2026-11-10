@@ -25,12 +25,16 @@ struct vec3 {
  float x,y,z; vec3(float a,float b,float c):x(a),y(b),z(c){}
  explicit vec3(ivec3 v):x(float(v.x)),y(float(v.y)),z(float(v.z)){}
 };
-struct vec4 {vec3 xyz;};
+struct vec4 {vec3 xyz{0,0,0};float w=0;};
 struct ShapeDescriptor {vec4 worldPosition;};
 struct ShapeProjectionData {
  ivec2 voxelRenderOptions; int smoothYawEnabled=0,latticeShapes=0;
  float visualYaw=0,rasterYaw=0;
+ vec4 cameraViewRotation;
 };
+bool spatialViewEnabled(vec4){return false;}
+vec3 rotateByInverseQuat(vec3 p,vec4){return p;}
+vec2 spatialViewIso(vec3 p,vec4){return {-p.x+p.y,-p.x-p.y+2*p.z};}
 ivec3 roundHalfUp(vec3 v){
  return {int(std::floor(v.x+.5f)),int(std::floor(v.y+.5f)),int(std::floor(v.z+.5f))};
 }
@@ -54,6 +58,7 @@ int main(){
   ShapeDescriptor shape{{vec3(x,y,z)}};
   const vec3 actual=bake(shape,f);
   const float rasterYaw=f.rasterYaw,visualYaw=f.visualYaw;
+  const vec4 cameraViewRotation=f.cameraViewRotation;
   const int smoothYawEnabled=f.smoothYawEnabled,latticeShapes=f.latticeShapes;
   const ivec2 voxelRenderOptions=f.voxelRenderOptions;
 RASTER_PROLOGUE

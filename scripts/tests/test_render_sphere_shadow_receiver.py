@@ -43,22 +43,22 @@ HARNESS = (
     ).replace(
         "V2():x(0),y(0){}", "V2():x(0),y(0){} explicit V2(T a):x(a),y(a){}"
     ).replace(
-        "template<class U> explicit V3", "T& operator[](int i){return i==0?x:i==1?y:z;} "
-        "T operator[](int i)const{return i==0?x:i==1?y:z;} template<class U> explicit V3"
-    ).replace(
         "V2 operator+(V2 b)", "T& operator[](int i){return i==0?x:y;} "
         "T operator[](int i)const{return i==0?x:y;} V2 operator+(V2 b)"
     ).replace(
         "struct vec4 {vec3 xyz; float w=1;};", "struct vec4 {vec3 xyz; float w=1; "
         "vec4()=default; vec4(vec3 v,float a):xyz(v),w(a){} "
         "vec4(float x,float y,float z,float a):xyz(x,y,z),w(a){} };"
+    ).replace(
+        "vec3 rotateByQuat(vec3 p,vec4){return p;}\n", ""
+    ).replace(
+        "vec3 rotateByInverseQuat(vec3 p,vec4){return p;}\n", ""
     )
     + r"""
 vec2 xy(vec3 a){return {a.x,a.y};}
 float dot(vec2 a,vec2 b){return a.x*b.x+a.y*b.y;}
 float length(vec2 a){return sqrt(dot(a,a));}
 vec3 cross(vec3 a,vec3 b){return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};}
-vec3 operator*(float a,vec3 b){return b*a;}
 float max(float a,double b){return std::max(a,float(b));}
 float length(vec3 v){return sqrt(dot(v,v));}
 vec3 normalize(vec3 v){return v/length(v);}
@@ -279,8 +279,8 @@ bool selectedShapeAnalyticShadowReceiver(ivec2 p,int width,vec3& position){
                     "ivec2(pos3DtoPos2DIsoYawed(center * float(density), projection.visualYaw))",
                 ),
                 "wrong_yaw": (
-                    "yaw.x * viewOffset.x - yaw.y * viewOffset.y",
-                    "yaw.x * viewOffset.x + yaw.y * viewOffset.y",
+                    "viewToWorldVector(viewOffset, projection.cameraViewRotation, yaw.x, yaw.y)",
+                    "viewToWorldVector(viewOffset, projection.cameraViewRotation, yaw.x, -yaw.y)",
                 ),
                 "wrong_lane": ("(key / 6u) % 64u", "(key / 2u) % 64u"),
                 "lattice_accepted": ("projection.latticeShapes != 0", "false"),
