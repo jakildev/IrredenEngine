@@ -1,0 +1,6 @@
+Original native Metal PNGs from IRVoxelEditor --gui-session spatial_navigation --gui-layout-check.
+The normal-color overlay distinguishes signed voxel faces for independent displayed-picking checks.
+20 shots; 40/40 assertions; zero layout findings.
+underside-normal-faces: orbit_underside_67, final azimuth1.1193706/elevation-.34/roll0/zoom4.
+rolled-underside: option_shift_drag_roll, azimuth1.1693706/elevation-.4/roll.5/zoom4.
+cursor-anchored-pinch: azimuth.5235988/elevation.5/roll.2/zoom4.756828.
