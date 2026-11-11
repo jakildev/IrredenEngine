@@ -91,9 +91,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +105,8 @@ import verify_common
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
+CONTROL_CACHE_SUBDIR = "render-verify-controls"
+CONTROL_CACHE_LIMIT = 30
 
 
 # One encoding of where a demo keeps its reference set. The per-demo path, the
@@ -138,6 +143,225 @@ def _manifest_paths(worktree: Path) -> list[Path]:
 
 def _manifest_path(demo_dir: Path) -> Path:
     return demo_dir / REFERENCES_SUBDIR / MANIFEST_NAME
+
+
+def _git(worktree: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(worktree), *args],
+        capture_output=True,
+        text=True,
+        check=check,
+    )
+
+
+def _head_commit(worktree: Path) -> str:
+    return _git(worktree, "rev-parse", "HEAD").stdout.strip()
+
+
+def _merge_base(worktree: Path) -> str:
+    proc = _git(worktree, "merge-base", "HEAD", "origin/master")
+    commit = proc.stdout.strip()
+    if not commit:
+        raise SystemExit("git merge-base HEAD origin/master returned no commit")
+    return commit
+
+
+def _build_type(build_dir: Path) -> str:
+    cache = build_dir / "CMakeCache.txt"
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("CMAKE_BUILD_TYPE:"):
+            return line.partition("=")[2] or "unknown"
+    return "unknown"
+
+
+def _control_cache_root() -> Path:
+    state_dir = Path(os.environ.get("FLEET_STATE_DIR", Path.home() / ".fleet" / "state"))
+    return state_dir / CONTROL_CACHE_SUBDIR
+
+
+def _control_path(preset: str, commit: str) -> Path:
+    return _control_cache_root() / preset / f"{commit}.json"
+
+
+def _write_json_temp(path: Path, record: dict[str, Any]) -> Path:
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as temp:
+            temp_path = Path(temp.name)
+            json.dump(record, temp, indent=2, sort_keys=True)
+            temp.write("\n")
+            temp.flush()
+            os.fsync(temp.fileno())
+        return temp_path
+    except BaseException:
+        if "temp_path" in locals():
+            temp_path.unlink(missing_ok=True)
+        raise
+
+
+def _write_json_atomic(path: Path, record: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = _write_json_temp(path, record)
+    try:
+        temp_path.replace(path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
+def _row_metrics(row: dict[str, Any]) -> dict[str, Any]:
+    result = row.get("result") or {}
+    return {key: value for key, value in result.items()
+            if key not in {"pass", "reason", "diff_path", "metric"}}
+
+
+def _result_record(*, results: list[dict[str, Any]], worktree: Path,
+                   build_dir: Path, preset: str,
+                   tracker: int | None) -> dict[str, Any] | None:
+    if not results or any(not result.get("recordable") for result in results):
+        return None
+    rows = []
+    for result in results:
+        for row in result.get("rows", []):
+            verdict = ("SKIP" if row["kind"] == "skip"
+                       else "HOST-CLOSED" if row["kind"] == "host-closed"
+                       else "PASS" if row["pass"] else "FAIL")
+            rows.append({
+                "demo": result["demo"],
+                "shot": row["label"],
+                "kind": row["kind"],
+                "verdict": verdict,
+                "metrics": _row_metrics(row),
+            })
+    record: dict[str, Any] = {
+        "version": 1,
+        "commit": _head_commit(worktree),
+        "preset": preset,
+        "build_type": _build_type(build_dir),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "rows": rows,
+    }
+    if tracker is not None:
+        record["tracker"] = tracker
+    return record
+
+
+def _validate_control_source(worktree: Path) -> None:
+    dirty = _git(worktree, "status", "--porcelain", "--untracked-files=normal").stdout
+    if dirty:
+        raise SystemExit("--record-control requires a clean worktree")
+    on_master = _git(
+        worktree, "merge-base", "--is-ancestor", "HEAD", "origin/master",
+        check=False,
+    )
+    if on_master.returncode != 0:
+        raise SystemExit(
+            "--record-control requires HEAD to be a commit on origin/master"
+        )
+
+
+def _prune_controls(preset_dir: Path) -> None:
+    records = sorted(
+        preset_dir.glob("*.json"),
+        key=lambda path: path.stat().st_mtime_ns,
+        reverse=True,
+    )
+    for stale in records[CONTROL_CACHE_LIMIT:]:
+        stale.unlink()
+
+
+def _store_control(record: dict[str, Any]) -> Path:
+    path = _control_path(record["preset"], record["commit"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        print(f"[render-verify] control already exists; keeping {path}")
+        return path
+    temp_path = _write_json_temp(path, record)
+    try:
+        os.link(temp_path, path)
+    except FileExistsError:
+        print(f"[render-verify] control already exists; keeping {path}")
+        return path
+    finally:
+        temp_path.unlink(missing_ok=True)
+    _prune_controls(path.parent)
+    print(f"[render-verify] recorded control {path}")
+    return path
+
+
+def _row_key(row: dict[str, Any]) -> tuple[str, str, str]:
+    return row["demo"], row["shot"], row["kind"]
+
+
+def _control_row_matches(control_rows: dict[tuple[str, str, str], dict[str, Any]],
+                         result: dict[str, Any], row: dict[str, Any]) -> bool:
+    control_row = control_rows.get((result["demo"], row["label"], row["kind"]))
+    metrics = _row_metrics(row)
+    return (control_row is not None
+            and control_row.get("verdict") == "FAIL"
+            and bool(metrics)
+            and control_row.get("metrics") == metrics)
+
+
+def _grade_against_control(*, results: list[dict[str, Any]], worktree: Path,
+                           preset: str) -> None:
+    base = _merge_base(worktree)
+    path = _control_path(preset, base)
+    control = None
+    if path.exists():
+        with path.open(encoding="utf-8") as stream:
+            candidate = json.load(stream)
+        if candidate.get("commit") == base and candidate.get("preset") == preset:
+            control = candidate
+
+    failures = [
+        (result, row)
+        for result in results
+        for row in result.get("rows", [])
+        if row["kind"] not in {"skip", "host-closed"} and not row["pass"]
+    ]
+    if not failures:
+        return
+
+    if control is None:
+        print(f"[render-verify] no control for merge base {base} ({preset})")
+        print("[render-verify] record one with: "
+              "python3 scripts/render-verify.py --all --record-control")
+        for result, row in failures:
+            print(f"  - {result['demo']}:{row['label']}: no control")
+            result["rc"] = 1
+        print(f"[render-verify] control grade: FAIL "
+              f"({len(failures)} without a control)")
+        return
+
+    control_rows = {_row_key(row): row for row in control.get("rows", [])}
+    tracker = control.get("tracker")
+    inherited_count = 0
+    moved_count = 0
+    for result, row in failures:
+        inherited = _control_row_matches(control_rows, result, row)
+        if inherited:
+            inherited_count += 1
+            tracker_note = f" tracker=#{tracker}" if tracker is not None else ""
+            print(f"  - {result['demo']}:{row['label']}: inherited{tracker_note}")
+        else:
+            moved_count += 1
+            print(f"  - {result['demo']}:{row['label']}: moved")
+            result["rc"] = 1
+
+    for result in results:
+        result_failures = [row for row in result.get("rows", [])
+                           if row["kind"] not in {"skip", "host-closed"}
+                           and not row["pass"]]
+        if (result_failures and result.get("recordable")
+                and all(_control_row_matches(control_rows, result, row)
+                        for row in result_failures)):
+            result["rc"] = 0
+    grade = "PASS" if moved_count == 0 and all(r["rc"] == 0 for r in results) else "FAIL"
+    print(f"[render-verify] control grade: {grade} "
+          f"({inherited_count} inherited, {moved_count} moved)")
 
 
 def _declared_targets(worktree: Path) -> dict[str, str]:
@@ -831,10 +1055,13 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
 
     def tally(rc: int, checked: int = 0, failed: int = 0,
-              skipped: int = 0, host_closed: int = 0) -> dict[str, Any]:
+              skipped: int = 0, host_closed: int = 0,
+              rows: list[dict[str, Any]] | None = None,
+              recordable: bool = False) -> dict[str, Any]:
         return {"target": target, "demo": demo_name, "rc": rc,
                 "checked": checked, "failed": failed, "skipped": skipped,
-                "host_closed": host_closed}
+                "host_closed": host_closed, "rows": rows or [],
+                "recordable": recordable}
 
     print(
         f"[render-verify] target={target} demo={demo_name} "
@@ -1048,7 +1275,8 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     skip_note = f" ({len(skipped)} skipped — references pending)" if skipped else ""
     if all_pass and not crashes and not host_closed:
         print(f"[render-verify] all {checked} checks PASS{skip_note}")
-        return tally(0, checked=checked, skipped=len(skipped))
+        return tally(0, checked=checked, skipped=len(skipped), rows=rows,
+                     recordable=True)
 
     if not all_pass:
         print(f"[render-verify] {len(failures)} of {checked} checks FAIL{skip_note}")
@@ -1071,7 +1299,8 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
               f"interference, not a demo failure, but no verdict either; "
               f"re-run.", file=sys.stderr)
     return tally(1, checked=checked, failed=len(failures),
-                 skipped=len(skipped), host_closed=len(host_closed))
+                 skipped=len(skipped), host_closed=len(host_closed), rows=rows,
+                 recordable=not crashes and not host_closed)
 
 
 def _print_sweep_summary(results: list[dict[str, Any]]) -> None:
@@ -1155,6 +1384,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="Skip the --update-references confirmation prompt.")
     ap.add_argument("--no-build", action="store_true",
                     help="Skip `fleet-build`; assume the target is already built.")
+    ap.add_argument("--json-out", type=Path, default=None, metavar="PATH",
+                    help="Write the run's per-row result record as JSON.")
+    ap.add_argument("--record-control", action="store_true",
+                    help="Cache this --all run as an origin/master control.")
+    ap.add_argument("--against-control", action="store_true",
+                    help="Grade failing rows against the exact merge-base control.")
+    ap.add_argument("--tracker", type=int, default=None, metavar="ISSUE",
+                    help="Optional tracker number stored in a control record.")
     ap.add_argument("--demo-arg", action="append", default=[], metavar="ARG",
                     help="Extra argument passed through to the DEFAULT pass's "
                          "demo run after --auto-screenshot and after any "
@@ -1172,16 +1409,40 @@ def main(argv: list[str] | None = None) -> int:
             "--all sweeps every declaring manifest; --demo names one directory. "
             "Pass one or the other."
         )
+    if args.record_control and not args.all:
+        raise SystemExit("--record-control requires --all")
+    if args.update_references and (
+        args.json_out or args.record_control or args.against_control
+    ):
+        raise SystemExit(
+            "result records and control grading cannot be combined with "
+            "--update-references"
+        )
 
     worktree = verify_common.detect_worktree_root(Path.cwd())
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
     backend = verify_common.detect_backend(build_dir)
 
+    if args.record_control:
+        _validate_control_source(worktree)
+
     if not args.all:
         demo_dir = _resolve_demo_dir(worktree, args.target, args.demo)
-        return _verify_one(args=args, worktree=worktree, build_dir=build_dir,
-                           backend=backend, target=args.target,
-                           demo_dir=demo_dir)["rc"]
+        results = [_verify_one(args=args, worktree=worktree, build_dir=build_dir,
+                               backend=backend, target=args.target,
+                               demo_dir=demo_dir)]
+        if args.json_out:
+            record = _result_record(
+                results=results, worktree=worktree, build_dir=build_dir,
+                preset=backend, tracker=args.tracker,
+            )
+            if record is not None:
+                _write_json_atomic(args.json_out, record)
+                print(f"[render-verify] wrote result record {args.json_out}")
+        if args.against_control:
+            _grade_against_control(results=results, worktree=worktree,
+                                   preset=backend)
+        return results[0]["rc"]
 
     declared = _declared_targets(worktree)
     if not declared:
@@ -1209,7 +1470,8 @@ def main(argv: list[str] | None = None) -> int:
                 results.append({"target": target, "demo": demo_dir.name,
                                 "rc": 0, "checked": 0, "failed": 0,
                                 "skipped": 0, "host_closed": 0,
-                                "out_of_scope": backend})
+                                "out_of_scope": backend, "rows": [],
+                                "recordable": True})
                 continue
             results.append(_verify_one(
                 args=args, worktree=worktree, build_dir=build_dir,
@@ -1218,11 +1480,25 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[render-verify] {target}: {e}", file=sys.stderr)
             results.append({"target": target, "demo": creation, "rc": 1,
                             "checked": 0, "failed": 0, "skipped": 0,
-                            "error": str(e)})
+                            "error": str(e), "rows": [],
+                            "recordable": False})
 
     # --update-references gates nothing, so it has no tally to summarize.
     if not args.update_references:
         _print_sweep_summary(results)
+    if args.json_out or args.record_control:
+        record = _result_record(
+            results=results, worktree=worktree, build_dir=build_dir,
+            preset=backend, tracker=args.tracker,
+        )
+        if args.json_out and record is not None:
+            _write_json_atomic(args.json_out, record)
+            print(f"[render-verify] wrote result record {args.json_out}")
+        if args.record_control and record is not None:
+            _store_control(record)
+    if args.against_control:
+        _grade_against_control(results=results, worktree=worktree,
+                               preset=backend)
     return 0 if all(r["rc"] == 0 for r in results) else 1
 
 

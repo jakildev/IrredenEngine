@@ -314,9 +314,12 @@ class Lifecycle(JobsCase):
             (["fleet-tests", "--only=test_y"], 0, "run_all --only test_y"),
             (["fleet-tests"], 0, "run_all"),
             (["render-verify", "--name", "rv", "--", "--target", "IRAnalyticOracle",
-              "--no-build", "--warmup=3", "--demo-arg", "--occlusion-cull"], 3,
+              "--no-build", "--warmup=3", "--demo-arg", "--occlusion-cull",
+              "--json-out", "build/records/run.json", "--record-control",
+              "--against-control", "--tracker=4986"], 3,
              "render-verify --target IRAnalyticOracle --no-build --warmup=3 "
-             "--demo-arg --occlusion-cull"),
+             "--demo-arg --occlusion-cull --json-out build/records/run.json "
+             "--record-control --against-control --tracker=4986"),
             (["light-verify", "--", "--if-changed", "--no-build", "--warmup=3",
               "--against", "origin/master", "--target=IRLighting"], 3,
              "light-verify --if-changed --no-build --warmup=3 --against origin/master "
@@ -1037,6 +1040,9 @@ class ProfileBoundary(JobsCase):
         ["start", "render-verify", "--", "--build-dir=/tmp"],
         ["start", "render-verify", "--", "--target", "../x"],
         ["start", "render-verify", "--", "--target"],
+        ["start", "render-verify", "--", "--json-out", "/tmp/result.json"],
+        ["start", "render-verify", "--", "--json-out", "build/../result.json"],
+        ["start", "render-verify", "--", "--tracker", "not-a-number"],
         ["start", "render-verify", "--", "--only", "x"],
         ["start", "render-verify", "--", "--update-references", "--force"],
         ["start", "render-verify", "--", "/tmp/evil.py"],
