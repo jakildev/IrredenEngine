@@ -77,7 +77,9 @@ Each run uses `--profile-frames 360` (override with the driver's `--frames`)
 and exits without screenshots. The runner rejects incomplete frame series,
 incorrect pose sample counts and capture flags combined with this mode.
 Visual evidence must be captured separately, outside the timed window.
-Offscreen frame pacing remains enabled; wall-frame duration includes that wait.
+Metal offscreen pacing stays on: a frame finishing before its refresh-interval
+deadline sleeps to it, a late frame does not, and the sleep is the report's
+`offscreenPacing` CPU phase row ([offscreen-pacing-late-frame.md](../../docs/perf/offscreen-pacing-late-frame.md)).
 The outer benchmark wrapper's successful quiet verdict is required even when
 all individual reports validate. A quiet breach invalidates throughput claims.
 The matrix reports full-frame tails and sampled GPU invocation means separately.

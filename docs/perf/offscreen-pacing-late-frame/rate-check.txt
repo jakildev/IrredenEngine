@@ -1,0 +1,4 @@
+[2026-11-11 11:45:51.301] [EngineLog] [info] Discovered 1 display monitors
+[2026-11-11 11:45:51.411] [EngineLog] [info] Metal offscreen screen target attached (2560x1440, paced at 120 Hz).
+[2026-11-11 11:45:52.203] [EngineLog] [info] Dumped profiling blocks, result=168995
+ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0
