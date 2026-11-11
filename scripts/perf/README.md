@@ -225,7 +225,8 @@ so the rows appear with `--no-overlay` and in any creation. To split a system
 row on the gate, add a scope inside its `beginTick` / `tick` / `endTick` and read
 the new row in the perf-gate artifact. Rows are informational: neither
 `compare_perf_runs.py` nor `check_regression.py` gates on them. Scopes recorded
-from worker threads are unsupported, and `IR_RELEASE` compiles the macro out.
+from worker threads are unsupported. The scope timer exists in every build type,
+Release included; only the run-time histogram switch gates it.
 Executor: `fleet-run IRPerfGrid --auto-profile 120 --no-overlay` with a
 temporary scope, then `grep -A30 'CPU phase timing' save_files/profile_report.txt`.
 

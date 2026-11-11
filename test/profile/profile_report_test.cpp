@@ -188,4 +188,32 @@ TEST(ProfileReportCpuScopes, ResetRunDropsTotalsButKeepsTheHistogramEnabled) {
     EXPECT_TRUE(histogram.enabled_);
 }
 
+// The scope timer must exist in every build type: a Release `--auto-profile`
+// report is only as detailed as the scopes this macro records.
+TEST(ProfileScope, EnabledHistogramRecordsOneSamplePerScopeExit) {
+    auto &histogram = IRProfile::cpuFrameHistogram();
+    histogram.enabled_ = true;
+    histogram.resetRun();
+    {
+        IR_PROFILE_SCOPE("profile_scope_test_enabled");
+    }
+    const auto totals = histogram.runTotals();
+    histogram.enabled_ = false;
+    histogram.resetRun();
+    const auto it = totals.find(std::string_view{"profile_scope_test_enabled"});
+    ASSERT_NE(it, totals.end());
+    EXPECT_EQ(it->second.count_, 1u);
+}
+
+TEST(ProfileScope, DisabledHistogramRecordsNothing) {
+    auto &histogram = IRProfile::cpuFrameHistogram();
+    histogram.enabled_ = false;
+    histogram.resetRun();
+    {
+        IR_PROFILE_SCOPE("profile_scope_test_disabled");
+    }
+    const auto totals = histogram.runTotals();
+    EXPECT_EQ(totals.find(std::string_view{"profile_scope_test_disabled"}), totals.end());
+}
+
 } // namespace

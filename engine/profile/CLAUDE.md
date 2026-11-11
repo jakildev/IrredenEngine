@@ -2,7 +2,7 @@
 
 Thin wrappers around spdlog (logging) and easy_profiler (instrumentation).
 Exposes one header full of macros that compile to no-ops in release
-builds.
+builds, plus the `IR_PROFILE_SCOPE` timer (`scope_timer.hpp`), which does not.
 
 ## Entry point
 
@@ -79,6 +79,10 @@ within a frame the histogram accumulates `totalMs_`, tracks `maxMs_`,
 and bumps `count_`. Frame swap happens in `World::gameLoop()` right after
 `render()` returns (so `render`'s own scope lands in its frame) —
 `endFrame()` rotates current → last for a stable per-frame HUD snapshot.
+
+The scope timer exists in every build type, Release included (unlike the
+easy_profiler macros, which compile out under `IR_RELEASE`); the run-time
+`enabled_` flag is its only gate.
 
 Cost is bounded: when `cpuFrameHistogram().enabled_` is false (the
 default), `ScopeTimer` skips `now()` entirely. When enabled the macro
