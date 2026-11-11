@@ -11,6 +11,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import fleet_decline
 import fleet_github
 
 RUNTIMES = ("claude", "codex")
@@ -33,6 +34,10 @@ TARGET_RECORDS = {
     "feedback": ("feedback_prs",), "conflict": ("semantic_conflict_prs",),
     "merge": ("merger_candidates",),
 }
+
+
+class DeclinedRuntimeWithheld(ValueError):
+    """The routing policy requires the runtime named by a live sandbox decline."""
 
 
 def atomic_json(path, data):
@@ -166,7 +171,7 @@ def _balanced(available, target):
     return available[index % len(available)]
 
 
-def choose_runtime(kind, record, target, env, claude_gate="open"):
+def choose_runtime(kind, record, target, env, claude_gate="open", declined_runtime=None):
     available = sorted({x.strip() for x in env.get("FLEET_RUNTIMES", "claude").split(",")})
     if not available or any(x not in RUNTIMES for x in available):
         raise ValueError("FLEET_RUNTIMES must contain claude and/or codex")
@@ -179,10 +184,12 @@ def choose_runtime(kind, record, target, env, claude_gate="open"):
     # `verdict-replay` is deliberately not a review here: it re-applies the
     # edge an existing review names and judges nothing, so it is never forced
     # onto the provider opposite the author.
+    fixed = False
     if kind == "review" and env.get("FLEET_CROSS_PROVIDER_REVIEW", "1") == "1":
         # The author label is a preference: absent, any available provider reviews.
         chosen = ("claude" if authors == ["codex"] else "codex") if authors \
             else _balanced(available, target)
+        fixed = bool(authors)
     else:
         pins = [x for x in RUNTIMES if f"fleet:runtime-{x}" in labels]
         if len(pins) > 1:
@@ -190,17 +197,32 @@ def choose_runtime(kind, record, target, env, claude_gate="open"):
         policy = env.get("FLEET_WORKER_RUNTIME", "balanced")
         if pins:
             chosen = pins[0]
+            fixed = True
         elif kind in ("feedback", "conflict", "merge") and authors:
             chosen = authors[0]
         elif policy in RUNTIMES:
             chosen = policy
+            fixed = True
         elif policy == "balanced":
             chosen = _balanced(available, target)
         else:
             raise ValueError("FLEET_WORKER_RUNTIME must be balanced, claude, or codex")
+    if declined_runtime in RUNTIMES:
+        if fixed:
+            if chosen == declined_runtime:
+                raise DeclinedRuntimeWithheld(
+                    f"withheld by {declined_runtime} decline memory")
+        else:
+            alternatives = [runtime for runtime in available if runtime != declined_runtime]
+            if not alternatives:
+                raise DeclinedRuntimeWithheld(
+                    f"withheld by {declined_runtime} decline memory")
+            chosen = _balanced(alternatives, target)
     if kind == "merge" and chosen == "claude" and claude_gate == "closed" \
             and "codex" in available:
         chosen = "codex"
+    if chosen == declined_runtime:
+        raise DeclinedRuntimeWithheld(f"withheld by {declined_runtime} decline memory")
     if chosen not in available:
         raise ValueError(f"required runtime {chosen} unavailable on this host")
     return chosen
@@ -239,7 +261,12 @@ def review_class(role, cls, record, env):
 
 def route(data, target, role, cls, model, effort, env, claude_gate="open"):
     kind, record = target_record(data, target)
-    runtime = choose_runtime(kind, record, target, env, claude_gate)
+    parts = target.split(":")
+    extra = parts[3] if len(parts) == 4 else None
+    decline = fleet_decline.metadata(kind, record, role, extra)
+    declined_runtime = decline.get("runtime") if decline and decline.get("class") == "sandbox" \
+        else None
+    runtime = choose_runtime(kind, record, target, env, claude_gate, declined_runtime)
     cls = cls or ROLE_CLASSES.get(role, "opus")
     if kind == "review":
         routed = review_class(role, cls, record, env)
@@ -419,6 +446,8 @@ def main(argv=None):
                 print(f"fleet-runtime: {exc}", file=sys.stderr)
         else:
             print(f"fleet-runtime: {exc}", file=sys.stderr)
+        if args.command == "route" and isinstance(exc, DeclinedRuntimeWithheld):
+            return 3
         return 1
     return 0
 

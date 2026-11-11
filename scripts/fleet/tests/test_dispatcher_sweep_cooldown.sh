@@ -141,4 +141,21 @@ out=$(tick 1)
 assert_contains "$(cat "$FLEET_CLAIM_LOG")" "amending-claim 51 pool-1" "a fresh PR with no cooldown label is claimed"
 assert_absent "$out" "deferring" "and logs no deferral"
 
+echo "=== T6: idle stand-down names decline-memory withholding once per set ==="
+mkdir -p "$FLEET_STATE_DIR/declined"
+write_slice '{"needs_plan":[],"semantic_conflict_prs":[],"feedback_prs":[],"tasks_open":[{"issue":"#60","model":"opus","owner":"free","blocked":false,"repo":"engine","updatedAt":"2027-01-15T08:00:00Z"}]}'
+printf '%s\n' '2027-01-15T08:00:00Z' 'already merged' 'worker' \
+    > "$FLEET_STATE_DIR/declined/task-engine-60"
+out=$(tick 2)
+assert_eq "$(count "$out" 'standing down; 1 withheld by decline memory')" 1 \
+    "the unchanged declined set logs one withheld-count stand-down"
+assert_absent "$(cat "$FLEET_CLAIM_LOG")" "claim 60" "the declined task is never claimed"
+
+rm -f "$FLEET_STATE_DIR/declined/task-engine-60"
+write_slice '{"needs_plan":[],"semantic_conflict_prs":[],"feedback_prs":[],"tasks_open":[]}'
+out=$(tick 1)
+assert_contains "$out" "standing down — scout re-arms on new work" \
+    "an empty slice keeps the existing no-decline line"
+assert_absent "$out" "withheld by decline memory" "the zero-decline line has no suffix"
+
 summarize "dispatcher sweep cooldown"

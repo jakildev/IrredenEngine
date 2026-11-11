@@ -120,6 +120,9 @@ import re
 import sys
 import time
 
+import fleet_decline
+import fleet_runtime
+
 # Work-dispatch effort defaults — `high` across the board. The Claude
 # 5-family models default to effort `high`, and xhigh buys measurable gains
 # only on design-shaped work; a task that needs more carries its own
@@ -545,7 +548,7 @@ def _plan_class(issue, fable_blocked):
     return "sonnet" if cls == "sonnet" else "opus"
 
 
-def _candidates(slice_data, lane_default, host, fable_blocked=False):
+def _candidates(slice_data, lane_default, host, fable_blocked=False, declined_only=False):
     """Yield (class, effort, kind) per actionable item, dispatch-priority order.
 
     Semantic-conflict PRs come first (a conflicted PR holds up every merge
@@ -605,7 +608,7 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         for pr in slice_data.get("semantic_conflict_prs", []) or []:
             if _sweep_cooldown_age(pr) is not None:
                 continue
-            if not _declined("conflict", pr, "worker"):
+            if _declined("conflict", pr, "worker") == declined_only:
                 yield "opus", CLASS_DEFAULT_EFFORT["opus"], "work", _target("conflict", pr)
     for pr in slice_data.get("feedback_prs", []) or []:
         # Same host gate tasks get via `_task_claimable`: a
@@ -621,7 +624,8 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
             continue
         if pinned_only and not _pinned_to_host(pr, host):
             continue
-        if _declined("feedback", pr, "worker") or _sweep_cooldown_age(pr) is not None:
+        if _sweep_cooldown_age(pr) is not None \
+                or _declined("feedback", pr, "worker") != declined_only:
             continue
         cls = feedback_pr_class(pr.get("labels", []))
         if cls == "fable" and fable_blocked == FABLE_WALLED:
@@ -636,20 +640,23 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
         tasks = [task for task in tasks if _pinned_to_host(task, host)]
     for task in tasks:
         if (_task_claimable(task, host) and not _task_blocked(task)
-                and not _declined("task", task, "worker")):
+                and _declined("task", task, "worker") == declined_only):
             yield (*_class_effort(task), "work", _target("task", task))
     for task in tasks:
         if not (_task_claimable(task, host) and _task_blocked(task)):
             continue
         base = (task.get("stackable_blocker_pr") or {}).get("number")
-        if not _declined("stack", task, "worker", base):
+        if _declined("stack", task, "worker", base) == declined_only:
             yield (*_class_effort(task), "work", _target("stack", task, base))
     seen_plan_classes = set()
     plans = [] if pinned_only else (slice_data.get("needs_plan") or [])
     for issue in plans:
-        if _declined("plan", issue, "worker"):
+        if _declined("plan", issue, "worker") != declined_only:
             continue
         pcls = _plan_class(issue, fable_blocked)
+        if declined_only:
+            yield pcls, PLAN_EFFORT[pcls], "plan", _target("plan", issue)
+            continue
         if pcls in seen_plan_classes:
             continue
         seen_plan_classes.add(pcls)
@@ -671,16 +678,14 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
 # comment, a label, a push — or the file ages past the TTL; without this the
 # claim-time gate cannot see a refusal the iteration only discovers by reading
 # the body.
-DECLINE_TTL_SECONDS = 7 * 24 * 3600
+DECLINE_TTL_SECONDS = fleet_decline.DECLINE_TTL_SECONDS
 # A decline whose reason was the host's own failure (an expired token, a
 # GitHub 5xx, a rate-limit refusal, a timeout) says nothing about the item,
 # so it expires after this much time instead of shelving the item until
 # something else touches it. Two opus rechecks once sat 19 hours behind a
 # "HTTP 401 Bad credentials" decline.
-DECLINE_TRANSIENT_TTL_SECONDS = 30 * 60
-DECLINE_TRANSIENT_RE = re.compile(
-    r"HTTP 401|Bad credentials|HTTP 5\d\d|rate limit|API rate|timed out|Could not resolve host",
-    re.IGNORECASE)
+DECLINE_TRANSIENT_TTL_SECONDS = fleet_decline.DECLINE_TRANSIENT_TTL_SECONDS
+DECLINE_TRANSIENT_RE = fleet_decline.DECLINE_TRANSIENT_RE
 HOST_SCOPED_DECLINE_RE = re.compile(
     r"fleet:needs-(?:gl|macos|windows)-host|\*\*Host:\*\*|fleet-claim host=",
     re.IGNORECASE)
@@ -697,6 +702,11 @@ def _record_number(record):
     if number is None:
         number = str(record.get("issue") or "").lstrip("#") or None
     return number
+
+
+def decline_reason_class(detail):
+    """Classify a decline for TTL and provider-scoping decisions."""
+    return fleet_decline.reason_class(detail)
 
 
 def _decline_metadata(kind, record, role=None, extra=None):
@@ -720,45 +730,33 @@ def _decline_metadata(kind, record, role=None, extra=None):
     it. A record with no role line (written before the role was recorded)
     keeps its old reach and suppresses every role.
     """
-    current = record.get("updatedAt") or ""
-    target = _target(kind, record, extra)
-    if target is None or not current:
-        return None
-    path = os.path.join(_declined_dir(), target.replace(":", "-"))
-    try:
-        age = time.time() - os.stat(path).st_mtime  # lint: state-mtime-ok decline TTL
-        if age > DECLINE_TTL_SECONDS:
-            return None
-        with open(path, encoding="utf-8") as handle:
-            stored = handle.readline().strip()
-            detail = handle.readline().rstrip("\n")
-            stored_role = handle.readline().strip()
-            shadow_line = handle.readline().strip()
-    except OSError:
-        return None
-    if DECLINE_TRANSIENT_RE.search(detail) and age > DECLINE_TRANSIENT_TTL_SECONDS:
-        return None
-    if stored_role and role and stored_role != role:
-        return None
-    if not stored or current > stored:
-        return None
-    shadow = None
-    if shadow_line.startswith("shadow_merged_pr="):
-        value = shadow_line.partition("=")[2]
-        if value.isdigit():
-            shadow = int(value)
-    return {
-        "updated_at": stored,
-        "reason": detail,
-        "role": stored_role,
-        "shadow_merged_pr": shadow,
-        "transient": bool(DECLINE_TRANSIENT_RE.search(detail)),
-    }
+    return fleet_decline.metadata(kind, record, role, extra)
 
 
-def _declined(kind, record, role=None, extra=None):
+def _declined(kind, record, role=None, extra=None, env=None):
     """True when current decline metadata exists for this lane and item."""
-    return _decline_metadata(kind, record, role, extra) is not None
+    metadata = _decline_metadata(kind, record, role, extra)
+    if metadata is None:
+        return False
+    declined_runtime = metadata["runtime"] if metadata["class"] == "sandbox" else None
+    if not declined_runtime:
+        return True
+    try:
+        fleet_runtime.choose_runtime(kind, record, _target(kind, record, extra),
+                                     env or os.environ,
+                                     declined_runtime=declined_runtime)
+    except fleet_runtime.DeclinedRuntimeWithheld:
+        return True
+    except ValueError:
+        return False
+    return False
+
+
+def declined_deferrals(slice_data, host=None):
+    """Targets the worker lane currently withholds because of decline memory."""
+    host = host or _current_host()
+    return [target for _cls, _effort, _kind, target in _candidates(
+        slice_data, "opus", host, declined_only=True) if target is not None]
 
 
 def _shadow_number(record):
@@ -1056,6 +1054,17 @@ def main(argv):
         cooldown = _sweep_cooldown_secs()
         for target, age, updated in sweep_cooldown_deferrals(slice_data):
             print(f"{target} {age} {cooldown} {updated}")
+        return 0
+    if argv[1:2] == ["--declined"]:
+        if len(argv) != 3:
+            print("usage: fleet_task_class.py --declined <worker-slice.json>",
+                  file=sys.stderr)
+            return 2
+        slice_data = _load_slice(argv[2])
+        if slice_data is None:
+            return 0
+        for target in declined_deferrals(slice_data):
+            print(target)
         return 0
     if argv[1:2] == ["--pick-role"]:
         # --pick-role <slice.json> <role>: the ordered dispatch targets for a

@@ -363,6 +363,17 @@ class Queue(FleetSurveyFixture):
         self.assertEqual(self.ids("pinned_away"), ["#103", "#104"])
         self.assertEqual(self.ids("blocked"), ["#106", "#108"])
 
+    def test_runtime_policy_falls_back_to_conf_without_overriding_env(self):
+        home = Path(self.tmp.name) / "runtime-conf"
+        home.mkdir(exist_ok=True)
+        (home / "fleet-up.conf").write_text(
+            'FLEET_RUNTIMES="claude,codex"\nFLEET_WORKER_RUNTIME=balanced\n')
+        resolved = _mod.survey_runtime_env(home, {})
+        self.assertEqual(resolved["FLEET_RUNTIMES"], "claude,codex")
+        self.assertEqual(resolved["FLEET_WORKER_RUNTIME"], "balanced")
+        forced = _mod.survey_runtime_env(home, {"FLEET_WORKER_RUNTIME": "claude"})
+        self.assertEqual(forced["FLEET_WORKER_RUNTIME"], "claude")
+
     def test_resolved_open_blocker_is_reported_blocked(self):
         rows = self.run_survey()["repos"]["engine"]["queue"]["blocked"]
         stacked = next(r for r in rows if r["id"] == "#108")
@@ -460,7 +471,32 @@ class Queue(FleetSurveyFixture):
             "worker\nshadow_merged_pr=900\n")
         queue = self.run_survey()["repos"]["engine"]["queue"]
         self.assertEqual(queue["ghost"], [])
-        self.assertIn("#101", [row["id"] for row in queue["claimable_here"]])
+        self.assertIn("#101", [row["id"] for row in queue["declined"]])
+
+    def test_declined_partition_and_runtime_scoped_sandbox_routability(self):
+        state = copy.deepcopy(STATE)
+        task = next(row for row in state["repos"]["engine"]["tasks"]["open"]
+                    if row["id"] == "#100")
+        task["updatedAt"] = "2026-10-07T04:40:00Z"
+        path = self.state_dir / "declined" / "task-engine-100"
+        path.write_text(f"{task['updatedAt']}\nalready merged\nworker\nruntime=codex\n")
+        try:
+            queue = self.run_survey(state=state)["repos"]["engine"]["queue"]
+            self.assertEqual([row["id"] for row in queue["declined"]], ["#100"])
+            self.assertNotIn("#100", [row["id"] for row in queue["claimable_here"]])
+            self.assertLessEqual(len(queue["declined"][0]["reason"]), 80)
+            text = _mod.render(self.run_survey(state=state))
+            self.assertIn("declined (1)", text)
+            self.assertIn("runtime=codex", text)
+
+            path.write_text(f"{task['updatedAt']}\nSandbox policy rejects git push\n"
+                            "worker\nruntime=codex\n")
+            with mock.patch.dict(os.environ, {"FLEET_RUNTIMES": "claude,codex",
+                                              "FLEET_WORKER_RUNTIME": "balanced"}):
+                queue = self.run_survey(state=state)["repos"]["engine"]["queue"]
+            self.assertIn("#100", [row["id"] for row in queue["claimable_here"]])
+        finally:
+            path.unlink(missing_ok=True)
 
 
 class Parks(FleetSurveyFixture):

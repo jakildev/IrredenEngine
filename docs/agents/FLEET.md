@@ -86,9 +86,9 @@ When a target-bound pane exits, `scripts/fleet/fleet_completion.py` reads the
 target: **finished** (label released, or the task's PR is open), **declined** (a
 `declined: <role>/<class> @<host>-<agent> <reason>` comment since dispatch —
 `fleet-claim decline` writes it and releases), or **abandoned** (label still
-standing, no record). Declined items wait under `~/.fleet/state/declined/` until
-they change (per declining role); declined and abandoned exits count as empty
-for the lane's backoff. Marker-vouched reviewing, resolving, and planning claims
+standing, no record). Declines are role-scoped: substantive ones last seven days;
+transient/host ones last 30 minutes; sandbox refusals bar only their recorded runtime.
+Declined/abandoned exits count as empty for backoff. Marker-vouched reviewing, resolving, and planning claims
 release on the first abandonment; they have no pane affinity or reservation to
 resume. Other kinds keep the claim once only when the pane can resume: a
 reservation, or a same-role, same-target sidecar, which pins the pane to that one
