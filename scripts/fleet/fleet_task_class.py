@@ -770,6 +770,8 @@ def _shadow_number(record):
 
 def _shadowed_closeout(record):
     """Validated durable merged-delivery evidence plus a substantive worker decline."""
+    if _task_blocked(record):
+        return None
     metadata = _decline_metadata("task", record, "worker")
     if (metadata is None or metadata["transient"]
             or HOST_SCOPED_DECLINE_RE.search(metadata["reason"])):
