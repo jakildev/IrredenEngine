@@ -1,0 +1,4 @@
+Native macOS Metal IRVoxelEditor, shapes_erase GUI session.
+Command: python3 scripts/gui-verify.py --no-build IRVoxelEditor -- --gui-session shapes_erase --gui-layout-check
+17/17 assertions passed; zero layout findings.
+Stamp preview at 30 degrees; drag preview and result at 67 degrees.
