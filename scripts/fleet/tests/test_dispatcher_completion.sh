@@ -21,6 +21,8 @@
 #                          the grant handed back, the abandon ledger and
 #                          empty-exit streak untouched, the claim released
 #                          only when the pane did no work (T15–T18)
+#   --claim-target         the live target-cap gate used to prove that the
+#                          sixth election parks after five noop completions
 #
 # gh, fleet-claim, tmux and pgrep are PATH stubs (hermetic, per
 # scripts/fleet/CLAUDE.md); git runs for real against a scratch repo so the
@@ -57,6 +59,10 @@ cat > "$STUB_BIN/gh" <<'EOF'
 printf '%s\n' "$*" >> "$GH_LOG"
 [[ -n "${STUB_GH_DOWN:-}" ]] && exit 1
 case "$*" in
+    *"/timeline?per_page=100"*)
+        [[ -z "${STUB_TIMELINE_DOWN:-}" ]] || exit 1
+        cat "$FIX/timeline.json"
+        ;;
     *"/comments -f since="*) cat "$FIX/comments.json" ;;
     "api repos/"*"/issues/"*) cat "$FIX/issue.json" ;;
     "api repos/"*"/pulls/"*)  [[ -f "$FIX/pull.json" ]] || exit 1; cat "$FIX/pull.json" ;;
@@ -86,9 +92,10 @@ export PATH="$STUB_BIN:$PATH"
 
 issue()    { printf '{"labels":[%s],"updated_at":"%s"}\n' "$1" "${2:-2026-09-06T18:30:00Z}" > "$FIX/issue.json"; }
 comments() { printf '%s\n' "$1" > "$FIX/comments.json"; }
+timeline() { printf '%s\n' "$1" > "$FIX/timeline.json"; }
 prs()      { printf '%s\n' "$1" > "$FIX/prs.json"; }
 pull()     { printf '%s\n' "$1" > "$FIX/pull.json"; }
-issue ''; comments '[]'; prs '[]'
+issue ''; comments '[]'; timeline '[{"event":"commented","created_at":"2026-09-06T18:00:00Z"}]'; prs '[]'
 DISPATCHED=$(python3 -c 'import calendar,time;print(calendar.timegm(time.strptime("2026-09-06T17:00:00Z","%Y-%m-%dT%H:%M:%SZ")))')
 DECLINE_BODY='declined: worker/opus @mac-pool-3 needs a mac host'
 CLAIM='{"name":"fleet:claim-mac-pool-3"}'
@@ -100,10 +107,16 @@ assess() {  # prints the verdict; the full line lands in $TMPROOT/line
 
 echo "T1: verdicts off the target's own state"
 assert_eq "$(assess task:engine:42 pool-3 "$DISPATCHED")" "finished" "claim label released -> finished"
+timeline '[{"event":"labeled","created_at":"2026-09-06T17:01:00Z","label":{"name":"fleet:reviewing-mac-pool-4"}},{"event":"unlabeled","created_at":"2026-09-06T17:02:00Z","label":{"name":"fleet:reviewing-mac-pool-4"}}]'
+assert_eq "$(assess task:engine:42 pool-3 "$DISPATCHED")" "noop" \
+    "released claim with only foreign claim-label churn -> noop"
+timeline '[{"event":"commented","created_at":"2026-09-06T18:00:00Z"}]'
 issue "$CLAIM,{\"name\":\"fleet:queued\"}"
 assert_eq "$(assess task:engine:42 pool-3 "$DISPATCHED")" "abandoned" "label standing, no PR, no record -> abandoned"
 prs '[{"number":50,"headRefName":"claude/42-fix","body":""}]'
 assert_eq "$(assess task:engine:42 pool-3 "$DISPATCHED")" "finished" "an open PR on the task's branch -> finished (the label rides it)"
+assert_eq "$(assess stack:engine:42:50 pool-3 "$DISPATCHED")" "finished" \
+    "an open PR referencing a stacked task remains finished"
 prs '[]'
 comments "[{\"created_at\":\"2026-09-06T17:26:19Z\",\"body\":\"$DECLINE_BODY\"}]"
 assert_eq "$(assess task:engine:42 pool-3 "$DISPATCHED")" "declined" "a declined: comment from this pane since dispatch -> declined"
@@ -118,6 +131,8 @@ echo "T2: the comments fetch is scoped to the dispatch, the label to the lane"
 assess task:engine:42 pool-3 "$DISPATCHED" >/dev/null
 assert_contains "$(cat "$GH_LOG")" "issues/42/comments -f since=2026-09-06T17:00:00Z -f per_page=100" \
     "comments fetched since the dispatch epoch, one page"
+assert_contains "$(cat "$GH_LOG")" "api --paginate repos/jakildev/IrredenEngine/issues/42/timeline?per_page=100" \
+    "timeline fetched with explicit page size and pagination"
 issue '{"name":"fleet:amending-mac-pool-3"}'
 assert_eq "$(assess feedback:engine:50 pool-3 "$DISPATCHED")" "abandoned" "amending label standing -> abandoned"
 assert_absent "$(cat "$GH_LOG")" "pr list" "no PR list fetched for a feedback target"
@@ -164,6 +179,11 @@ issue ''
 echo "T3: unknown when gh cannot answer or the target is malformed"
 assert_eq "$(assess task:engine:42 pool-3 "$DISPATCHED" 2>/dev/null)" "finished" "sanity: gh up"
 assert_eq "$(STUB_GH_DOWN=1 assess task:engine:42 pool-3 "$DISPATCHED")" "unknown" "gh down -> unknown"
+assert_eq "$(STUB_TIMELINE_DOWN=1 assess task:engine:42 pool-3 "$DISPATCHED")" "unknown" \
+    "unreadable timeline -> unknown"
+printf '{' > "$FIX/timeline.json"
+assert_eq "$(assess task:engine:42 pool-3 "$DISPATCHED")" "unknown" "truncated timeline JSON -> unknown"
+timeline '[{"event":"commented","created_at":"2026-09-06T18:00:00Z"}]'
 assert_eq "$(assess bogus:engine:42 pool-3 "$DISPATCHED")" "unknown" "unknown kind -> unknown"
 assert_eq "$(cat "$GH_LOG")" "" "a malformed target never reaches gh"
 
@@ -341,6 +361,49 @@ record 1 task:engine:42
 complete >/dev/null
 assert_eq "$(sed -n 4p "$FLEET_STATE_DIR/declined/task-engine-42")" "shadow_merged_pr=900" \
     "a post-TTL decline with no fresh shadow preserves exact-target evidence"
+
+echo "T8b: noop keeps the target counter; later progress clears it"
+NOOP_STREAK="$FLEET_STATE_DIR/empty-streak/worker__opus"
+rm -f "$NOOP_STREAK" "$COUNTS_DIR/review-engine-42"
+issue ''
+comments '[]'
+timeline '[{"event":"labeled","created_at":"2026-09-06T17:01:00Z","label":{"name":"fleet:reviewing-mac-pool-3"}},{"event":"unlabeled","created_at":"2026-09-06T17:02:00Z","label":{"name":"fleet:reviewing-mac-pool-3"}}]'
+printf '1' > "$COUNTS_DIR/review-engine-42"
+record 1 review:engine:42
+out=$(complete)
+assert_contains "$out" "outcome=no, target=review:engine:42, verdict=noop" \
+    "noop is logged as non-productive"
+assert_eq "$(cat "$COUNTS_DIR/review-engine-42")" "1" "noop keeps the dispatch counter"
+timeline '[{"event":"reviewed","submitted_at":"2026-09-06T18:00:00Z"}]'
+printf '2' > "$COUNTS_DIR/review-engine-42"
+record 1 review:engine:42
+out=$(complete)
+assert_contains "$out" "outcome=yes, target=review:engine:42, verdict=finished" \
+    "review progress is productive"
+[[ ! -f "$COUNTS_DIR/review-engine-42" ]] \
+    && ok "progress clears the dispatch counter" || bad "progress left the dispatch counter"
+
+echo "T8c: five noops reach the target cap and three noops reach the empty-exit cap"
+rm -f "$NOOP_STREAK"
+timeline '[{"event":"labeled","created_at":"2026-09-06T17:01:00Z","label":{"name":"fleet:reviewing-windows-pool-4"}},{"event":"unlabeled","created_at":"2026-09-06T17:02:00Z","label":{"name":"fleet:reviewing-windows-pool-4"}}]'
+for n in 1 2 3 4 5; do
+    printf '%s' "$n" > "$COUNTS_DIR/review-engine-42"
+    record 1 review:engine:42
+    complete >/dev/null
+    if [[ "$n" == 3 ]]; then
+        assert_eq "$(cat "$NOOP_STREAK")" "3" "three noops reach the lane's empty-exit cap"
+    fi
+done
+assert_eq "$(cat "$COUNTS_DIR/review-engine-42")" "5" "five noops leave the target counter at five"
+: > "$GH_LOG"
+assert_eq "$(FLEET_TARGET_DISPATCH_CAP=5 "$DISPATCHER" --claim-target review:engine:42 pool-3)" \
+    "dispatch cap reached; parked" "the sixth election parks through the existing breaker"
+assert_contains "$(cat "$GH_LOG")" "labels --method POST -f labels[]=fleet:needs-human" \
+    "the breaker parks the target"
+[[ ! -f "$COUNTS_DIR/review-engine-42" ]] \
+    && ok "parking clears the target counter" || bad "parking left the target counter"
+timeline '[{"event":"commented","created_at":"2026-09-06T18:00:00Z"}]'
+rm -f "$NOOP_STREAK"
 
 echo "T9: abandoned folds through the abandonment counter"
 rm -f "$FLEET_STATE_DIR/abandoned/task-engine-42"

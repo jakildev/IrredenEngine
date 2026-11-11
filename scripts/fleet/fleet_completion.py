@@ -15,7 +15,10 @@ tell "worked it" from "read the body and walked away":
              repo's open PRs (the kinds whose label legitimately rides a PR's
              review/merge lifecycle), an open PR referencing the item means
              the label is riding it, not abandoned
-  finished   otherwise — the claim was released, or a task's PR is open
+  noop       the claim was released, but the target's timeline contains no
+             progress since dispatch beyond claim-label churn
+  finished   the target shows progress, or a task's PR is open
+  unknown    the claim was released but its timeline could not be read
 
 The decision is a pure function of what it is handed (``assess``): the
 dispatcher composes the claim label to look for from fleet-common.sh's
@@ -50,6 +53,14 @@ from fleet_scope_shipped import strip_code_spans  # noqa: E402
 VERDICT_FINISHED = "finished"
 VERDICT_DECLINED = "declined"
 VERDICT_ABANDONED = "abandoned"
+VERDICT_NOOP = "noop"
+VERDICT_UNKNOWN = "unknown"
+
+_TIMELINE_UNSET = object()
+_TIMELINE_UNREADABLE = object()
+CLAIM_LABEL_RE = re.compile(
+    r"^fleet:(?:claim|reviewing|amending|resolving|planning|stewarding)-"
+)
 
 # `declined:` at the start of a line (optionally bold), then who, then the
 # `@<host>-<agent>` the claim was taken under, then free text. Anchored to a
@@ -72,6 +83,45 @@ def declined_since(comments, host_agent, since_epoch):
         match = DECLINE_RE.search(strip_code_spans(comment.get("body") or ""))
         if match and match.group("agent") == host_agent:
             return match.group("reason").strip() or "no reason given"
+    return None
+
+
+def timeline_event_epoch(event):
+    """Return an issue-timeline event's epoch, or zero when GitHub supplied
+    no usable timestamp. Reviews and commits use different fields from the
+    ordinary issue events."""
+    stamps = [
+        event.get("created_at"),
+        event.get("submitted_at"),
+        (event.get("committer") or {}).get("date"),
+        (event.get("author") or {}).get("date"),
+    ]
+    for stamp in stamps:
+        epoch = parse_generated_at(stamp or "") or 0
+        if epoch:
+            return epoch
+    return 0
+
+
+def timeline_progress_since(timeline, since_epoch):
+    """Return the first progress event since dispatch, or None. Claim-label
+    add/remove events from every lane and host are coordination churn, not
+    progress on the target."""
+    if not isinstance(timeline, list):
+        return _TIMELINE_UNREADABLE
+    for event in timeline:
+        if not isinstance(event, dict):
+            return _TIMELINE_UNREADABLE
+        event_epoch = timeline_event_epoch(event)
+        if not event_epoch:
+            return _TIMELINE_UNREADABLE
+        if event_epoch < since_epoch:
+            continue
+        kind = event.get("event") or "unknown"
+        label = (event.get("label") or {}).get("name") or ""
+        if kind in {"labeled", "unlabeled"} and CLAIM_LABEL_RE.match(label):
+            continue
+        return kind
     return None
 
 
@@ -109,7 +159,7 @@ def assess_merge(labels, comments, host_agent, since_epoch, updated_at="",
 
 
 def assess(claim_label, labels, comments, host_agent, since_epoch,
-           open_prs=None, number=None, repo="engine"):
+           open_prs=None, number=None, repo="engine", timeline=_TIMELINE_UNSET):
     """(verdict, detail) for one target at exit. `claim_label` is the lane
     claim the dispatcher took for this pane (`<prefix><host>-<agent>`),
     `labels` the target's current label names, `comments` its comments since
@@ -120,11 +170,20 @@ def assess(claim_label, labels, comments, host_agent, since_epoch,
     reason = declined_since(comments, host_agent, since_epoch)
     if reason is not None:
         return VERDICT_DECLINED, f"declined this iteration: {reason}"
-    if claim_label not in (labels or []):
-        return VERDICT_FINISHED, f"{claim_label} released"
     if open_prs is not None and issue_pr_state(open_prs, str(number), repo) != "none":
         return VERDICT_FINISHED, f"an open PR references #{number}; {claim_label} rides it"
-    return VERDICT_ABANDONED, f"{claim_label} still standing with no record of why"
+    if claim_label in (labels or []):
+        return VERDICT_ABANDONED, f"{claim_label} still standing with no record of why"
+    if timeline is _TIMELINE_UNSET:
+        return VERDICT_FINISHED, f"{claim_label} released"
+    if timeline is None:
+        return VERDICT_UNKNOWN, "target timeline unavailable"
+    progress = timeline_progress_since(timeline, since_epoch)
+    if progress is _TIMELINE_UNREADABLE:
+        return VERDICT_UNKNOWN, "target timeline unreadable"
+    if progress is not None:
+        return VERDICT_FINISHED, f"target timeline records {progress} since dispatch"
+    return VERDICT_NOOP, "claim released without target progress"
 
 
 def _load(path):
@@ -155,6 +214,8 @@ def main(argv):
                         "or a JSON array of labels")
     a.add_argument("--comments-json", required=True,
                    help="a JSON array of {created_at|createdAt, body}")
+    a.add_argument("--timeline-json", default=None,
+                   help="the paginated REST issue timeline, or JSON null when unavailable")
     a.add_argument("--prs-json", default=None,
                    help="open PRs as {number, headRefName, body, labels}; "
                         "for the kinds whose label rides a PR")
@@ -181,10 +242,12 @@ def main(argv):
             state=pull.get("state") or "open", merged=bool(pull.get("merged")),
             mergeable=pull.get("mergeable"))
     else:
+        timeline = (_load(args.timeline_json) if args.timeline_json
+                    else _TIMELINE_UNSET)
         verdict, detail = assess(
             args.claim_label, label_names(labels), _load(args.comments_json) or [],
             args.host_agent, args.since, open_prs=_load(args.prs_json),
-            number=args.number, repo=args.repo)
+            number=args.number, repo=args.repo, timeline=timeline)
     print(f"{verdict}\t{updated}\t{detail}")
     return 0
 

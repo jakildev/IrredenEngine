@@ -82,15 +82,15 @@ in both cap modes, never borrowed over under elastic.
 
 ### How a launch ends
 
-When a target-bound pane exits, `scripts/fleet/fleet_completion.py` reads the
-target: **finished** (label released, or the task's PR is open), **declined** (a
-`declined: <role>/<class> @<host>-<agent> <reason>` comment since dispatch —
-`fleet-claim decline` writes it and releases), or **abandoned** (label still
-standing, no record). Declines are role-scoped: substantive ones last seven days;
-transient/host ones last 30 minutes; sandbox refusals bar only their recorded runtime.
-Declined/abandoned exits count as empty for backoff. Marker-vouched reviewing, resolving, and planning claims
-release on the first abandonment; they have no pane affinity or reservation to
-resume. Other kinds keep the claim once only when the pane can resume: a
+When a target-bound pane exits, `scripts/fleet/fleet_completion.py` reads the target:
+**finished** for timeline progress or an open task PR; **noop** for a released
+claim with only claim-label churn; **declined** for a `declined: <role>/<class>
+@<host>-<agent> <reason>` comment; **abandoned** for a standing claim with no
+record; or **unknown** when the timeline is unreadable. `fleet-claim decline` writes the record and releases.
+Declines are role-scoped: substantive ones last seven days; transient/host ones last 30 minutes; sandbox refusals bar
+only their recorded runtime. Noop, declined, and abandoned exits count as empty for
+backoff; marker-vouched mutation claims release on the first abandonment.
+Other kinds keep the claim once only when the pane can resume: a
 reservation, or a same-role, same-target sidecar, which pins the pane to that one
 re-dispatch for up to `FLEET_CLAIM_STALE_SECS`. A release salvages dirty
 worktrees to `~/.fleet/state/salvage/` and an unreachable HEAD to a

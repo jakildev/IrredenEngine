@@ -238,6 +238,22 @@ class Dispatches(Env):
         self.assertEqual((rev["productive"], rev["no_op"], rev["targeted"]), (2, 0, 2))
         self.assertFalse(any(w.startswith("sonnet-reviewer:") for w in rep["warnings"]))
 
+    def test_noop_verdict_with_outcome_no_is_tallied_as_a_no_op(self):
+        log = self.root / "logs" / "dispatcher.log"
+        log.write_text(log.read_text() + "\n".join([
+            _line("2026-09-09T05:08:35Z", "dispatcher",
+                  "dispatching worker -> %33 [class=opus effort=high "
+                  "target=review:engine:3110]"),
+            _line("2026-09-09T05:08:45Z", "dispatcher",
+                  "dispatch for worker on %33 completed (pane returned to "
+                  "shell, outcome=no, target=review:engine:3110, "
+                  "verdict=noop)"),
+        ]) + "\n")
+        rc, rep = self.run_report()
+        worker = rep["roles"]["worker"]
+        self.assertEqual((worker["dispatches"], worker["productive"], worker["no_op"]),
+                         (2, 1, 1))
+
     def test_runtime_attribution(self):
         rc, rep = self.run_report()
         self.assertEqual(rep["roles"]["sonnet-reviewer"]["runtimes"], {"codex": 1, "unknown": 1})

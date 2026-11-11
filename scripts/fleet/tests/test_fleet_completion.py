@@ -16,10 +16,15 @@ import fleet_completion as fc  # noqa: E402
 DISPATCHED = 1788714000  # 2026-09-06T17:00:00Z
 LABEL = "fleet:claim-mac-pool-3"
 HOST_AGENT = "mac-pool-3"
+TIMELINE_UNSET = object()
 
 
 def comment(body, created="2026-09-06T18:00:00Z"):
     return {"created_at": created, "body": body}
+
+
+def event(kind, created="2026-09-06T18:00:00Z", **fields):
+    return {"event": kind, "created_at": created, **fields}
 
 
 class DeclineGrammar(unittest.TestCase):
@@ -66,6 +71,49 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(fc.assess(LABEL, ["fleet:queued"], [], HOST_AGENT, DISPATCHED)[0],
                          fc.VERDICT_FINISHED)
 
+    def test_released_claim_with_only_claim_label_churn_is_noop(self):
+        timeline = []
+        for namespace in ("claim", "reviewing", "amending", "resolving", "planning",
+                          "stewarding"):
+            timeline += [
+                event("labeled", label={"name": f"fleet:{namespace}-mac-pool-4"}),
+                event("unlabeled", label={"name": f"fleet:{namespace}-mac-pool-4"}),
+            ]
+        verdict, detail = fc.assess(
+            LABEL, ["fleet:queued"], [], HOST_AGENT, DISPATCHED, timeline=timeline)
+        self.assertEqual(verdict, fc.VERDICT_NOOP)
+        self.assertEqual(detail, "claim released without target progress")
+
+    def test_progress_event_since_dispatch_is_finished(self):
+        progress = [
+            event("commented"),
+            {"event": "reviewed", "submitted_at": "2026-09-06T18:00:00Z"},
+            event("labeled", label={"name": "fleet:approved"}),
+            event("head_ref_force_pushed"),
+            {"event": "committed", "committer": {"date": "2026-09-06T18:00:00Z"}},
+        ]
+        for timeline_event in progress:
+            with self.subTest(event=timeline_event["event"]):
+                self.assertEqual(
+                    fc.assess(LABEL, [], [], HOST_AGENT, DISPATCHED,
+                              timeline=[timeline_event])[0],
+                    fc.VERDICT_FINISHED)
+
+    def test_progress_before_dispatch_does_not_count(self):
+        self.assertEqual(
+            fc.assess(LABEL, [], [], HOST_AGENT, DISPATCHED,
+                      timeline=[event("commented", "2026-09-06T16:00:00Z")])[0],
+            fc.VERDICT_NOOP)
+
+    def test_unavailable_timeline_is_unknown(self):
+        self.assertEqual(
+            fc.assess(LABEL, [], [], HOST_AGENT, DISPATCHED, timeline=None)[0],
+            fc.VERDICT_UNKNOWN)
+        self.assertEqual(
+            fc.assess(LABEL, [], [], HOST_AGENT, DISPATCHED,
+                      timeline=[{"event": "commented"}])[0],
+            fc.VERDICT_UNKNOWN)
+
     def test_standing_label_with_no_record_is_abandoned(self):
         verdict, detail = fc.assess(LABEL, [LABEL], [], HOST_AGENT, DISPATCHED)
         self.assertEqual(verdict, fc.VERDICT_ABANDONED)
@@ -84,7 +132,7 @@ class Verdicts(unittest.TestCase):
         for prs in (by_branch, by_body):
             self.assertEqual(
                 fc.assess(LABEL, [LABEL], [], HOST_AGENT, DISPATCHED,
-                          open_prs=prs, number=42, repo="engine")[0],
+                          open_prs=prs, number=42, repo="engine", timeline=None)[0],
                 fc.VERDICT_FINISHED)
         unrelated = [{"number": 50, "headRefName": "claude/43-fix", "body": ""}]
         self.assertEqual(
@@ -155,13 +203,16 @@ class MergeVerdicts(unittest.TestCase):
 
 
 class Cli(unittest.TestCase):
-    def _run(self, issue, comments, prs=None, **extra):
+    def _run(self, issue, comments, prs=None, timeline=TIMELINE_UNSET, **extra):
         with tempfile.TemporaryDirectory() as tmp:
             paths = {}
             pull = extra.pop("pull", None)
             for name, data in (("issue", issue), ("comments", comments), ("prs", prs),
+                               ("timeline", timeline),
                                ("pull", pull)):
-                if data is None:
+                if data is None and name != "timeline":
+                    continue
+                if data is TIMELINE_UNSET:
                     continue
                 paths[name] = os.path.join(tmp, name + ".json")
                 with open(paths[name], "w", encoding="utf-8") as handle:
@@ -173,6 +224,8 @@ class Cli(unittest.TestCase):
                     "--comments-json", paths["comments"]]
             if "prs" in paths:
                 argv += ["--prs-json", paths["prs"]]
+            if "timeline" in paths:
+                argv += ["--timeline-json", paths["timeline"]]
             if "pull" in paths:
                 argv += ["--pr-json", paths["pull"]]
             for key, value in extra.items():
@@ -194,6 +247,11 @@ class Cli(unittest.TestCase):
 
     def test_a_bare_label_array_is_accepted(self):
         self.assertEqual(self._run(["fleet:queued"], []), ["finished", "", f"{LABEL} released"])
+
+    def test_timeline_drives_noop_and_unknown(self):
+        issue = {"labels": [], "updated_at": "2026-09-06T18:30:00Z"}
+        self.assertEqual(self._run(issue, [], timeline=[])[0], "noop")
+        self.assertEqual(self._run(issue, [], timeline=None)[0], "unknown")
 
     def test_kind_merge_selects_the_claimless_contract(self):
         issue = {"labels": [], "updated_at": "2026-09-06T16:00:00Z"}
