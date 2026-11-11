@@ -226,7 +226,7 @@ void main() {
         // virtual sentinels, so materializing them would be pure waste.
         const uint i = (gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x) * kThreads + gl_LocalInvocationID.x;
         if (i >= span || i < liveEntryCount()) return;
-        const uint b = entriesBase() + i * 4u;
+        const uint b = entriesBase() + i * kFaceSortRecordWords;
         scratch[b] = kSentinelWord;
         scratch[b + 1u] = kSentinelWord;
         scratch[b + 2u] = kSentinelWord;
@@ -251,7 +251,7 @@ void main() {
             return;
         }
         for (uint e = t; e < kBlock; e += kThreads) {
-            const uint b = entriesBase() + (blockBase + e) * 4u;
+            const uint b = entriesBase() + (blockBase + e) * kFaceSortRecordWords;
             sW0[e] = scratch[b];
             sW1[e] = scratch[b + 1u];
             sW2[e] = scratch[b + 2u];
@@ -268,7 +268,7 @@ void main() {
             }
         }
         for (uint e = t; e < kBlock; e += kThreads) {
-            const uint b = entriesBase() + (blockBase + e) * 4u;
+            const uint b = entriesBase() + (blockBase + e) * kFaceSortRecordWords;
             scratch[b] = sW0[e];
             scratch[b + 1u] = sW1[e];
             scratch[b + 2u] = sW2[e];
@@ -318,7 +318,7 @@ void main() {
             sW3[e] = kSentinelWord;
             continue;
         }
-        const uint b = entriesBase() + i * 4u;
+        const uint b = entriesBase() + i * kFaceSortRecordWords;
         sW0[e] = scratch[b];
         sW1[e] = scratch[b + 1u];
         sW2[e] = scratch[b + 2u];
@@ -347,7 +347,7 @@ void main() {
         // Never write back a virtual slot — that region stays untouched and is
         // never read by the draw.
         if (i >= span) continue;
-        const uint b = entriesBase() + i * 4u;
+        const uint b = entriesBase() + i * kFaceSortRecordWords;
         scratch[b] = sW0[e];
         scratch[b + 1u] = sW1[e];
         scratch[b + 2u] = sW2[e];

@@ -118,6 +118,9 @@ enum class GatherFilterDiagnostic : int {
     OWNER = 2,
 };
 
+// Shared with the GPU face-order sorter, emitter, and vertex reader.
+constexpr std::uint32_t kFaceSortRecordWords = 4;
+
 // Prefix is an indexed indirect draw command followed by producer depth bounds.
 struct SourceVoxelFaceHeader {
     std::uint32_t indexCount_ = 6;

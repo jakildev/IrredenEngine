@@ -127,7 +127,7 @@ kernel void c_per_axis_overflow_sort(
     if (mode == 0u) {
         const uint i = (groupId.x + groupId.y * gridGroups.x) * kSortThreads + localId.x;
         if (i >= span || i < liveCount) return;
-        const uint b = entriesBase + i * 4u;
+        const uint b = entriesBase + i * kFaceSortRecordWords;
         scratch[b] = kSortSentinelWord;
         scratch[b + 1u] = kSortSentinelWord;
         scratch[b + 2u] = kSortSentinelWord;
@@ -154,7 +154,7 @@ kernel void c_per_axis_overflow_sort(
             return;
         }
         for (uint e = t; e < kSortBlock; e += kSortThreads) {
-            const uint b = entriesBase + (blockBase + e) * 4u;
+            const uint b = entriesBase + (blockBase + e) * kFaceSortRecordWords;
             sW0[e] = scratch[b];
             sW1[e] = scratch[b + 1u];
             sW2[e] = scratch[b + 2u];
@@ -173,7 +173,7 @@ kernel void c_per_axis_overflow_sort(
             }
         }
         for (uint e = t; e < kSortBlock; e += kSortThreads) {
-            const uint b = entriesBase + (blockBase + e) * 4u;
+            const uint b = entriesBase + (blockBase + e) * kFaceSortRecordWords;
             scratch[b] = sW0[e];
             scratch[b + 1u] = sW1[e];
             scratch[b + 2u] = sW2[e];
@@ -219,7 +219,7 @@ kernel void c_per_axis_overflow_sort(
             sW3[e] = kSortSentinelWord;
             continue;
         }
-        const uint b = entriesBase + i * 4u;
+        const uint b = entriesBase + i * kFaceSortRecordWords;
         sW0[e] = scratch[b];
         sW1[e] = scratch[b + 1u];
         sW2[e] = scratch[b + 2u];
@@ -252,7 +252,7 @@ kernel void c_per_axis_overflow_sort(
         // Never write back a virtual slot — that region stays untouched and is
         // never read by the draw.
         if (i >= span) continue;
-        const uint b = entriesBase + i * 4u;
+        const uint b = entriesBase + i * kFaceSortRecordWords;
         scratch[b] = sW0[e];
         scratch[b + 1u] = sW1[e];
         scratch[b + 2u] = sW2[e];

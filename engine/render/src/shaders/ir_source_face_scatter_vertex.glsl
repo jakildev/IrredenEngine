@@ -53,7 +53,7 @@ void main() {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         return;
     }
-    const SourceVoxelFace face = sourceFaces[sourceOrder[128u + uint(gl_InstanceID) * 3u + 1u]];
+    const SourceVoxelFace face = sourceFaces[sourceOrder[128u + uint(gl_InstanceID) * kFaceSortRecordWords + 1u]];
     const int faceId = int(face.centerAndFace.w);
     const int axis = faceId >> 1;
     vec3 eu, ev;

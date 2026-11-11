@@ -1676,7 +1676,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                         triangleCanvasTextures.sourceFaceOrder_.first
                     );
                 IR_ASSERT(
-                    capacity <= (std::size_t{1} << 30),
+                    capacity <= (std::size_t{1} << 29),
                     "source face order exceeds shader capacity"
                 );
                 const auto orderCapacity = IRMath::nextPowerOfTwo(
@@ -1684,7 +1684,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
                 triangleCanvasTextures.sourceFaceOrder_ = IRRender::createResource<Buffer>(
                     nullptr,
-                    (std::size_t{128} + std::size_t{3} * orderCapacity) * sizeof(std::uint32_t),
+                    (std::size_t{128} + std::size_t{kFaceSortRecordWords} * orderCapacity) *
+                        sizeof(std::uint32_t),
                     BUFFER_STORAGE_DYNAMIC,
                     BufferTarget::SHADER_STORAGE,
                     kBufferIndex_PerAxisResolveScratch
