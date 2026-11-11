@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# fleet-guard-bash — PreToolUse hook for Bash.
+#
+# Denies a command line that pushes to a protected branch of a fleet
+# repository, merges a pull request, skips git hooks, or commits on a
+# protected branch. The policy lives in fleet_guard_bash.py beside this file.
+# This shim exists so that a Bash call the policy cannot match never starts
+# Python, and so that a missing or failing interpreter never blocks a call.
+#
+# Contract: reads the PreToolUse JSON on stdin. A deny is the
+# hookSpecificOutput JSON on stdout with exit 0. Every other outcome is exit 0
+# with no output: the guard denies on a positive policy match and fails open
+# on everything else, because server-side branch protection is the boundary
+# and a hook must never wedge the fleet. A failure appends one line to
+# ${FLEET_HOME:-$HOME/.fleet}/logs/guard-bash.log.
+#
+# Invoked by path (.claude/settings.json), never through a ~/bin symlink: the
+# policy module is located beside this file's own path.
+#
+# Usage: fleet-guard-bash < hook-input.json
+#        fleet-guard-bash --help
+set -uo pipefail
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    # The header comment, by shape: every comment line after the shebang.
+    awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/, ""); print}' "$0"
+    exit 0
+fi
+
+# Every policy match needs one of these words somewhere in the command, so
+# hook input without any of them is allowed here. Matched case-insensitively
+# against the raw JSON. tests/test_fleet_guard_bash.py fails when a command
+# the policy denies carries none of them.
+TRIGGER_RE='push|commit|merge|updateref|protection|heads'
+
+# Best effort, and built from builtins where bash allows: this runs when
+# python3 is missing, which is also when PATH is least trustworthy.
+log_failure() {
+    local dir="${FLEET_HOME:-${HOME:-}/.fleet}/logs" stamp=""
+    [[ -d "$dir" ]] || mkdir -p "$dir" 2>/dev/null || return 0
+    TZ=UTC printf -v stamp '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null \
+        || stamp=$(TZ=UTC date +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
+    # The group keeps a failed open of the log itself off the hook's stderr.
+    { printf '%s fleet-guard-bash[%s]: %s\n' "$stamp" "$$" "$1" >>"$dir/guard-bash.log"; } 2>/dev/null
+    return 0
+}
+
+# `read -d ''` returns non-zero at end of input with the text already stored.
+IFS= read -r -d '' input || true
+[[ -n "$input" ]] || exit 0
+
+shopt -s nocasematch
+[[ "$input" =~ $TRIGGER_RE ]] || exit 0
+shopt -u nocasematch
+
+here="${BASH_SOURCE[0]%/*}"
+[[ "$here" == "${BASH_SOURCE[0]}" ]] && here=.
+policy="$here/fleet_guard_bash.py"
+
+if ! command -v python3 >/dev/null 2>&1; then
+    log_failure "python3 not found, allowed"
+    exit 0
+fi
+if [[ ! -f "$policy" ]]; then
+    log_failure "policy module not found at $policy, allowed"
+    exit 0
+fi
+
+verdict=$(python3 -I "$policy" <<<"$input" 2>/dev/null)
+status=$?
+if [[ "$status" -ne 0 ]]; then
+    log_failure "fleet_guard_bash.py exited $status, allowed"
+    exit 0
+fi
+[[ -n "$verdict" ]] && printf '%s\n' "$verdict"
+exit 0

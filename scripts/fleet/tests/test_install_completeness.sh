@@ -38,6 +38,10 @@ ALLOWLIST=(
     "classify-auto-rereview.sh"   # invoked by path from .github/workflows/auto-rereview.yml
     "fleet-guard-worktree-edit"   # PreToolUse hook, invoked by absolute path from
                                    # .claude/settings.json and fleet-up
+    "fleet-guard-bash"            # PreToolUse hook, invoked by path from
+                                   # .claude/settings.json; finds its policy
+                                   # module beside its own path, so a ~/bin
+                                   # symlink would not work
     "fleet-migrate-plan-files"    # one-off migration, run by path from the repo
 )
 

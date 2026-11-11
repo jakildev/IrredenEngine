@@ -509,6 +509,13 @@ Parallel-agent fleet (tmux + Claude)
                                  denies an absolute file_path that escapes the
                                  session's fleet worktree (silent main-clone
                                  misroute guard, reads JSON on stdin)
+  fleet-guard-bash               PreToolUse hook (Bash) — denies a command
+                                 line that pushes to master/main of a fleet
+                                 repository, merges a PR (gh pr merge, the
+                                 merge API, fleet-automerge), skips git hooks,
+                                 or commits on master/main; fails open on
+                                 anything else (reads JSON on stdin, logs
+                                 failures to ~/.fleet/logs/guard-bash.log)
   fleet-worktree-busy-branches [--exclude <path>] [--repo <path>]...
                                  list branches held by other worktrees (union
                                  across engine+game), for pre-checkout
