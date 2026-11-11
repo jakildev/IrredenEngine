@@ -172,13 +172,13 @@ class ScopeTimer {
 
 } // namespace IRProfile
 
-#ifndef IR_RELEASE
+// Compiled in every build type, Release included: the scope timer is how a
+// Release `--auto-profile` report splits a system row. The run-time switch
+// `cpuFrameHistogram().enabled_` is the only gate; a disabled scope costs a
+// flag test. `name` must be a string literal (the timer borrows a view).
 #define IR_PROFILE_SCOPE_CONCAT_INNER(a, b) a##b
 #define IR_PROFILE_SCOPE_CONCAT(a, b) IR_PROFILE_SCOPE_CONCAT_INNER(a, b)
 #define IR_PROFILE_SCOPE(name)                                                                     \
     ::IRProfile::ScopeTimer IR_PROFILE_SCOPE_CONCAT(ir_profile_scope_, __LINE__) { name }
-#else
-#define IR_PROFILE_SCOPE(name)
-#endif
 
 #endif /* IR_PROFILE_SCOPE_TIMER_H */
