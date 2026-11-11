@@ -21,7 +21,8 @@ class SourceFaceQueryTest(unittest.TestCase):
                 geometry = (ROOT / "engine/render/src/shaders" / directory /
                             f"ir_projected_face.{suffix}").read_text()
                 shader = shader.replace(f'#include "ir_projected_face.{suffix}"', geometry)
-                shader = (shader.replace("constant uint", "const uint")
+                shader = (shader.replace("constant bool", "const bool")
+                          .replace("constant uint", "const uint")
                           .replace("device const uint*", "const uint*")
                           .replace("float2", "vec2").replace("float3", "vec3"))
                 names = re.findall(r"const uint (kSourceFace\w+|kSunDepthSlab\w+) =", shader)

@@ -36,6 +36,7 @@ PILLOW_EXCEPTIONS = frozenset({
     "scripts/editor-shadow-rotation.py",
     "scripts/tests/test_editor_screen_alignment.py",
     "scripts/tests/test_editor_shadow_rotation.py",
+    "scripts/perf/sun_depth_slab_capture.py",
     "scripts/pr_capture_common.py",
     "scripts/tests/test_pr_capture_common.py",
     "scripts/render-detached-face-metric.py",
@@ -70,6 +71,10 @@ _NEVER_ELIGIBLE = frozenset({
 _POPULATION_GLOBS = ("scripts/*.py", "scripts/tests/*.py")
 _POPULATION_FILES = (
     "scripts/perf/compare_perf_runs.py",
+    "scripts/perf/repeat_profile.py",
+    "scripts/perf/sun_depth_slab_capture.py",
+    "scripts/perf/sun_depth_slab_census.py",
+    "scripts/perf/sun_depth_slab_timing.py",
     "scripts/perf/sun_face_index_probe.py",
     "scripts/perf/sun_geometry_probe.py",
     "scripts/perf/sun_hierarchy_build_probe.py",

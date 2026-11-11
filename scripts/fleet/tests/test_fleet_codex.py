@@ -241,6 +241,8 @@ class Transport(unittest.TestCase):
                             ["python3", str(root / "scripts/perf/repeat_profile.py")],
                             ["python3", "scripts/perf/sdf_controls.py"],
                             ["python3", str(root / "scripts/perf/sdf_controls.py")],
+                            ["python3", "scripts/perf/sun_depth_slab_capture.py"],
+                            ["python3", str(root / "scripts/perf/sun_depth_slab_capture.py")],
                             ["python3", "scripts/package-smoke.py"],
                             ["python3", str(root / "scripts/package-smoke.py")],
                             ["bash", "scripts/perf/perf_grid_matrix.sh"],
@@ -253,7 +255,10 @@ class Transport(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve()
             path = policy.prepare(root, "worker")
-            for script in ("scripts/package-smoke.py", "scripts/render-verify.py"):
+            # sun_depth_slab_capture.py takes its own gpu lease, so the bare
+            # form is the supported one; an ir-acquire prefix stays sandboxed.
+            for script in ("scripts/package-smoke.py", "scripts/render-verify.py",
+                           "scripts/perf/sun_depth_slab_capture.py"):
                 for form in (script, str(root / script)):
                     cmd = ["python3", form, "--target", "IRShapeDebug"]
                     with self.subTest(cmd=cmd):
@@ -373,6 +378,7 @@ class Transport(unittest.TestCase):
         self.assertTrue(drivers)
         # This matrix reaches fleet-run through profile_matrix.run_rounds.
         drivers.add("scripts/perf/sdf_controls.py")
+        drivers.add("scripts/perf/sun_depth_slab_timing.py")
         self.assertEqual(drivers, set(policy.DISPLAY_VALIDATORS))
 
     def test_stderr_quota_and_stdout_notice(self):

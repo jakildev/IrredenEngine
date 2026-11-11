@@ -287,8 +287,8 @@ inline bool writeSourceFaceIndexProbe(const std::string &path, bool includeGeome
 
 // One probe CSV row from a texel's nearest word and its slab planes, stored
 // every slot's min plane then every slot's max plane at `stride` words each.
-// The sticky overflow flag lives on max plane 0, the plane right after the
-// last min plane; an unclaimed min word is EMPTY and carries the same bit.
+// Associative overflow lives on max plane 0, not on the EMPTY min sentinel.
+// Direct extrema stay raw; a slab mismatch in any occupied slot is a collision.
 inline void writeSunPrimaryDepthProbeRow(
     std::ostream &output,
     std::uint32_t cascade,
@@ -298,17 +298,25 @@ inline void writeSunPrimaryDepthProbeRow(
     const std::uint32_t *slabPlanes,
     std::size_t stride,
     std::size_t column,
-    std::uint32_t slots
+    std::uint32_t slots,
+    bool directMapped = kSunDepthSlabDirectMapped
 ) {
     output << cascade << ',' << x << ',' << y << ',' << nearest;
+    bool collision = false;
     for (std::uint32_t slot = 0; slot < slots; ++slot) {
-        output << ',' << slabPlanes[std::size_t(slot) * stride + column] << ','
-               << (slabPlanes[std::size_t(slots + slot) * stride + column] &
-                   ~kSunDepthSlabOverflow);
+        const auto low = slabPlanes[std::size_t(slot) * stride + column];
+        const auto rawHigh = slabPlanes[std::size_t(slots + slot) * stride + column];
+        const auto high = directMapped ? rawHigh : rawHigh & ~kSunDepthSlabOverflow;
+        output << ',' << low << ',' << high;
+        if (directMapped && low != 0xFFFFFFFFu &&
+            (low >> 8) / kSunDepthSlabQuantized != (high >> 8) / kSunDepthSlabQuantized) {
+            collision = true;
+        }
     }
-    const bool overflow = slots != 0u && (slabPlanes[std::size_t(slots) * stride + column] &
-                                          kSunDepthSlabOverflow) != 0u;
-    output << ',' << (overflow ? 1 : 0) << "\n";
+    const bool overflow =
+        !directMapped && slots != 0u &&
+        (slabPlanes[std::size_t(slots) * stride + column] & kSunDepthSlabOverflow) != 0u;
+    output << ',' << (overflow ? 1 : 0) << ',' << (collision ? 1 : 0) << "\n";
 }
 
 // Primary-layer words (nearest plus slab extrema) for the sun texels a
@@ -334,6 +342,10 @@ inline bool writeSunPrimaryDepthProbe(
     output << "# max_shadow_throw=" << frame.sunMaxShadowThrow_ << "\n";
     output << "# slab_width=" << kSunDepthSlabWidthUnits << "\n";
     output << "# slab_slots=" << kSunDepthSlabSlots << "\n";
+    output << "# slab_mode="
+           << (kSunDepthSlabSlots == 0u ? "disabled"
+                                        : (kSunDepthSlabDirectMapped ? "direct" : "associative"))
+           << "\n";
     output << "# sun_direction=" << frame.sunDirection_.x << ',' << frame.sunDirection_.y << ','
            << frame.sunDirection_.z << "\n";
     output << "# basis_u=" << frame.sunBasisU_.x << ',' << frame.sunBasisU_.y << ','
@@ -378,7 +390,7 @@ inline bool writeSunPrimaryDepthProbe(
     for (std::uint32_t slot = 0; slot < kSunDepthSlabSlots; ++slot) {
         output << ",slab" << slot << "_min,slab" << slot << "_max";
     }
-    output << ",overflow\n";
+    output << ",overflow,collision\n";
     std::vector<std::uint32_t> nearest;
     std::vector<std::uint32_t> slabs;
     for (std::uint32_t cascade = 0; cascade < kSourceFaceCascadeCount; ++cascade) {

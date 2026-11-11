@@ -135,7 +135,8 @@ class MixedSourceShadowTest(unittest.TestCase):
             for variant, (body, expected) in variants.items():
                 with self.subTest(backend=suffix, variant=variant):
                     code = PREAMBLE + layout + helpers + MAIN.replace("SURFACE_LOOP", body)
-                    code = (code.replace("constant uint", "const uint")
+                    code = (code.replace("constant bool", "const bool")
+              .replace("constant uint", "const uint")
                             .replace("float2", "vec2").replace("float3", "vec3"))
                     with tempfile.TemporaryDirectory() as tmp:
                         path = Path(tmp)

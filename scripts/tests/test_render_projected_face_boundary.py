@@ -104,6 +104,7 @@ def query_source(suffix, mutation):
     geometry = (directory / f"ir_projected_face.{suffix}").read_text()
     source = layout.replace(f'#include "ir_projected_face.{suffix}"', geometry)
     source = (source.replace("constant uint", "const uint")
+              .replace("constant bool", "const bool")
               .replace("float2", "vec2").replace("float3", "vec3"))
     if mutation in ("unbounded_u", "unbounded_v"):
         before, after = (r"\bu \* edgeU.z", "uv.x * edgeU.z") if mutation == "unbounded_u" else (
