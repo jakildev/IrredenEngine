@@ -83,6 +83,19 @@ TEST(LightVolumeDispatchTest, SeparatedCornerSeedsCoverTheFullDomain) {
     }
 }
 
+TEST(LightVolumeDispatchTest, MixedRadiiKeepTheMaxIterationSuperset) {
+    std::array lights{stagedSeed(ivec3(24, 64, 64)), stagedSeed(ivec3(72, 64, 64))};
+    lights[0].directionAndRadius_.w = 8.0f;
+    lights[1].directionAndRadius_.w = 32.0f;
+
+    const auto dispatch = lightVolumePropagationDispatch(lights, ivec3(0), 32);
+    const ivec3 end = dispatch.origin_ + dispatch.groups_ * ivec3(8, 8, 4);
+    EXPECT_LE(dispatch.origin_.x, 0);
+    EXPECT_GE(end.x, 105);
+    EXPECT_LE(dispatch.origin_.y, 32);
+    EXPECT_GE(end.y, 97);
+}
+
 TEST(LightVolumeDispatchTest, ContainsEveryCellReachableByTheSixNeighborStencil) {
     const ivec3 volumeOrigin(-317, 219, -101);
     for (const ivec3 seed : {ivec3(0), ivec3(127), ivec3(65, 59, 61), ivec3(3, 77, 124)}) {

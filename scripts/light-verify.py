@@ -81,6 +81,7 @@ RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
 
 DEMO_NAME = "lighting"
 DEFAULT_TARGET = "IRLightingEmissive"
+PER_LIGHT_FALLOFF_TARGET = "IRLightingPerLightFalloff"
 SCREENSHOT_SUBDIR = "save_files/screenshots"
 
 TRIGGER_FILES = {
@@ -273,6 +274,140 @@ def _check_expected_states(
     return failures
 
 
+def _verify_per_light_falloff_pair(
+    target: str, worktree: Path, shots_dir: Path, warmup: int, timeout: int
+) -> int:
+    """Compare the mixed-radius fixture with its wide-light control removed."""
+    from render_metric_util import read_png
+
+    pair_dir = shots_dir.parent / "per_light_falloff_pair"
+    if pair_dir.exists():
+        shutil.rmtree(pair_dir)
+    pair_dir.mkdir(parents=True)
+
+    captures: list[Path] = []
+    states: list[list[dict[str, Any]]] = []
+    for label, extra in (
+        ("with_wide", []),
+        ("without_wide", ["--no-wide-light"]),
+        ("unlit", ["--no-local-lights"]),
+    ):
+        print(f"\n[light-verify] === per-light-falloff pair: {label} ===")
+        cmd = [
+            "fleet-run", "--timeout", str(timeout), target, *extra,
+            "--auto-screenshot", str(warmup),
+        ]
+        rc, output, images = verify_common.run_pass(
+            cmd, worktree, shots_dir, timeout=timeout + 30
+        )
+        result = verify_common.run_result(output)
+        if result == verify_common.NO_DISPLAY:
+            verify_common.report_no_display("[light-verify] ")
+            return verify_common.EXIT_ENV_FAIL
+        if rc != 0 or result != "CLEAN" or not images:
+            print(
+                f"[light-verify] {label}: expected a clean capture, got rc={rc} "
+                f"RESULT={result or 'MISSING'} images={len(images)}",
+                file=sys.stderr,
+            )
+            return 1
+        copied = pair_dir / f"{label}.png"
+        # The engine may preserve earlier numbered captures while rotating its
+        # screenshot directory; this one-shot run's frame is always the last.
+        shutil.copy2(images[-1], copied)
+        captures.append(copied)
+        states.append(_parse_domain_state(output))
+
+    failures: list[str] = []
+    if len(states[0]) != 1 or len(states[0][0]["lights"]) != 2:
+        failures.append("with-wide capture must report exactly two gathered lights")
+    if len(states[1]) != 1 or len(states[1][0]["lights"]) != 1:
+        failures.append("without-wide capture must report exactly one gathered light")
+    if len(states[2]) != 1 or states[2][0]["lights"]:
+        failures.append("unlit capture must report no gathered lights")
+
+    width, height, bpp, with_wide = read_png(str(captures[0]))
+    cw, ch, cbpp, without_wide = read_png(str(captures[1]))
+    uw, uh, ubpp, unlit = read_png(str(captures[2]))
+    if (width, height, bpp) != (cw, ch, cbpp) or (width, height, bpp) != (uw, uh, ubpp):
+        failures.append("paired captures have different dimensions or pixel formats")
+    else:
+        def difference_stats(
+            a: bytes,
+            b: bytes,
+            crop: tuple[int, int, int, int] | None = None,
+        ) -> tuple[int, tuple[int, int, int, int] | None, int]:
+            count = 0
+            crop_count = 0
+            min_x, min_y = width, height
+            max_x = max_y = -1
+            for index in range(width * height):
+                offset = index * bpp
+                if (a[offset] == b[offset] and a[offset + 1] == b[offset + 1]
+                        and a[offset + 2] == b[offset + 2]):
+                    continue
+                count += 1
+                x, y = index % width, index // width
+                min_x, max_x = min(min_x, x), max(max_x, x)
+                min_y, max_y = min(min_y, y), max(max_y, y)
+                if crop is not None:
+                    x0, x1, y0, y1 = crop
+                    crop_count += x0 <= x < x1 and y0 <= y < y1
+            bounds = None if count == 0 else (min_x, max_x, min_y, max_y)
+            return count, bounds, crop_count
+
+        _, narrow_bounds, _ = difference_stats(without_wide, unlit)
+        if narrow_bounds is None:
+            failures.append("radius-8 lamp has no lit footprint against the unlit control")
+            crop = (0, 0, 0, 0)
+            narrow_width = narrow_height = 0
+        else:
+            nx0, nx1, ny0, ny1 = narrow_bounds
+            narrow_width, narrow_height = nx1 - nx0 + 1, ny1 - ny0 + 1
+            pad_x = max(1, round(16 * width / 2560))
+            pad_y = max(1, round(8 * height / 1440))
+            crop = (
+                max(0, nx0 - pad_x), min(width, nx1 + pad_x + 1),
+                max(0, ny0 - pad_y), min(height, ny1 + pad_y + 1),
+            )
+        changed_count, changed_bounds, crop_mismatches = difference_stats(
+            with_wide, without_wide, crop
+        )
+        if crop_mismatches:
+            failures.append(
+                f"radius-8 crop changed in {crop_mismatches} pixels when the wide light was removed"
+            )
+        if changed_bounds is None:
+            failures.append("wide-light removal changed no pixels")
+        else:
+            min_x, max_x, min_y, max_y = changed_bounds
+            footprint_width = max_x - min_x + 1
+            footprint_height = max_y - min_y + 1
+            # At zoom 4 and the fixed yaw, the isometric X extent is 16 output
+            # pixels per world step at 2560x1440. The lamps sit one voxel above
+            # the floor, leaving horizontal reaches of 7 and 31 steps.
+            pixels_per_step = 16.0 * width / 2560.0
+            narrow_reach = narrow_width / (2.0 * pixels_per_step)
+            wide_reach = footprint_width / (2.0 * pixels_per_step)
+            if abs(narrow_reach - 7.0) > 1.0:
+                failures.append(f"radius-8 floor reach measured {narrow_reach:.2f}, expected 7±1")
+            if abs(wide_reach - 31.0) > 1.0:
+                failures.append(f"radius-32 floor reach measured {wide_reach:.2f}, expected 31±1")
+            print(
+                f"[light-verify] per-light-falloff: narrow_crop_mismatches={crop_mismatches} "
+                f"narrow_footprint={narrow_width}x{narrow_height} "
+                f"narrow_reach={narrow_reach:.2f} changed_pixels={changed_count} "
+                f"wide_footprint={footprint_width}x{footprint_height} wide_reach={wide_reach:.2f}"
+            )
+
+    if failures:
+        for failure in failures:
+            print(f"[light-verify] FAIL: {failure}", file=sys.stderr)
+        return 1
+    print("[light-verify] PASS: per-light falloff paired capture")
+    return 0
+
+
 def _changed_paths(worktree: Path, against: str) -> tuple[list[str] | None, str]:
     merge_base = subprocess.run(
         ["git", "-C", str(worktree), "merge-base", against, "HEAD"],
@@ -457,6 +592,11 @@ def main(argv: list[str] | None = None) -> int:
     diff_root = shots_dir.parent / "light_verify_diffs"
     if diff_root.exists():
         shutil.rmtree(diff_root)
+
+    if args.target == PER_LIGHT_FALLOFF_TARGET:
+        return _verify_per_light_falloff_pair(
+            args.target, worktree, shots_dir, args.warmup, args.timeout
+        )
 
     all_assertion_failures: list[str] = []
     all_image_results: list[tuple[str, str, dict[str, Any]]] = []  # (pass, label, result)

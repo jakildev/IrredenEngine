@@ -641,6 +641,7 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
         ivec3 cell_;
         vec3 color_;
         float alpha_;
+        float radius_ = 32.0f;
     };
     struct Frame {
         const char *name_;
@@ -650,6 +651,7 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
         bool carryId_;
         bool walls_;
         std::vector<Seed> seeds_;
+        bool perLightFalloff_ = false;
     };
     const std::vector<Frame> frames{
         {"interior ties and quantized residual",
@@ -690,6 +692,15 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
          true,
          false,
          {{ivec3(127, 126, 125), vec3(0, 1, 1), 1.0f}}},
+        {"mixed per-light falloff radii",
+         ivec3(0),
+         ivec3(0),
+         32,
+         false,
+         false,
+         {{ivec3(32, 64, 64), vec3(1, 0.25f, 0), 1.0f, 8.0f},
+          {ivec3(80, 64, 64), vec3(0, 0.25f, 1), 1.0f, 32.0f}},
+         true},
         {"all sources disappear", ivec3(600, -30, 80), ivec3(600, -30, 80), 32, false, false, {}},
     };
 
@@ -732,11 +743,14 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
             light.trueOriginVoxel_ = vec4(vec3(world), 0.0f);
             light.colorAndIntensity_ = vec4(input.color_, 1.0f);
             light.coneAndSeedAlpha_ = vec4(0, input.alpha_, 0, 0);
+            light.directionAndRadius_.w = input.radius_;
             lights.push_back(light);
         }
         LightVolumeParams params{};
         params.lightCount_ = static_cast<int>(lights.size());
-        params.worldOriginVoxel_ = ivec4(frame.origin_, frame.carryId_ ? 1 : 0);
+        const int flags = (frame.carryId_ ? kLightVolumeFlagHasSpot : 0) |
+                          (frame.perLightFalloff_ ? kLightVolumeFlagPerLightFalloff : 0);
+        params.worldOriginVoxel_ = ivec4(frame.origin_, flags);
         params.stepFalloff_ = frame.iterations_ > 0 ? 1.0f / frame.iterations_ : 1.0f;
         params.propagationOrigin_ = ivec4(0);
         parameters.subData(0, sizeof(params), &params);
@@ -766,6 +780,8 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
             );
             if (frame.carryId_)
                 EXPECT_EQ(seedIds[offset], i + 1);
+            if (frame.perLightFalloff_)
+                EXPECT_EQ(seedIds[offset + 1], static_cast<std::uint8_t>(frame.seeds_[i].radius_));
         }
         // Seed only once: separate seed dispatches could choose different
         // winners for coincident sources, which is unrelated to dispatch bounds.
@@ -859,7 +875,7 @@ TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEver
             const auto fullColors = read(readPing);
             EXPECT_EQ(read(4 + readPing), fullColors);
             EXPECT_EQ(read(6 + readPing), read(2 + readPing));
-            if (!frame.carryId_)
+            if (!frame.carryId_ && !frame.perLightFalloff_)
                 EXPECT_EQ(read(6 + readPing), zero);
             if (frame.walls_) {
                 EXPECT_GT(fullColors[byteOffset(ivec3(55, 49, 46)) + 3], 0u);

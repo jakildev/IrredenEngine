@@ -47,6 +47,7 @@ struct GatherResult {
     std::uint32_t eligible_ = 0;
     int maxRadius_ = 0;
     bool hasSpot_ = false;
+    bool hasMultipleRadii_ = false;
 };
 
 class LightVolumeBoundarySeedTest : public testing::Test {
@@ -116,7 +117,8 @@ class LightVolumeBoundarySeedTest : public testing::Test {
             result.eligible_,
             result.hasSpot_,
             &result.states_,
-            occlusion
+            occlusion,
+            &result.hasMultipleRadii_
         );
         return result;
     }
@@ -162,6 +164,28 @@ TEST_F(LightVolumeBoundarySeedTest, FreeClampedCellIsByteIdenticalToToday) {
         ),
         0
     );
+}
+
+TEST_F(LightVolumeBoundarySeedTest, MixedRadiiUseEachLightsOwnBoundaryDiscount) {
+    const IREntity::EntityId canvas = IREntity::createEntity();
+    makeLight(vec3(70.0f, 0.0f, 0.0f), 8);
+    makeLight(vec3(-70.0f, 0.0f, 0.0f), 32);
+
+    const GatherResult result = gather(canvas, nullptr);
+
+    ASSERT_EQ(result.count_, 2u);
+    EXPECT_TRUE(result.hasMultipleRadii_);
+    for (const IRRender::GPULightSource &light : result.out_) {
+        const int radius = static_cast<int>(light.directionAndRadius_.w);
+        if (radius == 8) {
+            EXPECT_EQ(seedCell(light), ivec3(kWindowMax, 0, 0));
+            EXPECT_NEAR(light.coneAndSeedAlpha_.y, 1.0f - 7.0f / 8.0f, 1e-5f);
+        } else {
+            ASSERT_EQ(radius, 32);
+            EXPECT_EQ(seedCell(light), ivec3(-IRComponents::kLightVolumeHalfExtent, 0, 0));
+            EXPECT_NEAR(light.coneAndSeedAlpha_.y, 1.0f - 6.0f / 32.0f, 1e-5f);
+        }
+    }
 }
 
 TEST_F(LightVolumeBoundarySeedTest, OccludedClampRelocatesToNearestFaceCell) {
@@ -290,13 +314,15 @@ TEST_F(LightVolumeBoundarySeedTest, DeterministicTieBreak) {
 TEST_F(LightVolumeBoundarySeedTest, SearchStopsAtRemainingReach) {
     const IREntity::EntityId canvas = IREntity::createEntity();
     makeSpotLight(vec3(70.0f, 0.0f, 0.0f), 8);
+    makeLight(vec3(0.0f), 32);
     occludeVoxel(kWindowMax, 0, 0);
 
     const IRSystem::detail::LightOcclusionGridView occlusion = view();
     const GatherResult result = gather(canvas, &occlusion);
 
-    EXPECT_EQ(result.count_, 0u);
-    ASSERT_EQ(result.states_.size(), 1u);
+    EXPECT_EQ(result.count_, 1u);
+    EXPECT_TRUE(result.hasMultipleRadii_);
+    ASSERT_EQ(result.states_.size(), 2u);
     EXPECT_EQ(result.states_[0].state_, IRSystem::LightGatherState::SKIPPED_OCCLUDED);
     // A skipped spot must not arm the consumer's winning-light-ID read.
     EXPECT_FALSE(result.hasSpot_);

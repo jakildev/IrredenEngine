@@ -12,7 +12,7 @@
 //   • alpha stores residual strength in [0, 1] — seeded at the light's
 //     CPU-computed residual (1.0 in-window; distance-discounted for
 //     out-of-window lights clamped to the volume edge), decremented by
-//     `stepFalloff` per Manhattan step. alpha == 0 means
+//     the winning light's reciprocal radius per Manhattan step. alpha == 0 means
 //     "this cell is past the light's radius and contributes nothing".
 //   • Each cell picks the candidate (self or air-neighbor) with the
 //     highest residual alpha — i.e. whichever wavefront has the most
@@ -46,10 +46,8 @@ const uint kLightOcclusionBitfieldUintCount =
 
 layout(rgba8, binding = 0) readonly uniform image3D lightVolumeRead;
 layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeWrite;
-// Winning-light ID ping-pong: the ID of whichever candidate wins a
-// cell's residual contest rides along with its color, so the consumer knows
-// which light lit the cell (for the SPOT cone factor). Swapped in lockstep
-// with the color pair.
+// Auxiliary ping-pong: the ID and optional radius of whichever candidate wins
+// a cell's residual contest ride with its color. Swapped in lockstep.
 layout(rgba8, binding = 2) readonly uniform image3D lightVolumeIdRead;
 layout(rgba8, binding = 3) writeonly uniform image3D lightVolumeIdWrite;
 
@@ -71,12 +69,13 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     // World voxel the volume is centered on this frame.
     // `worldCell = (cell - halfExtent) + lightVolumeWorldOrigin.xyz` maps
     // a local volume cell back to its world voxel for occupancy lookups.
-    // `.w` is the has-SPOT flag: a coherent (whole-dispatch) branch
-    // that skips the winning-light-ID image ops entirely when no SPOT was
-    // seeded, so no-spot scenes pay zero extra propagate bandwidth.
+    // `.w` is a coherent flag bitmask. The auxiliary image ops are skipped
+    // when neither SPOT IDs nor mixed-radius falloff needs them.
     ivec4 lightVolumeWorldOrigin;
     ivec4 propagationOrigin;
 };
+
+const int kLightVolumeFlagPerLightFalloff = 2;
 
 bool voxelOcclusionGetBit(int wx, int wy, int wz) {
     int he = kLightOcclusionGridHalfExtent;
@@ -123,12 +122,12 @@ void main() {
     }
 
     vec4 best = imageLoad(lightVolumeRead, cell);
-    // Winning-light ID travels with `best` — seeded from self, overwritten
-    // whenever a neighbor candidate wins the residual contest.
-    // Skipped when no SPOT was seeded (the consumer never reads it), so
-    // no-spot scenes do no extra id image traffic. `carryId` is uniform across
-    // the dispatch, so the branch is coherent (near-free).
+    // The winning auxiliary payload travels with `best`, overwritten whenever
+    // a neighbor wins. It is skipped when neither a SPOT ID nor a per-light
+    // radius is needed; the branch is coherent across the dispatch.
     const bool carryId = lightVolumeWorldOrigin.w != 0;
+    const bool perLightFalloff =
+        (lightVolumeWorldOrigin.w & kLightVolumeFlagPerLightFalloff) != 0;
     vec4 bestId = carryId ? imageLoad(lightVolumeIdRead, cell) : vec4(0.0);
     // The light-occlusion grid is anchored independently of the volume,
     // so neighbor lookups go through world coords.
@@ -148,7 +147,10 @@ void main() {
             continue;
         }
         const vec4 nv = imageLoad(lightVolumeRead, nCell);
-        const float candidateAlpha = nv.a - stepFalloff;
+        const vec4 candidateId = perLightFalloff ? imageLoad(lightVolumeIdRead, nCell) : vec4(0.0);
+        const float candidateRadius = max(1.0, floor(candidateId.g * 255.0 + 0.5));
+        const float candidateFalloff = perLightFalloff ? 1.0 / candidateRadius : stepFalloff;
+        const float candidateAlpha = nv.a - candidateFalloff;
         if (candidateAlpha <= best.a) {
             continue;
         }
@@ -162,7 +164,7 @@ void main() {
             // Carry the winning neighbor's ID so it stays in sync with the
             // color it just replaced. Only loaded on a win (≤6 extra reads).
             if (carryId) {
-                bestId = imageLoad(lightVolumeIdRead, nCell);
+                bestId = perLightFalloff ? candidateId : imageLoad(lightVolumeIdRead, nCell);
             }
         }
     }

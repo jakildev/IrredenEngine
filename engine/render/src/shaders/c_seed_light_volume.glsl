@@ -13,7 +13,7 @@
 //     for out-of-window lights seeded at the clamped window edge (the
 //     discount reproduces the exact in-window field of the distant light
 //     — computed by `gatherLightSources`). Each propagate step decrements alpha
-//     by `stepFalloff`; the consumer reads `rgb * alpha` so light fades
+//     by the source's reciprocal radius; the consumer reads `rgb * alpha` so light fades
 //     linearly with Manhattan distance and stops cleanly at the light's
 //     residual budget.
 //
@@ -34,17 +34,20 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     float stepFalloff;
     // Camera-anchored window origin. Subtract this world voxel before
     // mapping the light's world origin into a local texel index.
-    // `.w` carries the has-SPOT flag.
+    // `.w` carries the coherent light-volume flag bitmask.
     ivec4 lightVolumeWorldOrigin;
     ivec4 propagationOrigin;
 };
 
 layout(rgba8, binding = 0) writeonly uniform image3D lightVolume;
-// Winning-light ID read texture: seed writes `lightIndex/255` into `.r`
+// Auxiliary texture: seed writes winning `lightIndex/255` into `.r`
 // (index+1 so 0 stays reserved for "no light"). The propagate pass carries
-// the winning ID inward; the consumer maps it back to a light for the SPOT
-// cone factor.
+// it for the SPOT cone factor, and writes radius/255 into `.g` only when
+// eligible radii differ.
 layout(rgba8, binding = 1) writeonly uniform image3D lightVolumeId;
+
+const int kLightVolumeFlagHasSpot = 1;
+const int kLightVolumeFlagPerLightFalloff = 2;
 
 void main() {
     const uint lightIndex = gl_GlobalInvocationID.x;
@@ -73,11 +76,17 @@ void main() {
     // 0–255, so the 256th light (index 255 → id 256) cannot carry an ID —
     // it seeds as a plain omni sphere (id 0, no cone). A non-issue for the
     // "few dozen lights" workload; documented on C_CanvasLightVolume.
-    // Skipped when no SPOT was seeded (lightVolumeWorldOrigin.w == 0): the
-    // cleared id volume stays 0 and the consumer never reads it.
+    // Skipped when neither SPOT IDs nor per-light radii are needed.
     if (lightVolumeWorldOrigin.w != 0) {
         const uint idPlusOne = lightIndex + 1u;
-        const float idNorm = (idPlusOne <= 255u) ? float(idPlusOne) / 255.0 : 0.0;
-        imageStore(lightVolumeId, cell, vec4(idNorm, 0.0, 0.0, 0.0));
+        const float idNorm = (lightVolumeWorldOrigin.w & kLightVolumeFlagHasSpot) != 0 &&
+                                     idPlusOne <= 255u
+                                 ? float(idPlusOne) / 255.0
+                                 : 0.0;
+        const float radiusNorm =
+            (lightVolumeWorldOrigin.w & kLightVolumeFlagPerLightFalloff) != 0
+                ? light.directionAndRadius.w / 255.0
+                : 0.0;
+        imageStore(lightVolumeId, cell, vec4(idNorm, radiusNorm, 0.0, 0.0));
     }
 }
