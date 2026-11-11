@@ -33,29 +33,47 @@ are a working tree to polish.
 
 ### 1b. Dispatch the reuse-detection subagents
 
-In one message, dispatch all five via the `Agent` tool; they run while
-sections 2–5 proceed inline and feed section 6.
+The scanners read C++ only (`.hpp`, `.cpp`, `.h`, `.cc`). Count the added
+C++ lines: the added column of `git diff --numstat HEAD` for those files
+plus the length of each untracked one (`@{upstream}` in place of `HEAD`
+throughout this section when step 1 fell back to unpushed commits).
 
-| Subagent | Tier | What it finds |
-|---|---|---|
-| `simplify-grep-function-names` | Haiku | New function names that duplicate existing ones in the tree. |
-| `simplify-grep-utility-candidates` | Haiku | New functions that look like utilities and should live in `engine/math`, `ir_container_utils.hpp`, the renderer, etc. |
-| `simplify-scan-loop-patterns` | Haiku | Triple-nested voxel/grid loops, per-entity loops that allocate, repeated `getComponent` in inner loops, linear-search in save/load paths. |
-| `simplify-scan-render-leak` | Sonnet | Non-render code calling renderer primitives directly (`subImage2D`, vertex composition, GL/Metal calls); CPU-side SDF grid evaluation; math that belongs in a shader. |
-| `simplify-scan-call-sequence-dup` | Sonnet | New function bodies with ≥70% call-sequence overlap to existing functions (catches structural duplicates that pure name-match misses). |
+Fewer than 200 added C++ lines, no `Agent` tool, or no session scratchpad
+directory named in your system prompt: dispatch nothing; section 6 runs
+its inline pass.
 
-Brief each with the explicit changed-path list — the union of `git diff
---name-only HEAD` and `git ls-files --others --exclude-standard` — plus a
-note that you are the parent simplify skill; the agent definitions in
-`.claude/agents/` carry the rules. `git diff --name-only` alone omits
-untracked files, and a subagent can only `Read` the paths it was handed.
+Otherwise write the diff once, to the scratchpad:
+
+```bash
+git diff HEAD --output=<scratchpad>/simplify.diff
+```
+
+Every scanner gets the same scope: that file's absolute path, plus the
+changed-path list — the union of `git diff --name-only HEAD` and `git
+ls-files --others --exclude-standard`, the untracked paths marked `(new)`
+because they have no hunks in the diff file. A subagent can only `Read`
+what it was handed. In one message, dispatch via the `Agent` tool each
+scanner whose trigger matches; they run while sections 2–5 proceed inline
+and feed section 6.
+
+| Subagent | Tier | Runs when the diff adds… | What it finds |
+|---|---|---|---|
+| `simplify-grep-function-names` | Haiku | a function definition in a C++ file | New function names that duplicate existing ones in the tree. |
+| `simplify-grep-utility-candidates` | Haiku | a function in a C++ file under `creations/` or `engine/prefabs/` | New functions that look like utilities and should live in `engine/math`, `engine/utility`, the renderer, etc. |
+| `simplify-scan-loop-patterns` | Haiku | a `for` / `while` loop in a C++ file | Triple-nested voxel/grid loops, per-entity loops that allocate, repeated `getComponent` in inner loops, linear-search in save/load paths. |
+| `simplify-scan-render-leak` | Sonnet | C++ outside `engine/render/` and `engine/prefabs/irreden/render/` | Non-render code calling renderer primitives directly (`subImage2D`, vertex composition, GL/Metal calls); CPU-side SDF grid evaluation; math that belongs in a shader. |
+| `simplify-scan-call-sequence-dup` | Sonnet | a C++ function body of 3+ lines | New function bodies with ≥70% call-sequence overlap to existing functions (catches structural duplicates that pure name-match misses). |
+
+The agent definitions in `.claude/agents/` carry the rules; the brief
+carries the scope and a note that you are the parent simplify skill.
 
 ```
 Subagent: simplify-scan-loop-patterns
-Prompt: "Diff scope (working-tree paths, may include new untracked
-files): <paste path list>. Read each cited path directly, then scan for
-the loop-pattern smells documented in your agent definition. Return the
-findings list only — no preamble. Cap at 20 findings."
+Prompt: "Diff file: <scratchpad>/simplify.diff. Changed paths: <paste
+path list, untracked ones marked (new)>. Read the diff file, then scan
+what it adds for the loop-pattern smells documented in your agent
+definition. Return the findings list only — no preamble. Cap at 20
+findings."
 ```
 
 A subagent that errors or times out is skipped; the inline checks stand
@@ -197,9 +215,11 @@ helper if it exists, propose one at 3+ occurrences. Raw `std::cout` /
 `engine/profile/include/irreden/ir_profile.hpp`. Prefer an existing
 helper over inline duplication even when the duplicate is shorter.
 
-If the whole fan-out failed, do the pass inline: for each new function or
-block, grep the engine + creations tree for its name and its first two
-distinctive call targets.
+If section 1b dispatched nothing or the whole fan-out failed, do the pass
+inline: for each new function or block, grep the engine + creations tree
+for its name and its first two distinctive call targets, and read the
+added lines for the loop-pattern and renderer-leak shapes listed under
+Medium.
 
 ### 7. Dead code, debug logs, comments
 
@@ -335,7 +355,7 @@ never leave the tree broken.
 simplify: <N> file(s), <M> hunk(s)
   applied <X> auto-fix(es):
     - <path:line> — <one-line description>
-  reuse findings (from subagent dispatch):
+  reuse findings (scanners or inline pass):
     applied <A> high-confidence rewrite(s):
       - <path:line> — <description> — replaced with <existing>
     reported <B> medium-confidence finding(s):
