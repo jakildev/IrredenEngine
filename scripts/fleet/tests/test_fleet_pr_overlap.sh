@@ -557,6 +557,7 @@ run_tool --pr-json "$TMP/prs-3a.json"
 assert_rc 1 "T8 the omitted flag proceeds"
 
 echo "=== 9: snapshot coherence ==="
+ISSUE_9=4981
 g checkout -q feature-3
 pr_json "$TMP/prs-9a.json" "$(PR_ROW_OID=$(oid pr-104) pr_row 103 pr-103 master false - src/y.txt)"
 run_tool --pr-json "$TMP/prs-9a.json"
@@ -604,7 +605,7 @@ assert_contains "$ERR" "#103 fleet:awaiting-infra changed" "T9g the delta names 
 assert_absent "$OUT" "VERDICT:" "T9g no verdict"
 reset_stub
 pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
-pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_BODY_JSON='"Parked-until: #4981"' pr_row 103 pr-103 master false - src/y.txt)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_BODY_JSON="\"Parked-until: #${ISSUE_9}\"" pr_row 103 pr-103 master false - src/y.txt)"
 run_tool
 assert_rc 2 "T9h a Parked-until edit mid-run exits 2"
 assert_contains "$ERR" "#103 Parked-until references changed" "T9h the delta names the PR"
@@ -618,7 +619,7 @@ assert_contains "$ERR" "#103 base changed (master → stack-base)" "T9i the delt
 assert_absent "$OUT" "VERDICT:" "T9i no verdict"
 reset_stub
 pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
-pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_BODY_JSON='"Closes #4981"' pr_row 103 pr-103 master false - src/y.txt)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_BODY_JSON="\"Closes #${ISSUE_9}\"" pr_row 103 pr-103 master false - src/y.txt)"
 run_tool --self-pr 103
 assert_rc 2 "T9j a self closing-reference edit mid-run exits 2"
 assert_contains "$ERR" "#103 closing references changed" "T9j the delta names the self PR"
