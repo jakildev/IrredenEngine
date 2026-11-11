@@ -171,11 +171,10 @@ this: an approved issue with no `## Plan` comment bounces to
 `fleet:needs-plan` unless opted out (`human:no-plan`, `[no-plan]`,
 "investigation spike").
 
-**Fleet self-config changes are human-only.** Edits to
-`.claude/commands/role-*.md` or `.claude/agents/*` cannot be applied by a
-queue worker (the auto-mode classifier gates self-modification), so a filed
-task burns iterations on a no-op. Apply them in this interactive session or
-write them up for the human; never file them `human:approved`.
+**Fleet self-config changes are human-only.** Gated self-config is exactly
+what `_is_gated_self_config` in `scripts/fleet/fleet-state-scout` returns.
+A queue worker cannot apply those edits, so apply them in this interactive
+session or write them up for the human; never file them `human:approved`.
 
 ## Objectives sweep
 
@@ -297,17 +296,16 @@ Working a blocked PR:
    (the block clears on merge with no manual flip); unblock the original PR
    immediately (step 5) with wind-down direction — keep independently
    correct prep, close or narrow to land it.
-4. Post the direction:
+4. Write the direction to a scratch file with the Write tool, then post it:
    ```
-   gh pr comment <N> --body "## Architect direction
-
+   # scratch file:
+   ## Architect direction
    <decisions, concretely>
-
    <re-scoped acceptance criteria if the original ones changed>
-
    Source of truth for this model: \`docs/design/<feature>.md\`
    (engine-level decisions). Read this direction alongside the issue's
-   \`## Plan\` comment (and any \`## Plan corrections\`) before resuming."
+   \`## Plan\` comment (and any \`## Plan corrections\`) before resuming.
+   gh pr comment <N> --body-file <scratch-file>
    ```
    This comment is the direction — you neither push to the worker's branch
    nor rewrite the issue's `## Plan`; drift the worker absorbs is its
@@ -351,14 +349,6 @@ Working a blocked PR:
       # if non-empty:
       gh issue edit <issueN> --repo <repo-slug> \
         --remove-label "fleet:in-progress" --remove-label "fleet:claim-<host>-<agent>"
-      ```
-   b. Stacked on a merged base — the merger skips `fleet:wip` PRs, so
-      re-target yourself when the base has merged (leave a still-open base
-      alone):
-      ```
-      gh pr view <N> --repo <repo-slug> --json baseRefName,labels
-      # if base merged / is not master:
-      gh pr edit <N> --repo <repo-slug> --base master --remove-label "fleet:stacked"
       ```
 7. (Optional) `gh pr edit <N> --title "<new title>"` when the re-scope
    changes the semantics.

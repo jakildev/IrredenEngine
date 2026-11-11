@@ -16,8 +16,8 @@ keeps the one-screen quick-ref. Host setup (WSL2, macOS, native Windows):
 Inside WSL (the fleet) use the Linux section — your Bash tool is real Linux,
 no `cmd.exe` wrapping, no PATH fixes, working against `~/src/IrredenEngine`.
 On the Windows-native clone use the Windows section; its PATH fix is
-mandatory. On macOS: `cmake --preset macos-debug` then
-`fleet-build --target <name>` once deps are installed via Homebrew. A
+mandatory. On macOS: use `fleet-build --target <name>` once deps are
+installed via Homebrew. A
 Linux-only build break is fixed in a dedicated PR, not worked around.
 
 In all three:
@@ -65,8 +65,8 @@ the build dir everywhere.
 
 A fleet worker building a game PR (a game-side semantic conflict,
 role-worker step 1c) builds against **its own engine worktree**, not the
-enclosing main clone: a one-time manual configure of a dedicated dir, reused
-across iterations via `IRREDEN_BUILD_DIR`:
+enclosing main clone. This is the manual-configure exception named by the
+hard rule: a dedicated dir reused via `IRREDEN_BUILD_DIR`:
 
 ```bash
 ENG=<your-engine-worktree-abs-path>
@@ -138,11 +138,10 @@ skips the check; `rm` the archive by hand.
 ## Linux / WSL build (fleet environment)
 
 ```bash
-cd ~/src/IrredenEngine
-cmake --preset linux-debug          # one-time configure
 fleet-build --target IRShapeDebug
 ```
 
+Run it from the worktree root; it configures the tree on first use.
 `fleet-build` wraps `cmake --build build --target <T> -j$(nproc)`; the
 `$(nproc)` substitution trips Claude Code's `command_substitution` gate, so
 fleet agents use the wrapper. Swap `--target` for any executable or library
@@ -153,11 +152,11 @@ fleet agents use the wrapper. Swap `--target` for any executable or library
 Utility targets:
 
 ```bash
-cmake --build build --target format          # whole tree
-cmake --build build --target format-changed  # current-branch diff lines only
-cmake --build build --target format-check    # check only
-cmake --build build --target lint            # clang-tidy
-cmake --build build --target header-checks   # header-global / namespace bans
+fleet-build --target format          # whole tree
+fleet-build --target format-changed  # current-branch diff lines only
+fleet-build --target format-check    # check only
+fleet-build --target lint            # clang-tidy
+fleet-build --target header-checks   # header-global / namespace bans
 ```
 
 `format-changed` rewrites only the lines your branch modified (committed vs
@@ -290,8 +289,8 @@ force a real compile.
 
 **Windows only:** `cc1plus` diagnostics sometimes stream through the Bash
 tool heavily buffered. If output looks empty after the PATH fix, redirect
-inside the `cmd /c` (`> C:\Users\evinj\AppData\Local\Temp\build.log 2>&1`)
-and `cat` the file.
+inside the `cmd /c` argument string, not as a Bash-tool shell redirect
+(`> C:\Users\evinj\AppData\Local\Temp\build.log 2>&1`), and `cat` the file.
 
 ## Running an executable
 

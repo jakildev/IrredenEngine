@@ -57,12 +57,12 @@ a. **`attach-screenshots`** — before/after pairs (master vs the committed head
    docs/pr-screenshots/<branch>` already finds this branch's screenshots.
 b. **`render-debug-loop`** — drives an `--auto-screenshot` creation, reads
    each frame, diagnoses against the topic-indexed reference; required by
-   `engine/render/CLAUDE.md` "Verifying render changes" for shaders,
-   render systems, or pipeline ordering.
+   `engine/render/CLAUDE.md` "Verifying render changes" for render changes
+   with a visual effect.
 
 Skip both only for docs, tests, mechanical refactors, or build/CI changes
-with no visual effect (`engine/render/CLAUDE.md`'s exceptions list is
-authoritative). "The default shot table is byte-identical for this
+with no visual effect, as `engine/render/CLAUDE.md` states. "The default
+shot table is byte-identical for this
 change" is a reason to change the shot, never to attach nothing: the
 camera-yaw / pivot family is byte-identical at cardinal poses by design,
 so use a non-cardinal shot (`attach-screenshots` § "Camera-yaw fixes need
@@ -154,9 +154,9 @@ the PR is reviewable and the cross-host smoke lane can pick it up:
 ```
 # engine task
 gh pr edit <N> --remove-label "fleet:wip"
-title="$(gh pr view <N> --json title -q .title)"
-stripped_title="$(sed -E 's/[[:space:]]*\[WIP\][[:space:]]*$//' <<< "$title")"
-[[ -n "$stripped_title" && "$stripped_title" != "$title" ]] && gh pr edit <N> --title "$stripped_title"
+gh pr view <N> --json title --jq .title
+# When the printed title ends in [WIP]:
+gh pr edit <N> --title "<title without trailing [WIP]>"
 fleet-claim release <issue-#>
 ```
 

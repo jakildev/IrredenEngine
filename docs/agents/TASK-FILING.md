@@ -5,10 +5,10 @@ machine: [`fleet-labels-reference.md`](fleet-labels-reference.md).
 
 ## Single issue
 
-File with **no labels**:
+File with **no labels**. Write the body to a scratch file with the Write tool:
 
 ```
-gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<body>"
+gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body-file <scratch-file>
 ```
 
 (`--repo jakildev/irreden` for game-side work.)
@@ -58,9 +58,9 @@ body bounces the issue to `fleet:needs-plan` and a worker re-plans it. With
 the comment, the issue queues directly:
 
 ```
-gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<body>"
-gh issue comment <N> --repo jakildev/IrredenEngine --body "## Plan
-<structured plan per PLANNING-PROTOCOL.md step 2>"
+# Write the issue and plan bodies to scratch files with the Write tool, then:
+gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body-file <issue-body-file>
+gh issue comment <N> --repo jakildev/IrredenEngine --body-file <plan-body-file>
 ```
 
 The comment follows [`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md)
@@ -119,17 +119,12 @@ issue" case.
 
 A worker that hits a non-architectural blocker (scope grew, structural
 build break, multi-module public-API surface) files a single issue with the
-same body shape, prefixed with the escalation context:
+same body shape, prefixed with the escalation context. Write it to a scratch
+file with the Write tool:
 
 ```
 gh issue create --repo jakildev/IrredenEngine --title "<what needs attention>" \
-  --body "Escalated from <class>-class worker (scope grew).
-
-**Area:** ...
-**Model:** opus
-**Blocked by:** (none)
-
-Context: ..."
+  --body-file <scratch-file>
 ```
 
 Then comment on the PR linking the issue, release the claim, reset, move

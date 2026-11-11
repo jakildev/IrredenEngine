@@ -185,8 +185,8 @@ always AMEND, except the DEFER case.
 ### DEFER (gated-self-config) — fleet:needs-fix only
 
 When a `fleet:needs-fix` PR's entire changed-file set is gated self-config
-(`.claude/commands/role-*.md`, `.claude/agents/*`,
-`.claude/skills/**/SKILL.md`) no class can amend it. The gate is also
+as defined by `_is_gated_self_config` in `scripts/fleet/fleet-state-scout`,
+no class can amend it. The gate is also
 content-based — an edit granting a fleet role a new review bypass (a
 `fleet-state-machine.json` transition letting a class self-approve its
 plan) is blocked on any path; treat it the same way. The PR analogue of
@@ -226,8 +226,9 @@ than yours. A `fleet:fable` PR handed to an opus iteration is not that: the
 dispatcher degrades it while Fable's usage window is walled, so amend it
 (never decline it for class). Default to AMEND when uncertain.
 
-1. `gh issue create --repo jakildev/IrredenEngine --title "<short title>"
-   --body "<body>"` with **Context** (escalated from PR #N; each concern
+1. Write the issue body to a scratch file with the Write tool, then run
+   `gh issue create --repo jakildev/IrredenEngine --title "<short title>"
+   --body-file <scratch-file>` with **Context** (escalated from PR #N; each concern
    with file:line), **Why escalating**, **Model:** `opus` or `sonnet`,
    **Area:**, **Blocked by:** `(none)` or `#NNN`, and a suggested approach.
 2. Swap labels in one call (no labeless window):
