@@ -190,9 +190,9 @@ checks this as its **skill lane** — the same lint whose **role lane**
 `role-sharing.md` documents shipping at #1667. Every canonical flow's
 `## Repo deltas this flow needs` table must have a stem-paired
 `.claude/skills/<stem>/SKILL.md` whose `## Deltas` table answers every
-declared key. As on the role lane, nothing runs it automatically today — no
-CI job, hook, or install step invokes it — so it stays a cue-driven check,
-not a merge gate. Pre-existing gaps land in a
+declared key. The `test_fleet_validate_roles.py` fleet suite runs the
+command-line entry in strict mode on every relevant pull request, so this is
+a merge gate for missing wrappers as well as keys. Pre-existing gaps land in a
 ratchet baseline (`SKILL_WRAPPER_MISSING_KEY_BASELINE` /
 `SKILL_NO_WRAPPER_BASELINE`) rather than being repaired inline, since
 `.claude/skills/**/SKILL.md` is gated self-config no worker class can push.

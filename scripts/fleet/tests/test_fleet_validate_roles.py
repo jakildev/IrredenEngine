@@ -9,6 +9,9 @@ All I/O is via temporary directories; no network calls.
 """
 import importlib.machinery
 import importlib.util
+import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -34,6 +37,9 @@ validate_wrapper = _mod.validate_wrapper
 validate_roles = _mod.validate_roles
 ERROR = _mod.ERROR
 WARN = _mod.WARN
+
+_ENGINE_ROOT = Path(__file__).parent.parent.parent.parent
+_VALIDATOR = _ENGINE_ROOT / "scripts" / "fleet" / "fleet-validate-roles"
 
 # Load check_checklist from fleet_validate_stack for group 3
 _STACK_MODULE = Path(__file__).parent.parent / "fleet_validate_stack.py"
@@ -137,6 +143,32 @@ description: test
     _write(Path(root) / ".claude" / "skills" / stem / "SKILL.md", body)
 
 
+def _run_validator(repo_root, *args):
+    return subprocess.run(
+        [sys.executable, str(_VALIDATOR), *args, "--repo-root", str(repo_root)],
+        cwd=_ENGINE_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _copy_contract_tree(destination):
+    for relative_path in (
+        Path("docs") / "agents",
+        Path(".claude") / "commands",
+        Path(".claude") / "skills",
+    ):
+        shutil.copytree(_ENGINE_ROOT / relative_path, Path(destination) / relative_path)
+
+
+def _assert_live_flow_floor(test_case, result):
+    lane_counts = {lane["label"]: lane["n_flows"] for lane in result["lanes"]}
+    test_case.assertFalse(result["empty"])
+    test_case.assertGreaterEqual(lane_counts["role"], 5)
+    test_case.assertGreaterEqual(lane_counts["skill"], 9)
+
+
 # ---------------------------------------------------------------------------
 # Group 1: passing tree
 # ---------------------------------------------------------------------------
@@ -185,6 +217,49 @@ class TestPassingTree(unittest.TestCase):
         result = validate_roles([(engine_root, "engine")])
         self.assertEqual(result["n_errors"], 0,
                          "engine tree should have 0 errors; got: %s" % result)
+
+    def test_current_engine_tree_cli_strict_has_live_flow_floors(self):
+        completed = _run_validator(_ENGINE_ROOT, "--strict", "--json")
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        _assert_live_flow_floor(self, json.loads(completed.stdout))
+
+    def test_live_flow_floor_rejects_empty_tree(self):
+        with tempfile.TemporaryDirectory() as root:
+            completed = _run_validator(root, "--json")
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            with self.assertRaises(AssertionError):
+                _assert_live_flow_floor(self, json.loads(completed.stdout))
+
+    def test_cli_strict_reports_a_removed_wrapper_key(self):
+        with tempfile.TemporaryDirectory() as root:
+            _copy_contract_tree(root)
+            protocol = find_protocols(root)[0]
+            wrapper = find_wrappers(root, protocol.name)[0]
+            key = extract_wrapper_keys(wrapper)[0]
+            lines = wrapper.read_text(encoding="utf-8").splitlines(keepends=True)
+            wrapper.write_text(
+                "".join(line for line in lines if "**%s**" % key not in line),
+                encoding="utf-8",
+            )
+
+            completed = _run_validator(root, "--strict")
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn(key, completed.stdout)
+
+    def test_cli_strict_promotes_a_missing_wrapper_warning(self):
+        with tempfile.TemporaryDirectory() as root:
+            _copy_contract_tree(root)
+            protocol = find_protocols(root)[0]
+            wrapper = find_wrappers(root, protocol.name)[0]
+            wrapper.unlink()
+
+            default = _run_validator(root)
+            strict = _run_validator(root, "--strict")
+
+        self.assertEqual(default.returncode, 0, default.stdout + default.stderr)
+        self.assertNotEqual(strict.returncode, 0, strict.stdout + strict.stderr)
+        self.assertIn(protocol.name, strict.stdout)
 
     def test_absent_game_root_skipped_gracefully(self):
         keys = ["repo-slug"]
