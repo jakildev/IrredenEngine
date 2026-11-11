@@ -187,6 +187,11 @@ class LabelPredicate(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIsNotNone(mc.label_block_reason(["fleet:approved", label]))
 
+    def test_checks_red_is_information_only(self):
+        """The auto-merge lane reads the rollup itself; the label never gates it."""
+        self.assertIsNone(mc.label_block_reason(["fleet:approved", "fleet:checks-red"]))
+        self.assertFalse(mc.covers("fleet:checks-red"))
+
     def test_auto_merged_refuses_a_second_pass(self):
         self.assertIsNotNone(mc.label_block_reason(["fleet:approved", "fleet:auto-merged"]))
 

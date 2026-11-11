@@ -44,8 +44,7 @@ live label set. The remove/add sets live in the JSON; edit there, never here.
 Every verdict edge also removes `fleet:needs-opus-recheck` and
 `fleet:awaiting-upstream-review`, and consumes the re-review triggers
 `fleet:changes-made` / `human:re-review` (the escalation edge too): a trigger
-left standing under a verdict kept the PR a sonnet candidate while it waited on
-the author or the human, and the lane re-dispatched it every tick.
+left under a verdict would re-dispatch the sonnet lane every tick.
 
 ## Queue and planning (issues)
 
@@ -241,15 +240,16 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
   never removed by an agent ([`auto-merge-lane.md`](../design/auto-merge-lane.md)).
 - `fleet:auto-merged` — **`fleet-automerge`**, after its squash merge; the
   permanent audit trail, never removed, refuses a second pass.
+- `fleet:checks-red` — **reconcile R12**, information only: an approved PR's head
+  failed a check of its own (not red on master, not a never-started job).
 - `fleet:merger-cooldown` — **merger** touched the PR; skip until the next
   iteration.
 - `fleet:sweep-cooldown` — **`fleet-claim cleanup --gh`** removed the PR's
   `fleet:amending-*` / `fleet:resolving-*` claim on age alone, without proof its
-  owner was dead (not on a superseded dispatch or a missing marker). The
-  **dispatcher** withholds the PR's `feedback` / `conflict` target while
-  `updatedAt` is younger than `FLEET_CLAIM_SWEPT_COOLDOWN_SECS` (default 1800),
-  logging the deferral once. A won `amending-claim` / `resolving-claim` removes
-  it; so does the sweep once the PR has been quiet past the cooldown.
+  owner was dead. The **dispatcher** withholds the PR's `feedback` / `conflict`
+  target while `updatedAt` is younger than `FLEET_CLAIM_SWEPT_COOLDOWN_SECS`
+  (default 1800). A won `amending-claim` / `resolving-claim` removes it; so
+  does the sweep once the PR has been quiet past the cooldown.
 
 ## Feedback and amendment (PRs)
 
@@ -402,18 +402,18 @@ treat it as skip/handoff, never re-apply.
 
 ## Reconcile
 
-`fleet-claim reconcile` cross-checks the four claim surfaces (labels,
-open-PR state, host-local FS claims, worktree reservations). Report-only
-by default; `--apply` performs R1 (stale claim), R3 (reservation
-mismatch), R4 (contradictory / orphaned labels), R7 (re-add
-`fleet:design-unblocked` to a stranded `fleet:wip` PR — neither design
-label, `fleet:queued` issue, no claim or only own-host claim labels no FS
-claim / reservation / dispatch record vouches for — after the drift-tick
-threshold; skips `fleet:blocked`, `fleet:design-proposed`, `fleet:awaiting-infra`),
-R8 (un-park), R9 (class-escalate: re-tag a `fleet:sonnet` backing issue
-to `fleet:opus` while any of its PRs carries a design-lane label, so the
-opus+-only resume tier has a class to dispatch), and R10 (remove this host's
-`fleet:amending-*` label whose owner is confirmed dead or unvouched past the
-TTL, through `cleanup --gh`'s locked sweep). R2 (same claim reading on a
-wip PR), R6, and R11 (a task whose same-repo `Blocked by:` ref 404s) stay
-flag-only. Runs at `fleet-up` boot and on every queue-manager projection change.
+`fleet-claim reconcile` cross-checks the four claim surfaces (labels, open-PR
+state, host-local FS claims, worktree reservations). Report-only by default;
+`--apply` performs R1 (stale claim), R3 (reservation mismatch), R4
+(contradictory / orphaned labels), R7 (re-add `fleet:design-unblocked` to a
+stranded `fleet:wip` PR — neither design label, `fleet:queued` issue, no claim
+or only own-host claim labels no FS claim / reservation / dispatch record
+vouches for — after the drift-tick threshold; skips `fleet:blocked`,
+`fleet:design-proposed`, `fleet:awaiting-infra`), R8 (un-park), R9 (re-tag a
+`fleet:sonnet` backing issue to `fleet:opus` while any of its PRs carries a
+design-lane label, so the opus+-only resume tier has a class to dispatch), R10
+(remove this host's `fleet:amending-*` label whose owner is dead or unvouched
+past the TTL, through `cleanup --gh`'s locked sweep), and R12 (`fleet:checks-red`,
+live-confirmed, only on the host whose master-CI watch is fresh). R2 (same
+claim reading on a wip PR), R6, and R11 (a same-repo `Blocked by:` ref that
+404s) stay flag-only. Runs at `fleet-up` boot and on each queue-manager edge.

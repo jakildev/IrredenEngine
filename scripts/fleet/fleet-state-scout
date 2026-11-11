@@ -3939,6 +3939,14 @@ def project_queue_manager(state):
             items.append({"kind": "merged_pr", "repo": repo,
                           "pr": pr["number"],
                           "base": pr.get("baseRefName", "")})
+        # Reconcile R12's edge: an approved head turning red, and the end of
+        # it. Reads fleet:approved and the checks reading, never the
+        # fleet:checks-red label R12 writes, so its own write cannot re-fire it.
+        for pr in repo_state.get("prs", []):
+            if ("fleet:approved" in (pr.get("labels") or ())
+                    and pr.get("checks") == "red" and not pr.get("not_started")):
+                items.append({"kind": "approved_red", "repo": repo,
+                              "pr": pr.get("number"), "head": pr.get("headRefOid", "")})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 

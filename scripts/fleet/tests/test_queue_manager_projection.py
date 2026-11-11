@@ -561,5 +561,82 @@ class IngestRetractPath(unittest.TestCase):
         self.assertIn({"repo": "engine", "issue": 811, "op": "retract"}, items)
 
 
+def _open_pr(num, labels, checks, head="a" * 40, not_started=None):
+    pr = {"number": num, "title": f"pr {num}", "headRefName": f"claude/{num}-x",
+          "headRefOid": head, "baseRefName": "master", "labels": sorted(labels),
+          "mergeable": "MERGEABLE", "isDraft": False, "author": "bot",
+          "updatedAt": "2026-06-10T00:00:00Z", "checks": checks, "reviews": [],
+          "closes_issues": [], "refs_issues": [], "stack_position": None,
+          "fleet_review_at": "", "verdict_event_at": "", "schema": 9}
+    if not_started:
+        pr["not_started"] = not_started
+    return pr
+
+
+def _pr_state(prs):
+    state = _state()
+    state["repos"]["engine"]["prs"] = prs
+    state["repos"]["engine"]["epics"] = []
+    return state
+
+
+class ApprovedRedEdge(unittest.TestCase):
+    """Reconcile R12 runs on a queue-manager edge, so an approved head turning
+    red, and the end of it, must flip the projection hash."""
+
+    def test_approved_red_head_is_an_item(self):
+        items = project_queue_manager(_pr_state([_open_pr(7, ["fleet:approved"], "red")]))
+        self.assertIn({"kind": "approved_red", "repo": "engine", "pr": 7, "head": "a" * 40},
+                      items)
+
+    def test_each_end_of_the_red_flips_the_hash(self):
+        red = _hash(_pr_state([_open_pr(7, ["fleet:approved"], "red")]))
+        for label, state in (
+                ("green", _pr_state([_open_pr(7, ["fleet:approved"], "green")])),
+                ("re-run running", _pr_state([_open_pr(7, ["fleet:approved"], "unread")])),
+                ("new head", _pr_state([_open_pr(7, ["fleet:approved"], "red", head="b" * 40)])),
+                ("approval gone", _pr_state([_open_pr(7, ["human:re-review"], "red")])),
+                ("never started", _pr_state([_open_pr(7, ["fleet:approved"], "red",
+                                                      not_started="spending limit")]))):
+            with self.subTest(label=label):
+                self.assertNotEqual(red, _hash(state))
+
+    def test_unapproved_or_green_is_no_item(self):
+        state = _pr_state([_open_pr(7, ["fleet:needs-fix"], "red"),
+                           _open_pr(8, ["fleet:approved"], "green")])
+        self.assertEqual([i for i in project_queue_manager(state)
+                          if i["kind"] == "approved_red"], [])
+
+
+class TriggerHashesIgnoreChecksRed(unittest.TestCase):
+    """fleet:checks-red is information only: no role's trigger hash reads it,
+    so R12's own writes never wake a lane."""
+
+    def _states(self, checks):
+        prs = [_open_pr(1, ["fleet:approved"], checks),
+               _open_pr(2, ["fleet:approved", "fleet:has-nits"], "green", head="c" * 40),
+               _open_pr(3, ["fleet:needs-fix"], "red", head="d" * 40),
+               _open_pr(4, ["human:re-review"], "green", head="e" * 40)]
+        labeled = [dict(p) for p in prs]
+        labeled[0]["labels"] = sorted(labeled[0]["labels"] + ["fleet:checks-red"])
+        return _pr_state(prs), _pr_state(labeled)
+
+    def test_every_projector_hash_is_label_blind(self):
+        for checks in ("red", "green"):
+            without, with_label = self._states(checks)
+            for role, projector in _mod.PROJECTORS.items():
+                with self.subTest(role=role, checks=checks):
+                    self.assertEqual(stable_hash(projector(without)),
+                                     stable_hash(projector(with_label)))
+
+    def test_control_a_verdict_label_moves_some_hash(self):
+        """The fixture reaches the lanes: a label they do read changes a hash."""
+        without, _ = self._states("green")
+        moved = _pr_state([dict(p) for p in without["repos"]["engine"]["prs"]])
+        moved["repos"]["engine"]["prs"][0]["labels"] = ["human:re-review"]
+        self.assertTrue(any(stable_hash(fn(without)) != stable_hash(fn(moved))
+                            for fn in _mod.PROJECTORS.values()))
+
+
 if __name__ == "__main__":
     unittest.main()

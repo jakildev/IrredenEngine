@@ -303,6 +303,12 @@
       "description": "Stacked PR; reviewer is holding verdict until upstream PR is approved"
     },
     {
+      "name": "fleet:checks-red",
+      "scope": "pr",
+      "color": "e99695",
+      "description": "Information only: an approved PR whose head has a completed, failed check of its own (not red on master, not a job GitHub never started). fleet-claim reconcile R12 adds it once per failure and removes it when the head has no such failure or fleet:approved is gone. No lane filter, trigger hash, merger skip set or auto-merge blocking set reads it"
+    },
+    {
       "name": "fleet:human-deferred",
       "scope": "pr",
       "color": "fbca04",

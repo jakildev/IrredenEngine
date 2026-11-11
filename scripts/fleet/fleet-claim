@@ -147,7 +147,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_github.py fleet-common.sh; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_checks_red.py fleet_github.py fleet-common.sh; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -4247,8 +4247,9 @@ cmd_check_stale() {
 # is parked in the design lane, so the opus+-only resume tier has a
 # permitted class to dispatch; R10 removes this host's fleet:amending-* label
 # whose owner is provably gone or unvouched past the TTL; R11 flags a queued
-# task whose same-repo Blocked-by ref 404s. The periodic scout
-# spawn lives in fleet-state-scout.
+# task whose same-repo Blocked-by ref 404s; R12 adds and removes the
+# informational fleet:checks-red on an approved PR whose head failed a check
+# of its own. The periodic scout spawn lives in fleet-state-scout.
 
 # reconcile_fs_claims_json
 #   Emit the host-local FS claim set as a JSON array, one object per claim
@@ -4317,7 +4318,8 @@ cmd_reconcile() {
     # Usage: fleet-claim reconcile [--apply] [--repo <owner/repo>] ...
     # Report-only by default (detect + report, mutate nothing). With --apply,
     # perform only the host-local, TTL/corroboration-gated auto-fixes
-    # (R1/R3/R4/R5/R10); R2 stays report-only.
+    # (R1/R3/R4/R5/R7-R10) and R12's live-confirmed label write; R2, R6 and
+    # R11 stay report-only.
     local do_apply=0
     local -a repos=()
     while [[ $# -gt 0 ]]; do
@@ -5009,6 +5011,40 @@ if (isinstance(snapshot, dict) and snapshot.get("repos")
                     "scout recorded blocked_by_unresolvable=%s; task stays blocked"
                     % refs)
 
+# ---- R12: fleet:checks-red on an approved PR whose head failed a check ----
+# Information only (fleet_checks_red.py has the predicate). Candidates come
+# from the fresh scout snapshot, each is confirmed by a live read here, and
+# the apply arm re-reads before writing. The master-CI alerts that exclude an
+# inherited red exist only where the scout's master-CI lane runs, so a host
+# whose lane marker is stale reports and writes nothing.
+import fleet_checks_red as checks_red
+if (isinstance(snapshot, dict) and snapshot.get("repos")
+        and topology.state_age_seconds(snapshot.get("generated_at"), 0,
+                                       now=now) <= STATE_MAX_AGE_S
+        and checks_red.master_watch_fresh(state_dir, now=now)):
+    slug_to_key = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
+    for repo in repos:
+        records = ((snapshot["repos"].get(slug_to_key.get(repo)) or {}).get("prs") or [])
+        listed = {p.get("number"): labelset(p) for p in repo_data[repo]["prs"]}
+        master_red, by_name = checks_red.master_context(repo)
+        for record in records:
+            n = record.get("number")
+            if n not in listed or not checks_red.cached_candidate(record, listed[n]):
+                continue
+            live = checks_red.live_read(repo, n)
+            if live is None:
+                continue
+            op, why, sig = checks_red.decide(
+                record, live, lambda: checks_red.read_events(repo, n), master_red, by_name)
+            if op is None:
+                continue
+            verb = "add" if op == "add" else "remove"
+            add("R12", repo, n, "pr", ["label", "pr"],
+                "%s %s: %s" % (verb, checks_red.LABEL, why),
+                "approved=%s, own failed checks=%d" % (sig["approved"], len(sig["own"])),
+                apply={"type": "checks_red", "op": op, "repo": repo, "pr": n,
+                       "sig": json.dumps(sig, sort_keys=True)})
+
 for f in findings:
     print(json.dumps(f))
 PYEOF
@@ -5144,6 +5180,29 @@ PYEOF
                         echo "  reconcile --apply: R10 removed '$a_label' on $a_repo PR#$a_pr"
                     else
                         echo "  reconcile --apply: R10 kept '$a_label' on $a_repo PR#$a_pr (the locked re-judge found its owner live or the label too young)"
+                    fi
+                    ;;
+                checks_red)
+                    # R12: one label write, only while the live labels, head
+                    # and rollup still read as the classifier saw them. A
+                    # failed add (usually the label missing from the repo:
+                    # `fleet-labels` creates it) is reported, not retried.
+                    local k_repo k_pr k_op k_sig k_flag k_done k_err
+                    k_repo=$(reconcile_apply_field "$line" repo)
+                    k_pr=$(reconcile_apply_field "$line" pr)
+                    k_op=$(reconcile_apply_field "$line" op)
+                    k_sig=$(reconcile_apply_field "$line" sig)
+                    if ! python3 "$FLEET_LIB_DIR/fleet_checks_red.py" confirm \
+                            "$k_repo" "$k_pr" "$k_sig" >/dev/null 2>&1; then
+                        echo "  reconcile --apply: R12 left $k_repo PR#$k_pr alone (its labels, head or checks moved since the read)"
+                    else
+                        k_flag="--remove-label" k_done="removed"
+                        [[ "$k_op" == "add" ]] && k_flag="--add-label" k_done="added"
+                        if k_err=$(gh issue edit "$k_pr" --repo "$k_repo" "$k_flag" "fleet:checks-red" 2>&1 >/dev/null); then
+                            echo "  reconcile --apply: R12 $k_done fleet:checks-red on $k_repo PR#$k_pr"
+                        else
+                            echo "  reconcile --apply: R12 could not $k_op fleet:checks-red on $k_repo PR#$k_pr (not retried; a missing label is created by fleet-labels): ${k_err//$'\n'/ }"
+                        fi
                     fi
                     ;;
                 # heal_design_unblock (R7) is deliberately NOT applied here — it
@@ -7130,7 +7189,15 @@ commands:
                                         only, so no class could serve it);
                                   R11   (flag-only) task whose same-repo
                                         Blocked-by ref 404s in state.json
-                                        (`blocked_by_unresolvable`).
+                                        (`blocked_by_unresolvable`);
+                                  R12   approved PR whose head has a failed
+                                        check of its own (not red on master,
+                                        not a job GitHub never started) →
+                                        add fleet:checks-red, once per
+                                        failure; remove it when that stops
+                                        being true. Live-confirmed before
+                                        each write; runs only on the host
+                                        whose master-CI watch is fresh.
                                 R2 (orphaned WIP/feedback PR with no claim,
                                 read as R7 reads it for a WIP PR;
                                 fleet:design-blocked / fleet:design-proposed /

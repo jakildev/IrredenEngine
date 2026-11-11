@@ -38,7 +38,7 @@ sessions alike. This file is the overview; each mechanism has one owner:
 The human merges, and so does `fleet-automerge`, the merger ladder's first
 rung, for an approved, all-green, master-based PR whose every file is in a
 class enabled in `fleet-up.conf` (default none), in an enabled repo (default engine): [`docs/design/auto-merge-lane.md`](../design/auto-merge-lane.md).
-`fleet-rebase` only rebases and re-arms the LLM merger pass; no LLM role merges; roles read the lane's partition with `fleet-merge-preview`.
+`fleet-rebase` only rebases and re-arms the LLM merger pass; no LLM role merges; roles read the lane's partition with `fleet-merge-preview`. An approved PR labeled `fleet:checks-red` has a failed check on its head (branch protection requires only the lint contexts), and `fleet-decisions` lists it as held, not ready.
 
 ### Claims
 
