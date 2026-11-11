@@ -36,7 +36,7 @@ Files under `engine/render/`, `engine/prefabs/irreden/render/`, `*.glsl`,
    the PR body acknowledges deferred parity and names the follow-up.
 7. `vec3` world-space mixed with `vec2` iso-space without
    `IRMath::pos3DtoPos2DIso` or a named helper.
-8. `C_Position3D` read for visual placement instead of `C_PositionGlobal3D`.
+8. `C_LocalTransform` read for visual placement instead of `C_WorldTransform`.
 9. A function that `bindRange`s / `bindBase`s a shared `kBufferIndex_*`
    slot (`kBufferIndex_PerAxisCell{Compacted,Indirect}`,
    `kBufferIndex_CompactedVoxelIndices`,

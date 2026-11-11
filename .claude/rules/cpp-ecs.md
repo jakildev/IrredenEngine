@@ -37,10 +37,11 @@ this shape from the start; refactors drive toward it.
 
 ## Deferred entity operations during tick
 
-`createEntity`, `setComponent`, `removeComponent`, and `removeEntity` called
-mid-iteration silently invalidate component addresses on an archetype change.
-Use the deferred variants (`IREntity::deferredCreate`, `deferredSetComponent`,
-…) and let `flushStructuralChanges` run at pipeline end.
+`createEntity`, `setComponent`, `removeComponent`, and the manager's eager
+`destroyEntity` called mid-iteration silently invalidate component addresses
+on an archetype change. Use the deferred variants
+(`IREntity::setComponentDeferred`, `removeComponentDeferred`, the marking
+`IREntity::destroyEntity`) and let `flushStructuralChanges` run at pipeline end.
 
 ## Component method tiers
 

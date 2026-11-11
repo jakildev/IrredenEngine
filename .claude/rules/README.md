@@ -16,10 +16,10 @@ not a rule; every `cpp-*.md` is path-scoped.
 can apply, walks almost nothing, and reports a **clean pass**:
 
 ```
-$ rg --files creations | wc -l          #   2
-$ git ls-files creations | wc -l        # 273
-$ rg --files .claude   | wc -l          #   1
-$ git ls-files .claude | wc -l          #  76
+$ rg --files creations | wc -l          # a handful
+$ git ls-files creations | wc -l        # hundreds
+$ rg --files .claude   | wc -l          # one
+$ git ls-files .claude | wc -l          # about a hundred
 ```
 
 The harness `Grep` tool is the same walker and has the same exposure. Every

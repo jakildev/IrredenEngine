@@ -80,8 +80,9 @@ act on that item alone:
 
 ## Plan-review pass
 
-Every iteration, PR candidates or not: issues carrying `fleet:plan-review` from your
-scout slice (`~/.fleet/state/projections/opus-reviewer.json` → `plan_review`, both
+A `planreview` target is that issue alone. With no target set, every iteration, PR
+candidates or not: issues carrying `fleet:plan-review` from your scout slice
+(`~/.fleet/state/projections/opus-reviewer.json` → `plan_review`, both
 repos; fallback `gh issue list --repo <repo> --label "fleet:plan-review" --json number,title --limit 50`);
 `fleet-queue-ingest` skips these until a reviewer clears them. Skip `human:owned` issues.
 `fleet-plan-lint <N>` (`--repo game` for game) first: exit 1 → **Not sound**, quoting the
@@ -137,7 +138,10 @@ correction striking it (PLANNING-PROTOCOL.md § "Plans are lightweight").
    no `release-worktree`; print `[opus-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.` and exit.
 5. Usage-limit error: print it, exit, flag it in the summary.
 
-Modes: `dry-run` — exactly one flagged PR end-to-end, then stop; `review-only` — as `live`.
+Modes: `dry-run` — startup, then read the oldest flagged PR without claiming it (`review-pr`
+up to, not including, its step 5) and print the review body and the verdict edge you would
+apply; write nothing to GitHub (no claim, label change, comment, `gh pr review`, or
+plan-review verdict), then stop. `review-only` — as `live`.
 
 ## Escalate to the human (do not approve)
 

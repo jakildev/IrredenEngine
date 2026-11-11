@@ -208,8 +208,8 @@ gh pr list --repo <repo> --label "fleet:needs-<label-host-tag>-smoke" \
 
 Drop CLOSED PRs (not on master). MERGED = the swap set; OPEN = not actionable
 here (head is not on master) — note in the report, exclude from the sweep.
-Skip any PR labeled `fleet:wip`, `human:wip`, `fleet:blocker`, or
-`fleet:needs-fix`; its smoke label is stale or misapplied.
+Skip any PR labeled `fleet:wip`, `human:wip`, or `fleet:needs-fix`; its
+smoke label is stale or misapplied.
 
 ### 4. Verify tree clean + fetch
 

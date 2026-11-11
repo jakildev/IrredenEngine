@@ -31,9 +31,9 @@ label (fallback: the body's `**Model:**` field). "opus+" below means opus or fab
 
 One pre-claimed item per launch, its claim already held under your basename;
 `fleet-claim decline` is the walk-away — [FLEET-RUNTIME.md](../../docs/agents/FLEET-RUNTIME.md)
-§ "The dispatch target". With `FLEET_DISPATCH_TARGET` set: run startup steps 0 and 0.5,
-skip the cache read and steps 4–5, skip every scan in loop steps 1, 1b, 1c, and 3, and
-jump by kind (for a `game` target, `cd` into your game twin worktree first).
+§ "The dispatch target". With `FLEET_DISPATCH_TARGET` set: skip the startup cache read
+and startup steps 4–5, run loop steps 0 and 0.5, skip every scan in loop steps 1, 1b, 1c,
+and 3, and jump by kind (for a `game` target, `cd` into your game twin worktree first).
 
 | `FLEET_DISPATCH_KIND` | go to |
 |---|---|

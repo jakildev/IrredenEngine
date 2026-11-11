@@ -100,7 +100,7 @@ Paths relative to `engine/prefabs/irreden/`.
 | Site | Shape |
 |---|---|
 | `common/systems/system_modifier_resolve_global.hpp:35,40,45` | 3 `static const T *p = nullptr;` frame caches reassigned from `beginTick` (mutable despite the `const`). Keeps `MODIFIER_RESOLVE_GLOBAL` pinned `SERIAL`. |
-| `render/systems/system_debug_overlay.hpp:87-88` | 2 static vertex vectors inside the tick body. |
+| `render/systems/system_debug_overlay.hpp` (`triangleVertices`, `lineVertices`) | 2 static vertex vectors inside the tick body. |
 | `update/systems/system_action_animation.hpp:24` | `static std::unordered_map<...> clipCache` in `create()`. |
 | `update/systems/system_gravity.hpp:17` | `static C_Gravity3D instance{};` — keeps `GRAVITY_3D` pinned `SERIAL`; migrate with `MODIFIER_RESOLVE_GLOBAL`. |
 | `update/systems/system_rhythmic_launch.hpp:29` | `static std::unordered_map<...> platformCache`. |
@@ -109,5 +109,5 @@ Each moves to the member-on-`System<N>` form (preferred) or `SystemParams`.
 
 Not deviations (allowed scratch, listed so a sweep doesn't re-flag them):
 `render/systems/system_shapes_to_trixel.hpp` (`buildAndUploadTileDescriptors`) and
-`render/systems/system_voxel_to_trixel.hpp:58` — `static thread_local`
+`render/systems/system_voxel_to_trixel.hpp` (`buildChunkVisibilityMask`) — `static thread_local`
 buffers reset on entry.

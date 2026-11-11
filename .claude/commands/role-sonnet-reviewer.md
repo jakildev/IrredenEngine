@@ -119,8 +119,10 @@ apply unchanged.
    `[sonnet-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.` and exit.
 5. Usage-limit error: print it, exit, flag it in the summary.
 
-Modes: `dry-run` — review exactly one PR end-to-end, then stop. `review-only` — same as
-`live`.
+Modes: `dry-run` — startup, then read the oldest candidate without claiming it (`review-pr`
+up to, not including, its step 5) and print the review body and the verdict edge you would
+apply; write nothing to GitHub (no claim, label change, comment, or `gh pr review`), then
+stop. `review-only` — same as `live`.
 
 ## Escalation
 

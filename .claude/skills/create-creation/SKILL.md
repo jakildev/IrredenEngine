@@ -51,7 +51,9 @@ systems add `irreden_lua_codegen(...)` (`lua-creation-setup` skill).
 
 Create `creation.json` beside the CMake file. It uses the v1 schema in
 [`docs/design/engine-launcher.md`](../../../docs/design/engine-launcher.md) §D2
-and lists the runnable target plus an `Interactive` preset.
+and lists the runnable target plus an `Interactive` preset. The target sets
+`"package": true` because the CMake above calls `irreden_package_target`;
+`python3 scripts/lint_creation_manifests.py` checks the pair.
 
 - Engine-owned: append
   `add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/<category>/<name>)` to
@@ -67,13 +69,13 @@ and lists the runnable target plus an `Interactive` preset.
 #include <irreden/ir_engine.hpp>
 
 // COMPONENTS
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_velocity.hpp>
-#include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -106,7 +108,7 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::VELOCITY_3D>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );

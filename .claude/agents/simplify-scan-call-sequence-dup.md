@@ -1,6 +1,6 @@
 ---
 name: simplify-scan-call-sequence-dup
-description: Compares each function body a diff adds against existing functions in the tree by call-sequence overlap and reports structural duplicates that a name match would miss, graded by overlap. Use from the simplify skill's reuse-detection pass alongside simplify-grep-function-names.
+description: Compares each C++ function body a diff adds against existing functions in the tree by call-sequence overlap and reports structural duplicates that a name match would miss, graded by overlap. Use from the simplify skill's reuse-detection pass alongside simplify-grep-function-names.
 tools: Read, Grep, Glob
 model: sonnet
 ---
@@ -11,10 +11,12 @@ a diff scope; you return findings, nothing else.
 
 ## Scope
 
-Diff-scope paths point at the dirty working tree: `Read` each path directly.
-A brand-new untracked file has no `git diff` hunks — treat its entire
-contents as added. Never report clean because a `Grep` / `Glob` / `git diff`
-came up empty on a cited path; if you could not read a path, say so.
+The parent hands you a diff file and the changed-path list. `Read` the diff
+file first: its `+` lines are the only added lines. `Read` a changed path in
+the working tree for the context around a hunk. A path marked `(new)` is
+untracked and has no hunks in the diff file — treat its entire contents as
+added. Never report clean on a scope you could not read; if the diff file or
+a listed path was unreadable, say so.
 
 For each added function with 3+ body lines, extract a call signature: the
 ordered top-level call targets (operators and variable names stripped) plus
@@ -24,7 +26,7 @@ return vec3(0.0f); return vec3(r) / r.w;` →
 `[vec4_ctor, mat4_mul_vec4, ==, vec3_ctor, vec3_cast, /]`.
 
 Search: `Glob` candidates in the same module subtree and in `engine/math/`,
-`engine/utils/`, `engine/render/`; `Grep` the 2–3 most distinctive call
+`engine/utility/`, `engine/render/`; `Grep` the 2–3 most distinctive call
 targets; read each candidate body and estimate overlap =
 `matched_calls / max(new_calls, candidate_calls)`, counting consecutive
 matching calls and matching control-flow shapes. Precision is not required —

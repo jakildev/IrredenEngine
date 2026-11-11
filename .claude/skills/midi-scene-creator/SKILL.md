@@ -92,7 +92,7 @@ IRSystem::registerPipeline(
    ```cpp
    #include <irreden/audio/entities/entity_midi_device.hpp>
 
-   auto deviceId = IREntity::createPrefab<IREntity::PrefabTypes::kMidiDevice>(
+   auto deviceId = IREntity::createEntity<IREntity::kMidiDevice>(
        "OP-1", IRAudio::MidiDeviceType::MIDI_DEVICE_TYPE_OUT
    );
    ```

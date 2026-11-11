@@ -1,6 +1,6 @@
 ---
 name: simplify-grep-utility-candidates
-description: Finds functions a diff adds that look like general-purpose utilities (vector math, coordinate transforms, grid iteration, container or string helpers, SDF evaluation) living in a creation or system, and names the canonical engine home each belongs in. Use from the simplify skill's reuse-detection pass.
+description: Finds functions a diff adds in C++ under creations/ or engine/prefabs/ that look like general-purpose utilities (vector math, coordinate transforms, grid iteration, container or string helpers, SDF evaluation), and names the canonical engine home each belongs in. Use from the simplify skill's reuse-detection pass.
 tools: Read, Grep, Glob
 model: haiku
 ---
@@ -10,10 +10,12 @@ hands you a diff scope; you return findings, nothing else.
 
 ## Scope
 
-Diff-scope paths point at the dirty working tree: `Read` each path directly.
-A brand-new untracked file has no `git diff` hunks — treat its entire
-contents as added. Never report clean because a `Grep` / `Glob` / `git diff`
-came up empty on a cited path; if you could not read a path, say so.
+The parent hands you a diff file and the changed-path list. `Read` the diff
+file first: its `+` lines are the only added lines. `Read` a changed path in
+the working tree for the context around a hunk. A path marked `(new)` is
+untracked and has no hunks in the diff file — treat its entire contents as
+added. Never report clean on a scope you could not read; if the diff file or
+a listed path was unreadable, say so.
 
 Candidates are new function definitions whose body is vector / matrix /
 scalar math without ECS or render state, a coordinate transform (iso ↔
@@ -23,12 +25,10 @@ manipulation, or SDF / distance / shape evaluation.
 
 | Pattern | Canonical home |
 |---|---|
-| Vector / matrix / trig | `engine/math/include/irreden/math/ir_math.hpp` or a sibling under `engine/math/` |
+| Vector / matrix / trig | `engine/math/include/irreden/ir_math.hpp` or a sibling under `engine/math/include/irreden/math/` |
 | SDF / distance fields | `engine/math/include/irreden/math/sdf.hpp` |
-| Iso ↔ world transforms | `engine/math/` (`IRMath::iso_*` family) |
-| 3D-grid iteration | `engine/math/` grid helpers (`IRMath::forEachCell3D`) |
-| Container helpers | `engine/utils/include/irreden/utils/ir_container_utils.hpp` |
-| String / path helpers | `engine/utils/include/irreden/utils/ir_string_utils.hpp` |
+| Iso ↔ world transforms | `engine/math/include/irreden/ir_math.hpp` (`IRMath::pos3DtoPos2DIso` and its siblings) |
+| Path / file helpers | `engine/utility/include/irreden/utility/path_utils.hpp`, `file_utils.hpp` |
 | Texture writes / pixel packing, vertex/buffer composition | `engine/render/include/irreden/render/` |
 | Shader-side math primitives | `engine/render/src/shaders/ir_*.glsl` includes |
 

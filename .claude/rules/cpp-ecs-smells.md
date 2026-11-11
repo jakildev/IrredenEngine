@@ -35,8 +35,8 @@ In any system `tick` function:
   the full `getComponent` cost. Fix: resolve once in `beginTick`, cache the
   pointer, read the cache from `tick`/`endTick` — exemplar
   `engine/prefabs/irreden/common/systems/system_modifier_resolve_global.hpp`.
-- **`createEntity` / `addComponent` / `removeComponent` / `removeEntity`
-  mid-iteration** without the deferred variant.
+- **`createEntity` / `setComponent` / `removeComponent` / the manager's
+  eager `destroyEntity` mid-iteration** without the deferred variant.
 - **Allocation in the tick body** — `new`, hot `push_back`, `std::string`
   construction, `std::map::operator[]` insertion. Fix: pre-size in
   `beginTick` or at component construction; reuse across frames.
@@ -67,9 +67,9 @@ component params), and both fire on an empty archetype — `endTick` indexing
   `engine/prefabs/CLAUDE.md` §"Component method rules") unless on that
   section's exceptions list; otherwise the logic moves to a system, builder,
   or prefab-scoped namespace.
-- **`C_Position3D` read in a render-related system for visual placement** —
-  rendered position is `C_PositionGlobal3D`, which `APPLY_POSITION_OFFSET`
-  keeps folded with any modifier-driven offset.
+- **`C_LocalTransform` read in a render-related system for visual placement** —
+  rendered position is `C_WorldTransform`, which `PROPAGATE_TRANSFORM`
+  composes from the parent chain and any modifier-driven offset.
 
 ## Lua-side ECS bindings
 

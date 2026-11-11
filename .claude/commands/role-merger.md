@@ -36,6 +36,21 @@ do not acquire `fleet-claim` locks; persistent PR ownership is a skip gate,
 `--force-with-lease` is the concurrency control and
 `fleet:merger-cooldown` prevents an immediate retry.
 
+## Your assignment for this iteration
+
+One PR per launch: `FLEET_DISPATCH_TARGET=merge:<repo>:<N>`, a PR tier-0 `fleet-rebase`
+classified as needing this pass ([FLEET-RUNTIME.md](../../docs/agents/FLEET-RUNTIME.md)
+§ "The dispatch target"). The lane is claimless: nothing is held or released, and your
+mark on the PR (a `— fleet merger` comment, `fleet:merger-cooldown`, or a durable
+handoff label) is the completion record. With it set, run loop steps 0, 1, and 5 for
+PR #`FLEET_DISPATCH_NUMBER` alone: apply step 3's candidate rule and skip set to that
+PR live (`gh pr view <N> --json mergeable,labels`), skip the candidate scan (steps 2
+and 4) and the other repo's pass; `FLEET_DISPATCH_REPO` `game` takes the § Game-repo
+pass substitutions. A target that fails step 3 is the walk-away:
+`fleet-claim decline merge <N> <basename> --reason "<why>"` (`--repo game` before the
+subcommand for game). Unset (a manual `/role-merger`, a `dry-run` boot): the discovery
+flow below.
+
 ## Startup actions
 
 0. Banner: `[merger] Auto-rebases stale PRs and auto-resolves whitespace-only conflicts. Transient — re-fires when scout sees actionable PR state.`
@@ -68,7 +83,7 @@ One iteration per invocation:
 3. **Filter.** A candidate has `mergeable == "CONFLICTING"`, or `"UNKNOWN"` and
    `updatedAt` older than 5 minutes (refresh with `gh pr view <N> --json mergeable`; at
    most 2 refreshes per iteration, none if CONFLICTING already has ≥ 2). **Skip** any PR
-   carrying `fleet:claim-*`, `human:wip`, `fleet:wip`, `fleet:blocker`, `human:needs-fix`, `human:blocker`,
+   carrying `fleet:claim-*`, `human:wip`, `fleet:wip`, `human:needs-fix`, `human:blocker`,
    `human:re-review`, `fleet:semantic-conflict` (the worker's durable handoff — only a
    worker or the human clears it), `fleet:needs-info` (human handoff), `fleet:design-blocked`
    / `fleet:design-proposed` (design parks — never re-flag them either), or `fleet:gated`

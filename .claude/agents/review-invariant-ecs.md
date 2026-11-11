@@ -26,11 +26,12 @@ SystemParams), [`engine/prefabs/CLAUDE.md`](../../engine/prefabs/CLAUDE.md)
    concatenation, `std::map::operator[]`, `std::make_unique`) — reserve in
    `beginTick` or `SystemParams`.
 3. Structural mutation mid-iteration (`createEntity`, `setComponent`,
-   `removeComponent`, `removeEntity`) without the deferred variant —
+   `removeComponent`, the manager's eager `destroyEntity`) without the
+   deferred variant —
    touching the live archetype while a parallel system iterates invalidates
    component addresses silently.
 4. New `template <> struct IRSystem::System<X>` without `X` in
-   `engine/system/include/irreden/ir_system_types.hpp` (linker error).
+   `engine/system/include/irreden/system/ir_system_types.hpp` (linker error).
 5. Component method reaching another entity through a stored `EntityId`
    (`getComponent`, `setComponent`, `createEntity`, `setParent`,
    `getEntity`) — tier (c) unless on the documented exceptions list (GPU
@@ -39,9 +40,9 @@ SystemParams), [`engine/prefabs/CLAUDE.md`](../../engine/prefabs/CLAUDE.md)
 6. `functionBeginTick` / `functionEndTick` not `void()`.
 7. `endTick` indexing `ids[]` without a size guard — both fire on an empty
    archetype.
-8. A render-related system reading `C_Position3D` for visual placement
-   instead of `C_PositionGlobal3D` (`APPLY_POSITION_OFFSET` folds the
-   modifier offset into it).
+8. A render-related system reading `C_LocalTransform` for visual placement
+   instead of `C_WorldTransform` (`PROPAGATE_TRANSFORM` folds the parent
+   chain and the modifier offsets into it).
 9. Function-local `static` for system state (`cpp-systems.md`) — only
    `static constexpr` / `static const` value constants and reset-on-entry
    `static thread_local` scratch are allowed.

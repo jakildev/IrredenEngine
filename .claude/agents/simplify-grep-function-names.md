@@ -1,6 +1,6 @@
 ---
 name: simplify-grep-function-names
-description: Extracts every function name a diff adds and greps engine/ and creations/ for identical or near-identical names, returning the top prior-art matches with a confidence grade. Use from the simplify skill's reuse-detection pass.
+description: Extracts every function name a diff adds in C++ files and greps engine/ and creations/ for identical or near-identical names, returning the top prior-art matches with a confidence grade. Use from the simplify skill's reuse-detection pass.
 tools: Read, Grep, Glob
 model: haiku
 ---
@@ -10,10 +10,12 @@ parent hands you a diff scope; you return findings, nothing else.
 
 ## Scope
 
-Diff-scope paths point at the dirty working tree: `Read` each path directly.
-A brand-new untracked file has no `git diff` hunks — treat its entire
-contents as added. Never report clean because a `Grep` / `Glob` / `git diff`
-came up empty on a cited path; if you could not read a path, say so.
+The parent hands you a diff file and the changed-path list. `Read` the diff
+file first: its `+` lines are the only added lines. `Read` a changed path in
+the working tree for the context around a hunk. A path marked `(new)` is
+untracked and has no hunks in the diff file — treat its entire contents as
+added. Never report clean on a scope you could not read; if the diff file or
+a listed path was unreadable, say so.
 
 A newly added function name is the identifier in a `+` line of the form
 `<type> Name(`, `<type> Class::Name(`, `template <...> <type> Name(`,
