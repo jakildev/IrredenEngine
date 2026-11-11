@@ -59,28 +59,26 @@ namespace IRSystem {
 
 namespace detail {
 
-constexpr std::uint32_t kOverflowSortHeadroom = 2;
 constexpr std::size_t kOverflowSortArgsBytes =
     static_cast<std::size_t>(C_PerAxisTrixelCanvases::kOverflowSortCommandCount) *
     C_PerAxisTrixelCanvases::kOverflowSortCommandUints * sizeof(std::uint32_t);
 
-inline std::uint32_t overflowSortDispatchSpan(std::uint32_t laggedCount, std::uint32_t capacity) {
-    constexpr std::uint32_t kBlock = 1u << C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
-    const std::uint32_t laggedSpan = IRMath::nextPowerOfTwo(laggedCount);
-    const std::uint32_t headroomSpan = laggedSpan > capacity / kOverflowSortHeadroom
-                                           ? capacity
-                                           : laggedSpan * kOverflowSortHeadroom;
-    return IRMath::min(capacity, IRMath::max(kBlock, headroomSpan));
+inline std::uint32_t overflowSortEntryBound(
+    std::uint32_t admittedChunkCount, std::uint32_t liveVoxelCount, std::uint32_t capacity
+) {
+    const std::uint64_t admittedVoxelSlots = IRMath::min(
+        static_cast<std::uint64_t>(liveVoxelCount),
+        static_cast<std::uint64_t>(admittedChunkCount) * IRRender::kVoxelChunkSize
+    );
+    const std::uint64_t entryBound = admittedVoxelSlots * C_PerAxisTrixelCanvases::kAxisCount;
+    return static_cast<std::uint32_t>(
+        IRMath::min(static_cast<std::uint64_t>(capacity), entryBound)
+    );
 }
 
-// Entry-count bound for the next sort's encoded merge stages, read from the
-// ctrl block before the frame's reset. Word 0 (indexCount) is zero only in the
-// allocation seed — `resetOverflowCtrl` writes the quad index count and no GPU
-// pass touches it — so a zero there means no rotating frame completed behind
-// this one, and the full ladder is encoded.
-inline std::uint32_t
-overflowSortLaggedBound(const std::array<std::uint32_t, 8> &ctrl, std::uint32_t capacity) {
-    return ctrl[0] == 0u ? capacity : ctrl[1];
+inline std::uint32_t overflowSortDispatchSpan(std::uint32_t entryBound, std::uint32_t capacity) {
+    constexpr std::uint32_t kBlock = 1u << C_PerAxisTrixelCanvases::kOverflowSortBlockBits;
+    return IRMath::min(capacity, IRMath::max(kBlock, IRMath::nextPowerOfTwo(entryBound)));
 }
 
 template <typename Callback>
@@ -134,7 +132,8 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     CardinalIndex cardinalIndex = CardinalIndex::k0,
     bool useContinuousYaw = false,
     float visualYaw = 0.0f,
-    const IRMath::OrthographicViewBasis *spatialView = nullptr
+    const IRMath::OrthographicViewBasis *spatialView = nullptr,
+    std::uint32_t *admittedChunkCount = nullptr
 ) {
     static thread_local std::vector<std::uint32_t> mask;
     pool.rebuildChunkBounds(cardinalIndex, useContinuousYaw, visualYaw, spatialView);
@@ -142,12 +141,16 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     mask.assign(chunkCount, 0);
 
     auto &bounds = pool.getChunkBounds();
+    std::uint32_t admitted = 0;
     for (int c = 0; c < chunkCount; ++c) {
         const auto &cb = bounds[c];
         if (viewport.overlapsAABB(cb.isoMin_, cb.isoMax_)) {
             mask[c] = 1;
+            ++admitted;
         }
     }
+    if (admittedChunkCount != nullptr)
+        *admittedChunkCount = admitted;
     return mask;
 }
 
@@ -757,10 +760,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Cap overflow must never be silent: read every settled ctrl-block copy
     // whose submission has completed (a read of the live block would drain
     // the queue on GL), record each in the run witness, and one-shot-warn
-    // when the newest dropped entries. The newest count also bounds this
-    // frame's encoded sort stages, the cap until the first sample lands;
-    // current GPU counts still author the indirect grids for every encoded
-    // stage.
+    // when the newest dropped entries. The newest count remains a run witness;
+    // current-frame CPU state bounds the encoded sort stages.
     void warnOverflowDropsIfAny(C_PerAxisTrixelCanvases &axes) {
         IR_PROFILE_SCOPE("vs1_pa_ctrl_readback");
         using CtrlBlock = std::array<std::uint32_t, C_PerAxisTrixelCanvases::kOverflowCtrlUints>;
@@ -784,14 +785,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         );
         if (newestFrame == 0) {
-            if (!axes.overflowCtrlSampled_) {
-                axes.laggedOverflowCount_ = static_cast<std::uint32_t>(axes.overflowCap_);
-            }
             return;
         }
-        axes.overflowCtrlSampled_ = true;
-        axes.laggedOverflowCount_ =
-            detail::overflowSortLaggedBound(ctrl, static_cast<std::uint32_t>(axes.overflowCap_));
+        axes.laggedOverflowCount_ = ctrl[1];
         const std::uint32_t dropped = ctrl[5];
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
@@ -900,7 +896,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // cardinal store, so it skips the sort entirely. The flag
     // determines eligibility; current-frame GPU counts determine the sort work.
     void dispatchPerAxisCanvases(
-        C_PerAxisTrixelCanvases &axes, C_CanvasFogOfWar *fog, bool sortOverflowEntries
+        C_PerAxisTrixelCanvases &axes,
+        C_CanvasFogOfWar *fog,
+        bool sortOverflowEntries,
+        std::uint32_t admittedChunkCount,
+        std::uint32_t liveVoxelCount
     ) {
         IR_PROFILE_SCOPE("vs1_per_axis");
         // Fog cut-face / own-column-clip input for the per-axis rotation route
@@ -1087,14 +1087,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     indirectOffsetBytes
                 );
             }
-            // GPU-authored commands size work from the current list. The completed
-            // prior-frame count only bounds how many merge-stage encoders the CPU
-            // opens; headroom absorbs ordinary growth without a readback stall.
+            // GPU-authored commands size work from the current list. The CPU opens
+            // enough merge stages for every face the admitted voxel slots can emit.
             std::uint32_t sortDispatches = 0;
             std::uint32_t dispatchSpan = 0;
             if (sortOverflowEntries) {
                 const std::uint32_t cap = static_cast<std::uint32_t>(axes.overflowCap_);
-                dispatchSpan = detail::overflowSortDispatchSpan(axes.laggedOverflowCount_, cap);
+                const std::uint32_t entryBound =
+                    detail::overflowSortEntryBound(admittedChunkCount, liveVoxelCount, cap);
+                dispatchSpan = detail::overflowSortDispatchSpan(entryBound, cap);
                 sortDispatches = sortFaceRecords(
                     axes.winnerIds_.second,
                     axes.overflowScratchLayout(),
@@ -1104,9 +1105,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             if (overflowCountLogEnabled_ && sortDispatches != lastOverflowSortDispatchesLogged_) {
                 IRE_LOG_INFO(
                     "[overflow-sort] canonical-sort dispatches this rotating frame: "
-                    "{} (storeTiesPossible={}, laggedOverflowCount={}, dispatchSpan={}, cap {}).",
+                    "{} (storeTiesPossible={}, admittedChunks={}, liveVoxels={}, "
+                    "laggedOverflowCount={}, dispatchSpan={}, cap {}).",
                     sortDispatches,
                     sortOverflowEntries,
+                    admittedChunkCount,
+                    liveVoxelCount,
                     axes.laggedOverflowCount_,
                     dispatchSpan,
                     axes.overflowCap_
@@ -1747,6 +1751,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // exactly, preventing a near-cardinal residual from freeing textures
         // while this path still reads them.
         const bool rotating = IRRender::isSpatialViewEnabled() || frameData_.residualYaw_ != 0.0f;
+        std::uint32_t admittedChunkCount = 0;
         if (revoxInverse || canvasLocalRotation.isDetached()) {
             // Model-space canvas domain: EVERY detached canvas (forward-scatter
             // and re-voxelize alike, at any rotation) rasters its pool in its
@@ -1758,6 +1763,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // needs this because rebuildChunkBounds keys chunks by SOURCE slot,
             // which no longer matches the dest-slot domain the compact walks.
             const int chunkWords = IRMath::divCeil(effectiveVoxelCount, IRRender::kVoxelChunkSize);
+            admittedChunkCount = static_cast<std::uint32_t>(chunkWords);
             if (static_cast<int>(allVisibleChunkScratch_.size()) < chunkWords) {
                 allVisibleChunkScratch_.resize(chunkWords, 1u);
             }
@@ -1777,7 +1783,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 chunkCardinal,
                 rotating,
                 frameData_.visualYaw_,
-                spatial ? &view : nullptr
+                spatial ? &view : nullptr,
+                &admittedChunkCount
             );
             chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
         }
@@ -2424,7 +2431,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // single-canvas output.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
-            dispatchPerAxisCanvases(*perAxisCanvases_, fog, voxelPool.storeTiesPossible_);
+            dispatchPerAxisCanvases(
+                *perAxisCanvases_,
+                fog,
+                voxelPool.storeTiesPossible_,
+                admittedChunkCount,
+                static_cast<std::uint32_t>(effectiveVoxelCount)
+            );
             // Compact each per-axis canvas's occupied cells now (the axis
             // distance canvases were just fully written above), so the downstream
             // per-axis compute stages (AO / sun-shadow / lighting / resolve) and
