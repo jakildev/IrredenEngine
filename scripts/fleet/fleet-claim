@@ -5029,7 +5029,7 @@ if (isinstance(snapshot, dict) and snapshot.get("repos")
         master_red, by_name = checks_red.master_context(repo)
         for record in records:
             n = record.get("number")
-            if n not in listed or not checks_red.cached_candidate(record, listed[n]):
+            if n not in listed or not checks_red.cached_candidate(record, listed[n], master_red):
                 continue
             live = checks_red.live_read(repo, n)
             if live is None:

@@ -9,7 +9,8 @@
 #   once per failure  a label event after the failure blocks the add; a
 #                     later head's failure is labeled
 #   not its own       a workflow red on master (its master-CI alert), and a
-#                     job GitHub never started, give no finding and no write
+#                     job GitHub never started, give no finding and no write;
+#                     a labeled PR whose failure goes red on master loses it
 #   unfinished        a check still running is not a failure
 #   live confirmation the classifier's live read, and the apply arm's re-read,
 #                     each block a write the cache alone would make
@@ -270,6 +271,23 @@ live "fleet:approved" "$H1" "$RED_BUILD"
 out=$(reconcile --apply)
 assert_absent "$out" "[R12" "a never-started failure is not reported"
 assert_eq "$(writes)" 0 "nothing is written"
+
+echo "=== 4c. not its own any more: a labeled PR's failure goes red on master ==="
+arm "fleet:approved,fleet:checks-red" red "$H1"
+live "fleet:approved,fleet:checks-red" "$H1" "$RED_BUILD"
+out=$(reconcile --apply)
+assert_absent "$out" "[R12" "control: master green, a labeled own failure keeps its label"
+assert_eq "$(writes)" 0 "control: nothing is written"
+assert_eq "$(grep -c '^pr view 5101' "$CALLS" || true)" 0 "control: master green costs no live read"
+printf 'master CI red: engine-tests.yml\n' > "$FLEET_ALERTS_DIR/scout-master-ci-engine-tests.yml"
+: > "$CALLS"; out=$(reconcile --apply)
+assert_contains "$out" "$R12_REMOVE: head 111111111 has no failed check of its own" "a failure master now shares is reported for removal"
+assert_eq "$(removed)" 1 "the label is removed"
+assert_eq "$(writes)" 1 "exactly one write"
+rm -f "$STUB_DATA"/live-5101.*; live "fleet:approved,fleet:checks-red" "$H1" "$RED_BUILD,perf-gate:Perf Gate:COMPLETED:FAILURE:$T_FAIL"
+: > "$CALLS"; out=$(reconcile --apply)
+assert_absent "$out" "[R12" "control: an own failure beside the inherited one keeps the label"
+assert_eq "$(writes)" 0 "control: nothing is written beside an own failure"
 
 echo "=== 5. unfinished is not failed ==="
 for cached in unread red; do

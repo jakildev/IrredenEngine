@@ -159,14 +159,20 @@ def wanted(sig, not_started_head):
             and sig["head"] != not_started_head)
 
 
-def cached_candidate(record, live_labels=None):
+def cached_candidate(record, live_labels=None, master_red=frozenset()):
     """The op a cached PR record makes worth a live read, or None. The
-    reconcile pass's own PR list supplies fresher labels when it has them."""
+    reconcile pass's own PR list supplies fresher labels when it has them.
+
+    The cache carries no per-check names, so a labeled, approved, cache-red
+    PR may hold only failures master now shares; while any workflow is red on
+    master it is a removal candidate, and the live rollup decides."""
     labels = live_labels if live_labels is not None else label_names(record)
     red = record.get("checks") == "red" and not record.get("not_started")
     if APPROVED in labels and red and LABEL not in labels:
         return "add"
     if LABEL in labels and not (APPROVED in labels and red):
+        return "remove"
+    if LABEL in labels and master_red:
         return "remove"
     return None
 
