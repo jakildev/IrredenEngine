@@ -106,6 +106,11 @@ the slice spans both repos, so the bare number is ambiguous. Empty output
 means this host owes no smoke work, and the dispatcher stands the lane down
 instead of spending a pane on another host's backlog.
 
+``--liveness-targets <slice.json> <role>`` is the scout's read-only view of
+one dispatch lane. It prints JSON with the targets the dispatcher can claim
+and the targets withheld only by host-local decline memory or sweep cooldown,
+including each hold's reason and expiry.
+
 Environment: ``FLEET_WORKER_HOST_PINNED_ONLY=1`` (exported by fleet-dispatcher
 from ``~/.fleet/fleet-up.conf``) narrows the worker lane to items pinned to
 this host — see `HOST_PINNED_ONLY_ENV` — for a satellite host that covers
@@ -866,6 +871,103 @@ def pick_role(slice_data, role):
     return [p for p in picks if p is not None]
 
 
+def _liveness_candidate_records(slice_data, role):
+    """Resolver-visible ``(target, kind, record, extra)`` rows for a lane."""
+    rows = []
+    if role == "worker":
+        host = _current_host()
+        pinned_only = _host_pinned_only()
+        for pr in slice_data.get("semantic_conflict_prs") or []:
+            target = _target("conflict", pr)
+            if target is not None:
+                rows.append((target, "conflict", pr, None))
+        for pr in slice_data.get("feedback_prs") or []:
+            if _host_incompatible(pr, host) or (pinned_only and not _pinned_to_host(pr, host)):
+                continue
+            target = _target("feedback", pr)
+            if target is not None:
+                rows.append((target, "feedback", pr, None))
+        tasks = slice_data.get("tasks_open") or []
+        if pinned_only:
+            tasks = [task for task in tasks if _pinned_to_host(task, host)]
+        for task in tasks:
+            if not _task_claimable(task, host):
+                continue
+            kind = "stack" if _task_blocked(task) else "task"
+            extra = (task.get("stackable_blocker_pr") or {}).get("number") \
+                if kind == "stack" else None
+            if kind == "stack" and extra is None:
+                continue
+            target = _target(kind, task, extra)
+            if target is not None:
+                rows.append((target, kind, task, extra))
+        if not pinned_only:
+            for issue in slice_data.get("needs_plan") or []:
+                target = _target("plan", issue)
+                if target is not None:
+                    rows.append((target, "plan", issue, None))
+        return rows
+
+    key = "candidate_prs" if role == "sonnet-reviewer" else "flagged_prs"
+    for record in slice_data.get(key) or []:
+        if _held_for_review(record):
+            continue
+        kind = "verdict-replay" if record.get("verdict_replay") else "review"
+        target = _target(kind, record)
+        if target is not None:
+            rows.append((target, kind, record, None))
+    if role == "opus-reviewer":
+        for record in slice_data.get("plan_review") or []:
+            if _held_for_review(record):
+                continue
+            target = _target("planreview", record)
+            if target is not None:
+                rows.append((target, "planreview", record, None))
+    return rows
+
+
+def liveness_targets(slice_data, role):
+    """Dispatchable and host-memory-withheld targets for one dispatch lane."""
+    if role == "worker":
+        dispatchable = []
+        for cls in CLASS_DEFAULT_EFFORT:
+            dispatchable.extend(pick(slice_data, cls, False))
+    else:
+        dispatchable = pick_role(slice_data, role)
+    dispatchable = list(dict.fromkeys(dispatchable))
+
+    withheld = []
+    now = int(time.time())
+    for target, kind, record, extra in _liveness_candidate_records(slice_data, role):
+        if role == "worker" and kind in ("conflict", "feedback") \
+                and _sweep_cooldown_age(record) is not None:
+            continue
+        if target in dispatchable or not _declined(kind, record, role, extra):
+            continue
+        metadata = _decline_metadata(kind, record, role, extra)
+        if metadata is None:
+            continue
+        ttl = DECLINE_TRANSIENT_TTL_SECONDS if metadata["transient"] \
+            else DECLINE_TTL_SECONDS
+        expires_epoch = now + max(0, ttl - metadata["age_seconds"])
+        withheld.append({
+            "target": target,
+            "reason": metadata["reason"] or "decline memory",
+            "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_epoch)),
+        })
+
+    if role == "worker":
+        cooldown = _sweep_cooldown_secs()
+        for target, age, _updated in sweep_cooldown_deferrals(slice_data):
+            withheld.append({
+                "target": target,
+                "reason": "sweep cooldown",
+                "expires_at": time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(now + cooldown - age)),
+            })
+    return {"dispatchable": dispatchable, "withheld": withheld}
+
+
 def plan_pick(slice_data, cls, fable_blocked):
     """Ordered ``plan:<repo>:<N>`` planning targets for one class.
 
@@ -1080,6 +1182,18 @@ def main(argv):
             return 0
         for line in pick_role(slice_data, argv[3]):
             print(line)
+        return 0
+    if argv[1:2] == ["--liveness-targets"]:
+        if len(argv) != 4 or argv[3] not in (
+                "worker", "sonnet-reviewer", "opus-reviewer"):
+            print("usage: fleet_task_class.py --liveness-targets <slice.json> "
+                  "<worker|sonnet-reviewer|opus-reviewer>", file=sys.stderr)
+            return 2
+        slice_data = _load_slice(argv[2])
+        if slice_data is None:
+            print(f"fleet_task_class.py: cannot read slice: {argv[2]}", file=sys.stderr)
+            return 1
+        print(json.dumps(liveness_targets(slice_data, argv[3]), separators=(",", ":")))
         return 0
     if argv[1:2] == ["--smoke-check"]:
         # --smoke-check <smoke-worker-slice.json>: print the PRs in the

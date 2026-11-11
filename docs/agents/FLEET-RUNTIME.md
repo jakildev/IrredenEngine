@@ -92,6 +92,14 @@ untracked working-tree bytes are preserved. A healed tree with tracked changes
 also writes `~/.fleet/alerts/fleet-up-healed-dirty-<worktree>` because its
 pre-break branch cannot be recovered.
 
+The scout also maintains `~/.fleet/alerts/dispatch-liveness-<lane>` for the
+`worker`, `sonnet-reviewer`, and `opus-reviewer` lanes. It appears after a live,
+open-gate lane has had resolver-visible work, no dispatch in flight, and no
+launch for `FLEET_LIVENESS_STALL_SECS` (default 1,800 seconds), or immediately
+when the dispatcher PID is dead. A launch, an empty resolver answer, an
+expected gate hold, or non-live dispatch mode clears the alert; an unreadable
+resolver, gate, or dispatch-state read leaves the prior state unchanged.
+
 ## Startup — shared fleet state cache read
 
 Every target-less startup reads the scout's cache first

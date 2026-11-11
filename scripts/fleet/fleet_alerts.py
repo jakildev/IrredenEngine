@@ -24,3 +24,21 @@ def clone_freshness_records(alerts_dir):
         fields["name"] = path.name
         records.append(fields)
     return records
+
+
+def dispatch_liveness_record(path):
+    """Structured dispatch-liveness alert, or None for a malformed record."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    fields = parse_fields(lines[0] if lines else "")
+    required = ("lane", "reason", "since", "dispatchable", "withheld")
+    if not all(fields.get(key) for key in required):
+        return None
+    targets = []
+    for line in lines[1:]:
+        item = parse_fields(line)
+        if item.get("target"):
+            targets.append(item)
+    return {**fields, "targets": targets}
