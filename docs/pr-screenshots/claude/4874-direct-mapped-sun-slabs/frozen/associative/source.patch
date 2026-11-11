@@ -1,0 +1,48 @@
+diff --git a/engine/prefabs/irreden/render/sun_face_query_layout.hpp b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+index b6a9c5d55..02fcb498f 100644
+--- a/engine/prefabs/irreden/render/sun_face_query_layout.hpp
++++ b/engine/prefabs/irreden/render/sun_face_query_layout.hpp
+@@ -50,9 +50,9 @@ constexpr std::uint32_t kSourceFaceFallbackOffset =
+ // slots (a far caster, a lower blocker and the receiver's own surface each
+ // take one), in this constant and both shader twins; the cost that keeps the
+ // default at zero is in docs/design/sun-face-index-capacity.md.
+-constexpr std::uint32_t kSunDepthSlabSlots = 0u;
++constexpr std::uint32_t kSunDepthSlabSlots = 3u;
+ // Direct mapping uses per-pixel atomics; false selects associative/cooperative reduction.
+-constexpr bool kSunDepthSlabDirectMapped = true;
++constexpr bool kSunDepthSlabDirectMapped = false;
+ constexpr std::uint32_t kSunDepthSlabWords = 2u;
+ constexpr std::uint32_t kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+ constexpr std::uint32_t kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
+diff --git a/engine/render/src/shaders/ir_sun_face_query_layout.glsl b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+index c12238945..d4837b0ea 100644
+--- a/engine/render/src/shaders/ir_sun_face_query_layout.glsl
++++ b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+@@ -26,9 +26,9 @@ const uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceMapD
+ // holding a and the min of the next slab. Associative mode stores sticky
+ // overflow in slot 0's max; direct mode derives collisions from the extrema.
+ // Zero compiles the layer out; opt in with the CPU twin (sun_face_query_layout.hpp).
+-const uint kSunDepthSlabSlots = 0u;
++const uint kSunDepthSlabSlots = 3u;
+ // Direct slots may contain gaps; unequal extremum slabs invalidate the whole texel.
+-const bool kSunDepthSlabDirectMapped = true;
++const bool kSunDepthSlabDirectMapped = false;
+ const uint kSunDepthSlabWords = 2u;
+ const uint kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+ const uint kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+index 765f5c40c..bc1bf4ddc 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+@@ -21,9 +21,9 @@ constant uint kSourceFaceRecordWords = 10u;
+ constant uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
+ // Per-texel depth-slab extrema of the primary layer; mirrors GLSL.
+ // Zero compiles the layer out; opt in with the CPU twin (sun_face_query_layout.hpp).
+-constant uint kSunDepthSlabSlots = 0u;
++constant uint kSunDepthSlabSlots = 3u;
+ // Direct slots may contain gaps; unequal extremum slabs invalidate the whole texel.
+-constant bool kSunDepthSlabDirectMapped = true;
++constant bool kSunDepthSlabDirectMapped = false;
+ constant uint kSunDepthSlabWords = 2u;
+ constant uint kSunDepthSlabTexelWords = kSunDepthSlabSlots * kSunDepthSlabWords;
+ constant uint kSunDepthSlabOffset = 2u * kSourceFaceFallbackOffset;

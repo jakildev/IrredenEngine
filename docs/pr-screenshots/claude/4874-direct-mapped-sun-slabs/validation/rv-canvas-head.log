@@ -1,0 +1,154 @@
+[render-verify] target=IRCanvasStress demo=canvas_stress backend=macos-debug warmup=120
+[render-verify] 6 shots: so3_smooth_sweep, so3_offsnap_disc, so3_wide_parity, so3_grid_cross, so3_offsnap_wide, revoxelize_solids
+[render-verify] 15 extra run(s): modeswitch, sharedparts, detach, compare, impulse, floor_selfshadow, shadow_overlay_floor, world_placed_cast, gridspin_shadow_palette, grid_orbit_facing, grid_orbit_cardinals, grid_capacity_plate_normals, grid_capacity_plate_beauty, cylinder_receiver, cylinder_receiver_pitched
++ fleet-build --target IRCanvasStress
+[  0%] Built target luajit_build
+[  5%] Built target enkiTS
+[ 10%] Built target rtaudio
+[ 10%] Built target rtmidi
+[ 10%] Built target IRCanvasStressAssets
+[ 15%] Built target easy_profiler
+[ 21%] Built target fmt
+[ 21%] Built target glm
+[ 31%] Built target meshoptimizer
+[ 36%] Built target glfw
+[ 36%] Built target spdlog
+[ 36%] Built target IrredenEngineMath
+[ 42%] Built target IrredenEngineProfile
+[ 42%] Built target IrredenEngineTime
+[ 42%] Built target IrredenEngineJob
+[ 47%] Built target IrredenEngineUtility
+[ 52%] Built target IrredenEngineEntity
+[ 57%] Built target IrredenEngineAsset
+[ 57%] Built target IrredenEngineSystem
+[ 63%] Built target IrredenEngineAudio
+[ 63%] Built target IrredenEngineCatalog
+[ 68%] Built target IrredenEngineWindow
+[ 68%] Built target IrredenEngineInput
+[ 78%] Built target IrredenEngineRendering
+[ 78%] Built target IrredenEngineVideo
+[ 84%] Built target IrredenEngineCommand
+[ 89%] Built target IrredenEngineWorld
+[ 94%] Built target IrredenEngineScripting
+[100%] Built target IrredenEngine
+[100%] Building CXX object creations/demos/canvas_stress/CMakeFiles/IRCanvasStress.dir/main.cpp.o
+[100%] Linking CXX executable IRCanvasStress
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRCanvasStress
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120
+[render-verify] warning: captured 12 shots, manifest expects 6; ignoring extras
+[render-verify] extra run 'modeswitch': --only modeswitch --no-auto-rotate --no-spin
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 12 --only modeswitch --no-auto-rotate --no-spin
+[render-verify] extra run 'sharedparts': --only sharedparts --no-auto-rotate
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 30 --only sharedparts --no-auto-rotate
+[render-verify] extra run 'detach': --only detach --no-auto-rotate --no-spin
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 30 --only detach --no-auto-rotate --no-spin
+[render-verify] extra run 'compare': --only compare
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only compare
+[render-verify] extra run 'impulse': --only impulse --no-auto-rotate
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only impulse --no-auto-rotate
+[render-verify] extra run 'floor_selfshadow': --only floor --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow
+[render-verify] extra run 'shadow_overlay_floor': --only floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'world_placed_cast': --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'gridspin_shadow_palette': --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
+[render-verify] extra run 'grid_orbit_facing': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
+[render-verify] extra run 'grid_orbit_cardinals': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
+[render-verify] extra run 'grid_capacity_plate_normals': --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --no-ao --no-shadows --debug-overlay normals --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
+[render-verify] extra run 'grid_capacity_plate_beauty': --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --focus-exact-fit-plate --no-spin --no-auto-rotate --pivot-origin --zoom 8 --subdivisions 1 --sweep-yaw 0 4.71238898 4
+[render-verify] extra run 'cylinder_receiver': --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source
+[render-verify] extra run 'cylinder_receiver_pitched': --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only shadowbox,floor --probe-analytic-shape cylinder --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --sweep-yaw 0 5.49778714 8 --probe-overlapping-source --analytic-shape-tilt .45
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+so3_smooth_sweep                         FAIL      99.7467    225    32.45
+so3_offsnap_disc                         FAIL      99.7399    200    33.41
+so3_wide_parity                          FAIL      99.7473    211    32.55
+so3_grid_cross                           FAIL       99.761    225    32.76
+so3_offsnap_wide                         FAIL       99.764    195     33.6
+revoxelize_solids                        FAIL      99.7488    214     32.6
+modeswitch:modeswitch_grid               PASS        100.0      0      inf
+modeswitch:modeswitch_detached           FAIL      99.8757    208     35.5
+modeswitch:modeswitch_revox              PASS        100.0      0      inf
+modeswitch:modeswitch_grid_return        PASS        100.0      0      inf
+modeswitch:modeswitch_grid:shadow-speckle PASS     
+modeswitch:modeswitch_grid_return:shadow-speckle PASS     
+sharedparts:sharedparts_spin_a           PASS        100.0      0      inf
+sharedparts:sharedparts_spin_b           PASS        100.0      0      inf
+sharedparts:sharedparts_yaw              PASS        100.0      0      inf
+detach:detach_hosted                     PASS        100.0      0      inf
+detach:detach_own_canvas                 PASS        100.0      0      inf
+detach:detach_grid                       PASS        100.0      0      inf
+detach:detach_grid:shadow-speckle        PASS     
+compare:compare_yaw0                     PASS        100.0      0      inf
+compare:compare_yaw_q                    PASS        100.0      0      inf
+impulse:impulse_midspin                  PASS        100.0      0      inf
+impulse:impulse_settled                  PASS        100.0      0      inf
+impulse:impulse_midspin:shadow-speckle   PASS     
+impulse:impulse_settled:shadow-speckle   PASS     
+floor_selfshadow:floor_selfshadow_offwide:shadow PASS     
+shadow_overlay_floor:shadow_overlay_floor:shadow PASS     
+world_placed_cast:shadow_overlay_floor:shadow PASS     
+gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS     
+grid_orbit_facing:grid_orbit_facing:normal-facing PASS     
+grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_0:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_90:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_180:grid-cell PASS     
+grid_capacity_plate_normals:grid_capacity_plate_normals_270:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_0:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_90:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_180:grid-cell PASS     
+grid_capacity_plate_beauty:grid_capacity_plate_beauty_270:grid-cell PASS     
+cylinder_receiver:cylinder_receiver_000  FAIL      99.6885    155    33.69
+cylinder_receiver:cylinder_receiver_045  FAIL      99.8183    157    39.99
+cylinder_receiver:cylinder_receiver_090  FAIL      99.7807     97    38.64
+cylinder_receiver:cylinder_receiver_135  FAIL      99.9341     97    43.41
+cylinder_receiver:cylinder_receiver_180  PASS        100.0      0      inf
+cylinder_receiver:cylinder_receiver_225  FAIL      99.9827     97    48.98
+cylinder_receiver:cylinder_receiver_270  FAIL      99.8267     97    39.56
+cylinder_receiver:cylinder_receiver_315  FAIL       99.836     97    40.16
+cylinder_receiver_pitched:cylinder_receiver_pitched_000 FAIL      99.7091    155     33.9
+cylinder_receiver_pitched:cylinder_receiver_pitched_045 FAIL      99.7678    157    38.92
+cylinder_receiver_pitched:cylinder_receiver_pitched_090 FAIL      99.7491     97    38.08
+cylinder_receiver_pitched:cylinder_receiver_pitched_135 FAIL      99.9204     97    42.55
+cylinder_receiver_pitched:cylinder_receiver_pitched_180 PASS        100.0      0      inf
+cylinder_receiver_pitched:cylinder_receiver_pitched_225 FAIL      99.9914     97    51.99
+cylinder_receiver_pitched:cylinder_receiver_pitched_270 FAIL      99.8267     97    39.56
+cylinder_receiver_pitched:cylinder_receiver_pitched_315 FAIL      99.8181     97     39.7
+
+[render-verify] 21 of 59 checks FAIL
+  - so3_smooth_sweep: max_delta 225 > 64; match_pct 99.747% < 99.9%; psnr 32.45dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_smooth_sweep.diff.png
+  - so3_offsnap_disc: max_delta 200 > 64; match_pct 99.740% < 99.9%; psnr 33.41dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_offsnap_disc.diff.png
+  - so3_wide_parity: max_delta 211 > 64; match_pct 99.747% < 99.9%; psnr 32.55dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_wide_parity.diff.png
+  - so3_grid_cross: max_delta 225 > 64; match_pct 99.761% < 99.9%; psnr 32.76dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_grid_cross.diff.png
+  - so3_offsnap_wide: max_delta 195 > 64; match_pct 99.764% < 99.9%; psnr 33.60dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_offsnap_wide.diff.png
+  - revoxelize_solids: max_delta 214 > 64; match_pct 99.749% < 99.9%; psnr 32.60dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/revoxelize_solids.diff.png
+  - modeswitch:modeswitch_detached: max_delta 208 > 64; match_pct 99.876% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/modeswitch_detached.diff.png
+  - cylinder_receiver:cylinder_receiver_000: max_delta 155 > 64; match_pct 99.688% < 99.9%; psnr 33.69dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_000.diff.png
+  - cylinder_receiver:cylinder_receiver_045: max_delta 157 > 64; match_pct 99.818% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_045.diff.png
+  - cylinder_receiver:cylinder_receiver_090: max_delta 97 > 64; match_pct 99.781% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_090.diff.png
+  - cylinder_receiver:cylinder_receiver_135: max_delta 97 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_135.diff.png
+  - cylinder_receiver:cylinder_receiver_225: max_delta 97 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_225.diff.png
+  - cylinder_receiver:cylinder_receiver_270: max_delta 97 > 64; match_pct 99.827% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_270.diff.png
+  - cylinder_receiver:cylinder_receiver_315: max_delta 97 > 64; match_pct 99.836% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_315.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_000: max_delta 155 > 64; match_pct 99.709% < 99.9%; psnr 33.90dB < 35.0dB  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_000.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_045: max_delta 157 > 64; match_pct 99.768% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_045.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_090: max_delta 97 > 64; match_pct 99.749% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_090.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_135: max_delta 97 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_135.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_225: max_delta 97 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_225.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_270: max_delta 97 > 64; match_pct 99.827% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_270.diff.png
+  - cylinder_receiver_pitched:cylinder_receiver_pitched_315: max_delta 97 > 64; match_pct 99.818% < 99.9%  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-5/build/creations/demos/canvas_stress/save_files/render_verify_diffs/cylinder_receiver_pitched_315.diff.png

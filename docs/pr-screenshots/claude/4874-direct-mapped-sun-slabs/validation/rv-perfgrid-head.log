@@ -1,0 +1,69 @@
+[render-verify] target=IRPerfGrid demo=perf_grid backend=macos-debug warmup=10
+[render-verify] 7 shots: fit_grid, zoom1_origin, profiler_overlay, zoom1_rot, zoom4_rot, zoom4_pan, zoom4_rot_pan
+[render-verify] default pass demo args: --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none
+[render-verify] 2 extra run(s): cull_on, chunk_only
++ fleet-build --target IRPerfGrid
+[  0%] Built target luajit_build
+[  5%] Built target enkiTS
+[ 10%] Built target rtaudio
+[ 10%] Built target rtmidi
+[ 10%] Built target IRPerfGridAssets
+[ 15%] Built target easy_profiler
+[ 21%] Built target fmt
+[ 21%] Built target glm
+[ 31%] Built target meshoptimizer
+[ 36%] Built target glfw
+[ 36%] Built target spdlog
+[ 36%] Built target IrredenEngineMath
+[ 42%] Built target IrredenEngineProfile
+[ 42%] Built target IrredenEngineTime
+[ 42%] Built target IrredenEngineJob
+[ 47%] Built target IrredenEngineUtility
+[ 52%] Built target IrredenEngineEntity
+[ 57%] Built target IrredenEngineAsset
+[ 57%] Built target IrredenEngineSystem
+[ 63%] Built target IrredenEngineAudio
+[ 63%] Built target IrredenEngineCatalog
+[ 68%] Built target IrredenEngineWindow
+[ 68%] Built target IrredenEngineInput
+[ 78%] Built target IrredenEngineRendering
+[ 78%] Built target IrredenEngineVideo
+[ 84%] Built target IrredenEngineCommand
+[ 89%] Built target IrredenEngineWorld
+[ 94%] Built target IrredenEngineScripting
+[100%] Built target IrredenEngine
+[100%] Building CXX object creations/demos/perf_grid/CMakeFiles/IRPerfGrid.dir/main.cpp.o
+[100%] Linking CXX executable IRPerfGrid
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRPerfGrid
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none
+[render-verify] extra run 'cull_on': --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --occlusion-cull
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --occlusion-cull
+[render-verify] extra run 'chunk_only': --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --occlusion-cull --no-per-voxel-occlusion
++ fleet-run --timeout 60 IRPerfGrid --auto-screenshot 10 --mode voxel_set --no-overlay --wave-amplitude 0 --subdivision-mode none --occlusion-cull --no-per-voxel-occlusion
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+fit_grid                                 PASS        100.0      0      inf
+zoom1_origin                             PASS        100.0      0      inf
+profiler_overlay                         PASS        100.0      0      inf
+zoom1_rot                                PASS        100.0      0      inf
+zoom4_rot                                PASS        100.0      0      inf
+zoom4_pan                                PASS        100.0      0      inf
+zoom4_rot_pan                            PASS        100.0      0      inf
+cull_on:fit_grid                         PASS        100.0      0      inf
+cull_on:zoom1_origin                     PASS        100.0      0      inf
+cull_on:profiler_overlay                 PASS        100.0      0      inf
+cull_on:zoom1_rot                        PASS        100.0      0      inf
+cull_on:zoom4_rot                        PASS        100.0      0      inf
+cull_on:zoom4_pan                        PASS        100.0      0      inf
+cull_on:zoom4_rot_pan                    PASS        100.0      0      inf
+chunk_only:fit_grid                      PASS        100.0      0      inf
+chunk_only:zoom1_origin                  PASS        100.0      0      inf
+chunk_only:profiler_overlay              PASS        100.0      0      inf
+chunk_only:zoom1_rot                     PASS        100.0      0      inf
+chunk_only:zoom4_rot                     PASS        100.0      0      inf
+chunk_only:zoom4_pan                     PASS        100.0      0      inf
+chunk_only:zoom4_rot_pan                 PASS        100.0      0      inf
+
+[render-verify] all 21 checks PASS
