@@ -267,20 +267,34 @@ RotationPivotMode RenderManager::getRotationPivotMode() const {
 }
 
 void RenderManager::setRotationPivotFocus(vec3 focusWorld) {
-    m_rotationPivotFocus = focusWorld;
-    m_hasRotationPivotFocus = true;
+    const bool preserveView = IRPrefab::Camera::isSpatialViewEnabled() &&
+                              m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER;
+    const vec2 previous = preserveView ? IRRender::getEffectiveCameraIso() : vec2(0.0f);
+    m_spatialPivotState.setFocus(focusWorld);
+    if (preserveView)
+        setCameraPosition2DIso(
+            detail::SpatialPivotState::cameraIsoPreservingView(
+                previous,
+                focusWorld,
+                IRPrefab::Camera::getViewRotation()
+            )
+        );
 }
 
 void RenderManager::clearRotationPivotFocus() {
-    m_hasRotationPivotFocus = false;
+    m_spatialPivotState.clearFocus(IRPrefab::Camera::isSpatialViewEnabled());
+}
+
+void RenderManager::reseedSpatialDefaultRotationPivotFocus() {
+    m_spatialPivotState.reseedDefault(m_defaultPivotLatch.focus(getViewCenterIso()));
 }
 
 bool RenderManager::hasRotationPivotFocus() const {
-    return m_hasRotationPivotFocus;
+    return m_spatialPivotState.hasFocus();
 }
 
 vec3 RenderManager::getRotationPivotFocus() const {
-    return m_rotationPivotFocus;
+    return m_spatialPivotState.focus();
 }
 
 vec2 RenderManager::getCanvasCenterIso() const {
@@ -303,6 +317,8 @@ vec2 RenderManager::getViewCenterIso() const {
 }
 
 vec3 RenderManager::getDefaultRotationPivotFocus() const {
+    if (IRPrefab::Camera::isSpatialViewEnabled() && m_spatialPivotState.hasDefault())
+        return m_spatialPivotState.defaultFocus();
     // The anchor under the viewport center — the POINT is derived live from
     // the current camera, only the DEPTH and the view offset are held. That
     // split is load-bearing, not a style choice: `isoPixelToPos3D`'s depth
@@ -316,6 +332,18 @@ vec3 RenderManager::getDefaultRotationPivotFocus() const {
     return m_defaultPivotLatch.focus(getViewCenterIso());
 }
 
+vec2 RenderManager::getSpatialEffectiveCameraIso() const {
+    const vec3 defaultFocusFallback =
+        m_spatialPivotState.hasFocus() || m_spatialPivotState.hasDefault()
+            ? vec3(0.0f)
+            : m_defaultPivotLatch.focus(getViewCenterIso());
+    return m_spatialPivotState.effectiveCameraIso(
+        getCameraPosition2DIso(),
+        defaultFocusFallback,
+        IRPrefab::Camera::getViewRotation()
+    );
+}
+
 vec2 RenderManager::getDefaultPivotViewOffsetIso() const {
     return m_defaultPivotLatch.viewOffsetIso();
 }
@@ -324,10 +352,16 @@ float RenderManager::getViewReferenceHeight() const {
     if (m_rotationPivotMode == RotationPivotMode::ORIGIN) {
         return 0.0f;
     }
-    return m_hasRotationPivotFocus ? m_rotationPivotFocus.z : m_defaultPivotLatch.surfaceHeight();
+    if (IRPrefab::Camera::isSpatialViewEnabled())
+        return m_spatialPivotState.hasFocus() ? m_spatialPivotState.focus().z
+                                              : getDefaultRotationPivotFocus().z;
+    return m_spatialPivotState.hasFocus() ? m_spatialPivotState.focus().z
+                                          : m_defaultPivotLatch.surfaceHeight();
 }
 
 void RenderManager::stampDefaultPivotSourceFrame() {
+    if (IRPrefab::Camera::isSpatialViewEnabled())
+        return;
     const vec2 cameraIso = getCameraPosition2DIso();
     const float visualYaw = IRPrefab::Camera::getYaw();
     const DefaultPivotSourceFrame frame{
@@ -345,11 +379,18 @@ bool RenderManager::defaultPivotOwnsDepth() const {
     // ORIGIN mode ignores the focus entirely and an explicit
     // setRotationPivotFocus overrides it, so only the DEFAULT CAMERA_CENTER
     // pivot may pay a readback or source one.
-    return m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER && !m_hasRotationPivotFocus;
+    return m_rotationPivotMode == RotationPivotMode::CAMERA_CENTER &&
+           !m_spatialPivotState.hasFocus();
 }
 
 void RenderManager::updateDefaultRotationPivotFocus() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+    if (IRPrefab::Camera::isSpatialViewEnabled()) {
+        if (!m_spatialPivotState.hasDefault())
+            reseedSpatialDefaultRotationPivotFocus();
+        return;
+    }
+    m_spatialPivotState.discardDefault();
 
     // Observed in EVERY pivot mode, ahead of the mode gate, so the settle state
     // tracks every frame. The whole decision — the gesture-start edge, and

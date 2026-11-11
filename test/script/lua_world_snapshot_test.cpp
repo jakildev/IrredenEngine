@@ -14,6 +14,7 @@
 #include <irreden/common/components/component_size_int_3d.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
+#include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
@@ -1050,6 +1051,43 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsEasingComponentsAndKeepsTheCurveLive) {
         EXPECT_NEAR(actual.x, expected.x, 1e-4f);
         EXPECT_NEAR(actual.y, expected.y, 1e-4f);
         EXPECT_NEAR(actual.z, expected.z, 1e-4f);
+    }
+}
+
+TEST_F(LuaWorldSnapshotTest, CameraPoliciesRoundTripAndMigrateThroughLua) {
+    using IRComponents::C_Camera;
+    const std::string path = tempPath("camera_policies");
+    for (bool zoom : {false, true}) {
+        for (bool spatial : {false, true}) {
+            m_entity_manager.destroyAllEntities();
+            C_Camera camera;
+            camera.continuousZoom_ = zoom;
+            camera.spatialViewEnabled_ = spatial;
+            const EntityId carrier = m_entity_manager.createEntity(camera);
+            ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+            m_entity_manager.destroyAllEntities();
+            ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+            ASSERT_TRUE(m_entity_manager.entityExists(carrier));
+            const auto &restored = m_entity_manager.getComponent<C_Camera>(carrier);
+            EXPECT_EQ(restored.continuousZoom_, zoom);
+            EXPECT_EQ(restored.spatialViewEnabled_, spatial);
+        }
+    }
+    for (std::uint32_t version : {1u, 2u}) {
+        m_entity_manager.destroyAllEntities();
+        const EntityId carrier = 1000;
+        writeSingleColumnSnapshot(
+            path,
+            carrier,
+            "IRComponents::C_Camera",
+            version,
+            {static_cast<std::uint8_t>(version == 1 ? 0xFF : 1)}
+        );
+        ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+        ASSERT_TRUE(m_entity_manager.entityExists(carrier));
+        const auto &restored = m_entity_manager.getComponent<C_Camera>(carrier);
+        EXPECT_EQ(restored.continuousZoom_, version == 2);
+        EXPECT_FALSE(restored.spatialViewEnabled_);
     }
 }
 

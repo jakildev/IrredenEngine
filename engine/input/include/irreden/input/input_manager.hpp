@@ -9,16 +9,24 @@
 #include <irreden/input/components/component_mouse_position.hpp>
 #include <irreden/input/entities/entity_key_mouse_button.hpp>
 #include <irreden/time/ir_time_types.hpp>
+#include <irreden/window/pointer_gesture.hpp>
 
 #include <array>
 #include <unordered_map>
 #include <queue>
 #include <utility>
+#include <span>
 
 using namespace IRComponents;
 using namespace IREntity;
 
 namespace IRInput {
+
+using IRWindow::hasGesturePhase;
+using IRWindow::PointerGestureEvent;
+using IRWindow::PointerGestureKind;
+using IRWindow::PointerGesturePhase;
+using IRWindow::PointerGestureSource;
 
 constexpr int kNumTrackedEvents = 3;
 constexpr std::array<IRTime::Events, kNumTrackedEvents> kTrackedEvents = {
@@ -61,7 +69,11 @@ class InputManager {
     IRMath::vec2 getScrollOffset() const {
         return IRMath::vec2(m_scrollOffsetThisFrame);
     }
-    bool checkGamepadButton(GamepadButtons button, ButtonStatuses status, int irGamepadId = 0) const;
+    std::span<const PointerGestureEvent> getPointerGestures() const {
+        return m_pointerGesturesThisFrame;
+    }
+    bool
+    checkGamepadButton(GamepadButtons button, ButtonStatuses status, int irGamepadId = 0) const;
     float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0) const;
 
     // Synthetic input: deterministic injection so a headless run can
@@ -80,6 +92,7 @@ class InputManager {
     void injectButton(KeyMouseButtons button, ButtonStatuses status);
     // Enqueue a scroll delta, applied at the next frame boundary.
     void injectScroll(double xOffset, double yOffset);
+    void injectPointerGesture(const PointerGestureEvent &event);
 
   private:
     std::unordered_map<KeyMouseButtons, EntityId> m_keyMouseButtonEntities;
@@ -88,6 +101,7 @@ class InputManager {
     std::vector<EntityId> m_scrollEntitiesThisFrame;
     int m_scrollStepsThisFrame = 0;
     IRMath::dvec2 m_scrollOffsetThisFrame{0.0, 0.0};
+    std::vector<PointerGestureEvent> m_pointerGesturesThisFrame;
     std::vector<int> m_buttonPressesThisFrame;
     std::vector<int> m_buttonReleasesThisFrame;
 
@@ -105,10 +119,13 @@ class InputManager {
     IRMath::dvec2 m_syntheticCursorPending{0.0, 0.0};
     std::queue<std::pair<KeyMouseButtons, ButtonStatuses>> m_injectedButtons;
     std::queue<std::pair<double, double>> m_injectedScrolls;
+    std::queue<PointerGestureEvent> m_injectedPointerGestures;
+    std::array<bool, kNumKeyMouseButtons> m_syntheticButtonsDown{};
 
     void processKeyMouseButtons(std::queue<int> &queueOfButtons, ButtonStatuses status);
 
     void processScrolls(std::queue<std::pair<double, double>> &queueOfScrolls);
+    void processPointerGestures(std::queue<PointerGestureEvent> &events);
 
     // Records one button event into the per-event accumulators + frame counters.
     // Shared by the GLFW drain (`processKeyMouseButtons`) and synthetic injection.

@@ -47,6 +47,7 @@ void InputManager::tick() {
     m_scrollEntitiesThisFrame.clear();
     m_scrollStepsThisFrame = 0;
     m_scrollOffsetThisFrame = IRMath::dvec2(0.0, 0.0);
+    m_pointerGesturesThisFrame.clear();
     std::fill(m_buttonPressesThisFrame.begin(), m_buttonPressesThisFrame.end(), 0);
     std::fill(m_buttonReleasesThisFrame.begin(), m_buttonReleasesThisFrame.end(), 0);
 
@@ -72,6 +73,7 @@ void InputManager::tick() {
         ButtonStatuses::RELEASED
     );
     processScrolls(IRWindow::getWindow().getScrollsToProcess());
+    processPointerGestures(IRWindow::getWindow().getPointerGesturesToProcess());
 }
 
 // TODO: Do we need pressed and resleased as its own state, or can we get away
@@ -235,12 +237,24 @@ void InputManager::drainInjectedInput() {
         applyButtonEvent(button, status);
         m_injectedButtons.pop();
 
-        IRE_LOG_DEBUG("Processed button={}, status={}", static_cast<int>(button), static_cast<int>(status));
+        IRE_LOG_DEBUG(
+            "Processed button={}, status={}",
+            static_cast<int>(button),
+            static_cast<int>(status)
+        );
     }
 
     // Scroll injection reuses the GLFW scroll path — same ephemeral C_MouseScroll
     // entities, drained by the LIFETIME system.
     processScrolls(m_injectedScrolls);
+    processPointerGestures(m_injectedPointerGestures);
+}
+
+void InputManager::processPointerGestures(std::queue<PointerGestureEvent> &events) {
+    while (!events.empty()) {
+        m_pointerGesturesThisFrame.push_back(events.front());
+        events.pop();
+    }
 }
 
 void InputManager::processScrolls(std::queue<std::pair<double, double>> &queueOfScrolls) {
@@ -305,11 +319,43 @@ void InputManager::injectMouseMove(IRMath::ivec2 screenPx) {
 void InputManager::injectButton(KeyMouseButtons button, ButtonStatuses status) {
     IR_ASSERT(m_syntheticInputActive, "injectButton requires beginSyntheticInput()");
     m_injectedButtons.push({button, status});
+    switch (button) {
+    case kKeyButtonLeftShift:
+    case kKeyButtonRightShift:
+    case kKeyButtonLeftControl:
+    case kKeyButtonRightControl:
+    case kKeyButtonLeftAlt:
+    case kKeyButtonRightAlt:
+    case kKeyButtonLeftSuper:
+    case kKeyButtonRightSuper:
+        m_syntheticButtonsDown[button] = status == ButtonStatuses::PRESSED;
+        break;
+    default:
+        break;
+    }
 }
 
 void InputManager::injectScroll(double xOffset, double yOffset) {
-    IR_ASSERT(m_syntheticInputActive, "injectScroll requires beginSyntheticInput()");
-    m_injectedScrolls.push({xOffset, yOffset});
+    PointerGestureEvent event;
+    event.scroll_ = {xOffset, yOffset};
+    event.windowPoint_ = m_syntheticCursorPending;
+    const auto down = [this](KeyMouseButtons left, KeyMouseButtons right) {
+        return m_syntheticButtonsDown[left] || m_syntheticButtonsDown[right];
+    };
+    event.modifiers_ =
+        (down(kKeyButtonLeftShift, kKeyButtonRightShift) ? kModifierShift : 0) |
+        (down(kKeyButtonLeftControl, kKeyButtonRightControl) ? kModifierControl : 0) |
+        (down(kKeyButtonLeftAlt, kKeyButtonRightAlt) ? kModifierAlt : 0) |
+        (down(kKeyButtonLeftSuper, kKeyButtonRightSuper) ? kModifierSuper : 0);
+    injectPointerGesture(event);
+}
+
+void InputManager::injectPointerGesture(const PointerGestureEvent &event) {
+    IR_ASSERT(m_syntheticInputActive, "injectPointerGesture requires beginSyntheticInput()");
+    m_injectedPointerGestures.push(event);
+    if (event.kind_ == PointerGestureKind::SCROLL &&
+        (event.scroll_.x != 0.0 || event.scroll_.y != 0.0))
+        m_injectedScrolls.push({event.scroll_.x, event.scroll_.y});
 }
 
 } // namespace IRInput

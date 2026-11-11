@@ -23,7 +23,59 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <stdexcept>
+
 namespace IRScript::detail {
+
+inline IRInput::PointerGestureEvent pointerGestureFromLua(const sol::table &table) {
+    const auto number = [&](const char *name) {
+        const sol::object value = table[name];
+        if (!value.valid())
+            return 0.0;
+        if (value.get_type() != sol::type::number || !IRMath::isFinite(value.as<double>()))
+            throw std::invalid_argument(
+                std::string("IRInput.injectPointerGesture: ") + name + " must be a finite number"
+            );
+        return value.as<double>();
+    };
+    const auto integer = [&](const char *name, int maximum) {
+        const double value = number(name);
+        if (value < 0.0 || value > maximum || value != static_cast<int>(value))
+            throw std::invalid_argument(
+                std::string("IRInput.injectPointerGesture: invalid ") + name
+            );
+        return static_cast<int>(value);
+    };
+    IRInput::PointerGestureEvent event;
+    event.kind_ = static_cast<IRInput::PointerGestureKind>(
+        integer("kind", static_cast<int>(IRInput::PointerGestureKind::MAGNIFY))
+    );
+    event.source_ = static_cast<IRInput::PointerGestureSource>(
+        integer("source", static_cast<int>(IRInput::PointerGestureSource::WHEEL))
+    );
+    constexpr int phaseMask = static_cast<int>(IRInput::PointerGesturePhase::BEGAN) |
+                              static_cast<int>(IRInput::PointerGesturePhase::CHANGED) |
+                              static_cast<int>(IRInput::PointerGesturePhase::ENDED) |
+                              static_cast<int>(IRInput::PointerGesturePhase::CANCELLED) |
+                              static_cast<int>(IRInput::PointerGesturePhase::MAY_BEGIN) |
+                              static_cast<int>(IRInput::PointerGesturePhase::STATIONARY);
+    event.phase_ = static_cast<IRInput::PointerGesturePhase>(integer("phase", phaseMask));
+    event.momentumPhase_ =
+        static_cast<IRInput::PointerGesturePhase>(integer("momentumPhase", phaseMask));
+    event.modifiers_ = static_cast<std::uint8_t>(integer("modifiers", IRInput::kModifierAll));
+    event.scroll_ = {number("x"), number("y")};
+    event.windowPoint_ = {number("windowX"), number("windowY")};
+    event.magnification_ = number("magnification");
+    const sol::object inverted = table["directionInverted"];
+    if (inverted.valid()) {
+        if (inverted.get_type() != sol::type::boolean)
+            throw std::invalid_argument(
+                "IRInput.injectPointerGesture: directionInverted must be boolean"
+            );
+        event.directionInverted_ = inverted.as<bool>();
+    }
+    return event;
+}
 
 // Populate `IRInput.KeyMouseButtons` with the full C++ enum names from
 // `IRInput::KeyMouseButtons` (kKeyButtonSpace, kMouseButtonLeft, etc.).
@@ -234,6 +286,68 @@ inline void bindSyntheticInput(LuaScript &script) {
 
     lua["IRInput"]["injectScroll"] = [](double xOffset, double yOffset) {
         IRInput::injectScroll(xOffset, yOffset);
+    };
+
+    sol::table kind = lua.create_table();
+#define IR_BIND_GESTURE_KIND(name)                                                                 \
+    kind[#name] = static_cast<lua_Integer>(IRInput::PointerGestureKind::name)
+    IR_BIND_GESTURE_KIND(SCROLL);
+    IR_BIND_GESTURE_KIND(MAGNIFY);
+#undef IR_BIND_GESTURE_KIND
+    lua["IRInput"]["PointerGestureKind"] = kind;
+    sol::table source = lua.create_table();
+#define IR_BIND_GESTURE_SOURCE(name)                                                               \
+    source[#name] = static_cast<lua_Integer>(IRInput::PointerGestureSource::name)
+    IR_BIND_GESTURE_SOURCE(UNKNOWN);
+    IR_BIND_GESTURE_SOURCE(PRECISE_SCROLL);
+    IR_BIND_GESTURE_SOURCE(WHEEL);
+#undef IR_BIND_GESTURE_SOURCE
+    lua["IRInput"]["PointerGestureSource"] = source;
+    sol::table phase = lua.create_table();
+#define IR_BIND_GESTURE_PHASE(name)                                                                \
+    phase[#name] = static_cast<lua_Integer>(IRInput::PointerGesturePhase::name)
+    IR_BIND_GESTURE_PHASE(NONE);
+    IR_BIND_GESTURE_PHASE(BEGAN);
+    IR_BIND_GESTURE_PHASE(CHANGED);
+    IR_BIND_GESTURE_PHASE(ENDED);
+    IR_BIND_GESTURE_PHASE(CANCELLED);
+    IR_BIND_GESTURE_PHASE(MAY_BEGIN);
+    IR_BIND_GESTURE_PHASE(STATIONARY);
+#undef IR_BIND_GESTURE_PHASE
+    lua["IRInput"]["PointerGesturePhase"] = phase;
+    lua["IRInput"]["injectPointerGesture"] = [](const sol::table &event) {
+        IRInput::injectPointerGesture(pointerGestureFromLua(event));
+    };
+    lua["IRInput"]["pointerGestures"] = [&lua]() {
+        sol::table events = lua.create_table();
+        int index = 1;
+        for (const auto &event : IRInput::pointerGestures()) {
+            events[index++] = lua.create_table_with(
+                "kind",
+                static_cast<lua_Integer>(event.kind_),
+                "source",
+                static_cast<lua_Integer>(event.source_),
+                "phase",
+                static_cast<lua_Integer>(event.phase_),
+                "momentumPhase",
+                static_cast<lua_Integer>(event.momentumPhase_),
+                "x",
+                event.scroll_.x,
+                "y",
+                event.scroll_.y,
+                "magnification",
+                event.magnification_,
+                "windowX",
+                event.windowPoint_.x,
+                "windowY",
+                event.windowPoint_.y,
+                "modifiers",
+                event.modifiers_,
+                "directionInverted",
+                event.directionInverted_
+            );
+        }
+        return events;
     };
 }
 

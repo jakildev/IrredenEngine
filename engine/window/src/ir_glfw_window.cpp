@@ -192,6 +192,7 @@ IRGLFWWindow::IRGLFWWindow(
     setCallbackKey(irglfwCallback_key);
     setCallbackMouseButton(irglfwCallback_mouseButton);
     setCallbackScroll(irglfwCallback_scroll);
+    m_pointerGestureMonitor = platformInstallPointerGestures(*this);
     platformApplyWindowMode(m_window, m_windowMode);
 
     g_irglfwWindow = this;
@@ -199,6 +200,7 @@ IRGLFWWindow::IRGLFWWindow(
 }
 
 IRGLFWWindow::~IRGLFWWindow() {
+    platformRemovePointerGestures(m_pointerGestureMonitor);
     glfwDestroyWindow(m_window);
     IRE_LOG_INFO("Destroyed GLFW Window");
 
@@ -312,7 +314,25 @@ void IRGLFWWindow::addKeyReleasedToProcess(int key) {
 }
 
 void IRGLFWWindow::addScrollToProcess(double xoffset, double yoffset) {
-    m_scrollsToProcess.push({xoffset, yoffset});
+    PointerGestureEvent event;
+    event.scroll_ = {xoffset, yoffset};
+    getCursorPosition(event.windowPoint_.x, event.windowPoint_.y);
+    const auto down = [this](int left, int right) {
+        return getKeyStatus(left) == GLFW_PRESS || getKeyStatus(right) == GLFW_PRESS;
+    };
+    event.modifiers_ =
+        (down(GLFW_KEY_LEFT_SHIFT, GLFW_KEY_RIGHT_SHIFT) ? GLFW_MOD_SHIFT : 0) |
+        (down(GLFW_KEY_LEFT_CONTROL, GLFW_KEY_RIGHT_CONTROL) ? GLFW_MOD_CONTROL : 0) |
+        (down(GLFW_KEY_LEFT_ALT, GLFW_KEY_RIGHT_ALT) ? GLFW_MOD_ALT : 0) |
+        (down(GLFW_KEY_LEFT_SUPER, GLFW_KEY_RIGHT_SUPER) ? GLFW_MOD_SUPER : 0);
+    addPointerGestureToProcess(event);
+}
+
+void IRGLFWWindow::addPointerGestureToProcess(const PointerGestureEvent &event) {
+    m_pointerGesturesToProcess.push(event);
+    if (event.kind_ == PointerGestureKind::SCROLL &&
+        (event.scroll_.x != 0.0 || event.scroll_.y != 0.0))
+        m_scrollsToProcess.push({event.scroll_.x, event.scroll_.y});
 }
 
 void IRGLFWWindow::addMouseButtonPressedToProcess(int button) {

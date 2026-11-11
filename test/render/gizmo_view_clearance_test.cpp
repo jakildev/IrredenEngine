@@ -54,7 +54,7 @@ class GizmoViewClearanceTest : public testing::Test {
             IRTime::Events::UPDATE,
             {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()}
         );
-        IREntity::setName(IREntity::createEntity(), "camera");
+        IREntity::setName(IREntity::createEntity(IRComponents::C_Camera{}), "camera");
     }
 
     void runFrame() {
@@ -241,6 +241,32 @@ TEST_F(GizmoViewClearanceTest, AZeroClearanceHandleIsPlacedByItsParentChainAlone
         EXPECT_EQ(handle.anchorEntity_, anchor);
     });
     EXPECT_EQ(handleCount, 9);
+}
+
+TEST_F(GizmoViewClearanceTest, SpatialClearanceKeepsPixelsAndDepthAboveAndBelow) {
+    const C_LocalTransform transform{vec3(3.0f, -2.0f, 5.0f)};
+    const auto plain = makeAnchor(transform, 0.0f);
+    const auto cleared = makeAnchor(transform, kClearance);
+    IRPrefab::Camera::setSpatialViewEnabled(true);
+    for (float elevation : {-1.2f, -0.4f, 0.0f, 0.7f, 1.2f}) {
+        IRPrefab::Camera::setOrbitAngles(0.37f, elevation, 0.29f);
+        runFrame();
+        const auto plainHandles = placedHandles(plain);
+        const vec3 depthAxis = IRMath::normalize(IRRender::unprojectView(vec2(0.0f), 3.0f));
+        for (const auto &handle : placedHandles(cleared)) {
+            const auto *twin = twinOf(plainHandles, handle);
+            ASSERT_NE(twin, nullptr);
+            const vec2 actual = IRRender::projectWorldToView(handle.world_);
+            const vec2 expected = IRRender::projectWorldToView(twin->world_);
+            EXPECT_NEAR(actual.x, expected.x, kEps);
+            EXPECT_NEAR(actual.y, expected.y, kEps);
+            EXPECT_LT(IRRender::viewDepth(handle.world_), IRRender::viewDepth(twin->world_));
+            EXPECT_LE(
+                IRMath::dot(handle.world_ - transform.translation_, depthAxis) + handle.radius_,
+                -kClearance + kEps
+            );
+        }
+    }
 }
 
 } // namespace

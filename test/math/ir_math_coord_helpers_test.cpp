@@ -216,3 +216,75 @@ TEST(TrixelOriginOffsetTest, AllOffsetsScaleWithCanvasSize) {
 }
 
 } // namespace
+
+TEST(OrthographicView, IdentityMatchesIsoUnits) {
+    const auto basis = IRMath::orthographicViewBasis(IRMath::vec4(0, 0, 0, 1));
+    const IRMath::vec3 point(2.25f, -4.5f, 7.75f);
+    EXPECT_EQ(IRMath::projectOrthographic(point, basis), IRMath::pos3DtoPos2DIso(point));
+    EXPECT_FLOAT_EQ(IRMath::orthographicDepth(point, basis), 5.5f);
+    EXPECT_NEAR(IRMath::dot(basis.isoX_, basis.isoX_), 2.0f, 1e-6f);
+    EXPECT_NEAR(IRMath::dot(basis.isoY_, basis.isoY_), 6.0f, 1e-6f);
+    EXPECT_NEAR(IRMath::dot(basis.depth_, basis.depth_), 3.0f, 1e-6f);
+}
+
+TEST(OrthographicView, ArbitraryOrientationRoundTripsFractionalWorldPoints) {
+    for (float yaw : {0.0f, 0.5235988f, 1.1693706f, 3.1415927f}) {
+        for (float elevation : {-1.4f, -0.4f, 0.0f, 0.6154797f, 1.4f}) {
+            for (float roll : {-0.7f, 0.0f, 0.3f}) {
+                const auto q = IRMath::uprightOrbitRotation(yaw, elevation, roll);
+                const auto basis = IRMath::orthographicViewBasis(q);
+                const IRMath::vec3 point(17.125f, -9.875f, 2.375f);
+                const auto iso = IRMath::projectOrthographic(point, basis);
+                const float depth = IRMath::orthographicDepth(point, basis);
+                const auto restored = IRMath::unprojectOrthographic(iso, depth, basis);
+                EXPECT_NEAR(IRMath::length(restored - point), 0.0f, 2e-5f);
+                const auto alongRay = IRMath::unprojectOrthographic(iso, depth + 3.0f, basis);
+                EXPECT_NEAR(
+                    IRMath::length(IRMath::projectOrthographic(alongRay, basis) - iso),
+                    0.0f,
+                    2e-5f
+                );
+                EXPECT_NEAR(IRMath::orthographicDepth(alongRay, basis), depth + 3.0f, 2e-5f);
+            }
+        }
+    }
+}
+
+TEST(OrthographicView, UprightOrbitPreservesVerticalAndRevealsBottom) {
+    for (float elevation : {-1.4f, -0.4f, 0.0f, 0.7f, 1.4f}) {
+        const auto basis =
+            IRMath::orthographicViewBasis(IRMath::uprightOrbitRotation(1.1693706f, elevation));
+        EXPECT_NEAR(basis.isoX_.z, 0.0f, 1e-6f);
+        EXPECT_GT(basis.isoY_.z, 0.0f);
+        EXPECT_NEAR(IRMath::normalize(basis.depth_).z, IRMath::sin(elevation), 1e-6f);
+    }
+}
+
+TEST(OrthographicView, OrbitAnglesRecoverAzimuthElevationAndSeparateRoll) {
+    for (float yaw : {-3.0f, -0.2f, 0.0f, 1.1693706f, 3.0f}) {
+        for (float elevation : {-1.4f, -0.4f, 0.6154797f, 1.4f}) {
+            const auto q = IRMath::uprightOrbitRotation(yaw, elevation, 0.37f);
+            const auto angles = IRMath::decomposeOrbitAngles(q);
+            EXPECT_NEAR(IRMath::wrapAnglePi(angles.azimuth_ - yaw), 0.0f, 2e-6f);
+            EXPECT_NEAR(angles.elevation_, elevation, 2e-6f);
+            EXPECT_NEAR(angles.roll_, 0.37f, 2e-6f);
+        }
+    }
+    const auto identity = IRMath::uprightOrbitRotation(0.0f, IRMath::OrbitAngles{}.elevation_);
+    EXPECT_EQ(identity, IRMath::vec4(0, 0, 0, 1));
+}
+
+TEST(OrthographicView, FixedPivotHasNoOrbitDriftAndUnitPanDerivative) {
+    const IRMath::vec3 focus(13.5f, -8.25f, 4.75f);
+    const IRMath::vec2 pan(-9.5f, 3.25f), delta(2.125f, -0.875f);
+    for (float elevation : {-1.3f, -0.4f, 0.6f, 1.3f}) {
+        const auto basis = IRMath::orthographicViewBasis(
+            IRMath::uprightOrbitRotation(1.1693706f, elevation, 0.4f)
+        );
+        const auto offset = IRMath::orthographicPivotOffset(pan, focus, basis);
+        const auto visible = IRMath::projectOrthographic(focus, basis) + offset;
+        EXPECT_NEAR(IRMath::length(visible - pan - IRMath::pos3DtoPos2DIso(focus)), 0.0f, 4e-6f);
+        const auto moved = IRMath::orthographicPivotOffset(pan + delta, focus, basis);
+        EXPECT_NEAR(IRMath::length(moved - offset - delta), 0.0f, 4e-6f);
+    }
+}

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_constants.hpp>
+#include <irreden/ir_render.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
@@ -11,11 +12,13 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/spatial_pivot_state.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace {
@@ -466,6 +469,45 @@ TEST_F(CameraZoomPolicyTest, ScreenResidualFollowsThePublishedFrame) {
     EXPECT_EQ(IRPrefab::Camera::screenResidual(camera, zoomValue, scale), snapped);
 }
 
+TEST(CameraRasterCorrection, SnappedPlacementMatchesTheDisplayedRaster) {
+    const vec2 camera(17.25f, -4.75f);
+    const vec2 zoomValue(2.5f);
+    const ivec2 outputScale(4, 4);
+
+    const vec2 correction =
+        IRMath::cameraRasterCorrectionFramebufferPx(camera, zoomValue, outputScale, nullptr);
+    const float screenYSign = IRPlatform::kIsoToScreenSign.y;
+    const float expectedCorrectionY = screenYSign > 0.0f ? -0.5f : 0.5f;
+    EXPECT_NEAR(correction.x, 0.0f, 1e-6f);
+    EXPECT_NEAR(correction.y, expectedCorrectionY, 1e-6f);
+
+    const vec2 pitch(IRMath::cameraZoomPitch(zoomValue));
+    const vec2 displayed = camera * pitch + correction / vec2(outputScale);
+    EXPECT_NEAR(displayed.x, 86.25f, 1e-6f);
+    EXPECT_NEAR(displayed.y, -11.875f + expectedCorrectionY / 4.0f, 1e-6f);
+}
+
+TEST(CameraRasterCorrection, PublishedPhaseMatchesTheDisplayedRaster) {
+    const vec2 camera(17.25f, -4.75f);
+    const vec2 zoomValue(2.5f);
+    const ivec2 outputScale(4, 4);
+    const IRMath::CameraRasterPhase frame{
+        dvec2(camera),
+        IRMath::cameraZoomPitch(zoomValue),
+        dvec2(0.125, 0.375),
+    };
+
+    const vec2 correction =
+        IRMath::cameraRasterCorrectionFramebufferPx(camera, zoomValue, outputScale, &frame);
+    EXPECT_NEAR(correction.x, -0.5f, 1e-6f);
+    EXPECT_NEAR(correction.y, 0.0f, 1e-6f);
+
+    const vec2 pitch(frame.pitch_);
+    const vec2 displayed = camera * pitch + correction / vec2(outputScale);
+    EXPECT_NEAR(displayed.x, 86.125f, 1e-6f);
+    EXPECT_NEAR(displayed.y, -11.875f, 1e-6f);
+}
+
 // --- which canvases the camera places ----------------------------------------
 
 using TrixelToFramebuffer = IRSystem::System<IRSystem::TRIXEL_TO_FRAMEBUFFER>;
@@ -771,4 +813,106 @@ TEST(CameraZoomSpriteAnchor, GridSnapStaysWithinOneFramebufferPixel) {
     }
 }
 
+} // namespace
+
+namespace {
+TEST_F(CameraZoomPolicyTest, SpatialViewIsOptInAndRetainsLegacyYawProjection) {
+    using namespace IRPrefab::Camera;
+    EXPECT_FALSE(IRPrefab::Camera::isSpatialViewEnabled());
+    setYawPitch(0.5235988f, 0.4f);
+    const auto original = getRotationQuat();
+    const auto expected = IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), getYaw());
+    EXPECT_EQ(IRPrefab::Camera::getViewRotation(), expected);
+    setSpatialViewEnabled(true);
+    EXPECT_EQ(IRPrefab::Camera::getViewRotation(), original);
+    setSpatialViewEnabled(false);
+    EXPECT_EQ(getRotationQuat(), original);
+    EXPECT_EQ(IRPrefab::Camera::getViewRotation(), expected);
+}
+
+TEST_F(CameraZoomPolicyTest, OrbitAnglesClampPolesAndKeepSeparateRoll) {
+    IRPrefab::Camera::setOrbitAngles(1.1693706f, -IRMath::kHalfPi, 0.37f);
+    const auto angles = IRPrefab::Camera::getOrbitAngles();
+    // Azimuth and roll become ill-conditioned together near a pole: a float
+    // basis error is amplified by 1/cos(elevation). Verify the reconstructed
+    // orientation as well, rather than requiring arbitrary Euler precision.
+    const float poleTolerance = 2.0f * std::numeric_limits<float>::epsilon() /
+                                IRMath::cos(IRPrefab::Camera::detail::kPitchLimit);
+    EXPECT_NEAR(angles.azimuth_, 1.1693706f, poleTolerance);
+    EXPECT_NEAR(angles.elevation_, -IRPrefab::Camera::detail::kPitchLimit, 1e-5f);
+    EXPECT_NEAR(angles.roll_, 0.37f, poleTolerance);
+    const auto restored =
+        IRMath::uprightOrbitRotation(angles.azimuth_, angles.elevation_, angles.roll_);
+    EXPECT_NEAR(IRMath::length(restored - IRPrefab::Camera::getRotationQuat()), 0.0f, 1e-5f);
+}
+
+TEST_F(CameraZoomPolicyTest, SpatialRenderMappingsUseTheSameCameraQuaternion) {
+    IRPrefab::Camera::setOrbitAngles(1.1693706f, -0.4f, 0.37f);
+    IRPrefab::Camera::setSpatialViewEnabled(true);
+    const IRMath::vec3 point(2.25f, -1.75f, 4.125f);
+    const auto iso = IRRender::projectWorldToView(point);
+    const auto restored = IRRender::unprojectView(iso, IRRender::viewDepth(point));
+    EXPECT_TRUE(IRRender::isSpatialViewEnabled());
+    EXPECT_EQ(IRRender::getViewRotation(), IRPrefab::Camera::getRotationQuat());
+    EXPECT_NEAR(IRMath::length(restored - point), 0.0f, 1e-5f);
+}
+
+TEST(SpatialPivotState, SettingFocusCanPreserveTheDisplayedView) {
+    const IRMath::vec2 effectiveCameraIso(14.0f, -9.0f);
+    const IRMath::vec3 focusWorld(3.0f, -5.0f, 7.0f);
+    const IRMath::vec4 rotation = IRMath::uprightOrbitRotation(0.7f, -0.35f, 0.2f);
+    const IRMath::vec2 rawCameraIso = IRRender::detail::SpatialPivotState::cameraIsoPreservingView(
+        effectiveCameraIso,
+        focusWorld,
+        rotation
+    );
+
+    const IRMath::vec2 restored = IRMath::orthographicPivotOffset(
+        rawCameraIso,
+        focusWorld,
+        IRMath::orthographicViewBasis(rotation)
+    );
+    EXPECT_NEAR(IRMath::length(restored - effectiveCameraIso), 0.0f, 1e-5f);
+}
+
+TEST(SpatialPivotState, AbsoluteFocusedShotDoesNotInheritThePreviousFocus) {
+    using IRRender::detail::SpatialPivotState;
+    const IRMath::vec2 cameraIso(21.0f, -13.0f);
+    const IRMath::vec4 rotation = IRMath::uprightOrbitRotation(0.9f, -0.4f, 0.15f);
+    const IRMath::vec3 firstFocus(-8.0f, 2.0f, 4.0f);
+    const IRMath::vec3 secondFocus(5.0f, -6.0f, 11.0f);
+    const auto effective = [&](const SpatialPivotState &state) {
+        return state.effectiveCameraIso(cameraIso, IRMath::vec3(0.0f), rotation);
+    };
+
+    SpatialPivotState sequential;
+    sequential.setFocus(firstFocus);
+    sequential.setFocus(secondFocus);
+
+    SpatialPivotState isolated;
+    isolated.setFocus(secondFocus);
+
+    EXPECT_EQ(effective(sequential), effective(isolated));
+}
+
+TEST(SpatialPivotState, AbsoluteDefaultShotReseedsAfterAnExplicitFocus) {
+    using IRRender::detail::SpatialPivotState;
+    const IRMath::vec2 cameraIso(21.0f, -13.0f);
+    const IRMath::vec4 rotation = IRMath::uprightOrbitRotation(0.9f, -0.4f, 0.15f);
+    const IRMath::vec3 firstFocus(-8.0f, 2.0f, 4.0f);
+    const IRMath::vec3 shotDefault(5.0f, -6.0f, 11.0f);
+    const auto effective = [&](const SpatialPivotState &state) {
+        return state.effectiveCameraIso(cameraIso, IRMath::vec3(0.0f), rotation);
+    };
+
+    SpatialPivotState sequential;
+    sequential.setFocus(firstFocus);
+    sequential.clearFocus(true);
+    sequential.reseedDefault(shotDefault);
+
+    SpatialPivotState isolated;
+    isolated.reseedDefault(shotDefault);
+
+    EXPECT_EQ(effective(sequential), effective(isolated));
+}
 } // namespace

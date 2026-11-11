@@ -15,6 +15,12 @@
 
 namespace IRWindow {
 
+void *platformInstallPointerGestures(IRGLFWWindow &) {
+    return nullptr;
+}
+
+void platformRemovePointerGestures(void *) {}
+
 void platformPrepareWindowMode(WindowMode) {
     // X11 and Win32 need nothing before creation: the GLFW_FOCUSED /
     // GLFW_FOCUS_ON_SHOW / GLFW_VISIBLE hints carry the whole mode.

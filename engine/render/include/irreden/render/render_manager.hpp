@@ -8,6 +8,7 @@
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
 #include <irreden/render/renderer_impl.hpp>
+#include <irreden/render/spatial_pivot_state.hpp>
 #include <irreden/render/voxel_pool_allocation.hpp>
 
 #include <irreden/voxel/components/component_voxel.hpp>
@@ -67,6 +68,7 @@ class RenderManager {
     // the engine only consumes the point.
     void setRotationPivotFocus(vec3 focusWorld);
     void clearRotationPivotFocus();
+    void reseedSpatialDefaultRotationPivotFocus();
     bool hasRotationPivotFocus() const;
     vec3 getRotationPivotFocus() const;
     // Focus the DEFAULT (no explicit override) CAMERA_CENTER pivot rotates
@@ -77,6 +79,7 @@ class RenderManager {
     // carries it along; only its iso DEPTH and the view offset are latched.
     // Depth 0 with no offset — before the first acquisition — is the fallback.
     vec3 getDefaultRotationPivotFocus() const;
+    vec2 getSpatialEffectiveCameraIso() const;
     // Iso offset every CAMERA_CENTER branch of getEffectiveCameraIso adds to
     // the raw camera: what keeps the view still when a gesture at non-zero yaw
     // re-anchors onto a different point of the crosshair ray. Zero until such
@@ -208,8 +211,6 @@ class RenderManager {
     FitMode m_fitMode;
     SubdivisionMode m_subdivisionMode = SubdivisionMode::FULL;
     RotationPivotMode m_rotationPivotMode = RotationPivotMode::CAMERA_CENTER;
-    vec3 m_rotationPivotFocus = vec3(0.0f);
-    bool m_hasRotationPivotFocus = false;
     // Depth-aware default-pivot latch and its update policy. Only the iso DEPTH
     // and a view offset are latched — the focus POINT is re-derived from the
     // live cameraIso on every read (see getDefaultRotationPivotFocus), which is
@@ -217,6 +218,7 @@ class RenderManager {
     // policy itself lives in DefaultPivotLatch so it is testable with no GPU;
     // this class owns only the readback it admits.
     DefaultPivotLatch m_defaultPivotLatch;
+    detail::SpatialPivotState m_spatialPivotState;
     bool defaultPivotOwnsDepth() const;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;

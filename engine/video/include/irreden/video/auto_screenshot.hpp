@@ -6,6 +6,7 @@
 #include <irreden/system/ir_system_types.hpp>
 #include <irreden/input/ir_input_types.hpp>
 #include <irreden/video/ir_video_types.hpp>
+#include <irreden/window/pointer_gesture.hpp>
 
 #include <array>
 #include <cstddef>
@@ -84,7 +85,37 @@ struct AutoScreenshotShot {
     // on the screen-center pivot.
     vec3 pivotFocusWorld_ = vec3(0.0f);
     bool hasPivotFocus_ = false;
+    // An explicit view quaternion overrides yaw and enables spatial rendering.
+    // An absent override preserves the caller's spatial-view opt-in.
+    bool hasViewRotation_ = false;
+    vec4 viewRotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
+
+namespace detail {
+
+struct AutoScreenshotCameraBaseline {
+    bool spatialViewEnabled_ = false;
+    vec4 rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+};
+
+struct AutoScreenshotCameraPolicy {
+    bool spatialViewEnabled_ = false;
+    vec4 rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+};
+
+inline AutoScreenshotCameraPolicy
+cameraPolicyForShot(const AutoScreenshotShot &shot, const AutoScreenshotCameraBaseline &baseline) {
+    if (shot.hasViewRotation_) {
+        return {true, shot.viewRotation_};
+    }
+    return {baseline.spatialViewEnabled_, baseline.rotation_};
+}
+
+void applyCameraPolicyForShot(
+    const AutoScreenshotShot &shot, const AutoScreenshotCameraBaseline &baseline
+);
+
+} // namespace detail
 
 /// Declarative config for @c createAutoScreenshotSystem. @c shots_ /
 /// @c numShots_ point at a shot table owned by the caller — it must outlive
@@ -264,11 +295,18 @@ template <typename Pipeline> void appendAutoRecordIfRequested(Pipeline &pipeline
 /// reflects the interaction before capture.
 struct GuiInputEvent {
     int frameOffset_ = 0;
-    enum class Type { MOVE, PRESS, RELEASE, SCROLL } type_ = Type::MOVE;
+    enum class Type { MOVE, PRESS, RELEASE, SCROLL, POINTER_GESTURE } type_ = Type::MOVE;
     ivec2 screenPx_ = ivec2(0);
     vec2 scroll_ = vec2(0.0f);
     IRInput::KeyMouseButtons button_ = IRInput::kNullButton;
+    // POINTER_GESTURE uses its own exact logical windowPoint_, independent
+    // of the cursor snapshot changed by MOVE. Zero-delta phases are events.
+    IRWindow::PointerGestureEvent pointerGesture_{};
 };
+
+/// Dispatch one scheduled event into the next synthetic input frame.
+/// Requires beginSyntheticInput(); scheduling remains the shot runner's job.
+void injectGuiInputEvent(const GuiInputEvent &event);
 
 /// Superset of @c AutoScreenshotShot — carries the same render config plus an
 /// optional scripted input sequence. @c inputs_ / @c numInputs_ must outlive
