@@ -7,7 +7,7 @@ and `TRIXEL_TO_FRAMEBUFFER` stages.
 
 | Symptom | Likely location |
 |---|---|
-| SDF shapes too small / too large | `c_shapes_to_trixel.glsl` effectiveSize or `findSurfaceDepth` |
+| SDF shapes too small / too large | `c_shapes_to_trixel_body.glsl` effectiveSize or `findSurfaceDepth` |
 | Missing faces or sparse dots | `faceOffset_2x3` or canvas pixel write logic |
 | Checkerboard mismatch | `isoToLocal3D` vs CPU position-based formula |
 | Shapes not rendering | `system_shapes_to_trixel.hpp` gather/dispatch or VISIBLE flag |
@@ -21,7 +21,7 @@ and `TRIXEL_TO_FRAMEBUFFER` stages.
 | Every-other-trixel checkerboard on X/Y faces at non-zero cardinal yaw | Trixel parity ignores the rotated iso frame: `trixelOriginModifier` / `originModifier` vs `rasterYaw`; `localIDToFace_2x3` face/sub-pixel mapping not swapping with cardinal rotation; active display consumer and its coordinate mapping. Z face may remain clean |
 | Faces identical at yaw=0 and yaw=π/8 (no inter-cardinal deformation) | Residual yaw deformation matrix collapsing to identity: `emitDeformedFace` `maxN` cap, `IRMath::faceDeformationMatrix` column lengths, world vs detached canvas branch in `c_voxel_to_trixel_stage_1.{glsl,metal}` |
 | Half the scene clipped at yaw=0 after a render change | Distance-texture clear regressed: the per-frame `clearTexture` on the distance buffer in `system_voxel_to_trixel.hpp` must run unconditionally — viewport-conditional clears mis-cull at the cull-bounds boundary |
-| Geometry pops in/out as camera yaw changes | Chunk visibility mask not rotation-aware: `system_voxel_chunk_visibility.hpp` AABB sweep must use world-space chunk bounds, not iso-space derived at yaw=0 |
+| Geometry pops in/out as camera yaw changes | Chunk visibility mask not rotation-aware: the `buildChunkVisibilityMask` AABB sweep in `system_voxel_to_trixel.hpp` must use world-space chunk bounds, not iso-space derived at yaw=0 |
 | Face colours swapped at exactly 90° / 180° / 270° | Cardinal face-index remapping: `rotateCardinalZ` permutation and `encodeDepthWithFace` face priority under non-zero `rasterYaw` |
 | Front/back "occlusion scramble" at non-cardinal yaw under `--depth-color` | Usually the diagnostic's own artifact: the `--depth-color` palette quantises hue in 4/3-unit bands that beat against the 1-unit voxel lattice as moiré, while an SDF twin looks smooth. Re-shoot with `--checkerboard` (the occlusion diagnostic for rotated voxel content); trust `--depth-color` only at cardinal poses or against a voxel reference |
 

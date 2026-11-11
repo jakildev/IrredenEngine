@@ -64,7 +64,8 @@ Priority order; first match wins. The modes are mutually exclusive.
 ```
 git rev-parse --abbrev-ref HEAD
 git status
-git diff --stat && git diff
+git diff --stat
+git diff
 git log --oneline -10
 ```
 
@@ -205,8 +206,7 @@ or body still fails regardless of its state.
 
 #### 8a. Checks keyed on `Closes #N` (before `gh pr create`)
 
-Skip when the body has no `Closes #N`, or for the queue-manager role (its
-`Closes #` rows are task IDs).
+Skip when the body has no `Closes #N`.
 
 ```bash
 closes_n="<N from the drafted body>"

@@ -58,8 +58,7 @@ Three supported environments, each with its own preset:
 
 ```bash
 # Linux / WSL (the fleet env):
-cmake --preset linux-debug          # one-time configure
-fleet-build --target IRShapeDebug   # build (auto-detects worktree)
+fleet-build --target IRShapeDebug   # configures on first use, then builds (auto-detects worktree)
 fleet-run IRShapeDebug              # run from the build dir
 ```
 

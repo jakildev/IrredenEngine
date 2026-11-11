@@ -84,7 +84,7 @@ void registerLuaBindings() {
 
         luaScript.registerCreateEntityFunction<C_MidiSequence>("createMidiSequence");
         luaScript.registerCreateEntityBatchFunction<
-            C_Position3D, C_VoxelSetNew, C_PeriodicIdle>(
+            C_LocalTransform, C_VoxelSetNew, C_PeriodicIdle>(
             "createEntityBatchVoxelPeriodicIdle"
         );
 
@@ -112,19 +112,24 @@ factories.
 #ifndef CREATIONS_MYCREATION_LUA_COMPONENT_PACK_H
 #define CREATIONS_MYCREATION_LUA_COMPONENT_PACK_H
 
-#include <irreden/common/components/component_position_3d_lua.hpp>
+#include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/update/components/component_velocity_3d_lua.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
+#include <irreden/update/components/component_periodic_idle_lua.hpp>
 #include <irreden/audio/components/component_midi_note_lua.hpp>
+#include <irreden/audio/components/component_midi_sequence_lua.hpp>
 
 namespace MyCreation {
 inline void registerLuaComponentPack(IRScript::LuaScript &luaScript) {
     using namespace IRComponents;
     luaScript.registerTypesFromTraits<
-        C_Position3D,
+        C_LocalTransform,
         C_Velocity3D,
         C_VoxelSetNew,
-        C_MidiNote>();
+        PeriodStage,
+        C_PeriodicIdle,
+        C_MidiNote,
+        C_MidiSequence>();
 }
 }
 
@@ -205,7 +210,7 @@ local moveId = IRSystem.registerSystem({
 
 -- Pipeline: prefab and Lua systems mix freely.
 IRSystem.registerPipeline(IRTime.UPDATE, {
-    IRSystem.systemId(IRSystem.SystemName.GLOBAL_POSITION_3D),
+    IRSystem.systemId(IRSystem.SystemName.PROPAGATE_TRANSFORM),
     moveId,
 })
 ```
@@ -241,7 +246,7 @@ In `main_lua.cpp`, inside the `IREngine::registerLuaBindings` lambda, before
 #include "my_creation_codegen.hpp"   // emitted by irreden_lua_codegen()
 
 script.bindLuaDrivenEcs();                                     // IRComponent.register, IRSystem.registerSystem, ...
-script.registerTypeFromTraits<IRComponents::C_Position3D>();   // every prefab component the Lua systems reference
+script.registerTypeFromTraits<IRComponents::C_LocalTransform>(); // every prefab component the Lua systems reference
 IRScript::CodegenRegistry::registerCodegenComponents(script);  // pre-bind codegen structs; makes register idempotent
 script.setEcsDefaultMode(IRScript::CodegenRegistry::kDefaultEcsMode);
 script.scriptFile(IREngine::resolveScriptPath("main.lua").c_str());
@@ -274,12 +279,18 @@ cache variable wins: `cmake --preset linux-debug -DIR_LUA_ECS_DEFAULT_MODE=EVAL`
 ## config.lua and main.lua
 
 ```lua
--- config.lua: parsed at startup
+-- config.lua: parsed at startup; flat keys, each defaulted when absent
 config = {
-    window = { width = 1280, height = 720, title = "My Creation" },
-    video  = { fit_mode = "pixel_perfect" },
+    init_window_width = 1280,
+    init_window_height = 720,
+    game_resolution_width = 1280,
+    game_resolution_height = 720,
+    fit_mode = "stretch",   -- "fit" | "stretch"
 }
 ```
+
+`engine/world/include/irreden/world/config.hpp` declares every key and its
+default; `creations/demos/random_voxels/config.lua` lists the usual set.
 
 ```lua
 -- main.lua

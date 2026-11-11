@@ -1,1 +1,0 @@
-../commands/role-merger.md

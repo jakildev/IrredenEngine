@@ -78,7 +78,7 @@ the repo = `FLEET_DISPATCH_REPO` (`game` → the per-repo substitutions above).
    first, oldest within each repo, every record carrying `repo`) whose `labels`
    contain `fleet:needs-<host>-smoke`; equivalently the oldest PR in
    `repos.{engine,game}.prs[]` whose `labels` contain that label and `fleet:approved`,
-   none of `fleet:needs-fix`, `fleet:blocker`, `human:wip`, `fleet:wip`,
+   none of `fleet:needs-fix`, `human:wip`, `fleet:wip`,
    `fleet:merger-cooldown`, `human:needs-fix`, and no `fleet:reviewing-*`. None: print
    `[smoke-worker] No smoke-pending PRs for <host> — standing by. Will re-fire on next dispatcher trigger.`
    and exit.

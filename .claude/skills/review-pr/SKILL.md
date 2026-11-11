@@ -152,8 +152,8 @@ opus or fable class — `FLEET_ROLE_MODEL` — reviews these itself and is final
   on N+1 without a fence or double-buffer swap; async readback recycled
   before completion.
 - Archetype mutation during structural-change deferral:
-  `addComponent`/`removeComponent`/`removeEntity` in a tick must use the
-  deferred variant.
+  `setComponent`/`removeComponent`/the manager's eager `destroyEntity` in
+  a tick must use the deferred variant.
 - `flushStructuralChanges` racing an async GPU readback — the readback's
   lifetime must be decoupled (stable ID or its own refcount).
 - Unbounded long-lived caches (`unordered_map<EntityId,T>` with a poor
@@ -184,12 +184,11 @@ Your very next bash call after `gh pr review`. Fleet reviewers pass
 ```bash
 fleet-review-verdict verdict-approve <N> --agent <your-worktree-name>        # approve, no nits
 fleet-review-verdict verdict-approve-nits <N> --agent <your-worktree-name>   # approve with a non-empty Nits section
-fleet-review-verdict verdict-needs-fix <N> --agent <your-worktree-name>      # nits roll into the fix work
-fleet-review-verdict verdict-blocker <N> --agent <your-worktree-name>
+fleet-review-verdict verdict-needs-fix <N> --agent <your-worktree-name>      # every send-back, Blockers included; nits roll into the fix work
 ```
 
 The dispatcher routes the fix iteration from your labels: nits-only on
-sonnet, `fleet:needs-fix` / `fleet:blocker` on the opus class. If the
-approach itself is wrong, add `--add-label "fleet:fable"` so the fix
+sonnet, `fleet:needs-fix` on the opus class. If the approach itself is
+wrong, also `gh pr edit <N> --add-label "fleet:fable"` so the fix
 dispatches on the fable class, or escalate `fleet:design-blocked` for an
 architect decision.

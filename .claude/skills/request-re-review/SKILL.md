@@ -25,7 +25,7 @@ for review — tell the user to finalize first.
    Never `--force`.
 3. Swap labels:
    ```bash
-   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --add-label "human:re-review"
+   gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --add-label "human:re-review"
    ```
 4. `gh pr comment <N> --body "Human made changes — re-review requested."`
 5. Invoke `start-next-task` to move to a scratch branch off
