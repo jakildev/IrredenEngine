@@ -465,6 +465,29 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         std::fprintf(f, "\n");
     }
 
+    if (report.lightOcclusionChunkStats_.sampleCount_ > 0) {
+        const auto &c = report.lightOcclusionChunkStats_;
+        const double samples = static_cast<double>(c.sampleCount_);
+        std::fprintf(f, "--- Light occlusion chunk stats ---\n");
+        std::fprintf(f, "%-12s %14s %14s %10s\n", "", "Avg", "Max", "Samples");
+        std::fprintf(
+            f,
+            "%-12s %14.1f %14u %10u\n",
+            "Visited",
+            static_cast<double>(c.visitedSum_) / samples,
+            c.maxVisited_,
+            c.sampleCount_
+        );
+        std::fprintf(
+            f,
+            "%-12s %14.1f %14u %10u\n\n",
+            "Total",
+            static_cast<double>(c.totalSum_) / samples,
+            c.maxTotal_,
+            c.sampleCount_
+        );
+    }
+
     // --- CPU phase timing ---
     if (!report.cpuPhases_.empty()) {
         std::fprintf(f, "--- CPU phase timing ---\n");

@@ -166,8 +166,8 @@ Changes without a visual effect need no captures.
 
 ### Lighting culling invariants
 
-- Light-occlusion-grid construction iterates the full voxel pool and never
-  applies `visibleIsoViewport`; a visibility-freeze check is not a viewport cull.
+- Light-occlusion-grid construction visits pool chunks intersecting the local-light
+  read domain and never applies `visibleIsoViewport`; this is not a viewport cull.
 - Light seeds include off-screen sources whose radius reaches the visible or
   camera-anchored domain. `light-verify` validates boundary clamping and fade.
 - Local-light dispatch follows the [reachable-seed domain proof](../../docs/design/light-volume-propagation-domain.md), including both ping-pong exteriors.

@@ -491,6 +491,15 @@ struct C_VoxelPool {
         return m_chunkBounds;
     }
 
+    std::span<const ChunkWorldBounds> getChunkWorldBounds() {
+        const int chunkCount = getChunkCount();
+        ensureChunkWorldBounds(chunkCount);
+        return std::span<const ChunkWorldBounds>{
+            m_chunkWorldBounds.data(),
+            m_chunkWorldBounds.size()
+        };
+    }
+
     // @p useContinuousYaw (smooth camera Z-yaw): while the per-axis
     // canvases are active the framebuffer scatter rasterizes voxels at their
     // CONTINUOUS yawed iso position, so the chunk-visibility gate must project

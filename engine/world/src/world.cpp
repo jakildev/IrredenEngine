@@ -525,6 +525,7 @@ void World::enableFrameTiming(bool enabled) {
         m_frameTotalUpdateTicks = 0;
         m_frameMaxUpdateTicksPerFrame = 0;
         m_systemManager.resetTimingStats();
+        IRRender::buildLightOcclusionGridTiming().reset();
         IRRender::computeLightVolumeTiming().reset();
         IRRender::fogLosBuildTiming().reset();
         IRRender::fogWindowGatherTiming().reset();
@@ -568,6 +569,25 @@ void World::buildAndWriteProfileReport() {
     report.maxUpdateTicksPerFrame_ = m_frameMaxUpdateTicksPerFrame;
     report.entityCount_ = IREntity::getLiveEntityCount();
     report.archetypeCount_ = static_cast<uint32_t>(m_entityManager.getArchetypeNodes().size());
+    const auto &occlusionGridTiming = IRRender::buildLightOcclusionGridTiming();
+    report.cpuPhases_.push_back(
+        {"BuildLightOcclusionGrid::Clear",
+         occlusionGridTiming.clear_.totalMs_,
+         occlusionGridTiming.clear_.maxMs_,
+         occlusionGridTiming.clear_.sampleCount_}
+    );
+    report.cpuPhases_.push_back(
+        {"BuildLightOcclusionGrid::Visit",
+         occlusionGridTiming.visit_.totalMs_,
+         occlusionGridTiming.visit_.maxMs_,
+         occlusionGridTiming.visit_.sampleCount_}
+    );
+    report.cpuPhases_.push_back(
+        {"BuildLightOcclusionGrid::Upload",
+         occlusionGridTiming.upload_.totalMs_,
+         occlusionGridTiming.upload_.maxMs_,
+         occlusionGridTiming.upload_.sampleCount_}
+    );
     const auto &lightVolumeTiming = IRRender::computeLightVolumeTiming();
     report.cpuPhases_.push_back(
         {"ComputeLightVolume::Clear",
@@ -610,6 +630,13 @@ void World::buildAndWriteProfileReport() {
     report.voxelCullStats_.maxTotal_ = cull.maxTotal_;
     report.voxelCullStats_.maxFeeder_ = cull.maxFeeder_;
     report.voxelCullStats_.sampleCount_ = cull.sampleCount_;
+
+    const auto &occlusionChunks = IRRender::buildLightOcclusionGridTiming();
+    report.lightOcclusionChunkStats_.visitedSum_ = occlusionChunks.chunksVisitedSum_;
+    report.lightOcclusionChunkStats_.totalSum_ = occlusionChunks.chunksTotalSum_;
+    report.lightOcclusionChunkStats_.maxVisited_ = occlusionChunks.chunksVisitedMax_;
+    report.lightOcclusionChunkStats_.maxTotal_ = occlusionChunks.chunksTotalMax_;
+    report.lightOcclusionChunkStats_.sampleCount_ = occlusionChunks.chunkSampleCount_;
 
     const auto &witness = IRRender::renderRunWitness();
     constexpr float kDegreesPerRadian = 180.0f / IRMath::kPi;

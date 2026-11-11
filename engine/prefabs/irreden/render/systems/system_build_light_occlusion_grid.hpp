@@ -38,6 +38,7 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/detail/camera_anchor.hpp>
+#include <irreden/render/light_occlusion_domain.hpp>
 #include <irreden/math/sdf.hpp>
 
 #include <algorithm>
@@ -123,6 +124,20 @@ gridGetBit(const std::vector<std::uint32_t> &bitfield, int wx, int wy, int wz, c
         return false;
     const std::size_t flat = gridFlatIndex(wx, wy, wz, origin);
     return (bitfield[flat >> 5u] >> (flat & 31u)) & 1u;
+}
+
+inline bool
+chunkIntersectsDomain(const ChunkWorldBounds &bounds, const LightOcclusionDomain &domain) {
+    if (bounds.empty() || !domain.populated_) {
+        return false;
+    }
+    constexpr float kCellHalfExtent = 0.5f;
+    return bounds.worldMax_.x + kCellHalfExtent >= static_cast<float>(domain.min_.x) &&
+           bounds.worldMin_.x - kCellHalfExtent <= static_cast<float>(domain.max_.x) &&
+           bounds.worldMax_.y + kCellHalfExtent >= static_cast<float>(domain.min_.y) &&
+           bounds.worldMin_.y - kCellHalfExtent <= static_cast<float>(domain.max_.y) &&
+           bounds.worldMax_.z + kCellHalfExtent >= static_cast<float>(domain.min_.z) &&
+           bounds.worldMin_.z - kCellHalfExtent <= static_cast<float>(domain.max_.z);
 }
 
 /// Read-only view over one frame's occlusion mirror, indexed with the
@@ -277,7 +292,11 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
             &voxelBitfield_, &blockerBitfield_, origin_, gridLiveThisFrame_};
     }
 
-    void tick(IREntity::EntityId, C_VoxelPool &pool, const C_TrixelCanvasRenderBehavior &behavior) {
+    void tick(
+        IREntity::EntityId canvasEntity,
+        C_VoxelPool &pool,
+        const C_TrixelCanvasRenderBehavior &behavior
+    ) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         if (!behavior.useCameraPositionIso_)
             return;
@@ -290,8 +309,17 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
         // 1: this system reads the pinned ANCHOR only, never the cull
         // viewport).
         origin_ = IRRender::detail::frozenAwareCameraAnchorVoxel();
+        auto &phaseTiming = IRRender::buildLightOcclusionGridTiming();
+        const detail::LightOcclusionDomain domain =
+            detail::lightOcclusionDomain(canvasEntity, origin_);
+        if (!domain.populated_) {
+            phaseTiming.recordChunks(0, static_cast<std::uint32_t>(pool.getChunkCount()));
+            return;
+        }
+        const auto chunkBounds = pool.getChunkWorldBounds();
 
         {
+            IRRender::ScopedCpuPhaseTimer timer{phaseTiming.clear_};
             IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Clear", IR_PROFILER_COLOR_RENDER);
             std::fill(voxelBitfield_.begin(), voxelBitfield_.end(), 0u);
         }
@@ -299,22 +327,29 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
         const auto &globals = pool.getPositionGlobals();
         const auto &colors = pool.getColors();
         const int liveCount = pool.getLiveVoxelCount();
+        std::uint32_t chunksVisited = 0;
 
         {
+            IRRender::ScopedCpuPhaseTimer timer{phaseTiming.visit_};
             IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Populate", IR_PROFILER_COLOR_RENDER);
-            for (int i = 0; i < liveCount; ++i) {
-                if (colors[i].color_.alpha_ == 0)
+            for (std::size_t chunk = 0; chunk < chunkBounds.size(); ++chunk) {
+                if (!detail::chunkIntersectsDomain(chunkBounds[chunk], domain)) {
                     continue;
-                const vec3 &wp = globals[i].pos_;
-                // Round-half-up — must match the `roundHalfUp(...)`
-                // helper in shaders/ir_iso_common.glsl + .metal. See
-                // IRMath::roundVec3HalfUp doc-comment for why this
-                // rule (vs std::lround / glm::round) is required for
-                // the CPU↔GPU light-occlusion-grid handshake.
-                const ivec3 cell = IRMath::roundVec3HalfUp(wp);
-                detail::gridSetBit(voxelBitfield_, cell.x, cell.y, cell.z, origin_);
+                }
+                ++chunksVisited;
+                const int begin = static_cast<int>(chunk) * IRRender::kVoxelChunkSize;
+                const int end = IRMath::min(begin + IRRender::kVoxelChunkSize, liveCount);
+                for (int i = begin; i < end; ++i) {
+                    if (colors[i].color_.alpha_ == 0)
+                        continue;
+                    const ivec3 cell = IRMath::roundVec3HalfUp(globals[i].pos_);
+                    if (domain.contains(cell)) {
+                        detail::gridSetBit(voxelBitfield_, cell.x, cell.y, cell.z, origin_);
+                    }
+                }
             }
         }
+        phaseTiming.recordChunks(chunksVisited, static_cast<std::uint32_t>(chunkBounds.size()));
 
         ranThisFrame_ = true;
         gridLiveThisFrame_ = true;
@@ -350,6 +385,7 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
         }
 
         {
+            IRRender::ScopedCpuPhaseTimer timer{IRRender::buildLightOcclusionGridTiming().upload_};
             IR_PROFILE_BLOCK("BuildLightOcclusionGrid::Upload", IR_PROFILER_COLOR_RENDER);
             header_.worldOriginVoxel_ = ivec4(origin_.x, origin_.y, origin_.z, 0);
             ssbo_->subData(0, kLightOcclusionHeaderByteSize, &header_);

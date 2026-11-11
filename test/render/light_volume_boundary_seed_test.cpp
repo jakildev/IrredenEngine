@@ -355,3 +355,74 @@ TEST_F(LightVolumeBoundarySeedTest, GridGetBitMirrorsSetBitAndOutOfRangeReadsFre
     EXPECT_FALSE(IRSystem::detail::gridGetBit(m_voxelBits, kGridHalf, 0, 0, kGridOrigin));
     EXPECT_FALSE(IRSystem::detail::gridGetBit(m_voxelBits, 0, -kGridHalf - 1, 0, kGridOrigin));
 }
+
+TEST_F(LightVolumeBoundarySeedTest, OcclusionDomainContainsGeneratedSeedReadReach) {
+    const std::vector<ivec3> origins{
+        ivec3(0, 0, 0),
+        ivec3(kWindowMax + 4, 0, 0),
+        ivec3(kWindowMax + 4, -kWindowMax - 5, 0),
+        ivec3(kWindowMax + 4, -kWindowMax - 5, kWindowMax + 6),
+    };
+    for (int radius = 1; radius <= IRRender::kLightVolumePropagateIterations; ++radius) {
+        for (const ivec3 origin : origins) {
+            const C_WorldTransform transform{
+                vec3(origin),
+                vec4(0.0f, 0.0f, 0.0f, 1.0f),
+                vec3(1.0f)
+            };
+            const auto seed = IRSystem::detail::localLightSeed(transform, kGridOrigin, radius);
+            if (!seed.wouldSeed_) {
+                continue;
+            }
+            IRSystem::detail::LightOcclusionDomain domain;
+            IRSystem::detail::includeSeedDomain(domain, seed, radius, kGridOrigin);
+            ASSERT_TRUE(domain.populated_);
+            EXPECT_TRUE(domain.contains(domain.min_));
+            EXPECT_TRUE(domain.contains(domain.max_));
+
+            auto shrunk = domain;
+            --shrunk.max_.x;
+            EXPECT_FALSE(shrunk.contains(domain.max_));
+        }
+    }
+}
+
+TEST_F(LightVolumeBoundarySeedTest, DomainRasterMatchesFullGridInsideAndZerosOutside) {
+    const C_WorldTransform transform{vec3(0.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(1.0f)};
+    const auto seed = IRSystem::detail::localLightSeed(transform, kGridOrigin, 4);
+    IRSystem::detail::LightOcclusionDomain domain;
+    IRSystem::detail::includeSeedDomain(domain, seed, 4, kGridOrigin);
+
+    std::vector<std::uint32_t> full(IRSystem::kLightOcclusionBitfieldUintCount, 0u);
+    std::vector<std::uint32_t> bounded(IRSystem::kLightOcclusionBitfieldUintCount, 0u);
+    for (int z = -8; z <= 8; ++z) {
+        for (int y = -8; y <= 8; ++y) {
+            for (int x = -8; x <= 8; ++x) {
+                if ((x + 2 * y + 3 * z) % 5 != 0) {
+                    continue;
+                }
+                IRSystem::detail::gridSetBit(full, x, y, z, kGridOrigin);
+                if (domain.contains(ivec3(x, y, z))) {
+                    IRSystem::detail::gridSetBit(bounded, x, y, z, kGridOrigin);
+                }
+            }
+        }
+    }
+    for (int z = -8; z <= 8; ++z) {
+        for (int y = -8; y <= 8; ++y) {
+            for (int x = -8; x <= 8; ++x) {
+                const bool got = IRSystem::detail::gridGetBit(bounded, x, y, z, kGridOrigin);
+                if (domain.contains(ivec3(x, y, z))) {
+                    EXPECT_EQ(got, IRSystem::detail::gridGetBit(full, x, y, z, kGridOrigin));
+                } else {
+                    EXPECT_FALSE(got);
+                }
+            }
+        }
+    }
+}
+
+TEST_F(LightVolumeBoundarySeedTest, NoEligibleLocalLightProducesNoDomain) {
+    const IREntity::EntityId canvas = IREntity::createEntity();
+    EXPECT_FALSE(IRSystem::detail::lightOcclusionDomain(canvas, kGridOrigin).populated_);
+}
