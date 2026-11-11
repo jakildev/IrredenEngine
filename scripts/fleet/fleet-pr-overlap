@@ -8,7 +8,7 @@ competitor has with the base commit this branch carries, which this branch
 neither adds to nor touches; it counts toward the verdict as `clean` does.
 
 Exit: 0 clean, 1 overlap or sequenced (informational), 3 block (do not publish),
-2 the tool could not grade (usage, environment, or a population that moved).
+2 the tool could not grade (usage, environment, or verdict inputs that moved).
 
 `--check-git-version [TEXT]` only grades a git against the merge-tree floor
 this tool needs (exit 0 ok, 1 too old, 2 unreadable). It is the single owner
@@ -230,7 +230,20 @@ def take_snapshot(gh):
     return validate_rows(rows)
 
 
-def snapshot_delta(before, after):
+def verdict_inputs(row, slug, include_closing_issues=False):
+    """The mutable row fields grade reads; snapshot_delta must keep this in sync."""
+    inputs = {
+        "head": row["headRefOid"],
+        "base": row["baseRefName"],
+        "awaiting_infra": "fleet:awaiting-infra" in row["labels"],
+        "parked_until": frozenset(parked_until_issue_numbers(row["body"], slug)),
+    }
+    if include_closing_issues:
+        inputs["closing_issues"] = frozenset(same_repo_closing_issues(row, slug))
+    return inputs
+
+
+def snapshot_delta(before, after, slug, self_number=None):
     delta = []
     for number in sorted(set(after) - set(before)):
         delta.append(f"+#{number}")
@@ -238,12 +251,18 @@ def snapshot_delta(before, after):
         delta.append(f"-#{number}")
     for number in sorted(set(before) & set(after)):
         old, new = before[number], after[number]
-        if old["headRefOid"] != new["headRefOid"]:
-            delta.append(f"#{number} {old['headRefOid']} → {new['headRefOid']}")
-        if old["body"] != new["body"]:
-            delta.append(f"#{number} body changed")
-        if old["labels"] != new["labels"]:
-            delta.append(f"#{number} labels changed")
+        old_inputs = verdict_inputs(old, slug, number == self_number)
+        new_inputs = verdict_inputs(new, slug, number == self_number)
+        if old_inputs["head"] != new_inputs["head"]:
+            delta.append(f"#{number} {old_inputs['head']} → {new_inputs['head']}")
+        if old_inputs["base"] != new_inputs["base"]:
+            delta.append(f"#{number} base changed ({old_inputs['base']} → {new_inputs['base']})")
+        if old_inputs["awaiting_infra"] != new_inputs["awaiting_infra"]:
+            delta.append(f"#{number} fleet:awaiting-infra changed")
+        if old_inputs["parked_until"] != new_inputs["parked_until"]:
+            delta.append(f"#{number} Parked-until references changed")
+        if old_inputs.get("closing_issues") != new_inputs.get("closing_issues"):
+            delta.append(f"#{number} closing references changed")
     return delta
 
 
@@ -257,9 +276,10 @@ def same_repo_closing_issues(row, slug):
 
 
 def sequenced_after_self(row, self_issues, slug):
-    if not self_issues or "fleet:awaiting-infra" not in row["labels"]:
+    inputs = verdict_inputs(row, slug)
+    if not self_issues or not inputs["awaiting_infra"]:
         return set()
-    return self_issues & set(parked_until_issue_numbers(row["body"], slug))
+    return self_issues & inputs["parked_until"]
 
 
 def resolve_self(snapshot, args):
@@ -551,8 +571,9 @@ def grade(args):
 
     opening = take_snapshot(gh)
     self_row = resolve_self(opening, args)
-    self_issues = same_repo_closing_issues(self_row, slug) if self_row else set()
-    base = args.base or (self_row["baseRefName"] if self_row else default)
+    self_inputs = verdict_inputs(self_row, slug, True) if self_row else None
+    self_issues = self_inputs["closing_issues"] if self_inputs else set()
+    base = args.base or (self_inputs["base"] if self_inputs else default)
 
     default_tip = fetch_branch_tip(default)
     base_tip = default_tip if base == default else fetch_branch_tip(base)
@@ -626,7 +647,7 @@ def grade(args):
                 rows.append((number, path, "conflicts" if path in conflicts else "clean", ""))
 
     closing = take_snapshot(gh)
-    delta = snapshot_delta(opening, closing)
+    delta = snapshot_delta(opening, closing, slug, self_row["number"] if self_row else None)
     if delta:
         raise OverlapError("open-PR population moved during the run: " + ", ".join(delta))
 
