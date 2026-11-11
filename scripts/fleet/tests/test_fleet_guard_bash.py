@@ -306,6 +306,15 @@ DENY["push-protected"] = cases(
     ("cd @fleet_master@ && git push", "scratch_master"),
     ("git add -A && git push", "fleet_master"),
     ("git status && git push origin HEAD", "game_main"),
+    # `--repo` names the remote when no positional repository does.
+    ("git push --repo origin", "fleet_master"),
+    ("git push --repo=origin", "fleet_master"),
+    ("git push --repo upstream", "scratch_master"),
+    ("git push --repo=upstream -u", "scratch_master"),
+    ("git push --all --repo upstream", "scratch_master"),
+    ("git push --repo origin --repo upstream", "scratch_master"),
+    ("git push --repo=https://github.com/jakildev/IrredenEngine.git", "scratch_master"),
+    ("git push --repo upstream origin HEAD:master", "fleet_feature"),
 )
 
 DENY["merge"] = cases(
@@ -600,6 +609,11 @@ ALLOW = cases(
     ("git push --all", "scratch_master"),
     ("git push --mirror origin", "scratch_master"),
     ("git push origin --delete master", "scratch_master"),
+    ("git push --repo origin", "scratch_master"),
+    # A positional repository outranks `--repo`.
+    ("git push --repo upstream origin", "scratch_master"),
+    ("git push --repo=upstream origin --all", "scratch_master"),
+    ("git push --repo origin fork master", "fleet_feature"),
     ("git -C @scratch_master@ push origin master", "fleet_master"),
     ("cd @scratch_master@ && git push origin master", "fleet_master"),
     ("(cd @scratch_master@ && git push origin HEAD:master)", "fleet_master"),

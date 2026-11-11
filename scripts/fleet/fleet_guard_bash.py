@@ -746,7 +746,10 @@ def _rule_push_protected(command, settled):
         return None
     options, positionals = git.options()
     flags = {name for name, _ in options}
-    remote = positionals[0] if positionals else "origin"
+    # A positional repository outranks `--repo`, so `--repo origin master`
+    # pushes to a repository named `master` and writes no refspec at all.
+    repos = [value for name, value in options if name == "--repo"]
+    remote = positionals[0] if positionals else (repos[-1] if repos else "origin")
     targets = []
     words = iter(positionals[1:])
     for word in words:
