@@ -366,6 +366,17 @@ assert_contains "$out" "Shadowed queued close-outs (1)" \
     "decline line four preserves the close-out after row shadow eviction"
 assert_contains "$out" "engine issue #204  shadowed by PR #900" \
     "durable decline retains the shadowing PR"
+
+cat > "$TMP/fleet-home/state/state.json" <<'EOF'
+{"generated_at":"2099-01-01T00:00:00Z","repos":{"engine":{"tasks":{"open":[{"id":"#204","issue":"#204","updatedAt":"2026-10-07T12:00:00Z","has_open_blocker":true,"blocked_by":"#4904"}]}}}}
+EOF
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "blocked shadow run exits 0"
+assert_absent "$out" "Shadowed queued close-outs" \
+    "open blocker suppresses the shadowed close-out row"
+assert_absent "$out" "close: gh issue close 204" \
+    "open blocker suppresses the ready-to-run close command"
 cp "$TMP/state-baseline.json" "$TMP/fleet-home/state/state.json"
 
 # --- drain thresholds: both arms of each cue --------------------------------

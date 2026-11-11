@@ -801,6 +801,13 @@ class DispatchTargets(HostSeamCase):
 
                 record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n"
                                   "shadow_merged_pr=4199\n")
+                for blocker_state in ({"blocked": True}, {"has_open_blocker": True}):
+                    with self.subTest(blocker_state=blocker_state):
+                        blocked_task = dict(task, **blocker_state)
+                        self.assertIsNone(
+                            fleet_task_class._shadowed_closeout(blocked_task))
+                self.assertEqual(fleet_task_class._shadowed_closeout(task), {
+                    "shadow_pr": 4199, "reason": "already delivered"})
                 actionable = _task("#4185", "opus")
                 actionable["repo"] = "engine"
                 self.assertEqual(pick({"tasks_open": [task, actionable]}, "opus", False),

@@ -441,6 +441,20 @@ class Queue(FleetSurveyFixture):
         self.assertEqual(ghost["shadow_pr"], 900)
         self.assertEqual(ghost["reason"], "implementation already merged")
 
+    def test_blocked_shadow_is_blocked_instead_of_ghost(self):
+        state = copy.deepcopy(STATE)
+        shadowed = state["repos"]["engine"]["tasks"]["open"][1]
+        shadowed.update({"has_open_blocker": True, "blocked_by": "#4904"})
+        report = self.run_survey(state=state)
+        queue = report["repos"]["engine"]["queue"]
+        self.assertNotIn("#101", [row["id"] for row in queue["ghost"]])
+        blocked = next(row for row in queue["blocked"] if row["id"] == "#101")
+        self.assertEqual(blocked["blocked_by"], "#4904")
+        rendered = _mod.render(report)
+        self.assertIn("ghost (0)", rendered)
+        self.assertIn("blocked (3)", rendered)
+        self.assertIn("#101  task 101  by #4904", rendered)
+
     def test_ghost_requires_a_decline_but_not_a_fresh_row_shadow(self):
         self.decline_file.unlink()
         queue = self.run_survey()["repos"]["engine"]["queue"]
