@@ -140,6 +140,7 @@ add_executable(IrredenEngineTest
   render/gpu_readback_ring_test.cpp
   render/gpu_submission_fences_test.cpp
   render/offscreen_frame_pacer_test.cpp
+  render/gpu_encoder_intervals_test.cpp
   render/gpu_timestamp_poll_test.cpp
   render/light_volume_boundary_seed_test.cpp
   render/light_volume_dispatch_test.cpp

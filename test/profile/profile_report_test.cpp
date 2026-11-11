@@ -28,6 +28,79 @@ std::string writeAndRead(const IRProfile::ProfileReport &report) {
     return text.str();
 }
 
+IRProfile::GpuStageEntry
+stageEntry(const char *name, float avg, uint32_t samples, float windowAvg, uint32_t windowSamples) {
+    IRProfile::GpuStageEntry entry;
+    entry.name_ = name;
+    entry.totalMs_ = avg * static_cast<float>(samples);
+    entry.minMs_ = samples > 0 ? avg : 0.0f;
+    entry.maxMs_ = samples > 0 ? avg : 0.0f;
+    entry.sampleCount_ = samples;
+    entry.windowTotalMs_ = windowAvg * static_cast<float>(windowSamples);
+    entry.windowMinMs_ = windowAvg;
+    entry.windowMaxMs_ = windowAvg;
+    entry.windowSampleCount_ = windowSamples;
+    return entry;
+}
+
+TEST(ProfileReportGpuStages, RowsCarryExclusiveTimeAndTheWindowBesideIt) {
+    IRProfile::ProfileReport report;
+    report.gpuFrameTimings_.push_back({"envelope", 200.0f, 18.0f, 22.0f, 10});
+    report.gpuFrameTimings_.push_back({"commandBufferSpans", 200.0f, 18.0f, 22.0f, 10});
+    report.gpuStages_.push_back(stageEntry("computeLightVolume", 0.5f, 10, 17.0f, 10));
+    report.gpuStages_.push_back(stageEntry("voxelStage1", 4.5f, 8, 5.0f, 10));
+    report.gpuStages_.push_back(stageEntry("voxelPerAxisOverflow", 0.0f, 0, 16.0f, 10));
+    report.gpuStages_.push_back(stageEntry("shapePass0", 0.0f, 0, 0.0f, 0));
+    const std::string text = writeAndRead(report);
+
+    EXPECT_NE(text.find("--- GPU stage timing ---\nFormat: exclusive+window\n"), std::string::npos)
+        << text;
+    EXPECT_NE(
+        text.find(
+            "Stage                                  Avg(ms)   Min(ms)   Max(ms) Samples "
+            "Window(ms) WindowOnly\n"
+        ),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(
+        text.find(
+            "computeLightVolume                       0.500     0.500     0.500      10     "
+            "17.000          0\n"
+        ),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(
+        text.find(
+            "voxelStage1                              4.500     4.500     4.500       8      "
+            "5.000          2\n"
+        ),
+        std::string::npos
+    ) << text;
+    EXPECT_NE(
+        text.find(
+            "voxelPerAxisOverflow                         -         -         -       0     "
+            "16.000         10 window-only\n"
+        ),
+        std::string::npos
+    ) << text;
+    EXPECT_EQ(text.find("shapePass0"), std::string::npos) << text;
+    // A window-only row adds nothing to the sum: 0.5 + 4.5 against a 20 ms span.
+    EXPECT_NE(
+        text.find("Exclusive sum: 5.000 ms; commandBufferSpans: 20.000 ms (25.0%)\n"),
+        std::string::npos
+    ) << text;
+}
+
+TEST(ProfileReportGpuStages, TheSumLineSaysWhenThereIsNoSpan) {
+    IRProfile::ProfileReport report;
+    report.gpuStages_.push_back(stageEntry("trixelToFb", 0.25f, 4, 0.25f, 4));
+    const std::string text = writeAndRead(report);
+    EXPECT_NE(
+        text.find("Exclusive sum: 0.250 ms; commandBufferSpans: unavailable\n"),
+        std::string::npos
+    ) << text;
+}
+
 TEST(ProfileReportWitness, SteadyLineExcludesTheLeadingQuarter) {
     IRProfile::ProfileReport report;
     report.frameTimesMs_ = {100.0f, 90.0f, 20.0f, 21.0f, 19.0f, 20.0f, 22.0f, 20.0f};

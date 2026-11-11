@@ -43,8 +43,8 @@ class GpuSubStageTimer {
     }
 
     void begin(SubStageState &state) {
-        state.begin(*IRRender::device(), [&state](float ms) {
-            commitGpuStageSample(*state.info_, state.registryIndex_, ms);
+        state.begin(*IRRender::device(), [&state](const GpuTimestampSample &sample) {
+            commitGpuStageSample(*state.info_, state.registryIndex_, sample);
         });
     }
 

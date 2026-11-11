@@ -40,14 +40,14 @@ struct GpuTimestampRing {
     }
 
     template <typename RecordSample> void begin(RenderDevice &device, RecordSample recordSample) {
-        float ms = 0.0f;
+        GpuTimestampSample sample;
         for (int i = 0; i < kSamplesInFlight; ++i) {
             if (!pending_[i]) {
                 continue;
             }
-            const auto status = device.pollTimestampPairMs(handles_[i], ms);
+            const auto status = device.pollTimestampSample(handles_[i], sample);
             if (status == TimestampReadStatus::READY) {
-                recordSample(ms);
+                recordSample(sample);
             }
             if (status != TimestampReadStatus::PENDING) {
                 pending_[i] = false;

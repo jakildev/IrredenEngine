@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include <irreden/ir_math.hpp>
+#include <irreden/render/render_device.hpp>
 
 namespace IRRender {
 
@@ -334,10 +335,7 @@ inline RenderRunWitness &renderRunWitness() {
     return instance;
 }
 
-// Per-registry sampled-invocation statistics, reset when frame timing is enabled.
-// Live fields retain only the latest resolved sample; these accumulators preserve
-// the run's sampled mean/range and count. Neither is a sum over all frame work.
-struct GpuStageAccumulator {
+struct GpuSampleStats {
     double sumMs_ = 0.0;
     float maxMs_ = 0.0f;
     float minMs_ = 0.0f;
@@ -349,12 +347,26 @@ struct GpuStageAccumulator {
         minMs_ = sampleCount_ == 0 ? ms : IRMath::min(minMs_, ms);
         ++sampleCount_;
     }
+};
+
+// Per-registry sampled-invocation statistics, reset when frame timing is enabled.
+// Live fields retain only the latest resolved sample; these accumulators preserve
+// the run's sampled mean/range and count. Neither is a sum over all frame work.
+// The top-level fields are exclusive time, the stage's cost; `window_` counts
+// every resolved invocation, so `window_.sampleCount_ - sampleCount_` is the
+// number of invocations whose exclusive time could not be measured.
+struct GpuStageAccumulator : GpuSampleStats {
+    GpuSampleStats window_;
+
+    void record(const GpuTimestampSample &sample) {
+        window_.record(sample.windowMs_);
+        if (sample.exclusiveValid_) {
+            GpuSampleStats::record(sample.exclusiveMs_);
+        }
+    }
 
     void reset() {
-        sumMs_ = 0.0;
-        maxMs_ = 0.0f;
-        minMs_ = 0.0f;
-        sampleCount_ = 0;
+        *this = GpuStageAccumulator{};
     }
 };
 
@@ -374,12 +386,17 @@ inline void resetGpuStageAccumulators() {
 // accumulator the shutdown profile report drains. Shared by the per-system
 // `GpuStageTimingObserver` and the intra-tick `GpuSubStageScope` so both write
 // samples through one code path. `registryIndex` is the stage's slot in
-// `gpuStageRegistry()` order (== its `gpuStageAccumulators()` index).
-inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, float ms) {
-    gpuStageTiming().*(info.field_) = ms;
+// `gpuStageRegistry()` order (== its `gpuStageAccumulators()` index). The live
+// field carries exclusive time only; a window-only invocation leaves it as is.
+inline void commitGpuStageSample(
+    const GpuStageInfo &info, int registryIndex, const GpuTimestampSample &sample
+) {
+    if (sample.exclusiveValid_) {
+        gpuStageTiming().*(info.field_) = sample.exclusiveMs_;
+    }
     if (registryIndex >= 0 &&
         static_cast<std::size_t>(registryIndex) < gpuStageAccumulators().size()) {
-        gpuStageAccumulators()[registryIndex].record(ms);
+        gpuStageAccumulators()[registryIndex].record(sample);
     }
 }
 
@@ -387,6 +404,13 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 // resolves a system's tag against this table; pass the same name to
 // `IRRender::tagGpuStage(system, "<name>")` and the observer fills the
 // matching `GpuStageTiming::*Ms_` field at end-of-tick.
+//
+// Every row carries two figures. Exclusive time, the union of the row's own
+// encoder intervals, is its cost: the live field and the accumulator's
+// top-level statistics. The window, first encoder start to last encoder end,
+// holds other rows' work the GPU ran concurrently and is kept beside it
+// (`GpuStageAccumulator::window_`); never rank rows by it. An invocation whose
+// encoders outnumber the backend's sample capacity resolves a window only.
 //
 // Per-system mapping (one `GpuStageTimingObserver` fire per `SystemId`):
 //   Most remaining names map 1:1 to single-stage systems.

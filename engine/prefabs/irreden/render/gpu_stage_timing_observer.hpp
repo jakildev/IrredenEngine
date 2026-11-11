@@ -66,8 +66,8 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         }
 
         StageState &state = it->second;
-        state.begin(*IRRender::device(), [&state](float ms) {
-            commitGpuStageSample(*state.info_, state.registryIndex_, ms);
+        state.begin(*IRRender::device(), [&state](const GpuTimestampSample &sample) {
+            commitGpuStageSample(*state.info_, state.registryIndex_, sample);
         });
     }
 
@@ -89,7 +89,11 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         if (useLegacyTiming()) {
             IRRender::device()->finish();
             const float ms = elapsedMs(m_t0, SteadyClock::now());
-            commitGpuStageSample(*it->second.info_, it->second.registryIndex_, ms);
+            commitGpuStageSample(
+                *it->second.info_,
+                it->second.registryIndex_,
+                GpuTimestampSample{ms, ms, true}
+            );
             return;
         }
 
