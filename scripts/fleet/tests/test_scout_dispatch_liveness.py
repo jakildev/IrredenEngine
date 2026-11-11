@@ -2,6 +2,9 @@
 
 import importlib.machinery
 import importlib.util
+import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,12 +21,18 @@ class TestDispatchLiveness(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.alerts = Path(self.tmp.name) / "alerts"
+        self.state = Path(self.tmp.name) / "state"
+        self.projections = self.state / "projections"
+        self.state.mkdir()
+        self.projections.mkdir()
         self.logs = []
         _mod._dispatch_liveness_since.clear()
         _mod._spawn_fail_streak.clear()
         self.patches = [
             patch.object(_mod, "_alerts_dir", return_value=self.alerts),
             patch.object(_mod, "log", side_effect=self.logs.append),
+            patch.object(_mod, "STATE_DIR", self.state),
+            patch.object(_mod, "PROJECTIONS_DIR", self.projections),
         ]
         for item in self.patches:
             item.start()
@@ -107,19 +116,113 @@ class TestDispatchLiveness(unittest.TestCase):
         self.assertIn("reason=dispatcher-dead", first)
         self.assertIn("targets=", first)
 
+    def test_dispatcher_pid_reader_distinguishes_live_dead_and_unknown(self):
+        pid_path = self.state / "dispatcher.pid"
+        self.assertIsNone(_mod._dispatcher_pid_alive())
+        pid_path.write_text("123\n")
+        with patch.object(_mod.sys, "platform", "linux"), \
+             patch.object(_mod.os, "kill", return_value=None):
+            self.assertTrue(_mod._dispatcher_pid_alive())
+        with patch.object(_mod.sys, "platform", "linux"), \
+             patch.object(_mod.os, "kill", side_effect=ProcessLookupError):
+            self.assertFalse(_mod._dispatcher_pid_alive())
+        with patch.object(_mod.sys, "platform", "linux"), \
+             patch.object(_mod.os, "kill", side_effect=PermissionError):
+            self.assertIsNone(_mod._dispatcher_pid_alive())
+        pid_path.write_text("not-a-pid\n")
+        self.assertIsNone(_mod._dispatcher_pid_alive())
+
+    def test_inflight_reader_requires_a_complete_state_directory(self):
+        directory = self.state / "dispatch"
+        self.assertIsNone(_mod._dispatch_inflight_roles())
+        directory.mkdir()
+        (directory / "worker.json").write_text(json.dumps({"role": "worker"}))
+        (directory / "empty.json").write_text("{}")
+        self.assertEqual(_mod._dispatch_inflight_roles(), {"worker"})
+        (directory / "broken.json").write_text("{")
+        self.assertIsNone(_mod._dispatch_inflight_roles())
+
+    def test_gate_reader_accepts_usage_shapes_and_quiet_holds(self):
+        cases = (
+            ("open", "off", True),
+            ("open:Codex util=10%", "off", True),
+            ("closed:GitHub quota", None, False),
+            ("open", "waiting owner=benchmark", False),
+            ("open", "draining owner=benchmark", False),
+            ("open", "held owner=benchmark", False),
+            ("open", "linger owner=benchmark", False),
+            ("unexpected", None, None),
+        )
+        for usage, quiet, expected in cases:
+            with self.subTest(usage=usage, quiet=quiet):
+                results = [subprocess.CompletedProcess([], 0, usage, "")]
+                if quiet is not None:
+                    results.append(subprocess.CompletedProcess([], 0, quiet, ""))
+                with patch.object(_mod.subprocess, "run", side_effect=results):
+                    self.assertEqual(_mod._dispatch_gate_open(), expected)
+
+        failed = subprocess.CompletedProcess([], 1, "", "failure")
+        with patch.object(_mod.subprocess, "run", return_value=failed):
+            self.assertIsNone(_mod._dispatch_gate_open())
+        with patch.object(_mod.subprocess, "run", side_effect=OSError):
+            self.assertIsNone(_mod._dispatch_gate_open())
+
+    def test_gate_status_reader_returns_only_successful_nonempty_output(self):
+        completed = subprocess.CompletedProcess([], 0, "open\n", "")
+        with patch.object(_mod.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(_mod._dispatch_gate_status("all"), "open")
+            self.assertEqual(run.call_args.args[0][-2:], ["--gate-status", "all"])
+        empty = subprocess.CompletedProcess([], 0, "\n", "")
+        with patch.object(_mod.subprocess, "run", return_value=empty):
+            self.assertIsNone(_mod._dispatch_gate_status("quiet"))
+        failed = subprocess.CompletedProcess([], 1, "open\n", "failure")
+        with patch.object(_mod.subprocess, "run", return_value=failed):
+            self.assertIsNone(_mod._dispatch_gate_status("all"))
+        with patch.object(_mod.subprocess, "run", side_effect=OSError):
+            self.assertIsNone(_mod._dispatch_gate_status("all"))
+
+    def test_lane_runner_reads_real_state_and_clears_on_quiet_hold(self):
+        (self.state / "dispatch-mode").write_text("live\n")
+        (self.state / "dispatcher.pid").write_text("123\n")
+        (self.state / "dispatch").mkdir()
+        quiet_status = ["off"]
+
+        def run_stub(argv, **_kwargs):
+            names = {Path(part).name for part in argv}
+            if "fleet-dispatcher" in names:
+                scope = argv[-1]
+                output = "open" if scope == "all" else quiet_status[0]
+                return subprocess.CompletedProcess(argv, 0, output + "\n", "")
+            if "fleet_task_class.py" in names:
+                lane = argv[-1]
+                output = json.dumps({
+                    "dispatchable": [f"task:engine:{lane}"], "withheld": []})
+                return subprocess.CompletedProcess(argv, 0, output, "")
+            raise AssertionError(f"unexpected command: {argv}")
+
+        env = {"FLEET_LIVENESS_STALL_SECS": "0", "FLEET_LIVENESS_NOW": "1000"}
+        with patch.object(_mod.sys, "platform", "linux"), \
+             patch.object(_mod.os, "kill", return_value=None), \
+             patch.object(_mod.subprocess, "run", side_effect=run_stub), \
+             patch.dict(os.environ, env, clear=False):
+            _mod.run_dispatch_liveness_lanes()
+            for lane in _mod.DISPATCH_LIVENESS_ROLES:
+                self.assertTrue((self.alerts / f"dispatch-liveness-{lane}").exists())
+            quiet_status[0] = "held owner=benchmark"
+            _mod.run_dispatch_liveness_lanes()
+            for lane in _mod.DISPATCH_LIVENESS_ROLES:
+                self.assertFalse((self.alerts / f"dispatch-liveness-{lane}").exists())
+
     def test_unreadable_resolver_preserves_existing_state_and_alert(self):
         self.tick(1000)
         self.tick(2800)
         path = self.alerts / "dispatch-liveness-worker"
         before = path.read_text()
-        with patch.object(_mod, "STATE_DIR", Path(self.tmp.name) / "state"), \
-             patch.object(_mod, "_dispatcher_pid_alive", return_value=True), \
+        with patch.object(_mod, "_dispatcher_pid_alive", return_value=True), \
              patch.object(_mod, "_dispatch_inflight_roles", return_value=set()), \
              patch.object(_mod, "_dispatch_gate_open", return_value=True), \
              patch.object(_mod, "_dispatch_liveness_targets", return_value=None):
-            state = Path(self.tmp.name) / "state"
-            state.mkdir()
-            (state / "dispatch-mode").write_text("live\n")
+            (self.state / "dispatch-mode").write_text("live\n")
             _mod.run_dispatch_liveness_lanes()
         self.assertEqual(path.read_text(), before)
 

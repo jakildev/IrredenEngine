@@ -5297,20 +5297,38 @@ def _dispatch_inflight_roles() -> set[str] | None:
     return roles
 
 
-def _dispatch_gate_open() -> bool | None:
+def _dispatch_gate_status(scope: str) -> str | None:
     try:
         proc = subprocess.run(
-            _fleet_script_argv(["fleet-dispatcher", "--gate-status", "all"]),
+            _fleet_script_argv(["fleet-dispatcher", "--gate-status", scope]),
             capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     if proc.returncode != 0:
         return None
-    status = proc.stdout.strip()
-    if status.startswith("open:"):
-        return True
-    if status.startswith("closed:"):
+    return proc.stdout.strip() or None
+
+
+def _dispatch_gate_open() -> bool | None:
+    usage_status = _dispatch_gate_status("all")
+    if usage_status and (usage_status == "open" or
+                         usage_status.startswith("open:")):
+        usage_open = True
+    elif usage_status and usage_status.startswith("closed:"):
+        usage_open = False
+    else:
+        return None
+    if not usage_open:
         return False
+
+    quiet_status = _dispatch_gate_status("quiet")
+    if quiet_status is None:
+        return None
+    quiet_state = quiet_status.split(maxsplit=1)[0]
+    if quiet_state in {"waiting", "draining", "held", "linger"}:
+        return False
+    if quiet_state:
+        return True
     return None
 
 
