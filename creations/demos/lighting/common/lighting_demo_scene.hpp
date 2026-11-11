@@ -113,6 +113,7 @@ struct DemoConfig {
     // a different layout. When `tickFn_` is set, it runs once per render
     // frame and may mutate the global sun, move entities, etc.
     std::function<void()> geometryFn_;
+    std::function<void()> localLightsFn_;
     std::function<void()> tickFn_;
 };
 
@@ -190,6 +191,11 @@ inline void registerArgs() {
     );
     IREngine::args().flag("--no-ao", "Disable ambient-occlusion crease darkening");
     IREngine::args().flag("--ao-off", "Alias for --no-ao");
+    IREngine::args().flag(
+        "--no-wide-light",
+        "Omit the wide light in the per-light-falloff validation fixture"
+    );
+    IREngine::args().flag("--no-local-lights", "Omit local lights in lighting validation fixtures");
     IREngine::args().flag(
         "--light-boundary-sweep",
         "Auto-screenshot series panning the camera anchor away from the "
@@ -435,6 +441,9 @@ inline void createLights(const DemoConfig &config) {
                 44.0f
             }
         );
+    }
+    if (config.localLightsFn_) {
+        config.localLightsFn_();
     }
 }
 

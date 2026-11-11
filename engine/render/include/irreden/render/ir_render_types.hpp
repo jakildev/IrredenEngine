@@ -1632,9 +1632,12 @@ constexpr std::uint32_t kLightVolumeMaxSources = 256;
 /// and clamps it to this constant — small-radius scenes pay only for the
 /// iterations they need, while pathological per-cell costs on weaker GPU
 /// drivers (WSLg Mesa-d3d12, integrated Intel GL) stay bounded. Phase 1c
-/// will replace the global cap with per-light step counts so multi-light
-/// scenes with very different radii stop sharing a single falloff curve.
+/// Per-light radii share this maximum dispatch budget; the winning radius is
+/// carried through mixed-radius propagation without increasing the cap.
 constexpr int kLightVolumePropagateIterations = 32;
+
+constexpr int kLightVolumeFlagHasSpot = 1 << 0;
+constexpr int kLightVolumeFlagPerLightFalloff = 1 << 1;
 
 /// CPU mirror of the `LightSource` GPU struct uploaded to the
 /// `LightSourceBuffer` SSBO. One entry per active `C_LightSource`
@@ -1679,23 +1682,18 @@ struct LightVolumeParams {
     int halfExtent_ = 64;
     /// Number of valid entries in the `LightSourceBuffer` SSBO this frame.
     int lightCount_ = 0;
-    /// Per-step alpha decrement applied during distance-tracked
-    /// propagation. The propagate shader stores residual strength in
-    /// the alpha channel; each Manhattan step subtracts this value, so
-    /// a light reaches `1 / stepFalloff_` cells before going dark
-    /// (linear falloff, matching the CPU BFS's `1 - d/radius` curve).
-    /// Written per frame by `system_compute_light_volume`: paired with
-    /// the adaptive iteration count, falloff is `1 / iterations` so
-    /// alpha lands cleanly at 0 on the final propagate step. Multi-light
-    /// scenes with very different radii share the gather's max-radius
-    /// falloff curve until Phase 1c per-light step counts land.
+    /// Shared-radius per-step alpha decrement. Mixed-radius frames carry the
+    /// winning effective radius in the auxiliary volume and subtract its
+    /// reciprocal instead; this field still defines the byte-identical fast
+    /// path when every eligible light has the same radius.
     /// The struct default mirrors the global cap so a fresh `LightVolumeParams{}`
     /// behaves like today's 32-cell radius before the first per-frame write.
     float stepFalloff_ = 1.0f / 32.0f;
     /// Camera-anchored origin. The 128³ light volume is centered on this world
     /// voxel each frame so a panned camera
     /// keeps lights in-range. Stored as `ivec4` for std140 alignment;
-    /// `.xyz` is the volume origin and `.w` is the has-SPOT flag.
+    /// `.xyz` is the volume origin and `.w` contains the
+    /// `kLightVolumeFlag*` bitmask.
     ivec4 worldOriginVoxel_ = ivec4(0);
     /// Texel origin of the workgroup-aligned propagation box; w is padding.
     ivec4 propagationOrigin_ = ivec4(0);

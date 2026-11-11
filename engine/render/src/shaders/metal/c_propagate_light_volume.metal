@@ -4,8 +4,9 @@ using namespace metal;
 // Mirrors shaders/c_propagate_light_volume.glsl. Alpha is the residual light
 // strength: the CPU-computed seed residual at the source (1.0 in-window,
 // distance-discounted for out-of-window lights clamped to the volume edge),
-// less `stepFalloff` per Manhattan step, 0.0 past the radius. The highest
-// residual wins a cell, so the closest light wins overlap regions.
+// less the winning light's reciprocal radius per Manhattan step, 0.0 past the
+// radius. The highest residual wins a cell, so the closest light wins overlap
+// regions.
 //
 // Blocker neighbors are skipped on the same rule as solid voxels: a cell
 // marked in the light-blocker bitfield (rasterized from
@@ -23,6 +24,7 @@ constant int kLightOcclusionGridHalfExtent = 128;
 constant uint kLightOcclusionBitfieldUintCount =
     uint(kLightOcclusionGridSize) * uint(kLightOcclusionGridSize) *
     uint(kLightOcclusionGridSize) / 32u;
+constant int kLightVolumeFlagPerLightFalloff = 2;
 
 // Deliberate local copy of the shared layout in ir_world_lighting.metal (which
 // the seed / lighting / overflow passes bind through): this is the one
@@ -34,7 +36,7 @@ struct LightVolumeParams {
     int halfExtent;
     int lightCount;
     float stepFalloff;
-    // World voxel the volume is centered on this frame; `.w` = has-SPOT flag.
+    // World voxel the volume is centered on this frame; `.w` = flag bitmask.
     int4 worldOriginVoxel;
     int4 propagationOrigin;
 };
@@ -115,11 +117,12 @@ kernel void c_propagate_light_volume(
     }
 
     float4 best = lightVolumeRead.read(uint3(cell));
-    // Winning-light ID travels with `best` — seeded from self, overwritten
-    // whenever a neighbor candidate wins the residual contest.
-    // Skipped when no SPOT was seeded (the consumer never reads it); the branch
-    // is coherent across the dispatch, so no-spot scenes pay no extra bandwidth.
+    // The winning auxiliary payload travels with `best`, overwritten whenever
+    // a neighbor wins. It is skipped when neither a SPOT ID nor a per-light
+    // radius is needed; the branch is coherent across the dispatch.
     const bool carryId = params.worldOriginVoxel.w != 0;
+    const bool perLightFalloff =
+        (params.worldOriginVoxel.w & kLightVolumeFlagPerLightFalloff) != 0;
     float4 bestId = carryId ? lightVolumeIdRead.read(uint3(cell)) : float4(0.0);
     // The light-occlusion grid is anchored independently of the volume,
     // so neighbor lookups go through world coords.
@@ -139,7 +142,12 @@ kernel void c_propagate_light_volume(
             continue;
         }
         const float4 nv = lightVolumeRead.read(uint3(nCell));
-        const float candidateAlpha = nv.a - params.stepFalloff;
+        const float4 candidateId =
+            perLightFalloff ? lightVolumeIdRead.read(uint3(nCell)) : float4(0.0f);
+        const float candidateRadius = max(1.0f, floor(candidateId.g * 255.0f + 0.5f));
+        const float candidateFalloff =
+            perLightFalloff ? 1.0f / candidateRadius : params.stepFalloff;
+        const float candidateAlpha = nv.a - candidateFalloff;
         if (candidateAlpha <= best.a) {
             continue;
         }
@@ -153,7 +161,7 @@ kernel void c_propagate_light_volume(
             // Carry the winning neighbor's ID so it stays in sync with the
             // color it just replaced. Only loaded on a win (≤6 extra reads).
             if (carryId) {
-                bestId = lightVolumeIdRead.read(uint3(nCell));
+                bestId = perLightFalloff ? candidateId : lightVolumeIdRead.read(uint3(nCell));
             }
         }
     }

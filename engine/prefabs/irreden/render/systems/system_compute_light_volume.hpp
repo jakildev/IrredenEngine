@@ -17,9 +17,10 @@
 //      Manhattan-dilation iterations against the camera-anchored
 //      light-occlusion SSBO produced by `BUILD_LIGHT_OCCLUSION_GRID`
 //      (light cannot pass through solid voxels or SDF light blockers).
-//      Each step decrements alpha by `stepFalloff` and propagates the
-//      closest light's color, giving linear falloff bounded at radius
-//      `1 / stepFalloff`. The downstream consumer reads `rgb × alpha`
+//      Each step decrements alpha by the winning light's reciprocal radius
+//      and propagates its color, giving independent linear falloff. Frames
+//      whose eligible lights all share one radius retain the original shared
+//      `stepFalloff` path byte-for-byte. The consumer reads `rgb × alpha`
 //      so out-of-range cells contribute zero. The ping-pong textures are
 //      swapped after each iteration so the `LIGHTING_TO_TRIXEL` pass
 //      always samples the latest state via
@@ -40,7 +41,7 @@
 // together). `LIGHTING_TO_TRIXEL` fetches the id at the surface cell and, when
 // the winner is a SPOT, attenuates its volume contribution by an analytic cone
 // factor — real cone shaping with no ray marching. Gated by
-// `LightVolumeParams::worldOriginVoxel_.w` (the has-SPOT flag set below), so
+// `LightVolumeParams::worldOriginVoxel_.w` (the light-volume flags set below), so
 // scenes with no seeded SPOT stay byte-identical.
 //
 // The volume window is anchored on the camera so most scenes
@@ -119,6 +120,12 @@ struct LightGatherRecord {
 
 namespace detail {
 
+inline int effectiveLightRadius(const C_LightSource &light) {
+    const int radius = static_cast<int>(light.radius_);
+    return radius > 0 ? IRMath::min(radius, kLightVolumePropagateIterations)
+                      : kLightVolumePropagateIterations;
+}
+
 // `seedCellVoxel` is where the seed pass writes this light's texel (the true
 // origin for in-window lights, or the clamped window-boundary cell for an
 // out-of-window light); `trueOriginVoxel` is the light's unclamped apex,
@@ -143,7 +150,7 @@ inline GPULightSource toGpuLight(
         static_cast<float>(light.emitColor_.blue_) / 255.0f,
         IRMath::max(0.0f, light.intensity_)
     );
-    const float radius = static_cast<float>(light.radius_);
+    const float radius = static_cast<float>(effectiveLightRadius(light));
     gpu.directionAndRadius_ =
         vec4(light.direction_.x, light.direction_.y, light.direction_.z, radius);
     gpu.coneAndSeedAlpha_ = vec4(light.coneAngleDeg_, seedAlpha, 0.0f, 0.0f);
@@ -241,8 +248,8 @@ inline bool relocateOccludedBoundarySeed(
 //
 // A light whose origin rounds outside the camera-anchored window seeds
 // the per-axis-clamped boundary cell at a distance-discounted residual:
-// `seedAlpha = 1 − manhattan(origin, clamped) × stepFalloff`. Because the
-// propagate pass decrements alpha by `stepFalloff` per Manhattan step and
+// `seedAlpha = 1 − manhattan(origin, clamped) / lightRadius`. Because the
+// propagate pass decrements alpha by that light's reciprocal radius per step and
 // per-axis clamping makes the L1 triangle inequality an equality, this
 // reproduces the exact field the light would produce inside the window if
 // the volume were unbounded (occluders outside the window are unknowable
@@ -253,21 +260,12 @@ inline bool relocateOccludedBoundarySeed(
 //
 // `outMaxRadius` receives the largest `C_LightSource::radius_` across ALL
 // eligible (non-DIRECTIONAL, canvas-scoped) lights — deliberately NOT just
-// the seeded subset: `stepFalloff` derives from it and must be
-// camera-independent (a light crossing the window boundary must not shift
-// any other light's falloff curve). Capped at
+// the seeded subset: the iteration superset must be camera-independent (a light
+// crossing the window boundary must not truncate another light). Capped at
 // `kLightVolumePropagateIterations`; zero when no eligible lights exist.
-// The host uses it as the propagate iteration count (all lights share the
-// max-radius falloff curve — per-light falloff waits on the winning-light
-// ID channel).
-//
-// Intended trade: because the falloff curve is shared across all eligible
-// lights, a single wide-radius light stretches every other light's decay
-// even when it never seeds. This is deliberate for multi-light scenes with
-// wide radius variance — the alternative (deriving stepFalloff from just the
-// seeded subset) would make a light's curve shift as another light crosses
-// the camera window boundary. Per-light falloff lands with the winning-light
-// ID channel.
+// The host uses it as the propagate iteration count. `outHasMultipleRadii`
+// selects the auxiliary-radius path only when eligible effective radii differ;
+// otherwise the original shared falloff and auxiliary bytes remain unchanged.
 // `outHasSpot` is set true when at least one SPOT light is actually seeded this
 // frame; it gates the consumer's winning-light-ID read so no-spot scenes stay
 // byte-identical.
@@ -283,12 +281,16 @@ inline std::uint32_t gatherLightSources(
     std::uint32_t &outEligible,
     bool &outHasSpot,
     std::vector<LightGatherRecord> *outStates = nullptr,
-    const LightOcclusionGridView *occlusion = nullptr
+    const LightOcclusionGridView *occlusion = nullptr,
+    bool *outHasMultipleRadii = nullptr
 ) {
     out.clear();
     outMaxRadius = 0;
     outEligible = 0;
     outHasSpot = false;
+    if (outHasMultipleRadii != nullptr) {
+        *outHasMultipleRadii = false;
+    }
     if (outStates != nullptr) {
         outStates->clear();
     }
@@ -305,33 +307,7 @@ inline std::uint32_t gatherLightSources(
             entityManager.getParentEntityFromArchetype(node->type_);
         return nodeParent == IREntity::kNullEntity || nodeParent == currentCanvas;
     };
-    for (auto *node : nodes) {
-        if (!nodeInScope(node)) {
-            continue;
-        }
-        auto &lights = IREntity::getComponentData<C_LightSource>(node);
-        for (int i = 0; i < node->length_; ++i) {
-            // Directional lights drive sun shading via the FrameDataSun
-            // path; they do not seed the world-space light volume.
-            if (lights[i].type_ == LightType::DIRECTIONAL) {
-                continue;
-            }
-            ++outEligible;
-            const int r = static_cast<int>(lights[i].radius_);
-            if (r > outMaxRadius) {
-                outMaxRadius = r;
-            }
-        }
-    }
-    if (outMaxRadius > kLightVolumePropagateIterations) {
-        outMaxRadius = kLightVolumePropagateIterations;
-    }
-    if (outEligible == 0) {
-        return 0;
-    }
-    const float stepFalloff =
-        1.0f /
-        static_cast<float>(outMaxRadius > 0 ? outMaxRadius : kLightVolumePropagateIterations);
+    int minRadius = kLightVolumePropagateIterations;
     for (auto *node : nodes) {
         if (!nodeInScope(node)) {
             continue;
@@ -342,16 +318,18 @@ inline std::uint32_t gatherLightSources(
             if (lights[i].type_ == LightType::DIRECTIONAL) {
                 continue;
             }
+            const int lightRadius = effectiveLightRadius(lights[i]);
+            ++outEligible;
+            minRadius = IRMath::min(minRadius, lightRadius);
+            outMaxRadius = IRMath::max(outMaxRadius, lightRadius);
             if (out.size() >= kLightVolumeMaxSources) {
-                // Cap reached: lights past kLightVolumeMaxSources are neither
-                // seeded nor recorded in `outStates`, so the DOMAIN-STATE log
-                // under-reports the true non-directional light count in an
-                // overflow scene. Intentional — `lightGatherRecords_` is
-                // reserved to exactly kLightVolumeMaxSources at create(), so
-                // recording the tail would force a per-frame reallocation; this
-                // mirrors the GPU-staging cap the seed buffer already enforces.
-                return static_cast<std::uint32_t>(out.size());
+                // Keep counting eligible lights and their radii after the GPU
+                // staging cap so dispatch bounds still cover every candidate.
+                // The overflow tail is neither seeded nor recorded in
+                // `outStates`, matching the fixed-cap GPU light buffer.
+                continue;
             }
+            const float stepFalloff = 1.0f / static_cast<float>(lightRadius);
             const ivec3 origin = roundedLightOrigin(transforms[i]);
             const ivec3 rel = origin - volumeOriginVoxel;
             // The seedable window is rel ∈ [−halfExtent, halfExtent−1] per
@@ -387,9 +365,7 @@ inline std::uint32_t gatherLightSources(
                                                         : LightGatherState::BOUNDARY_DISCOUNTED;
             if (boundaryDist > 0 && occlusion != nullptr && occlusion->valid() &&
                 occlusion->occluded(volumeOriginVoxel + clamped)) {
-                const int reach =
-                    outMaxRadius > 0 ? outMaxRadius : kLightVolumePropagateIterations;
-                const int maxDist = reach - boundaryDist - 1;
+                const int maxDist = lightRadius - boundaryDist - 1;
                 ivec3 relocated{};
                 int extraDist = 0;
                 if (!relocateOccludedBoundarySeed(
@@ -425,6 +401,9 @@ inline std::uint32_t gatherLightSources(
             }
             out.push_back(toGpuLight(lights[i], volumeOriginVoxel + clamped, origin, seedAlpha));
         }
+    }
+    if (outHasMultipleRadii != nullptr) {
+        *outHasMultipleRadii = outEligible > 1 && minRadius != outMaxRadius;
     }
     return static_cast<std::uint32_t>(out.size());
 }
@@ -557,6 +536,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             int maxRadius = 0;
             std::uint32_t eligible = 0;
             bool hasSpot = false;
+            bool hasMultipleRadii = false;
             // resolved once per tick, never cached across frames —
             // params pointers are not stable across a system re-create
             // (`.claude/rules/cpp-systems.md`). `findSystem` returns
@@ -579,26 +559,26 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 eligible,
                 hasSpot,
                 &lightGatherRecords_,
-                &occlusion
+                &occlusion,
+                &hasMultipleRadii
             );
             anyCanvasSeededSpot_ |= hasSpot;
-            // worldOriginVoxel_.w carries the has-SPOT flag: the
-            // consumer skips the winning-light-ID read entirely when 0, so
-            // no-spot scenes stay byte-identical.
+            // worldOriginVoxel_.w carries coherent dispatch flags. Auxiliary
+            // RGBA8 traffic is enabled only for SPOT IDs or mixed-radius data.
+            const int lightVolumeFlags = (hasSpot ? kLightVolumeFlagHasSpot : 0) |
+                                         (hasMultipleRadii ? kLightVolumeFlagPerLightFalloff : 0);
             params_.worldOriginVoxel_ =
-                ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, hasSpot ? 1 : 0);
+                ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, lightVolumeFlags);
             params_.lightCount_ = static_cast<int>(count);
             {
                 auto &timing = IRRender::gpuStageTiming();
                 timing.lightsSeeded_ = count;
                 timing.lightsEligible_ = eligible;
             }
-            // Adaptive iter count: lights of radius R only need R Manhattan
-            // steps to fade to alpha=0. The global stepFalloff must match
-            // the iter count so alpha lands cleanly at 0 on the final step —
-            // pick both from the ELIGIBLE lights' max radius (stable under
-            // camera motion; the gather derives boundary seed alphas from the
-            // same value). Falls back to the global cap when no lights are
+            // Adaptive iter count: the widest eligible light defines a stable
+            // propagation superset. Mixed-radius frames carry each winning
+            // light's own falloff; shared-radius frames use this matching
+            // global step unchanged. Falls back to the global cap when no lights are
             // present (the dispatch loop below early-outs on lightCount==0
             // anyway, so the value is moot in that path).
             propagateIterations_ = (maxRadius > 0) ? maxRadius : kLightVolumePropagateIterations;
