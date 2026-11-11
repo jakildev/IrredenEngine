@@ -115,6 +115,12 @@ void main() {
         return;
     }
 #endif
+#if IR_SKIP_CARDINAL_SURFACE
+    if (isCardinalVoxelSurface(imageLoad(trixelEntityIds, pixel).xy)) {
+        imageStore(canvasSunShadow, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+        return;
+    }
+#endif
 
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
     // (per-axis / single-canvas, flip carrier).

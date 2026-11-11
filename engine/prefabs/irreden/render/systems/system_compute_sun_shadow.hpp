@@ -42,6 +42,8 @@ constexpr int kComputeSunShadowGroupSize = 16;
 template <> struct System<COMPUTE_SUN_SHADOW> {
     ShaderProgram *program_ = nullptr;
     ShaderProgram *shapeProgram_ = nullptr;
+    ShaderProgram *surfaceProgram_ = nullptr;
+    ShaderProgram *shapeSurfaceProgram_ = nullptr;
     Buffer *sunShadowFrameDataBuf_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
     Buffer *shapeReceiverFrameBuf_ = nullptr;
@@ -57,6 +59,7 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
     bool perAxisSurfaceLightingEligible_ = false;
+    bool cardinalSurfaceLightingEligible_ = false;
 
     // Lazily-resolved voxel-compaction buffers, restored onto
     // slots 25/26 after dispatchPerAxisSunShadow borrows them for its own
@@ -86,7 +89,12 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
 
         const auto &geometry = canvasTextures.shapeGeometry_;
         const bool useShapeReceiver = entity == perAxisCanvasEntity_ && geometry.samplesValid();
-        (useShapeReceiver ? shapeProgram_ : program_)->use();
+        const bool preserveCardinalSurfaces =
+            entity == perAxisCanvasEntity_ && cardinalSurfaceLightingEligible_;
+        ShaderProgram *activeProgram =
+            useShapeReceiver ? (preserveCardinalSurfaces ? shapeSurfaceProgram_ : shapeProgram_)
+                             : (preserveCardinalSurfaces ? surfaceProgram_ : program_);
+        activeProgram->use();
         if (useShapeReceiver) {
             IRPrefab::detail::bindShapeReceiver(
                 geometry,
@@ -176,10 +184,11 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
                 perAxisCanvases_ = perAxis.value();
             }
         }
+        const auto route = IRPrefab::PerAxisSurfaceLighting::resolveRoute(perAxisCanvasEntity_);
         perAxisSurfaceLightingEligible_ =
             perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated() &&
-            findSystem(LIGHTING_TO_TRIXEL) != kNullSystemId &&
-            IRPrefab::PerAxisSurfaceLighting::resolveRoute(perAxisCanvasEntity_).perAxis_;
+            findSystem(LIGHTING_TO_TRIXEL) != kNullSystemId && route.perAxis_;
+        cardinalSurfaceLightingEligible_ = route.cardinal_ && !route.cardinalGlitch_;
     }
 
     static SystemId create() {
@@ -190,6 +199,18 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         IRRender::createNamedResource<ShaderProgram>(
             "ComputeSunShadowShapesProgram",
             std::vector{ShaderStage{IRRender::kFileCompComputeSunShadowShapes, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ComputeSunShadowSurfaceProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompComputeSunShadowSurface, ShaderType::COMPUTE}
+            }
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ComputeSunShadowShapesSurfaceProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompComputeSunShadowShapesSurface, ShaderType::COMPUTE}
+            }
         );
         IRRender::createNamedResource<Buffer>(
             "ComputeSunShadowFrameData",
@@ -225,6 +246,10 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeSunShadowProgram");
         p->shapeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("ComputeSunShadowShapesProgram");
+        p->surfaceProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ComputeSunShadowSurfaceProgram");
+        p->shapeSurfaceProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ComputeSunShadowShapesSurfaceProgram");
         p->sunShadowFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         IRRender::tagGpuStage(systemId, "computeSunShadow");

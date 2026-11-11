@@ -248,7 +248,7 @@ int main(){
         shadow.begin();
         const bool commonResources=on(3)&&on(4)&&on(5)&&on(6);
         const bool commonPipeline=on(7)&&on(8)&&on(10)&&on(11);
-        if(IREntity::behaviorLookups!=(1+int(on(1)&&on(2)))*int(commonResources&&commonPipeline)){
+        if(IREntity::behaviorLookups!=2*int(commonResources&&commonPipeline)){
             std::fprintf(stderr,"shared behavior lookup\n");return 8;
         }
         const bool expectedEligible=bits==(1u<<15)-1;
@@ -363,8 +363,8 @@ def routing_harness(variant):
                             "perAxisSurfaceLightingEligible_ = mainVoxelPool_ != nullptr &&")
     shadow_source = (systems / "system_compute_sun_shadow.hpp").read_text()
     shadow_begin = re.search(
-        r"perAxisSurfaceLightingEligible_\s*=[^;]+;",
-        functions(shadow_source, "beginTick"))[0]
+        r"const auto route\s*=.*?cardinalSurfaceLightingEligible_\s*=[^;]+;",
+        functions(shadow_source, "beginTick"), re.DOTALL)[0]
     shadow_tick = braced_block(
         functions(shadow_source, "tick"),
         r"if\s*\(\s*entity\s*==\s*perAxisCanvasEntity_\s*&&\s*perAxisCanvases_")
@@ -378,19 +378,20 @@ def routing_harness(variant):
                                             "")
     elif variant == "shadow-stale-route":
         shadow_begin = shadow_begin.replace(
-            "IRPrefab::PerAxisSurfaceLighting::resolveRoute(perAxisCanvasEntity_).perAxis_",
+            "route.perAxis_",
             "perAxisSurfaceLightingEligible_")
     shadow_adapter = r"""
 Producer* currentRouteProducer=nullptr;
 namespace IRPrefab::PerAxisSurfaceLighting {
-struct Route {bool perAxis_;};
+struct Route {bool cardinal_;bool perAxis_;bool cardinalGlitch_;};
 Route resolveRoute(int) {
     currentRouteProducer->begin();
-    return {currentRouteProducer->perAxisSurfaceLightingEligible_};
+    return {false,currentRouteProducer->perAxisSurfaceLightingEligible_,false};
 }
 }
 struct ShadowProducer {
     bool perAxisSurfaceLightingEligible_=true;
+    bool cardinalSurfaceLightingEligible_=true;
     Axes* perAxisCanvases_=nullptr;
     int perAxisCanvasEntity_=7;
     void begin(){SHADOW_BEGIN}

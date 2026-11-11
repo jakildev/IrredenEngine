@@ -100,7 +100,10 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_chunk_occlusion_cull") {
         return MTL::Size(64, 1, 1);
     }
-    if (functionName == "c_compute_sun_shadow" || functionName == "c_compute_sun_shadow_shapes") {
+    if (functionName == "c_compute_sun_shadow" ||
+        functionName == "c_compute_sun_shadow_shapes" ||
+        functionName == "c_compute_sun_shadow_surface" ||
+        functionName == "c_compute_sun_shadow_shapes_surface") {
         return MTL::Size(16, 16, 1);
     }
     if (functionName == "c_bake_box_sun_shadow") {
