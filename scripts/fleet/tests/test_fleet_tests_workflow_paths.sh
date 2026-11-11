@@ -106,6 +106,7 @@ OUT_OF_TREE_SUBJECTS=(
     '.fleet/plans/issue-1824.md'
     '.fleet/plans/issue-2197.md'
     '.fleet/plans/issue-667.md'
+    '.github/workflows/all-checks.yml'
     '.github/workflows/auto-rereview.yml'
     '.github/workflows/fleet-tests.yml'
     '.gitignore'

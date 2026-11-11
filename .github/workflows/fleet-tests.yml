@@ -81,6 +81,7 @@ jobs:
               - '.fleet/plans/issue-1824.md'
               - '.fleet/plans/issue-2197.md'
               - '.fleet/plans/issue-667.md'
+              - '.github/workflows/all-checks.yml'
               - '.github/workflows/auto-rereview.yml'
               - '.gitignore'
               - 'AGENTS.md'
