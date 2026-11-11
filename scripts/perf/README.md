@@ -141,6 +141,18 @@ count. Side lengths are 2..513, repetitions are 1..1024, and the combined query
 count is capped at 1,048,576. Compare ordered/unsorted variants with identical
 grids and retain quiet-window qualification; a denser grid alone proves no gain.
 
+## Sun record-loss stability
+
+`sun_record_loss_stability.py capture <fixture> --launches N --raw <dir>`
+launches a fixture through `fleet-run` and keeps one `--sun-face-index-probe`
+CSV per shot. `compare` then counts the lost-tile sets that differ between
+captures, within a run and across launches, and the exact-RGB pixels that
+differ inside the receiver crop. `canvas-frozen` reading one distinct set and
+zero changed pixels is the gate for deterministic record admission. The
+[fixtures, results and replay](../../docs/perf/sun-record-loss-stability/README.md)
+describe the scene and its limits. It is a capture-frame tool, because the
+probe stalls the GPU, and it does no timing.
+
 ## Verdicts are per fingerprint
 
 `check_regression.py <baseline_root> <head_dir>` resolves
