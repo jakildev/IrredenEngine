@@ -150,7 +150,8 @@ def main():
         num = argv[2]; rec = state["pulls"][num]
         for flag in ("--squash", "--delete-branch"):
             if flag not in argv: die("merge without " + flag)
-        if state.get("merge_fail"): die("merge refused by fixture", 1)
+        fail = rec.get("merge_fail") or state.get("merge_fail")
+        if fail: die(fail if isinstance(fail, str) else "merge refused by fixture", 1)
         if opt(argv, "--match-head-commit") != rec["head"]: die("head mismatch", 1)
         rec["state"] = "MERGED"; rec["merge_sha"] = "m" * 39 + num[-1]
         rec["merged_subject"] = opt(argv, "--subject")
@@ -524,6 +525,116 @@ class Gates(AutomergeCase):
         self.assertEqual(len(self.events("merge-failed")), 1)
         self.assertEqual(self.events("merge"), [])
         self.assertEqual(self.gh_calls("pr edit"), [])
+
+
+PERMISSION = "GraphQL: Resource not accessible by integration (mergePullRequest)"
+NOT_MERGEABLE = "GraphQL: Pull request is not mergeable (mergePullRequest)"
+RATE_LIMIT = "HTTP 403: API rate limit exceeded for installation (https://api.github.com/graphql)"
+
+
+class PermissionLatch(AutomergeCase):
+    """A permission refusal holds the PR head: no further merge call, one alert."""
+
+    def setUp(self):
+        super().setUp()
+        self.alerts = self.home / ".fleet" / "alerts"
+        self.alert = self.alerts / "fleet-automerge-refused-jakildev_IrredenEngine"
+        self.latch = self.state_dir / "automerge-latch" / "jakildev_IrredenEngine.10.json"
+
+    def refuse(self, head=HEAD_A, error=PERMISSION, **extra):
+        self.set_state({"10": eligible_pr(10, head, merge_fail=error)}, **extra)
+        return self.run_tool("--auto", "--repo", SLUG)
+
+    def rerun(self):
+        self.gh_log.write_text("")
+        return self.run_tool("--auto", "--repo", SLUG)
+
+    def test_permission_refusal_latches_and_the_next_run_makes_no_merge_call(self):
+        first = self.refuse()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(len(self.gh_calls("pr merge")), 1)
+        self.assertEqual(json.loads(self.latch.read_text())["head"], HEAD_A)
+        head_line = self.alert.read_text().splitlines()[0]
+        self.assertEqual(head_line.split()[:2], [f"repo={SLUG}", "reason=permission"])
+        self.assertIn("since=", head_line)
+        self.assertIn("count=1", head_line)
+        self.assertIn(f"PR #10 head={HEAD_A} error=", self.alert.read_text())
+        self.assertIn("Resource not accessible by", self.alert.read_text())
+        self.assertEqual(len(self.events("merge-failed")), 1)
+
+        second = self.rerun()
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(self.gh_calls("pr merge"), [])
+        self.assertEqual(len(self.events("merge-failed")), 1)
+        self.assertNotIn("PR #10", second.stderr)
+        self.assertIn("merged=0", second.stderr)
+        self.assertTrue(self.alert.exists())
+
+    def test_other_eligible_prs_are_still_attempted_in_the_run_that_latches(self):
+        self.set_state({"10": eligible_pr(10, HEAD_A, merge_fail=PERMISSION),
+                        "11": eligible_pr(11, HEAD_B)})
+        result = self.run_tool("--auto", "--repo", SLUG)
+        merges = self.gh_calls("pr merge")
+        self.assertEqual([m.split()[2] for m in merges], ["10", "11"], result.stderr)
+        self.assertEqual(self.state()["pulls"]["11"]["state"], "MERGED")
+
+    def test_a_completed_merge_clears_every_latch_and_the_alert(self):
+        self.refuse()
+        self.assertTrue(self.alert.exists())
+        pulls = self.state()["pulls"]
+        pulls["11"] = eligible_pr(11, HEAD_B)
+        self.set_state(pulls)
+        result = self.rerun()
+        self.assertEqual(self.state()["pulls"]["11"]["state"], "MERGED", result.stderr)
+        self.assertFalse(self.latch.exists())
+        self.assertFalse(self.alert.exists())
+        self.assertIn("permission hold cleared", result.stderr)
+
+    def test_a_new_head_is_attempted_again(self):
+        self.refuse()
+        result = self.refuse(head=HEAD_B, error=PERMISSION)
+        self.assertEqual(len(self.gh_calls("pr merge")), 2, result.stderr)
+        self.assertIn("the head changed", result.stderr)
+        self.assertEqual(json.loads(self.latch.read_text())["head"], HEAD_B)
+
+    def test_non_permission_refusals_leave_no_latch(self):
+        for error in (NOT_MERGEABLE, RATE_LIMIT):
+            with self.subTest(error=error):
+                self.gh_log.write_text("")
+                self.refuse(error=error)
+                self.assertFalse(self.latch.exists())
+                self.assertFalse(self.alert.exists())
+                self.gh_log.write_text("")
+                self.run_tool("--auto", "--repo", SLUG)
+                self.assertEqual(len(self.gh_calls("pr merge")), 1)
+
+    def test_dry_run_lists_the_hold_and_writes_nothing(self):
+        self.refuse()
+        before = (self.latch.read_text(), self.alert.read_text(), self.ledger.read_text())
+        self.gh_log.write_text("")
+        dry = self.run_tool("--dry-run", "--repo", SLUG)
+        self.assertIn("PR #10  human", dry.stdout)
+        self.assertIn("permission refusal held since 2026-10-20T12:00:00Z", dry.stdout)
+        self.assertIn("0 would merge", dry.stdout)
+        self.assert_no_writes()
+        self.assertEqual(before, (self.latch.read_text(), self.alert.read_text(),
+                                  self.ledger.read_text()))
+
+    def test_deleting_the_record_rearms_and_a_closed_pr_is_pruned(self):
+        self.refuse()
+        self.latch.unlink()
+        again = self.rerun()
+        self.assertEqual(len(self.gh_calls("pr merge")), 1, again.stderr)
+        self.assertTrue(self.latch.exists())
+
+        pulls = self.state()["pulls"]
+        pulls["10"]["state"] = "CLOSED"
+        self.set_state(pulls)
+        pruned = self.rerun()
+        self.assertFalse(self.latch.exists())
+        self.assertFalse(self.alert.exists())
+        self.assertIn("no longer an open approved PR", pruned.stderr)
+        self.assertEqual(self.gh_calls("pr merge"), [])
 
 
 class PositiveFire(AutomergeCase):
