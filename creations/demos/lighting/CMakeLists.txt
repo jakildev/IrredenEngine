@@ -18,6 +18,7 @@ set(IR_LIGHTING_DEMO_TARGETS
     IRLightingPerCanvasScope
     IRLightingHDR
     IRLightingOccludedBoundary
+    IRLightingPerLightFalloff
 )
 
 set(IR_LIGHTING_DEMO_SOURCES
@@ -37,6 +38,7 @@ set(IR_LIGHTING_DEMO_SOURCES
     main_per_canvas_scope.cpp
     main_hdr.cpp
     main_occluded_boundary.cpp
+    main_per_light_falloff.cpp
 )
 
 list(LENGTH IR_LIGHTING_DEMO_TARGETS IR_LIGHTING_DEMO_COUNT)

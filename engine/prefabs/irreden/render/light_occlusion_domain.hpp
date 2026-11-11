@@ -43,6 +43,12 @@ struct LightOcclusionDomain {
     }
 };
 
+inline int effectiveLightRadius(const IRComponents::C_LightSource &light) {
+    const int radius = static_cast<int>(light.radius_);
+    return radius > 0 ? IRMath::min(radius, IRRender::kLightVolumePropagateIterations)
+                      : IRRender::kLightVolumePropagateIterations;
+}
+
 inline bool
 lightNodeTargetsCanvas(const IREntity::ArchetypeNode *node, IREntity::EntityId currentCanvas) {
     const IREntity::EntityId parent =
@@ -64,7 +70,7 @@ inline LocalLightFrame localLightFrame(IREntity::EntityId currentCanvas) {
                 continue;
             }
             ++frame.eligible_;
-            frame.maxRadius_ = IRMath::max(frame.maxRadius_, static_cast<int>(lights[i].radius_));
+            frame.maxRadius_ = IRMath::max(frame.maxRadius_, effectiveLightRadius(lights[i]));
         }
     }
     frame.maxRadius_ = IRMath::min(frame.maxRadius_, IRRender::kLightVolumePropagateIterations);

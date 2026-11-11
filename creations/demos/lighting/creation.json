@@ -297,6 +297,24 @@
           ]
         }
       ]
+    },
+    {
+      "name": "IRLightingPerLightFalloff",
+      "display": "Lighting: per-light falloff",
+      "description": "Compares isolated radius-8 and radius-32 local-light footprints.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
     }
   ]
 }

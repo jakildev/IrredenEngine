@@ -31,16 +31,37 @@ Manhattan step. Occlusion rejects candidates and cannot extend support.
 Induction puts every possible nonzero texel through iteration `K` inside the
 box above. Aligned padding adds work but removes no reachable cell.
 
-This argument uses the iteration count, not an estimate of when the light
-fades. RGBA8 rounds every iteration; black sources can still carry alpha/IDs,
-and sources whose alpha rounds to zero can still carry RGB/IDs. All staged
-sources participate in the bound.
+This argument uses the maximum eligible radius as the iteration count, not an
+estimate of when an individual light fades. RGBA8 rounds every iteration;
+black sources can still carry alpha/auxiliary data, and sources whose alpha
+rounds to zero can still carry RGB/auxiliary data. All staged sources
+participate in the bound.
 
 Clearing only the initial read texture is insufficient: a cropped dispatch
 does not overwrite the destination's exterior, and the next swap would expose
 stale values. The nonempty path clears both color/ID pairs. With no sources,
 only the current read pair needs clearing because no propagation or swap occurs.
-The no-spotlight shaders do not consume or propagate IDs.
+Frames that need neither spotlight IDs nor mixed-radius falloff do not consume
+or propagate the auxiliary volume.
+
+## Per-light falloff
+
+Each local light uploads an effective radius clamped to the 32-step global
+budget. A zero radius retains the historical 32-cell behavior. Boundary seed
+discount and occlusion-aware relocation use that same effective radius, so a
+narrow light cannot borrow reach from a wide neighbor.
+
+When eligible effective radii differ, the seed pass stores `radius / 255` in
+the auxiliary RGBA8 volume's green channel. Propagation carries the winning
+auxiliary texel with the winning color and subtracts the decoded radius's
+reciprocal. Red remains the optional spotlight ID. The frame still dispatches
+the widest eligible radius, which is a conservative superset for every local
+wavefront.
+
+When all eligible radii match, the mixed-radius flag stays clear: the seed
+leaves green at zero and propagation subtracts the existing shared
+`stepFalloff`. This preserves shared-radius frames byte-for-byte, including
+single-light and no-light scenes.
 
 ## Correctness controls
 
@@ -50,7 +71,7 @@ versus true positions, and containment of reachable Manhattan cells.
 executes the real clear, seed and propagation kernels, starting both arms from
 the same seeded snapshot. It compares the entire volume after each iteration
 and includes poisoned destinations, moving/absent lights, boundary sources,
-black/quantized-alpha sources, ID transitions and independently anchored voxel
+mixed radii, black/quantized-alpha sources, ID transitions and independently anchored voxel
 and SDF blocker fields. Omitting the destination clear is a negative control.
 
 The shader test qualifies native Metal. OpenGL mirrors the dispatch offset

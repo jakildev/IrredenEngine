@@ -257,6 +257,46 @@ TEST_F(PerCanvasLightScopeTest, GatherMaxRadiusCappedAtPropagateIterations) {
     EXPECT_EQ(maxRadius, IRRender::kLightVolumePropagateIterations);
 }
 
+TEST_F(PerCanvasLightScopeTest, GatherOnlyEnablesPerLightFalloffForDifferentRadii) {
+    const IREntity::EntityId canvas = makeCanvasSentinel();
+    makeLightWithRadius(vec3(-12.0f, 0.0f, 0.0f), Color{255, 0, 0, 255}, 8);
+    makeLightWithRadius(vec3(12.0f, 0.0f, 0.0f), Color{0, 255, 0, 255}, 8);
+
+    std::vector<IRRender::GPULightSource> out;
+    out.reserve(IRRender::kLightVolumeMaxSources);
+    std::uint32_t eligible = 0;
+    int maxRadius = 0;
+    bool hasSpot = false;
+    bool hasMultipleRadii = true;
+    IRSystem::detail::gatherLightSources(
+        out,
+        canvas,
+        ivec3{0},
+        maxRadius,
+        eligible,
+        hasSpot,
+        nullptr,
+        nullptr,
+        &hasMultipleRadii
+    );
+    EXPECT_FALSE(hasMultipleRadii);
+
+    makeLightWithRadius(vec3(0.0f, 12.0f, 0.0f), Color{0, 0, 255, 255}, 32);
+    IRSystem::detail::gatherLightSources(
+        out,
+        canvas,
+        ivec3{0},
+        maxRadius,
+        eligible,
+        hasSpot,
+        nullptr,
+        nullptr,
+        &hasMultipleRadii
+    );
+    EXPECT_TRUE(hasMultipleRadii);
+    EXPECT_EQ(maxRadius, 32);
+}
+
 // `hasSpot` gates the consumer's winning-light-ID read. It must stay
 // false for a scene with only non-SPOT lights so those scenes render exactly
 // as before (byte-identical).
