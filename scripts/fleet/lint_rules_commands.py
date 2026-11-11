@@ -81,12 +81,14 @@ def _first_token(line):
     return parts[0] if parts else None
 
 
-def find_candidates(path):
+def find_candidates(path, text=None):
     """Return (lineno, token, allowed) for each command-position `fleet-*`
-    token inside a fenced block. `allowed` is True when the fence's opening
-    line was immediately preceded by a matching `rules-cmd-ok` marker naming
-    that token."""
-    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    token inside a fenced block of `path`, or of `text` when given. `allowed`
+    is True when the fence's opening line was immediately preceded by a
+    matching `rules-cmd-ok` marker naming that token."""
+    if text is None:
+        text = Path(path).read_text(encoding="utf-8")
+    lines = text.splitlines()
     findings = []
     in_fence = False
     pending_allow = set()

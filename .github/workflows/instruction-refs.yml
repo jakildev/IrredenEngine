@@ -1,0 +1,54 @@
+name: Instruction Refs
+
+# An agent-facing instruction file cites only paths, labels and components
+# that exist (docs/agents/CLAUDE-BASELINE.md §"What belongs in agent-facing
+# docs"). scripts/lint_instruction_refs.py checks every citation against the
+# tree, against scripts/lint_instruction_refs_baseline.json: a dead reference
+# already recorded there passes, a new one fails, and an entry that resolves
+# again fails as stale. Unfiltered on purpose — a reference dies when the code
+# it names is renamed, so the renaming change is the one that must go red,
+# whatever paths it touches.
+#
+# Every run is measured against the tree it was built on — a pull request
+# against its merge commit's first parent, a push against the previous tip —
+# and fails only on a finding it introduced; earlier ones print as inherited.
+# The flat tree reading is `workflow_dispatch`, or the script run with no flag.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # A push of several commits reaches back further than fetch-depth 2, so
+      # the previous tip is fetched by sha. A branch's first push has no
+      # previous tip (the zero sha) and is measured flat.
+      - name: Resolve the tree to measure against
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            echo "AGAINST_ARGS=--against HEAD^1" >> "$GITHUB_ENV"
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE" ] && ! echo "$BEFORE" | grep -qE '^0+$'; then
+            if git fetch --no-tags --depth=1 origin "$BEFORE"; then
+              echo "AGAINST_ARGS=--against $BEFORE" >> "$GITHUB_ENV"
+            else
+              echo "previous tip $BEFORE is unreachable; measuring the tree flat"
+            fi
+          fi
+
+      - name: Instruction reference lint
+        run: python3 scripts/lint_instruction_refs.py $AGAINST_ARGS
