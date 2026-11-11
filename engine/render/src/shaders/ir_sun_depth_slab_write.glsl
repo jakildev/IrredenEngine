@@ -1,25 +1,22 @@
 #ifndef IR_SUN_DEPTH_SLAB_WRITE_INCLUDED
 #define IR_SUN_DEPTH_SLAB_WRITE_INCLUDED
 
-// Primary-layer writer side of the depth-slab extrema in ir_sun_face_query_layout.
-// The including kernel declares `sunDepthBuf` as a writable std430 buffer on
-// binding 28 and includes ir_sun_face_query_layout.glsl first. Metal twin:
-// metal/ir_sun_depth_slab_write.metal.
-//
-// Every packed primary write lands in the slot owning its slab: the first
-// writer of a slab claims the first empty slot with a compare-swap, later
-// writers of that slab atomically min / max the pair. A slot's slab never
-// changes once claimed, so a plain load that observes a claimed slot is
-// final, and a stale EMPTY load is corrected by the swap's returned word.
-// A texel with more distinct slabs than slots sets the sticky overflow bit on
-// slot 0's max word; the receiver then answers from the nearest word alone.
-//
-// The pair is one slab's reduced (min, max), both members of the texel's
-// write set; a single write is the pair (depth, depth). Reducing writes before
-// the merge changes neither the slabs a texel saw nor their extrema.
+// The including kernel supplies the layout and writable slot-28 sunDepthBuf.
+// Direct mapping reduces into slab % slots without loading resident words;
+// differing min/max slabs tell the receiver to discard the texel's slab layer.
+// Associative mapping claims slots and marks overflow on max plane zero.
+// A pair contains extrema from one slab, including every provenance bit.
 void mergeSunDepthSlabPair(int texelIndex, uint lowDepth, uint highDepth) {
     if (kSunDepthSlabSlots == 0u) return;
     const uint slab = sunDepthSlab(lowDepth);
+    if (kSunDepthSlabDirectMapped) {
+        const uint slot = slab % (kSunDepthSlabSlots == 0u ? 1u : kSunDepthSlabSlots);
+        const uint lowIndex = sunDepthSlabMinIndex(texelIndex, slot);
+        const uint highIndex = sunDepthSlabMaxIndex(texelIndex, slot);
+        atomicMin(sunDepthBuf[lowIndex], lowDepth);
+        atomicMax(sunDepthBuf[highIndex], highDepth);
+        return;
+    }
     for (uint slot = 0u; slot < kSunDepthSlabSlots; ++slot) {
         const uint low = sunDepthSlabMinIndex(texelIndex, slot);
         const uint high = sunDepthSlabMaxIndex(texelIndex, slot);
