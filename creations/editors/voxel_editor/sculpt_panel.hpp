@@ -61,7 +61,7 @@ inline constexpr std::array<SculptToolbarButton, 12> kSculptButtons{{
      SculptTool::PICKER,
      5},
     {"SHAPES",
-     "Shapes: stamp a voxel part, drag its dimensions, or box-fill the current part.",
+     "Shapes: draw a part or erase a shape from the selected part. V switches Draw/Erase.",
      324,
      56,
      std::nullopt,

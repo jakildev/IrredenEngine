@@ -347,6 +347,9 @@ struct EditorState {
     EditorDocks docks_;
     ShapesPanel shapesPanel_;
     ShapePlacement shapePlacement_;
+    Session::ShapeEraseWorkflowState shapeEraseWorkflow_;
+    IREntity::EntityId shapeEraseTarget_ = IREntity::kNullEntity;
+    float shapeEraseFootprintPlaneOffset_ = 0.0f;
     LodWorkflowProbe lodWorkflow_;
     bool lodWorkflowPrepared_ = false;
     LodPreviewSession lodPreview_;
@@ -560,7 +563,6 @@ struct RotateParams {
     vec2 startMouse_{0};
     IRMath::OrbitAngles startOrbit_{};
     IRInput::KeyMouseButtons dragButton_ = IRInput::kMouseButtonRight;
-    bool rolling_ = false;
     std::array<bool, 2> pointerStream_{};
     std::array<bool, 2> pointerOwned_{};
 };
@@ -1088,6 +1090,7 @@ void prepareRegionTools(int shotIndex);
 void prepareArrayWorkflow(int shotIndex);
 void prepareLodWorkflowShot();
 void prepareShadowRotation(int shotIndex);
+void prepareShapesErase();
 bool cursorOverEditorUi();
 
 void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
@@ -1095,6 +1098,8 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
         return;
     if (g_sessionId == Session::Id::ARRAY_WORKFLOW)
         prepareArrayWorkflow(shotIndex);
+    if (g_sessionId == Session::Id::SHAPES_ERASE)
+        prepareShapesErase();
     if (g_sessionId == Session::Id::LOD_WORKFLOW)
         prepareLodWorkflowShot();
     if (g_sessionId == Session::Id::REGION_TOOLS)
@@ -2301,7 +2306,7 @@ ConstructionPlane editorStampPlane() {
 }
 
 std::optional<ConstructionPlane> editorConstructionPlane() {
-    if (g_editor.shapesPanel_.visible())
+    if (g_editor.shapesPanel_.visible() && !g_eraseMode)
         return editorStampPlane();
     return constructionPlane(g_editor.editableVoxelSet_);
 }
@@ -2325,7 +2330,7 @@ void resetEditorView() {
 std::optional<vec3> resolveOrbitFocus(IREntity::EntityId) {
     if (const auto hit = pickEditable())
         return hit->worldHitPos_;
-    if (g_editor.shapesPanel_.visible())
+    if (g_editor.shapesPanel_.visible() && !g_eraseMode)
         return IRPrefab::CursorPivot::resolveFloorWorld(editorStampPlane().center().z);
     const auto entity = g_editor.editableVoxelSet_;
     if (entity == IREntity::kNullEntity)
@@ -2886,6 +2891,19 @@ void prepareRegionTools(int shotIndex) {
         authoredVoxelFingerprint(IREntity::getComponent<C_VoxelSetNew>(g_editor.regionForeign_));
 }
 
+void prepareShapesErase() {
+    if (g_editor.shapeEraseWorkflow_.selected_ != IREntity::kNullEntity)
+        return;
+    g_editor.editableVoxelSet_ =
+        Session::seedShapeEraseWorkflow(g_editor.shapeEraseWorkflow_, g_entityScene);
+    g_entitySceneMode = true;
+    selectEditorPart(0, false);
+    setTransformMode(false);
+    g_sculpt.tool_ = SculptTool::BRUSH;
+    g_eraseMode = false;
+    IRRender::setDebugOverlay(IRRender::DebugOverlayMode::UNLIT);
+}
+
 ivec3 clickOrbitSourceCell() {
     const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
     return ivec3(set.size_.x / 2 + 2, set.size_.y / 2 - 2, set.size_.z - 5);
@@ -3064,13 +3082,36 @@ void drawAuthoringPrimitives() {
         );
     }
     if (g_editor.shapesPanel_.visible() && !authoringInteractionBlocked() &&
-        !g_sculpt.cameraInputBlocked_)
+        !g_sculpt.cameraInputBlocked_) {
+        const bool erase = g_editor.shapesPanel_.eraseMode();
+        const auto entity = g_editor.editableVoxelSet_;
+        const auto plane = erase ? constructionPlane(entity) : std::nullopt;
+        const auto origin = plane ? plane->origin_ : vec3(0);
+        const auto ray = IRRender::unprojectView(vec2(0), 3.0f);
         g_editor.shapePlacement_.append(
-            IRRender::unprojectView(vec2(0), 3.0f),
-            g_editor.palette_.color(g_editor.activeSwatchIdx_),
+            ray,
+            erase ? Color{255, 45, 25, 255} : g_editor.palette_.color(g_editor.activeSwatchIdx_),
             triangles,
-            lines
+            lines,
+            origin,
+            erase
         );
+        if (erase && plane && isEditable(entity)) {
+            const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+            const auto records = set.authoredRecords();
+            g_editor.shapePlacement_.appendAffectedCells(
+                ray,
+                origin,
+                set.size_,
+                [&](ivec3 cell) {
+                    const auto &voxel = records[IRMath::index3DtoIndex1D(cell, set.size_)];
+                    return voxel.color_.alpha_ != 0 && g_layerManager.isVisible(voxel.layer_id_);
+                },
+                triangles,
+                lines
+            );
+        }
+    }
     if (g_editor.arrayPreviewEnabled_ && !authoringInteractionBlocked() &&
         (g_editor.workspace_ == Workspace::ASSEMBLE || g_editor.workspace_ == Workspace::ALL))
         g_editor.arrayPreview_.append(IRRender::unprojectView(vec2(0), 3.0f), triangles, lines);
@@ -3137,6 +3178,39 @@ void updateSculptBrush(bool blocked, Color color, std::uint8_t bone, bool invert
     refreshPendingSculptSets();
 }
 
+std::size_t eraseEditorShape(const ShapePlacementProposal &proposal) {
+    const auto entity = g_editor.editableVoxelSet_;
+    if (authoringInteractionBlocked() || entity == IREntity::kNullEntity || !isEditable(entity))
+        return 0;
+    const auto canonical = g_editor.localEdit_.canonical(g_entityScene, entity);
+    if (canonical == IREntity::kNullEntity)
+        return 0;
+    finishSculptStroke();
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(canonical);
+    const auto low = IRMath::max(proposal.lower_, ivec3(0));
+    const auto high =
+        IRMath::min(proposal.lower_ + proposal.size_ - ivec3(1), set.size_ - ivec3(1));
+    std::size_t changed = 0;
+    IRMath::iterateAABB(low, high, [&](int x, int y, int z) {
+        const ivec3 cell(x, y, z);
+        const auto flat = static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell, set.size_));
+        const auto &voxel = set.authoredRecords()[flat];
+        if (voxel.color_.alpha_ == 0 || !g_layerManager.isVisible(voxel.layer_id_) ||
+            !primitiveShapeCell(proposal.shape_, cell - proposal.lower_, proposal.size_))
+            return;
+        // The cutter bounds this edit: mirrors and rotational groups must not
+        // erase outside its preview or into another selected-part sibling.
+        applyEditRaw(canonical, set, cell, flat, false, Color{}, 0);
+        ++changed;
+    });
+    if (changed != 0) {
+        g_anim.playing_ = false;
+        commitStroke();
+    }
+    g_editor.documentStatus_ = "Shape erased " + std::to_string(changed) + " occupied cells.";
+    return changed;
+}
+
 void updateShapePlacement(bool blocked) {
     auto &draft = g_editor.shapePlacement_;
     auto &panel = g_editor.shapesPanel_;
@@ -3148,20 +3222,99 @@ void updateShapePlacement(bool blocked) {
         return;
     }
     const auto request = panel.selection();
-    const auto plane = editorStampPlane();
+    const bool erase = panel.eraseMode();
+    const auto entity = g_editor.editableVoxelSet_;
+    if (erase && (entity == IREntity::kNullEntity || !isEditable(entity))) {
+        draft.cancel();
+        panel.showStatus("Select a part / use Local Edit");
+        return;
+    }
+    if (g_editor.shapeEraseTarget_ != entity) {
+        draft.cancel();
+        g_editor.shapeEraseTarget_ = entity;
+    }
+    const auto editPlane = erase ? constructionPlane(entity) : std::nullopt;
+    if (erase && !editPlane) {
+        draft.cancel();
+        return;
+    }
+    const auto plane = editPlane.value_or(editorStampPlane());
     const auto ray = IRRender::mouseWorldPos3DAtIsoDepthExact(0);
     const auto direction = IRRender::mouseWorldPos3DAtIsoDepthExact(3) - ray;
-    const auto elevatedOrigin = plane.origin_ - vec3(0, 0, panel.placementHeight());
-    const auto local =
-        pickSculptPlane(ray - elevatedOrigin, direction, plane.size_, 2, plane.size_.z - 1, 0.5f);
-    const auto bottom = local ? std::optional(ivec3(elevatedOrigin) + *local) : std::nullopt;
+    std::optional<ivec3> bottom;
+    float footprintPlaneOffset = .5f;
+    if (erase) {
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+        if (draft.phase() == ShapePlacementPhase::FOOTPRINT) {
+            bottom = pickSculptPlane(
+                ray - plane.origin_,
+                direction,
+                plane.size_,
+                2,
+                draft.anchor().z,
+                g_editor.shapeEraseFootprintPlaneOffset_
+            );
+        } else {
+            const auto visibleHit = pickEditable();
+            if (visibleHit && visibleHit->entity_ != entity &&
+                draft.phase() == ShapePlacementPhase::HOVER) {
+                draft.cancel();
+                return;
+            }
+            const auto records = set.authoredRecords();
+            const auto hit = IRPrefab::Picking::castGridRay(
+                ray - plane.origin_,
+                direction,
+                set.size_,
+                [&](ivec3 cell) {
+                    const auto &voxel = records[IRMath::index3DtoIndex1D(cell, set.size_)];
+                    return voxel.color_.alpha_ != 0 && g_layerManager.isVisible(voxel.layer_id_);
+                }
+            );
+            if (hit) {
+                bottom = hit->cell_ - ivec3(0, 0, panel.placementHeight());
+                // Keep the interaction plane at the clicked surface, even when
+                // Above Floor shifts the cutter away from that surface. Moving
+                // it to the cell center would change XY under a stationary ray.
+                footprintPlaneOffset = (ray - plane.origin_ + direction * hit->rayT_).z - bottom->z;
+                if (!panel.dragMode())
+                    *bottom += ivec3(0, 0, (request.size_.z - 1) / 2);
+            } else {
+                bottom = pickSculptPlane(
+                    ray - plane.origin_,
+                    direction,
+                    plane.size_,
+                    2,
+                    plane.size_.z - 1 - panel.placementHeight(),
+                    .5f
+                );
+            }
+        }
+    } else {
+        const auto elevatedOrigin = plane.origin_ - vec3(0, 0, panel.placementHeight());
+        const auto local = pickSculptPlane(
+            ray - elevatedOrigin,
+            direction,
+            plane.size_,
+            2,
+            plane.size_.z - 1,
+            .5f
+        );
+        if (local)
+            bottom = ivec3(elevatedOrigin) + *local;
+    }
     const auto commit = [&]() {
         const auto proposal = *draft.proposal();
-        const auto pivot =
-            vec3(proposal.lower_) - anchorOffset(EntityAnchor::CENTER, proposal.size_);
-        finishPartEdits();
-        const bool placed = spawnEditorShape(proposal.shape_, proposal.size_, pivot);
-        panel.showStatus(placed ? "Placed / click again" : "Cannot place: see status");
+        if (erase) {
+            const auto count = eraseEditorShape(proposal);
+            panel.showStatus("Erased " + std::to_string(count) + " cells / click again");
+        } else {
+            const auto pivot =
+                vec3(proposal.lower_) - anchorOffset(EntityAnchor::CENTER, proposal.size_);
+            finishPartEdits();
+            const bool placed = spawnEditorShape(proposal.shape_, proposal.size_, pivot);
+            panel.showStatus(placed ? "Placed / click again" : "Cannot place: see status");
+        }
         draft.cancel();
     };
     if (!panel.dragMode()) {
@@ -3176,12 +3329,13 @@ void updateShapePlacement(bool blocked) {
     }
     const vec2 pointer = IRInput::getMousePosition();
     if (draft.phase() == ShapePlacementPhase::HEIGHT) {
-        const auto base = vec3(draft.proposal()->lower_);
+        const auto base = vec3(draft.proposal()->lower_) + (erase ? plane.origin_ : vec3(0));
         const int previousHeight = draft.proposal()->size_.z;
-        draft.sizeHeight(verticalVoxelDragDelta(base, pointer - draft.releasePointer()));
+        draft.sizeHeight(verticalVoxelDragDelta(base, pointer - draft.releasePointer()), erase);
         if (draft.proposal()->size_.z != previousHeight)
             panel.showStatus(
-                "Height " + std::to_string(draft.proposal()->size_.z) + " / click to place"
+                "Height " + std::to_string(draft.proposal()->size_.z) +
+                (erase ? " / click to erase" : " / click to place")
             );
         if (press)
             commit();
@@ -3195,6 +3349,8 @@ void updateShapePlacement(bool blocked) {
         draft.hover(request.shape_, ivec3(1), *bottom);
         if (!press)
             return;
+        if (erase)
+            g_editor.shapeEraseFootprintPlaneOffset_ = footprintPlaneOffset;
         draft.beginFootprint(request.shape_, *bottom);
     }
     const auto previousSize = draft.proposal()->size_;
@@ -3204,7 +3360,7 @@ void updateShapePlacement(bool blocked) {
         panel.showStatus("Base " + std::to_string(size.x) + " x " + std::to_string(size.y));
     if (release) {
         draft.finishFootprint(pointer);
-        panel.showStatus("Move up / click to set height");
+        panel.showStatus(erase ? "Move up/down / click to erase" : "Move up / click to set height");
     }
 }
 
@@ -3233,10 +3389,9 @@ void activateSculptButton(std::size_t i) {
     } else if (i == 8) {
         g_sculpt.showGrid_ = !g_sculpt.showGrid_;
     } else if (i == 11) {
-        if (!g_editor.shapesPanel_.visible() && g_editor.localEdit_.active()) {
-            closeLocalPartEdit();
-            g_editor.workspace_ = Workspace::SCULPT;
-        }
+        if (!g_editor.shapesPanel_.visible() && g_editor.localEdit_.active())
+            g_eraseMode = true;
+        g_editor.shapesPanel_.setEraseMode(g_eraseMode);
         g_editor.shapesPanel_.setVisible(!g_editor.shapesPanel_.visible());
         g_classPaintMode = false;
         g_bonePaint.active_ = false;
@@ -3249,13 +3404,39 @@ void updateSculptToolbar() {
         if (IRPrefab::Widget::wasClicked(g_sculpt.buttons_[i]))
             IRCommand::invokeAction(kSculptToolbarActions[i].id_);
     }
-    if (const auto request = g_editor.shapesPanel_.update()) {
+    auto &panel = g_editor.shapesPanel_;
+    panel.setEraseMode(g_eraseMode);
+    const bool previousDrag = panel.dragMode();
+    const auto request = panel.update();
+    if (panel.eraseMode() != g_eraseMode || panel.dragMode() != previousDrag) {
+        g_editor.shapePlacement_.cancel();
+        g_eraseMode = panel.eraseMode();
+    }
+    if (panel.visible() && !panel.eraseMode() && g_editor.localEdit_.active()) {
+        closeLocalPartEdit();
+        g_editor.workspace_ = Workspace::SCULPT;
+        g_editor.shapePlacement_.cancel();
+    }
+    if (request) {
         finishSculptStroke();
-        finishPartEdits();
-        const bool spawned = spawnEditorShape(request->shape_, request->size_);
-        g_editor.shapesPanel_.showStatus(
-            spawned ? "Part created / Undo available" : "Not created: see status above"
-        );
+        if (panel.eraseMode()) {
+            const auto entity = g_editor.editableVoxelSet_;
+            if (entity != IREntity::kNullEntity && isEditable(entity)) {
+                const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+                auto lower = (set.size_ - request->size_) / 2;
+                lower.z = set.size_.z - request->size_.z - panel.placementHeight();
+                const auto count = eraseEditorShape({request->shape_, request->size_, lower});
+                panel.showStatus("Erased " + std::to_string(count) + " cells / Undo available");
+            } else
+                panel.showStatus("Select a part / use Local Edit");
+        } else {
+            finishPartEdits();
+            const bool spawned = spawnEditorShape(request->shape_, request->size_);
+            panel.showStatus(
+                spawned ? "Part created / Undo available" : "Not created: see status above"
+            );
+        }
+        g_editor.shapePlacement_.cancel();
     }
     int active = -1;
     if (!g_bonePaint.active_ && !g_classPaintMode && !g_loftTool.active_) {
@@ -6194,6 +6375,7 @@ void registerEditorActions() {
 }
 
 void bindEditorActionWidgets() {
+    IRPrefab::Widget::bindAction(g_editor.shapesPanel_.eraseButton(), "editor.erase_mode");
     for (std::size_t i = 0; i < g_sculpt.buttons_.size(); ++i) {
         IRPrefab::Widget::bindAction(g_sculpt.buttons_[i], kSculptToolbarActions[i].id_);
         g_editor.shortcutHints_.add(g_sculpt.buttons_[i], kSculptToolbarActions[i].label_);
@@ -6758,6 +6940,17 @@ bool evaluateShapesWorkflowCheck(const void *context, std::string &actual) {
     const bool editable =
         check.occupied_ == 0 || g_editor.editableVoxelSet_ == g_entityScene.selectedEntity();
     return shapesWorkflowMatches(g_entityScene, check, actual) && history && editable;
+}
+
+bool evaluateShapeEraseCheck(const void *context, std::string &actual) {
+    return evaluateShapeEraseWorkflow(
+        g_editor.shapeEraseWorkflow_,
+        g_entityScene,
+        g_editor.shapesPanel_,
+        g_editor.shapePlacement_,
+        context,
+        actual
+    );
 }
 
 bool evaluateMaterialToolCheck(const void *context, std::string &actual) {
@@ -8531,7 +8724,8 @@ int main(int argc, char **argv) {
         "fill_ghost | face_pick | screen_alignment | shadow_rotation | camera_gestures | "
         "click_orbit | viewport_scroll | spatial_navigation | palette_workflow | array_workflow | "
         "lod_workflow | "
-        "region_tools | material_tools | shapes_workflow | workspace_controls | workspace_restore "
+        "region_tools | material_tools | shapes_workflow | shapes_erase | workspace_controls | "
+        "workspace_restore "
         "| rock | "
         "mushroom | ant | bird | tree | "
         "parts_roundtrip | "
@@ -8560,6 +8754,7 @@ int main(int argc, char **argv) {
          "region_tools",
          "material_tools",
          "shapes_workflow",
+         "shapes_erase",
          "workspace_controls",
          "workspace_restore",
          "shadow_rotation",
@@ -8877,6 +9072,11 @@ int main(int argc, char **argv) {
             for (std::size_t shot = 0; shot < IRVoxelEditor::g_session.shots_.size(); ++shot)
                 IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
                     IRVoxelEditor::Session::shapeWorkflowYaw(static_cast<int>(shot));
+        }
+        if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SHAPES_ERASE) {
+            for (std::size_t shot = 0; shot < IRVoxelEditor::g_session.shots_.size(); ++shot)
+                IRVoxelEditor::g_session.shots_[shot].render_.yawRadians_ =
+                    IRVoxelEditor::Session::shapeEraseWorkflowYaw(static_cast<int>(shot));
         }
         if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS) {
             for (int shot = 0; shot < IRVoxelEditor::Session::kRegionToolShotCount; ++shot)
@@ -9428,8 +9628,12 @@ void initSystems() {
                     status = "TRANSFORM | " + status;
                 }
                 if (IRVoxelEditor::g_editor.shapesPanel_.visible())
-                    status = IRVoxelEditor::g_editor.shapesPanel_.dragMode() ? "DRAG SHAPE"
-                                                                             : "STAMP SHAPE";
+                    status =
+                        std::string(
+                            IRVoxelEditor::g_editor.shapesPanel_.eraseMode() ? "ERASE " : "DRAW "
+                        ) +
+                        (IRVoxelEditor::g_editor.shapesPanel_.dragMode() ? "DRAG SHAPE"
+                                                                         : "STAMP SHAPE");
                 else if (!IRVoxelEditor::g_sculpt.feedback_.empty())
                     status += " | " + IRVoxelEditor::g_sculpt.feedback_;
                 IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
@@ -9753,8 +9957,6 @@ void initSystems() {
                         pressed(IRInput::kMouseButtonRight)  ? IRInput::kMouseButtonRight
                         : pressed(IRInput::kMouseButtonLeft) ? IRInput::kMouseButtonLeft
                                                              : IRInput::kMouseButtonMiddle;
-                    rotState->rolling_ =
-                        alt && IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
                     rotState->startMouse_ = IRInput::getMousePosition();
                     rotState->startOrbit_ = IRPrefab::Camera::getOrbitAngles();
                     if (cursorOrbit)
@@ -9766,14 +9968,18 @@ void initSystems() {
                     }
                 }
                 if (rotState->dragging_) {
+                    const bool rolling = rotState->dragButton_ == IRInput::kMouseButtonLeft &&
+                                         IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
                     const auto delta = (IRInput::getMousePosition() - rotState->startMouse_) *
                                        IRVoxelEditor::g_editor.navigation_.dragSensitivity_;
                     const auto start = rotState->startOrbit_;
                     IRPrefab::Camera::setOrbitAngles(
-                        start.azimuth_ + (rotState->rolling_ ? 0.0f : delta.x),
-                        start.elevation_ + (rotState->rolling_ ? 0.0f : delta.y),
-                        start.roll_ + (rotState->rolling_ ? delta.x : 0.0f)
+                        start.azimuth_ + (rolling ? 0.0f : delta.x),
+                        start.elevation_ + (rolling ? 0.0f : delta.y),
+                        start.roll_ + (rolling ? delta.x : 0.0f)
                     );
+                    rotState->startMouse_ = IRInput::getMousePosition();
+                    rotState->startOrbit_ = IRPrefab::Camera::getOrbitAngles();
                     rotState->anchor_.updateIndicator();
                     if (IRInput::checkKeyMouseButton(rotState->dragButton_, IRInput::RELEASED) ||
                         (!pressed(rotState->dragButton_) &&
@@ -10943,7 +11149,9 @@ void initCommands() {
         IRInput::KeyMouseButtons::kKeyButtonV,
         []() {
             IRVoxelEditor::finishSculptStroke();
+            IRVoxelEditor::g_editor.shapePlacement_.cancel();
             IRVoxelEditor::g_eraseMode = !IRVoxelEditor::g_eraseMode;
+            IRVoxelEditor::g_editor.shapesPanel_.setEraseMode(IRVoxelEditor::g_eraseMode);
             IR_LOG_INFO("Erase-fill mode: {}", IRVoxelEditor::g_eraseMode ? "ON" : "OFF");
         },
         IRInput::kModifierNone,
@@ -11826,6 +12034,7 @@ void initEntities() {
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CLICK_ORBIT ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SHAPES_WORKFLOW ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::WORKSPACE_CONTROLS ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::SHAPES_ERASE ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::WORKSPACE_RESTORE ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MATERIAL_TOOLS ||
         IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::REGION_TOOLS ||

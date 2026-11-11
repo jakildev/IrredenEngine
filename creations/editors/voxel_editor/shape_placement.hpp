@@ -41,6 +41,9 @@ class ShapePlacement {
         m_anchor = anchor;
         m_proposal = ShapePlacementProposal{shape, {1, 1, 1}, anchor};
     }
+    IRMath::ivec3 anchor() const {
+        return m_anchor;
+    }
     void sizeFootprint(IRMath::ivec3 target) {
         auto &p = *m_proposal;
         const auto delta = IRMath::ivec2(target - m_anchor);
@@ -68,10 +71,16 @@ class ShapePlacement {
     float releaseY() const {
         return m_releasePointer.y;
     }
-    void sizeHeight(int zDelta) {
+    void sizeHeight(int zDelta, bool bidirectional = false) {
         auto &p = *m_proposal;
-        p.size_.z = IRMath::clamp(1 - zDelta, 1, 64);
-        p.lower_.z = m_anchor.z - p.size_.z + 1;
+        if (bidirectional) {
+            zDelta = IRMath::clamp(zDelta, -63, 63);
+            p.size_.z = IRMath::abs(zDelta) + 1;
+            p.lower_.z = m_anchor.z + IRMath::min(zDelta, 0);
+        } else {
+            p.size_.z = IRMath::clamp(1 - zDelta, 1, 64);
+            p.lower_.z = m_anchor.z - p.size_.z + 1;
+        }
     }
 
     // Retain merged exterior faces in part-local coordinates. Cursor movement
@@ -80,20 +89,21 @@ class ShapePlacement {
         IRMath::vec3 ray,
         IRMath::Color color,
         std::vector<IRPrefab::WorldPrimitiveVertex> &out,
-        std::vector<IRPrefab::WorldPrimitiveVertex> &lines
+        std::vector<IRPrefab::WorldPrimitiveVertex> &lines,
+        IRMath::vec3 offset = IRMath::vec3(0),
+        bool erase = false
     ) {
         if (!m_proposal)
             return;
         const auto &p = *m_proposal;
-        if (m_meshShape != p.shape_ || m_meshSize != p.size_)
-            rebuild(p.shape_, p.size_);
+        prepareMesh();
         const auto rgb = IRMath::vec3(color.red_, color.green_, color.blue_) / 255.0f;
         for (const auto &face : m_faces) {
             if (ray[face.axis_] * face.sign_ >= 0)
                 continue;
             const float shade = face.axis_ == 2 ? 1.0f : face.axis_ == 1 ? 0.78f : 0.65f;
             const IRMath::vec4 tint(IRMath::mix(rgb, IRMath::vec3(1), 0.20f) * shade, 0.48f);
-            const auto origin = IRMath::vec3(p.lower_) + face.corner_;
+            const auto origin = offset + IRMath::vec3(p.lower_) + face.corner_;
             for (int i : {0, 1, 2, 0, 2, 3}) {
                 auto position = origin;
                 if (i == 1 || i == 2)
@@ -109,8 +119,58 @@ class ShapePlacement {
         }
         for (const auto point : m_contour)
             lines.push_back(
-                {IRMath::vec3(p.lower_) + point, IRMath::vec4(0.88f, 0.96f, 1.0f, 0.85f)}
+                {offset + IRMath::vec3(p.lower_) + point,
+                 erase ? IRMath::vec4(1.0f, 0.25f, 0.2f, 0.95f)
+                       : IRMath::vec4(0.88f, 0.96f, 1.0f, 0.85f)}
             );
+    }
+
+    // Surface highlights remain visible when the cutter's exterior lies
+    // inside a solid. A tiny view-depth offset avoids coplanar flicker while
+    // unrelated foreground voxels retain their normal occlusion.
+    template <typename Occupied>
+    void appendAffectedCells(
+        IRMath::vec3 ray,
+        IRMath::vec3 origin,
+        IRMath::ivec3 size,
+        Occupied occupiedCell,
+        std::vector<IRPrefab::WorldPrimitiveVertex> &out,
+        std::vector<IRPrefab::WorldPrimitiveVertex> &lines
+    ) {
+        if (!m_proposal)
+            return;
+        prepareMesh();
+        const auto &p = *m_proposal;
+        const auto low = IRMath::max(p.lower_, IRMath::ivec3(0));
+        const auto high =
+            IRMath::min(p.lower_ + p.size_ - IRMath::ivec3(1), size - IRMath::ivec3(1));
+        const auto viewRotation = IRRender::getViewRotation();
+        const auto clearance =
+            ray / (IRMath::dot(ray, ray) * IRRender::getVoxelRenderEffectiveSubdivisions() *
+                   IRRender::kDepthEncodeShift);
+        IRMath::iterateAABB(low, high, [&](int x, int y, int z) {
+            const IRMath::ivec3 cell(x, y, z);
+            if (!occupied(cell - p.lower_) || !occupiedCell(cell))
+                return;
+            bool exposed = false;
+            for (int axis = 0; axis < 3; ++axis) {
+                if (IRMath::abs(ray[axis]) < 1e-6f)
+                    continue;
+                auto neighbor = cell;
+                neighbor[axis] += ray[axis] > 0 ? -1 : 1;
+                exposed = exposed || !cellInBounds(neighbor, size) || !occupiedCell(neighbor);
+            }
+            if (exposed)
+                IRPrefab::appendVisibleBox(
+                    origin + IRMath::vec3(cell) - clearance,
+                    IRMath::vec3(.5f),
+                    IRMath::vec4(1, .08f, .04f, .55f),
+                    IRMath::vec4(1, .3f, .2f, .8f),
+                    viewRotation,
+                    out,
+                    lines
+                );
+        });
     }
 
     void append(
@@ -123,6 +183,10 @@ class ShapePlacement {
     }
 
   private:
+    void prepareMesh() {
+        if (m_meshShape != m_proposal->shape_ || m_meshSize != m_proposal->size_)
+            rebuild(m_proposal->shape_, m_proposal->size_);
+    }
     struct FaceRun {
         IRMath::vec3 corner_;
         int axis_;

@@ -24,6 +24,8 @@ constexpr IRMath::ivec2 kShapesSpawnSize{144, 18};
 constexpr IRMath::ivec2 kShapeStampPos{kShapesPanelPos + IRMath::ivec2(12, 160)};
 constexpr IRMath::ivec2 kShapeDragPos{kShapesPanelPos + IRMath::ivec2(112, 160)};
 constexpr IRMath::ivec2 kShapeModeSize{94, 18};
+constexpr IRMath::ivec2 kShapeDrawPos{kShapesPanelPos + IRMath::ivec2(12, 186)};
+constexpr IRMath::ivec2 kShapeErasePos{kShapesPanelPos + IRMath::ivec2(112, 186)};
 constexpr IRMath::ivec2 shapeRowPos(int axis) {
     return kShapesPanelPos + IRMath::ivec2(116, 54 + axis * 24);
 }
@@ -42,7 +44,7 @@ class ShapesPanel {
   public:
     void create(IREntity::EntityId boxFillButton) {
         using namespace IRPrefab::Widget;
-        m_panel = makePanel(kShapesPanelPos, kShapesPanelSize, "SHAPES / NEW VOXEL PART", true, -1);
+        m_panel = makePanel(kShapesPanelPos, kShapesPanelSize, "SHAPES", true, -1);
         IREntity::setComponent(m_panel, IRComponents::C_HitBox2DGui{kShapesPanelSize});
         m_widgets.push_back(m_panel);
         m_dropdown = makeDropdown(
@@ -71,14 +73,19 @@ class ShapesPanel {
         m_drag = makeButton(kShapeDragPos, kShapeModeSize, "DRAG", IRRender::TextSize::SMALL);
         m_widgets.push_back(m_stamp);
         m_widgets.push_back(m_drag);
+        m_draw = makeButton(kShapeDrawPos, kShapeModeSize, "[DRAW]", IRRender::TextSize::SMALL);
+        m_erase =
+            makeButton(kShapeErasePos, kShapeModeSize, "ERASE (V)", IRRender::TextSize::SMALL);
+        m_widgets.push_back(m_draw);
+        m_widgets.push_back(m_erase);
         m_hint = makeLabel(
-            kShapesPanelPos + IRMath::ivec2(12, 190),
+            kShapesPanelPos + IRMath::ivec2(12, 212),
             "Click to place a shaped part.",
             {},
             IRRender::TextSize::SMALL
         );
         m_hint2 = makeLabel(
-            kShapesPanelPos + IRMath::ivec2(12, 208),
+            kShapesPanelPos + IRMath::ivec2(12, 230),
             "Click again to stamp another.",
             {},
             IRRender::TextSize::SMALL
@@ -123,15 +130,12 @@ class ShapesPanel {
             m_dragMode = IRPrefab::Widget::wasClicked(m_drag);
             IRPrefab::Widget::setButtonLabel(m_stamp, m_dragMode ? "STAMP" : "[STAMP]");
             IRPrefab::Widget::setButtonLabel(m_drag, m_dragMode ? "[DRAG]" : "DRAG");
-            IRPrefab::Widget::setLabelText(
-                m_hint,
-                m_dragMode ? "Drag the base, then release." : "Click to place a shaped part."
-            );
-            IRPrefab::Widget::setLabelText(
-                m_hint2,
-                m_dragMode ? "Lift for height. Click to place." : "Click again to stamp another."
-            );
+            updateHints();
         }
+        if (IRPrefab::Widget::wasClicked(m_draw))
+            setEraseMode(false);
+        if (IRPrefab::Widget::wasClicked(m_erase))
+            setEraseMode(true);
         return IRPrefab::Widget::wasClicked(m_spawn) ? std::optional{selection()} : std::nullopt;
     }
     ShapeSpawnRequest selection() const {
@@ -141,6 +145,22 @@ class ShapesPanel {
     }
     bool dragMode() const {
         return m_dragMode;
+    }
+    bool eraseMode() const {
+        return m_eraseMode;
+    }
+    IREntity::EntityId eraseButton() const {
+        return m_erase;
+    }
+    void setEraseMode(bool erase) {
+        if (m_eraseMode == erase)
+            return;
+        m_eraseMode = erase;
+        IRPrefab::Widget::setButtonLabel(m_draw, erase ? "DRAW" : "[DRAW]");
+        IRPrefab::Widget::setButtonLabel(m_erase, erase ? "[ERASE] (V)" : "ERASE (V)");
+        IRPrefab::Widget::setButtonLabel(m_spawn, erase ? "ERASE AT CENTER" : "SPAWN AT CENTER");
+        updateHints();
+        showStatus(erase ? "Selected part only / no mirrors" : "Uses the active color");
     }
     int placementHeight() const {
         return m_dimensions[3].value();
@@ -167,6 +187,20 @@ class ShapesPanel {
     }
 
   private:
+    void updateHints() {
+        IRPrefab::Widget::setLabelText(
+            m_hint,
+            m_dragMode    ? "Drag the base, then release."
+            : m_eraseMode ? "Click a voxel to erase a shape."
+                          : "Click to place a shaped part."
+        );
+        IRPrefab::Widget::setLabelText(
+            m_hint2,
+            m_dragMode    ? "Move for height; click to apply."
+            : m_eraseMode ? "Red faces mark affected cells."
+                          : "Click again to stamp another."
+        );
+    }
     bool m_visible = false;
     IREntity::EntityId m_panel = IREntity::kNullEntity;
     IREntity::EntityId m_dropdown = IREntity::kNullEntity;
@@ -179,6 +213,9 @@ class ShapesPanel {
     IREntity::EntityId m_hint2 = IREntity::kNullEntity;
     std::array<IntegerStepper, 4> m_dimensions;
     bool m_dragMode = false;
+    bool m_eraseMode = false;
+    IREntity::EntityId m_draw = IREntity::kNullEntity;
+    IREntity::EntityId m_erase = IREntity::kNullEntity;
     std::vector<IREntity::EntityId> m_widgets;
 };
 } // namespace IRVoxelEditor

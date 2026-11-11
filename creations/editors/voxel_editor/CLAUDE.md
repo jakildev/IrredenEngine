@@ -14,10 +14,15 @@ Picker reads unlit voxel RGB. An unsaved sampled color is a transient foreground
 selection (index -1); Add persists it as a swatch. Recolor changes occupied cells
 only. Bucket fills the nearest visible enclosed four-connected empty region on
 one local axis plane; an open boundary rejects the operation before mutation.
-Bucket does not expand through symmetry. Shapes creates a new voxel part in the
-active color with integer X/Y/Z extents, using closed cell/solid intersection.
-Stamp stays active for repeated clicks against the document plane. In Drag mode,
-set the footprint first, then the height. Each placed part owns one Undo.
+Bucket does not expand through symmetry. Shapes DRAW creates a new voxel part in
+the active color; ERASE removes occupied cells only from the selected editable
+canvas. Both use integer X/Y/Z extents and closed cell/solid intersection.
+The operation buttons and V preserve the primitive, dimensions and Stamp/Drag
+setting. Switching operation cancels an unfinished shape gesture. Erase uses a
+red volume and highlights affected exposed cells; preview and commit exclude
+symmetry copies and other parts. LOCAL EDIT remains active for erasing.
+Stamp stays active for repeated clicks. In Drag mode, set the footprint first,
+then the height. Each placement or nonempty erase owns one Undo.
 
 Palettes use direct RGB: Edit/Add and `.gpl` Load/Save change swatches, never
 existing voxel colors. Arrays preview selected-part copies without descendants;
@@ -37,7 +42,8 @@ scroll orbit the construction-plane center; Option/Alt+left and Ctrl+middle
 resolve the editable surface or floor once at press. The gold marker identifies
 that anchor. World up is -Z, elevation crosses the horizon to reveal undersides,
 and pole clamps keep ordinary orbit upright; Option/Alt+Shift+left rolls explicitly.
-Native pinch and wheel zoom anchor at each event's window position. Shift+swipe,
+Shift switches an active Option/Alt+left drag between orbit and roll without
+releasing the button. Native pinch and wheel zoom anchor at each event's window position. Shift+swipe,
 middle-drag, and Space+left pan. Camera ownership survives modifier release,
 and phased scroll/pinch retain their initial UI or viewport ownership. OS scroll
 momentum does not move the camera. RESET VIEW/Home (Command+0 or Fn+Left on Mac)
