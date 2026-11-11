@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Capture raster-only sun-depth collision controls on the legacy canvas bake.
 
-Run under ir-acquire gpu from a checkout whose build contains IRCanvasStress
+Holds the ir-acquire gpu lease for the whole matrix (re-running itself under
+ir-acquire gpu when started bare) and needs a build that contains IRCanvasStress
 with --probe-particle-raster and --sun-primary-rect-probe. Each case renders the
 GRID floor receiver under a lower caster, a distant caster stack beyond the
 64-unit throw, or both, and grades the receiver crop against its lower-only
@@ -21,8 +22,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -47,6 +46,7 @@ ROUTES = {"particles": ["--probe-particle-raster"], "legacy-flag": ["--legacy-de
 # interval, crossing the throw boundary between shots 2 and 4.
 TRACK_VELOCITY, TRACK_SHOTS, TRACK_SETTLE = (0, 0, -20), 7, 8
 LOCK_ATTEMPTS = 6
+REEXEC_MARK = "IR_SUN_SLAB_CAPTURE_REEXEC"
 DRIFT_RE = re.compile(r"PROBE-DRIFT shot=(\d+) offset=\(([^,]+),([^,]+),([^)]+)\)")
 ROUTE_RE = re.compile(r"SUN-ROUTE shot=(\d+) finite_coverage=(\d) particle_pass=(\d)")
 
@@ -135,6 +135,9 @@ def command_for(build, spec, route, config, probe):
 
 
 def capture(binary, build, variant_dir, spec, route, probe):
+    # Pillow stays out of module scope so the bare-launch lease path is stdlib-only.
+    from PIL import Image
+
     directory = variant_dir / spec["name"]
     directory.mkdir(parents=True)
     config = directory / "config.lua"
@@ -205,7 +208,15 @@ def main():
     parser.add_argument("--no-tracks", action="store_true")
     args = parser.parse_args()
     if os.environ.get("IR_ACQUIRE_HELD_VERB") not in {"gpu", "benchmark"}:
-        parser.error("run under ir-acquire gpu -- to protect the shared capture file")
+        # The probe CSVs land beside the shared binary, so one lease spans
+        # every case; a bare launch re-runs itself inside that lease.
+        if os.environ.get(REEXEC_MARK):
+            parser.error("ir-acquire gpu did not export its lease; refusing to recurse")
+        tool = os.environ.get("IR_ACQUIRE") or (ROOT / "engine/tools/bin/ir-acquire").as_posix()
+        command = [tool, "gpu", "--", sys.executable, Path(__file__).resolve().as_posix(),
+                   *sys.argv[1:]]
+        sys.exit(subprocess.run(platform_launch_argv(command), cwd=ROOT,
+                                env={**os.environ, REEXEC_MARK: "1"}).returncode)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     build = args.build_dir.resolve()

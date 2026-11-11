@@ -129,6 +129,7 @@ def check(path, role):
              (["python3", "scripts/render-verify.py", "--target", "IRShapeDebug"], "allow"),
              (["python3", "scripts/perf/repeat_profile.py", "--target", "IRPerfGrid"], "allow"),
              (["python3", "scripts/perf/sdf_controls.py", "--release"], "allow"),
+             (["python3", "scripts/perf/sun_depth_slab_capture.py", "--output", "o"], "allow"),
              (["python3", "scripts/package-smoke.py", "--target", "IRShapeDebug"], "allow"),
              (["python3", "-c", "print(1)"], None),
              (["fleet-jobs", "start", "render-verify", "--", "--target", "IRShapeDebug"], "allow"),
