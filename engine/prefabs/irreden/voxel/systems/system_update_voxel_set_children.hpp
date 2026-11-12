@@ -3,6 +3,7 @@
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/set_cull_gate.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/components/component_player.hpp>
 #include <irreden/ir_job.hpp>
@@ -144,16 +145,14 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         }
         C_VoxelPool &pool = *poolPtr;
 
-        // Cull gate: skip the CPU→GPU position update when none of this
-        // set's pool chunks are in the camera viewport. On-screen sets
-        // re-upload every frame (unconditional per ECS no-dirty-flags rule).
-        // cullValid_ is false before the first render frame — fail-safe to
-        // doing the work rather than silently dropping geometry at startup.
-        if (cullValid_ && !pool.isRangeVisible(
-                              voxelSet.voxelStartIdx_,
-                              static_cast<std::size_t>(voxelSet.allocatedVoxels_),
-                              viewport_
-                          )) {
+        // Cull gate: skip the CPU→GPU position update when neither this
+        // set's stored pool chunks nor its current transform reach the camera
+        // viewport. On-screen sets re-upload every frame (unconditional per
+        // ECS no-dirty-flags rule). cullValid_ is false before the first
+        // render frame — fail-safe to doing the work rather than silently
+        // dropping geometry at startup.
+        if (cullValid_ &&
+            !IRPrefab::Voxel::isVoxelSetCullVisible(voxelSet, pool, worldTransform, viewport_)) {
             return;
         }
 

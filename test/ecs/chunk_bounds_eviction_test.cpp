@@ -655,6 +655,123 @@ TEST_F(ChunkBoundsEvictionTest, PendingInvalidationAdmitsUpdateWork) {
         << "once rebuilt the query is the ordinary overlap answer again";
 }
 
+// The yaw branch rebuilds every chunk's bounds from current world bounds, so
+// it owns the cardinal pending state just as the full cardinal rebuild does:
+// after it, the gate is the overlap answer against the yawed bounds.
+constexpr float kGateYaw = 0.6f;
+
+IsoBounds2D yawedViewportAround(vec3 worldPos, float yaw, float halfExtent = 4.0f) {
+    // The yaw branch projects a chunk's world AABB shifted half a cell.
+    const vec2 iso = IRMath::pos3DtoPos2DIsoYawed(worldPos - vec3(0.5f), yaw);
+    return IsoBounds2D{iso - vec2(halfExtent), iso + vec2(halfExtent)};
+}
+
+TEST_F(ChunkBoundsEvictionTest, YawRebuildAnswersTheGateFromItsBounds) {
+    const vec3 nearPose(2, 2, 2);
+    C_VoxelPool pool = makeTwoChunkPool(nearPose); // allocation arms every chunk
+    pool.rebuildChunkBounds(CardinalIndex::k0, true, kGateYaw);
+
+    const IsoBounds2D atNear = yawedViewportAround(nearPose, kGateYaw);
+    EXPECT_FALSE(pool.isRangeVisible(kChunk, kChunk, atNear))
+        << "a chunk the yaw rebuild placed outside the viewport must be rejected";
+    EXPECT_TRUE(pool.isRangeVisible(0, kChunk, atNear));
+}
+
+TEST_F(ChunkBoundsEvictionTest, YawWriteAdmitsUntilTheNextYawRebuild) {
+    const vec3 nearPose(2, 2, 2);
+    C_VoxelPool pool = makeTwoChunkPool(nearPose);
+    pool.rebuildChunkBounds(CardinalIndex::k0, true, kGateYaw);
+    (void)pool.consumeCullRebuildCounters();
+    const IsoBounds2D atNear = yawedViewportAround(nearPose, kGateYaw);
+    ASSERT_FALSE(pool.isRangeVisible(kChunk, kChunk, atNear));
+
+    notifyPositionsRewritten(pool, static_cast<std::size_t>(kChunk), 1);
+    EXPECT_TRUE(pool.isRangeVisible(kChunk, kChunk, atNear))
+        << "a write after the rebuild is admitted until bounds catch up";
+
+    pool.rebuildChunkBounds(CardinalIndex::k0, true, kGateYaw + 0.1f);
+    EXPECT_EQ(pool.consumeCullRebuildCounters().worldChunks_, 1u);
+    EXPECT_FALSE(
+        pool.isRangeVisible(kChunk, kChunk, yawedViewportAround(nearPose, kGateYaw + 0.1f))
+    ) << "the next yaw rebuild returns the range to the overlap answer";
+}
+
+TEST_F(ChunkBoundsEvictionTest, CardinalRebuildAfterYawWritesRederivesEveryChunk) {
+    const vec3 nearPose(2, 2, 2);
+    const vec3 movedPose(-60, 90, 3);
+    C_VoxelPool pool = makeTwoChunkPool(nearPose);
+    pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f);
+    pool.rebuildChunkBounds(CardinalIndex::k90, true, kGateYaw);
+
+    for (int i = 0; i < kChunk; ++i) {
+        pool.getPositionGlobals()[static_cast<std::size_t>(kChunk + i)].pos_ = movedPose;
+    }
+    notifyPositionsRewritten(pool, static_cast<std::size_t>(kChunk), kChunk);
+    pool.rebuildChunkBounds(CardinalIndex::k90, true, kGateYaw);
+    (void)pool.consumeCullRebuildCounters();
+
+    pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f);
+    EXPECT_EQ(pool.consumeCullRebuildCounters().cardinalChunks_, 2u)
+        << "a write the yaw branch consumed must still reach the cardinal cache";
+    expectBoundsMatchOracle(pool, 0, CardinalIndex::k90);
+    expectBoundsMatchOracle(pool, 1, CardinalIndex::k90);
+}
+
+// `isWorldBoundsVisible` projects a world box the pool has not stored yet in
+// the convention of the branch that built the stored bounds. A viewport fitted
+// tightly to a stored chunk bound therefore admits a box at that chunk's
+// position and rejects one elsewhere; a half-cell shift or a missing cardinal
+// rotation lands the box off the tight viewport.
+IsoBounds2D tightViewportOverChunk(C_VoxelPool &pool, std::size_t chunk) {
+    const IRComponents::ChunkBounds &cb = pool.getChunkBounds()[chunk];
+    return IsoBounds2D{cb.isoMin_ - vec2(0.01f), cb.isoMax_ + vec2(0.01f)};
+}
+
+void expectWorldBoundsMatchStoredProjection(C_VoxelPool &pool) {
+    const IsoBounds2D atNear = tightViewportOverChunk(pool, 0);
+    const vec3 nearPose(2, 2, 2);
+    const vec3 farPose(80, 80, 0);
+    EXPECT_TRUE(pool.isWorldBoundsVisible(nearPose, nearPose, atNear));
+    EXPECT_TRUE(pool.isWorldBoundsVisible(nearPose - vec3(1), nearPose + vec3(1), atNear));
+    EXPECT_FALSE(pool.isWorldBoundsVisible(farPose, farPose, atNear));
+    EXPECT_FALSE(
+        pool.isWorldBoundsVisible(nearPose + vec3(3, 0, 0), nearPose + vec3(4, 0, 0), atNear)
+    );
+}
+
+TEST_F(ChunkBoundsEvictionTest, WorldBoundsQueryAdmitsBeforeTheFirstRebuild) {
+    const C_VoxelPool pool = makeTwoChunkPool();
+    EXPECT_TRUE(pool.isWorldBoundsVisible(vec3(500), vec3(501), viewportAround(vec3(0))));
+}
+
+TEST_F(ChunkBoundsEvictionTest, WorldBoundsQueryMatchesCardinalK0Projection) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+    expectWorldBoundsMatchStoredProjection(pool);
+}
+
+TEST_F(ChunkBoundsEvictionTest, WorldBoundsQueryMatchesCardinalK90Projection) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f);
+    expectWorldBoundsMatchStoredProjection(pool);
+    pool.rebuildChunkBounds(CardinalIndex::k90, false, 0.0f); // nothing pending: early return
+    expectWorldBoundsMatchStoredProjection(pool);
+}
+
+TEST_F(ChunkBoundsEvictionTest, WorldBoundsQueryMatchesYawProjection) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    pool.rebuildChunkBounds(CardinalIndex::k0, true, kGateYaw);
+    expectWorldBoundsMatchStoredProjection(pool);
+}
+
+TEST_F(ChunkBoundsEvictionTest, WorldBoundsQueryMatchesSpatialProjection) {
+    C_VoxelPool pool = makeTwoChunkPool();
+    const auto view =
+        IRMath::orthographicViewBasis(IRMath::uprightOrbitRotation(0.79f, 0.37f, 0.31f));
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f, &view);
+    expectWorldBoundsMatchStoredProjection(pool);
+}
+
 // A static re-voxelize bound owns every chunk's rotation-independent cardinal
 // answer. Its early-return rebuild must consume the cardinal pending bits;
 // otherwise conservative admission makes every detached range remain visible.
@@ -673,6 +790,20 @@ TEST_F(ChunkBoundsEvictionTest, StaticBoundPoolCullsAfterAllocationArmedThePendi
     EXPECT_FALSE(pool.isRangeVisible(0, kChunk, viewportAround(vec3(500, 500, 0))))
         << "allocation's pending bits must not outlive the static bound's rebuild";
     EXPECT_TRUE(pool.isRangeVisible(0, kChunk, viewportAround(vec3(0, 0, 0))));
+}
+
+TEST_F(ChunkBoundsEvictionTest, StaticBoundPoolWorldBoundsQueryDefersToTheStoredBound) {
+    C_VoxelPool pool(ivec3(16, 16, 4));
+    pool.allocateVoxels(kChunk);
+    for (int i = 0; i < kChunk; ++i) {
+        seedSlot(pool, static_cast<std::size_t>(i), vec3(0, 0, 0), true);
+    }
+    pool.resyncActiveMaskFromColors(0, static_cast<std::size_t>(kChunk));
+    pool.setStaticReVoxelizeBound(vec3(2, 2, 2));
+    pool.rebuildChunkBounds(CardinalIndex::k0, false, 0.0f);
+
+    EXPECT_FALSE(pool.isWorldBoundsVisible(vec3(0), vec3(0), viewportAround(vec3(0), 4.0f)))
+        << "the rotation-independent stored bound answers for every pose";
 }
 
 class DetachedCullBoundTest : public ::testing::Test {
