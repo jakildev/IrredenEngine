@@ -80,6 +80,12 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
         return;
     }
 #endif
+#if IR_SKIP_CARDINAL_SURFACE
+    if (isCardinalVoxelSurface(trixelEntityIds.read(uint2(pixel)).xy)) {
+        canvasSunShadow.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
+        return;
+    }
+#endif
 
     // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
     // (per-axis / single-canvas, flip carrier).

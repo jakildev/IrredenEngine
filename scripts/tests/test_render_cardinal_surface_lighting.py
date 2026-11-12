@@ -258,6 +258,92 @@ def source_for(backend):
 
 @unittest.skipUnless(COMPILER, "cardinal routing controls require a C++ compiler")
 class CardinalSurfaceLightingTest(unittest.TestCase):
+    def validate_sun_shadow_surface_variant(self, system, body, backend):
+        self.assertIn(
+            "cardinalSurfaceLightingEligible_ = route.cardinal_ && !route.cardinalGlitch_;",
+            system,
+            "selected under glitch presentation",
+        )
+        selection = re.search(
+            r"const bool preserveCardinalSurfaces\s*=\s*(.*?);",
+            system,
+            re.DOTALL,
+        ).group(1)
+        self.assertIn(
+            "entity == perAxisCanvasEntity_",
+            selection,
+            "selected on an ineligible frame",
+        )
+        self.assertIn(
+            "cardinalSurfaceLightingEligible_",
+            selection,
+            "selected on an ineligible frame",
+        )
+        skip = re.search(
+            r"#if IR_SKIP_CARDINAL_SURFACE\s*if \((.*?)\) \{.*?#endif",
+            body,
+            re.DOTALL,
+        ).group(1)
+        expected = (
+            "isCardinalVoxelSurface(imageLoad(trixelEntityIds, pixel).xy)"
+            if backend == "glsl"
+            else "isCardinalVoxelSurface(trixelEntityIds.read(uint2(pixel)).xy)"
+        )
+        self.assertEqual(
+            re.sub(r"\s+", " ", skip).strip(),
+            expected,
+            "skip predicate wider than isCardinalVoxelSurface",
+        )
+
+    def test_sun_shadow_surface_variant_selection(self):
+        system_path = (
+            ROOT / "engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp"
+        )
+        system = system_path.read_text()
+        for backend in ("glsl", "metal"):
+            directory = shader_directory(backend)
+            body = (directory / f"c_compute_sun_shadow_body.{backend}").read_text()
+            self.validate_sun_shadow_surface_variant(system, body, backend)
+
+            mutations = {
+                "selected on an ineligible frame": (
+                    replace_once(
+                        system,
+                        "entity == perAxisCanvasEntity_ && cardinalSurfaceLightingEligible_",
+                        "cardinalSurfaceLightingEligible_",
+                    ),
+                    body,
+                ),
+                "selected under glitch presentation": (
+                    replace_once(
+                        system,
+                        "route.cardinal_ && !route.cardinalGlitch_",
+                        "route.cardinal_",
+                    ),
+                    body,
+                ),
+                "skip predicate wider than isCardinalVoxelSurface": (
+                    system,
+                    replace_once(
+                        body,
+                        "isCardinalVoxelSurface(",
+                        "decodeEntityIdCardinalVoxel(",
+                    ),
+                ),
+            }
+            for name, (candidate_system, candidate_body) in mutations.items():
+                with self.subTest(backend=backend, mutation=name):
+                    with self.assertRaisesRegex(AssertionError, name):
+                        self.validate_sun_shadow_surface_variant(
+                            candidate_system, candidate_body, backend
+                        )
+
+        for backend in ("glsl", "metal"):
+            directory = shader_directory(backend)
+            for suffix in ("surface", "shapes_surface"):
+                wrapper = (directory / f"c_compute_sun_shadow_{suffix}.{backend}").read_text()
+                self.assertIn("#define IR_SKIP_CARDINAL_SURFACE 1", wrapper)
+
     def test_production_predicates_readiness_and_selection(self):
         for backend in ("glsl", "metal"):
             source = source_for(backend)
