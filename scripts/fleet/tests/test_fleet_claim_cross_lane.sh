@@ -8,6 +8,10 @@ source "$(dirname "$0")/lib_preflight.sh"
 source "$(dirname "$0")/lib_assert.sh"
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
+export CLAIM_RACE_LIB CLAIM_RACE_SUITE_PID=$$
+CLAIM_RACE_LIB="$(cd "$(dirname "$0")" && pwd)/lib_claim_race.sh"
+source "$CLAIM_RACE_LIB"
+
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/fleet-cross-lane.XXXXXX")
 source "$(dirname "$0")/lib_hermetic.sh"
 hermetic_poison_gh_env "$TMPROOT"
@@ -32,15 +36,10 @@ mkdir -p "$FLEET_HEARTBEATS_DIR" "$FLEET_CLAIMS_DIR" \
 cat > "$TMPROOT/bin/gh" <<'GH_STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+source "$CLAIM_RACE_LIB"
 
 lock_state() {
-    local tick
-    for ((tick = 0; tick < 500; tick++)); do
-        mkdir "${CLAIM_STATE}.lock" 2>/dev/null && return 0
-        sleep 0.01
-    done
-    echo "gh stub: timed out acquiring state lock" >&2
-    return 1
+    race_lock "${CLAIM_STATE}.lock"
 }
 
 unlock_state() {
@@ -112,17 +111,10 @@ case "${1:-} ${2:-}" in
         fi
 
         if [[ -d "$CLAIM_RUN" ]]; then
-            tag=review
-            [[ "$posted" == fleet:amending-* ]] && tag=amend
-            : > "$CLAIM_RUN/arrived-$tag"
-            for ((tick = 0; tick < 500; tick++)); do
-                [[ -f "$CLAIM_RUN/gate-$tag" ]] && break
-                sleep 0.01
-            done
-            if [[ ! -f "$CLAIM_RUN/gate-$tag" ]]; then
-                echo "gh stub: timed out waiting for $tag gate" >&2
-                exit 1
-            fi
+            race_stage post
+            : > "$CLAIM_RUN/arrived-$CLAIMANT"
+            race_await gate "$CLAIMANT" || exit 1
+            race_stage gated
         fi
 
         lock_state
@@ -161,18 +153,6 @@ label_count() {
     local count=0 label
     while IFS= read -r label; do [[ -n "$label" ]] && count=$((count + 1)); done < "$CLAIM_STATE"
     printf '%s\n' "$count"
-}
-
-wait_for_file() {
-    local mode="$1" path="$2" tick
-    for ((tick = 0; tick < 500; tick++)); do
-        if [[ "$mode" == exists && -e "$path" ]] \
-                || [[ "$mode" == nonempty && -s "$path" ]]; then
-            return 0
-        fi
-        sleep 0.01
-    done
-    return 1
 }
 
 assert_foreign_claim_refused() {
@@ -296,78 +276,58 @@ else
     FLEET_CLAIM_EXCLUDES[fleet:reviewing-]="$saved_review_excludes"
 fi
 
-run_race() {
-    local order="$1"
+# lane_claim_as <subcommand> <agent>: one lane's claim, run under race_launch.
+lane_claim_as() {
+    "$FLEET_CLAIM" "$1" 4201 "$2"
+}
+
+# race_schedule <amend-first|review-first|together>
+#   Launch both lanes, hold each at its POST gate until both arrive, then open
+#   the gates in <order>. A broken rendezvous is left in RACE_BROKEN.
+race_schedule() {
+    local order="$1" first="" second=""
     set_labels
-    rm -rf "$CLAIM_RUN"
-    mkdir -p "$CLAIM_RUN"
-    amend_rc_file="$CLAIM_RUN/amend.rc"
-    review_rc_file="$CLAIM_RUN/review.rc"
-
-    (rc=0; "$FLEET_CLAIM" amending-claim 4201 poolA >/dev/null 2>&1 || rc=$?; printf '%s\n' "$rc" > "$amend_rc_file") &
-    amend_pid=$!
-    (rc=0; "$FLEET_CLAIM" review-claim 4201 poolB >/dev/null 2>&1 || rc=$?; printf '%s\n' "$rc" > "$review_rc_file") &
-    review_pid=$!
-
-    if ! wait_for_file exists "$CLAIM_RUN/arrived-amend" \
-            || ! wait_for_file exists "$CLAIM_RUN/arrived-review"; then
-        kill "$amend_pid" "$review_pid" 2>/dev/null || true
-        wait "$amend_pid" 2>/dev/null || true
-        wait "$review_pid" 2>/dev/null || true
-        bad "$order claimants reached the POST barrier"
-        bad "$order leaves exactly one lane label"
-        rm -rf "$CLAIM_RUN"
-        return 0
-    fi
+    race_reset
+    race_launch amend lane_claim_as amending-claim poolA
+    race_launch review lane_claim_as review-claim poolB
     case "$order" in
-        amend-first)
-            : > "$CLAIM_RUN/gate-amend"
-            if ! wait_for_file nonempty "$CLAIM_POST_LOG"; then
-                kill "$amend_pid" "$review_pid" 2>/dev/null || true
-                wait "$amend_pid" 2>/dev/null || true
-                wait "$review_pid" 2>/dev/null || true
-                bad "$order first POST completed"
-                bad "$order leaves exactly one lane label"
-                rm -rf "$CLAIM_RUN"
-                return 0
-            fi
-            : > "$CLAIM_RUN/gate-review"
-            ;;
-        review-first)
-            : > "$CLAIM_RUN/gate-review"
-            if ! wait_for_file nonempty "$CLAIM_POST_LOG"; then
-                kill "$amend_pid" "$review_pid" 2>/dev/null || true
-                wait "$amend_pid" 2>/dev/null || true
-                wait "$review_pid" 2>/dev/null || true
-                bad "$order first POST completed"
-                bad "$order leaves exactly one lane label"
-                rm -rf "$CLAIM_RUN"
-                return 0
-            fi
-            : > "$CLAIM_RUN/gate-amend"
-            ;;
-        together)
-            : > "$CLAIM_RUN/gate-amend"
-            : > "$CLAIM_RUN/gate-review"
-            ;;
+        amend-first) first=amend second=review ;;
+        review-first) first=review second=amend ;;
     esac
-    wait "$amend_pid" || true
-    wait "$review_pid" || true
+    if race_wait_for amend test -e "$CLAIM_RUN/arrived-amend" \
+            && race_wait_for review test -e "$CLAIM_RUN/arrived-review"; then
+        if [[ -z "$first" ]]; then
+            : > "$CLAIM_RUN/gate-amend"
+            : > "$CLAIM_RUN/gate-review"
+        else
+            : > "$CLAIM_RUN/gate-$first"
+            race_wait_for "$first" test -s "$CLAIM_POST_LOG" \
+                && : > "$CLAIM_RUN/gate-$second"
+        fi
+    fi
+    [[ -z "$RACE_BROKEN" ]] || race_abort
+    race_finish
+}
 
-    amend_rc=$(cat "$amend_rc_file")
-    review_rc=$(cat "$review_rc_file")
+run_race() {
+    local order="$1" fails_before="$FAIL"
+    race_schedule "$order"
+    assert_eq "$RACE_BROKEN" "" "$order rendezvous ends on claimant events"
+    amend_rc=$(race_rc amend)
+    review_rc=$(race_rc review)
     successes=0
-    [[ "$amend_rc" -eq 0 ]] && successes=$((successes + 1))
-    [[ "$review_rc" -eq 0 ]] && successes=$((successes + 1))
+    [[ "$amend_rc" == 0 ]] && successes=$((successes + 1))
+    [[ "$review_rc" == 0 ]] && successes=$((successes + 1))
     assert_eq "$successes" "1" "$order leaves exactly one successful claimant"
     assert_eq "$(label_count)" "1" "$order leaves exactly one lane label"
-    if [[ "$amend_rc" -eq 0 && "$review_rc" -ne 0 ]]; then
+    if [[ "$amend_rc" == 0 && "$review_rc" != 0 ]]; then
         assert_eq "$(cat "$CLAIM_STATE")" "$AMEND_LABEL" "$order leaves the amend winner's label"
-    elif [[ "$review_rc" -eq 0 && "$amend_rc" -ne 0 ]]; then
+    elif [[ "$review_rc" == 0 && "$amend_rc" != 0 ]]; then
         assert_eq "$(cat "$CLAIM_STATE")" "$REVIEW_LABEL" "$order leaves the review winner's label"
     else
         bad "$order final label belongs to the sole successful claimant"
     fi
+    race_report_if_failed "$fails_before" "$order"
     rm -rf "$CLAIM_RUN"
 }
 
@@ -375,5 +335,28 @@ echo "T7 fix: independent confirmation resolves every barrier order"
 run_race amend-first
 run_race review-first
 run_race together
+
+echo "T8: a lane that exits before the POST barrier breaks it with a diagnostic"
+saved_race_exit="${CLAIM_RACE_EXIT:-}"
+export CLAIM_RACE_EXIT="review:post"
+race_schedule together
+export CLAIM_RACE_EXIT="$saved_race_exit"
+assert_contains "$RACE_BROKEN" "review exited with rc 1 before: test -e $CLAIM_RUN/arrived-review" \
+    "the broken barrier names the exited claimant and the event it never reached"
+assert_eq "$(race_rc review)" 1 "the forced claimant exits non-zero"
+assert_eq "$(race_rc amend)" 1 "the gated peer is released instead of waiting"
+assert_contains "$(cat "$CLAIM_RUN/amend.out")" "'gate' barrier aborted: the suite abandoned the schedule" \
+    "the gated peer reports why its gate never opened"
+report=$(race_report)
+assert_contains "$report" "claimant review: rc=1 markers=[]" "the report carries the exited claimant's rc and progress"
+assert_contains "$report" "| gh stub: review forced to exit at post" "the report carries the exited claimant's output"
+assert_contains "$report" "claimant amend: rc=1 markers=[arrived-amend]" "the report carries the peer's rc and progress"
+assert_eq "$(race_live_count)" 0 "no claimant outlives the broken schedule"
+rm -rf "$CLAIM_RUN"
+if [[ -e "$CLAIM_RUN" || -e "${CLAIM_STATE}.lock" ]]; then
+    bad "the broken schedule leaves rendezvous state behind"
+else
+    ok "the broken schedule leaves no rendezvous state behind"
+fi
 
 summarize "fleet-claim cross-lane mutex"
