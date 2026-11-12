@@ -82,6 +82,18 @@ struct VoxelCullStatsSummary {
     uint32_t sampleCount_ = 0;
 };
 
+struct LightOcclusionChunkStatsSummary {
+    uint64_t visitedSum_ = 0;
+    uint64_t totalSum_ = 0;
+    uint64_t staleVisitedSum_ = 0;
+    uint64_t worldBoundsRebuiltSum_ = 0;
+    uint32_t maxVisited_ = 0;
+    uint32_t maxTotal_ = 0;
+    uint32_t maxStaleVisited_ = 0;
+    uint32_t maxWorldBoundsRebuilt_ = 0;
+    uint32_t sampleCount_ = 0;
+};
+
 /// The camera pose the run rendered at and the per-axis overflow lane's worst
 /// frame, so a report vouches for its own scene in a build that logs nothing.
 /// Yaw is degrees in [-180, 180); travel is the summed per-frame yaw change.
@@ -137,6 +149,7 @@ struct ProfileReport {
     uint64_t gpuFrameCommandBuffers_ = 0;
     std::vector<CpuPhaseEntry> cpuPhases_;
     VoxelCullStatsSummary voxelCullStats_;
+    LightOcclusionChunkStatsSummary lightOcclusionChunkStats_;
 };
 
 /// Appends one `cpuPhases_` row per `IR_PROFILE_SCOPE` name in the histogram's

@@ -79,6 +79,7 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/detail/camera_anchor.hpp>
+#include <irreden/render/light_occlusion_domain.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 
 #include <cstdint>
@@ -154,13 +155,6 @@ inline GPULightSource toGpuLight(
         0.0f
     );
     return gpu;
-}
-
-inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
-    // Round-half-up so light origins line up with the light-occlusion
-    // grid cells populated by `system_build_light_occlusion_grid` (also
-    // round-half-up).
-    return IRMath::roundVec3HalfUp(transform.translation_);
 }
 
 // relocate an occluded per-axis-clamped boundary seed to the nearest
@@ -294,46 +288,14 @@ inline std::uint32_t gatherLightSources(
     }
     const auto include = IREntity::getArchetype<C_LightSource, C_WorldTransform>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
-    auto &entityManager = IREntity::getEntityManager();
-    const auto nodeInScope = [&](const auto *node) {
-        // Per-canvas scope: skip the entire node when its lights are
-        // CHILD_OF a different canvas. `kNullEntity` means the lights
-        // are world-scope (no parent) and apply to every canvas — the
-        // back-compat default for demos that never call setParent on
-        // their light entities.
-        const IREntity::EntityId nodeParent =
-            entityManager.getParentEntityFromArchetype(node->type_);
-        return nodeParent == IREntity::kNullEntity || nodeParent == currentCanvas;
-    };
-    for (auto *node : nodes) {
-        if (!nodeInScope(node)) {
-            continue;
-        }
-        auto &lights = IREntity::getComponentData<C_LightSource>(node);
-        for (int i = 0; i < node->length_; ++i) {
-            // Directional lights drive sun shading via the FrameDataSun
-            // path; they do not seed the world-space light volume.
-            if (lights[i].type_ == LightType::DIRECTIONAL) {
-                continue;
-            }
-            ++outEligible;
-            const int r = static_cast<int>(lights[i].radius_);
-            if (r > outMaxRadius) {
-                outMaxRadius = r;
-            }
-        }
-    }
-    if (outMaxRadius > kLightVolumePropagateIterations) {
-        outMaxRadius = kLightVolumePropagateIterations;
-    }
+    const LocalLightFrame frame = localLightFrame(currentCanvas);
+    outMaxRadius = frame.maxRadius_;
+    outEligible = frame.eligible_;
     if (outEligible == 0) {
         return 0;
     }
-    const float stepFalloff =
-        1.0f /
-        static_cast<float>(outMaxRadius > 0 ? outMaxRadius : kLightVolumePropagateIterations);
     for (auto *node : nodes) {
-        if (!nodeInScope(node)) {
+        if (!lightNodeTargetsCanvas(node, currentCanvas)) {
             continue;
         }
         auto &lights = IREntity::getComponentData<C_LightSource>(node);
@@ -352,27 +314,18 @@ inline std::uint32_t gatherLightSources(
                 // mirrors the GPU-staging cap the seed buffer already enforces.
                 return static_cast<std::uint32_t>(out.size());
             }
-            const ivec3 origin = roundedLightOrigin(transforms[i]);
-            const ivec3 rel = origin - volumeOriginVoxel;
-            // The seedable window is rel ∈ [−halfExtent, halfExtent−1] per
-            // axis (texel index = rel + halfExtent ∈ [0, gridSize)).
-            ivec3 clamped = rel;
-            bool clampedAxis[3] = {false, false, false};
-            int boundaryDist = 0;
-            for (int axis = 0; axis < 3; ++axis) {
-                const int c =
-                    IRMath::clamp(rel[axis], -kLightVolumeHalfExtent, kLightVolumeHalfExtent - 1);
-                boundaryDist += IRMath::abs(rel[axis] - c);
-                clampedAxis[axis] = (c != rel[axis]);
-                clamped[axis] = c;
-            }
-            float seedAlpha = 1.0f - static_cast<float>(boundaryDist) * stepFalloff;
-            if (seedAlpha <= 0.0f) {
+            LocalLightSeed seed =
+                localLightSeed(transforms[i], volumeOriginVoxel, frame.propagationIterations_);
+            if (!seed.wouldSeed_) {
                 if (outStates != nullptr) {
                     outStates->push_back({node->entities_[i], LightGatherState::SKIPPED, 0.0f});
                 }
                 continue;
             }
+            const ivec3 origin = seed.trueOrigin_;
+            ivec3 clamped = seed.clampedCell_ - volumeOriginVoxel;
+            int boundaryDist = seed.boundaryDistance_;
+            float seedAlpha = seed.residual_;
             // the clamped boundary cell is not automatically safe. If
             // it lands inside solid geometry (an occupied voxel or an SDF
             // C_LightBlocker), `c_propagate_light_volume`'s symmetric
@@ -396,7 +349,7 @@ inline std::uint32_t gatherLightSources(
                         *occlusion,
                         volumeOriginVoxel,
                         clamped,
-                        clampedAxis,
+                        seed.clampedAxis_,
                         maxDist,
                         relocated,
                         extraDist
@@ -410,7 +363,8 @@ inline std::uint32_t gatherLightSources(
                 }
                 clamped = relocated;
                 boundaryDist += extraDist;
-                seedAlpha = 1.0f - static_cast<float>(boundaryDist) * stepFalloff;
+                seedAlpha = 1.0f - static_cast<float>(boundaryDist) /
+                                       static_cast<float>(frame.propagationIterations_);
                 state = LightGatherState::BOUNDARY_RELOCATED;
             }
             // This light is actually seeded — flag SPOTs so the consumer only

@@ -23,6 +23,7 @@
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -354,4 +355,259 @@ TEST_F(LightVolumeBoundarySeedTest, GridGetBitMirrorsSetBitAndOutOfRangeReadsFre
     constexpr int kGridHalf = IRSystem::kMaxLightOcclusionGridSideVoxels / 2;
     EXPECT_FALSE(IRSystem::detail::gridGetBit(m_voxelBits, kGridHalf, 0, 0, kGridOrigin));
     EXPECT_FALSE(IRSystem::detail::gridGetBit(m_voxelBits, 0, -kGridHalf - 1, 0, kGridOrigin));
+}
+
+TEST_F(LightVolumeBoundarySeedTest, OcclusionDomainContainsGeneratedSeedReadReach) {
+    const std::vector<ivec3> origins{
+        ivec3(0, 0, 0),
+        ivec3(kWindowMax + 4, 0, 0),
+        ivec3(kWindowMax + 4, -kWindowMax - 5, 0),
+        ivec3(kWindowMax + 4, -kWindowMax - 5, kWindowMax + 6),
+    };
+    for (int radius = 1; radius <= IRRender::kLightVolumePropagateIterations; ++radius) {
+        for (const ivec3 origin : origins) {
+            const C_WorldTransform transform{
+                vec3(origin),
+                vec4(0.0f, 0.0f, 0.0f, 1.0f),
+                vec3(1.0f)
+            };
+            const auto seed = IRSystem::detail::localLightSeed(transform, kGridOrigin, radius);
+            if (!seed.wouldSeed_) {
+                continue;
+            }
+            IRSystem::detail::LightOcclusionDomain domain;
+            IRSystem::detail::includeSeedDomain(domain, seed, radius, kGridOrigin);
+            ASSERT_TRUE(domain.populated_);
+            EXPECT_TRUE(domain.contains(domain.min_));
+            EXPECT_TRUE(domain.contains(domain.max_));
+
+            auto shrunk = domain;
+            --shrunk.max_.x;
+            EXPECT_FALSE(shrunk.contains(domain.max_));
+        }
+    }
+}
+
+TEST_F(LightVolumeBoundarySeedTest, DomainRasterMatchesFullGridInsideAndZerosOutside) {
+    const C_WorldTransform transform{vec3(0.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(1.0f)};
+    const auto seed = IRSystem::detail::localLightSeed(transform, kGridOrigin, 4);
+    IRSystem::detail::LightOcclusionDomain domain;
+    IRSystem::detail::includeSeedDomain(domain, seed, 4, kGridOrigin);
+
+    std::vector<std::uint32_t> full(IRSystem::kLightOcclusionBitfieldUintCount, 0u);
+    std::vector<std::uint32_t> bounded(IRSystem::kLightOcclusionBitfieldUintCount, 0u);
+    for (int z = -8; z <= 8; ++z) {
+        for (int y = -8; y <= 8; ++y) {
+            for (int x = -8; x <= 8; ++x) {
+                if ((x + 2 * y + 3 * z) % 5 != 0) {
+                    continue;
+                }
+                IRSystem::detail::gridSetBit(full, x, y, z, kGridOrigin);
+                if (domain.contains(ivec3(x, y, z))) {
+                    IRSystem::detail::gridSetBit(bounded, x, y, z, kGridOrigin);
+                }
+            }
+        }
+    }
+    for (int z = -8; z <= 8; ++z) {
+        for (int y = -8; y <= 8; ++y) {
+            for (int x = -8; x <= 8; ++x) {
+                const bool got = IRSystem::detail::gridGetBit(bounded, x, y, z, kGridOrigin);
+                if (domain.contains(ivec3(x, y, z))) {
+                    EXPECT_EQ(got, IRSystem::detail::gridGetBit(full, x, y, z, kGridOrigin));
+                } else {
+                    EXPECT_FALSE(got);
+                }
+            }
+        }
+    }
+}
+
+TEST_F(LightVolumeBoundarySeedTest, NoEligibleLocalLightProducesNoDomain) {
+    const IREntity::EntityId canvas = IREntity::createEntity();
+    EXPECT_FALSE(IRSystem::detail::lightOcclusionDomain(canvas, kGridOrigin).populated_);
+}
+
+TEST_F(LightVolumeBoundarySeedTest, ChunkWalkMatchesWithCurrentStaleAndMixedWorldBounds) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    constexpr int kInitialChunks = 3;
+    constexpr int kCapacityChunks = 4;
+    C_VoxelPool pool(ivec3(kChunk * kCapacityChunks, 1, 1));
+    pool.allocateVoxels(kChunk * kInitialChunks);
+    const std::array<vec3, 3> positions{vec3(0), vec3(50), vec3(1, 0, 0)};
+    for (std::size_t chunk = 0; chunk < positions.size(); ++chunk) {
+        const std::size_t slot = chunk * kChunk;
+        pool.getPositionGlobals()[slot].pos_ = positions[chunk];
+        pool.getColors()[slot].color_ = Color{255, 255, 255, 255};
+    }
+    pool.resyncActiveMaskFromColors(0, kChunk * kInitialChunks);
+
+    IRSystem::detail::LightOcclusionDomain domain;
+    domain.populated_ = true;
+    domain.min_ = ivec3(-2);
+    domain.max_ = ivec3(2);
+    IRRender::CpuPhaseTiming refreshTiming;
+    IRRender::CpuPhaseTiming visitTiming;
+    const auto run = [&](std::size_t budget, bool refreshAll) {
+        std::fill(m_voxelBits.begin(), m_voxelBits.end(), 0u);
+        return IRSystem::detail::populateLightOcclusionGrid(
+            pool,
+            domain,
+            kGridOrigin,
+            budget,
+            refreshAll,
+            m_voxelBits,
+            refreshTiming,
+            visitTiming
+        );
+    };
+    const auto expectAllCurrent = [&](int chunkCount) {
+        for (int chunk = 0; chunk < chunkCount; ++chunk) {
+            EXPECT_TRUE(pool.isChunkWorldBoundsCurrent(static_cast<std::size_t>(chunk)));
+        }
+    };
+
+    const auto current = run(0, true);
+    EXPECT_EQ(current.staleVisited_, 0u);
+    EXPECT_EQ(current.visited_, 2u);
+    expectAllCurrent(kInitialChunks);
+    const std::vector<std::uint32_t> expected = m_voxelBits;
+
+    pool.markCullBoundsDirty(0, kChunk * kInitialChunks);
+    const auto stale = run(0, false);
+    EXPECT_EQ(stale.staleVisited_, 3u);
+    EXPECT_EQ(m_voxelBits, expected);
+
+    const auto refreshed = run(0, true);
+    EXPECT_EQ(refreshed.staleVisited_, 0u);
+    expectAllCurrent(kInitialChunks);
+
+    pool.markCullBoundsDirty(kChunk, kChunk);
+    const auto mixed = run(0, false);
+    EXPECT_EQ(mixed.staleVisited_, 1u);
+    EXPECT_EQ(m_voxelBits, expected);
+
+    const auto refreshedOne = run(0, true);
+    EXPECT_EQ(refreshedOne.staleVisited_, 0u);
+    expectAllCurrent(kInitialChunks);
+
+    pool.allocateVoxels(kChunk);
+    const auto refreshedAfterGrowth = run(0, true);
+    EXPECT_EQ(refreshedAfterGrowth.staleVisited_, 0u);
+    expectAllCurrent(kCapacityChunks);
+}
+
+TEST_F(LightVolumeBoundarySeedTest, StaleChunkRewrittenIntoDomainRasterizesWithZeroBudget) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    C_VoxelPool pool(ivec3(kChunk, 1, 1));
+    pool.allocateVoxels(kChunk);
+    pool.getPositionGlobals()[0].pos_ = vec3(50, 0, 0);
+    pool.getColors()[0].color_ = Color{255, 255, 255, 255};
+    pool.resyncActiveMaskFromColors(0, kChunk);
+
+    IRSystem::detail::LightOcclusionDomain domain;
+    domain.populated_ = true;
+    domain.min_ = ivec3(-2);
+    domain.max_ = ivec3(2);
+    IRRender::CpuPhaseTiming refreshTiming;
+    IRRender::CpuPhaseTiming visitTiming;
+    IRSystem::detail::populateLightOcclusionGrid(
+        pool,
+        domain,
+        kGridOrigin,
+        0,
+        true,
+        m_voxelBits,
+        refreshTiming,
+        visitTiming
+    );
+
+    std::fill(m_voxelBits.begin(), m_voxelBits.end(), 0u);
+    pool.getPositionGlobals()[0].pos_ = vec3(0);
+    pool.markCullBoundsDirty(0, 1);
+    const auto result = IRSystem::detail::populateLightOcclusionGrid(
+        pool,
+        domain,
+        kGridOrigin,
+        0,
+        false,
+        m_voxelBits,
+        refreshTiming,
+        visitTiming
+    );
+    EXPECT_EQ(result.staleVisited_, 1u);
+    EXPECT_TRUE(IRSystem::detail::gridGetBit(m_voxelBits, 0, 0, 0, kGridOrigin));
+}
+
+TEST_F(LightVolumeBoundarySeedTest, BoundedRefreshPaysDownOldestWorldDebt) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    constexpr int kChunks = 5;
+    constexpr std::size_t kBudget = 2;
+    C_VoxelPool pool(ivec3(kChunk * kChunks, 1, 1));
+    pool.allocateVoxels(kChunk * kChunks);
+    for (int chunk = 0; chunk < kChunks; ++chunk) {
+        const std::size_t slot = static_cast<std::size_t>(chunk * kChunk);
+        pool.getPositionGlobals()[slot].pos_ = vec3(static_cast<float>(chunk), 0, 0);
+        pool.getColors()[slot].color_ = Color{255, 255, 255, 255};
+    }
+    pool.resyncActiveMaskFromColors(0, kChunk * kChunks);
+
+    IRSystem::detail::LightOcclusionDomain domain;
+    domain.populated_ = true;
+    domain.min_ = ivec3(-10);
+    domain.max_ = ivec3(10);
+    IRRender::CpuPhaseTiming refreshTiming;
+    IRRender::CpuPhaseTiming visitTiming;
+    for (int build = 0; build < 3; ++build) {
+        std::fill(m_voxelBits.begin(), m_voxelBits.end(), 0u);
+        const auto result = IRSystem::detail::populateLightOcclusionGrid(
+            pool,
+            domain,
+            kGridOrigin,
+            kBudget,
+            false,
+            m_voxelBits,
+            refreshTiming,
+            visitTiming
+        );
+        EXPECT_LE(result.worldBoundsRebuilt_, kBudget);
+    }
+    for (int chunk = 0; chunk < kChunks; ++chunk) {
+        EXPECT_TRUE(pool.isChunkWorldBoundsCurrent(static_cast<std::size_t>(chunk)));
+    }
+    const auto counters = pool.consumeCullRebuildCounters();
+    EXPECT_EQ(counters.worldChunks_, kChunks);
+}
+
+TEST_F(LightVolumeBoundarySeedTest, SustainedWorldDebtKeepsRefreshQueueStorageBounded) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    constexpr int kChunks = 8;
+    constexpr int kDirtyChunks = 3;
+    constexpr std::size_t kBudget = 2;
+    C_VoxelPool pool(ivec3(kChunk * kChunks, 1, 1));
+    pool.allocateVoxels(kChunk * kChunks);
+
+    for (int frame = 0; frame < 1000; ++frame) {
+        EXPECT_EQ(pool.refreshOldestChunkWorldBounds(kBudget), kBudget);
+        pool.markCullBoundsDirty(0, kChunk * kDirtyChunks);
+        EXPECT_LE(pool.worldBoundsRefreshQueueStorageSize(), 2 * static_cast<std::size_t>(kChunks));
+    }
+}
+
+TEST_F(LightVolumeBoundarySeedTest, WorldRefreshLeavesCardinalDebtPending) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    C_VoxelPool pool(ivec3(kChunk, 1, 1));
+    pool.allocateVoxels(kChunk);
+    pool.getPositionGlobals()[0].pos_ = vec3(0);
+    pool.getColors()[0].color_ = Color{255, 255, 255, 255};
+    pool.resyncActiveMaskFromColors(0, kChunk);
+    pool.rebuildChunkBounds(CardinalIndex::k0);
+
+    pool.getPositionGlobals()[0].pos_ = vec3(1, 0, 0);
+    pool.markCullBoundsDirty(0, 1);
+    pool.prepareChunkWorldBounds();
+    EXPECT_EQ(pool.refreshOldestChunkWorldBounds(1), 1u);
+
+    const IsoBounds2D distant{vec2(1000), vec2(1001)};
+    EXPECT_TRUE(pool.isRangeVisible(0, 1, distant));
 }
