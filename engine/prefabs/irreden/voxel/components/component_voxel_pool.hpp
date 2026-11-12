@@ -8,6 +8,7 @@
 #include <irreden/voxel/components/component_voxel.hpp>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <optional>
@@ -540,8 +541,18 @@ struct C_VoxelPool {
         if (m_pendingWorldChunkRead_ == m_pendingWorldChunks.size()) {
             m_pendingWorldChunks.clear();
             m_pendingWorldChunkRead_ = 0;
+        } else if (m_pendingWorldChunkRead_ >= m_pendingWorldChunks.size() / 2) {
+            m_pendingWorldChunks.erase(
+                m_pendingWorldChunks.begin(),
+                m_pendingWorldChunks.begin() + static_cast<std::ptrdiff_t>(m_pendingWorldChunkRead_)
+            );
+            m_pendingWorldChunkRead_ = 0;
         }
         return rebuilt;
+    }
+
+    std::size_t worldBoundsRefreshQueueStorageSize() const {
+        return m_pendingWorldChunks.size();
     }
 
     // @p useContinuousYaw (smooth camera Z-yaw): while the per-axis

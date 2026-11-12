@@ -559,6 +559,21 @@ TEST_F(LightVolumeBoundarySeedTest, BoundedRefreshPaysDownOldestWorldDebt) {
     EXPECT_EQ(counters.worldChunks_, kChunks);
 }
 
+TEST_F(LightVolumeBoundarySeedTest, SustainedWorldDebtKeepsRefreshQueueStorageBounded) {
+    constexpr int kChunk = IRRender::kVoxelChunkSize;
+    constexpr int kChunks = 8;
+    constexpr int kDirtyChunks = 3;
+    constexpr std::size_t kBudget = 2;
+    C_VoxelPool pool(ivec3(kChunk * kChunks, 1, 1));
+    pool.allocateVoxels(kChunk * kChunks);
+
+    for (int frame = 0; frame < 1000; ++frame) {
+        EXPECT_EQ(pool.refreshOldestChunkWorldBounds(kBudget), kBudget);
+        pool.markCullBoundsDirty(0, kChunk * kDirtyChunks);
+        EXPECT_LE(pool.worldBoundsRefreshQueueStorageSize(), 2 * static_cast<std::size_t>(kChunks));
+    }
+}
+
 TEST_F(LightVolumeBoundarySeedTest, WorldRefreshLeavesCardinalDebtPending) {
     constexpr int kChunk = IRRender::kVoxelChunkSize;
     C_VoxelPool pool(ivec3(kChunk, 1, 1));
