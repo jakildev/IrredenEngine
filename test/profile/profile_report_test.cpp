@@ -102,6 +102,24 @@ TEST(ProfileReportGpuStages, TheSumLineSaysWhenThereIsNoSpan) {
     ) << text;
 }
 
+TEST(ProfileReportDeviceErrors, CountersAndFirstErrorAreWrittenInReleaseData) {
+    IRProfile::ProfileReport report;
+    report.frameTimesMs_ = {16.0f};
+    report.deviceCountersSupported_ = true;
+    report.deviceCounters_.push_back({"commandBufferErrors", 0, 0, 0});
+    report.deviceCounters_.push_back({"skippedFrames", 0, 0, 0});
+    report.firstCommandBufferErrorFrame_ = 23;
+    report.firstCommandBufferError_ = "injected command failure";
+
+    const std::string text = writeAndRead(report);
+    EXPECT_NE(text.find("commandBufferErrors"), std::string::npos) << text;
+    EXPECT_NE(text.find("skippedFrames"), std::string::npos) << text;
+    EXPECT_NE(
+        text.find("First command-buffer error: frame=23 text=injected command failure\n"),
+        std::string::npos
+    ) << text;
+}
+
 TEST(ProfileReportWitness, SteadyLineExcludesTheLeadingQuarter) {
     IRProfile::ProfileReport report;
     report.frameTimesMs_ = {100.0f, 90.0f, 20.0f, 21.0f, 19.0f, 20.0f, 22.0f, 20.0f};

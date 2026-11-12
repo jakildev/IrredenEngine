@@ -4,6 +4,8 @@
 
 #include <bit>
 #include <cstring>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -74,6 +76,12 @@ struct MetalRuntimeState {
     std::vector<MetalStagingChunk> stagingChunks_;
     std::size_t stagingBufferAllocationCount_ = 0;
     BufferWriteStats bufferWriteStats_;
+    DeviceErrorStats deviceErrorStats_;
+    std::string firstCommandBufferErrorText_;
+    MetalAllocationKind failNextAllocation_ = MetalAllocationKind::BUFFER;
+    bool failNextAllocationArmed_ = false;
+    bool failNextRenderPipeline_ = false;
+    std::unordered_set<std::int64_t> loggedCommandBufferErrorCodes_;
 
     // Buffers that have been encoded into a command encoder since the
     // previous wait point. subData() writes an unencoded buffer in place and
@@ -126,7 +134,9 @@ MTL::DepthStencilState *createDepthStencilState(
     depthDescriptor->setDepthWriteEnabled(writeEnabled);
     auto *state = device->newDepthStencilState(depthDescriptor);
     depthDescriptor->release();
-    IR_ASSERT(state != nullptr, "Failed to create Metal depth stencil state");
+    if (state == nullptr) {
+        throw std::runtime_error("Metal depth-stencil state creation failed");
+    }
     return state;
 }
 
@@ -134,7 +144,9 @@ void initializeMetalRuntime(MTL::Device *device, CA::MetalLayer *layer) {
     g_runtime().device_ = device;
     g_runtime().layer_ = layer;
     g_runtime().commandQueue_ = device->newCommandQueue();
-    IR_ASSERT(g_runtime().commandQueue_ != nullptr, "Failed to create Metal command queue");
+    if (g_runtime().commandQueue_ == nullptr) {
+        throw std::runtime_error("Metal command queue creation failed");
+    }
     g_runtime().depthDisabledState_ =
         createDepthStencilState(device, MTL::CompareFunctionAlways, false);
     g_runtime().depthTestNoWriteState_ =
@@ -205,6 +217,111 @@ MTL::DepthStencilState *currentMetalDepthStencilState() {
         return g_runtime().depthTestWriteState_;
     }
     return g_runtime().depthTestNoWriteState_;
+}
+
+MTL::Buffer *newMetalBuffer(
+    std::size_t byteCount,
+    MTL::ResourceOptions options,
+    std::string_view resourceKind
+) {
+    auto &runtime = g_runtime();
+    MTL::Buffer *buffer = nullptr;
+    if (!(runtime.failNextAllocationArmed_ &&
+          runtime.failNextAllocation_ == MetalAllocationKind::BUFFER)) {
+        buffer = runtime.device_->newBuffer(static_cast<NS::UInteger>(byteCount), options);
+    } else {
+        runtime.failNextAllocationArmed_ = false;
+    }
+    if (buffer == nullptr) {
+        IRE_LOG_ERROR(
+            "Metal {} allocation failed: requested {} bytes", resourceKind, byteCount
+        );
+        throw std::runtime_error(
+            "Metal " + std::string(resourceKind) + " allocation failed: requested " +
+            std::to_string(byteCount) + " bytes"
+        );
+    }
+    return buffer;
+}
+
+MTL::Texture *newMetalTexture(
+    MTL::TextureDescriptor *descriptor,
+    MetalAllocationKind kind,
+    std::string_view resourceKind
+) {
+    auto &runtime = g_runtime();
+    MTL::Texture *texture = nullptr;
+    if (!(runtime.failNextAllocationArmed_ && runtime.failNextAllocation_ == kind)) {
+        texture = runtime.device_->newTexture(descriptor);
+    } else {
+        runtime.failNextAllocationArmed_ = false;
+    }
+    if (texture == nullptr) {
+        IRE_LOG_ERROR(
+            "Metal {} allocation failed: requested {}x{}x{}",
+            resourceKind,
+            descriptor->width(),
+            descriptor->height(),
+            descriptor->depth()
+        );
+        throw std::runtime_error(
+            "Metal " + std::string(resourceKind) + " allocation failed: requested " +
+            std::to_string(descriptor->width()) + "x" +
+            std::to_string(descriptor->height()) + "x" +
+            std::to_string(descriptor->depth())
+        );
+    }
+    return texture;
+}
+
+void failNextMetalAllocationForTesting(MetalAllocationKind kind) {
+    g_runtime().failNextAllocation_ = kind;
+    g_runtime().failNextAllocationArmed_ = true;
+}
+
+void recordMetalCommandBufferCompletion(
+    MTL::CommandBufferStatus status,
+    std::int64_t errorCode,
+    std::string_view errorText,
+    std::uint64_t frameNumber
+) {
+    if (status != MTL::CommandBufferStatusError) {
+        return;
+    }
+    auto &runtime = g_runtime();
+    DeviceErrorStats &stats = runtime.deviceErrorStats_;
+    ++stats.commandBufferErrors_;
+    if (stats.firstCommandBufferError_.empty()) {
+        runtime.firstCommandBufferErrorText_ = errorText;
+        stats.firstCommandBufferError_ = runtime.firstCommandBufferErrorText_;
+        stats.firstCommandBufferErrorFrame_ = frameNumber;
+    }
+    if (runtime.loggedCommandBufferErrorCodes_.insert(errorCode).second) {
+        IRE_LOG_ERROR(
+            "Metal command buffer failed (code {}, frame {}): {}",
+            errorCode,
+            frameNumber,
+            errorText
+        );
+    }
+}
+
+void recordMetalSkippedFrame() {
+    ++g_runtime().deviceErrorStats_.skippedFrames_;
+}
+
+DeviceErrorStats &metalDeviceErrorStats() {
+    return g_runtime().deviceErrorStats_;
+}
+
+void failNextMetalRenderPipelineForTesting() {
+    g_runtime().failNextRenderPipeline_ = true;
+}
+
+bool consumeMetalRenderPipelineFailureForTesting() {
+    const bool fail = g_runtime().failNextRenderPipeline_;
+    g_runtime().failNextRenderPipeline_ = false;
+    return fail;
 }
 
 void setMetalCommandBuffer(MTL::CommandBuffer *commandBuffer) {
@@ -462,11 +579,9 @@ MetalStagingBufferSlice reserveMetalStaging(std::size_t byteCount) {
 
     // Power-of-two capacities bound how often a growing upload reallocates.
     const std::size_t capacity = oversized ? std::bit_ceil(byteCount) : kMetalStagingChunkSize;
-    auto *buffer = runtime.device_->newBuffer(
-        static_cast<NS::UInteger>(capacity),
-        MTL::ResourceStorageModeShared
+    auto *buffer = newMetalBuffer(
+        capacity, MTL::ResourceStorageModeShared, "staging arena buffer"
     );
-    IR_ASSERT(buffer != nullptr, "Failed to create Metal staging arena chunk");
     ++runtime.stagingBufferAllocationCount_;
     runtime.stagingChunks_.push_back({buffer, capacity, byteCount, 0});
     return {buffer, 0, capacity};
@@ -552,11 +667,9 @@ MTL::Buffer *ensureImageAtomicScratchBuffer(MTL::Texture *texture) {
         static_cast<std::size_t>(texture->width()) *
         static_cast<std::size_t>(texture->height()) *
         sizeof(std::int32_t);
-    auto *buffer = g_runtime().device_->newBuffer(
-        static_cast<NS::UInteger>(bytes),
-        MTL::ResourceStorageModeShared
+    auto *buffer = newMetalBuffer(
+        bytes, MTL::ResourceStorageModeShared, "image-atomic scratch buffer"
     );
-    IR_ASSERT(buffer != nullptr, "Failed to create Metal image atomic scratch buffer");
     std::memset(buffer->contents(), 0, bytes);
     cache[texture] = buffer;
     return buffer;

@@ -21,11 +21,9 @@ class MetalBufferImpl final : public BufferImpl {
   public:
     MetalBufferImpl(const void *data, std::size_t size)
         : m_size(size == 0 ? 1 : size) {
-        m_buffer = metalDevice()->newBuffer(
-            static_cast<NS::UInteger>(backingBytes(m_size)),
-            MTL::ResourceStorageModeShared
+        m_buffer = newMetalBuffer(
+            backingBytes(m_size), MTL::ResourceStorageModeShared, "buffer"
         );
-        IR_ASSERT(m_buffer != nullptr, "Failed to create Metal buffer");
         if (data != nullptr && size > 0) {
             std::memcpy(m_buffer->contents(), data, size);
         }
@@ -149,11 +147,9 @@ class MetalBufferImpl final : public BufferImpl {
 
     void resize(std::size_t size) override {
         m_size = size == 0 ? 1 : size;
-        auto *newBuffer = metalDevice()->newBuffer(
-            static_cast<NS::UInteger>(backingBytes(m_size)),
-            MTL::ResourceStorageModeShared
+        auto *newBuffer = newMetalBuffer(
+            backingBytes(m_size), MTL::ResourceStorageModeShared, "resized buffer"
         );
-        IR_ASSERT(newBuffer != nullptr, "Failed to resize Metal buffer");
         adoptBacking(newBuffer);
     }
 
@@ -161,11 +157,9 @@ class MetalBufferImpl final : public BufferImpl {
     // The batch covers every byte, so nothing in the old backing survives and a
     // fresh backing needs no GPU copy.
     void replaceBacking(std::span<const BufferUploadRange> ranges) const {
-        auto *newBuffer = metalDevice()->newBuffer(
-            static_cast<NS::UInteger>(backingBytes(m_size)),
-            MTL::ResourceStorageModeShared
+        auto *newBuffer = newMetalBuffer(
+            backingBytes(m_size), MTL::ResourceStorageModeShared, "replacement buffer"
         );
-        IR_ASSERT(newBuffer != nullptr, "Failed to replace Metal buffer in subDataRanges");
         writeRanges(newBuffer, ranges);
         ++metalBufferWriteStats().fullReplacements_;
         adoptBacking(newBuffer);

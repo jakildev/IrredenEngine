@@ -134,6 +134,8 @@ struct ProfileReport {
     /// False when the backend counts nothing, so every counter row is unknown.
     bool deviceCountersSupported_ = false;
     std::vector<DeviceCounterEntry> deviceCounters_;
+    uint64_t firstCommandBufferErrorFrame_ = 0;
+    std::string firstCommandBufferError_;
     /// Highest process GPU allocation sampled at a frame end; 0 when unavailable.
     uint64_t gpuProcessPeakBytes_ = 0;
     std::vector<CpuPhaseEntry> cpuPhases_;
