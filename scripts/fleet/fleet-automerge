@@ -34,6 +34,10 @@
 # appends `rollback-scan-incomplete` and exits 1. fleet-digest-tick runs it,
 # fleet-decisions and fleet-health read the ledger.
 #
+# A merge call GitHub refuses for a permission reason ("Resource not accessible
+# by …") latches that PR head: later --auto runs skip it before the merge call
+# and one alert file per repo names what is held. See docs/design/auto-merge-lane.md.
+#
 # Usage:
 #   fleet-automerge --auto      [--repo engine|game|owner/name]   at most one merge
 #   fleet-automerge --dry-run   [--repo …]                         partition, zero writes
@@ -64,6 +68,7 @@ import fleet_merge_class as mc  # noqa: E402
 from fleet_runtime import REPO_SLUGS  # noqa: E402
 
 PROG = "fleet-automerge"
+PERMISSION_REFUSAL = "Resource not accessible by"
 AUDIT_LABEL = "fleet:auto-merged"
 AUDIT_COMMENT_PREFIX = "Auto-merged (class="
 AUDIT_STEPS = ("label", "comment", "nit-close")
@@ -114,9 +119,21 @@ class Paths:
         self.disabled_marker = self.state / ".automerge-disabled-logged"
         self.kill_marker = self.state / ".automerge-killswitch-logged"
         self.repos = self.state / "repos.json"
+        self.latch_dir = self.state / "automerge-latch"
+        self.alerts = Path(os.environ.get("FLEET_ALERTS_DIR") or self.fleet / "alerts")
+
+    def latch_path(self, slug, number):
+        return self.latch_dir / f"{repo_key(slug)}.{number}.json"
+
+    def alert_path(self, slug):
+        return self.alerts / f"fleet-automerge-refused-{repo_key(slug)}"
 
     def repo_off_marker(self, slug):
         return self.state / f".automerge-repo-off-logged.{slug.replace('/', '_')}"
+
+
+def repo_key(slug):
+    return slug.replace("/", "_")
 
 
 def log_once(marker, active, message):
@@ -462,6 +479,65 @@ def recover_partial_audits(paths, slug):
                   attempts + 1)
 
 
+# --- permission latch ------------------------------------------------------------------
+#
+# One JSON record per refused PR head under the state dir, plus one alert file per
+# repo listing what is held. Both are written atomically: --dry-run and other panes
+# read them while a run is in flight.
+
+def write_atomic(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def read_latches(paths, slug):
+    """{pr number: record} for `slug`; an unreadable record is ignored."""
+    latches = {}
+    for path in sorted(paths.latch_dir.glob(f"{repo_key(slug)}.*.json")):
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+            latches[int(rec["pr"])] = rec
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return latches
+
+
+def sync_alert(paths, slug):
+    """Rewrite the repo's alert from the standing latches; remove it when none stand."""
+    latches = read_latches(paths, slug)
+    alert = paths.alert_path(slug)
+    if not latches:
+        alert.unlink(missing_ok=True)
+        return
+    since = min(rec["since"] for rec in latches.values())
+    lines = [f"repo={slug} reason=permission since={since} count={len(latches)}"]
+    for number, rec in sorted(latches.items()):
+        lines.append(f"PR #{number} head={rec['head']} error={rec['error']}")
+    write_atomic(alert, "\n".join(lines) + "\n")
+
+
+def set_latch(paths, slug, assessment, error):
+    rec = {"repo": slug, "pr": assessment.number, "head": assessment.head,
+           "error": error, "since": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")}
+    write_atomic(paths.latch_path(slug, assessment.number), json.dumps(rec, sort_keys=True) + "\n")
+    log(f"PR #{assessment.number}: merge refused for permission; holding head "
+        f"{assessment.head[:9]} until the head changes, the PR closes, a merge completes, "
+        f"or {paths.latch_path(slug, assessment.number)} is removed")
+
+
+def clear_latch(paths, slug, number, why):
+    paths.latch_path(slug, number).unlink(missing_ok=True)
+    log(f"PR #{number}: permission hold cleared ({why})")
+
+
 # --- merge -------------------------------------------------------------------------------
 
 def merge_one(paths, slug, assessment, hold_secs):
@@ -478,6 +554,8 @@ def merge_one(paths, slug, assessment, hold_secs):
         log(f"PR #{assessment.number}: merge refused by GitHub (rc={rc}): {err.strip()[:200]}")
         append_event(paths.ledger, event="merge-failed", repo=slug, pr=assessment.number,
                      head=assessment.head, error=err.strip()[:300])
+        if PERMISSION_REFUSAL in err:
+            set_latch(paths, slug, assessment, err.strip()[:300].replace("\n", " "))
         return False
     merge_sha = None
     try:
@@ -491,6 +569,9 @@ def merge_one(paths, slug, assessment, hold_secs):
                  title=assessment.title, provenance=assessment.provenance, hold_secs=hold_secs)
     log(f"PR #{assessment.number}: merged ({assessment.kind}) head={assessment.head[:9]} "
         f"merge={str(merge_sha)[:9]}")
+    for number in read_latches(paths, slug):
+        clear_latch(paths, slug, number, "a merge completed in this repository")
+    sync_alert(paths, slug)
     run_audit(paths, slug, assessment.number, audit_comment(assessment, hold_secs), set(), 1)
     return True
 
@@ -597,11 +678,18 @@ def mode_dry_run(paths, slug):
         print(f"dry-run: candidate list unreadable: {exc}")
         return 1
     rows = []
+    latches = read_latches(paths, slug)
     for number in numbers:
         try:
-            rows.append(assess(slug, number, en, now, repo_on))
+            a = assess(slug, number, en, now, repo_on)
         except GhError as exc:
             rows.append(Assessment(number, f"#{number}", "human", f"unreadable: {exc}", False))
+            continue
+        held = latches.get(number)
+        if a.eligible and held and held.get("head") == a.head:
+            why = f"permission refusal held since {held.get('since')}: {held.get('error')}"
+            a = Assessment(number, a.title, a.kind, why, False, a.head, a.body)
+        rows.append(a)
     for a in rows:
         print("  " + a.line())
     would = sum(1 for a in rows if a.eligible and not kill)
@@ -643,12 +731,21 @@ def mode_auto(paths, slug):
         except GhError as exc:
             log(f"candidate list unreadable: {exc}")
             return 1
+        latches = read_latches(paths, slug)
+        for number in sorted(set(latches) - set(numbers)):
+            clear_latch(paths, slug, number, "no longer an open approved PR")
+            del latches[number]
         merged = 0
         for number in numbers:
             try:
                 a = assess(slug, number, en, now)
             except GhError as exc:
                 log(f"PR #{number}: refused: unreadable: {exc}")
+                continue
+            held = latches.get(number)
+            if held and held.get("head") != a.head:
+                clear_latch(paths, slug, number, "the head changed")
+            elif held and a.eligible:
                 continue
             if not a.eligible:
                 log(f"PR #{number}: refused: {a.reason}" + (f" (class={a.kind})"
@@ -657,6 +754,7 @@ def mode_auto(paths, slug):
             if merge_one(paths, slug, a, en.hold_secs):
                 merged = 1
                 break
+        sync_alert(paths, slug)
         log(f"run complete: candidates={len(numbers)} merged={merged} "
             f"enabled={','.join(sorted(en.classes))}")
     return 0

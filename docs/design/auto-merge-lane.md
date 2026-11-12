@@ -106,6 +106,18 @@ the `hold_secs` recorded on the `merge` event, not the current conf. Three
 failed passes, however many steps each failed, leave the audit to a human. A
 refusal by GitHub appends `merge-failed` and is not retried that run.
 
+A refusal whose error contains `Resource not accessible by` is a permission
+refusal, which no retry can change. It latches the PR head: one record per
+PR at `$FLEET_STATE_DIR/automerge-latch/<owner_repo>.<pr>.json`, plus one
+alert `~/.fleet/alerts/fleet-automerge-refused-<owner_repo>` (first line
+`repo= reason=permission since= count=`, then one line per held PR). Later
+`--auto` runs skip a latched head after assessment and before the merge call,
+silently, and `--dry-run` lists it as refused with the hold's start time.
+Other refusals (not mergeable, rate limit) are never latched. The hold clears
+when the PR's head changes, the PR is no longer an open approved PR, the lane
+completes a merge in the repository, or the record file is deleted; each
+clear logs one line, and the alert is removed once no hold stands.
+
 Ledger events (JSONL, one object per line, `ts` first): `merge` (`repo`,
 `pr`, `class`, `head`, `merge_sha`, `title`, `provenance`, `hold_secs`),
 `audit-complete` (`steps`, `nit_closed`), `audit-error` (`step`, `attempt`,
