@@ -2,6 +2,7 @@
 
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/metal/metal_types.hpp>
+#include <irreden/render/vao.hpp>
 
 #include <array>
 #include <cstddef>
@@ -28,8 +29,9 @@ struct MetalVertexAttributeSignature {
 
 // The contents of a vertex layout's MTL::VertexDescriptor. Slots past
 // attributeCount_ stay value-initialized so equal layouts compare equal.
+// Holds every layout the shared VertexLayout contract admits.
 struct MetalVertexLayoutSignature {
-    static constexpr std::uint32_t kMaxAttributes = 8;
+    static constexpr std::uint32_t kMaxAttributes = kMaxVertexAttributes;
 
     std::array<MetalVertexAttributeSignature, kMaxAttributes> attributes_{};
     std::uint32_t attributeCount_ = 0;

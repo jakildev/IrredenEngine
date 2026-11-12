@@ -23,6 +23,7 @@
 #include <irreden/render/vao.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -242,6 +243,35 @@ TEST_F(MetalPipelineKeyCacheTest, EachBlendSettingHasItsOwnState) {
     drawWith(quad);
 
     EXPECT_EQ(cachedStateCount(), 2u);
+}
+
+// The signature holds every layout the backend-neutral VertexLayout admits,
+// and a pipeline state builds from the full-width descriptor.
+TEST_F(MetalPipelineKeyCacheTest, HoldsALayoutWithTheMostAttributesVertexLayoutAdmits) {
+    using namespace IRRender;
+    static_assert(MetalVertexLayoutSignature::kMaxAttributes == kMaxVertexAttributes);
+    const std::vector<VertexArrayAttribute> attributes(kMaxVertexAttributes, kAttrFloat2);
+    const VertexLayout
+        layout{m_quadVertices.get(), nullptr, kMaxVertexAttributes, attributes.data()};
+    layout.bind();
+
+    const MetalVertexLayoutSignature &signature = activeMetalVertexLayout().signature_;
+    ASSERT_EQ(signature.attributeCount_, kMaxVertexAttributes);
+    const std::uint32_t float2Bytes = 2 * sizeof(float);
+    EXPECT_EQ(signature.stride_, kMaxVertexAttributes * float2Bytes);
+    for (std::uint32_t i = 0; i < kMaxVertexAttributes; ++i) {
+        EXPECT_EQ(signature.attributes_[i].format_, MTL::VertexFormatFloat2) << i;
+        EXPECT_EQ(signature.attributes_[i].offset_, i * float2Bytes) << i;
+    }
+
+    EXPECT_NE(
+        activeMetalPipeline()->getRenderPipelineState(
+            currentMetalRenderPipelineKey(false),
+            activeMetalVertexLayout().vertexDescriptor_
+        ),
+        nullptr
+    );
+    EXPECT_EQ(cachedStateCount(), 1u);
 }
 
 #ifndef IR_RELEASE

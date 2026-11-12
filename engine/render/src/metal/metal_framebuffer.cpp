@@ -37,7 +37,7 @@ MetalVertexLayoutSignature vertexLayoutSignature(
 ) {
     IR_ASSERT(
         numAttributes <= MetalVertexLayoutSignature::kMaxAttributes,
-        "Metal vertex layout has more attributes than MetalVertexLayoutSignature holds"
+        "Vertex layout has more attributes than kMaxVertexAttributes"
     );
     MetalVertexLayoutSignature signature{};
     std::size_t stride = 0;
