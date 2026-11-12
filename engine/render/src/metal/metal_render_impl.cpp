@@ -2,13 +2,17 @@
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/metal/metal_cocoa_bridge.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
+#include <irreden/render/offscreen_frame_pacer.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/texture.hpp>
+
+#include <irreden/profile/scope_timer.hpp>
 
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -19,6 +23,7 @@ namespace {
 
 constexpr std::uint32_t kMaxMetalBindings = 32;
 constexpr NS::UInteger kTimestampAttachmentIndex = 0;
+constexpr std::string_view kOffscreenPacingPhase = "offscreenPacing";
 
 struct MetalTimestampPair {
     MTL::CounterSampleBuffer *sampleBuffer_ = nullptr;
@@ -473,11 +478,12 @@ class MetalRenderDevice final : public RenderDevice {
         IR_ASSERT(m_offscreenTarget != nullptr, "Failed to create the offscreen screen target");
         setMetalOffscreenColorTexture(m_offscreenTarget);
         m_offscreenRefreshHz = refreshHz;
-        m_offscreenFrameInterval =
+        m_offscreenPacer.reset(
             std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                 std::chrono::duration<double>(1.0 / static_cast<double>(refreshHz))
-            );
-        m_offscreenNextFrame = std::chrono::steady_clock::now();
+            ),
+            std::chrono::steady_clock::now()
+        );
     }
 
     void resizeOffscreenTarget(int width, int height) {
@@ -1317,21 +1323,29 @@ class MetalRenderDevice final : public RenderDevice {
     // A presented frame is paced by the display: nextDrawable blocks until
     // the swapchain has a free drawable, so the loop runs at the refresh
     // rate. OFFSCREEN has no such gate, so the same cadence is reproduced by
-    // sleeping to the next refresh-interval boundary once the GPU work is
+    // sleeping to the frame's refresh-interval deadline once the GPU work is
     // complete. Per-second CPU/GPU load — and the --auto-record sim rate —
     // then match a visible run instead of spinning as fast as the GPU allows.
-    // A frame that overran its interval is not caught up in a burst: the
-    // deadline resets to now so the next frame gets a full interval.
+    // A frame that finishes after its deadline does not sleep at all (a
+    // sleep there would add a whole interval to every over-budget frame
+    // time); the schedule re-anchors at its completion. Every frame records
+    // its sleep, 0 ms when late, as the `kOffscreenPacingPhase` CPU phase row
+    // of the profile report — in every build type, not behind IR_PROFILE_SCOPE.
     void paceOffscreenFrame() {
         if (!isOffscreen()) {
             return;
         }
         const auto now = std::chrono::steady_clock::now();
-        if (m_offscreenNextFrame + m_offscreenFrameInterval < now) {
-            m_offscreenNextFrame = now;
+        const auto deadline = m_offscreenPacer.frameCompleted(now);
+        double sleptMs = 0.0;
+        if (deadline > now) {
+            std::this_thread::sleep_until(deadline);
+            sleptMs = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - now
+            )
+                          .count();
         }
-        m_offscreenNextFrame += m_offscreenFrameInterval;
-        std::this_thread::sleep_until(m_offscreenNextFrame);
+        IRProfile::cpuFrameHistogram().record(kOffscreenPacingPhase, sleptMs);
     }
 
     // Persists across draws, encoders, and frames until the matching
@@ -1347,8 +1361,7 @@ class MetalRenderDevice final : public RenderDevice {
     std::unordered_map<MTL::Texture *, MTL::Buffer *> m_clearSourceBuffers;
     MTL::Texture *m_offscreenTarget = nullptr;
     int m_offscreenRefreshHz = 0;
-    std::chrono::steady_clock::duration m_offscreenFrameInterval{};
-    std::chrono::steady_clock::time_point m_offscreenNextFrame{};
+    OffscreenFramePacer m_offscreenPacer;
 };
 
 // Intentionally leaked so the device state outlives all other statics.

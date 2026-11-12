@@ -133,6 +133,12 @@ IRCanvasStress` before `--` for rotating/attached canvas workloads, with that
 demo’s `--auto-profile --auto-screenshot N` exit controls. Canvas stress enables
 both CPU and GPU timing for auto-profile.
 
+On Metal these runs are offscreen-paced to the display's refresh interval: an
+early frame sleeps to its deadline, a late one does not, and the sleep is the
+`offscreenPacing` CPU phase row. Metal wall-frame times taken from 2026-10-04
+until that rule changed include one interval on every over-interval frame:
+[offscreen-pacing-late-frame.md](offscreen-pacing-late-frame.md).
+
 For the matched SDF authoring comparison, use `--target IRShapeDebug --
 --sdf-voxel-scene direct --auto-profile 300 --yaw 0.785398163 --zoom 4
 --config-preset configs/perf/sdf-on.lua --sdf-voxel-blockers --no-ao`.

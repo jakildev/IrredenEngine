@@ -71,9 +71,9 @@ instead: `bindDefaultFramebuffer` / `clearDefaultFramebuffer` /
 device never calls `nextDrawable` (`engine/render/CLAUDE.md` Gotchas). The
 target has the swapchain's shape (BGRA8, no depth on Metal; RGBA8 + 24/8
 depth-stencil on GL) at the window's framebuffer size, so pipeline states,
-clears and screenshots are the ones a presented frame produces. Pacing
-matches each backend's visible run: Metal sleeps to the primary display's
-refresh interval (what `presentDrawable` gated), GL stays unthrottled
+clears and screenshots are the ones a presented frame produces. Metal paces
+an early frame to the primary display's refresh interval (what
+`presentDrawable` gated); a late frame does not sleep. GL stays unthrottled
 (`swapInterval 0`).
 
 Per-OS hooks live in `ir_window_platform.hpp`: on macOS both non-normal modes
