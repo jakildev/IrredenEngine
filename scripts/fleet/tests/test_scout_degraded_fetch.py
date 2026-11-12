@@ -441,7 +441,8 @@ class _ScoutTickHarness:
             self.addCleanup(streak.clear)
 
     def _tick(self, tmp, projection, degraded, spawns, popen=None, logs=None,
-              served=False, game_dir=None, master_ci=None):
+              served=False, game_dir=None, master_ci=None, repos=None,
+              projectors=None):
         """Run one tick_once() against a hermetic state dir.
 
         `spawns` accumulates each subprocess.Popen argv so a caller can count
@@ -452,10 +453,12 @@ class _ScoutTickHarness:
         does not test the master-CI lane, which is then replaced by a no-op so
         no tick reaches the real `gh`; the master-CI suite passes
         `(gh_run, workflows)` to mock `fleet_github.run` and the workflow
-        listing instead. Returns nothing — assertions read those lists and the
-        seen-hash files under tmp.
+        listing instead. `repos` seeds the built state's repos and
+        `projectors` replaces the two fixed-projection lanes, for a suite that
+        runs a real projector over the tick's state. Returns nothing —
+        assertions read those lists and the seen-hash files under tmp.
         """
-        state = {"generated_at": "2026-08-08T00:00:00Z", "repos": {}}
+        state = {"generated_at": "2026-08-08T00:00:00Z", "repos": repos or {}}
         if degraded:
             state["degraded"] = ["engine.tasks"]
         # write_atomic keeps its temp beside the target, so every directory it
@@ -473,7 +476,7 @@ class _ScoutTickHarness:
 
         # Both lanes are keyed on role name, so a two-entry PROJECTORS dict
         # exercises exactly the branches under test and nothing else.
-        projectors = {
+        projectors = projectors or {
             "queue-manager": lambda _s: projection,
             "queue-manager-ingest": lambda _s: projection,
         }

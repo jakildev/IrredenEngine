@@ -147,7 +147,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_checks_red.py fleet_github.py fleet-common.sh; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py fleet_model_field.py fleet_claim_liveness.py fleet_checks_red.py fleet_checks_aggregate.py fleet_github.py fleet-common.sh; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -5016,7 +5016,8 @@ if (isinstance(snapshot, dict) and snapshot.get("repos")
 # from the fresh scout snapshot, each is confirmed by a live read here, and
 # the apply arm re-reads before writing. The master-CI alerts that exclude an
 # inherited red exist only where the scout's master-CI lane runs, so a host
-# whose lane marker is stale reports and writes nothing.
+# whose lane marker is stale reports and writes nothing, and only for the
+# engine repo, whose master is the one that lane watches.
 import fleet_checks_red as checks_red
 if (isinstance(snapshot, dict) and snapshot.get("repos")
         and topology.state_age_seconds(snapshot.get("generated_at"), 0,
@@ -5024,9 +5025,12 @@ if (isinstance(snapshot, dict) and snapshot.get("repos")
         and checks_red.master_watch_fresh(state_dir, now=now)):
     slug_to_key = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
     for repo in repos:
+        context = checks_red.master_context(repo)
+        if context is None:
+            continue
+        master_red, by_name = context
         records = ((snapshot["repos"].get(slug_to_key.get(repo)) or {}).get("prs") or [])
         listed = {p.get("number"): labelset(p) for p in repo_data[repo]["prs"]}
-        master_red, by_name = checks_red.master_context(repo)
         for record in records:
             n = record.get("number")
             if n not in listed or not checks_red.cached_candidate(record, listed[n], master_red):
@@ -7196,8 +7200,8 @@ commands:
                                         add fleet:checks-red, once per
                                         failure; remove it when that stops
                                         being true. Live-confirmed before
-                                        each write; runs only on the host
-                                        whose master-CI watch is fresh.
+                                        each write; engine repo only, on the
+                                        host whose master-CI watch is fresh.
                                 R2 (orphaned WIP/feedback PR with no claim,
                                 read as R7 reads it for a WIP PR;
                                 fleet:design-blocked / fleet:design-proposed /

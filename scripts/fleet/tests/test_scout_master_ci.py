@@ -255,5 +255,39 @@ class TestOrphanAlerts(_MasterCiCase):
         self.assertTrue(stale.exists())
 
 
+class TestAlertTransitionSchedulesReconcile(_MasterCiCase):
+    """Reconcile R12 removes `fleet:checks-red` from a PR whose only failure
+    goes red on master, and adds it when master goes green again. Neither
+    transition touches the PR, so the alert this lane raises or clears has to
+    move the real queue-manager hash on the same tick."""
+
+    def tick_with_pr(self, conclusion, labels=("fleet:approved",)):
+        pr = {"number": 7, "labels": sorted(labels), "checks": "red",
+              "headRefOid": "a" * 40, "baseRefName": "master"}
+        spawns = []
+        self._tick(self.tmp.name, [], degraded=False, spawns=spawns, logs=self.logs,
+                   master_ci=(_FakeGh({"ci.yml": _done(_run_json(conclusion))}), ["ci.yml"]),
+                   repos={"engine": {"prs": [pr]}},
+                   projectors={"queue-manager": _mod.project_queue_manager})
+        return sum(1 for argv in spawns if "reconcile" in argv)
+
+    def test_raising_and_clearing_an_alert_each_spawn_reconcile_once(self):
+        self.assertEqual(self.tick_with_pr("success"), 1, "first projection")
+        self.age_marker()
+        self.assertEqual(self.tick_with_pr("success"), 0, "control: no transition, no spawn")
+        self.age_marker()
+        self.assertEqual(self.tick_with_pr("failure"), 1, "the alert raised")
+        self.assertTrue(self.alert_path("ci.yml").exists())
+        self.age_marker()
+        self.assertEqual(self.tick_with_pr("failure"), 0, "a standing alert is no edge")
+        self.age_marker()
+        self.assertEqual(self.tick_with_pr("success"), 1, "the alert cleared")
+
+    def test_no_approved_red_head_makes_an_alert_no_edge(self):
+        self.assertEqual(self.tick_with_pr("success", labels=("human:re-review",)), 1)
+        self.age_marker()
+        self.assertEqual(self.tick_with_pr("failure", labels=("human:re-review",)), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

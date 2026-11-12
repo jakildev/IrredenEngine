@@ -12,6 +12,9 @@ completed, failed check of its own. Not its own: a job GitHub never started
 (the scout's `not_started` reading of the same head), and a workflow red on
 master right now (the scout's master-CI alert file for it). A check still
 running is never a failure. Required and non-required checks count alike.
+The `all-checks` commit status is not a check of the PR's own: it fails
+whenever any other check on the head failed, a master-red one included, so
+the head is judged by the checks it aggregates.
 
 Candidates come from the scout's cached reading. Each one is confirmed by a
 live read of labels, head and rollup, and the apply arm re-reads the same
@@ -21,7 +24,9 @@ after the newest own failure completed: a person who removed the label keeps
 it off until a later failure.
 
 The master-CI alerts exist only on the host that runs the scout's master-CI
-lane, so R12 runs only where that lane's deadline marker is fresh.
+lane, so R12 runs only where that lane's deadline marker is fresh. That lane
+watches the engine repo's master alone, so R12 covers engine PRs only: in
+another repo an inherited master red would read as the PR's own.
 
 Source of truth: scripts/fleet/fleet_checks_red.py in the engine repo.
 """
@@ -35,6 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fleet_github  # noqa: E402
+from fleet_checks_aggregate import CONTEXT as AGGREGATE_CONTEXT  # noqa: E402
 
 LABEL = "fleet:checks-red"
 APPROVED = "fleet:approved"
@@ -114,13 +120,15 @@ def master_watch_fresh(state_dir, now=None):
 
 
 def failed_checks(rollup):
-    """[(name, workflowName, completed_at)] for each completed red check."""
+    """[(name, workflowName, completed_at)] for each completed red check,
+    the `all-checks` aggregate excluded."""
     out = []
     for node in rollup or ():
         if not isinstance(node, dict):
             continue
         if node.get("__typename") == "StatusContext":
-            if node.get("state") in STATUS_CONTEXT_RED:
+            if (node.get("state") in STATUS_CONTEXT_RED
+                    and node.get("context") != AGGREGATE_CONTEXT):
                 out.append((node.get("context") or "?", None,
                             node.get("startedAt") or node.get("createdAt") or ""))
         elif node.get("status") == "COMPLETED" and node.get("conclusion") in CHECK_RUN_RED:
@@ -261,9 +269,10 @@ def read_events(repo, number):
 
 
 def master_context(repo):
-    """(master_red, by_name) for `repo`; master-CI alerts cover the engine only."""
+    """(master_red, by_name) for `repo`, or None where no master-CI lane
+    watches its master and R12 cannot tell an inherited red from its own."""
     if repo != ENGINE_SLUG:
-        return set(), {}
+        return None
     return master_red_files(), workflow_files_by_name(default_workflows_dir())
 
 
@@ -273,10 +282,13 @@ def confirm(repo, number, sig_json):
         expected = json.loads(sig_json)
     except ValueError:
         return 2
+    context = master_context(repo)
+    if context is None:
+        return 1
     live = live_read(repo, number)
     if live is None:
         return 1
-    return 0 if signature(live, *master_context(repo)) == expected else 1
+    return 0 if signature(live, *context) == expected else 1
 
 
 if __name__ == "__main__":

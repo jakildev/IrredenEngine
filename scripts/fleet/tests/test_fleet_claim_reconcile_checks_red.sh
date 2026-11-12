@@ -10,12 +10,14 @@
 #                     later head's failure is labeled
 #   not its own       a workflow red on master (its master-CI alert), and a
 #                     job GitHub never started, give no finding and no write;
-#                     a labeled PR whose failure goes red on master loses it
+#                     a labeled PR whose failure goes red on master loses it;
+#                     the all-checks aggregate is never a failure of its own
 #   unfinished        a check still running is not a failure
 #   live confirmation the classifier's live read, and the apply arm's re-read,
 #                     each block a write the cache alone would make
 #   gates             a missing label is reported once, not retried; a host
-#                     with no fresh master-CI watch reports and writes nothing
+#                     with no fresh master-CI watch reports and writes nothing;
+#                     a repo whose master no master-CI lane watches is skipped
 #
 # gh is a fail-closed PATH stub answering from canned JSON and logging every
 # call; state.json, the master-CI marker and the alert files are real files
@@ -125,12 +127,17 @@ H2="2222222220000000000000000000000000000002"
 T_FAIL="2026-11-10T12:06:46Z"
 
 # A rollup: <name>:<workflow>:<status>:<conclusion>:<completedAt>, comma-separated.
+# The workflow `@status` makes a commit StatusContext: <context>:@status:<state>::<startedAt>.
 rollup() {
     python3 - "$1" <<'PY'
 import json, sys
 out = []
 for spec in filter(None, sys.argv[1].split(",")):
     name, wf, status, conclusion, done = spec.split(":", 4)
+    if wf == "@status":
+        out.append({"__typename": "StatusContext", "context": name, "state": status,
+                    "startedAt": done or None, "targetUrl": "https://x/" + name})
+        continue
     out.append({"__typename": "CheckRun", "name": name, "workflowName": wf,
                 "status": status, "conclusion": conclusion or None,
                 "completedAt": done or None, "detailsUrl": "https://x/" + name})
@@ -139,9 +146,11 @@ PY
 }
 GREEN_SET="comment-refs:Comment Refs:COMPLETED:SUCCESS:2026-11-10T11:30:00Z,whitespace:Whitespace:COMPLETED:SUCCESS:2026-11-10T11:30:00Z"
 RED_BUILD="$GREEN_SET,linux-build:Engine Tests:COMPLETED:FAILURE:$T_FAIL"
+AGGREGATE_RED="all-checks:@status:FAILURE::2026-11-10T12:07:00Z"
 
 # Fresh surfaces for PR 5101: <cached-labels> <cached-checks> <cached-head>
-# [not_started]. The reconcile PR list carries the same labels.
+# [not_started]. The reconcile PR list carries the same labels. The state
+# record sits under the repo key $ARM_REPO_KEY (default engine).
 arm() {
     rm -rf "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR" "$FLEET_HEARTBEATS_DIR" \
         "$FLEET_STATE_DIR" "$FLEET_ORPHANS_DIR" "$FLEET_ALERTS_DIR" "$STUB_DATA"
@@ -149,9 +158,10 @@ arm() {
         "$FLEET_STATE_DIR/dispatch" "$FLEET_STATE_DIR/seen-hashes" "$FLEET_ORPHANS_DIR" \
         "$FLEET_ALERTS_DIR" "$STUB_DATA"
     date +%s > "$FLEET_STATE_DIR/seen-hashes/master-ci.last-run"
-    python3 - "$1" "$2" "$3" "${4:-}" "$STUB_DATA/prs.json" "$FLEET_STATE_DIR/state.json" <<'PY'
+    python3 - "$1" "$2" "$3" "${4:-}" "$STUB_DATA/prs.json" "$FLEET_STATE_DIR/state.json" \
+        "${ARM_REPO_KEY:-engine}" <<'PY'
 import json, sys, time
-labels, checks, head, not_started, prs_path, state_path = sys.argv[1:]
+labels, checks, head, not_started, prs_path, state_path, repo_key = sys.argv[1:]
 labels = [l for l in labels.split(",") if l]
 json.dump([{"number": 5101, "headRefName": "claude/fleet-thing-5100",
             "body": "Closes #5100", "labels": [{"name": l} for l in labels]}],
@@ -161,7 +171,7 @@ record = {"number": 5101, "labels": sorted(labels), "checks": checks,
 if not_started:
     record["not_started"] = not_started
 json.dump({"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-           "repos": {"engine": {"prs": [record], "tasks": {"open": [], "in_progress": []}}}},
+           "repos": {repo_key: {"prs": [record], "tasks": {"open": [], "in_progress": []}}}},
           open(state_path, "w"))
 PY
     : > "$CALLS"
@@ -189,7 +199,7 @@ data.setdefault("5101", []).append({"event": event, "created_at": at,
 json.dump(data, open(path, "w"))
 PY
 }
-reconcile() { "$FLEET_CLAIM" reconcile "$@" --repo "$SLUG" 2>&1 || true; }
+reconcile() { "$FLEET_CLAIM" reconcile "$@" --repo "${RECONCILE_SLUG:-$SLUG}" 2>&1 || true; }
 writes() { grep -cE '^(issue|pr) (edit|comment)|^api .*-X' "$CALLS" || true; }
 added()   { grep -cxF -- "issue edit 5101 --repo $SLUG --add-label fleet:checks-red" "$CALLS" || true; }
 removed() { grep -cxF -- "issue edit 5101 --repo $SLUG --remove-label fleet:checks-red" "$CALLS" || true; }
@@ -289,6 +299,23 @@ rm -f "$STUB_DATA"/live-5101.*; live "fleet:approved,fleet:checks-red" "$H1" "$R
 assert_absent "$out" "[R12" "control: an own failure beside the inherited one keeps the label"
 assert_eq "$(writes)" 0 "control: nothing is written beside an own failure"
 
+echo "=== 4d. not its own: the all-checks aggregate beside an inherited master red ==="
+arm "fleet:approved" red "$H1"
+live "fleet:approved" "$H1" "$GREEN_SET,fleet-tests:Fleet Tests:COMPLETED:FAILURE:$T_FAIL,$AGGREGATE_RED"
+printf 'master CI red: fleet-tests.yml\n' > "$FLEET_ALERTS_DIR/scout-master-ci-fleet-tests.yml"
+out=$(reconcile --apply)
+assert_absent "$out" "[R12" "a failed all-checks over an inherited red is not reported"
+assert_eq "$(writes)" 0 "nothing is written for the aggregate"
+assert_eq "$(unmodelled)" "" "no unmodelled gh call"
+
+echo "=== 4e. the all-checks aggregate beside an own failure ==="
+arm "fleet:approved" red "$H1"
+live "fleet:approved" "$H1" "$RED_BUILD,$AGGREGATE_RED"
+out=$(reconcile --apply)
+assert_contains "$out" "$R12_ADD: failed on head 111111111: linux-build"$'\n' "the own failure is reported, the aggregate is not named"
+assert_eq "$(added)" 1 "the own failure is labeled"
+assert_eq "$(writes)" 1 "exactly one write"
+
 echo "=== 5. unfinished is not failed ==="
 for cached in unread red; do
     arm "fleet:approved" "$cached" "$H1"
@@ -337,5 +364,24 @@ echo $(( $(date +%s) - 3 * 900 - 60 )) > "$FLEET_STATE_DIR/seen-hashes/master-ci
 out=$(reconcile --apply)
 assert_absent "$out" "[R12" "a stale marker: no finding"
 assert_eq "$(writes)" 0 "a stale marker: nothing written"
+
+echo "=== 9. a repo whose master no master-CI lane watches is skipped ==="
+GAME_SLUG="jakildev/irreden"
+ARM_REPO_KEY=game arm "fleet:approved" red "$H1"
+live "fleet:approved" "$H1" "$RED_BUILD"
+out=$(RECONCILE_SLUG="$GAME_SLUG" reconcile --apply)
+assert_absent "$out" "[R12" "an approved red game PR is no finding"
+assert_eq "$(writes)" 0 "nothing is written"
+assert_eq "$(grep -c '^pr view 5101' "$CALLS" || true)" 0 "and it costs no live read"
+assert_eq "$(unmodelled)" "" "no unmodelled gh call"
+ARM_REPO_KEY=game arm "fleet:approved,fleet:checks-red" green "$H1"
+live "fleet:approved,fleet:checks-red" "$H1" "$GREEN_SET"
+out=$(RECONCILE_SLUG="$GAME_SLUG" reconcile --apply)
+assert_absent "$out" "[R12" "a labeled game PR is left alone"
+assert_eq "$(writes)" 0 "nothing is removed either"
+arm "fleet:approved" red "$H1"
+live "fleet:approved" "$H1" "$RED_BUILD"
+out=$(reconcile --apply)
+assert_eq "$(added)" 1 "control: the same fixture under the engine repo is labeled"
 
 summarize "reconcile R12 fleet:checks-red"

@@ -240,7 +240,7 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
   never removed by an agent ([`auto-merge-lane.md`](../design/auto-merge-lane.md)).
 - `fleet:auto-merged` — **`fleet-automerge`**, after its squash merge; the
   permanent audit trail, never removed, refuses a second pass.
-- `fleet:checks-red` — **reconcile R12**, information only: an approved PR's head
+- `fleet:checks-red` — **reconcile R12**, information only: an approved engine PR's head
   failed a check of its own (not red on master, not a never-started job).
 - `fleet:merger-cooldown` — **merger** touched the PR; skip until the next
   iteration.
@@ -414,6 +414,6 @@ vouches for — after the drift-tick threshold; skips `fleet:blocked`,
 design-lane label, so the opus+-only resume tier has a class to dispatch), R10
 (remove this host's `fleet:amending-*` label whose owner is dead or unvouched
 past the TTL, through `cleanup --gh`'s locked sweep), and R12 (`fleet:checks-red`,
-live-confirmed, only on the host whose master-CI watch is fresh). R2 (same
+live-confirmed, engine PRs only, on the host whose master-CI watch is fresh). R2 (same
 claim reading on a wip PR), R6, and R11 (a same-repo `Blocked by:` ref that
 404s) stay flag-only. Runs at `fleet-up` boot and on each queue-manager edge.

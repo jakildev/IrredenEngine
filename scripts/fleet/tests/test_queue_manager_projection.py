@@ -608,6 +608,37 @@ class ApprovedRedEdge(unittest.TestCase):
                           if i["kind"] == "approved_red"], [])
 
 
+class MasterRedEdge(unittest.TestCase):
+    """A master-CI alert raised or cleared moves which approved-red failures
+    are the PR's own, so R12 must run; with no approved red head it cannot
+    change anything and must not wake reconcile."""
+
+    def _state(self, prs, master_ci_red, repo="engine"):
+        state = _pr_state([])
+        state["repos"][repo] = dict(state["repos"]["engine"], prs=prs, epics=[])
+        state["master_ci_red"] = master_ci_red
+        return state
+
+    def test_an_alert_change_flips_the_hash_while_an_approved_head_is_red(self):
+        prs = [_open_pr(7, ["fleet:approved"], "red")]
+        self.assertNotEqual(_hash(self._state(prs, [])),
+                            _hash(self._state(prs, ["engine-tests.yml"])))
+
+    def test_an_alert_change_alone_is_no_edge(self):
+        prs = [_open_pr(7, ["fleet:approved"], "green"),
+               _open_pr(8, ["human:re-review"], "red", head="b" * 40)]
+        self.assertEqual(_hash(self._state(prs, [])),
+                         _hash(self._state(prs, ["engine-tests.yml"])))
+
+    def test_a_game_approved_red_head_is_no_item(self):
+        """R12 covers the engine repo only: its master is the one the alerts
+        describe."""
+        state = self._state([_open_pr(7, ["fleet:approved"], "red")],
+                            ["engine-tests.yml"], repo="game")
+        self.assertEqual([i for i in project_queue_manager(state)
+                          if i["kind"] in ("approved_red", "master_red")], [])
+
+
 class TriggerHashesIgnoreChecksRed(unittest.TestCase):
     """fleet:checks-red is information only: no role's trigger hash reads it,
     so R12's own writes never wake a lane."""
