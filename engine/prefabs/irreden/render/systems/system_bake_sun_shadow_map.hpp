@@ -369,6 +369,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *voxelFaceProgram_ = nullptr;
     Buffer *voxelFaceFrameBuf_ = nullptr;
     Buffer *voxelFaceAdmissionScratch_ = nullptr;
+    Buffer *voxelIndirectBuf_ = nullptr;
     std::size_t voxelFaceAdmissionGroups_ = 0;
     ShaderProgram *clearProgram_ = nullptr;
     ShaderProgram *bakeProgram_ = nullptr;
@@ -1245,6 +1246,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             voxelFaceAdmissionGroups_ = groups;
             voxelFaceAdmissionScratch_->resize((groups + 2) * sizeof(std::uint32_t));
         }
+        if (voxelIndirectBuf_ == nullptr) {
+            voxelIndirectBuf_ = IRRender::getNamedResourceOrNull<Buffer>("IndirectDispatchParams");
+        }
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         voxelFaceAdmissionScratch_->bindBase(
@@ -1276,6 +1280,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             BufferTarget::UNIFORM,
             kBufferIndex_RevoxelizeDetachedParams
         );
+        if (voxelIndirectBuf_ != nullptr) {
+            voxelIndirectBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_IndirectDispatchParams
+            );
+        }
     }
 
     static SystemId create() {
