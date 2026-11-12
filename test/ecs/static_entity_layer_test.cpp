@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_math.hpp>
 
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_modifiers.hpp>
@@ -88,11 +89,12 @@ TEST_F(StaticEntityLayer, SettledIsDroppedByEveryMoveThatDoesNotNameIt) {
     m_entityManager.clearParent(child);
     EXPECT_FALSE(hasSettled(child));
 
-    // A move that names it keeps it, and an overwrite is not a move.
+    // A move that names it keeps it. A raw write through a reference moves
+    // nothing and reaches no rule.
     const EntityId kept = IREntity::createEntity(C_Static{}, C_LayerOther{7});
     IREntity::setComponent(kept, C_Settled{});
     EXPECT_TRUE(hasSettled(kept));
-    IREntity::setComponent(kept, C_LayerOther{8});
+    IREntity::getComponent<C_LayerOther>(kept).value_ = 8;
     EXPECT_TRUE(hasSettled(kept));
     IREntity::removeComponent<C_Settled>(kept);
     EXPECT_FALSE(hasSettled(kept));
@@ -183,6 +185,96 @@ TEST_F(StaticEntityLayer, AParentChangeDropsSettledDownTheTrackedSubtreeAndLogsI
     EXPECT_EQ(log, (std::vector<EntityId>{child, grandchild}));
     EXPECT_FALSE(settled(child));
     EXPECT_FALSE(settled(grandchild));
+}
+
+// An overwrite moves nothing, so `setComponent` applies the input-change
+// rule itself: the entity always, its tracked subtree only for a pose
+// component, which is what the descendants compose under.
+TEST_F(StaticEntityLayer, ATypedOverwriteDropsSettledAndLogsTheEntity) {
+    using IRComponents::C_LocalTransform;
+    const EntityId root = IREntity::createEntity(C_Static{}, C_Settled{}, C_LayerOther{1});
+    const EntityId child = IREntity::createEntity(C_Static{}, C_LayerOther{2});
+    const EntityId dynamic = IREntity::createEntity(C_LayerOther{3});
+    IREntity::setParent(child, root);
+    IREntity::setComponent(child, C_Settled{});
+    std::vector<EntityId> log;
+    m_entityManager.takeTrackedChanges(log);
+    log.clear();
+    const auto settled = [](EntityId entity) {
+        return IREntity::getComponentOptional<C_Settled>(entity).has_value();
+    };
+
+    IREntity::setComponent(dynamic, C_LayerOther{9});
+    IREntity::setComponent(dynamic, C_LocalTransform{IRMath::vec3(4.0f)});
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_TRUE(log.empty()) << "a dynamic entity's overwrite tracks nothing";
+
+    C_LayerOther &written = IREntity::setComponent(root, C_LayerOther{7});
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_EQ(log, (std::vector<EntityId>{root}));
+    EXPECT_FALSE(settled(root));
+    EXPECT_TRUE(settled(child)) << "not a pose component: the child composes under nothing new";
+    EXPECT_EQ(&written, &IREntity::getComponent<C_LayerOther>(root))
+        << "the reference is into the column the entity sits in after the move";
+    EXPECT_EQ(written.value_, 7);
+
+    log.clear();
+    IREntity::setComponent(root, C_LayerOther{8});
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_EQ(log, (std::vector<EntityId>{root})) << "a settling entity is logged without a move";
+
+    IREntity::setComponent(root, C_Settled{});
+    log.clear();
+    m_entityManager.takeTrackedChanges(log);
+    log.clear();
+    IREntity::setComponent(root, C_LocalTransform{IRMath::vec3(1.0f, 2.0f, 3.0f)});
+    m_entityManager.takeTrackedChanges(log);
+    EXPECT_EQ(log, (std::vector<EntityId>{root, child}));
+    EXPECT_FALSE(settled(root));
+    EXPECT_FALSE(settled(child));
+    EXPECT_EQ(
+        IREntity::getComponent<C_LocalTransform>(root).translation_,
+        IRMath::vec3(1.0f, 2.0f, 3.0f)
+    );
+
+    for (const EntityId entity : {root, child}) {
+        IREntity::setComponent(entity, C_Settled{});
+    }
+    log.clear();
+    m_entityManager.takeTrackedChanges(log);
+    log.clear();
+    m_entityManager.setComponents(root, C_LayerOther{5}, C_LocalTransform{IRMath::vec3(6.0f)});
+    EXPECT_FALSE(settled(root));
+    EXPECT_FALSE(settled(child));
+
+    for (const EntityId entity : {root, child}) {
+        IREntity::setComponent(entity, C_Settled{});
+    }
+    IREntity::setComponentDeferred(root, C_LocalTransform{IRMath::vec3(8.0f)});
+    EXPECT_TRUE(settled(root)) << "a deferred overwrite applies at the flush";
+    m_entityManager.flushStructuralChanges();
+    EXPECT_FALSE(settled(root));
+    EXPECT_FALSE(settled(child));
+    EXPECT_EQ(IREntity::getComponent<C_LocalTransform>(root).translation_, IRMath::vec3(8.0f));
+}
+
+TEST_F(StaticEntityLayer, ReservingRowsGrowsCapacityAndKeepsEveryRow) {
+    std::vector<EntityId> made;
+    for (int i = 0; i < 5; ++i) {
+        made.push_back(IREntity::createEntity(C_LayerOther{i}));
+    }
+    IREntity::ArchetypeNode *node = m_entityManager.getRecord(made[0]).archetypeNode;
+    std::vector<C_LayerOther> &column = IREntity::getComponentData<C_LayerOther>(node);
+    m_entityManager.reserveRows(node, 4096);
+    EXPECT_GE(column.capacity(), 4096u);
+    EXPECT_GE(node->entities_.capacity(), 4096u);
+    EXPECT_EQ(node->length_, 5);
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(IREntity::getComponent<C_LayerOther>(made[i]).value_, i);
+    }
+    const std::size_t capacity = column.capacity();
+    m_entityManager.reserveRows(node, 16);
+    EXPECT_EQ(column.capacity(), capacity) << "never shrinks";
 }
 
 TEST_F(StaticEntityLayer, ReparentingADynamicSubtreeTracksNothing) {

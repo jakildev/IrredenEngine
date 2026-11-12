@@ -21,7 +21,7 @@ API contracts; this file owns cross-header and pipeline constraints.
   mask, and face occupancy in that order. For a multi-pass raw-span edit,
   write everything and call `resyncAfterRawEdits()` once; never hand-roll the
   pair. `syncActiveMask()` remains only for existing low-level raw-loop sites. Authored local-canvas editing uses `mutableAuthoredRecords()` + `resyncAfterAuthoredEdits()` so rotated raster output cannot overwrite source geometry.
-- Every set mutator tells a static owner through `IRPrefab::Static::noteChanged(ownerEntityId_)` (routed by `ownerStatic_`, which only the static-resident drain writes); a new record mutator exits through `notifyRecordsChanged`, a band change through `setLodBand`, owner registration through `IRPrefab::Voxel::adoptOwner`.
+- Every set mutator tells a static owner through `IRPrefab::Static::noteChanged(ownerEntityId_)` (routed by `ownerStatic_`, which only the static-resident drain writes); a new record mutator exits through `markPoolRecordsChanged` or `notifyRecordsChanged`, a band change through `setLodBand`, owner registration through `IRPrefab::Voxel::adoptOwner`.
 - `visible_`, `ghostHeld_`, and `lodCulled_` are transient whole-set gates.
   Pose writers read `renders()` and stay frozen for ghosts;
   mask writers read `masksActive()` so held ghosts retain alpha; closing both clears the mask.

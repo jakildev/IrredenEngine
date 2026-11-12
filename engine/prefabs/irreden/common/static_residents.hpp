@@ -494,6 +494,22 @@ inline void drain() {
         if (capped) {
             std::sort_heap(candidates.begin(), candidates.end(), higherStamp);
         }
+        // The settled twin of a settling node receives that node's whole
+        // population over the coming rounds. Sized for it up front, no
+        // round's promotion regrows the columns over the rows already
+        // settled, which would cost a round far more than its own moves.
+        const IREntity::ArchetypeNode *reservedFor = nullptr;
+        for (const IRComponents::C_StaticState::Candidate &candidate : candidates) {
+            const IREntity::EntityRecord *record = entities.findRecord(candidate.entity_);
+            if (record == nullptr || record->archetypeNode == reservedFor) {
+                continue;
+            }
+            reservedFor = record->archetypeNode;
+            IREntity::Archetype settledType = reservedFor->type_;
+            settledType.insert(IREntity::getComponentType<IRComponents::C_Settled>());
+            IREntity::ArchetypeNode *settledNode = entities.findCreateArchetypeNode(settledType);
+            entities.reserveRows(settledNode, settledNode->length_ + reservedFor->length_);
+        }
         for (const IRComponents::C_StaticState::Candidate &candidate : candidates) {
             entities.setComponent(candidate.entity_, IRComponents::C_Settled{});
         }

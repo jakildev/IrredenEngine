@@ -42,7 +42,7 @@ void EntityManager::cacheComponentType(std::size_t slot, ComponentId componentTy
 }
 
 void EntityManager::recordComponentTraits(
-    ComponentId componentType, StaticGuard guard, bool foreignCleared, bool tracksParentChain
+    ComponentId componentType, StaticGuard guard, bool foreignCleared, bool tracksInputChanges
 ) {
     if (guard != StaticGuard::NONE) {
         m_staticGuards.emplace(componentType, guard);
@@ -50,7 +50,7 @@ void EntityManager::recordComponentTraits(
     if (foreignCleared) {
         m_foreignClearedComponents.push_back(componentType);
     }
-    if (tracksParentChain) {
+    if (tracksInputChanges) {
         m_parentChainComponents.push_back(componentType);
     }
 }
@@ -99,10 +99,21 @@ void EntityManager::takeTrackedChanges(std::vector<EntityId> &out) {
     m_trackedChanges.clear();
 }
 
-void EntityManager::handleParentChainChange(EntityId entity) {
+void EntityManager::reserveRows(ArchetypeNode *node, int rows) {
+    IR_ASSERT(isMainThreadForDeferred(), "EntityManager::reserveRows must run on the main thread");
+    if (rows <= 0) {
+        return;
+    }
+    node->entities_.reserve(static_cast<std::size_t>(rows));
+    for (auto &column : node->components_) {
+        column.second->reserveRows(rows);
+    }
+}
+
+void EntityManager::handleInputChange(EntityId entity, bool withDescendants) {
     EntityRecord *record = findRecord(entity);
     if (record == nullptr || record->archetypeNode == nullptr ||
-        !record->archetypeNode->tracksParentChain_) {
+        !record->archetypeNode->tracksInputChanges_) {
         return;
     }
     // Removing a cleared component by name is not a foreign move, so the
@@ -111,12 +122,14 @@ void EntityManager::handleParentChainChange(EntityId entity) {
         removeComponentById(entity, component);
     }
     m_trackedChanges.push_back(entityBits(entity));
-    handleParentChainChangeOfChildren(entity);
+    if (withDescendants) {
+        handleInputChangeOfChildren(entity);
+    }
 }
 
-void EntityManager::handleParentChainChangeOfChildren(EntityId parent) {
+void EntityManager::handleInputChangeOfChildren(EntityId parent) {
     for (EntityId child : getChildren(parent)) {
-        handleParentChainChange(child);
+        handleInputChange(child);
     }
 }
 
@@ -303,7 +316,7 @@ void EntityManager::destroyEntity(EntityId entity) {
         // tracks its parent chain is derived again. A child a hook
         // re-parented went through the link-change rule already.
         if (m_parentRelations.contains(entityBits(entity))) {
-            handleParentChainChangeOfChildren(entity);
+            handleInputChangeOfChildren(entity);
         }
     }
     EntityRecord &record = getRecord(entity);
@@ -820,7 +833,7 @@ void EntityManager::setChildOfRelation(EntityId entity, RelationId relation) {
     }
     ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(target);
     const unsigned int fromRow = static_cast<unsigned int>(record.row);
-    const bool tracksChain = fromNode->tracksParentChain_;
+    const bool tracksChain = fromNode->tracksInputChanges_;
     moveEntityByArchetype(record, kept, fromNode, toNode);
     if (cleared) {
         removeForeignClearedRows(fromNode, toNode, kNullComponent, fromRow, entity);
@@ -830,7 +843,7 @@ void EntityManager::setChildOfRelation(EntityId entity, RelationId relation) {
         if (!cleared) {
             m_trackedChanges.push_back(entityBits(entity));
         }
-        handleParentChainChangeOfChildren(entity);
+        handleInputChangeOfChildren(entity);
     }
     ++m_hierarchyRevision;
     IRE_LOG_DEBUG("Moved entity to new archetype with relation {}", relation);

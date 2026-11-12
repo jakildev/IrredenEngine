@@ -532,7 +532,14 @@ struct C_VoxelSetNew {
         if (count <= 0) {
             return;
         }
-        notifyRecordsChanged(first, count);
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
+            pool.markCullBoundsDirty(
+                voxelStartIdx_ + static_cast<std::size_t>(first),
+                static_cast<std::size_t>(count)
+            );
+            pool.markRecordsChanged();
+        });
+        noteOwnerChanged();
     }
 
     // Mirror one slot's record into the rotation-source snapshot, if it
@@ -594,7 +601,7 @@ struct C_VoxelSetNew {
         }
         mirrorToRotationSource(idx);
         // Priority is not a cull-bounds input; only the content generation moves.
-        notifyRecordsChanged(0, 0);
+        notifyRecordsChanged();
     }
 
     void changeVoxelPriorityAll(std::uint8_t priority) {
@@ -610,7 +617,7 @@ struct C_VoxelSetNew {
             static_cast<int>(newCount) - static_cast<int>(perTrixelPriorityVoxelCount_);
         IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(delta, canvasEntity_);
         perTrixelPriorityVoxelCount_ = newCount;
-        notifyRecordsChanged(0, 0);
+        notifyRecordsChanged();
     }
 
     void deactivateAll() {
@@ -999,25 +1006,21 @@ struct C_VoxelSetNew {
     }
 
   private:
-    // The one exit every record mutator takes: bump the pool's content
-    // generation, invalidate the cull bounds over `[first, first + count)`
-    // of this set (none when `count` is zero), and tell a static owner. A
-    // new record mutator that calls this resettles its entity too.
-    void notifyRecordsChanged(int first, int count) {
-        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
-            if (count > 0) {
-                pool.markCullBoundsDirty(
-                    voxelStartIdx_ + static_cast<std::size_t>(first),
-                    static_cast<std::size_t>(count)
-                );
-            }
+    // The exit of a record mutator that moves no cull bound: bump the
+    // pool's content generation and tell a static owner. A mutator that
+    // changes alpha or position exits through `markPoolRecordsChanged`,
+    // which also evicts the bounds. Either way a new record mutator
+    // resettles its entity.
+    void notifyRecordsChanged() {
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [](C_VoxelPool &pool) {
             pool.markRecordsChanged();
         });
         noteOwnerChanged();
     }
 
+    // One predictable branch on a dynamic entity's set.
     void noteOwnerChanged() {
-        if (ownerStatic_) {
+        if (ownerStatic_) [[unlikely]] {
             IRPrefab::Static::noteChanged(ownerEntityId_);
         }
     }

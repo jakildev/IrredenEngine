@@ -1003,6 +1003,73 @@ TEST(StaticWorld, AQueryBetweenUpdatesNeitherDerivesNorDelaysASettlingEntity) {
     EXPECT_EQ(framesToSettle(true), undisturbed);
 }
 
+// A typed overwrite of a component the entity already carries is honoured:
+// the setter resettles the entity, and for a pose component its static
+// subtree, so the next round derives them from the new value.
+TEST(StaticWorld, ATypedOverwriteOfThePoseResettlesTheSubtreeAndMatchesTheTwin) {
+    enum class Form { SET, SET_MANY, DEFERRED };
+    for (const Form form : {Form::SET, Form::SET_MANY, Form::DEFERRED}) {
+        Harness h;
+        const Tree tree = makeTree(h, true);
+        const Tree twin = makeTree(h, false);
+        h.frames(3);
+        ASSERT_TRUE(Static::isSettled(tree.grandchild_));
+        const std::uint64_t stampBefore = h.stamp(tree.root_);
+
+        for (const EntityId root : {tree.root_, twin.root_}) {
+            C_LocalTransform moved = IREntity::getComponent<C_LocalTransform>(root);
+            moved.translation_ += kMove;
+            switch (form) {
+            case Form::SET:
+                IREntity::setComponent(root, moved);
+                break;
+            case Form::SET_MANY:
+                h.entities_.setComponents(root, moved, IREntity::getComponent<C_FogRevealed>(root));
+                break;
+            case Form::DEFERRED:
+                IREntity::setComponentDeferred(root, moved);
+                break;
+            }
+        }
+        if (form == Form::DEFERRED) {
+            EXPECT_TRUE(Static::isSettled(tree.root_)) << "applied at the flush";
+            h.entities_.flushStructuralChanges();
+        }
+        for (const EntityId entity : {tree.root_, tree.child_, tree.grandchild_}) {
+            EXPECT_FALSE(Static::isSettled(entity));
+        }
+        Static::drain();
+        EXPECT_FALSE(Static::isSettled(tree.root_)) << "not promoted at the drain that follows";
+        EXPECT_GT(h.stamp(tree.root_), stampBefore);
+
+        h.frames(2);
+        for (const EntityId entity : {tree.root_, tree.child_, tree.grandchild_}) {
+            EXPECT_TRUE(Static::isStatic(entity));
+            EXPECT_TRUE(Static::isSettled(entity));
+        }
+        EXPECT_EQ(
+            worldOf(tree.root_),
+            IREntity::getComponent<C_LocalTransform>(tree.root_).translation_
+        );
+        EXPECT_EQ(h.relativeGlobals(tree.root_), h.relativeGlobals(twin.root_));
+        expectTreeUnder(h, tree, twin, worldOf(tree.root_), worldOf(twin.root_), "overwritten");
+    }
+}
+
+TEST(StaticWorld, ATypedOverwriteOfAnotherComponentResettlesOnlyTheEntity) {
+    Harness h;
+    const Tree tree = makeTree(h, true);
+    h.frames(3);
+    ASSERT_TRUE(Static::isSettled(tree.grandchild_));
+
+    IREntity::setComponent(tree.root_, IREntity::getComponent<C_FogRevealed>(tree.root_));
+    EXPECT_FALSE(Static::isSettled(tree.root_));
+    EXPECT_TRUE(Static::isSettled(tree.child_)) << "the child composes under the root's pose only";
+    EXPECT_TRUE(Static::isSettled(tree.grandchild_));
+    h.frames(2);
+    EXPECT_TRUE(Static::isSettled(tree.root_));
+}
+
 TEST(StaticWorld, ReparentingToTheSameParentLeavesTheChildSettled) {
     Harness h;
     const Tree tree = makeTree(h, true);

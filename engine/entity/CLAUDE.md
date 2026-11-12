@@ -76,9 +76,10 @@ component's own header, are recorded per `ComponentId` by
   of every archetype move that does not name it (attach, detach, parent
   change). Each node caches whether its type holds one, so other moves pay
   one boolean test.
-- `kTracksParentChain<T>`: when the entity's parent link changes or its
-  parent is destroyed, the cleared components of the entity and of every
-  descendant carrying such a component are dropped inside that call.
+- `kTracksInputChanges<T>`: a parent-link change, the parent's destruction,
+  or a `setComponent` overwrite drops the entity's cleared components inside
+  that call, and those of every descendant carrying such a component (an
+  overwrite of a guard-`NONE` component stops at the entity).
 
 Both rules append the entity's id to the tracked-change log
 (`takeTrackedChanges`), read by one main-thread consumer.

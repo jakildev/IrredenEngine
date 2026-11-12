@@ -46,6 +46,10 @@ class IComponentData {
     virtual bool appendDefaultRow() {
         return false;
     }
+
+    // Make room for @p rows rows without changing the size. Storage that
+    // cannot reserve keeps the default no-op.
+    virtual void reserveRows(int /*rows*/) {}
 };
 
 template <typename Component> class IComponentDataImpl : public IComponentData {
@@ -64,6 +68,10 @@ template <typename Component> class IComponentDataImpl : public IComponentData {
 
     virtual smart_ComponentData cloneEmpty() const override {
         return std::make_unique<IComponentDataImpl<Component>>();
+    }
+
+    virtual void reserveRows(int rows) override {
+        dataVector.reserve(static_cast<std::size_t>(rows));
     }
 
     // Archetype moves and the swap-and-pop both move rows, never copy them: a

@@ -134,6 +134,12 @@ class EntityManager {
     // Main-thread only (load is a frame-boundary op).
     void restoreEntitiesBatch(ArchetypeNode *node, std::span<const EntityId> entityIds);
 
+    /// Makes room in every column of `node` for `rows` rows. A caller about
+    /// to move a known population into the node in several steps calls it
+    /// once, so no step pays for regrowing the columns over the rows already
+    /// there. Main-thread-only; never shrinks.
+    void reserveRows(ArchetypeNode *node, int rows);
+
     // Read-only view of the singleton cache (ComponentId -> owning entity).
     // The snapshot walker excludes these entities from the ARCH chunk (they
     // ride the SNGL chunk by value) — one arm of the resetGameplay-mirroring
@@ -269,7 +275,7 @@ class EntityManager {
             componentId,
             kStaticGuard<std::remove_cv_t<Component>>,
             kClearedByForeignMove<std::remove_cv_t<Component>>,
-            kTracksParentChain<std::remove_cv_t<Component>>
+            kTracksInputChanges<std::remove_cv_t<Component>>
         );
         IRE_LOG_INFO(
             "Regestered component type={}, sizeof={} with id={}",
@@ -340,8 +346,8 @@ class EntityManager {
                ) != m_foreignClearedComponents.end();
     }
 
-    /// Whether `componentType` was registered with `kTracksParentChain`.
-    bool tracksParentChain(ComponentId componentType) const {
+    /// Whether `componentType` was registered with `kTracksInputChanges`.
+    bool tracksInputChanges(ComponentId componentType) const {
         return std::find(
                    m_parentChainComponents.begin(),
                    m_parentChainComponents.end(),
@@ -389,6 +395,9 @@ class EntityManager {
     // the entity, then push_backs the caller's value directly into the
     // new column. Lets components like C_CanvasAOTexture `= delete` their
     // default ctor and force a size-bearing ctor at the call site.
+    // Overwriting a component on an entity whose node tracks input changes
+    // resettles it in this call, so the returned reference is into the
+    // column the entity sits in afterwards.
     template <typename Component>
     Component &setComponent(EntityId entity, const Component &component) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
@@ -399,10 +408,19 @@ class EntityManager {
             return insertNewComponent<Component>(record, component);
         }
 
+        // An overwrite moves nothing, so a node that tracks input changes
+        // applies the rule here: the entity, and for a pose component the
+        // subtree composed under it, is derived again. The handling can
+        // move the entity, so the column is resolved after it.
+        const EntityRecord *placed = &record;
+        if (record.archetypeNode->tracksInputChanges_) {
+            handleInputChange(entity, kStaticGuard<Component> != StaticGuard::NONE);
+            placed = &getRecord(entity);
+        }
         IComponentDataImpl<Component> *data = castComponentDataPointer<Component>(
-            record.archetypeNode->components_[componentType].get()
+            placed->archetypeNode->components_[componentType].get()
         );
-        Component &c = data->dataVector[record.row];
+        Component &c = data->dataVector[placed->row];
         c = component;
         return c;
     }
@@ -767,13 +785,16 @@ class EntityManager {
     static std::size_t allocateComponentTypeSlot();
     void cacheComponentType(std::size_t slot, ComponentId componentType);
     void recordComponentTraits(
-        ComponentId componentType, StaticGuard guard, bool foreignCleared, bool tracksParentChain
+        ComponentId componentType, StaticGuard guard, bool foreignCleared, bool tracksInputChanges
     );
     // The parent-chain rule for one entity whose link changed or whose
     // parent died: drops its cleared-by-foreign-move components, logs it,
     // and descends into every child whose node tracks the parent chain.
-    void handleParentChainChange(EntityId entity);
-    void handleParentChainChangeOfChildren(EntityId parent);
+    /// `entity`'s inputs changed: drops its cleared components and logs it
+    /// when its node tracks input changes. `withDescendants` does the same
+    /// down the tracked subtree, for a change the descendants compose under.
+    void handleInputChange(EntityId entity, bool withDescendants = true);
+    void handleInputChangeOfChildren(EntityId parent);
     // Removes from `type` every cleared-by-foreign-move component of
     // `fromNode` other than `named`. True when it removed one.
     bool eraseForeignCleared(

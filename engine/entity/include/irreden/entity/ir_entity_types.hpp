@@ -60,7 +60,7 @@ template <typename Component> inline constexpr bool kClearedByForeignMove = fals
 /// components of the entity and of every descendant that carries a
 /// component with this trait, and records each id in the tracked-change log
 /// (`EntityManager::takeTrackedChanges`).
-template <typename Component> inline constexpr bool kTracksParentChain = false;
+template <typename Component> inline constexpr bool kTracksInputChanges = false;
 
 struct CreateEntityExtraParams {
     std::pair<Relation, EntityId> relation = {NONE, kNullEntity};

@@ -37,7 +37,7 @@ namespace IREntity {
 
 template <> inline constexpr bool kClearedByForeignMove<IRComponents::C_Settled> = true;
 // A static entity's world transform depends on its parent chain.
-template <> inline constexpr bool kTracksParentChain<IRComponents::C_Static> = true;
+template <> inline constexpr bool kTracksInputChanges<IRComponents::C_Static> = true;
 
 } // namespace IREntity
 
